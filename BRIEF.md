@@ -8,7 +8,7 @@ Goals:
 
 References:
 - Salesforce Nonprofit docs entrypoint: https://help.salesforce.com/s/products/nonprofit
-- Deck context (LIBERO): audit -> migration -> liberation, template-based deployments, CI/CD native, Europe compliance.
+- Deck context (GIVERNANCE): audit -> migration -> liberation, template-based deployments, CI/CD native, Europe compliance.
 
 Expected outputs:
 - docs/01-product-scope.md

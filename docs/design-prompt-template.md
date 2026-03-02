@@ -1,4 +1,4 @@
-# Design Prompt Template — Libero NPO Platform
+# Design Prompt Template — Givernance NPO Platform
 
 This locked style anchor MUST be prepended to every UI screen generation prompt.
 Agents generating mockup images must use this exact template for visual consistency.
@@ -8,7 +8,7 @@ Agents generating mockup images must use this exact template for visual consiste
 ## LOCKED STYLE ANCHOR (copy-paste at start of every prompt)
 
 ```
-STYLE LOCKED — Libero NPO Platform UI. Strict visual consistency required:
+STYLE LOCKED — Givernance NPO Platform UI. Strict visual consistency required:
 - LEFT SIDEBAR: 240px wide, solid deep forest green background (#2E7D5E), white icon + white label on each nav item, active item has left white 3px accent bar + slightly lighter green bg (#3A9070), bottom has org name + user avatar. Nav items: Dashboard, Constituants, Dons & Campagnes, Subventions, Programmes, Bénévoles, Impact, Communications, Rapports, Paramètres.
 - TOP BAR: white (#FAFAF8), 56px tall, breadcrumb in slate gray on left, search bar center, notification bell + user avatar on right.
 - PAGE BACKGROUND: warm off-white (#FAFAF8), content area starts at left edge of main content (right of sidebar).

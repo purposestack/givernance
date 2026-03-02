@@ -1,6 +1,6 @@
 # 14 — Screen Inventory
 
-> **Libero NPO Platform** — Inventaire complet de tous les écrans (v1)
+> **Givernance NPO Platform** — Inventaire complet de tous les écrans (v1)
 > Last updated: 2026-02-26
 > Owner: Design Architect agent
 
@@ -140,7 +140,7 @@ flowchart TD
 
 | Rôle | Description |
 |---|---|
-| `super_admin` | Administrateur système (Libero) |
+| `super_admin` | Administrateur système (Givernance) |
 | `org_admin` | Administrateur de l'organisation |
 | `fundraiser` | Gestionnaire collecte de fonds |
 | `program_officer` | Chargé de programme / travailleur social |
@@ -171,7 +171,7 @@ flowchart TD
 | **Module** | Auth |
 | **Nom de l'écran** | Connexion |
 | **URL pattern** | `/auth/login` |
-| **Description** | Page d'authentification principale. L'utilisateur saisit son email et son mot de passe. Affiche le logo Libero et le nom de l'organisation si détecté via sous-domaine. Lien vers SSO si configuré par l'org. |
+| **Description** | Page d'authentification principale. L'utilisateur saisit son email et son mot de passe. Affiche le logo Givernance et le nom de l'organisation si détecté via sous-domaine. Lien vers SSO si configuré par l'org. |
 | **États** | Default, Loading (validation), Error (identifiants incorrects), Success (redirection) |
 | **Actions principales** | 1. Se connecter (email + mot de passe) · 2. Connexion SSO · 3. Mot de passe oublié · 4. Demander un accès (lien vers site marketing) |
 | **Données affichées** | Logo org (si sous-domaine), champ email, champ mot de passe, bouton connexion, lien SSO conditionnel, lien mot de passe oublié |
@@ -517,10 +517,10 @@ flowchart TD
 | **Module** | Constituants |
 | **Nom de l'écran** | Import de constituants (CSV) |
 | **URL pattern** | `/constituents/import` |
-| **Description** | Assistant en 3 étapes : (1) Upload du fichier CSV, (2) Mapping des colonnes vers les champs Libero, (3) Validation et confirmation avant import. Aperçu des données, erreurs détectées (emails invalides, doublons), et rapport post-import. |
+| **Description** | Assistant en 3 étapes : (1) Upload du fichier CSV, (2) Mapping des colonnes vers les champs Givernance, (3) Validation et confirmation avant import. Aperçu des données, erreurs détectées (emails invalides, doublons), et rapport post-import. |
 | **États** | Step1/Upload, Step2/Mapping, Step3/Validation, Loading (traitement), Error (fichier invalide), Success (import terminé) |
 | **Actions principales** | 1. Uploader le fichier · 2. Mapper les colonnes · 3. Valider et importer · 4. Télécharger le rapport d'erreurs · 5. Annuler |
-| **Données affichées** | Aperçu des 5 premières lignes, mapping colonnes CSV → champs Libero, compteurs (valides, erreurs, doublons), rapport post-import (importés, ignorés, erreurs) |
+| **Données affichées** | Aperçu des 5 premières lignes, mapping colonnes CSV → champs Givernance, compteurs (valides, erreurs, doublons), rapport post-import (importés, ignorés, erreurs) |
 | **Rôles autorisés** | `org_admin`, `fundraiser` |
 | **Composants clés** | `FileUpload`, `ColumnMapper`, `DataPreviewTable`, `ImportSummary`, `ProgressBar`, `Button`, `Alert` |
 | **Interactions IA** | Mapping automatique des colonnes par reconnaissance de nom (ex: "First Name" → `first_name`) |
@@ -1141,7 +1141,7 @@ flowchart TD
 | **Module** | Finance |
 | **Nom de l'écran** | Réconciliation des paiements |
 | **URL pattern** | `/finance/reconciliation` |
-| **Description** | Interface de réconciliation entre les paiements reçus (Stripe, Mollie, virement manuel) et les dons enregistrés dans Libero. Affiche les paiements non rapprochés avec suggestions de matching. |
+| **Description** | Interface de réconciliation entre les paiements reçus (Stripe, Mollie, virement manuel) et les dons enregistrés dans Givernance. Affiche les paiements non rapprochés avec suggestions de matching. |
 | **États** | Default, Loading (import relevé), Error, Empty (tout réconcilié) |
 | **Actions principales** | 1. Importer un relevé bancaire · 2. Valider un rapprochement suggéré · 3. Créer un don depuis un paiement non rapproché · 4. Ignorer un paiement · 5. Exporter le rapport de réconciliation |
 | **Données affichées** | Paiements non rapprochés (montant, date, référence, libellé), suggestions de matching avec score de confiance, dons non rapprochés de la période, récapitulatif réconcilié / non réconcilié |
@@ -1240,7 +1240,7 @@ flowchart TD
 | **Module** | Migration |
 | **Nom de l'écran** | Assistant de migration — Étape 1 : Sélection de la source |
 | **URL pattern** | `/migration/step/1` |
-| **Description** | Première étape de l'assistant de migration Salesforce vers Libero. L'utilisateur choisit la source (Salesforce NPSP via API OAuth, export CSV Salesforce, ou autre CRM). Pour Salesforce, authentification OAuth 2.0 pour accéder à l'instance. |
+| **Description** | Première étape de l'assistant de migration Salesforce vers Givernance. L'utilisateur choisit la source (Salesforce NPSP via API OAuth, export CSV Salesforce, ou autre CRM). Pour Salesforce, authentification OAuth 2.0 pour accéder à l'instance. |
 | **États** | Default, Connecting (OAuth Salesforce), Connected (succès connexion), Error (accès refusé), Loading |
 | **Actions principales** | 1. Connecter Salesforce (OAuth) · 2. Uploader export CSV Salesforce · 3. Sélectionner autre source · 4. Continuer à l'étape 2 |
 | **Données affichées** | 3 options de source, formulaire OAuth (URL instance Salesforce), statut de connexion, aperçu des objets disponibles (Contacts, Accounts, Opportunities) si connexion réussie |
@@ -1259,10 +1259,10 @@ flowchart TD
 | **Module** | Migration |
 | **Nom de l'écran** | Assistant de migration — Étape 2 : Mapping des champs |
 | **URL pattern** | `/migration/step/2` |
-| **Description** | Mapping entre les champs Salesforce NPSP et les champs Libero. Mapping automatique proposé pour les champs standard (Contact.FirstName → constituent.first_name), avec possibilité d'ajustement manuel. Les champs personnalisés Salesforce peuvent être mappés vers les champs personnalisés Libero. |
+| **Description** | Mapping entre les champs Salesforce NPSP et les champs Givernance. Mapping automatique proposé pour les champs standard (Contact.FirstName → constituent.first_name), avec possibilité d'ajustement manuel. Les champs personnalisés Salesforce peuvent être mappés vers les champs personnalisés Givernance. |
 | **États** | Default, Loading (chargement schéma), Error, ReviewMapping |
 | **Actions principales** | 1. Valider un mapping suggéré · 2. Modifier un mapping · 3. Ignorer un champ · 4. Créer un champ personnalisé cible · 5. Retour étape 1 · 6. Continuer étape 3 |
-| **Données affichées** | Table de mapping (colonne Salesforce → colonne Libero, confiance du mapping auto, statut : mappé/ignoré/avertissement), statistiques (% champs mappés), champs non mappés |
+| **Données affichées** | Table de mapping (colonne Salesforce → colonne Givernance, confiance du mapping auto, statut : mappé/ignoré/avertissement), statistiques (% champs mappés), champs non mappés |
 | **Rôles autorisés** | `org_admin` |
 | **Composants clés** | `WizardProgress`, `MappingTable`, `Select` (cible), `Badge` (confiance), `Alert` (champs non mappés), `Button` |
 | **Interactions IA** | Mapping automatique intelligent (similarité de nom + type de données + contexte NPSP) |
@@ -1413,7 +1413,7 @@ flowchart TD
 | **Module** | Admin |
 | **Nom de l'écran** | Facturation et abonnement |
 | **URL pattern** | `/admin/billing` |
-| **Description** | Gestion de l'abonnement Libero : plan actuel, nombre de sièges, prochaine facture, historique des factures. Mise à jour de la carte bancaire. Possibilité d'upgrader ou de downgrader le plan. |
+| **Description** | Gestion de l'abonnement Givernance : plan actuel, nombre de sièges, prochaine facture, historique des factures. Mise à jour de la carte bancaire. Possibilité d'upgrader ou de downgrader le plan. |
 | **États** | Default, Loading, Error (paiement échoué — bannière), PaymentRequired |
 | **Actions principales** | 1. Changer de plan · 2. Modifier le moyen de paiement · 3. Télécharger une facture · 4. Contacter le support |
 | **Données affichées** | Plan actuel (nom, prix/mois, fonctionnalités), sièges utilisés / alloués, prochaine date de facturation, montant, historique factures (liste téléchargeable), moyen de paiement actuel (masqué) |
@@ -1554,7 +1554,7 @@ flowchart TD
 | **Module** | Global |
 | **Nom de l'écran** | Page non trouvée (404) |
 | **URL pattern** | `/*` (catch-all) |
-| **Description** | Page d'erreur 404. Message clair, non accusatoire. Lien vers le tableau de bord et recherche globale. Illustration custom Libero. |
+| **Description** | Page d'erreur 404. Message clair, non accusatoire. Lien vers le tableau de bord et recherche globale. Illustration custom Givernance. |
 | **États** | Default |
 | **Actions principales** | 1. Retour au tableau de bord · 2. Rechercher |
 | **Données affichées** | Illustration, message d'erreur clair, bouton retour, champ de recherche |
@@ -1573,7 +1573,7 @@ flowchart TD
 | **Module** | Global |
 | **Nom de l'écran** | Erreur serveur (500) |
 | **URL pattern** | Overlay / page fallback |
-| **Description** | Page d'erreur serveur inattendue. Message calme et constructif. Notification automatique envoyée à l'équipe Libero. Bouton de rechargement et lien de contact support. |
+| **Description** | Page d'erreur serveur inattendue. Message calme et constructif. Notification automatique envoyée à l'équipe Givernance. Bouton de rechargement et lien de contact support. |
 | **États** | Default |
 | **Actions principales** | 1. Réessayer · 2. Retour au tableau de bord · 3. Contacter le support |
 | **Données affichées** | Illustration, message d'erreur (non technique), ID d'erreur (pour support), boutons de récupération |

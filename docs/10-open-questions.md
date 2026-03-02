@@ -14,9 +14,9 @@
 
 ## Strategic / Product Vision
 
-### 8. Libero as an organizational platform — not just a CRM
+### 8. Givernance as an organizational platform — not just a CRM
 
-**Question raised**: Should Libero go beyond CRM and become the central organizational hub of an NPO — integrating communication, collaboration, and AI participation?
+**Question raised**: Should Givernance go beyond CRM and become the central organizational hub of an NPO — integrating communication, collaboration, and AI participation?
 
 **Context**: NPO staff spend time split between their CRM (data) and communication tools (Slack, WhatsApp, email). This fragmentation creates friction and breaks context. A platform that unifies data + communication could be a significant differentiator and "future-proof" the product.
 
@@ -44,9 +44,9 @@
 - **Shared workspaces per grant/program**: a focused view combining data + discussion + documents for a specific project
 
 #### v2: AI as a team member
-- **@Libero in any thread**: tag the AI in any conversation to ask questions, get context, trigger actions
-  - Example: "@Libero quelle est la situation de Marie Dupont ?" → AI summarizes donor history, last interactions, pending tasks
-  - Example: "@Libero rédige un brouillon de relance pour cette subvention" → AI drafts a grant renewal message
+- **@Givernance in any thread**: tag the AI in any conversation to ask questions, get context, trigger actions
+  - Example: "@Givernance quelle est la situation de Marie Dupont ?" → AI summarizes donor history, last interactions, pending tasks
+  - Example: "@Givernance rédige un brouillon de relance pour cette subvention" → AI drafts a grant renewal message
 - **AI-generated activity summaries**: each Monday, AI posts a brief in the org feed summarizing the week's key movements
 - **Proactive AI interventions**: AI posts in the feed when it detects something requiring attention ("La subvention FSE+ arrive à échéance dans 14 jours — aucun rapport en cours.")
 

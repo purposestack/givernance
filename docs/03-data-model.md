@@ -751,7 +751,7 @@ CREATE POLICY constituent_erasure_visibility ON constituents
 
 | Role | Description | Key permissions |
 |---|---|---|
-| `super_admin` | Libero operations team | All orgs, all data |
+| `super_admin` | Givernance operations team | All orgs, all data |
 | `org_admin` | NPO system administrator | All data within org, user management, billing |
 | `fundraising_manager` | Manages donors, campaigns, donations | Constituents (rw), donations (rw), campaigns (rw), grants (r), reports (r) |
 | `program_manager` | Manages service delivery | Programs (rw), enrollments (rw), beneficiaries (rw), volunteers (r) |

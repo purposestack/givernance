@@ -1,6 +1,6 @@
 # 12 — User Journey Maps
 
-> **Libero NPO Platform** — User journeys pour chaque persona cible.
+> **Givernance NPO Platform** — User journeys pour chaque persona cible.
 > Last updated: 2026-02-26
 > Auteur : Design Architect (UX Research)
 
@@ -8,12 +8,12 @@
 
 ## Introduction
 
-Ce document cartographie les parcours utilisateurs complets pour les cinq personas principaux de Libero NPO Platform. Chaque journey map est conçue pour :
+Ce document cartographie les parcours utilisateurs complets pour les cinq personas principaux de Givernance NPO Platform. Chaque journey map est conçue pour :
 
 1. **Comprendre le contexte réel** de l'utilisateur (frustrations actuelles, contexte organisationnel)
 2. **Identifier les moments clés** dans la plateforme (entrée, travail quotidien, sorties)
 3. **Repérer les frictions potentielles** avant le développement
-4. **Définir les moments d'enchantement** que Libero doit absolument réussir
+4. **Définir les moments d'enchantement** que Givernance doit absolument réussir
 5. **Formuler les questions UX** à tester avec de vraies personnes
 
 Ces journeys servent de référence pour les équipes produit, design et développement. Ils sont volontairement détaillés et réalistes — basés sur le profil des ONG françaises et suisses de 5 à 150 personnes, en 2026.
@@ -55,7 +55,7 @@ Ces journeys servent de référence pour les équipes produit, design et dévelo
 - **Doublon donors** : elle trouve régulièrement 2-3 fiches pour le même donateur, ce qui fausse les totaux de campagne
 - **Pas de vue "donateur vivant"** : impossible de voir en un clic depuis quand un donateur donne, combien, et si un remerciement a été envoyé
 
-#### Objectif principal dans Libero
+#### Objectif principal dans Givernance
 
 > *"Je veux pouvoir commencer ma journée en 2 minutes, savoir exactement où j'en suis sur chaque campagne, identifier les donateurs à relancer, et envoyer un remerciement correct — sans avoir à appeler Julien."*
 
@@ -67,7 +67,7 @@ Ces journeys servent de référence pour les équipes produit, design et dévelo
 
 ```mermaid
 flowchart TD
-    A([🌅 Lundi 8h30 — Arrivée au bureau]) --> B[Dashboard Libero\nVue org globale]
+    A([🌅 Lundi 8h30 — Arrivée au bureau]) --> B[Dashboard Givernance\nVue org globale]
     B --> C{Alertes en attente ?}
     C -->|Oui| D[Notification : 3 dons reçus\n2 reçus en attente d'envoi\n1 donateur lapsé à relancer]
     C -->|Non| E[Consultation rapide\nCampagne Hiver 2026]
@@ -91,16 +91,16 @@ flowchart TD
 
 #### Tableau du journey étape par étape
 
-| # | Moment | Écran Libero | Action | Émotion | Friction potentielle | Moment de joie |
+| # | Moment | Écran Givernance | Action | Émotion | Friction potentielle | Moment de joie |
 |---|---|---|---|---|---|---|
-| 1 | **Lundi 8h30** — Arrivée, café, ouverture Libero | `Dashboard` — Vue organisation | Sofia voit le résumé : dons de la semaine, progression des campagnes actives, alertes | 😐 Routine | Si le dashboard est trop chargé et n'est pas personnalisable | ✨ Le chiffre "Total collecté ce mois : 43 250 €" saute aux yeux, avec progression vs. mois dernier |
+| 1 | **Lundi 8h30** — Arrivée, café, ouverture Givernance | `Dashboard` — Vue organisation | Sofia voit le résumé : dons de la semaine, progression des campagnes actives, alertes | 😐 Routine | Si le dashboard est trop chargé et n'est pas personnalisable | ✨ Le chiffre "Total collecté ce mois : 43 250 €" saute aux yeux, avec progression vs. mois dernier |
 | 2 | **8h35** — Traitement des alertes | `Notifications / Inbox` | 3 nouvelles alertes : 2 dons en ligne (HelloAsso), 1 reçu en attente, 1 donateur lapsé depuis 14 mois | 🙂 Engagée | Notifications trop nombreuses si mal configurées | ✨ Chaque alerte a une action directe : "Envoyer le reçu" → 1 clic |
 | 3 | **8h40** — Envoi des reçus fiscaux | `Dons > Reçus en attente` | Valide le lot de 2 reçus ; les PDFs sont générés en format cerfa-compatible et envoyés | 😊 Soulagée | Si le template reçu ne correspond pas exactement au format Bercy/DGIP | ✨ "2 reçus envoyés automatiquement — conformes au format fiscal français 2026" |
 | 4 | **8h50** — Suivi campagne Hiver 2026 | `Fundraising > Campagnes > Hiver 2026` | Consulte la progression : 73 % de l'objectif (€ 43 750 / € 60 000), 234 donateurs, don moyen € 187 | 😊 Focus | Si les métriques ne correspondent pas à ce qu'elle attend (ex: dons en ligne vs. chèques) | ✨ Barre de progression avec jalons (25%, 50%, 75%, 100%) — satisfaction visuelle immédiate |
-| 5 | **9h00** — Identification des relances prioritaires | `Constituants > Segments > "Donateurs Hiver 2025 pas encore Hiver 2026"` | Libero propose automatiquement le segment "Ont donné l'hiver dernier, pas encore cette année" | 😊 Productive | La construction de segments est complexe si non guidée | ✨ L'IA suggère le segment pré-configuré — elle n'a qu'à valider |
+| 5 | **9h00** — Identification des relances prioritaires | `Constituants > Segments > "Donateurs Hiver 2025 pas encore Hiver 2026"` | Givernance propose automatiquement le segment "Ont donné l'hiver dernier, pas encore cette année" | 😊 Productive | La construction de segments est complexe si non guidée | ✨ L'IA suggère le segment pré-configuré — elle n'a qu'à valider |
 | 6 | **9h15** — Rédaction email de relance | `Communications > Nouvelle campagne email` | Utilise un template "Relance fidèles" ; personnalise avec le prénom et le montant du don précédent | 😊 Créative | Si la fusion des champs (merge fields) est peu intuitive | ✨ Aperçu live du mail personnalisé avec vraies données donateur |
 | 7 | **9h45** — Envoi et test | `Communications > Envoi > Confirmer` | Envoie d'abord un email test à elle-même, puis planifie l'envoi pour mardi 10h | 🙂 Prudente | Pas d'envoi de test évident avant l'envoi réel | ✨ "Email planifié pour 89 destinataires — mardi 10h00" |
-| 8 | **10h00** — Revue dossier grand donateur | `Constituants > Personnes > Jean-Pierre Fontaine` | Jean-Pierre a fait un virement de €2 000 hier — Libero l'a automatiquement classé "Major Donor" | 😮 Surprise positive | Si le seuil major donor n'est pas configurable | ✨ Alerte IA : "Jean-Pierre Fontaine a franchi le seuil major donor — souhaitez-vous créer une tâche de suivi personnalisé ?" |
+| 8 | **10h00** — Revue dossier grand donateur | `Constituants > Personnes > Jean-Pierre Fontaine` | Jean-Pierre a fait un virement de €2 000 hier — Givernance l'a automatiquement classé "Major Donor" | 😮 Surprise positive | Si le seuil major donor n'est pas configurable | ✨ Alerte IA : "Jean-Pierre Fontaine a franchi le seuil major donor — souhaitez-vous créer une tâche de suivi personnalisé ?" |
 | 9 | **10h10** — Tâche de suivi | `Tâches > Nouvelle tâche` | Crée une tâche "Appel remerciement J-P Fontaine" pour demain 14h | 🙂 Organisée | — | — |
 | 10 | **Mercredi 9h00** — Préparation reporting | `Rapports > LYBUNT 2025` | Lance le rapport LYBUNT (Gave Last Year But Unfortunately Not This) pour l'AG mensuelle | 😌 Rassurée | Si le rapport LYBUNT nécessite une configuration manuelle | ✨ Le rapport est pré-configuré, cliquable, exportable en PDF en 10 secondes |
 | 11 | **Mercredi 9h15** — Export et présentation | `Rapports > Exporter en PDF` | Exporte le rapport avec le logo de l'organisation pour présenter à la directrice | 😊 Professionnelle | Si le PDF exporté est trop brut (sans mise en page) | ✨ Le PDF inclut automatiquement le logo, les couleurs, la date du rapport |
@@ -143,15 +143,15 @@ Dashboard (organisation overview)
 1. **8h35** : "Tes 2 reçus ont été envoyés automatiquement à Marie et Georges — conformes au format fiscal 2026." Zéro effort.
 2. **9h00** : L'IA a déjà préparé le segment "À relancer Hiver 2026" — elle n'a qu'à cliquer "Envoyer".
 3. **9h45** : L'aperçu de l'email montre "Cher Jean-Pierre, merci pour votre fidélité depuis 2019 et votre don de 350 € l'an dernier." Personnalisé, précis, sans copier-coller.
-4. **10h10** : Libero suggère automatiquement une tâche de suivi pour le major donor — elle se sent épaulée.
+4. **10h10** : Givernance suggère automatiquement une tâche de suivi pour le major donor — elle se sent épaulée.
 5. **Mercredi 9h10** : Le rapport LYBUNT est prêt en PDF avec le logo de Solidarité Méditerranée — elle peut aller en réunion dans 5 minutes.
 
 ---
 
 ### 1.6 Questions ouvertes UX (à tester avec de vraies personnes)
 
-1. **Quelle est la première information que Sofia cherche en ouvrant Libero le matin ?** Tester différentes configurations de dashboard (chiffres clés / alertes / campagnes actives).
-2. **Comment Sofia construit-elle un segment de relance aujourd'hui ?** Observer la tâche actuelle dans Salesforce pour mesurer le gain de temps Libero.
+1. **Quelle est la première information que Sofia cherche en ouvrant Givernance le matin ?** Tester différentes configurations de dashboard (chiffres clés / alertes / campagnes actives).
+2. **Comment Sofia construit-elle un segment de relance aujourd'hui ?** Observer la tâche actuelle dans Salesforce pour mesurer le gain de temps Givernance.
 3. **Quel est son niveau de confiance dans les reçus fiscaux générés automatiquement ?** Risque : elle imprime et vérifie systématiquement — est-ce évitable ?
 4. **Combien de temps passe-t-elle sur les rapports chaque semaine ?** Objectif : réduire de 3h à 20 minutes.
 5. **Qu'est-ce qu'elle ferait différemment si le reporting était instantané ?** Ouvrir de nouvelles habitudes de travail ou libérer du temps créatif.
@@ -181,7 +181,7 @@ Dashboard (organisation overview)
 - **Reporting subvention laborieux** : chaque trimestre, il compile manuellement les heures de service délivrées depuis 4 feuilles Excel — 2 jours de travail
 - **Confidentialité approximative** : tout le monde a accès à tout dans le Google Drive partagé
 
-#### Objectif principal dans Libero
+#### Objectif principal dans Givernance
 
 > *"Je veux que chaque travailleur social puisse ouvrir le dossier d'un bénéficiaire, voir tout son historique, écrire une note de suivi, et que ça soit immédiatement partagé avec toute l'équipe — sans sortir d'Excel."*
 
@@ -191,7 +191,7 @@ Dashboard (organisation overview)
 
 ```mermaid
 flowchart TD
-    A([🌅 8h00 — Briefing équipe\nauCentre d'Accueil]) --> B[Libero > Programs\nVue charge de travail]
+    A([🌅 8h00 — Briefing équipe\nauCentre d'Accueil]) --> B[Givernance > Programs\nVue charge de travail]
     B --> C[Sélectionne la liste\ndes cas actifs du jour]
     C --> D{Nouveau bénéficiaire\narrivé ?}
     D -->|Oui| E[Créer fiche bénéficiaire\nRecherche doublon auto]
@@ -215,10 +215,10 @@ flowchart TD
 
 #### Tableau du journey étape par étape
 
-| # | Moment | Écran Libero | Action | Émotion | Friction potentielle | Moment de joie |
+| # | Moment | Écran Givernance | Action | Émotion | Friction potentielle | Moment de joie |
 |---|---|---|---|---|---|---|
 | 1 | **8h00** — Briefing équipe, Thomas prépare la journée | `Programs > Cases > Ma file active` | Voit ses 23 cas actifs avec statut (actif, en pause, en attente de rendez-vous) | 😐 Concentré | Si la liste ne distingue pas ses cas de ceux de ses collègues | ✨ Vue "Ma file" personnalisée — Thomas voit uniquement ses bénéficiaires assignés |
-| 2 | **8h10** — Arrivée d'un nouveau bénéficiaire | `Constituants > Nouveau > Personne` | Saisit nom + date de naissance — Libero vérifie immédiatement les doublons | 😐 Attentif | Formulaire trop long pour une saisie rapide à l'accueil | ✨ Doublon détecté : "Il existe un dossier pour Karim A., 41 ans — est-ce la même personne ?" Évite la duplication |
+| 2 | **8h10** — Arrivée d'un nouveau bénéficiaire | `Constituants > Nouveau > Personne` | Saisit nom + date de naissance — Givernance vérifie immédiatement les doublons | 😐 Attentif | Formulaire trop long pour une saisie rapide à l'accueil | ✨ Doublon détecté : "Il existe un dossier pour Karim A., 41 ans — est-ce la même personne ?" Évite la duplication |
 | 3 | **8h15** — Enrôlement programme | `Programs > Enrôlement > Nouveau` | Enrôle Karim dans le programme "Soins ambulatoires – Genève 2026" | 😊 Organisé | Si la liste de programmes n'est pas claire (trop de programmes actifs/archivés) | ✨ L'enrôlement crée automatiquement le premier rendez-vous suggéré dans le calendrier |
 | 4 | **8h20** — Note initiale | `Cases > Notes > Nouvelle note` | Saisit la note d'accueil structurée : situation, besoins, orientation | 😊 Professionnel | Si le champ note est un textarea brut sans structure | ✨ Template de note "Premier accueil" pré-chargé avec les sections clés — Thomas complète, ne repart pas de zéro |
 | 5 | **9h00** — Consultation dossier existant | `Constituants > Amira Ben Salah > Timeline` | Consulte l'historique complet d'Amira : notes de ses collègues, prestations, rendez-vous | 😊 Informé | Si les notes des collègues ne sont pas clairement attribuées | ✨ Chaque note affiche l'auteur + horodatage — Thomas voit qui a fait quoi et quand |
@@ -228,7 +228,7 @@ flowchart TD
 | 9 | **12h00** — Synchronisation | `Sync indicator > ✅ Synchronisé` | Dès qu'il retrouve du réseau, la note est synchronisée | 😌 Soulagé | Si la sync échoue sans notification claire | ✨ "1 note synchronisée avec succès — Mehdi Laroussi à 12h03" |
 | 10 | **14h00** — Gestion liste d'attente | `Programs > Liste d'attente` | Consulte les 7 personnes en attente d'une place ; vérifie si une place s'est libérée | 😐 Concentré | Si la liste d'attente n'indique pas depuis quand chaque personne attend | ✨ La liste d'attente trie automatiquement par ancienneté + urgence marquée manuellement |
 | 11 | **16h00** — Rapport trimestriel subvention Canton GE | `Reports > Impact > Programmes > T1 2026` | Lance le rapport des prestations délivrées sur le T1 : heures, types, bénéficiaires uniques | 😮 Impressionné | Si les données ne correspondent pas exactement au format demandé par le canton | ✨ Le rapport est pré-mappé au format du rapport de subvention cantonal — copier-coller direct |
-| 12 | **16h30** — Export et envoi | `Reports > Export CSV/PDF` | Exporte le rapport en PDF et en CSV (pour le service de subventions du DCS) | 😊 Professionnel | — | ✨ Ce rapport lui prenait 2 jours avec Excel. Libero : 15 minutes. |
+| 12 | **16h30** — Export et envoi | `Reports > Export CSV/PDF` | Exporte le rapport en PDF et en CSV (pour le service de subventions du DCS) | 😊 Professionnel | — | ✨ Ce rapport lui prenait 2 jours avec Excel. Givernance : 15 minutes. |
 
 ---
 
@@ -304,7 +304,7 @@ Programs > Cases > Ma file active (vue caseload personnel)
 - **Pas de suivi des compétences** : elle ne sait pas qui peut conduire un camion, qui parle arabe, qui a un DBS (casier judiciaire vérifié)
 - **Vérifications judiciaires expirées** : elle a découvert trop tard qu'un bénévole en contact avec des enfants avait un extrait de casier périmé
 
-#### Objectif principal dans Libero
+#### Objectif principal dans Givernance
 
 > *"Je veux que mes bénévoles puissent s'inscrire à un créneau depuis leur téléphone, que je reçoive une alerte si quelqu'un annule, et que le total des heures se calcule tout seul en fin de mois."*
 
@@ -314,7 +314,7 @@ Programs > Cases > Ma file active (vue caseload personnel)
 
 ```mermaid
 flowchart TD
-    A([📱 Lundi 7h45 — Sur le trajet\nConsultation mobile]) --> B[Libero Mobile\nVue planning semaine]
+    A([📱 Lundi 7h45 — Sur le trajet\nConsultation mobile]) --> B[Givernance Mobile\nVue planning semaine]
     B --> C{Annulations ou\nconfirmations ?}
     C -->|Annulation| D[Notification : Marie a annulé\nSamedi 9h00]
     C -->|OK| E[Tout confirmé\nBonne journée !]
@@ -337,14 +337,14 @@ flowchart TD
 
 #### Tableau du journey étape par étape
 
-| # | Moment | Écran Libero | Action | Émotion | Friction potentielle | Moment de joie |
+| # | Moment | Écran Givernance | Action | Émotion | Friction potentielle | Moment de joie |
 |---|---|---|---|---|---|---|
 | 1 | **Lundi 7h45** — Dans le tram, iPhone | `Volunteers > Mon planning` (mobile) | Consulte les confirmations/annulations de la semaine | 😊 Organisée | Si la vue mobile est une version dégradée du desktop | ✨ Interface mobile fluide, adaptée à une consultation rapide dans le tram |
-| 2 | **7h50** — Annulation reçue | `Notifications > Annulation Marie S.` | Marie a annulé pour samedi — Amina doit trouver un remplaçant | 😟 Stressée | Si elle doit chercher manuellement dans la liste | ✨ Libero affiche directement "3 bénévoles disponibles samedi 9h et compétents pour ce rôle" |
-| 3 | **7h55** — Invitation remplaçant | `Volunteers > Lena K. > Inviter ce créneau` | Envoie une invitation push à Lena — qui accepte en 10 minutes | 😌 Soulagée | Lena ne répond pas — qui contacter ensuite ? | ✨ File d'attente de remplaçants — si Lena décline, Libero propose automatiquement le suivant |
-| 4 | **9h00** — Nouveau bénévolat en ligne | `Volunteers > Inscriptions > Lucas M.` | Lucas s'est inscrit via le formulaire bénévole en ligne — profil créé dans Libero | 😊 Heureuse | Si le formulaire en ligne ne s'intègre pas automatiquement dans Libero | ✨ Profil Lucas créé automatiquement — avec ses compétences et disponibilités déclarées |
-| 5 | **9h10** — Onboarding checklist | `Volunteers > Lucas M. > Onboarding` | Libero génère la checklist : entretien, référence, DBS, induction, premier créneau | 😊 Organisée | Si la checklist n'est pas customisable par l'organisation | ✨ Checklist d'onboarding préconfigurée — Amina coche, délègue, relance automatiquement |
-| 6 | **9h30** — Vérification DBS/casier | `Volunteers > Lucas M. > Documents > DBS` | Lucas doit fournir un extrait de casier récent (contact enfants) — Libero envoie un rappel automatique | 😐 Prudente | Si Libero ne distingue pas les rôles nécessitant un DBS | ✨ Libero bloque l'affectation sur les rôles "contact enfants" jusqu'à validation DBS |
+| 2 | **7h50** — Annulation reçue | `Notifications > Annulation Marie S.` | Marie a annulé pour samedi — Amina doit trouver un remplaçant | 😟 Stressée | Si elle doit chercher manuellement dans la liste | ✨ Givernance affiche directement "3 bénévoles disponibles samedi 9h et compétents pour ce rôle" |
+| 3 | **7h55** — Invitation remplaçant | `Volunteers > Lena K. > Inviter ce créneau` | Envoie une invitation push à Lena — qui accepte en 10 minutes | 😌 Soulagée | Lena ne répond pas — qui contacter ensuite ? | ✨ File d'attente de remplaçants — si Lena décline, Givernance propose automatiquement le suivant |
+| 4 | **9h00** — Nouveau bénévolat en ligne | `Volunteers > Inscriptions > Lucas M.` | Lucas s'est inscrit via le formulaire bénévole en ligne — profil créé dans Givernance | 😊 Heureuse | Si le formulaire en ligne ne s'intègre pas automatiquement dans Givernance | ✨ Profil Lucas créé automatiquement — avec ses compétences et disponibilités déclarées |
+| 5 | **9h10** — Onboarding checklist | `Volunteers > Lucas M. > Onboarding` | Givernance génère la checklist : entretien, référence, DBS, induction, premier créneau | 😊 Organisée | Si la checklist n'est pas customisable par l'organisation | ✨ Checklist d'onboarding préconfigurée — Amina coche, délègue, relance automatiquement |
+| 6 | **9h30** — Vérification DBS/casier | `Volunteers > Lucas M. > Documents > DBS` | Lucas doit fournir un extrait de casier récent (contact enfants) — Givernance envoie un rappel automatique | 😐 Prudente | Si Givernance ne distingue pas les rôles nécessitant un DBS | ✨ Givernance bloque l'affectation sur les rôles "contact enfants" jusqu'à validation DBS |
 | 7 | **10h00** — Consultation compétences | `Volunteers > Filtres > Permis PL + Disponible week-end` | Cherche un bénévole avec permis poids lourd disponible ce week-end | 😊 Efficace | Si les filtres de compétences ne sont pas assez fins | ✨ Résultat instantané : "2 bénévoles correspondants : Ahmed (Strasbourg Nord), Sophie (Strasbourg Sud)" |
 | 8 | **Mercredi 9h00** — Calcul heures mensuelles | `Volunteers > Rapports > Heures > Janvier 2026` | Lance le rapport des heures bénévoles pour le mois | 😮 Impressionnée | — | ✨ Total calculé automatiquement : 1 840 heures | valeur estimée : € 20 976 (taux national 2026) |
 | 9 | **9h15** — Export rapport | `Rapports > Heures bénévoles > Export PDF` | Exporte le rapport pour le rapport annuel et la subvention FONJEP | 😊 Professionnelle | Si l'export ne distingue pas les bénévoles par programme | ✨ Le rapport ventile par programme/activité — exactement ce que demande le FONJEP |
@@ -380,15 +380,15 @@ Volunteers > Mon planning (vue mobile prioritaire)
 | Drag & drop planning difficile sur mobile | Haute | Haut | Interface mobile alternative : liste avec menu d'action rapide |
 | Blocage DBS trop rigide (bénévole bloqué injustement) | Moyenne | Moyen | Permettre override admin avec motif documenté |
 | Calcul valeur heures bénévoles taux incorrect | Faible | Moyen | Taux configurable dans Settings > Volunteers > Taux horaire |
-| Formulaire en ligne bénévoles ne s'intègre pas sans dev | Haute | Haut | Fournir un formulaire embed Libero clé en main |
+| Formulaire en ligne bénévoles ne s'intègre pas sans dev | Haute | Haut | Fournir un formulaire embed Givernance clé en main |
 
 ---
 
 ### 3.5 Moments de joie
 
-1. **7h55** : Libero propose automatiquement les remplaçants disponibles et compétents — Amina résout une annulation en 3 minutes depuis son téléphone dans le tram.
+1. **7h55** : Givernance propose automatiquement les remplaçants disponibles et compétents — Amina résout une annulation en 3 minutes depuis son téléphone dans le tram.
 2. **9h10** : Le profil Lucas est déjà créé avec ses compétences déclarées — zéro re-saisie.
-3. **9h30** : Libero bloque automatiquement l'affectation "contact enfants" pour Lucas sans DBS — conformité sans effort.
+3. **9h30** : Givernance bloque automatiquement l'affectation "contact enfants" pour Lucas sans DBS — conformité sans effort.
 4. **Mercredi 9h15** : Le calcul des 1 840 heures et leur valeur économique est instantané — Amina peut défendre la valeur bénévole en 30 secondes face à un funder.
 5. **Vendredi 17h00** : L'alerte DBS arrive 14 jours avant expiration — Amina n'a plus jamais de surprise le samedi matin.
 
@@ -397,8 +397,8 @@ Volunteers > Mon planning (vue mobile prioritaire)
 ### 3.6 Questions ouvertes UX
 
 1. **Amina utilise-t-elle vraiment un iPhone pour tout ou passe-t-elle par l'ordi pour certaines tâches ?** Cartographier précisément les tâches mobile vs. desktop.
-2. **Quelle est la tolérance des bénévoles aux notifications Libero ?** Risque de spam — étudier les préférences de canal par tranche d'âge.
-3. **Comment les bénévoles signalent-ils une annulation aujourd'hui ?** WhatsApp, email, SMS ? Quel canal Libero doit-il supporter en premier ?
+2. **Quelle est la tolérance des bénévoles aux notifications Givernance ?** Risque de spam — étudier les préférences de canal par tranche d'âge.
+3. **Comment les bénévoles signalent-ils une annulation aujourd'hui ?** WhatsApp, email, SMS ? Quel canal Givernance doit-il supporter en premier ?
 4. **La valeur monétaire des heures bénévoles est-elle un concept que les bénévoles comprennent et apprécient ?** Risque de froisser avec une logique "marchande".
 5. **Le drag & drop est-il la bonne interaction pour construire un planning avec 85 personnes ?** Tester une alternative : "Affecter à ce créneau" depuis la fiche bénévole.
 
@@ -427,7 +427,7 @@ Volunteers > Mon planning (vue mobile prioritaire)
 - **Pas de sandbox gratuit** : tester une modification de configuration en production est un risque réel
 - **Mises à jour automatiques Salesforce** : parfois, une mise à jour casse un workflow personnalisé — découverte en production
 
-#### Objectif principal dans Libero
+#### Objectif principal dans Givernance
 
 > *"Je veux pouvoir configurer l'organisation en 1 jour, gérer les accès en 5 minutes, répondre à une demande RGPD en 10 minutes, et ne pas être appelé chaque fois qu'un collègue ne comprend pas le CRM."*
 
@@ -464,20 +464,20 @@ flowchart TD
 
 #### Tableau du journey étape par étape — Onboarding J1 à J5
 
-| # | Moment | Écran Libero | Action | Émotion | Friction potentielle | Moment de joie |
+| # | Moment | Écran Givernance | Action | Émotion | Friction potentielle | Moment de joie |
 |---|---|---|---|---|---|---|
 | 1 | **J1 9h00** — Démarrage de l'onboarding | `Settings > Organisation > Wizard` | Marc suit le wizard 5 étapes : infos org, RGPD, fonds, GL, utilisateurs | 😊 Confiant | Si le wizard est trop long ou demande des infos comptables qu'il n'a pas | ✨ Wizard resumable — il peut s'arrêter, revenir plus tard sans perdre sa progression |
-| 2 | **J1 10h00** — Import des constituants | `Settings > Import > Depuis Salesforce` | Upload du CSV exporté de Salesforce — Libero mappe automatiquement les colonnes | 😐 Prudent | Colonnes SF non standard, mapping échoue | ✨ Mapping visuel avec aperçu ligne par ligne — il corrige 3 colonnes en 2 minutes |
+| 2 | **J1 10h00** — Import des constituants | `Settings > Import > Depuis Salesforce` | Upload du CSV exporté de Salesforce — Givernance mappe automatiquement les colonnes | 😐 Prudent | Colonnes SF non standard, mapping échoue | ✨ Mapping visuel avec aperçu ligne par ligne — il corrige 3 colonnes en 2 minutes |
 | 3 | **J1 11h00** — Résolution des doublons | `Settings > Import > Doublons (47 trouvés)` | Interface de fusion : côte à côte, 2 fiches, cases à cocher, ficher à conserver | 😐 Laborieux mais nécessaire | 47 doublons = 47 décisions manuelles ? | ✨ "Fusionner les 12 doublons évidents automatiquement" — les 35 ambigus sont présentés un par un |
 | 4 | **J1 14h00** — Configuration des fonds | `Settings > Finance > Fonds` | Crée les fonds restreints et non restreints correspondant aux subventions actives | 😊 Organisé | Si la logique fonds / codes GL n'est pas expliquée | ✨ Tooltip contextuel : "Un fonds restreint est lié à une subvention spécifique — les dépenses sont suivies séparément." |
-| 5 | **J1 15h00** — Mapping codes GL | `Settings > Finance > Codes GL` | Mappe les fonds Libero aux codes nominaux de la comptabilité (Sage 50, Swiss Chart of Accounts) | 😐 Technique | Si Libero ne connaît pas le plan comptable suisse | ✨ Libero propose un plan comptable suisse standard (PME/Asso) pré-chargé — Marc ajuste 3 lignes |
-| 6 | **J1 16h30** — Gestion des rôles | `Settings > Utilisateurs > Rôles` | Crée les rôles : Fundraising Manager, Program Coordinator, Volunteer Coordinator, Grants Officer, Admin | 😊 En contrôle | Si la granularité des permissions est insuffisante | ✨ Rôles pré-définis correspondant aux personas Libero — Marc active/désactive des modules par rôle |
+| 5 | **J1 15h00** — Mapping codes GL | `Settings > Finance > Codes GL` | Mappe les fonds Givernance aux codes nominaux de la comptabilité (Sage 50, Swiss Chart of Accounts) | 😐 Technique | Si Givernance ne connaît pas le plan comptable suisse | ✨ Givernance propose un plan comptable suisse standard (PME/Asso) pré-chargé — Marc ajuste 3 lignes |
+| 6 | **J1 16h30** — Gestion des rôles | `Settings > Utilisateurs > Rôles` | Crée les rôles : Fundraising Manager, Program Coordinator, Volunteer Coordinator, Grants Officer, Admin | 😊 En contrôle | Si la granularité des permissions est insuffisante | ✨ Rôles pré-définis correspondant aux personas Givernance — Marc active/désactive des modules par rôle |
 | 7 | **J2 9h00** — Invitations utilisateurs | `Settings > Utilisateurs > Inviter` | Envoie les invitations par email aux 12 utilisateurs — ils configurent leur propre mot de passe | 😊 Délégué | Si les utilisateurs ont du mal à s'activer (lien expiré, etc.) | ✨ Lien d'invitation valable 7 jours, avec renouvellement facile depuis l'admin |
 | 8 | **Semaine 1 — Demande RGPD** | `RGPD > Demandes > Nouvelle demande` | Un donateur demande accès à ses données (article 15 RGPD) — Marc reçoit l'email | 😐 Attentif | Si le dossier complet doit être compilé manuellement | ✨ "Générer le dossier RGPD complet de M. Fernandez" → PDF en 3 minutes : dons, consentements, notes, communications |
 | 9 | **Semaine 1 — Demande effacement** | `RGPD > Effacement > Wizard` | Un ancien bénévole demande l'effacement de ses données — article 17 RGPD | 😐 Prudent | Si l'effacement casse des relations (dons liés, etc.) | ✨ Wizard d'anonymisation : "Ces données seront anonymisées. Les dons resteront pour la comptabilité mais sans lien nominatif." |
 | 10 | **Mensuel — Audit sécurité** | `Settings > Logs d'accès` | Marc consulte les logs d'accès du mois : qui a accédé à quoi, quand | 😊 Rassuré | Si les logs sont trop verbeux pour être exploitables | ✨ Logs filtrables : par utilisateur, par action, par type de données — export CSV pour le RSSI |
-| 11 | **Mensuel — Rapport RGPD** | `RGPD > Registre des traitements` | Met à jour le registre des traitements (obligatoire RGPD Article 30) | 😊 Conforme | Si le registre doit être rédigé de zéro | ✨ Registre pré-rempli avec les traitements Libero documentés — Marc ajoute les traitements spécifiques de l'org |
-| 12 | **Quotidien** — Support utilisateurs | `Settings > Aide & Support` | Marc ne reçoit plus d'appels "comment faire un rapport" — les utilisateurs se débrouillent | 😊 Libéré | Si l'UX Libero n'est pas assez intuitive pour les non-tech | ✨ Libero est assez simple pour que Sofia, Thomas et Amina travaillent de façon autonome |
+| 11 | **Mensuel — Rapport RGPD** | `RGPD > Registre des traitements` | Met à jour le registre des traitements (obligatoire RGPD Article 30) | 😊 Conforme | Si le registre doit être rédigé de zéro | ✨ Registre pré-rempli avec les traitements Givernance documentés — Marc ajoute les traitements spécifiques de l'org |
+| 12 | **Quotidien** — Support utilisateurs | `Settings > Aide & Support` | Marc ne reçoit plus d'appels "comment faire un rapport" — les utilisateurs se débrouillent | 😊 Libéré | Si l'UX Givernance n'est pas assez intuitive pour les non-tech | ✨ Givernance est assez simple pour que Sofia, Thomas et Amina travaillent de façon autonome |
 
 ---
 
@@ -555,7 +555,7 @@ Settings > Organisation > Wizard (onboarding 5 étapes)
 - **Justificatifs éparpillés** : les pièces jointes de justification sont dans des emails, des Drives, des dossiers papier — retrouver une facture en urgence est cauchemardesque
 - **Reporting narratif** : rédiger les rapports d'activité pour chaque bailleur (souvent 15-30 pages) est le travail le plus chronophage, alors que les données sont dans le CRM
 
-#### Objectif principal dans Libero
+#### Objectif principal dans Givernance
 
 > *"Je veux avoir un seul endroit où je vois tous mes grants, leurs deadlines, leur budget consommé, et pouvoir générer un premier jet de rapport d'activité à partir des données du CRM."*
 
@@ -578,7 +578,7 @@ flowchart TD
     K --> L[Suivi dépenses\nvs. budget grant]
     L --> M{Deadline rapport\nintermédiaire ?}
     M -->|J-30| N[Alerte automatique\nClaire + directrice]
-    N --> O[Pré-rapport généré\npar Libero IA]
+    N --> O[Pré-rapport généré\npar Givernance IA]
     O --> P[Claire corrige\net finalise]
     P --> Q[Envoi rapport\nfichier joint archivé]
     Q --> R{Dernier rapport\ndu grant}
@@ -589,19 +589,19 @@ flowchart TD
 
 #### Tableau du journey étape par étape — Cycle grant complet
 
-| # | Moment | Écran Libero | Action | Émotion | Friction potentielle | Moment de joie |
+| # | Moment | Écran Givernance | Action | Émotion | Friction potentielle | Moment de joie |
 |---|---|---|---|---|---|---|
 | 1 | **Prospection** — Nouvel appel à projets | `Grants > Nouveau Grant` | Claire crée la fiche grant : bailleur, montant demandé, date de dépôt, objectif | 😊 Engagée | Si le formulaire de création est trop long | ✨ Formulaire en 3 étapes guidées — les champs obligatoires d'abord, le reste après |
 | 2 | **Recherche bailleur** | `Constituants > Organisations > Fondation de France` | Lie le contact bailleur (chargée de programme) au grant | 😊 Organisée | Si la recherche de contacts n'est pas rapide | ✨ Cmd+K global search — "Fondation de France" trouvé en 2 touches |
 | 3 | **Définition des livrables** | `Grants > [Nom] > Livrables` | Ajoute les 4 livrables du grant avec dates et responsables | 😊 Structurée | Si la gestion des livrables est trop basique (liste plate) | ✨ Livrables avec statut, date d'échéance, responsable et fichiers joints |
-| 4 | **Dossier déposé** | `Grants > [Nom] > Statut → Déposé` | Met à jour le statut — Libero demande la date de dépôt et le contact au bailleur | 😌 Soulagée | — | ✨ Pipeline visuel : Claire voit ses 12 grants par étape (Kanban) |
+| 4 | **Dossier déposé** | `Grants > [Nom] > Statut → Déposé` | Met à jour le statut — Givernance demande la date de dépôt et le contact au bailleur | 😌 Soulagée | — | ✨ Pipeline visuel : Claire voit ses 12 grants par étape (Kanban) |
 | 5 | **Grant accordé** | `Grants > [Nom] > Statut → Accordé` | Le bailleur confirme — Claire met à jour le montant accordé (€ 85 000) et les dates | 🎉 Euphorique | — | ✨ Notification automatique à la directrice et à la comptable : "Nouveau grant accordé : € 85 000 — Fondation de France" |
-| 6 | **Création du fonds restreint** | `Settings > Finance > Nouveau Fonds Restreint` | Libero propose automatiquement de créer un fonds restreint lié au grant | 😊 Organisée | Si la liaison fonds ↔ grant n'est pas automatique | ✨ "Créer le fonds restreint 'Fondation de France 2026' ?" → 1 clic |
+| 6 | **Création du fonds restreint** | `Settings > Finance > Nouveau Fonds Restreint` | Givernance propose automatiquement de créer un fonds restreint lié au grant | 😊 Organisée | Si la liaison fonds ↔ grant n'est pas automatique | ✨ "Créer le fonds restreint 'Fondation de France 2026' ?" → 1 clic |
 | 7 | **Suivi budgétaire mensuel** | `Grants > [Nom] > Budget & Dépenses` | Claire consulte le budget consommé vs. alloué — sans appeler la comptable Isabelle | 😊 Autonome | Si les données dépenses viennent d'un ERP externe non connecté | ✨ Import mensuel depuis Xero en 1 clic — ou saisie manuelle si pas d'ERP |
 | 8 | **Alerte J-30 rapport intermédiaire** | `Notifications > ⏰ Rapport intermédiaire dû dans 30 jours` | Claire reçoit l'alerte 30 jours avant — puis 14 jours, puis 7 jours | 😌 Préparée | Si Claire ignore les notifications | ✨ Alerte email + push + visible sur le dashboard dès J-30 — impossible à manquer |
-| 9 | **Pré-rapport IA** | `Grants > [Nom] > Rapport > Générer brouillon` | Libero génère un premier jet de rapport narratif à partir des données CRM : bénéficiaires, prestations, indicateurs | 😮 Impressionnée | Si le brouillon est trop générique / hors sujet | ✨ "Voici un brouillon de 3 pages basé sur 234 bénéficiaires servis, 1 840h de service délivrées, 3 indicateurs d'impact atteints" |
+| 9 | **Pré-rapport IA** | `Grants > [Nom] > Rapport > Générer brouillon` | Givernance génère un premier jet de rapport narratif à partir des données CRM : bénéficiaires, prestations, indicateurs | 😮 Impressionnée | Si le brouillon est trop générique / hors sujet | ✨ "Voici un brouillon de 3 pages basé sur 234 bénéficiaires servis, 1 840h de service délivrées, 3 indicateurs d'impact atteints" |
 | 10 | **Finalisation du rapport** | `Grants > [Nom] > Rapport > Éditeur` | Claire corrige, enrichit, ajoute des anecdotes terrain — le brouillon lui économise 4 heures | 😊 Créative | Si l'éditeur de rapport est limité (pas de mise en forme) | ✨ Éditeur riche avec export Word + PDF — Claire peut finir dans Word si besoin |
-| 11 | **Envoi et archivage** | `Grants > [Nom] > Documents > Joindre rapport envoyé` | Claire joint le rapport final envoyé au bailleur — archivé dans Libero | 😊 Professionnelle | — | ✨ Tous les documents du grant sont dans un seul endroit — plus de Drive éparpillé |
+| 11 | **Envoi et archivage** | `Grants > [Nom] > Documents > Joindre rapport envoyé` | Claire joint le rapport final envoyé au bailleur — archivé dans Givernance | 😊 Professionnelle | — | ✨ Tous les documents du grant sont dans un seul endroit — plus de Drive éparpillé |
 | 12 | **Clôture et renouvellement** | `Grants > [Nom] > Clôturer + Notes renouvellement` | Grant clôturé avec bilan final — notes pour la prochaine candidature | 😊 Stratège | — | ✨ "Ce grant a été renouvelé 2 fois — taux de succès avec ce bailleur : 67%" |
 
 ---
@@ -678,7 +678,7 @@ Grants > Pipeline (vue Kanban des 12 grants)
 ### 5.7 Questions ouvertes UX
 
 1. **Comment Claire priorise-t-elle ses 12 grants simultanément ? Quel est son système mental ?** Observer pour reproduire dans l'UI.
-2. **À quel moment du cycle de grant Claire consulte-t-elle Libero le plus fréquemment ?** Est-ce en phase de reporting ou en phase d'exécution ?
+2. **À quel moment du cycle de grant Claire consulte-t-elle Givernance le plus fréquemment ?** Est-ce en phase de reporting ou en phase d'exécution ?
 3. **Quel est le format exact demandé par chaque bailleur pour les rapports ?** Y a-t-il des points communs qu'on peut standardiser ?
 4. **Comment Claire partage-t-elle l'avancement des grants avec la direction ?** Réunion mensuelle ? Dashboard partagé ?
 5. **La fonctionnalité "pré-rapport IA" est-elle perçue comme une aide ou comme un risque (rapport générique envoyé par erreur) ?** Tester avec des utilisateurs réels la confiance dans les brouillons IA.
@@ -714,7 +714,7 @@ flowchart TD
 
 ### 6.2 Matrice des fonctionnalités par persona
 
-| Fonctionnalité Libero | Sofia | Thomas | Amina | Marc | Claire |
+| Fonctionnalité Givernance | Sofia | Thomas | Amina | Marc | Claire |
 |---|:---:|:---:|:---:|:---:|:---:|
 | Dashboard personnalisé | ✅ Quotidien | ✅ Quotidien | ✅ Mobile | ✅ Admin | ✅ Grants |
 | Gestion constituants | ✅ Donateurs | ✅ Bénéficiaires | ✅ Bénévoles | ⚙️ Config | 👁️ Lecture |

@@ -1,23 +1,23 @@
 # 11 — Design Identity, UI & UX
 
-> **Libero NPO Platform** — A platform that feels like it was built for people, not for systems.
+> **Givernance NPO Platform** — A platform that feels like it was built for people, not for systems.
 > Last updated: 2026-02-26
 
 ---
 
 ## 0. Why this document exists
 
-Architecture, data models, and APIs are necessary — but insufficient. A platform adopted by nonprofit staff needs to feel **right**: trustworthy, warm, effortless. This document defines Libero's visual soul and interaction principles. It is not cosmetic. It is a product constraint as binding as any technical requirement.
+Architecture, data models, and APIs are necessary — but insufficient. A platform adopted by nonprofit staff needs to feel **right**: trustworthy, warm, effortless. This document defines Givernance's visual soul and interaction principles. It is not cosmetic. It is a product constraint as binding as any technical requirement.
 
 > *"The best interface is one that feels like it was always there."*
 
-NPO staff are not power users. They are social workers, fundraising coordinators, volunteer managers — people who care deeply about their mission and have limited patience for software friction. Libero must earn their trust every time they open it.
+NPO staff are not power users. They are social workers, fundraising coordinators, volunteer managers — people who care deeply about their mission and have limited patience for software friction. Givernance must earn their trust every time they open it.
 
 ---
 
 ## 1. Design north star
 
-**Libero should feel like a calm, capable companion — not a corporate tool.**
+**Givernance should feel like a calm, capable companion — not a corporate tool.**
 
 | Attribute | What it means in practice |
 |---|---|
@@ -33,7 +33,7 @@ NPO staff are not power users. They are social workers, fundraising coordinators
 
 ### 2.1 Personality
 
-Libero's visual identity should communicate:
+Givernance's visual identity should communicate:
 - **Liberation** — freedom from complexity, from Salesforce, from administrative burden
 - **Rootedness** — European, local, civic-minded (not Silicon Valley slick)
 - **Warmth** — the cause matters; the people matter; the software acknowledges this
@@ -42,7 +42,7 @@ Libero's visual identity should communicate:
 
 | Role | Name | Hex | Usage |
 |---|---|---|---|
-| Primary | Libero Green | `#2E7D5E` | Brand identity, CTAs, active nav states |
+| Primary | Givernance Green | `#2E7D5E` | Brand identity, CTAs, active nav states |
 | Primary light | Sage | `#4CAF82` | Hover states, success badges (with icon) |
 | Primary dark | Forest | `#1A5240` | Text on light bg, deep brand accents |
 | Neutral 50 | Warm White | `#FAFAF8` | Page backgrounds |
@@ -74,7 +74,7 @@ Libero's visual identity should communicate:
 
 | Use case | Color | Works because |
 |---|---|---|
-| Brand / CTA | Libero Green `#2E7D5E` | Brand color, not a semantic status signal alone |
+| Brand / CTA | Givernance Green `#2E7D5E` | Brand color, not a semantic status signal alone |
 | Warning | Amber `#D97706` | Yellow-orange — clearly distinct for all types |
 | Error / Destructive | Indigo `#5B4FD4` | Blue-violet — clearly distinct from green for all types |
 | Info | Sky `#2E79A6` | Blue — distinguishable from green even for deuteranopes |
@@ -137,12 +137,12 @@ Tokens are consumed by:
 
 ### 3.2 Component library (shadcn/ui foundation)
 
-Built on **shadcn/ui** with Libero-specific overrides. Every component lives in `packages/ui/` and is:
+Built on **shadcn/ui** with Givernance-specific overrides. Every component lives in `packages/ui/` and is:
 - Headless by default (styled via Tailwind variants)
 - Accessible (ARIA, keyboard navigation, focus ring visible at all times)
 - Themeable (dark mode ready from day one, even if not shipped in v1)
 
-Key components requiring Libero-specific design:
+Key components requiring Givernance-specific design:
 
 | Component | Design note |
 |---|---|
@@ -190,7 +190,7 @@ Sidebar (primary)
 └── Settings (org admin only)
 ```
 
-- Active section highlighted with a left accent bar (Libero Green)
+- Active section highlighted with a left accent bar (Givernance Green)
 - Breadcrumbs on every sub-page
 - Global search (`Cmd+K`) across all entity types
 
@@ -209,7 +209,7 @@ Show what the user needs, when they need it. Not everything at once.
 
 ### 4.2 AI-assisted interactions (KITT principle)
 
-The AI layer inside Libero should feel like a **quiet expert in the background** — not an intrusive chatbot.
+The AI layer inside Givernance should feel like a **quiet expert in the background** — not an intrusive chatbot.
 
 - AI suggestions appear inline in context (e.g., "This donor hasn't given in 14 months — send a reactivation email?")
 - Suggestion card: compact, dismissible, explains its reasoning in one sentence
@@ -251,7 +251,7 @@ The AI layer inside Libero should feel like a **quiet expert in the background**
 Before finalizing UI for any major module, run a lightweight research loop:
 
 1. **Identify top 3 friction tasks** — what do users struggle with most in Salesforce or spreadsheets for this domain?
-2. **Map interaction flows** — current vs. Libero proposed; where do we save clicks?
+2. **Map interaction flows** — current vs. Givernance proposed; where do we save clicks?
 3. **Prototype** — Figma mid-fidelity prototype; test with 2–3 NPO staff (recruited from target segment)
 4. **Measure** — time-on-task, error rate, confidence rating (1–5)
 5. **Iterate** — at least one revision cycle before dev handoff
@@ -301,11 +301,11 @@ Priority order for UX research sessions:
 
 ## 8. Future: white-label and theming
 
-Libero's design system is built theme-ready from day one:
+Givernance's design system is built theme-ready from day one:
 
 - All brand colors expressed as CSS custom properties (overridable per tenant)
-- Logo slot in navigation sidebar (org logo replaces Libero logo for white-label partners)
-- Custom domain support (no Libero branding visible if tenant requests)
+- Logo slot in navigation sidebar (org logo replaces Givernance logo for white-label partners)
+- Custom domain support (no Givernance branding visible if tenant requests)
 - Theme configuration stored in org settings; applied server-side to prevent flash
 
 This is a v2 feature but the architecture must not foreclose it.

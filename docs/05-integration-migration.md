@@ -6,9 +6,9 @@
 
 ## 1. Integration philosophy
 
-Libero integrates selectively — only where the integration genuinely replaces manual work or where the external system is the authoritative source (payments, identity). All integrations are:
+Givernance integrates selectively — only where the integration genuinely replaces manual work or where the external system is the authoritative source (payments, identity). All integrations are:
 
-- **Additive**: Libero never requires an integration to function (payment can be manual; email can be SMTP)
+- **Additive**: Givernance never requires an integration to function (payment can be manual; email can be SMTP)
 - **Auditable**: Every inbound webhook and outbound push is logged
 - **Replaceable**: integrations are behind adaptor interfaces; swapping Stripe for Mollie requires config change, not code change
 
@@ -31,7 +31,7 @@ stripe:
 
 **Inbound webhook events handled**:
 
-| Stripe Event | Libero Action |
+| Stripe Event | Givernance Action |
 |---|---|
 | `payment_intent.succeeded` | Create donation, generate receipt, enqueue acknowledgement email |
 | `payment_intent.payment_failed` | Update pledge installment status to `failed`, trigger retry logic |
@@ -44,12 +44,12 @@ stripe:
 - `POST /v1/customers` — create customer on first donation
 - `POST /v1/payment_intents` — initiate one-time payment
 - `POST /v1/subscriptions` — create recurring donation subscription
-- `POST /v1/refunds` — process refund from Libero UI
+- `POST /v1/refunds` — process refund from Givernance UI
 
 **SEPA mandate flow**:
 ```
 1. Fundraiser initiates mandate setup for constituent
-2. Libero creates Stripe SetupIntent with payment_method_types: ['sepa_debit']
+2. Givernance creates Stripe SetupIntent with payment_method_types: ['sepa_debit']
 3. Constituent directed to hosted confirmation page (Stripe Elements / Payment Element)
 4. Mandate confirmed → webhook → pledge.sepa_mandate_ref stored
 5. Recurring charge runs automatically via Stripe Subscriptions
@@ -64,12 +64,12 @@ stripe:
 payment_gateway: mollie   # or: stripe
 mollie:
   api_key: live_...
-  webhook_url: https://api.libero.app/v1/webhooks/mollie/{org_id}
+  webhook_url: https://api.givernance.app/v1/webhooks/mollie/{org_id}
 ```
 
 **Mollie-specific events handled**:
 
-| Mollie Event | Libero Action |
+| Mollie Event | Givernance Action |
 |---|---|
 | `payment.paid` | Create donation |
 | `payment.failed` | Update installment status |
@@ -95,7 +95,7 @@ type EmailSender interface {
 **Features used**:
 - `POST /emails` — send transactional email
 - Webhooks: `email.delivered`, `email.bounced`, `email.opened`, `email.clicked`
-- Domain verification: SPF, DKIM, DMARC records per org (Libero configures on org setup)
+- Domain verification: SPF, DKIM, DMARC records per org (Givernance configures on org setup)
 
 ### 3.2 Brevo (bulk / marketing email)
 
@@ -103,7 +103,7 @@ type EmailSender interface {
 
 **Bulk send flow**:
 ```
-1. Staff builds segment query in Libero (e.g., "active donors, last gift > 12 months")
+1. Staff builds segment query in Givernance (e.g., "active donors, last gift > 12 months")
 2. Segment evaluated → constituent list with opt-in status checked
 3. Suppression list applied (do_not_email, unsubscribed)
 4. Email batch created in Brevo via API
@@ -115,7 +115,7 @@ type EmailSender interface {
 **Unsubscribe handling**:
 - One-click unsubscribe link in all bulk emails (RFC 8058 List-Unsubscribe header)
 - Brevo unsubscribe webhook → `constituent.do_not_email = true` + consent log entry
-- Manual suppression also available via Libero UI
+- Manual suppression also available via Givernance UI
 
 ---
 
@@ -123,15 +123,15 @@ type EmailSender interface {
 
 ### 4.1 Xero
 
-**Purpose**: Push summarised GL journal entries from Libero donation batches into Xero.
+**Purpose**: Push summarised GL journal entries from Givernance donation batches into Xero.
 
 **Auth**: OAuth 2.0 (Xero connection); access token stored encrypted per org.
 
 **Push flow**:
 ```
-1. GL batch closed in Libero (status: closed)
+1. GL batch closed in Givernance (status: closed)
 2. Finance viewer triggers "Push to Xero" action
-3. Libero maps: fund → nominal_code → Xero account code
+3. Givernance maps: fund → nominal_code → Xero account code
 4. POST /api.xero.com/api.xro/2.0/Journals
    {
      "JournalLines": [
@@ -140,12 +140,12 @@ type EmailSender interface {
      ]
    }
 5. Xero journal reference stored on gl_batch
-6. Reconciliation report available: Libero totals vs Xero totals
+6. Reconciliation report available: Givernance totals vs Xero totals
 ```
 
 **Chart of accounts mapping** (per org, configured by org admin):
 ```
-Libero Fund Code → Xero Account Code
+Givernance Fund Code → Xero Account Code
 GEN              → 200 (General Fundraising Income)
 RESTRICTED-EU    → 201 (Restricted - EU Projects)
 GRANT-UKRI       → 202 (Grant Income - Research)
@@ -163,11 +163,11 @@ GRANT-UKRI       → 202 (Grant Income - Research)
 
 **Realm configuration per deployment**:
 ```
-Realm: libero-prod
+Realm: givernance-prod
   Clients:
-    - libero-web (OIDC, confidential, redirect: https://app.libero.app/*)
-    - libero-api (bearer-only)
-    - libero-volunteer-portal (OIDC, public, magic link enabled)
+    - givernance-web (OIDC, confidential, redirect: https://app.givernance.app/*)
+    - givernance-api (bearer-only)
+    - givernance-volunteer-portal (OIDC, public, magic link enabled)
   Authentication flows:
     - Standard: email + password (MFA optional by role)
     - Admin: MFA required
@@ -177,11 +177,11 @@ Realm: libero-prod
     - Azure AD SAML (for orgs with Microsoft 365)
 ```
 
-**JWT claims used by Libero API**:
+**JWT claims used by Givernance API**:
 ```json
 {
   "sub": "uuid-keycloak-user-id",
-  "org_id": "uuid-libero-org-id",
+  "org_id": "uuid-givernance-org-id",
   "role": "fundraising_manager",
   "email": "user@example.org",
   "name": "Jane Smith"
@@ -201,7 +201,7 @@ Realm: libero-prod
 
 **Bucket structure**:
 ```
-libero-{org_id}/
+givernance-{org_id}/
 ├── receipts/          {year}/{month}/{donation_id}.pdf       -- 7-year retention
 ├── exports/           {export_id}.{csv|xlsx|json}             -- 7-day TTL
 ├── imports/           {import_id}.csv                         -- 30-day retention
@@ -209,7 +209,7 @@ libero-{org_id}/
 └── audit-archive/     {year}/{month}/audit_log_{batch}.gz     -- Glacier after 12 months
 ```
 
-**Access pattern**: All S3 access via presigned URLs generated by Libero API. No direct S3 credentials exposed to frontend clients.
+**Access pattern**: All S3 access via presigned URLs generated by Givernance API. No direct S3 credentials exposed to frontend clients.
 
 ---
 
@@ -217,7 +217,7 @@ libero-{org_id}/
 
 ### 7.1 Migration overview
 
-The `libero-migrate` tool performs a structured extract-transform-load (ETL) from Salesforce NPSP to Libero.
+The `givernance-migrate` tool performs a structured extract-transform-load (ETL) from Salesforce NPSP to Givernance.
 
 ```
 See: /diagrams/migration-flow.mmd
@@ -229,16 +229,16 @@ See: /diagrams/migration-flow.mmd
 |---|---|---|
 | 0. Audit | 1–2 weeks | Analyse SF org: object counts, data quality, custom objects |
 | 1. Extract | 1–3 days | Export all SF data to S3 via bulk export API |
-| 2. Transform | 2–5 days | Map SF schema to Libero schema; handle custom fields |
+| 2. Transform | 2–5 days | Map SF schema to Givernance schema; handle custom fields |
 | 3. Load dry-run | 1 day | Load to staging environment; validate counts and samples |
 | 4. Reconcile | 1–2 days | Fix transform errors; sign-off from NPO |
 | 5. Cutover | 1 day | Load to production; final delta from SF |
 | 6. Parallel run | 2–4 weeks | Both systems live; verify data; train staff |
-| 7. Decommission | 1 week | Freeze SF; archive SF export; Libero goes primary |
+| 7. Decommission | 1 week | Freeze SF; archive SF export; Givernance goes primary |
 
-### 7.2 Salesforce object → Libero table mapping
+### 7.2 Salesforce object → Givernance table mapping
 
-| Salesforce Object | Libero Table | Notes |
+| Salesforce Object | Givernance Table | Notes |
 |---|---|---|
 | `Contact` | `constituents` (type=individual) | Map standard + custom fields |
 | `Account` (Org) | `constituents` (type=organisation) | |
@@ -257,12 +257,12 @@ See: /diagrams/migration-flow.mmd
 
 ```bash
 # Using Salesforce Bulk API 2.0
-./libero-migrate extract \
+./givernance-migrate extract \
   --sf-instance https://example.my.salesforce.com \
   --sf-client-id ... \
   --sf-client-secret ... \
   --objects Contact,Account,Opportunity,Campaign,npe03__Recurring_Donation__c \
-  --output s3://libero-migration-bucket/org-greenpeace-de/extract/
+  --output s3://givernance-migration-bucket/org-greenpeace-de/extract/
 
 # Output: one JSONL file per SF object, e.g. Contact.jsonl (1 record per line)
 ```
@@ -274,8 +274,8 @@ The transform step is a Go program that:
 2. Applies field mapping rules (configured in `migration-config.yaml`)
 3. Deduplicates by email (fuzzy match + exact match pass)
 4. Resolves relationships (Contact.AccountId → constituent.org_id)
-5. Validates against Libero data model constraints
-6. Outputs Libero-ready JSONL + a `transform-report.json`
+5. Validates against Givernance data model constraints
+6. Outputs Givernance-ready JSONL + a `transform-report.json`
 
 **`migration-config.yaml` excerpt**:
 ```yaml
@@ -314,20 +314,20 @@ deduplicate:
 
 ```bash
 # Dry-run: load to staging DB, produce validation report
-./libero-migrate load \
+./givernance-migrate load \
   --env staging \
-  --input s3://libero-migration-bucket/org-greenpeace-de/transform/ \
+  --input s3://givernance-migration-bucket/org-greenpeace-de/transform/ \
   --dry-run \
   --report-output ./migration-report.html
 
 # Production load (after NPO sign-off on dry-run report)
-./libero-migrate load \
+./givernance-migrate load \
   --env production \
-  --input s3://libero-migration-bucket/org-greenpeace-de/transform/ \
+  --input s3://givernance-migration-bucket/org-greenpeace-de/transform/ \
   --confirm
 
 # Delta load (catches donations/contacts created during parallel run)
-./libero-migrate delta \
+./givernance-migrate delta \
   --sf-since 2026-02-01T00:00:00Z \
   --env production
 ```
@@ -336,8 +336,8 @@ deduplicate:
 
 | Check | Pass criteria |
 |---|---|
-| Constituent count match | Libero count ≥ SF count − known_duplicates_merged |
-| Donation total match | SUM(libero.donations.amount) = SUM(sf.Opportunity.Amount) ± 0.01% |
+| Constituent count match | Givernance count ≥ SF count − known_duplicates_merged |
+| Donation total match | SUM(givernance.donations.amount) = SUM(sf.Opportunity.Amount) ± 0.01% |
 | Pledge count match | Exact match on active recurring donations |
 | Orphan donations | 0 donations with missing constituent_id |
 | Email uniqueness | 0 duplicate email_primary per org |
@@ -350,9 +350,9 @@ If production load fails or critical data quality issue discovered:
 
 ```bash
 # Rollback: truncate all tenant data for org and restore pre-load snapshot
-./libero-migrate rollback --org-id 018e1234-abcd-7000-8000-000000000001
+./givernance-migrate rollback --org-id 018e1234-abcd-7000-8000-000000000001
 
-# Libero takes a DB snapshot immediately before every production load
+# Givernance takes a DB snapshot immediately before every production load
 # Snapshot retained for 30 days post-migration
 ```
 
@@ -363,28 +363,28 @@ If production load fails or critical data quality issue discovered:
 For NPOs who want a web donation form before building a bespoke integration:
 
 ```
-1. NPO creates a "Donation Page" in Libero (campaign, fund, suggested amounts)
-2. Libero generates a hosted Stripe Payment Link or Mollie Checkout Link
+1. NPO creates a "Donation Page" in Givernance (campaign, fund, suggested amounts)
+2. Givernance generates a hosted Stripe Payment Link or Mollie Checkout Link
 3. Link embedded on NPO website or sent in email
 4. Donor completes payment on hosted page
-5. Webhook → Libero creates donation, constituent (if new), receipt
+5. Webhook → Givernance creates donation, constituent (if new), receipt
 6. Confirmation email sent to donor
 ```
 
-This is a stopgap until the NPO integrates Libero's `/v1/donations` API with their own website.
+This is a stopgap until the NPO integrates Givernance's `/v1/donations` API with their own website.
 
 ---
 
-## 9. Webhooks (outbound from Libero)
+## 9. Webhooks (outbound from Givernance)
 
 NPO admins can register endpoints for domain events:
 
 ```
 POST /v1/webhooks
 {
-  "url": "https://example.org/libero-events",
+  "url": "https://example.org/givernance-events",
   "events": ["donation.created", "constituent.created", "grant.deadline_approaching"],
-  "secret": "whsec_generated_by_libero"
+  "secret": "whsec_generated_by_givernance"
 }
 ```
 
@@ -394,8 +394,8 @@ POST /v1/webhooks
 ```json
 {
   "specversion": "1.0",
-  "type": "org.libero.donation.created",
-  "source": "https://api.libero.app/v1/orgs/{org_id}",
+  "type": "org.givernance.donation.created",
+  "source": "https://api.givernance.app/v1/orgs/{org_id}",
   "id": "uuid-v7",
   "time": "2026-03-15T14:30:00Z",
   "datacontenttype": "application/json",
@@ -439,7 +439,7 @@ POST /v1/webhooks
 
 ### 11.1 Contexte produit
 
-La migration depuis Salesforce NPSP est une fonctionnalité **différenciante majeure** de Libero. Elle doit être traitée non seulement comme un outil technique ETL (couvert en section 7), mais comme une **expérience produit complète** qui réduit la friction et renforce la confiance des ONG qui hésitent à quitter Salesforce.
+La migration depuis Salesforce NPSP est une fonctionnalité **différenciante majeure** de Givernance. Elle doit être traitée non seulement comme un outil technique ETL (couvert en section 7), mais comme une **expérience produit complète** qui réduit la friction et renforce la confiance des ONG qui hésitent à quitter Salesforce.
 
 **Enjeux clés pour l'utilisateur :**
 - Peur de perdre des données historiques (dons, constituants, subventions)
@@ -447,13 +447,13 @@ La migration depuis Salesforce NPSP est une fonctionnalité **différenciante ma
 - Risque perçu de rupture d'activité pendant la transition
 - Dépendance de Salesforce Admin interne ou externe
 
-**Promesse Libero :** Migration en 5 jours, sans risque, avec garantie de rollback et support dédié.
+**Promesse Givernance :** Migration en 5 jours, sans risque, avec garantie de rollback et support dédié.
 
 ---
 
 ### 11.2 Migration Assistant — Interface produit (UX)
 
-Le **Migration Assistant** est un wizard step-by-step intégré dans l'onboarding Libero. Il remplace le besoin de consulter un intégrateur externe pour 80% des migrations standards.
+Le **Migration Assistant** est un wizard step-by-step intégré dans l'onboarding Givernance. Il remplace le besoin de consulter un intégrateur externe pour 80% des migrations standards.
 
 #### Étapes du wizard
 
@@ -461,7 +461,7 @@ Le **Migration Assistant** est un wizard step-by-step intégré dans l'onboardin
 |---|---|---|---|
 | 1 | **Connecter Salesforce** | OAuth 2.0 vers l'org Salesforce + scope lecture seule | 2 minutes |
 | 2 | **Analyser les données** | Audit automatique : comptage objets, détection doublons, score de compatibilité | 5–20 minutes |
-| 3 | **Mapper les champs** | Interface de mapping visuel : SF field → Libero field, avec suggestions IA | 30–60 minutes |
+| 3 | **Mapper les champs** | Interface de mapping visuel : SF field → Givernance field, avec suggestions IA | 30–60 minutes |
 | 4 | **Prévisualiser** | Import en dry-run sur env staging ; rapport HTML téléchargeable | 15–30 minutes |
 | 5 | **Migrer** | Chargement production + rapport final + activation parallel run | 1–4 heures |
 
@@ -482,7 +482,7 @@ Le **Migration Assistant** est un wizard step-by-step intégré dans l'onboardin
 
 ### 11.3 Compatibilité NPSP — Objets clés
 
-| Objet Salesforce NPSP | Libero | Taux de compatibilité | Notes |
+| Objet Salesforce NPSP | Givernance | Taux de compatibilité | Notes |
 |---|---|---|---|
 | `Contact` | `constituents` (type=individual) | ✅ 100% | Mapping standard automatique |
 | `Account` (Household) | `households` + `household_members` | ✅ 95% | Logique NPSP ménage fidèlement reproduite |
@@ -503,7 +503,7 @@ Le **Migration Assistant** est un wizard step-by-step intégré dans l'onboardin
 |---|---|---|---|
 | Petite association (< 500 contacts) | < 500 | 1–2 jours | Self-service via Migration Assistant |
 | ONG moyenne (500–10 000) | 500–10 000 | 2–5 jours | Migration Assistant + appel de validation |
-| ONG grande (> 10 000) | > 10 000 | 1–3 semaines | Migration assistée par partenaire Libero |
+| ONG grande (> 10 000) | > 10 000 | 1–3 semaines | Migration assistée par partenaire Givernance |
 | Org avec custom objects complexes | Toute taille | +3–5 jours | Accompagnement obligatoire |
 
 ---
@@ -514,8 +514,8 @@ La migration est aussi un moment **émotionnel** pour les équipes NPO. Le produ
 
 - **Email de bienvenue post-migration** : "Vos données sont en sécurité. Voici ce qui a été migré." avec récap chiffré.
 - **Checklist post-migration** visible sur le dashboard pendant 30 jours : formation équipe, vérification des rapports, désactivation Salesforce.
-- **Garantie 30 jours** : si une donnée manque ou est incorrecte, Libero la corrige sans frais supplémentaires.
-- **Badge "Migré avec Libero"** : petit indicateur de confiance affiché dans les paramètres de l'org pour les équipes fières d'avoir fait le saut.
+- **Garantie 30 jours** : si une donnée manque ou est incorrecte, Givernance la corrige sans frais supplémentaires.
+- **Badge "Migré avec Givernance"** : petit indicateur de confiance affiché dans les paramètres de l'org pour les équipes fières d'avoir fait le saut.
 
 ---
 

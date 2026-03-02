@@ -1,17 +1,17 @@
 # 13 — AI Interaction Modes
 
-> **Libero NPO Platform** — Three levels of AI collaboration for nonprofit teams.
+> **Givernance NPO Platform** — Three levels of AI collaboration for nonprofit teams.
 > Last updated: 2026-02-26
 
 ---
 
 ## 0. Pourquoi ce document existe
 
-Libero intègre une couche d'intelligence artificielle transversale à tous ses modules. Mais toutes les ONG ne sont pas prêtes — ni contraintes de la même façon — à déléguer des décisions à une IA.
+Givernance intègre une couche d'intelligence artificielle transversale à tous ses modules. Mais toutes les ONG ne sont pas prêtes — ni contraintes de la même façon — à déléguer des décisions à une IA.
 
 Ce document définit les **trois modes d'interaction IA** de la plateforme, leurs philosophies respectives, leur configuration, leurs exemples d'usage concrets, et leurs garde-fous.
 
-> *"L'IA dans Libero doit réduire la charge administrative sans retirer le contrôle humain sur ce qui compte."*
+> *"L'IA dans Givernance doit réduire la charge administrative sans retirer le contrôle humain sur ce qui compte."*
 
 ---
 
@@ -56,14 +56,14 @@ graph TD
         GPT["GPT-4o<br/>(Azure OpenAI EU region)"]
     end
 
-    subgraph LIBERO_API["libero-api"]
+    subgraph GIVERNANCE_API["givernance-api"]
         AI_ROUTER["AI Router<br/>(sélection modèle selon type de donnée)"]
         CONFIDENCE["Confidence Scorer"]
         FEEDBACK["Feedback Store (PostgreSQL)"]
     end
 
-    LIBERO_API --> EU_BOUNDARY
-    LIBERO_API --> CLOUD_AI
+    GIVERNANCE_API --> EU_BOUNDARY
+    GIVERNANCE_API --> CLOUD_AI
     AI_ROUTER --> PII
     PII -->|données nettoyées uniquement| CLAUDE
     PII -->|données nettoyées uniquement| GPT
@@ -96,7 +96,7 @@ Données non-PII (statistiques agrégées, textes génériques, modèles d'email
     → Peuvent être traitées par services cloud EU (Anthropic EU DPA, Azure EU region)
 ```
 
-**Data Processing Agreement** : Libero exige un DPA conforme RGPD avec tout service d'IA cloud. Seuls les fournisseurs avec serveurs EU et DPA signé sont intégrés.
+**Data Processing Agreement** : Givernance exige un DPA conforme RGPD avec tout service d'IA cloud. Seuls les fournisseurs avec serveurs EU et DPA signé sont intégrés.
 
 ### 2.3 Système de scoring de confiance
 
@@ -113,7 +113,7 @@ Confidence Score = f(
 
 | Score | Label affiché | Couleur | Comportement UI |
 |---|---|---|---|
-| ≥ 0.85 | Haute confiance | Libero Green | Suggestion prominente avec raccourci Y/N |
+| ≥ 0.85 | Haute confiance | Givernance Green | Suggestion prominente avec raccourci Y/N |
 | 0.65–0.84 | Confiance modérée | Amber | Suggestion avec nuance ("à vérifier") |
 | 0.45–0.64 | Faible confiance | Stone (gris) | Suggestion discrète, petite taille |
 | < 0.45 | Non affiché | — | Suggestion supprimée silencieusement |
@@ -123,7 +123,7 @@ Confidence Score = f(
 ```mermaid
 sequenceDiagram
     participant U as Utilisateur
-    participant UI as Interface Libero
+    participant UI as Interface Givernance
     participant AI as Moteur IA
     participant DB as Feedback Store
 
@@ -148,7 +148,7 @@ sequenceDiagram
 
 ### 3.1 Description et philosophie
 
-Dans le Mode Manuel, **l'IA est complètement désactivée** du point de vue de l'utilisateur. Aucune suggestion n'apparaît, aucune action n'est déclenchée automatiquement. Libero fonctionne comme un CRM classique, sans couche intelligente visible.
+Dans le Mode Manuel, **l'IA est complètement désactivée** du point de vue de l'utilisateur. Aucune suggestion n'apparaît, aucune action n'est déclenchée automatiquement. Givernance fonctionne comme un CRM classique, sans couche intelligente visible.
 
 Ce mode ne signifie pas l'absence de technologie : les fonctions de base (recherche floue de doublons, validation de format d'email, calcul automatique des soldes de promesses) restent actives car elles ne constituent pas de l'IA générative mais de la logique métier.
 
@@ -251,7 +251,7 @@ Ce bandeau est dismissable par session mais réapparaît à chaque connexion pou
 
 ### 4.1 Description et philosophie
 
-Le Mode IA Assistée est le **mode par défaut** de Libero pour toutes les nouvelles organisations. Dans ce mode, l'IA joue le rôle d'un **assistant expert discret** : elle observe le contexte de chaque écran et propose des suggestions pertinentes, mais **n'agit jamais sans validation humaine explicite**.
+Le Mode IA Assistée est le **mode par défaut** de Givernance pour toutes les nouvelles organisations. Dans ce mode, l'IA joue le rôle d'un **assistant expert discret** : elle observe le contexte de chaque écran et propose des suggestions pertinentes, mais **n'agit jamais sans validation humaine explicite**.
 
 Chaque suggestion est :
 - **Non-bloquante** : l'utilisateur peut l'ignorer sans conséquence
@@ -821,7 +821,7 @@ Si le taux d'escalade dépasse 20 % sur un type de tâche, cette tâche est auto
 
 - Les mises à jour de modèles (ex: passage de Claude Haiku 3.5 à une version ultérieure) sont testées en shadow mode pendant 14 jours avant déploiement.
 - En shadow mode, l'ancienne version sert les utilisateurs ; la nouvelle version génère des suggestions en parallèle, sans les afficher. Les deux sets de suggestions sont comparés statistiquement.
-- Aucune mise à jour de modèle ne peut réduire les garde-fous existants sans validation explicite de l'équipe produit Libero et notification préalable des administrateurs d'organisation.
+- Aucune mise à jour de modèle ne peut réduire les garde-fous existants sans validation explicite de l'équipe produit Givernance et notification préalable des administrateurs d'organisation.
 
 ### 8.3 Transparence algorithmique
 
@@ -862,5 +862,5 @@ Voir : [docs/vision/conversational-mode.md](./vision/conversational-mode.md) pou
 
 ---
 
-*Document maintenu par l'équipe produit Libero. Revu à chaque évolution majeure du moteur IA.*
+*Document maintenu par l'équipe produit Givernance. Revu à chaque évolution majeure du moteur IA.*
 *Contributeurs : Product Architect, Design Architect, Platform Architect, DPO.*

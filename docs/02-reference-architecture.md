@@ -33,7 +33,7 @@ Actors:
 - **Beneficiaries** (optional self-service portal for case access)
 - **Volunteers** (self-service portal for shift booking and hour logging)
 - **Finance/Auditors** (read-only access to reports and GL exports)
-- **Platform Operator** (Libero operations team — super_admin)
+- **Platform Operator** (Givernance operations team — super_admin)
 
 External systems:
 - **Stripe / Mollie** — payment processing (recurring donations, SEPA)
@@ -54,7 +54,7 @@ See: /diagrams/container.mmd
 
 ### 3.1 Core containers
 
-#### `libero-api` (Go 1.23)
+#### `givernance-api` (Go 1.23)
 - Single deployable Go binary
 - Domain modules: `constituents`, `donations`, `campaigns`, `grants`, `programs`, `volunteers`, `impact`, `finance`, `comms`, `auth`, `admin`
 - Chi router + middleware stack (auth, audit, rate limit, tracing)
@@ -63,19 +63,19 @@ See: /diagrams/container.mmd
 - Serves REST API on `:8080`; admin API on `:8081` (internal only)
 - Health: `GET /healthz`, `GET /readyz`
 
-#### `libero-web` (Next.js 15 / React 19)
+#### `givernance-web` (Next.js 15 / React 19)
 - Server-side rendered for list/detail pages (SEO not required; SSR for performance)
 - Client components for interactive forms and dashboards
-- Connects to `libero-api` only (no direct DB)
+- Connects to `givernance-api` only (no direct DB)
 - Auth: OIDC flow through Keycloak; JWT stored in httpOnly cookie
 - Static assets served from CDN (CloudFront / Cloudflare)
 
-#### `libero-worker` (Go 1.23)
+#### `givernance-worker` (Go 1.23)
 - Async job processor (Asynq queue on Redis)
 - Jobs: PDF generation, bulk email send, import processing, scheduled reports, GL export, GDPR erasure execution, recurring donation installment creation
-- Shares codebase with `libero-api` (same Go module); separate binary entry point
+- Shares codebase with `givernance-api` (same Go module); separate binary entry point
 
-#### `libero-migrate` (Go 1.23 or Python 3.12)
+#### `givernance-migrate` (Go 1.23 or Python 3.12)
 - One-off migration tool for Salesforce data
 - Reads from S3 (exported SF data), transforms, loads via direct DB connection
 - Not running in production; invoked during migration engagements
@@ -103,7 +103,7 @@ See: /diagrams/container.mmd
 - Feature flags cache
 
 #### `keycloak` (Keycloak 24)
-- OIDC provider; issues JWTs consumed by `libero-api`
+- OIDC provider; issues JWTs consumed by `givernance-api`
 - Realms: one per deployment (not per tenant — tenant isolation is in the application layer)
 - Flows: standard, SAML 2.0 bridge, magic link for volunteers
 - Brute-force protection, MFA enforcement by role
@@ -112,7 +112,7 @@ See: /diagrams/container.mmd
 - Event bus for domain events (transactional outbox → NATS publisher)
 - Streams: `constituent.events`, `donation.events`, `program.events`, `comms.events`
 - Retention: `WorkQueuePolicy` (consumed once); dead-letter stream for failures
-- Consumer: `libero-worker` for email triggers, webhook fanout, audit supplementation
+- Consumer: `givernance-worker` for email triggers, webhook fanout, audit supplementation
 
 #### `minio` (S3-compatible, self-hosted option)
 - Stores: PDF receipts, bulk export files, imported constituent lists, document attachments
@@ -120,10 +120,10 @@ See: /diagrams/container.mmd
 
 ---
 
-## 4. Module map (within `libero-api`)
+## 4. Module map (within `givernance-api`)
 
 ```
-libero-api/
+givernance-api/
 ├── cmd/
 │   ├── api/          # HTTP server entry point
 │   └── worker/       # Job worker entry point
@@ -159,7 +159,7 @@ libero-api/
 
 ### 5.1 REST API (primary)
 
-- **Base URL**: `https://api.libero.app/v1`
+- **Base URL**: `https://api.givernance.app/v1`
 - **Versioning**: URL path (`/v1`, `/v2`) — major breaking changes only
 - **Auth**: Bearer token (JWT issued by Keycloak); token introspection cached in Redis
 - **Format**: JSON everywhere; `Content-Type: application/json`
@@ -174,7 +174,7 @@ libero-api/
 - NPO admins can register webhook endpoints for domain events
 - Payload: CloudEvents 1.0 format
 - Delivery: at-least-once; retry with exponential backoff (1s, 5s, 30s, 5m, 30m)
-- Signature: `X-Libero-Signature: sha256=<hmac>` (org-specific secret)
+- Signature: `X-Givernance-Signature: sha256=<hmac>` (org-specific secret)
 - Failure threshold: 50 consecutive failures → webhook disabled; email to org admin
 
 ### 5.3 Bulk export API
@@ -300,9 +300,9 @@ Implemented as parameterized SQL queries exposed via API (`GET /v1/reports/{repo
 ```yaml
 # docker-compose.yml skeleton
 services:
-  api:         libero/api:latest
-  web:         libero/web:latest
-  worker:      libero/worker:latest
+  api:         givernance/api:latest
+  web:         givernance/web:latest
+  worker:      givernance/worker:latest
   postgres:    postgres:16-alpine
   pgbouncer:   pgbouncer/pgbouncer:latest
   redis:       redis:7-alpine
@@ -314,11 +314,11 @@ services:
 
 Minimum server: 4 vCPU, 8 GB RAM, 100 GB SSD — handles 5–50 concurrent users.
 
-### 9.2 Managed SaaS (Libero hosting)
+### 9.2 Managed SaaS (Givernance hosting)
 
 ```
-CDN (Cloudflare) → Load Balancer → libero-web (2 replicas)
-                                 → libero-api (3 replicas)
+CDN (Cloudflare) → Load Balancer → givernance-web (2 replicas)
+                                 → givernance-api (3 replicas)
                                  → PgBouncer → PostgreSQL primary + 1 read replica
                                  → Redis Cluster
                                  → Keycloak (2 replicas)
@@ -331,8 +331,8 @@ CDN (Cloudflare) → Load Balancer → libero-web (2 replicas)
 ```bash
 # Deploy a new org instance (single-server SaaS model)
 kamal deploy --destination eu-west-1-prod
-kamal app exec --reuse -- ./libero migrate up
-kamal app exec --reuse -- ./libero seed --org-template=standard-npo
+kamal app exec --reuse -- ./givernance migrate up
+kamal app exec --reuse -- ./givernance seed --org-template=standard-npo
 ```
 
 ---

@@ -1,4 +1,4 @@
-# Libero NPO Platform Blueprint
+# Givernance NPO Platform Blueprint
 
 Deep architecture blueprint for a pragmatic nonprofit-focused alternative to Salesforce.
 

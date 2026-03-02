@@ -9,7 +9,7 @@ This document maps business capabilities to platform modules, API surfaces, user
 ## 1. Capability map
 
 ```
-Libero NPO Platform
+Givernance NPO Platform
 ├── Party Management
 │   ├── Constituent 360
 │   ├── Household Management

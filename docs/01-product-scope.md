@@ -1,6 +1,6 @@
 # 01 — Product Scope
 
-> **Libero NPO Platform** — Pragmatic nonprofit operations software for European organizations.
+> **Givernance NPO Platform** — Pragmatic nonprofit operations software for European organizations.
 > Last updated: 2026-02-24
 
 ---
@@ -18,7 +18,7 @@ European nonprofits running on Salesforce NPSP face a compounding set of problem
 | No integrated case management or impact measurement | NPOs running programs must bolt on additional tools |
 | Vendor lock-in with proprietary APIs and data formats | Exporting your own data is difficult and often incomplete |
 
-**Libero** replaces Salesforce NPSP for small to medium European nonprofits (2–200 staff). It is purpose-built for:
+**Givernance** replaces Salesforce NPSP for small to medium European nonprofits (2–200 staff). It is purpose-built for:
 - Constituent relationship management
 - Fundraising (donations, pledges, campaigns)
 - Grant lifecycle management
@@ -42,7 +42,7 @@ Les deux paradigmes coexistent et partagent le même back-end, les mêmes garde-
 
 ## 3. AI-native UX principle (cross-feature)
 
-Libero should use AI agents **inside each core workflow** to reduce clicks, reduce admin burden, and improve data quality — without hiding critical decisions.
+Givernance should use AI agents **inside each core workflow** to reduce clicks, reduce admin burden, and improve data quality — without hiding critical decisions.
 
 Design rules:
 - AI proposes, human confirms for sensitive operations (finance, compliance, beneficiary status)
@@ -62,7 +62,7 @@ For each major feature, run a lightweight UX research loop:
 
 > **"Every nonprofit should have enterprise-grade constituent and program management, without needing a Salesforce admin."**
 
-Libero is not trying to be Salesforce. It is trying to be the tool that 80% of nonprofits actually need: fast to set up, genuinely affordable, GDPR-compliant by default, and deployable in a week — not six months.
+Givernance is not trying to be Salesforce. It is trying to be the tool that 80% of nonprofits actually need: fast to set up, genuinely affordable, GDPR-compliant by default, and deployable in a week — not six months.
 
 ---
 
@@ -194,12 +194,12 @@ These are the non-negotiable capabilities for v1. Any platform missing these can
 | SROI calculation helper (Social Return on Investment) | NICE | Guided SROI calc with standard values |
 
 ### 4.8 Finance handoff
-**What**: Getting donation and fund data into the accounting system. Libero is NOT an accounting system.
+**What**: Getting donation and fund data into the accounting system. Givernance is NOT an accounting system.
 
 | Feature | Priority | Acceptance check |
 |---|---|---|
 | General Ledger export (journal entries by fund, period) | MUST | Export CSV/JSON of summarized transactions by nominal code and period |
-| Chart of accounts mapping (Libero funds → accounting nominal codes) | MUST | Org admin maps each fund to a nominal code |
+| Chart of accounts mapping (Givernance funds → accounting nominal codes) | MUST | Org admin maps each fund to a nominal code |
 | Donation batch closing (confirm a batch of gifts for posting to GL) | MUST | Batch marked "posted"; prevents re-export |
 | Gift aid / tax reclaim data export (UK: HMRC format; FR: reçu fiscal) | MUST | Country-specific tax reclaim export formats |
 | Restricted fund balance report | MUST | Fund balance = received − spent; exportable to accountant |
