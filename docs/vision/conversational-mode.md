@@ -1,13 +1,13 @@
-# Vision — Mode Conversationnel Libero
+# Vision — Mode Conversationnel Givernance
 
-> **Libero NPO Platform** — Du CRM classique au compagnon organisationnel intelligent.
+> **Givernance NPO Platform** — Du CRM classique au compagnon organisationnel intelligent.
 > Dernière mise à jour : 2026-02-28
 
 ---
 
 ## 1. Pourquoi un mode conversationnel ?
 
-Libero v1 est un CRM structuré classique : sidebar, modules, formulaires, tableaux. C'est le bon paradigme pour les workflows structurés (saisie de dons, suivi de subventions, gestion de cas).
+Givernance v1 est un CRM structuré classique : sidebar, modules, formulaires, tableaux. C'est le bon paradigme pour les workflows structurés (saisie de dons, suivi de subventions, gestion de cas).
 
 Mais 80 % des interactions quotidiennes d'un travailleur NPO ne sont pas structurées :
 - "Où en est la subvention Fondation Keller ?"
@@ -21,7 +21,7 @@ Ces interactions requièrent aujourd'hui de naviguer entre plusieurs modules, cl
 
 ## 2. Vision dual-mode
 
-Libero propose deux paradigmes d'interaction complémentaires :
+Givernance propose deux paradigmes d'interaction complémentaires :
 
 | Mode | Description | Usage |
 |---|---|---|
@@ -133,14 +133,14 @@ Aucun CRM associatif ne propose aujourd'hui d'interface conversationnelle agenti
 - **Bloomerang, Little Green Light** : zéro IA.
 - **HubSpot for Nonprofits** : ChatSpot existe mais pas intégré aux workflows NPO.
 
-Libero serait le premier CRM associatif à proposer un **dual-mode natif** : GUI structuré + agent conversationnel, avec les mêmes garde-fous RGPD et la même profondeur fonctionnelle. Ce positionnement cible les ONG qui veulent réduire leur charge administrative de 60 % sans sacrifier le contrôle humain.
+Givernance serait le premier CRM associatif à proposer un **dual-mode natif** : GUI structuré + agent conversationnel, avec les mêmes garde-fous RGPD et la même profondeur fonctionnelle. Ce positionnement cible les ONG qui veulent réduire leur charge administrative de 60 % sans sacrifier le contrôle humain.
 
 ---
 
 ## 8. Mockups de référence
 
 Les 11 écrans exploratoires du mode conversationnel sont consultables :
-- **GitHub Pages** : [Mode conversationnel — Mockups](https://onigam.github.io/libero-npo-platform/design/conversational-mode/index.html)
+- **GitHub Pages** : [Mode conversationnel — Mockups](https://onigam.github.io/givernance-npo-platform/design/conversational-mode/index.html)
 - **Local** : `docs/design/conversational-mode/`
 
 Ces mockups sont une exploration prospective (vision 2026-2028), pas une spécification de développement immédiat.

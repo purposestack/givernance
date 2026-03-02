@@ -1,5 +1,5 @@
 /**
- * Libero — Mobile Sidebar Toggle
+ * Givernance — Mobile Sidebar Toggle
  */
 (function () {
   if (typeof window === 'undefined') return;

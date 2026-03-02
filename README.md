@@ -2,20 +2,20 @@
 
 Deep architecture blueprint for a pragmatic nonprofit-focused alternative to Salesforce.
 
-**Libero** is a purpose-built CRM for European nonprofits (2-200 staff), replacing Salesforce NPSP with GDPR-native compliance, affordable pricing, and an AI-augmented dual-mode interface.
+**Givernance** is a purpose-built CRM for European nonprofits (2-200 staff), replacing Salesforce NPSP with GDPR-native compliance, affordable pricing, and an AI-augmented dual-mode interface.
 
 ## Design Mockups
 
 86 interactive HTML mockups across 17 modules, viewable on GitHub Pages :
 
-**[Voir les mockups](https://onigam.github.io/libero-npo-platform/design/)**
+**[Voir les mockups](https://onigam.github.io/givernance-npo-platform/design/)**
 
 - **75 ecrans GUI classique** : Auth, Dashboard, Constituants, Dons, Campagnes, Subventions, Programmes, Benevoles, Impact, Communications, Finance, RGPD, Admin, Rapports, Migration, Global
-- **11 ecrans Mode Conversationnel** (vision 2026-2028) : hub IA, orchestration d'actions, vue hybride, mobile, dashboard evolue — [voir les mockups conversationnels](https://onigam.github.io/libero-npo-platform/design/conversational-mode/index.html)
+- **11 ecrans Mode Conversationnel** (vision 2026-2028) : hub IA, orchestration d'actions, vue hybride, mobile, dashboard evolue — [voir les mockups conversationnels](https://onigam.github.io/givernance-npo-platform/design/conversational-mode/index.html)
 
 ### Vision dual-mode
 
-Libero propose deux paradigmes d'interaction complementaires :
+Givernance propose deux paradigmes d'interaction complementaires :
 
 1. **GUI IA-augmente** — Interface classique enrichie par des suggestions IA inline (3 modes : Manuel, Assiste, Autopilote)
 2. **Mode conversationnel** (vision) — Agent IA en langage naturel, orchestration d'actions, composants invocables
