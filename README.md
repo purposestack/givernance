@@ -1,5 +1,7 @@
 # Givernance NPO Platform Blueprint
 
+<img src="docs/design/shared/assets/logo-symbol.png" alt="Givernance Logo" width="80">
+
 Deep architecture blueprint for a pragmatic nonprofit-focused alternative to Salesforce.
 
 **Givernance** is a purpose-built CRM for European nonprofits (2-200 staff), replacing Salesforce NPSP with GDPR-native compliance, affordable pricing, and an AI-augmented dual-mode interface.

@@ -101,6 +101,14 @@ h4 { font-size: var(--text-lg); }
   flex-shrink: 0;
 }
 
+.sidebar-brand-logo-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .sidebar-brand-text {
   font-family: var(--font-heading);
   font-size: var(--text-lg);
