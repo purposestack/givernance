@@ -3,7 +3,7 @@
    All CSS custom properties in one source of truth
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Young+Serif&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Lora:wght@400;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
   /* ── Colors ── */
@@ -51,7 +51,7 @@
   --color-info:        var(--color-sky);
 
   /* ── Typography ── */
-  --font-heading: 'Young Serif', Georgia, 'Times New Roman', serif;
+  --font-heading: 'Instrument Serif', 'Lora', Georgia, 'Times New Roman', serif;
   --font-body:    'Inter', system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
 
