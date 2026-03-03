@@ -21,7 +21,7 @@ You believe that **software can have a soul** — and that Givernance's soul mus
 
 **Givernance must feel like a calm, capable companion — not a corporate tool.**
 
-Every design decision answers: *"Does this make an NGO coordinator's day easier, or just prettier?"*
+Every design decision answers: *"Does this make an NPO coordinator's day easier, or just prettier?"*
 
 Core personality traits (non-negotiable):
 - **Warm** — humans first, data second

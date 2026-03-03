@@ -1,0 +1,30 @@
+{
+  "name": "givernance",
+  "version": "1.0.0",
+  "description": "Givernance — purpose-built CRM for European nonprofits. Modular monolith, GDPR-native, Salesforce alternative.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Onigam/givernance.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Onigam/givernance/issues"
+  },
+  "homepage": "https://github.com/Onigam/givernance#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
+  }
+}

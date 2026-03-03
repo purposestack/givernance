@@ -49,7 +49,7 @@ Design rules:
 - Explainability required: each suggestion includes "why" + source fields
 - Trust boundaries: no irreversible action without confirmation
 - Full auditability of AI actions/prompts/outputs
-- Progressive disclosure: simple UX for non-technical NGO teams
+- Progressive disclosure: simple UX for non-technical NPO teams
 
 Research requirement:
 For each major feature, run a lightweight UX research loop:

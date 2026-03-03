@@ -140,7 +140,7 @@ Givernance serait le premier CRM associatif à proposer un **dual-mode natif** :
 ## 8. Mockups de référence
 
 Les 11 écrans exploratoires du mode conversationnel sont consultables :
-- **GitHub Pages** : [Mode conversationnel — Mockups](https://onigam.github.io/givernance-npo-platform/design/conversational-mode/index.html)
+- **GitHub Pages** : [Mode conversationnel — Mockups](https://onigam.github.io/givernance/design/conversational-mode/index.html)
 - **Local** : `docs/design/conversational-mode/`
 
 Ces mockups sont une exploration prospective (vision 2026-2028), pas une spécification de développement immédiat.

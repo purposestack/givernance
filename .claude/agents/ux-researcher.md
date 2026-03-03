@@ -52,7 +52,7 @@ When designing for AI-assisted or AI-delegated modes (see `docs/13-ai-modes.md`)
 - Does the user understand what the AI did?
 - Can they undo it in one action?
 - Is the suggestion visible at the right moment in their workflow, not an interruption?
-- Does the explanation make sense to a non-technical NGO coordinator?
+- Does the explanation make sense to a non-technical NPO coordinator?
 - Are the trust boundaries clear? (what AI can do alone vs. what needs confirmation)
 
 ## What you protect against

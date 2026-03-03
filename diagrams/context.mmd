@@ -1,10 +1,34 @@
 flowchart LR
-  Staff[NPO Staff] --> App[Givernance Platform]
-  Admin[NPO Admin] --> App
-  Beneficiaries[Beneficiaries] --> Portal[Self-service Portal]
-  Volunteers[Volunteers] --> Portal
-  Portal --> App
-  App --> Pay[Stripe/Mollie]
-  App --> IdP[SSO/Keycloak]
-  App --> Mail[Email/SMS Provider]
-  App --> BI[BI/Reporting Export]
+  subgraph Actors
+    Staff["NPO Staff\n(fundraising, programs,\nvolunteer coordination)"]
+    Admin["NPO Administrator\n(config, users, GDPR)"]
+    Finance["Finance / Auditors\n(reports, GL exports)"]
+    Beneficiaries["Beneficiaries\n(self-service portal)"]
+    Volunteers["Volunteers\n(self-service portal)"]
+    PlatformOps["Platform Operator\n(Givernance super_admin)"]
+  end
+
+  App["Givernance Platform"]
+
+  subgraph External Systems
+    Pay["Stripe / Mollie\n(payment processing)"]
+    IdP["Keycloak\n(identity & access)"]
+    Mail["Resend / Brevo\n(email)"]
+    Storage["S3 / MinIO\n(documents & receipts)"]
+    Accounting["Xero / QuickBooks\n(accounting)"]
+    SF["Salesforce NPSP\n(migration source)"]
+  end
+
+  Staff --> App
+  Admin --> App
+  Finance --> App
+  Beneficiaries --> App
+  Volunteers --> App
+  PlatformOps --> App
+
+  App --> Pay
+  App --> IdP
+  App --> Mail
+  App --> Storage
+  App --> Accounting
+  SF -.->|one-time migration| App

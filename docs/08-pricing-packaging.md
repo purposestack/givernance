@@ -1,7 +1,7 @@
 # 08 — Pricing & Packaging
 
 ## Packages
-1. Starter (small NGO)
+1. Starter (small NPO)
    - Core CRM + donations + campaigns
 2. Growth
    - Starter + grants + volunteers + impact

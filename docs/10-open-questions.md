@@ -6,7 +6,7 @@
 2. Single-tenant option at launch or post-PMF only?
 3. Scope of built-in email automation vs external ESP integration?
 4. Accounting integrations priority (Xero, Sage, Exact, others)?
-5. Which NGO vertical template ships first in production?
+5. Which NPO vertical template ships first in production?
 6. Data residency variants (EU only vs country-specific) needed in year 1?
 7. What SLA tiers are realistically supportable in first 12 months?
 
@@ -65,7 +65,7 @@
 
 **Question**: Should the default AI mode (Manual / Assisted / Autopilot) differ based on organization size or type?
 
-**Hypothesis**: A 5-person charity with no IT staff might want more automation (Autopilot default) while a 50-person NGO with dedicated data staff may prefer Manual or Assisted.
+**Hypothesis**: A 5-person charity with no IT staff might want more automation (Autopilot default) while a 50-person NPO with dedicated data staff may prefer Manual or Assisted.
 
 **Decision needed**: Define default mode assignment logic in onboarding wizard.
 
