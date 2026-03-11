@@ -125,14 +125,14 @@ See: /diagrams/container.mmd
 #### `nats` ⚠️ Phase 4+ only
 > **NATS JetStream is deferred to Phase 4.** It is not part of the Phase 0-3 infrastructure.
 >
-> In Phase 0-3, domain events are routed via the **transactional outbox → Asynq (Redis)** pipeline, which provides at-least-once delivery, retries, and dead-letter queues natively.
+> In Phase 0-3, domain events are routed via the **transactional outbox → BullMQ (Redis)** pipeline, which provides at-least-once delivery, retries, and dead-letter queues natively.
 >
 > NATS JetStream will be introduced in Phase 4 when:
 > - A second autonomous service is extracted from the monolith and needs to consume domain events
 > - Outbound webhook fan-out requires multi-subscriber delivery at scale
 > - Event replay capability is needed for audit enrichment or debugging
 >
-> The outbox pattern intentionally abstracts the publish backend — switching from Asynq-direct to NATS requires changing one file (`pkg/events/publisher.go`), with zero domain logic changes.
+> The outbox pattern intentionally abstracts the publish backend — switching from BullMQ-direct to NATS requires changing one module (`packages/shared/src/events/publisher.ts`), with zero domain logic changes.
 >
 > See [ADR-001](./15-infra-adr.md#adr-001-defer-nats-jetstream-to-phase-4) for full decision record.
 

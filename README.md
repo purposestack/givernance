@@ -15,12 +15,36 @@ Givernance — purpose-built CRM for European nonprofits. Modular monolith, GDPR
 git clone git@github.com:Onigam/givernance.git
 cd givernance
 
-# Install dependencies (Node.js >= 20 required)
-npm install
+# Node.js 22 LTS + pnpm 9 required
+pnpm install          # install all workspace dependencies (when packages/ exist)
 
 # Open the HTML mockups locally
 open docs/design/index.html
 # or browse to docs/design/ in your browser
+```
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| API | TypeScript (Node.js 22 LTS), Fastify 5, modular monolith |
+| Worker | TypeScript, BullMQ 5 (Redis-backed) |
+| Web | Next.js 15 (React, TypeScript) |
+| Database | PostgreSQL 16 + Drizzle ORM |
+| Messaging | NATS JetStream |
+| Auth | Keycloak (OIDC) |
+| Infra | Docker, pnpm workspaces monorepo |
+
+### Monorepo Structure
+
+The backend is organized as a pnpm workspaces monorepo:
+
+```
+packages/
+├── shared/    — Drizzle schema, Zod validators, shared types, domain events
+├── api/       — Fastify 5 API server (all domain modules)
+├── worker/    — BullMQ job processor
+└── migrate/   — One-off Salesforce ETL tool
 ```
 
 The design system reference is at `docs/design/design-system.html`. All 86 interactive mockups are in `docs/design/`.

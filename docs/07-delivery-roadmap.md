@@ -3,13 +3,14 @@
 ## Phase 0 (4 weeks): Foundation
 - Auth, org model, RBAC, audit trail
 - Core data model skeleton
+- TypeScript monorepo scaffolding (pnpm workspaces, tsconfig, Drizzle schema baseline)
 - CI/CD + infra baseline
 - **Infra (SaaS)**: Neon.tech EU (PostgreSQL managed), Upstash Redis EU (serverless), Cloudflare R2 (storage)
 - **Infra (self-hosted)**: Docker Compose (Postgres 16, Redis 7, MinIO, Keycloak, Caddy)
 - **Event bus**: Asynq + Redis via transactional outbox — NATS deferred to Phase 4 (see ADR-001)
 
 ## Phase 1 (8 weeks): Fundraising Core
-- Constituents/households/orgs
+- TypeScript Fastify API: Constituents/households/orgs
 - Donations, pledges, campaigns, receipts
 - Stripe/Mollie integration
 - Basic finance handoff exports

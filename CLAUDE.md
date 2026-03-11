@@ -6,20 +6,30 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 
 | Layer | Technology |
 |-------|-----------|
-| API | Go 1.23, modular monolith |
+| API | TypeScript (Node.js 22 LTS), Fastify 5, modular monolith |
+| Worker | TypeScript, BullMQ 5 (Redis-backed) |
 | Web | Next.js 15 (React, TypeScript) |
-| Database | PostgreSQL 16 (SaaS: Neon.tech EU · Self-hosted: Postgres 16 + PgBouncer) |
-| Job Queue / Events | Asynq + Redis (Phase 0-3) — NATS JetStream added Phase 4+ |
+| Database | PostgreSQL 16 + Drizzle ORM (SaaS: Neon.tech EU · Self-hosted: Postgres 16 + PgBouncer) |
+| Job Queue / Events | BullMQ 5 + Redis (Phase 0-3) — NATS JetStream added Phase 4+ |
 | Cache / Rate-limit | Redis (SaaS: Upstash EU · Self-hosted: Redis 7) |
 | Storage | Cloudflare R2 (SaaS) · MinIO (Self-hosted) |
 | Auth | Keycloak 24 (OIDC / SAML — all deployments) |
 | Deployment | Docker Compose (self-hosted) · Kamal + Hetzner EU (SaaS) |
+| Infra | Docker, pnpm workspaces monorepo |
 
 ## Directory Structure
 
 ```
 ├── CLAUDE.md              ← You are here
 ├── README.md              ← Project overview, getting started, doc index
+├── packages/
+│   ├── shared/            ← Drizzle schema, Zod validators, shared types, domain events
+│   ├── api/               ← Fastify 5 API server (all domain modules)
+│   ├── worker/            ← BullMQ job processor
+│   └── migrate/           ← One-off Salesforce ETL tool
+├── package.json           ← pnpm workspace root
+├── pnpm-workspace.yaml
+├── tsconfig.base.json
 ├── docs/
 │   ├── 01-product-scope.md       — Problem statement, personas, MoSCoW scope
 │   ├── 02-reference-architecture.md — C4 diagrams, modular monolith, API design
@@ -66,7 +76,7 @@ Use these agents for domain-specific tasks via Claude Code:
 
 **Phase 0 — Foundation (current)**: Architecture blueprint complete. 14 specification documents, 86 HTML mockups, 4 Mermaid diagrams. No production code yet.
 
-Next: Phase 1 — Skeleton (project scaffolding, CI/CD, auth, first module).
+Next: Phase 1 — Skeleton (TypeScript monorepo scaffolding with pnpm workspaces, Drizzle schema baseline, CI/CD, auth, first module).
 
 ## Design Mockups
 
