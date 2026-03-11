@@ -31,7 +31,7 @@ open docs/design/index.html
 | Worker | TypeScript, BullMQ 5 (Redis-backed) |
 | Web | Next.js 15 (React, TypeScript) |
 | Database | PostgreSQL 16 + Drizzle ORM |
-| Messaging | NATS JetStream |
+| Job Queue | BullMQ 5 (Redis) — NATS JetStream deferred to Phase 4+ |
 | Auth | Keycloak (OIDC) |
 | Infra | Docker, pnpm workspaces monorepo |
 
