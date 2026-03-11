@@ -1,0 +1,26 @@
+{
+  "name": "@givernance/migrate",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "giv-migrate": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.712.0",
+    "@givernance/shared": "workspace:*",
+    "commander": "^12.1.0",
+    "csv-parse": "^5.6.0",
+    "drizzle-orm": "^0.36.4",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

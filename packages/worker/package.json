@@ -1,0 +1,23 @@
+{
+  "name": "@givernance/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/worker.ts --format esm",
+    "dev": "tsx watch src/worker.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@givernance/shared": "workspace:*",
+    "bullmq": "^5.31.0",
+    "drizzle-orm": "^0.36.4",
+    "ioredis": "^5.4.2",
+    "pg": "^8.13.1",
+    "resend": "^4.0.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
