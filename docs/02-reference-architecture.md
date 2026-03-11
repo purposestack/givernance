@@ -54,12 +54,13 @@ See: /diagrams/container.mmd
 
 ### 3.1 Core containers
 
-#### `givernance-api` (Go 1.23)
-- Single deployable Go binary
+#### `givernance-api` (TypeScript, Fastify 5)
+- TypeScript ESM application running on Node.js 22 LTS
 - Domain modules: `auth`, `constituents`, `donations`, `campaigns`, `grants`, `programs`, `beneficiaries`, `volunteers`, `impact`, `finance`, `comms`, `reporting`, `gdpr`, `admin`, `platform`
-- Chi router + middleware stack (auth, audit, rate limit, tracing)
-- Connects to PostgreSQL via PgBouncer (transaction mode, or directly to managed Neon.tech in SaaS deployment)
-- Publishes domain events via transactional outbox → Asynq job queue (NATS JetStream in Phase 4+)
+- Fastify 5 router + plugin stack (auth, audit, rate limit, tracing); TypeBox for OpenAPI schema validation + type-safe routes
+- Drizzle ORM for type-safe PostgreSQL queries; connects via PgBouncer (transaction mode, or directly to managed Neon.tech in SaaS deployment)
+- Zod for runtime input validation with inferred TypeScript types
+- Publishes domain events via transactional outbox → BullMQ job queue (NATS JetStream deferred to Phase 4+)
 - Serves REST API on `:8080`; admin API on `:8081` (internal only)
 - Health: `GET /healthz`, `GET /readyz`
 
@@ -70,14 +71,15 @@ See: /diagrams/container.mmd
 - Auth: OIDC flow through Keycloak; JWT stored in httpOnly cookie
 - Static assets served from CDN (CloudFront / Cloudflare)
 
-#### `givernance-worker` (Go 1.23)
-- Async job processor (Asynq queue on Redis)
+#### `givernance-worker` (TypeScript, BullMQ 5)
+- Async job processor (BullMQ queues on Redis)
 - Jobs: PDF generation, bulk email send, import processing, scheduled reports, GL export, GDPR erasure execution, recurring donation installment creation
-- Shares codebase with `givernance-api` (same Go module); separate binary entry point
+- Shares types and schemas with `givernance-api` via `@givernance/shared` package; separate process entry point
 
-#### `givernance-migrate` (Go 1.23 or Python 3.12)
+#### `givernance-migrate` (TypeScript, Drizzle Kit)
 - One-off migration tool for Salesforce data
-- Reads from S3 (exported SF data), transforms, loads via direct DB connection
+- Reads from S3 (exported SF data), transforms, bulk-loads via Drizzle ORM
+- DB schema migrations managed by Drizzle Kit (generate, push, migrate)
 - Not running in production; invoked during migration engagements
 - See [05-integration-migration.md](./05-integration-migration.md)
 
@@ -90,7 +92,7 @@ See: /diagrams/container.mmd
 - Logical replication slot for read replica (reporting workload)
 - Extensions: `uuid-ossp`, `pgcrypto`, `pg_trgm`, `ltree`, `pg_audit`
 - **Self-hosted deployments**: PostgreSQL 16 + PgBouncer (Docker Compose)
-- **SaaS managed deployment**: [Neon.tech](https://neon.tech) EU region (Frankfurt) — includes connection pooling, branching, WAL backup, full extension support. See [ADR-002](./15-infra-adr.md#adr-002-managed-infrastructure-for-saas-deployment).
+- **SaaS managed deployment**: [Neon.tech](https://neon.tech) EU region (Frankfurt) — includes connection pooling, branching, WAL backup, full extension support. See [ADR-006](./15-infra-adr.md#adr-006-managed-infrastructure-for-saas-deployment).
 
 #### `pgbouncer` (PgBouncer 1.22)
 - Transaction-mode pooling — **self-hosted deployments only**
@@ -100,73 +102,89 @@ See: /diagrams/container.mmd
 - *SaaS deployment*: Neon.tech includes built-in connection pooling (pgBouncer-compatible) — no separate container needed.
 
 #### `redis` (Redis 7 / Valkey)
-- Job queue backend (Asynq) — **primary event routing mechanism for Phase 0-3**
+- Job queue backend (BullMQ) — **primary event routing mechanism for Phase 0-3**
 - Rate limiting counters
 - Session cache (short-lived, separate DB index)
 - Feature flags cache
 - **Self-hosted deployments**: Redis 7 / Valkey (Docker Compose)
-- **SaaS managed deployment**: [Upstash Redis](https://upstash.com) EU region — serverless, pay-per-use, GDPR-compliant. See [ADR-002](./15-infra-adr.md#adr-002-managed-infrastructure-for-saas-deployment).
+- **SaaS managed deployment**: [Upstash Redis](https://upstash.com) EU region — serverless, pay-per-use, GDPR-compliant. See [ADR-006](./15-infra-adr.md#adr-006-managed-infrastructure-for-saas-deployment).
 
 #### `keycloak` (Keycloak 24)
 - OIDC provider; issues JWTs consumed by `givernance-api`
 - Realms: one per deployment (not per tenant — tenant isolation is in the application layer)
 - Flows: standard, SAML 2.0 bridge, magic link for volunteers
 - Brute-force protection, MFA enforcement by role
-- Retained in all deployment modes — no managed alternative covers the full feature set (SAML 2.0, magic-link, MFA by role). See [ADR-003](./15-infra-adr.md#adr-003-reject-convexdev-and-supabase-as-all-in-one-backend-replacements).
+- Retained in all deployment modes — no managed alternative covers the full feature set (SAML 2.0, magic-link, MFA by role). See [ADR-007](./15-infra-adr.md#adr-007-reject-convexdev-and-supabase-as-all-in-one-backend-replacements).
 
 #### `storage` (Cloudflare R2 / MinIO)
 - Stores: PDF receipts, bulk export files, imported constituent lists, document attachments
 - Lifecycle policy: exports deleted after 7 days; receipts retained 7 years
 - **Self-hosted deployments**: [MinIO](https://min.io) (S3-compatible, Docker Compose)
-- **SaaS managed deployment**: [Cloudflare R2](https://developers.cloudflare.com/r2/) — S3-compatible API, no egress fees, EU storage. See [ADR-002](./15-infra-adr.md#adr-002-managed-infrastructure-for-saas-deployment).
+- **SaaS managed deployment**: [Cloudflare R2](https://developers.cloudflare.com/r2/) — S3-compatible API, no egress fees, EU storage. See [ADR-006](./15-infra-adr.md#adr-006-managed-infrastructure-for-saas-deployment).
 
 #### `nats` ⚠️ Phase 4+ only
 > **NATS JetStream is deferred to Phase 4.** It is not part of the Phase 0-3 infrastructure.
 >
-> In Phase 0-3, domain events are routed via the **transactional outbox → Asynq (Redis)** pipeline, which provides at-least-once delivery, retries, and dead-letter queues natively.
+> In Phase 0-3, domain events are routed via the **transactional outbox → BullMQ (Redis)** pipeline, which provides at-least-once delivery, retries, and dead-letter queues natively.
 >
 > NATS JetStream will be introduced in Phase 4 when:
 > - A second autonomous service is extracted from the monolith and needs to consume domain events
 > - Outbound webhook fan-out requires multi-subscriber delivery at scale
 > - Event replay capability is needed for audit enrichment or debugging
 >
-> The outbox pattern intentionally abstracts the publish backend — switching from Asynq-direct to NATS requires changing one file (`pkg/events/publisher.go`), with zero domain logic changes.
+> The outbox pattern intentionally abstracts the publish backend — switching from BullMQ-direct to NATS requires changing one module (`packages/shared/src/events/publisher.ts`), with zero domain logic changes.
 >
-> See [ADR-001](./15-infra-adr.md#adr-001-defer-nats-jetstream-to-phase-4) for full decision record.
+> See [ADR-005](./15-infra-adr.md#adr-005-nats-jetstream--deferred-to-phase-4) for full decision record.
 
 ---
 
-## 4. Module map (within `givernance-api`)
+## 4. Module map (pnpm monorepo)
 
 ```
-givernance-api/
-├── cmd/
-│   ├── api/          # HTTP server entry point
-│   └── worker/       # Job worker entry point
-├── internal/
-│   ├── auth/         # JWT validation, Keycloak integration, RBAC middleware
-│   ├── constituents/ # Persons, households, organizations, relationships
-│   ├── donations/    # Gifts, pledges, installments, funds, allocations
-│   ├── campaigns/    # Campaign management, source tracking
-│   ├── grants/       # Grant pipeline, funder relations, deliverables
-│   ├── programs/     # Program catalog, enrollments, service delivery
-│   ├── beneficiaries/# Beneficiary records, case notes, outcomes
-│   ├── volunteers/   # Volunteer profiles, shifts, hours
-│   ├── impact/       # Indicators, readings, ToC, dashboards
-│   ├── finance/      # Fund accounting, GL export, batch closing
-│   ├── comms/        # Email templates, bulk sends, receipts
-│   ├── reporting/    # Standard reports, custom queries, exports
-│   ├── gdpr/         # SAR, erasure, consent management
-│   ├── admin/        # Org settings, users, custom fields, billing
-│   └── platform/     # Super-admin: org provisioning, feature flags
-├── pkg/
-│   ├── db/           # DB connection, RLS context setter, transaction helpers
-│   ├── events/       # Domain event types, outbox publisher
-│   ├── jobs/         # Job types, Asynq client
-│   ├── audit/        # Audit middleware, audit log writer
-│   ├── pagination/   # Cursor-based pagination
-│   └── validator/    # Input validation helpers
-└── migrations/       # SQL migration files (golang-migrate compatible)
+packages/
+├── shared/                  # @givernance/shared — shared types, schemas, utils
+│   ├── src/
+│   │   ├── schema/          # Drizzle ORM schema definitions (all tables)
+│   │   ├── types/           # Shared TypeScript types
+│   │   ├── events/          # Domain event types (CloudEvents)
+│   │   ├── jobs/            # BullMQ job type definitions
+│   │   └── validators/      # Zod schemas for API input validation
+│   └── package.json
+├── api/                     # @givernance/api — Fastify API server
+│   ├── src/
+│   │   ├── server.ts        # Fastify app factory
+│   │   ├── plugins/         # Auth, audit, rate-limit, CORS, OpenAPI
+│   │   ├── modules/         # Domain modules
+│   │   │   ├── auth/        # JWT validation, Keycloak integration, RBAC middleware
+│   │   │   ├── constituents/# Persons, households, organizations, relationships
+│   │   │   ├── donations/   # Gifts, pledges, installments, funds, allocations
+│   │   │   ├── campaigns/   # Campaign management, source tracking
+│   │   │   ├── grants/      # Grant pipeline, funder relations, deliverables
+│   │   │   ├── programs/    # Program catalog, enrollments, service delivery
+│   │   │   ├── beneficiaries/ # Beneficiary records, case notes, outcomes
+│   │   │   ├── volunteers/  # Volunteer profiles, shifts, hours
+│   │   │   ├── impact/      # Indicators, readings, ToC, dashboards
+│   │   │   ├── finance/     # Fund accounting, GL export, batch closing
+│   │   │   ├── comms/       # Email templates, bulk sends, receipts
+│   │   │   ├── reporting/   # Standard reports, custom queries, exports
+│   │   │   ├── gdpr/        # SAR, erasure, consent management
+│   │   │   ├── admin/       # Org settings, users, custom fields, billing
+│   │   │   └── platform/    # Super-admin: org provisioning, feature flags
+│   │   └── lib/             # DB client (Drizzle), Redis client, NATS client, RLS helper
+│   └── package.json
+├── worker/                  # @givernance/worker — BullMQ job processor
+│   ├── src/
+│   │   ├── worker.ts        # BullMQ worker entry point
+│   │   ├── queues/          # Queue definitions
+│   │   └── processors/      # Job processor handlers (one per job type)
+│   └── package.json
+└── migrate/                 # @givernance/migrate — one-off Salesforce ETL tool
+    ├── src/
+    │   ├── index.ts         # CLI entry point
+    │   ├── extractors/      # Read from SF export (S3/CSV)
+    │   ├── transformers/    # Map SF schema to Givernance schema
+    │   └── loaders/         # Bulk insert via Drizzle
+    └── package.json
 ```
 
 ---
@@ -198,7 +216,7 @@ givernance-api/
 - Async: `POST /v1/exports` → returns `{export_id}`
 - Poll: `GET /v1/exports/{id}` → `{status: "pending|processing|ready|failed", download_url}`
 - Download URL: presigned S3 URL, valid 1 hour
-- Formats: CSV, JSON, XLSX (XLSX via Go library, not spreadsheet service)
+- Formats: CSV, JSON, XLSX (XLSX via ExcelJS, not spreadsheet service)
 
 ### 5.4 Import API
 
@@ -242,13 +260,13 @@ COMMIT;
 1. API handler writes mutation to DB (e.g., INSERT INTO donations)
 2. In same DB transaction: INSERT INTO domain_events (event_type, payload, published=false)
 3. Transaction commits
-4. Background poller (every 500ms): SELECT unpublished events → enqueue Asynq job → mark published
-5. Asynq (Redis) delivers job to givernance-worker (at-least-once, with retries + dead-letter)
+4. Background poller (every 500ms): SELECT unpublished events → enqueue BullMQ job → mark published
+5. BullMQ (Redis) delivers job to givernance-worker (at-least-once, with retries + dead-letter)
 ```
 
-**Why outbox, not direct publish**: Guarantees job delivery even if Redis is temporarily unavailable; no dual-write problem. Asynq provides at-least-once delivery, configurable retries, dead-letter queues, and job inspection — all natively.
+**Why outbox, not direct publish**: Guarantees job delivery even if Redis is temporarily unavailable; no dual-write problem. BullMQ provides at-least-once delivery, configurable retries, dead-letter queues, and job inspection — all natively.
 
-**Phase 4 migration path**: When NATS is introduced (see §7.4), the outbox poller will publish to NATS instead of enqueueing Asynq directly. The domain event types and outbox table are unchanged — only `pkg/events/publisher.go` is swapped.
+**Phase 4 migration path**: When NATS is introduced (see §7.4), the outbox poller will publish to NATS instead of enqueueing BullMQ directly. The domain event types and outbox table are unchanged — only `packages/shared/src/events/publisher.ts` is swapped.
 
 ### 7.2 Domain events (key examples)
 
@@ -263,9 +281,7 @@ COMMIT;
 
 ### 7.3 Scheduled tasks
 
-
-
-Implemented as Asynq periodic tasks (cron expression in config):
+Implemented as BullMQ repeat jobs (cron expression in config):
 
 | Task | Schedule | Description |
 |---|---|---|
@@ -295,9 +311,9 @@ NATS JetStream will be introduced in Phase 4 when the following conditions are m
 
 Retention: `WorkQueuePolicy` per consumer group; dead-letter stream for failures after 5 retries.
 
-**Migration from Asynq-direct**: When NATS is introduced, the outbox poller's publish call is redirected from Asynq enqueue to NATS publish. Asynq remains for scheduled/periodic tasks. Zero domain logic changes required.
+**Migration from BullMQ-direct**: When NATS is introduced, the outbox poller's publish call is redirected from BullMQ enqueue to NATS publish. BullMQ remains for scheduled/periodic tasks. Zero domain logic changes required.
 
-> See [ADR-001](./15-infra-adr.md#adr-001-defer-nats-jetstream-to-phase-4) for the full decision record and revisit criteria.
+> See [ADR-005](./15-infra-adr.md#adr-005-nats-jetstream--deferred-to-phase-4) for the full decision record and revisit criteria.
 
 ---
 
@@ -331,7 +347,7 @@ Implemented as parameterized SQL queries exposed via API (`GET /v1/reports/{repo
 
 - **CSV**: All list views; simple tabular export
 - **XLSX**: Formatted reports with headers and totals
-- **PDF**: Receipts, impact summaries, funder reports (generated via `chromedp` or `wkhtmltopdf`)
+- **PDF**: Receipts, impact summaries, funder reports (generated via Puppeteer or `wkhtmltopdf`)
 - **JSON**: API-native; used for accounting integration payloads
 
 ---
@@ -358,7 +374,7 @@ services:
 
 Minimum server: 4 vCPU, 8 GB RAM, 100 GB SSD — handles 5–50 concurrent users.
 
-> **Note**: NATS is not included. Domain events are routed via the transactional outbox → Asynq (Redis). NATS will be added in Phase 4 when multi-service fan-out is required.
+> **Note**: NATS is not included. Domain events are routed via the transactional outbox → BullMQ (Redis). NATS will be added in Phase 4 when multi-service fan-out is required.
 
 ### 9.2 Managed SaaS (Givernance hosting — Phase 0-3)
 
@@ -384,20 +400,20 @@ Deployment: Kamal on Hetzner EU VPS (CX31, ~€20/month per deployment). TLS via
 | PostgreSQL | Self-hosted 16 + PgBouncer | Neon.tech EU (managed) | Neon.tech EU (managed) |
 | Redis / Cache | Self-hosted Redis 7 | Upstash Redis EU (serverless) | Upstash Redis EU |
 | Object Storage | MinIO | Cloudflare R2 | Cloudflare R2 |
-| Event bus | Asynq via outbox (Redis) | Asynq via outbox (Redis) | NATS JetStream + Asynq |
+| Event bus | BullMQ via outbox (Redis) | BullMQ via outbox (Redis) | NATS JetStream + BullMQ |
 | Auth | Self-hosted Keycloak 24 | Self-hosted Keycloak 24 | Self-hosted Keycloak 24 |
 | Deployment | Docker Compose + Caddy | Kamal + Hetzner EU VPS | Kamal + Hetzner EU VPS |
 | Services to operate | 8 | 4 (API, Worker, Web, Keycloak) | 5 (+NATS) |
 
-> See [ADR-001](./15-infra-adr.md#adr-001-defer-nats-jetstream-to-phase-4) and [ADR-002](./15-infra-adr.md#adr-002-managed-infrastructure-for-saas-deployment) for full rationale.
+> See [ADR-005](./15-infra-adr.md#adr-005-nats-jetstream--deferred-to-phase-4) and [ADR-006](./15-infra-adr.md#adr-006-managed-infrastructure-for-saas-deployment) for full rationale.
 
 ### 9.4 Template deployment (Kamal)
 
 ```bash
 # Deploy a new org instance (managed SaaS model — Hetzner EU VPS)
 kamal deploy --destination eu-west-1-prod
-kamal app exec --reuse -- ./givernance migrate up
-kamal app exec --reuse -- ./givernance seed --org-template=standard-npo
+kamal app exec --reuse -- pnpm --filter @givernance/migrate drizzle-kit migrate
+kamal app exec --reuse -- pnpm --filter @givernance/migrate seed --org-template=standard-npo
 ```
 
 ---
@@ -438,18 +454,16 @@ Givernance supports three configurable AI modes per organization. The mode is se
 
 ### 11.2 AI service routing
 
-AI processing is handled inside `givernance-api` by an internal `ai` package (not a separate service). It routes requests to different model backends depending on data sensitivity:
+AI processing is handled inside `givernance-api` by an internal `ai` module (not a separate service). It routes requests to different model backends depending on data sensitivity:
 
 ```
-givernance-api/
-├── internal/
-│   └── ai/
-│       ├── router.go          # Selects model backend based on data type
-│       ├── confidence.go      # Confidence scoring engine
-│       ├── feedback.go        # Feedback loop (accept/modify/reject signals)
-│       ├── suggestions.go     # Mode 2 suggestion generation
-│       ├── actions.go         # Mode 3 autonomous action execution
-│       └── guard.go           # ai_execution_guard middleware (403 on restricted actions)
+packages/api/src/modules/ai/
+├── router.ts          # Selects model backend based on data type
+├── confidence.ts      # Confidence scoring engine
+├── feedback.ts        # Feedback loop (accept/modify/reject signals)
+├── suggestions.ts     # Mode 2 suggestion generation
+├── actions.ts         # Mode 3 autonomous action execution
+└── guard.ts           # ai_execution_guard plugin (403 on restricted actions)
 ```
 
 ### 11.3 Model backends

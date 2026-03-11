@@ -1,0 +1,52 @@
+/** Fastify app factory — registers all plugins and routes */
+
+import Fastify from 'fastify'
+import cors from '@fastify/cors'
+import swagger from '@fastify/swagger'
+import swaggerUi from '@fastify/swagger-ui'
+import { authPlugin } from './plugins/auth.js'
+import { rlsPlugin } from './plugins/rls.js'
+import { auditPlugin } from './plugins/audit.js'
+import { healthRoutes } from './modules/health/routes.js'
+import { constituentRoutes } from './modules/constituents/routes.js'
+
+/** Create and configure the Fastify server instance */
+export async function createServer() {
+  const app = Fastify({
+    logger: {
+      level: process.env['LOG_LEVEL'] ?? 'info',
+    },
+  })
+
+  // --- Core plugins ---
+  await app.register(cors, {
+    origin: process.env['CORS_ORIGIN'] ?? 'http://localhost:3000',
+    credentials: true,
+  })
+
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Givernance API',
+        description: 'CRM API for European nonprofits',
+        version: '0.1.0',
+      },
+      servers: [{ url: `http://localhost:${process.env['PORT'] ?? 4000}` }],
+    },
+  })
+
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+  })
+
+  // --- Custom plugins ---
+  await app.register(authPlugin)
+  await app.register(rlsPlugin)
+  await app.register(auditPlugin)
+
+  // --- Routes ---
+  await app.register(healthRoutes)
+  await app.register(constituentRoutes, { prefix: '/v1' })
+
+  return app
+}

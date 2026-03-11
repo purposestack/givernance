@@ -84,11 +84,11 @@ mollie:
 
 **Purpose**: Donation receipts, acknowledgement letters, grant reminders, GDPR notifications.
 
-```go
+```typescript
 // Adaptor interface — both Resend and Brevo implement this
-type EmailSender interface {
-    Send(ctx context.Context, msg EmailMessage) (providerMsgID string, err error)
-    GetDeliveryStatus(ctx context.Context, msgID string) (DeliveryStatus, error)
+interface EmailSender {
+  send(msg: EmailMessage): Promise<{ providerMsgId: string }>;
+  getDeliveryStatus(msgId: string): Promise<DeliveryStatus>;
 }
 ```
 
@@ -257,7 +257,7 @@ See: /diagrams/migration-flow.mmd
 
 ```bash
 # Using Salesforce Bulk API 2.0
-./givernance-migrate extract \
+pnpm --filter @givernance/migrate extract \
   --sf-instance https://example.my.salesforce.com \
   --sf-client-id ... \
   --sf-client-secret ... \
@@ -269,7 +269,7 @@ See: /diagrams/migration-flow.mmd
 
 ### 7.4 Transform
 
-The transform step is a Go program that:
+The transform step is a TypeScript program (`packages/migrate`) that:
 1. Reads SF JSONL files
 2. Applies field mapping rules (configured in `migration-config.yaml`)
 3. Deduplicates by email (fuzzy match + exact match pass)
@@ -314,20 +314,20 @@ deduplicate:
 
 ```bash
 # Dry-run: load to staging DB, produce validation report
-./givernance-migrate load \
+pnpm --filter @givernance/migrate load \
   --env staging \
   --input s3://givernance-migration-bucket/org-greenpeace-de/transform/ \
   --dry-run \
   --report-output ./migration-report.html
 
 # Production load (after NPO sign-off on dry-run report)
-./givernance-migrate load \
+pnpm --filter @givernance/migrate load \
   --env production \
   --input s3://givernance-migration-bucket/org-greenpeace-de/transform/ \
   --confirm
 
 # Delta load (catches donations/contacts created during parallel run)
-./givernance-migrate delta \
+pnpm --filter @givernance/migrate delta \
   --sf-since 2026-02-01T00:00:00Z \
   --env production
 ```
@@ -350,7 +350,7 @@ If production load fails or critical data quality issue discovered:
 
 ```bash
 # Rollback: truncate all tenant data for org and restore pre-load snapshot
-./givernance-migrate rollback --org-id 018e1234-abcd-7000-8000-000000000001
+pnpm --filter @givernance/migrate rollback --org-id 018e1234-abcd-7000-8000-000000000001
 
 # Givernance takes a DB snapshot immediately before every production load
 # Snapshot retained for 30 days post-migration

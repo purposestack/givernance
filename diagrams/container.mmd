@@ -10,8 +10,8 @@ flowchart TB
 
   subgraph Application
     Web["givernance-web\n(Next.js 15 / React 19)"]
-    API["givernance-api\n(Go 1.23)"]
-    Worker["givernance-worker\n(Go 1.23, Asynq)"]
+    API["givernance-api\n(TypeScript / Fastify 5)"]
+    Worker["givernance-worker\n(TypeScript / BullMQ 5)"]
     Migrate["givernance-migrate\n(one-off ETL tool)"]
   end
 

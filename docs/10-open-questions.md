@@ -9,6 +9,9 @@
 5. Which NPO vertical template ships first in production?
 6. Data residency variants (EU only vs country-specific) needed in year 1?
 7. What SLA tiers are realistically supportable in first 12 months?
+8. ~~Go vs TypeScript for backend~~ — **Resolved (2026-03)**: TypeScript selected. See [ADR-002 in docs/15-infra-adr.md](./15-infra-adr.md#adr-002-typescript-full-stack-over-go-backend).
+9. **Bun runtime evaluation at Phase 3** — Should we migrate from Node.js 22 to Bun runtime for better performance? Decision deferred pending Phase 3 load tests against NFRs (p99 < 200 ms, 500 req/s sustained).
+10. **Drizzle ORM + PostgreSQL RLS compatibility** — Can Drizzle ORM handle all required PostgreSQL `RLS SET LOCAL` patterns efficiently? To verify in Phase 1 integration tests (transaction-scoped `SET LOCAL app.tenant_id` per request).
 
 ---
 

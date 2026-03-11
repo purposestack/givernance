@@ -1,0 +1,86 @@
+## Givernance — local development stack
+## Usage: docker compose up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: givernance
+      POSTGRES_USER: givernance
+      POSTGRES_PASSWORD: givernance_dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U givernance"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    ports:
+      - "8080:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/givernance
+      KC_DB_USERNAME: givernance
+      KC_DB_PASSWORD: givernance_dev
+    command: start-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nats:
+    image: nats:2-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: --jetstream --store_dir /data
+    volumes:
+      - natsdata:/data
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: givernance
+      MINIO_ROOT_PASSWORD: givernance_dev
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - keycloak
+    profiles:
+      - proxy
+
+volumes:
+  pgdata:
+  redisdata:
+  natsdata:
+  miniodata:
