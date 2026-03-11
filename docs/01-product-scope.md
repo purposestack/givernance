@@ -40,6 +40,27 @@ Givernance est conçu comme un **dual-mode platform** :
 
 Les deux paradigmes coexistent et partagent le même back-end, les mêmes garde-fous RGPD, et le même système de permissions.
 
+## 2.5 Flagship Domain: Donor Management
+
+The central relationship in a nonprofit is between the organization and its donors. Everything else — programs, grants, volunteers, impact — exists to justify and strengthen that relationship.
+
+**Givernance's MVP is built around the donor lifecycle:**
+
+```
+Prospect → First Gift → Recurring Donor → Major Donor → Lapsed → Re-engaged
+```
+
+The data model centers on this:
+- **Constituent** — who the donor is (identity, contact info, relationships, preferences)
+- **Donation** — what they gave (amount, date, campaign, fund, payment method)
+- **Campaign** — why they gave (the ask that prompted the gift)
+- **Receipt** — the legal acknowledgment (GDPR-compliant, EU tax format)
+- **Lifecycle Stage** — where they are (LYBUNT, SYBUNT, lapsed, active, major)
+
+Every other module (programs, grants, volunteers) enriches this picture but does not replace it. An NPO with 10,000 donors and zero beneficiaries still needs every feature in Phase 1. An NPO with 10,000 beneficiaries but no fundraising module does not exist — they would use a different tool.
+
+**Consequence for implementation priority**: Constituent + Donation modules ship first, fully tested, before any other domain.
+
 ## 3. AI-native UX principle (cross-feature)
 
 Givernance should use AI agents **inside each core workflow** to reduce clicks, reduce admin burden, and improve data quality — without hiding critical decisions.
@@ -251,13 +272,20 @@ These are the non-negotiable capabilities for v1. Any platform missing these can
 
 ## 7. Definition of MVP
 
-MVP is achieved when a single NPO can:
-1. Import their constituent list (CSV or from Salesforce)
-2. Record a donation and generate a GDPR-compliant receipt
-3. Run a campaign and see how much it raised
-4. Enroll a beneficiary in a program and record a service delivery
-5. Export gift aid / tax reclaim data
-6. Run a donor retention (LYBUNT) report
-7. Comply with a GDPR subject access request for a constituent
+**MVP = Phase 1 (Fundraising Core).** Givernance's flagship domain is donor management — the ability to track who gives, how much, when, and why, and to steward those relationships over time. Everything in the MVP orbits this core.
 
-Everything else is Phase 2 or Phase 3.
+MVP is achieved when a single NPO can:
+1. Import their constituent list (CSV or from Salesforce export)
+2. Record a donation (one-time or recurring pledge) and generate a GDPR-compliant EU receipt
+3. Run a fundraising campaign and see how much it raised, by source
+4. Run a donor retention report (LYBUNT: who gave last year but not this year)
+5. Export gift aid / tax reclaim data for the fiscal authority
+6. Comply with a GDPR subject access request (SAR) for any constituent
+
+**Out of scope for MVP (Phase 2+):**
+- Program management and beneficiary enrollment → Phase 2
+- Grant lifecycle management → Phase 3
+- Volunteer management → Phase 3
+- Salesforce migration toolkit → Phase 4
+
+**MVP is NOT feature-complete. It is value-complete**: an NPO running on Givernance Phase 1 can replace Salesforce NPSP for their core fundraising operations.
