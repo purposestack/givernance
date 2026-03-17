@@ -1,81 +1,99 @@
 # 16 — Greg Field Insights
 
-> Field insights from Greg, expert Salesforce + European NPO sector. Based on hands-on experience implementing CRM and fundraising systems at multiple French NPOs.
+> Field intelligence from Greg, Salesforce expert with hands-on experience at multiple French and European NPOs.
+> Based on 4 audio recordings, transcribed and analyzed March 2026.
+> Last updated: 2026-03-17
 
-## 1. Fundraising Channels — How Donations Actually Flow
+---
 
-### Canal 1 — Nominative Postal Campaigns (~60% of donations)
+## 1. Overview: Fundraising channel breakdown
 
-This is the dominant fundraising channel for European NPOs. The workflow is:
+European NPOs collect donations through three primary channels with roughly this distribution:
 
-1. **Create campaign** in CRM
-2. **Select constituents** to target (existing donors, lapsed donors, etc.)
-3. **Generate documents**: personalized PDF letters with unique QR code per constituent+campaign
-4. **Send by post** (printed and mailed)
-5. **Monitor incoming payments** for ~3 months after send
+| Channel | % of donations | Constituents known? | Key mechanism |
+|---------|---------------|--------------------|----|
+| Postal nominative | ~40-50% | Yes | Personalised letter + individual QR code |
+| Door-drop | ~10-20% | No (new prospects) | Generic letter to geographic zone |
+| Digital (online) | ~20% | Created via form | Website donation page / widget |
+| Other (events, in-person, etc.) | ~10-20% | Mixed | Various |
 
-The QR code encodes both the campaign ID and the constituent ID. When a donation arrives (typically via bank transfer or check with the QR reference), the system can automatically match the payment to the specific constituent and campaign — no manual reconciliation needed.
+Postal campaigns (nominative + door-drop combined) represent approximately **60% of total donations** for typical European NPOs. This makes postal fundraising the single most important channel to support natively.
 
-**Critical Salesforce gap**: Salesforce NPSP has no native QR code generation or postal campaign workflow. Greg had to build a custom QR code generator and PDF letter generator. This is a major differentiator opportunity for Givernance.
+---
 
-### Canal 2 — Door-Drops (subset of postal, part of the 60%)
+## 2. Canal 1 — Campagnes postales nominatives
 
-- Generic letter sent via La Poste to an entire geographic zone
-- No constituent data at send time — QR code linked to campaign only
-- When someone donates via a door-drop QR code, they become a **new constituent** in the system
-- Key metric: **campaign ROI** (cost of postal send vs. donations received)
-- NPOs must constantly renew door-drops to maintain acquisition pipeline
+### Operational flow
 
-### Canal 3 — Online Donations (~20% of donations)
+```
+1. Create campaign in CRM
+2. Select constituents (segment by giving history, geography, tags)
+3. Generate personalised PDF letters
+   - Merge fields: salutation, name, last gift amount/date
+   - Individual QR code per constituent (encodes campaign_id + constituent_id)
+   - Print-ready format (A4, postal window envelope compatible)
+4. Export PDFs → send to print house or print in-house
+5. Mail letters via postal service
+6. Monitor incoming payments over ~3 months
+   - QR code scanned at payment → auto-match to constituent + campaign
+   - Donation record created, campaign stats updated
+7. Generate tax receipts for donors who paid
+```
 
-- Embeddable donation form/widget on NPO's website
-- Public page per campaign — activatable and shareable
-- Form should inherit the host site's styling when embedded
-- PSP integration via **Stripe Connect**: the NPO creates their own Stripe account, Givernance connects via OAuth
-- **Givernance does NOT transit funds** → no PSP license/status required
-- Greg has already successfully connected Stripe directly to Salesforce — proven pattern
+### Key technical requirements
+- **QR code generation**: Must encode unique identifier per constituent per campaign. Open-source libraries available (no need for proprietary solution).
+- **PDF generation**: Template engine with merge fields, batch generation for thousands of constituents.
+- **Payment matching**: When a payment arrives (bank transfer with QR reference), system auto-matches to the correct constituent and campaign.
+- **3-month monitoring window**: Payments trickle in over weeks/months after mailing. Campaign dashboard must show real-time progress.
 
-### Remaining ~20%
+---
 
-Not covered in these insights — likely includes events, major gifts, grants, and other channels.
+## 3. Canal 2 — Door-drops
 
-## 2. Salesforce Pain Points (Opportunities for Givernance)
+### Operational flow
 
-| Pain Point | Detail | Givernance Opportunity |
-|-----------|--------|----------------------|
-| No native QR code generation | Had to build custom solution | Built-in QR+PDF generation per campaign |
-| No postal campaign workflow | Manual process, no tracking | End-to-end postal campaign wizard |
-| Expensive per-user licensing | NPOs pay for inactive users | Commission-based or hybrid pricing model |
-| Complex customization | Solutions were either "hackish" or too expensive | Purpose-built for NPO fundraising workflows |
-| No campaign ROI tracking | Manual spreadsheet calculations | Native ROI dashboard per campaign |
+```
+1. Create door-drop campaign
+2. Define target geographic zone (postal codes / commune)
+3. Generate generic PDF letter (no personalisation — constituents unknown)
+   - QR code encodes campaign_id only (no constituent_id)
+4. Contract with La Poste (or equivalent) to distribute to zone
+5. Monitor incoming payments
+   - First gift from unknown person → create new constituent record
+   - QR code links payment to campaign
+6. Track ROI: mailing cost vs. donations received
+```
 
-## 3. Pricing Model Insight
+### Key metrics
+- **ROI per campaign** is the critical metric (cost of printing + postage vs. donations received)
+- **Cost per acquisition**: how much it costs to acquire one new donor via door-drop
+- **Constant renewal needed**: door-drops must be run regularly to maintain donor pipeline. NPOs that stop door-dropping see donor attrition within 1-2 years.
 
-Greg recommends a **commission-based model** (percentage of donations processed through the platform) rather than per-user subscription:
+---
 
-- **Why**: NPOs have variable staff activity. Salesforce charges per user even when staff don't log in for months. A commission model aligns Givernance's revenue with the value it creates for the NPO.
-- **Reference**: A company called **Filigrane** uses a similar approach in the NPO data space.
-- **Suggested approach**: Small commission (0.5–1%) on donations processed via Givernance (Stripe Connect online donations + QR-matched postal donations).
+## 4. Canal 3 — Dons en ligne (digital, ~20%)
 
-## 4. Migration Reality
+### Operational flow
 
-### Case Study: Filigrane Migration
+```
+1. NPO connects their Stripe account via Stripe Connect OAuth
+   - Givernance NEVER handles money → no PSP status required
+   - NPO creates their own Stripe account, Givernance plugs into it
+2. Create digital campaign → activate public donation page
+3. Share URL or embed widget/iframe on NPO website
+   - Widget inherits site styling (just a form plugged to Stripe + Givernance DB)
+4. Donor fills form → Stripe processes payment → webhook to Givernance
+5. Givernance creates donation record + constituent (if new) + receipt
+6. Campaign dashboard updated in real-time
+```
 
-- Source: SQL database with courrier/mailing data
-- Problem: **340 columns** on a single spreadsheet — 4 new columns added per campaign over years
-- Target model: normalized into **4 entities**: personnes (constituents), foyers (households), donations, campagnes (campaigns)
-- This is the real migration challenge NPOs face — not clean Salesforce exports, but decades of accumulated spreadsheet/database debt
+### Stripe Connect architecture
+- **Model**: Stripe Connect Standard (NPO owns account, Givernance is platform)
+- **No PSP status**: Givernance does not process or transit funds — the NPO's Stripe account does
+- **Already proven**: Greg has previously implemented Stripe <> Salesforce integration using this exact pattern
+- **Payment methods**: Cards, SEPA Direct Debit, iDEAL, Bancontact (Stripe handles all EU methods)
 
-### Implications for Givernance Migration Toolkit
-
-- Must handle denormalized spreadsheets, not just Salesforce objects
-- Column mapping UI is critical — users need to visually map 340 columns to the relational model
-- Household deduplication and linking is a key migration step
-- Campaign history reconstruction from flat data is non-trivial
-
-## 5. Integration Architecture Notes
-
-### Stripe Connect Flow
+### Integration flow
 ```
 NPO admin → Givernance settings → "Connect Stripe" button
   → OAuth redirect to Stripe
@@ -85,15 +103,84 @@ NPO admin → Givernance settings → "Connect Stripe" button
   → Webhook: Stripe → Givernance → creates donation record + matches campaign
 ```
 
-### QR Code Payment Flow
-```
-Campaign created → Constituents selected → QR codes generated (campaign_id + constituent_id)
-  → PDFs generated with personalized letter + QR
-  → Printed and mailed
-  → Donor scans QR → payment initiated (bank transfer reference contains QR data)
-  → Payment received → auto-matched to constituent + campaign
-  → Campaign dashboard updated in real-time
-```
+---
+
+## 5. Salesforce gaps identified
+
+Greg's field experience revealed these critical gaps in Salesforce NPSP for European fundraising:
+
+| Gap | Impact | What Greg had to build custom |
+|-----|--------|-------------------------------|
+| No native QR code generation | Cannot run postal campaigns without custom dev | Built custom QR code generator |
+| No PDF letter generation with merge fields | Manual mail merge via Word/external tools | Various workarounds ("solutions a l'arrache") or expensive add-ons |
+| No campaign ROI tracking | Cannot evaluate door-drop effectiveness | Custom reports |
+| No Stripe Connect integration | No native EU payment processing | Custom Stripe <> Salesforce integration |
+| No public donation page builder | Need external tools (Donorbox, etc.) for online giving | External tools plugged in |
+| No postal campaign workflow | No end-to-end flow from constituent selection to payment matching | Entirely custom-built |
+
+**Key quote**: *"Salesforce n'a pas un truc cle en main comme ca QR Code. Nous, on avait du creer le generateur de QR Code pour generer les docs."*
+
+These gaps represent **Givernance's primary differentiation opportunity**: native support for the workflows that represent 60%+ of European NPO fundraising.
+
+---
+
+## 6. Pricing model recommendation
+
+### Greg's insight: commission-based vs. per-seat
+
+**Problem with per-seat pricing** (Salesforce model):
+- NPOs pay for user licenses even when users are inactive
+- Small NPOs with 15-40 users find costs prohibitive (EUR 75+/seat)
+- Misaligned incentives: NPO pays regardless of value received
+
+**Recommended alternative: commission on processed donations**
+- Charge a percentage on donations processed through the platform
+- *"Facturation au ROI"* — billing aligned with the NPO's actual fundraising success
+- NPO pays proportionally to value received
+- More predictable for NPOs: cost scales with revenue
+
+**Reference**: A company called **Filigrane** uses a similar model in the French NPO market.
+
+**Implication for Givernance**: Consider a hybrid model — low base fee + commission on donations processed via Stripe Connect and QR code payments. This aligns Givernance's revenue with NPO success and removes the per-seat barrier.
+
+---
+
+## 7. Migration realities
+
+### Case study: Filigrane migration
+
+Greg described a real migration scenario:
+- **Source**: A legacy database (SQL) with a spreadsheet-based data model
+- **Problem**: Each new campaign added 4 columns to the same spreadsheet → **340 columns** total
+- **Migration target**: Normalised into relational model — `personnes` (constituents), `foyers` (households), `donations`, `campagnes` (campaigns)
+- **Lesson**: The denormalised spreadsheet-to-relational transformation is the real migration challenge
+
+### Implications for Givernance migration toolkit
+- Most NPOs migrating to Givernance will come from either Salesforce or spreadsheet/legacy DB systems
+- The spreadsheet case is arguably harder than Salesforce (no schema, no API)
+- Column-per-campaign pattern is extremely common in NPO spreadsheets
+- Migration tool must handle: column explosion → normalised tables, deduplication, household inference
+- Column mapping UI is critical — users need to visually map hundreds of columns to the relational model
+
+---
+
+## 8. Implications for Givernance
+
+### Priority features (from Greg's insights)
+
+1. **QR code + PDF letter generation** — Native, not an add-on. This is the #1 differentiator vs. Salesforce for European postal fundraising.
+2. **Stripe Connect onboarding** — Simple OAuth flow. NPO never needs to understand payment processing.
+3. **Campaign ROI dashboard** — Real-time cost vs. raised tracking. Essential for door-drop campaigns.
+4. **Public donation page builder** — Activatable per campaign, embeddable, Stripe-powered.
+5. **Payment matching engine** — QR code reference → auto-match to constituent + campaign.
+
+### Competitive positioning
+
+Givernance can claim: **"The only nonprofit CRM with native European postal campaign support — QR codes, PDF letters, payment matching, and campaign ROI — built in, not bolted on."**
+
+This is not a feature Salesforce can easily add (it requires deep integration between campaign management, document generation, payment processing, and constituent matching). It is a structural advantage for a purpose-built European NPO platform.
+
+---
 
 ## Source
 

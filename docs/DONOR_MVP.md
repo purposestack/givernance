@@ -23,7 +23,11 @@ From packages/shared/src/schema/:
 | `pledge_installments` | Individual installment records | 2 |
 | `funds` | Restricted/unrestricted fund designations | 2 |
 | `receipts` | Generated PDF receipts (S3 reference) | 2 |
+| `campaign_documents` | Generated QR codes + PDF letters per constituent per campaign | 2 |
+| `campaign_qr_codes` | QR code identifiers (campaign + constituent mapping) | 2 |
 | `campaigns` | Fundraising campaigns | 3 |
+| `campaign_public_pages` | Public donation page config per campaign | 3b |
+| `stripe_connections` | Stripe Connect OAuth state per org | 3b |
 | `donor_lifecycle` | LYBUNT/SYBUNT flags (materialized) | 3 |
 | `gdpr_consents` | Consent records per constituent | 5 |
 | `gdpr_sar_requests` | Subject access requests | 5 |
@@ -51,10 +55,23 @@ From packages/shared/src/schema/:
 - `POST /v1/pledges` — create recurring pledge
 - `GET /v1/pledges/:id/installments` — installment schedule
 
+### QR Codes & PDF Letters (Sprint 2)
+- `POST /v1/campaigns/:id/documents` — generate QR codes + personalised PDF letters for selected constituents
+- `GET /v1/campaigns/:id/documents` — list generated documents with status (generated, printed, sent, payment_received)
+- `GET /v1/campaigns/:id/documents/:docId/pdf` — download individual PDF letter
+
 ### Campaigns (Sprint 3)
 - `GET /v1/campaigns` — list
-- `POST /v1/campaigns` — create
+- `POST /v1/campaigns` — create (with type: nominative_postal, door_drop, digital, event, mixed)
 - `GET /v1/campaigns/:id/stats` — totals by source, period
+- `GET /v1/campaigns/:id/roi` — ROI breakdown (cost vs. raised, by channel)
+
+### Stripe Connect & Public Donation Page (Sprint 3b)
+- `POST /v1/admin/stripe-connect` — initiate Stripe Connect OAuth onboarding for NPO
+- `GET /v1/admin/stripe-connect` — current Stripe connection status
+- `DELETE /v1/admin/stripe-connect` — disconnect Stripe account
+- `GET /v1/campaigns/:id/public-page` — public donation page (unauthenticated, embeddable)
+- `POST /v1/donations/stripe-webhook` — Stripe payment webhook (creates donation + constituent if new)
 
 ### Reports (Sprint 3)
 - `GET /v1/reports/lybunt` — LYBUNT donor list
