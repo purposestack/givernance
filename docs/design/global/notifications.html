@@ -7,6 +7,7 @@
   <title>Givernance &mdash; Notifications</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Dashboard background (simplified) ── */
     .dashboard-grid-bg {
@@ -387,43 +388,43 @@
       <!-- Navigation -->
       <nav class="sidebar-nav">
         <a href="../dashboard.html" class="nav-item active">
-          <span class="nav-item-icon">&#9634;</span>
+          <span class="nav-item-icon"><i data-lucide="layout-grid" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Dashboard</span>
         </a>
         <a href="../constituents/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9775;</span>
+          <span class="nav-item-icon"><i data-lucide="users" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Constituants</span>
         </a>
         <a href="../donations/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9829;</span>
+          <span class="nav-item-icon"><i data-lucide="heart" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Dons &amp; Campagnes</span>
         </a>
         <a href="../grants/kanban.html" class="nav-item">
-          <span class="nav-item-icon">&#9733;</span>
+          <span class="nav-item-icon"><i data-lucide="bar-chart-3" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Subventions</span>
         </a>
         <a href="../programs/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9670;</span>
+          <span class="nav-item-icon"><i data-lucide="layers" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Programmes</span>
         </a>
         <a href="../volunteers/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9996;</span>
+          <span class="nav-item-icon"><i data-lucide="hand-heart" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">B&#233;n&#233;voles</span>
         </a>
         <a href="../impact/dashboard.html" class="nav-item">
-          <span class="nav-item-icon">&#9678;</span>
+          <span class="nav-item-icon"><i data-lucide="activity" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Impact</span>
         </a>
         <a href="../communications/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9993;</span>
+          <span class="nav-item-icon"><i data-lucide="mail" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Communications</span>
         </a>
         <a href="../reports/library.html" class="nav-item">
-          <span class="nav-item-icon">&#9776;</span>
+          <span class="nav-item-icon"><i data-lucide="bar-chart" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Rapports</span>
         </a>
         <a href="../admin/index.html" class="nav-item">
-          <span class="nav-item-icon">&#9881;</span>
+          <span class="nav-item-icon"><i data-lucide="settings" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Param&#232;tres</span>
         </a>
       </nav>
@@ -461,7 +462,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn bell-active" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:18px;height:18px;"></i>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -534,7 +535,7 @@
         <span class="notifications-count">4</span>
         <div class="notifications-header-spacer"></div>
         <a href="#" class="notifications-mark-read">Tout marquer comme lu</a>
-        <a href="../dashboard.html"><button class="notifications-close" aria-label="Fermer les notifications">&times;</button></a>
+        <a href="../dashboard.html"><button class="notifications-close" aria-label="Fermer les notifications"><i data-lucide="x" style="width:18px;height:18px;"></i></button></a>
       </div>
 
       <!-- ── Filter Tabs ── -->
@@ -550,7 +551,7 @@
 
         <!-- Notification 1: Echeance de subvention (unread, amber) -->
         <div class="notification-item unread accent-amber" role="listitem">
-          <div class="notification-icon icon-amber">&#9888;&#65039;</div>
+          <div class="notification-icon icon-amber"><i data-lucide="alert-triangle" style="width:18px;height:18px;"></i></div>
           <div class="notification-content">
             <div class="notification-content-header">
               <span class="notification-content-title">&#201;ch&#233;ance de subvention proche</span>
@@ -568,7 +569,7 @@
 
         <!-- Notification 2: Suggestion IA (unread, green) -->
         <div class="notification-item unread accent-green" role="listitem">
-          <div class="notification-icon icon-green">&#10024;</div>
+          <div class="notification-icon icon-green"><i data-lucide="sparkles" style="width:18px;height:18px;"></i></div>
           <div class="notification-content">
             <div class="notification-content-header">
               <span class="notification-content-title">Suggestion IA : R&#233;activation donateurs</span>
@@ -588,7 +589,7 @@
 
         <!-- Notification 3: Rapport pret (unread, sky) -->
         <div class="notification-item unread accent-sky" role="listitem">
-          <div class="notification-icon icon-sky">&#128202;</div>
+          <div class="notification-icon icon-sky"><i data-lucide="file-bar-chart" style="width:18px;height:18px;"></i></div>
           <div class="notification-content">
             <div class="notification-content-header">
               <span class="notification-content-title">Rapport pr&#234;t</span>
@@ -606,7 +607,7 @@
 
         <!-- Notification 4: Invitation equipe (unread, indigo) -->
         <div class="notification-item unread accent-indigo" role="listitem">
-          <div class="notification-icon icon-indigo">&#128101;</div>
+          <div class="notification-icon icon-indigo"><i data-lucide="user-plus" style="width:18px;height:18px;"></i></div>
           <div class="notification-content">
             <div class="notification-content-header">
               <span class="notification-content-title">Nouvelle invitation d'&#233;quipe</span>
@@ -621,7 +622,7 @@
 
         <!-- Notification 5: Don recurrent (read) -->
         <div class="notification-item read accent-green" role="listitem">
-          <div class="notification-icon icon-green">&#128176;</div>
+          <div class="notification-icon icon-green"><i data-lucide="wallet" style="width:18px;height:18px;"></i></div>
           <div class="notification-content">
             <div class="notification-content-header">
               <span class="notification-content-title">Don r&#233;current re&#231;u</span>
@@ -635,7 +636,7 @@
 
         <!-- Notification 6: Campagne 50% atteint (read) -->
         <div class="notification-item read accent-green" role="listitem">
-          <div class="notification-icon icon-green">&#9989;</div>
+          <div class="notification-icon icon-green"><i data-lucide="check-circle" style="width:18px;height:18px;"></i></div>
           <div class="notification-content">
             <div class="notification-content-header">
               <span class="notification-content-title">Campagne Hiver 2026 : 50% atteint</span>
@@ -660,5 +661,6 @@
 
   </div>
   <!-- END APP LAYOUT -->
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>
