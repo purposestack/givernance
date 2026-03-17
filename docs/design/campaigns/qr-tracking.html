@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="../shared/assets/logo-icon.png">
+  <title>Givernance &mdash; Suivi QR codes</title>
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+  <style>
+    /* ── Page-specific styles for campaigns/qr-tracking ── */
+
+    /* Filter bar */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+
+    .filter-chips {
+      display: flex;
+      gap: var(--space-2);
+    }
+
+    .filter-chip {
+      display: inline-flex;
+      align-items: center;
+      height: var(--btn-height-sm);
+      padding: 0 var(--space-4);
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--color-border);
+      background: var(--color-surface-container-lowest);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition: var(--transition-base);
+    }
+
+    .filter-chip:hover {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+    }
+
+    .filter-chip--active {
+      background: var(--color-primary);
+      color: var(--color-on-primary);
+      border-color: var(--color-primary);
+    }
+
+    .filter-chip--active:hover {
+      background: var(--color-primary-hover);
+      color: var(--color-on-primary);
+    }
+
+    .filter-search {
+      margin-left: auto;
+      position: relative;
+    }
+
+    .filter-search-input {
+      height: var(--btn-height-sm);
+      padding: 0 var(--space-4) 0 var(--space-10);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-input);
+      background: var(--color-surface-container-lowest);
+      font-family: var(--font-body);
+      font-size: var(--text-sm);
+      color: var(--color-text);
+      width: 260px;
+      outline: none;
+      transition: var(--transition-base);
+    }
+
+    .filter-search-input:focus {
+      border-color: var(--color-primary);
+      box-shadow: var(--focus-ring);
+    }
+
+    .filter-search-icon {
+      position: absolute;
+      left: var(--space-3);
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--color-text-muted);
+      font-size: 18px;
+      pointer-events: none;
+    }
+
+    /* QR code mini square */
+    .qr-mini {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      background: var(--color-primary-50);
+      border-radius: var(--radius-sm);
+      margin-right: var(--space-2);
+      flex-shrink: 0;
+      vertical-align: middle;
+    }
+
+    .qr-mini-inner {
+      width: 10px;
+      height: 10px;
+      background: var(--color-primary);
+      border-radius: 2px;
+      opacity: 0.3;
+    }
+
+    /* QR code cell layout */
+    .cell-qr {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .cell-qr-code {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
+    /* Cell mono */
+    .cell-mono {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Empty cell dash */
+    .cell-empty {
+      color: var(--color-text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-layout">
+
+    <!-- ============================== -->
+    <!--           Sidebar               -->
+    <!-- ============================== -->
+    <aside class="sidebar">
+  <div class="sidebar-brand">
+    <img src="../shared/assets/logo-icon.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+    <span class="sidebar-brand-text">Givernance</span>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="../dashboard.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">dashboard</span>
+      <span>Dashboard</span>
+    </a>
+    <a href="../constituents/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">groups</span>
+      <span>Constituants</span>
+    </a>
+    <a href="../donations/list.html" class="nav-item nav-item--active">
+      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+      <span>Dons &amp; Campagnes</span>
+    </a>
+    <a href="../grants/kanban.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">account_balance</span>
+      <span>Subventions</span>
+    </a>
+    <a href="../programs/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">layers</span>
+      <span>Programmes</span>
+    </a>
+    <a href="../volunteers/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">front_hand</span>
+      <span>B&#233;n&#233;voles</span>
+    </a>
+    <a href="../impact/dashboard.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">bar_chart</span>
+      <span>Impact</span>
+    </a>
+    <a href="../communications/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">forum</span>
+      <span>Communications</span>
+    </a>
+    <a href="../reports/library.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">assessment</span>
+      <span>Rapports</span>
+    </a>
+    <a href="../admin/index.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">settings</span>
+      <span>Param&#232;tres</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-footer-org">Association Solidarit&#233; M&#233;d.</div>
+    <div class="sidebar-footer-user">
+      <div class="sidebar-footer-avatar">CM</div>
+      <span class="sidebar-footer-name">Claire Martin</span>
+    </div>
+  </div>
+</aside>
+
+    <!-- ============================== -->
+    <!--         Main Wrapper            -->
+    <!-- ============================== -->
+    <div class="main-wrapper">
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
+          <a href="../donations/list.html">Dons &amp; Campagnes</a>
+          <span class="topbar-breadcrumb-sep">&#8250;</span>
+          <a href="list.html">Campagnes</a>
+          <span class="topbar-breadcrumb-sep">&#8250;</span>
+          <a href="detail.html">Appel aux dons Hiver 2026</a>
+          <span class="topbar-breadcrumb-sep">&#8250;</span>
+          <span class="topbar-breadcrumb-current">Suivi QR</span>
+        </nav>
+
+        <a href="../global/command-palette.html" class="topbar-search">
+          <input
+            class="topbar-search-input"
+            type="search"
+            placeholder="Rechercher..."
+            aria-label="Recherche globale"
+          >
+        </a>
+
+        <div class="topbar-actions">
+          <a href="../global/notifications.html" class="topbar-icon-btn" type="button" aria-label="Notifications">
+            <span class="material-symbols-outlined" style="font-size:20px">notifications</span>
+            <span class="notification-dot"></span>
+          </a>
+          <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Martin">CM</a>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main-content">
+
+        <!-- ============================================================
+             PAGE HEADER
+             ============================================================ -->
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Suivi QR codes &amp; paiements</h1>
+            <p class="page-subtitle">Appel aux dons Hiver 2026 &mdash; 847 lettres envoy&#233;es</p>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px">download</span> T&#233;l&#233;charger CSV</button>
+            <button class="btn btn-primary" type="button"><span class="material-symbols-outlined" style="font-size:16px">send</span> Relancer non-pay&#233;s</button>
+          </div>
+        </div>
+
+        <!-- ============================================================
+             STAT WIDGETS
+             ============================================================ -->
+        <div class="grid-4 mb-6">
+
+          <!-- Stat 1: Lettres envoy&#233;es -->
+          <div class="stat-widget">
+            <div class="stat-widget-label">Lettres envoy&#233;es</div>
+            <div class="stat-widget-value">847</div>
+            <div class="stat-widget-trend"><span class="material-symbols-outlined" style="font-size:14px">check_circle</span> 100% distribu&#233;</div>
+          </div>
+
+          <!-- Stat 2: Paiements re&#231;us -->
+          <div class="stat-widget">
+            <div class="stat-widget-label">Paiements re&#231;us</div>
+            <div class="stat-widget-value">234</div>
+            <div class="stat-widget-trend stat-widget-trend--up"><span class="material-symbols-outlined" style="font-size:14px">trending_up</span> +12 cette semaine</div>
+          </div>
+
+          <!-- Stat 3: Taux de retour -->
+          <div class="stat-widget">
+            <div class="stat-widget-label">Taux de retour</div>
+            <div class="stat-widget-value">27,6%</div>
+            <div class="stat-widget-trend stat-widget-trend--up"><span class="material-symbols-outlined" style="font-size:14px">trending_up</span> +2,1% vs campagne pr&#233;c&#233;dente</div>
+          </div>
+
+          <!-- Stat 4: Montant total -->
+          <div class="stat-widget">
+            <div class="stat-widget-label">Montant total</div>
+            <div class="stat-widget-value">&euro;41&nbsp;580</div>
+            <div class="stat-widget-trend"><span class="material-symbols-outlined" style="font-size:14px">payments</span> Don moyen : &euro;178</div>
+          </div>
+
+        </div>
+
+        <!-- ============================================================
+             FILTER BAR
+             ============================================================ -->
+        <div class="filter-bar mb-6">
+          <div class="filter-chips">
+            <button class="filter-chip" type="button">Tous</button>
+            <button class="filter-chip filter-chip--active" type="button">Pay&#233;</button>
+            <button class="filter-chip" type="button">En attente</button>
+            <button class="filter-chip" type="button">Non envoy&#233;</button>
+          </div>
+          <div class="filter-search">
+            <span class="material-symbols-outlined filter-search-icon">search</span>
+            <input class="filter-search-input" type="search" placeholder="Rechercher un constituant..." aria-label="Rechercher un constituant">
+          </div>
+        </div>
+
+        <!-- ============================================================
+             QR TRACKING TABLE
+             ============================================================ -->
+        <div class="card">
+
+          <div class="data-table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th data-sortable>Constituant</th>
+                  <th>QR Code</th>
+                  <th data-sortable>Envoy&#233; le</th>
+                  <th>Statut</th>
+                  <th class="text-right" data-sortable>Montant</th>
+                  <th data-sortable>Date du don</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Row 1 -->
+                <tr>
+                  <td class="cell-name"><a href="../constituents/detail.html">Marie-Claire Fontaine</a></td>
+                  <td>
+                    <div class="cell-qr">
+                      <span class="qr-mini"><span class="qr-mini-inner"></span></span>
+                      <span class="cell-qr-code">CF-2026-001-0047</span>
+                    </div>
+                  </td>
+                  <td>15 f&#233;v. 2026</td>
+                  <td><span class="badge badge-success">Pay&#233;</span></td>
+                  <td class="text-right cell-mono">&euro;500</td>
+                  <td>2 mars 2026</td>
+                </tr>
+                <!-- Row 2 -->
+                <tr>
+                  <td class="cell-name"><a href="../constituents/detail.html">Ahmed Benali</a></td>
+                  <td>
+                    <div class="cell-qr">
+                      <span class="qr-mini"><span class="qr-mini-inner"></span></span>
+                      <span class="cell-qr-code">CF-2026-001-0123</span>
+                    </div>
+                  </td>
+                  <td>15 f&#233;v. 2026</td>
+                  <td><span class="badge badge-success">Pay&#233;</span></td>
+                  <td class="text-right cell-mono">&euro;200</td>
+                  <td>28 f&#233;v. 2026</td>
+                </tr>
+                <!-- Row 3 -->
+                <tr>
+                  <td class="cell-name"><a href="../constituents/detail.html">Sophie Lemaire</a></td>
+                  <td>
+                    <div class="cell-qr">
+                      <span class="qr-mini"><span class="qr-mini-inner"></span></span>
+                      <span class="cell-qr-code">CF-2026-001-0089</span>
+                    </div>
+                  </td>
+                  <td>15 f&#233;v. 2026</td>
+                  <td><span class="badge badge-success">Pay&#233;</span></td>
+                  <td class="text-right cell-mono">&euro;150</td>
+                  <td>5 mars 2026</td>
+                </tr>
+                <!-- Row 4 -->
+                <tr>
+                  <td class="cell-name"><a href="../constituents/detail.html">Pierre Duval</a></td>
+                  <td>
+                    <div class="cell-qr">
+                      <span class="qr-mini"><span class="qr-mini-inner"></span></span>
+                      <span class="cell-qr-code">CF-2026-001-0234</span>
+                    </div>
+                  </td>
+                  <td>15 f&#233;v. 2026</td>
+                  <td><span class="badge badge-success">Pay&#233;</span></td>
+                  <td class="text-right cell-mono">&euro;100</td>
+                  <td>1 mars 2026</td>
+                </tr>
+                <!-- Row 5 -->
+                <tr>
+                  <td class="cell-name"><a href="../constituents/detail.html">Jean-Claude Martin</a></td>
+                  <td>
+                    <div class="cell-qr">
+                      <span class="qr-mini"><span class="qr-mini-inner"></span></span>
+                      <span class="cell-qr-code">CF-2026-001-0156</span>
+                    </div>
+                  </td>
+                  <td>15 f&#233;v. 2026</td>
+                  <td><span class="badge badge-success">Pay&#233;</span></td>
+                  <td class="text-right cell-mono">&euro;75</td>
+                  <td>10 mars 2026</td>
+                </tr>
+                <!-- Row 6 -->
+                <tr>
+                  <td class="cell-name"><a href="../constituents/detail.html">Famille Rossi</a></td>
+                  <td>
+                    <div class="cell-qr">
+                      <span class="qr-mini"><span class="qr-mini-inner"></span></span>
+                      <span class="cell-qr-code">CF-2026-001-0301</span>
+                    </div>
+                  </td>
+                  <td>15 f&#233;v. 2026</td>
+                  <td><span class="badge badge-warning">En attente</span></td>
+                  <td class="text-right cell-empty">&mdash;</td>
+                  <td class="cell-empty">&mdash;</td>
+                </tr>
+                <!-- Row 7 -->
+                <tr>
+                  <td class="cell-name"><a href="../constituents/detail.html">Catherine Dubois</a></td>
+                  <td>
+                    <div class="cell-qr">
+                      <span class="qr-mini"><span class="qr-mini-inner"></span></span>
+                      <span class="cell-qr-code">CF-2026-001-0178</span>
+                    </div>
+                  </td>
+                  <td>15 f&#233;v. 2026</td>
+                  <td><span class="badge badge-warning">En attente</span></td>
+                  <td class="text-right cell-empty">&mdash;</td>
+                  <td class="cell-empty">&mdash;</td>
+                </tr>
+                <!-- Row 8 -->
+                <tr>
+                  <td class="cell-name"><a href="../constituents/detail.html">L&#233;a Bernard</a></td>
+                  <td>
+                    <div class="cell-qr">
+                      <span class="qr-mini"><span class="qr-mini-inner"></span></span>
+                      <span class="cell-qr-code">CF-2026-001-0445</span>
+                    </div>
+                  </td>
+                  <td>15 f&#233;v. 2026</td>
+                  <td><span class="badge badge-warning">En attente</span></td>
+                  <td class="text-right cell-empty">&mdash;</td>
+                  <td class="cell-empty">&mdash;</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="pagination">
+            <span class="pagination-info">Affichage 1-8 sur 847</span>
+            <div class="pagination-controls">
+              <button class="pagination-btn" disabled type="button"><span class="material-symbols-outlined" style="font-size:16px">chevron_left</span></button>
+              <button class="pagination-btn active" type="button">1</button>
+              <button class="pagination-btn" type="button">2</button>
+              <button class="pagination-btn" type="button">3</button>
+              <span class="pagination-ellipsis">&hellip;</span>
+              <button class="pagination-btn" type="button">106</button>
+              <button class="pagination-btn" type="button"><span class="material-symbols-outlined" style="font-size:16px">chevron_right</span></button>
+            </div>
+          </div>
+
+        </div>
+
+      </main>
+
+    </div>
+    <!-- end .main-wrapper -->
+
+  </div>
+  <!-- end .app-layout -->
+
+<script src="../shared/mobile.js"></script>
+</body>
+</html>

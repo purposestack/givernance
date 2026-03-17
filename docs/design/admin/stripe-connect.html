@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="../shared/assets/logo-icon.png">
+  <title>Givernance &mdash; Stripe Connect</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/base.css">
+  <style>
+    /* ── Page-specific styles for admin/stripe-connect ── */
+
+    .stripe-status-card {
+      display: flex;
+      align-items: center;
+      gap: var(--space-6);
+      flex-wrap: wrap;
+    }
+
+    .stripe-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-lg);
+      background: var(--color-indigo);
+      color: var(--color-white);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--text-xl);
+      font-weight: var(--weight-bold);
+      flex-shrink: 0;
+    }
+
+    .stripe-info {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .stripe-info-title {
+      font-size: var(--text-md);
+      font-weight: var(--weight-semi);
+      color: var(--color-text);
+      margin-bottom: var(--space-1);
+    }
+
+    .stripe-info-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      margin-top: var(--space-2);
+    }
+
+    .stripe-info-account {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .stripe-info-date {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    .stripe-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-shrink: 0;
+    }
+
+    .btn-danger-ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: var(--btn-height-md);
+      padding: 0 var(--space-4);
+      border-radius: var(--btn-radius);
+      font-family: var(--font-body);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-error);
+      background: transparent;
+      border: 1px solid var(--color-red-border);
+      cursor: pointer;
+      transition: var(--transition-base);
+    }
+
+    .btn-danger-ghost:hover {
+      background: var(--color-red-50);
+    }
+
+    .stripe-dashboard-link {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-primary);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .stripe-dashboard-link:hover {
+      text-decoration: underline;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-6);
+      margin-top: var(--space-6);
+    }
+
+    @media (max-width: 960px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .col-stack {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-3) 0;
+      border-bottom: 1px solid var(--color-border-light);
+      font-size: var(--text-sm);
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      color: var(--color-text-secondary);
+    }
+
+    .info-value {
+      color: var(--color-text);
+      font-weight: var(--weight-medium);
+      text-align: right;
+    }
+
+    /* Webhook config */
+    .webhook-url-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      margin-bottom: var(--space-4);
+    }
+
+    .webhook-url-row input {
+      flex: 1;
+      height: var(--input-height);
+      padding: 0 var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-input);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text);
+      background: var(--color-surface-container-lowest);
+    }
+
+    .webhook-secret-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      margin-bottom: var(--space-4);
+    }
+
+    .webhook-secret-value {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .webhook-events {
+      margin-top: var(--space-4);
+    }
+
+    .webhook-events-title {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-text);
+      margin-bottom: var(--space-2);
+    }
+
+    .webhook-events-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1-5);
+    }
+
+    .webhook-events-list li {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-surface-container-low);
+      border-radius: var(--radius-sm);
+      display: inline-block;
+      width: fit-content;
+    }
+
+    .webhook-status {
+      margin-top: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-green-text);
+    }
+
+    /* Mode selection */
+    .mode-option {
+      border: 2px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+      cursor: pointer;
+      transition: var(--transition-base);
+      margin-bottom: var(--space-3);
+    }
+
+    .mode-option:last-of-type {
+      margin-bottom: 0;
+    }
+
+    .mode-option--selected {
+      border-color: var(--color-primary);
+      background: rgba(9, 100, 71, 0.03);
+    }
+
+    .mode-option-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-bottom: var(--space-2);
+    }
+
+    .mode-radio {
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-full);
+      border: 2px solid var(--color-border-strong);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .mode-radio--active {
+      border-color: var(--color-primary);
+    }
+
+    .mode-radio--active::after {
+      content: '';
+      width: 10px;
+      height: 10px;
+      border-radius: var(--radius-full);
+      background: var(--color-primary);
+    }
+
+    .mode-option-label {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semi);
+      color: var(--color-text);
+    }
+
+    .mode-option-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-normal);
+      padding-left: 32px;
+    }
+
+    .mode-warning {
+      font-size: var(--text-xs);
+      color: var(--color-amber-text);
+      margin-top: var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .mode-warning .material-symbols-outlined {
+      font-size: 16px;
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-4);
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-family: var(--font-heading);
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-medium);
+      color: var(--color-text);
+      line-height: var(--leading-tight);
+    }
+
+    .stat-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    /* Table compact */
+    .table-compact {
+      font-size: var(--text-sm);
+    }
+
+    .table-compact th {
+      font-size: var(--text-xs);
+    }
+
+    .link-more {
+      display: block;
+      text-align: right;
+      margin-top: var(--space-3);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-primary);
+    }
+
+    .link-more:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-layout">
+
+    <!-- ============================== -->
+    <!--           Sidebar               -->
+    <!-- ============================== -->
+    <aside class="sidebar">
+  <div class="sidebar-brand">
+    <img src="../shared/assets/logo-icon.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+    <span class="sidebar-brand-text">Givernance</span>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="../dashboard.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">dashboard</span>
+      <span>Dashboard</span>
+    </a>
+    <a href="../constituents/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">groups</span>
+      <span>Constituants</span>
+    </a>
+    <a href="../donations/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+      <span>Dons &amp; Campagnes</span>
+    </a>
+    <a href="../grants/kanban.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">account_balance</span>
+      <span>Subventions</span>
+    </a>
+    <a href="../programs/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">layers</span>
+      <span>Programmes</span>
+    </a>
+    <a href="../volunteers/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">front_hand</span>
+      <span>B&#233;n&#233;voles</span>
+    </a>
+    <a href="../impact/dashboard.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">bar_chart</span>
+      <span>Impact</span>
+    </a>
+    <a href="../communications/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">forum</span>
+      <span>Communications</span>
+    </a>
+    <a href="../reports/library.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">assessment</span>
+      <span>Rapports</span>
+    </a>
+    <a href="index.html" class="nav-item nav-item--active">
+      <span class="material-symbols-outlined nav-icon">settings</span>
+      <span>Param&#232;tres</span>
+    </a>
+        <div class="nav-sub">
+          <a href="organization.html" class="nav-sub-item">Organisation</a>
+          <a href="users.html" class="nav-sub-item">Utilisateurs</a>
+          <a href="roles.html" class="nav-sub-item">R&#244;les &amp; permissions</a>
+          <a href="integrations.html" class="nav-sub-item">Int&#233;grations</a>
+          <a href="stripe-connect.html" class="nav-sub-item nav-sub-item--active">Stripe Connect</a>
+          <a href="billing.html" class="nav-sub-item">Facturation</a>
+        </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-footer-org">Association Solidarit&#233; M&#233;d.</div>
+    <div class="sidebar-footer-user">
+      <div class="sidebar-footer-avatar">CM</div>
+      <span class="sidebar-footer-name">Claire Martin</span>
+    </div>
+  </div>
+</aside>
+
+    <!-- ============================== -->
+    <!--         Main Wrapper            -->
+    <!-- ============================== -->
+    <div class="main-wrapper">
+
+      <header class="topbar">
+        <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
+          <a href="index.html">Param&#232;tres</a>
+          <span class="topbar-breadcrumb-sep">&#8250;</span>
+          <span class="topbar-breadcrumb-current">Stripe Connect</span>
+        </nav>
+
+        <a href="../global/command-palette.html" class="topbar-search">
+          <input class="topbar-search-input" type="search" placeholder="Rechercher...  &#8984;K" aria-label="Recherche globale">
+        </a>
+
+        <div class="topbar-actions">
+          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">
+            <span class="material-symbols-outlined">notifications</span>
+            <span class="notification-dot"></span>
+          </button></a>
+          <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil">CM</div></a>
+        </div>
+      </header>
+
+      <main class="main-content">
+
+        <!-- Page Header -->
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Stripe Connect</h1>
+            <p class="page-subtitle">G&#233;rez votre connexion Stripe pour accepter les dons en ligne.</p>
+          </div>
+        </div>
+
+        <!-- Connection Status Card -->
+        <div class="card">
+          <div class="stripe-status-card">
+            <div class="stripe-logo">S</div>
+            <div class="stripe-info">
+              <div class="stripe-info-title">Stripe Connect</div>
+              <div class="stripe-info-meta">
+                <span class="badge badge-success">Connect&#233;</span>
+                <span class="stripe-info-account">acct_1NqM9pLkjsdfKH3w</span>
+                <span class="stripe-info-date">Connect&#233; depuis le 15 janvier 2026</span>
+              </div>
+            </div>
+            <div class="stripe-actions">
+              <button class="btn-danger-ghost" type="button">D&#233;connecter</button>
+              <a href="#" class="stripe-dashboard-link">Tableau de bord Stripe &rarr;</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Two-column layout -->
+        <div class="two-col">
+
+          <!-- LEFT column -->
+          <div class="col-stack">
+
+            <!-- Account Info -->
+            <div class="card">
+              <h2 class="card-title">Informations du compte</h2>
+              <div style="margin-top: var(--space-4);">
+                <div class="info-row">
+                  <span class="info-label">Nom du compte</span>
+                  <span class="info-value">Association Solidarit&#233; M&#233;diterran&#233;enne</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Email</span>
+                  <span class="info-value">tresorerie@solidarite-med.org</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Pays</span>
+                  <span class="info-value">France</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Devise par d&#233;faut</span>
+                  <span class="info-value">EUR (&euro;)</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Type de compte</span>
+                  <span class="info-value">Standard</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Statut des paiements</span>
+                  <span class="info-value"><span class="badge badge-success">Actif</span></span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Statut des virements</span>
+                  <span class="info-value"><span class="badge badge-success">Actif</span></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Webhook Configuration -->
+            <div class="card">
+              <h2 class="card-title">Configuration webhook</h2>
+              <div style="margin-top: var(--space-4);">
+                <label style="font-size: var(--text-xs); color: var(--color-text-secondary); display: block; margin-bottom: var(--space-1);">URL du webhook</label>
+                <div class="webhook-url-row">
+                  <input type="text" readonly value="https://app.givernance.org/api/v1/webhooks/stripe">
+                  <button class="btn btn-secondary btn-sm" type="button">Copier</button>
+                </div>
+
+                <label style="font-size: var(--text-xs); color: var(--color-text-secondary); display: block; margin-bottom: var(--space-1);">Secret webhook</label>
+                <div class="webhook-secret-row">
+                  <span class="webhook-secret-value">whsec_&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;7Kx3</span>
+                  <button class="btn btn-ghost btn-sm" type="button">Afficher</button>
+                </div>
+
+                <div class="webhook-events">
+                  <div class="webhook-events-title">&#201;v&#233;nements &#233;cout&#233;s</div>
+                  <ul class="webhook-events-list">
+                    <li>payment_intent.succeeded</li>
+                    <li>payment_intent.payment_failed</li>
+                    <li>charge.refunded</li>
+                    <li>customer.subscription.created</li>
+                    <li>customer.subscription.deleted</li>
+                  </ul>
+                </div>
+
+                <div class="webhook-status">
+                  <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">check_circle</span>
+                  Derni&#232;re livraison r&#233;ussie : il y a 3 min
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /LEFT column -->
+
+          <!-- RIGHT column -->
+          <div class="col-stack">
+
+            <!-- Operating Mode -->
+            <div class="card">
+              <h2 class="card-title">Mode de fonctionnement</h2>
+              <div style="margin-top: var(--space-4);">
+                <div class="mode-option mode-option--selected">
+                  <div class="mode-option-header">
+                    <div class="mode-radio mode-radio--active"></div>
+                    <span class="mode-option-label">Production</span>
+                  </div>
+                  <div class="mode-option-desc">Les paiements sont r&#233;els et les fonds sont transf&#233;r&#233;s sur votre compte bancaire.</div>
+                </div>
+                <div class="mode-option">
+                  <div class="mode-option-header">
+                    <div class="mode-radio"></div>
+                    <span class="mode-option-label">Test</span>
+                  </div>
+                  <div class="mode-option-desc">Utilisez les cartes de test Stripe. Aucun vrai paiement n&#8217;est effectu&#233;.</div>
+                </div>
+                <div class="mode-warning">
+                  <span class="material-symbols-outlined">warning</span>
+                  Le changement de mode n&#233;cessite une reconfiguration des webhooks.
+                </div>
+              </div>
+            </div>
+
+            <!-- Recent Transactions -->
+            <div class="card">
+              <h2 class="card-title">Transactions r&#233;centes</h2>
+              <div style="margin-top: var(--space-4);">
+                <table class="table table-compact">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Donateur</th>
+                      <th style="text-align: right;">Montant</th>
+                      <th>Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>15 mars 2026</td>
+                      <td>Marie-Claire Fontaine</td>
+                      <td style="text-align: right; font-weight: var(--weight-medium);">&euro;500</td>
+                      <td><span class="badge badge-success">R&#233;ussi</span></td>
+                    </tr>
+                    <tr>
+                      <td>14 mars 2026</td>
+                      <td>Ahmed Benali</td>
+                      <td style="text-align: right; font-weight: var(--weight-medium);">&euro;200</td>
+                      <td><span class="badge badge-success">R&#233;ussi</span></td>
+                    </tr>
+                    <tr>
+                      <td>13 mars 2026</td>
+                      <td>Sophie Lemaire</td>
+                      <td style="text-align: right; font-weight: var(--weight-medium);">&euro;50</td>
+                      <td><span class="badge badge-success">R&#233;ussi</span></td>
+                    </tr>
+                    <tr>
+                      <td>12 mars 2026</td>
+                      <td>Pierre Duval</td>
+                      <td style="text-align: right; font-weight: var(--weight-medium);">&euro;100</td>
+                      <td><span class="badge badge-success">R&#233;ussi</span></td>
+                    </tr>
+                    <tr>
+                      <td>11 mars 2026</td>
+                      <td>Jean Morel</td>
+                      <td style="text-align: right; font-weight: var(--weight-medium);">&euro;25</td>
+                      <td><span class="badge badge-warning">En attente</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <a href="#" class="link-more">Voir toutes les transactions &rarr;</a>
+              </div>
+            </div>
+
+            <!-- Monthly Stats -->
+            <div class="card">
+              <h2 class="card-title">Statistiques du mois</h2>
+              <div class="stats-row" style="margin-top: var(--space-4);">
+                <div class="stat-item">
+                  <div class="stat-value">47</div>
+                  <div class="stat-label">Transactions r&#233;ussies</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-value">&euro;8&nbsp;420</div>
+                  <div class="stat-label">Volume total</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-value">&euro;252,60</div>
+                  <div class="stat-label">Frais Stripe (2,9% + 0,25&euro;)</div>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /RIGHT column -->
+
+        </div><!-- /two-col -->
+
+      </main>
+    </div>
+  </div>
+
+<script src="../shared/mobile.js"></script>
+</body>
+</html>
