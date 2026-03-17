@@ -7,8 +7,11 @@
   <title>B&eacute;n&eacute;ficiaires inscrits &mdash; Accompagnement R&eacute;fugi&eacute;s &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
+    .material-symbols-outlined { font-size: 20px; }
+    .sidebar .material-symbols-outlined { font-size: 20px; }
     /* ── Page-specific: PROG-003 Enrolled beneficiaries ── */
 
     .filter-bar-section {
@@ -112,43 +115,43 @@
   </div>
   <nav class="sidebar-nav">
     <a href="../dashboard.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="material-symbols-outlined nav-icon">dashboard</span>
       <span>Dashboard</span>
     </a>
     <a href="../constituents/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span class="material-symbols-outlined nav-icon">groups</span>
       <span>Constituants</span>
     </a>
     <a href="../donations/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
       <span>Dons &amp; Campagnes</span>
     </a>
     <a href="../grants/kanban.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="2"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="6"/></svg>
+      <span class="material-symbols-outlined nav-icon">account_tree</span>
       <span>Subventions</span>
     </a>
     <a href="list.html" class="nav-item nav-item--active">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      <span class="material-symbols-outlined nav-icon">layers</span>
       <span>Programmes</span>
     </a>
     <a href="../volunteers/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><path d="M12 21.23V12"/><path d="M8.7 8.7 12 12l3.3-3.3"/></svg>
+      <span class="material-symbols-outlined nav-icon">front_hand</span>
       <span>Bénévoles</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span class="material-symbols-outlined nav-icon">monitoring</span>
       <span>Impact</span>
     </a>
     <a href="../communications/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <span class="material-symbols-outlined nav-icon">forum</span>
       <span>Communications</span>
     </a>
     <a href="../reports/library.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span class="material-symbols-outlined nav-icon">assessment</span>
       <span>Rapports</span>
     </a>
     <a href="../admin/index.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/></svg>
+      <span class="material-symbols-outlined nav-icon">settings</span>
       <span>Paramètres</span>
     </a>
   </nav>
@@ -183,7 +186,7 @@
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications"><i data-lucide="bell" style="width:20px;height:20px;"></i><span class="notification-dot"></span></button></a>
+          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications"><span class="material-symbols-outlined">notifications</span><span class="notification-dot"></span></button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div></a>
         </div>
       </header>
@@ -258,7 +261,7 @@
                 <td><input type="checkbox" checked aria-label="S&eacute;lectionner Amira Al-Rashid"></td>
                 <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Amira Al-Rashid</a></td>
                 <td class="cell-secondary">12/09/2025</td>
-                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-success">Actif <span class="material-symbols-outlined" style="font-size:14px;">check</span></span></td>
                 <td>
                   <div class="flex items-center gap-2">
                     <span class="avatar avatar-sm avatar-green">FH</span>
@@ -268,7 +271,7 @@
                 <td class="cell-secondary">25/02/2026</td>
                 <td class="cell-mono">7</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
               <!-- Row 2 — selected -->
@@ -276,7 +279,7 @@
                 <td><input type="checkbox" checked aria-label="S&eacute;lectionner Youssef Karam"></td>
                 <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Youssef Karam</a></td>
                 <td class="cell-secondary">03/11/2025</td>
-                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-success">Actif <span class="material-symbols-outlined" style="font-size:14px;">check</span></span></td>
                 <td>
                   <div class="flex items-center gap-2">
                     <span class="avatar avatar-sm avatar-amber">SB</span>
@@ -286,7 +289,7 @@
                 <td class="cell-secondary">24/02/2026</td>
                 <td class="cell-mono">5</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
               <!-- Row 3 — selected -->
@@ -294,7 +297,7 @@
                 <td><input type="checkbox" checked aria-label="S&eacute;lectionner Marie Nguema"></td>
                 <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Marie Nguema</a></td>
                 <td class="cell-secondary">20/01/2026</td>
-                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-success">Actif <span class="material-symbols-outlined" style="font-size:14px;">check</span></span></td>
                 <td>
                   <div class="flex items-center gap-2">
                     <span class="avatar avatar-sm avatar-green">FH</span>
@@ -304,7 +307,7 @@
                 <td class="cell-secondary">22/02/2026</td>
                 <td class="cell-mono">3</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
               <!-- Row 4 -->
@@ -312,7 +315,7 @@
                 <td><input type="checkbox" aria-label="S&eacute;lectionner Khaled Mansour"></td>
                 <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Khaled Mansour</a></td>
                 <td class="cell-secondary">15/07/2025</td>
-                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-success">Actif <span class="material-symbols-outlined" style="font-size:14px;">check</span></span></td>
                 <td>
                   <div class="flex items-center gap-2">
                     <span class="avatar avatar-sm avatar-amber">SB</span>
@@ -322,7 +325,7 @@
                 <td class="cell-secondary">20/02/2026</td>
                 <td class="cell-mono">9</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
               <!-- Row 5 -->
@@ -330,7 +333,7 @@
                 <td><input type="checkbox" aria-label="S&eacute;lectionner Fatoumata Diarra"></td>
                 <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Fatoumata Diarra</a></td>
                 <td class="cell-secondary">02/12/2025</td>
-                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-success">Actif <span class="material-symbols-outlined" style="font-size:14px;">check</span></span></td>
                 <td>
                   <div class="flex items-center gap-2">
                     <span class="avatar avatar-sm avatar-indigo">NR</span>
@@ -340,7 +343,7 @@
                 <td class="cell-secondary">18/02/2026</td>
                 <td class="cell-mono">4</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
               <!-- Row 6 -->
@@ -348,7 +351,7 @@
                 <td><input type="checkbox" aria-label="S&eacute;lectionner Omar Sadiq"></td>
                 <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Omar Sadiq</a></td>
                 <td class="cell-secondary">10/01/2026</td>
-                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-success">Actif <span class="material-symbols-outlined" style="font-size:14px;">check</span></span></td>
                 <td>
                   <div class="flex items-center gap-2">
                     <span class="avatar avatar-sm avatar-green">FH</span>
@@ -358,7 +361,7 @@
                 <td class="cell-secondary">15/02/2026</td>
                 <td class="cell-mono">2</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
               <!-- Row 7 — Pending -->
@@ -366,12 +369,12 @@
                 <td><input type="checkbox" aria-label="S&eacute;lectionner Hassan Diallo"></td>
                 <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Hassan Diallo</a></td>
                 <td class="cell-secondary">08/02/2026</td>
-                <td><span class="badge badge-warning">En attente <i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-warning">En attente <span class="material-symbols-outlined" style="font-size:14px;">warning</span></span></td>
                 <td class="cell-secondary">&mdash;</td>
                 <td class="cell-secondary">&mdash;</td>
                 <td class="cell-mono">0</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
               <!-- Row 8 — Pending -->
@@ -379,12 +382,12 @@
                 <td><input type="checkbox" aria-label="S&eacute;lectionner Aisha Mohamed"></td>
                 <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Aisha Mohamed</a></td>
                 <td class="cell-secondary">12/02/2026</td>
-                <td><span class="badge badge-warning">En attente <i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-warning">En attente <span class="material-symbols-outlined" style="font-size:14px;">warning</span></span></td>
                 <td class="cell-secondary">&mdash;</td>
                 <td class="cell-secondary">&mdash;</td>
                 <td class="cell-mono">0</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
               <!-- Row 9 — Completed -->
@@ -402,7 +405,7 @@
                 <td class="cell-secondary">10/01/2026</td>
                 <td class="cell-mono">12</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
               <!-- Row 10 — Exited -->
@@ -410,7 +413,7 @@
                 <td><input type="checkbox" aria-label="S&eacute;lectionner Ibrahim Toure"></td>
                 <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Ibrahim Toure</a></td>
                 <td class="cell-secondary">20/03/2025</td>
-                <td><span class="badge badge-error">Sorti <i data-lucide="x" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-error">Sorti <span class="material-symbols-outlined" style="font-size:14px;">close</span></span></td>
                 <td>
                   <div class="flex items-center gap-2">
                     <span class="avatar avatar-sm avatar-indigo">NR</span>
@@ -420,7 +423,7 @@
                 <td class="cell-secondary">05/12/2025</td>
                 <td class="cell-mono">6</td>
                 <td class="text-center">
-                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button>
+                  <button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button>
                 </td>
               </tr>
             </tbody>
@@ -447,6 +450,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
+
 </body>
 </html>

@@ -7,7 +7,8 @@
   <title>Givernance &mdash; Rapport LYBUNT</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific styles for reports/view (REP-003) ── */
 
@@ -278,7 +279,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            <i data-lucide="bell" style="width:20px;height:20px;"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil">CD</div></a>
@@ -301,15 +302,15 @@
               <!-- Export dropdown (visible for mockup) -->
               <div class="export-menu">
                 <a href="#" class="export-menu-item">
-                  <span class="export-menu-icon"><i data-lucide="file-text" style="width:16px;height:16px;"></i></span>
+                  <span class="export-menu-icon"><span class="material-symbols-outlined" style="font-size:16px;">description</span></span>
                   CSV
                 </a>
                 <a href="#" class="export-menu-item">
-                  <span class="export-menu-icon"><i data-lucide="bar-chart-2" style="width:16px;height:16px;"></i></span>
+                  <span class="export-menu-icon"><span class="material-symbols-outlined" style="font-size:16px;">bar_chart</span></span>
                   Excel (.xlsx)
                 </a>
                 <a href="#" class="export-menu-item">
-                  <span class="export-menu-icon"><i data-lucide="file-text" style="width:16px;height:16px;"></i></span>
+                  <span class="export-menu-icon"><span class="material-symbols-outlined" style="font-size:16px;">description</span></span>
                   PDF
                 </a>
               </div>
@@ -492,6 +493,5 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

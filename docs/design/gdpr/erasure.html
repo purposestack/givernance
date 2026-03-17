@@ -7,7 +7,8 @@
   <title>Proc&eacute;dure d'effacement — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific styles for gdpr/erasure (GDPR-003) ── */
 
@@ -428,7 +429,7 @@
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications"><i data-lucide="bell" style="width:20px;height:20px;"></i></button></a>
+          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications"><span class="material-symbols-outlined">notifications</span></button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div></a>
         </div>
       </header>
@@ -442,13 +443,13 @@
             <p class="page-subtitle">Droit &agrave; l'oubli &mdash; Article 17 RGPD</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary" type="button"><i data-lucide="file-text" style="width:16px;height:16px;"></i> G&eacute;n&eacute;rer le certificat</button>
+            <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px;">description</span> G&eacute;n&eacute;rer le certificat</button>
           </div>
         </div>
 
         <!-- Serious warning banner -->
         <div class="alert alert-error mb-6">
-          <span class="alert-icon"><i data-lucide="alert-triangle" style="width:14px;height:14px;"></i></span>
+          <span class="alert-icon"><span class="material-symbols-outlined" style="font-size:14px;">warning</span></span>
           <div class="alert-content">
             <strong>Action irr&eacute;versible.</strong> L'effacement des donn&eacute;es est d&eacute;finitif. V&eacute;rifiez chaque cat&eacute;gorie de donn&eacute;es avant de proc&eacute;der. Les donn&eacute;es soumises &agrave; une obligation l&eacute;gale de conservation ne peuvent pas &ecirc;tre effac&eacute;es.
           </div>
@@ -456,13 +457,13 @@
 
         <!-- Subject context -->
         <div class="erasure-context">
-          <div class="erasure-context-icon"><i data-lucide="user" style="width:24px;height:24px;"></i></div>
+          <div class="erasure-context-icon"><span class="material-symbols-outlined" style="font-size:24px;">person</span></div>
           <div class="erasure-context-info">
             <div class="erasure-context-name">Nadia Berger</div>
             <div class="erasure-context-meta">
               <span>Demande re&ccedil;ue : 15/01/2026</span>
               <span>D&eacute;lai l&eacute;gal : 14/02/2026</span>
-              <span class="badge badge-error">En retard <i data-lucide="x" style="width:12px;height:12px;"></i></span>
+              <span class="badge badge-error">En retard <span class="material-symbols-outlined" style="font-size:14px;">close</span></span>
             </div>
           </div>
         </div>
@@ -473,7 +474,7 @@
         <div class="data-category">
           <div class="data-category-header">
             <div class="data-category-title">
-              <span class="data-category-title-icon"><i data-lucide="user" style="width:16px;height:16px;"></i></span>
+              <span class="data-category-title-icon"><span class="material-symbols-outlined" style="font-size:16px;">person</span></span>
               Donn&eacute;es personnelles
             </div>
             <span class="data-category-count">6 enregistrements</span>
@@ -485,7 +486,7 @@
                 Nom, pr&eacute;nom, date de naissance
                 <div class="data-item-detail">Nadia Berger, 14/03/1985</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effac&cedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effac&cedil;able</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" checked id="dp-2">
@@ -493,7 +494,7 @@
                 Adresse email
                 <div class="data-item-detail">nadia.berger@email.fr</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" checked id="dp-3">
@@ -501,7 +502,7 @@
                 T&eacute;l&eacute;phone
                 <div class="data-item-detail">06 98 76 54 32</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" checked id="dp-4">
@@ -509,7 +510,7 @@
                 Adresse postale
                 <div class="data-item-detail">12 rue des Oliviers, 13001 Marseille</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" checked id="dp-5">
@@ -517,7 +518,7 @@
                 Notes et commentaires internes
                 <div class="data-item-detail">3 notes de suivi</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" checked id="dp-6">
@@ -525,7 +526,7 @@
                 Photo de profil
                 <div class="data-item-detail">1 fichier (avatar.jpg)</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
           </div>
         </div>
@@ -534,7 +535,7 @@
         <div class="data-category">
           <div class="data-category-header">
             <div class="data-category-title">
-              <span class="data-category-title-icon"><i data-lucide="heart" style="width:16px;height:16px;"></i></span>
+              <span class="data-category-title-icon"><span class="material-symbols-outlined" style="font-size:16px;">favorite</span></span>
               Dons et donn&eacute;es financi&egrave;res
             </div>
             <span class="data-category-count">4 enregistrements</span>
@@ -546,7 +547,7 @@
                 Re&ccedil;us fiscaux (2024, 2025)
                 <div class="data-item-detail">2 re&ccedil;us &mdash; &euro;450 total</div>
               </label>
-              <span class="basis-badge basis-badge--legal"><i data-lucide="lock" style="width:14px;height:14px;"></i> Conservation l&eacute;gale 10 ans</span>
+              <span class="basis-badge basis-badge--legal"><span class="material-symbols-outlined" style="font-size:14px;">lock</span> Conservation l&eacute;gale 10 ans</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" disabled id="df-2">
@@ -554,7 +555,7 @@
                 &Eacute;critures comptables li&eacute;es
                 <div class="data-item-detail">4 &eacute;critures GL (512000, 754100)</div>
               </label>
-              <span class="basis-badge basis-badge--legal"><i data-lucide="lock" style="width:14px;height:14px;"></i> Conservation l&eacute;gale 10 ans</span>
+              <span class="basis-badge basis-badge--legal"><span class="material-symbols-outlined" style="font-size:14px;">lock</span> Conservation l&eacute;gale 10 ans</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" checked id="df-3">
@@ -562,7 +563,7 @@
                 Historique des paiements (d&eacute;tails carte/IBAN)
                 <div class="data-item-detail">Donn&eacute;es de paiement li&eacute;es &agrave; 3 transactions</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" checked id="df-4">
@@ -570,7 +571,7 @@
                 Pr&eacute;f&eacute;rences de don (montant r&eacute;current, fonds pr&eacute;f&eacute;r&eacute;)
                 <div class="data-item-detail">Pr&eacute;f&eacute;rence : 50&euro;/mois, Fonds M&eacute;diterran&eacute;e</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
           </div>
         </div>
@@ -579,7 +580,7 @@
         <div class="data-category">
           <div class="data-category-header">
             <div class="data-category-title">
-              <span class="data-category-title-icon"><i data-lucide="mail" style="width:16px;height:16px;"></i></span>
+              <span class="data-category-title-icon"><span class="material-symbols-outlined" style="font-size:16px;">mail</span></span>
               Communications
             </div>
             <span class="data-category-count">12 enregistrements</span>
@@ -591,7 +592,7 @@
                 Historique des emails envoy&eacute;s
                 <div class="data-item-detail">8 emails (newsletters, campagnes)</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" checked id="dc-2">
@@ -599,7 +600,7 @@
                 Donn&eacute;es de tracking (ouvertures, clics)
                 <div class="data-item-detail">M&eacute;triques d'engagement par email</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" checked id="dc-3">
@@ -607,7 +608,7 @@
                 Historique SMS
                 <div class="data-item-detail">2 SMS envoy&eacute;s</div>
               </label>
-              <span class="basis-badge basis-badge--erasable"><i data-lucide="check" style="width:12px;height:12px;"></i> Effa&ccedil;able</span>
+              <span class="basis-badge basis-badge--erasable"><span class="material-symbols-outlined" style="font-size:14px;">check</span> Effa&ccedil;able</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" disabled id="dc-4">
@@ -615,7 +616,7 @@
                 Courrier postal (copie re&ccedil;u fiscal)
                 <div class="data-item-detail">1 courrier li&eacute; au re&ccedil;u fiscal</div>
               </label>
-              <span class="basis-badge basis-badge--legal"><i data-lucide="lock" style="width:14px;height:14px;"></i> Conservation l&eacute;gale 10 ans</span>
+              <span class="basis-badge basis-badge--legal"><span class="material-symbols-outlined" style="font-size:14px;">lock</span> Conservation l&eacute;gale 10 ans</span>
             </div>
           </div>
         </div>
@@ -624,7 +625,7 @@
         <div class="data-category">
           <div class="data-category-header">
             <div class="data-category-title">
-              <span class="data-category-title-icon"><i data-lucide="lock" style="width:16px;height:16px;"></i></span>
+              <span class="data-category-title-icon"><span class="material-symbols-outlined" style="font-size:16px;">lock</span></span>
               Consentements et activit&eacute; RGPD
             </div>
             <span class="data-category-count">3 enregistrements</span>
@@ -636,7 +637,7 @@
                 Registre des consentements
                 <div class="data-item-detail">2 consentements (email marketing, traitement donn&eacute;es)</div>
               </label>
-              <span class="basis-badge basis-badge--retain"><i data-lucide="clock" style="width:12px;height:12px;"></i> Conserver 3 ans apr&egrave;s r&eacute;vocation</span>
+              <span class="basis-badge basis-badge--retain"><span class="material-symbols-outlined" style="font-size:14px;">schedule</span> Conserver 3 ans apr&egrave;s r&eacute;vocation</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" disabled id="dg-2">
@@ -644,7 +645,7 @@
                 Historique de la pr&eacute;sente demande d'effacement
                 <div class="data-item-detail">Demande SAR-2026-008, re&ccedil;ue 15/01/2026</div>
               </label>
-              <span class="basis-badge basis-badge--retain"><i data-lucide="clock" style="width:12px;height:12px;"></i> Conserver 5 ans (preuve conformit&eacute;)</span>
+              <span class="basis-badge basis-badge--retain"><span class="material-symbols-outlined" style="font-size:14px;">schedule</span> Conserver 5 ans (preuve conformit&eacute;)</span>
             </div>
             <div class="data-item">
               <input type="checkbox" class="data-item-checkbox" disabled id="dg-3">
@@ -652,7 +653,7 @@
                 Journal d'audit (connexions, modifications)
                 <div class="data-item-detail">14 entr&eacute;es dans le journal d'audit</div>
               </label>
-              <span class="basis-badge basis-badge--retain"><i data-lucide="clock" style="width:12px;height:12px;"></i> Conserver 3 ans</span>
+              <span class="basis-badge basis-badge--retain"><span class="material-symbols-outlined" style="font-size:14px;">schedule</span> Conserver 3 ans</span>
             </div>
           </div>
         </div>
@@ -660,7 +661,7 @@
         <!-- Consequences Summary -->
         <div class="consequences-card">
           <div class="consequences-title">
-            <span><i data-lucide="alert-triangle" style="width:14px;height:14px;"></i></span>
+            <span><span class="material-symbols-outlined" style="font-size:14px;">warning</span></span>
             R&eacute;capitulatif de l'effacement propos&eacute;
           </div>
 
@@ -681,27 +682,27 @@
 
           <ul class="consequences-list" style="margin-top: var(--space-4);">
             <li>
-              <span class="consequences-list-icon"><i data-lucide="x" style="width:12px;height:12px;"></i></span>
+              <span class="consequences-list-icon"><span class="material-symbols-outlined" style="font-size:14px;">close</span></span>
               <span>Le profil constituant sera <strong>anonymis&eacute;</strong> (nom remplac&eacute; par &laquo; Constituant supprim&eacute; &raquo;)</span>
             </li>
             <li>
-              <span class="consequences-list-icon"><i data-lucide="x" style="width:12px;height:12px;"></i></span>
+              <span class="consequences-list-icon"><span class="material-symbols-outlined" style="font-size:14px;">close</span></span>
               <span>Les coordonn&eacute;es (email, t&eacute;l&eacute;phone, adresse) seront <strong>supprim&eacute;es d&eacute;finitivement</strong></span>
             </li>
             <li>
-              <span class="consequences-list-icon"><i data-lucide="x" style="width:12px;height:12px;"></i></span>
+              <span class="consequences-list-icon"><span class="material-symbols-outlined" style="font-size:14px;">close</span></span>
               <span>L'historique des communications sera <strong>purg&eacute;</strong> (sauf courrier li&eacute; au re&ccedil;u fiscal)</span>
             </li>
             <li>
-              <span class="consequences-list-icon"><i data-lucide="x" style="width:12px;height:12px;"></i></span>
+              <span class="consequences-list-icon"><span class="material-symbols-outlined" style="font-size:14px;">close</span></span>
               <span>Les donn&eacute;es de paiement seront <strong>effac&eacute;es</strong> des syst&egrave;mes de paiement</span>
             </li>
             <li>
-              <span class="consequences-list-icon"><i data-lucide="lock" style="width:14px;height:14px;"></i></span>
+              <span class="consequences-list-icon"><span class="material-symbols-outlined" style="font-size:14px;">lock</span></span>
               <span>Les re&ccedil;us fiscaux et &eacute;critures comptables seront <strong>conserv&eacute;s 10 ans</strong> (art. L102B LPF)</span>
             </li>
             <li>
-              <span class="consequences-list-icon"><i data-lucide="lock" style="width:14px;height:14px;"></i></span>
+              <span class="consequences-list-icon"><span class="material-symbols-outlined" style="font-size:14px;">lock</span></span>
               <span>Le registre des consentements sera <strong>conserv&eacute; 3 ans</strong> apr&egrave;s r&eacute;vocation (preuve RGPD)</span>
             </li>
           </ul>
@@ -727,7 +728,7 @@
   <!-- ============================== -->
   <div class="modal-overlay">
     <div class="modal-card">
-      <div class="modal-icon"><i data-lucide="alert-triangle" style="width:24px;height:24px;"></i></div>
+      <div class="modal-icon"><span class="material-symbols-outlined" style="font-size:24px;">warning</span></div>
       <h2 class="modal-title">Confirmer l'effacement d&eacute;finitif</h2>
       <p class="modal-text">
         Vous &ecirc;tes sur le point d'effacer <strong>14 enregistrements</strong> pour <strong>Nadia Berger</strong>.<br>
@@ -745,6 +746,5 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

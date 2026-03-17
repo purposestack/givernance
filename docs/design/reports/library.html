@@ -7,7 +7,8 @@
   <title>Givernance &mdash; Biblioth&#232;que de rapports</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Reports Library Page Styles ── */
 
@@ -250,7 +251,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            <i data-lucide="bell" style="width:20px;height:20px;"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -307,7 +308,7 @@
             <!-- AI Insight -->
             <div class="report-card-ai">
               <div class="ai-card-header">
-                <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
+                <span class="ai-card-icon"><span class="material-symbols-outlined" style="font-size:16px;">auto_awesome</span></span>
                 <span class="ai-card-label">Suggestion IA</span>
               </div>
               <p class="ai-card-text">
@@ -426,6 +427,5 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

@@ -7,7 +7,8 @@
   <title>Demandes d'acc&egrave;s (SAR) — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific styles for gdpr/requests (GDPR-002) ── */
 
@@ -190,7 +191,7 @@
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications"><i data-lucide="bell" style="width:20px;height:20px;"></i></button></a>
+          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications"><span class="material-symbols-outlined">notifications</span></button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div></a>
         </div>
       </header>
@@ -231,7 +232,7 @@
 
         <!-- Alert for overdue -->
         <div class="alert alert-error mb-4">
-          <span class="alert-icon"><i data-lucide="alert-triangle" style="width:14px;height:14px;"></i></span>
+          <span class="alert-icon"><span class="material-symbols-outlined" style="font-size:14px;">warning</span></span>
           <div class="alert-content">
             <strong>1 demande en retard :</strong> La demande de Nadia Berger a d&eacute;pass&eacute; le d&eacute;lai l&eacute;gal de 30 jours. Action imm&eacute;diate requise.
           </div>
@@ -285,12 +286,12 @@
                 <td>
                   <div class="deadline-cell deadline--red">
                     <span class="deadline-date">14/02/2026</span>
-                    <span class="deadline-remaining"><i data-lucide="x" style="width:12px;height:12px;"></i> D&eacute;pass&eacute; de 13 j</span>
+                    <span class="deadline-remaining"><span class="material-symbols-outlined" style="font-size:14px;">close</span> D&eacute;pass&eacute; de 13 j</span>
                   </div>
                 </td>
-                <td><span class="badge badge-error">En retard <i data-lucide="x" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-error">En retard <span class="material-symbols-outlined" style="font-size:14px;">close</span></span></td>
                 <td>Claire Dubois</td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Traiter la demande"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Traiter la demande"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button></td>
               </tr>
               <!-- Row 2 — urgent (orange) -->
               <tr>
@@ -300,12 +301,12 @@
                 <td>
                   <div class="deadline-cell deadline--orange">
                     <span class="deadline-date">07/03/2026</span>
-                    <span class="deadline-remaining"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> 7 jours restants</span>
+                    <span class="deadline-remaining"><span class="material-symbols-outlined" style="font-size:14px;">warning</span> 7 jours restants</span>
                   </div>
                 </td>
-                <td><span class="badge badge-warning">En cours <i data-lucide="clock" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-warning">En cours <span class="material-symbols-outlined" style="font-size:14px;">schedule</span></span></td>
                 <td>Claire Dubois</td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Traiter la demande"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Traiter la demande"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button></td>
               </tr>
               <!-- Row 3 — comfortable (green) -->
               <tr>
@@ -315,12 +316,12 @@
                 <td>
                   <div class="deadline-cell deadline--green">
                     <span class="deadline-date">20/03/2026</span>
-                    <span class="deadline-remaining"><i data-lucide="check" style="width:12px;height:12px;"></i> 20 jours restants</span>
+                    <span class="deadline-remaining"><span class="material-symbols-outlined" style="font-size:14px;">check</span> 20 jours restants</span>
                   </div>
                 </td>
-                <td><span class="badge badge-warning">En cours <i data-lucide="clock" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-warning">En cours <span class="material-symbols-outlined" style="font-size:14px;">schedule</span></span></td>
                 <td>Marc Renaud</td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Traiter la demande"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Traiter la demande"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button></td>
               </tr>
               <!-- Row 4 — comfortable (green) -->
               <tr>
@@ -330,12 +331,12 @@
                 <td>
                   <div class="deadline-cell deadline--green">
                     <span class="deadline-date">24/03/2026</span>
-                    <span class="deadline-remaining"><i data-lucide="check" style="width:12px;height:12px;"></i> 24 jours restants</span>
+                    <span class="deadline-remaining"><span class="material-symbols-outlined" style="font-size:14px;">check</span> 24 jours restants</span>
                   </div>
                 </td>
-                <td><span class="badge badge-warning">En cours <i data-lucide="clock" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-warning">En cours <span class="material-symbols-outlined" style="font-size:14px;">schedule</span></span></td>
                 <td>Claire Dubois</td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Traiter la demande"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Traiter la demande"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button></td>
               </tr>
               <!-- Row 5 — completed -->
               <tr>
@@ -348,9 +349,9 @@
                     <span class="deadline-remaining" style="color: var(--color-text-muted);">Trait&eacute; en 18 j</span>
                   </div>
                 </td>
-                <td><span class="badge badge-success">Trait&eacute;e <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-success">Trait&eacute;e <span class="material-symbols-outlined" style="font-size:14px;">check</span></span></td>
                 <td>Marc Renaud</td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button></td>
               </tr>
               <!-- Row 6 — completed -->
               <tr>
@@ -363,9 +364,9 @@
                     <span class="deadline-remaining" style="color: var(--color-text-muted);">Trait&eacute; en 22 j</span>
                   </div>
                 </td>
-                <td><span class="badge badge-success">Trait&eacute;e <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-success">Trait&eacute;e <span class="material-symbols-outlined" style="font-size:14px;">check</span></span></td>
                 <td>Claire Dubois</td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button></td>
               </tr>
               <!-- Row 7 — completed -->
               <tr>
@@ -378,9 +379,9 @@
                     <span class="deadline-remaining" style="color: var(--color-text-muted);">Trait&eacute; en 12 j</span>
                   </div>
                 </td>
-                <td><span class="badge badge-success">Trait&eacute;e <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td><span class="badge badge-success">Trait&eacute;e <span class="material-symbols-outlined" style="font-size:14px;">check</span></span></td>
                 <td>Marc Renaud</td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><span class="material-symbols-outlined" style="font-size:16px;">visibility</span></button></td>
               </tr>
             </tbody>
           </table>
@@ -399,7 +400,7 @@
 
         <!-- Auto-reminder note -->
         <div class="auto-reminder">
-          <span class="auto-reminder-icon"><i data-lucide="clock" style="width:16px;height:16px;"></i></span>
+          <span class="auto-reminder-icon"><span class="material-symbols-outlined" style="font-size:16px;">schedule</span></span>
           <span><strong>Rappels automatiques :</strong> un email est envoy&eacute; &agrave; l'assign&eacute; &agrave; J+20, J+25 et J+28 si la demande n'est pas trait&eacute;e. Le DPO est notifi&eacute; &agrave; J+30.</span>
         </div>
 
@@ -408,6 +409,5 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

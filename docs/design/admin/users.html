@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/png" href="../shared/assets/logo-icon.png">
   <title>Givernance &mdash; Gestion des utilisateurs</title>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for admin/users (ADM-002) ── */
 
@@ -100,6 +101,10 @@
       color: var(--color-text);
     }
 
+    .action-menu-btn .material-symbols-outlined {
+      font-size: 20px;
+    }
+
     /* Table search input */
     .table-search {
       width: 260px;
@@ -148,7 +153,7 @@
 
     .modal-card {
       background: var(--color-surface);
-      border-radius: var(--radius-lg);
+      border-radius: var(--radius-2xl);
       box-shadow: var(--shadow-modal);
       width: 100%;
       max-width: 480px;
@@ -187,43 +192,43 @@
   </div>
   <nav class="sidebar-nav">
     <a href="../dashboard.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="material-symbols-outlined nav-icon">dashboard</span>
       <span>Dashboard</span>
     </a>
     <a href="../constituents/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span class="material-symbols-outlined nav-icon">groups</span>
       <span>Constituants</span>
     </a>
     <a href="../donations/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
       <span>Dons &amp; Campagnes</span>
     </a>
     <a href="../grants/kanban.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="2"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="6"/></svg>
+      <span class="material-symbols-outlined nav-icon">account_balance</span>
       <span>Subventions</span>
     </a>
     <a href="../programs/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      <span class="material-symbols-outlined nav-icon">account_tree</span>
       <span>Programmes</span>
     </a>
     <a href="../volunteers/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><path d="M12 21.23V12"/><path d="M8.7 8.7 12 12l3.3-3.3"/></svg>
+      <span class="material-symbols-outlined nav-icon">front_hand</span>
       <span>Bénévoles</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span class="material-symbols-outlined nav-icon">bar_chart</span>
       <span>Impact</span>
     </a>
     <a href="../communications/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <span class="material-symbols-outlined nav-icon">forum</span>
       <span>Communications</span>
     </a>
     <a href="../reports/library.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span class="material-symbols-outlined nav-icon">assessment</span>
       <span>Rapports</span>
     </a>
     <a href="index.html" class="nav-item nav-item--active">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/></svg>
+      <span class="material-symbols-outlined nav-icon">settings</span>
       <span>Paramètres</span>
     </a>
         <div class="nav-sub">
@@ -267,7 +272,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            <i data-lucide="bell"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div></a>
@@ -285,7 +290,7 @@
             <p class="page-subtitle">Invitez des membres, g&eacute;rez les r&ocirc;les et les acc&egrave;s.</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-primary" type="button">+ Inviter un utilisateur</button>
+            <button class="btn btn-primary" type="button"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;margin-right:4px;">add</span> Inviter un utilisateur</button>
           </div>
         </div>
 
@@ -340,7 +345,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">27 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Claire Dubois"><i data-lucide="more-horizontal"></i></button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Claire Dubois"><span class="material-symbols-outlined">more_horiz</span></button>
                 </td>
               </tr>
 
@@ -359,7 +364,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">26 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Marc Laurent"><i data-lucide="more-horizontal"></i></button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Marc Laurent"><span class="material-symbols-outlined">more_horiz</span></button>
                 </td>
               </tr>
 
@@ -378,7 +383,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">25 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Sophie Bertrand"><i data-lucide="more-horizontal"></i></button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Sophie Bertrand"><span class="material-symbols-outlined">more_horiz</span></button>
                 </td>
               </tr>
 
@@ -397,7 +402,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">24 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Pierre Dupont"><i data-lucide="more-horizontal"></i></button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Pierre Dupont"><span class="material-symbols-outlined">more_horiz</span></button>
                 </td>
               </tr>
 
@@ -416,7 +421,7 @@
                 <td><span class="badge badge-warning"><span class="status-dot status-dot--invited"></span>Invit&eacute;</span></td>
                 <td class="cell-secondary">&mdash;</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Amina Benali"><i data-lucide="more-horizontal"></i></button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Amina Benali"><span class="material-symbols-outlined">more_horiz</span></button>
                 </td>
               </tr>
 
@@ -435,7 +440,7 @@
                 <td><span class="badge badge-error"><span class="status-dot status-dot--disabled"></span>D&eacute;sactiv&eacute;</span></td>
                 <td class="cell-secondary">10 jan. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Jacques Renault"><i data-lucide="more-horizontal"></i></button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Jacques Renault"><span class="material-symbols-outlined">more_horiz</span></button>
                 </td>
               </tr>
 
@@ -454,7 +459,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">23 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Lina Moreau"><i data-lucide="more-horizontal"></i></button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Lina Moreau"><span class="material-symbols-outlined">more_horiz</span></button>
                 </td>
               </tr>
 
@@ -473,7 +478,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">22 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Thomas Garcia"><i data-lucide="more-horizontal"></i></button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Thomas Garcia"><span class="material-symbols-outlined">more_horiz</span></button>
                 </td>
               </tr>
 
@@ -547,6 +552,5 @@
   <!-- end .modal-overlay -->
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

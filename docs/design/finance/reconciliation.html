@@ -7,7 +7,8 @@
   <title>R&eacute;conciliation bancaire &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific styles for finance/reconciliation (FIN-002) ── */
 
@@ -375,7 +376,7 @@
 
         <div class="topbar-actions">
           <button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            <i data-lucide="bell" style="width:20px;height:20px;"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </button>
           <div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div>
@@ -391,14 +392,14 @@
             <p class="page-subtitle">Rapprochez les paiements re&ccedil;us avec les relev&eacute;s bancaires import&eacute;s</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary" type="button"><i data-lucide="file-text" style="width:16px;height:16px;"></i> Exporter le rapport</button>
+            <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px;">description</span> Exporter le rapport</button>
           </div>
         </div>
 
         <!-- Import Bar -->
         <div class="import-bar">
           <div class="import-bar-left">
-            <button class="btn btn-primary" type="button"><i data-lucide="upload" style="width:16px;height:16px;"></i> Importer un relev&eacute; bancaire</button>
+            <button class="btn btn-primary" type="button"><span class="material-symbols-outlined" style="font-size:16px;">upload</span> Importer un relev&eacute; bancaire</button>
             <div class="import-bar-info">
               Dernier import : <strong>24 f&eacute;vrier 2026</strong> &mdash; Banque Postale &mdash; releve_BP_fev2026.csv
             </div>
@@ -409,7 +410,7 @@
         <!-- AI Card -->
         <div class="ai-card ai-card--wide">
           <div class="ai-card-header">
-            <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
+            <span class="ai-card-icon"><span class="material-symbols-outlined" style="font-size:16px;">auto_awesome</span></span>
             <span class="ai-card-label">Suggestion IA</span>
           </div>
           <div class="ai-card-text">
@@ -612,7 +613,7 @@
 
         <!-- Bottom Actions -->
         <div class="bottom-actions">
-          <button class="btn btn-secondary" type="button"><i data-lucide="file-text" style="width:16px;height:16px;"></i> Exporter le rapport</button>
+          <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px;">description</span> Exporter le rapport</button>
         </div>
 
       </main>
@@ -620,6 +621,5 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

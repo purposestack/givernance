@@ -7,7 +7,8 @@
   <title>Export Grand Livre — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific styles for finance/gl-export (FIN-001) ── */
 
@@ -169,7 +170,7 @@
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications"><i data-lucide="bell" style="width:20px;height:20px;"></i></a>
+          <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications"><span class="material-symbols-outlined">notifications</span></a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
         </div>
       </header>
@@ -183,13 +184,13 @@
             <p class="page-subtitle">G&eacute;n&eacute;rez les &eacute;critures comptables pour votre logiciel de comptabilit&eacute;</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary" type="button"><i data-lucide="settings" style="width:16px;height:16px;"></i> Mapping fonds / codes</button>
+            <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px;">settings</span> Mapping fonds / codes</button>
           </div>
         </div>
 
         <!-- Warning for unallocated donations -->
         <div class="alert alert-warning mb-4">
-          <span class="alert-icon"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span>
+          <span class="alert-icon"><span class="material-symbols-outlined" style="font-size:14px;">warning</span></span>
           <div class="alert-content">
             <strong>3 dons non affect&eacute;s &agrave; un fonds.</strong> Ces &eacute;critures seront regroup&eacute;es dans le compte g&eacute;n&eacute;ral &laquo; Dons non affect&eacute;s &raquo; (754000). <a href="../donations/batches.html" style="color: inherit; text-decoration: underline;">Voir les dons</a>
           </div>
@@ -238,7 +239,7 @@
         <!-- Preview Summary -->
         <div class="preview-summary">
           <div class="preview-summary-item">
-            <span><i data-lucide="file-text" style="width:16px;height:16px;"></i> &Eacute;critures :</span>
+            <span><span class="material-symbols-outlined" style="font-size:16px;">description</span> &Eacute;critures :</span>
             <span class="preview-summary-value">47</span>
           </div>
           <div class="preview-summary-item">
@@ -250,7 +251,7 @@
             <span class="preview-summary-value">&euro;89 340,00</span>
           </div>
           <div class="preview-summary-item">
-            <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> &Eacute;quilibr&eacute;</span>
+            <span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:14px;">check</span> &Eacute;quilibr&eacute;</span>
           </div>
         </div>
 
@@ -349,7 +350,7 @@
         <div class="pagination">
           <span class="pagination-info">Affichage 1-8 sur 47 &eacute;critures</span>
           <div class="pagination-controls">
-            <button class="btn btn-primary" type="button"><i data-lucide="download" style="width:16px;height:16px;"></i> T&eacute;l&eacute;charger (CSV)</button>
+            <button class="btn btn-primary" type="button"><span class="material-symbols-outlined" style="font-size:16px;">download</span> T&eacute;l&eacute;charger (CSV)</button>
           </div>
         </div>
 
@@ -376,7 +377,7 @@
                   <td><span class="badge badge-neutral">CSV</span></td>
                   <td class="cell-amount text-right">52</td>
                   <td>Claire Dubois</td>
-                  <td class="text-center"><button class="download-btn" type="button"><i data-lucide="download" style="width:14px;height:14px;"></i> T&eacute;l&eacute;charger</button></td>
+                  <td class="text-center"><button class="download-btn" type="button"><span class="material-symbols-outlined" style="font-size:14px;">download</span> T&eacute;l&eacute;charger</button></td>
                 </tr>
                 <tr>
                   <td class="cell-secondary">02/01/2026 &agrave; 09h15</td>
@@ -384,7 +385,7 @@
                   <td><span class="badge badge-neutral">Xero</span></td>
                   <td class="cell-amount text-right">78</td>
                   <td>Claire Dubois</td>
-                  <td class="text-center"><button class="download-btn" type="button"><i data-lucide="download" style="width:14px;height:14px;"></i> T&eacute;l&eacute;charger</button></td>
+                  <td class="text-center"><button class="download-btn" type="button"><span class="material-symbols-outlined" style="font-size:14px;">download</span> T&eacute;l&eacute;charger</button></td>
                 </tr>
                 <tr>
                   <td class="cell-secondary">15/12/2025 &agrave; 16h48</td>
@@ -392,7 +393,7 @@
                   <td><span class="badge badge-neutral">FEC</span></td>
                   <td class="cell-amount text-right">214</td>
                   <td>Claire Dubois</td>
-                  <td class="text-center"><button class="download-btn" type="button"><i data-lucide="download" style="width:14px;height:14px;"></i> T&eacute;l&eacute;charger</button></td>
+                  <td class="text-center"><button class="download-btn" type="button"><span class="material-symbols-outlined" style="font-size:14px;">download</span> T&eacute;l&eacute;charger</button></td>
                 </tr>
               </tbody>
             </table>
@@ -404,6 +405,5 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>
