@@ -7,6 +7,7 @@
   <title>D&eacute;tail envoi &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for communications/detail (COM-003) ── */
 
@@ -27,7 +28,12 @@
       font-size: var(--text-xs);
       color: var(--color-text-secondary);
       font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
       margin-top: var(--space-0-5);
+    }
+
+    .stat-widget-value {
+      font-variant-numeric: tabular-nums;
     }
 
     /* ── Content split layout: table + preview ── */
@@ -157,7 +163,7 @@
       background: var(--color-primary);
       color: var(--color-white);
       padding: var(--space-2) var(--space-5);
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       font-weight: var(--weight-medium);
       font-size: var(--text-sm);
       text-decoration: none;
@@ -253,7 +259,7 @@
     </a>
     <a href="../volunteers/list.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><path d="M12 21.23V12"/><path d="M8.7 8.7 12 12l3.3-3.3"/></svg>
-      <span>Bénévoles</span>
+      <span>B&eacute;n&eacute;voles</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -269,11 +275,11 @@
     </a>
     <a href="../admin/index.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/></svg>
-      <span>Paramètres</span>
+      <span>Param&egrave;tres</span>
     </a>
   </nav>
   <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
+    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
     <div class="sidebar-footer-user">
       <div class="sidebar-footer-avatar">CM</div>
       <span class="sidebar-footer-name">Claire Martin</span>
@@ -300,7 +306,7 @@
 
         <div class="topbar-actions">
           <button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell"></i>
             <span class="notification-dot"></span>
           </button>
           <div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div>
@@ -317,7 +323,7 @@
           <div class="page-header-left">
             <div class="page-header-title-row">
               <h1 class="page-title">Newsletter Printemps 2026</h1>
-              <span class="badge badge-success"><span class="badge-icon">&#10003;</span> Envoy&eacute;</span>
+              <span class="badge badge-success"><span class="badge-icon"><i data-lucide="check" style="width:12px;height:12px;display:inline-block;vertical-align:middle;"></i></span> Envoy&eacute;</span>
             </div>
             <p class="page-subtitle">Email &mdash; Envoy&eacute; le 15/03/2026 &agrave; 09:30</p>
           </div>
@@ -563,5 +569,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

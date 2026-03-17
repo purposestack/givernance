@@ -7,13 +7,14 @@
   <title>Rapport d&#8217;impact &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific: IMP-003 Report Generator ── */
 
     /* Topbar search shortcut badge */
     .search-shortcut {
       position: absolute;
-      right: 10px;
+      right: var(--space-2-5);
       top: 50%;
       transform: translateY(-50%);
       font-size: var(--text-xs);
@@ -21,7 +22,7 @@
       background: var(--color-neutral-100);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm);
-      padding: 1px 6px;
+      padding: var(--space-0-5) var(--space-1-5);
       font-family: var(--font-mono);
       pointer-events: none;
     }
@@ -211,12 +212,14 @@
       font-weight: var(--weight-bold);
       color: var(--color-text);
       margin-bottom: var(--space-1);
+      font-variant-numeric: tabular-nums;
     }
 
     .compact-stat-meta {
       font-size: var(--text-xs);
       color: var(--color-text-secondary);
       margin-bottom: var(--space-2);
+      font-variant-numeric: tabular-nums;
     }
 
     .compact-stat .progress {
@@ -388,7 +391,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -705,7 +708,7 @@
                     <tbody>
                       <tr>
                         <td class="cell-name"><a href="../programs/detail.html">Aide alimentaire</a></td>
-                        <td><span class="text-mono" style="font-size: var(--text-sm);">12&nbsp;450</span> <span class="text-xs text-muted">repas</span></td>
+                        <td><span class="text-mono" style="font-size: var(--text-sm); font-variant-numeric: tabular-nums;">12&nbsp;450</span> <span class="text-xs text-muted">repas</span></td>
                         <td>
                           <div class="progress">
                             <div class="progress-fill" style="width: 83%;"></div>
@@ -714,7 +717,7 @@
                       </tr>
                       <tr>
                         <td class="cell-name"><a href="../programs/detail.html">Insertion professionnelle</a></td>
-                        <td><span class="text-mono" style="font-size: var(--text-sm);">67%</span> <span class="text-xs text-muted">r&#233;insertion</span></td>
+                        <td><span class="text-mono" style="font-size: var(--text-sm); font-variant-numeric: tabular-nums;">67%</span> <span class="text-xs text-muted">r&#233;insertion</span></td>
                         <td>
                           <div class="progress">
                             <div class="progress-fill progress-fill--amber" style="width: 89%;"></div>
@@ -723,7 +726,7 @@
                       </tr>
                       <tr>
                         <td class="cell-name"><a href="../programs/detail.html">H&#233;bergement d&#8217;urgence</a></td>
-                        <td><span class="text-mono" style="font-size: var(--text-sm);">48</span> <span class="text-xs text-muted">logements</span></td>
+                        <td><span class="text-mono" style="font-size: var(--text-sm); font-variant-numeric: tabular-nums;">48</span> <span class="text-xs text-muted">logements</span></td>
                         <td>
                           <div class="progress">
                             <div class="progress-fill" style="width: 80%;"></div>
@@ -752,5 +755,6 @@
   </div><!-- /app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

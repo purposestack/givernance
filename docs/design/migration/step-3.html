@@ -7,6 +7,7 @@
   <title>Givernance — Migration : Validation</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     .migration-layout {
       min-height: 100vh;
@@ -29,6 +30,7 @@
       font-size: var(--text-sm);
       font-weight: var(--weight-medium);
       color: var(--color-text-secondary);
+      font-variant-numeric: tabular-nums;
     }
     .migration-container {
       max-width: 860px;
@@ -80,6 +82,7 @@
       font-size: var(--text-sm);
       font-weight: var(--weight-semi);
       color: var(--color-primary-dark);
+      font-variant-numeric: tabular-nums;
     }
 
     /* Summary cards row */
@@ -100,11 +103,11 @@
     }
     .summary-card--warning {
       background: var(--color-amber-50);
-      border: 1px solid #FDE68A;
+      border: 1px solid var(--color-amber-border);
     }
     .summary-card--error {
       background: var(--color-indigo-50);
-      border: 1px solid #C4B5FD;
+      border: 1px solid var(--color-indigo-border);
     }
     .summary-card-icon {
       font-size: var(--text-xl);
@@ -115,9 +118,10 @@
       font-size: var(--text-xl);
       font-weight: var(--weight-bold);
       margin-bottom: var(--space-1);
+      font-variant-numeric: tabular-nums;
     }
     .summary-card--success .summary-card-value { color: var(--color-primary-dark); }
-    .summary-card--warning .summary-card-value { color: #92400E; }
+    .summary-card--warning .summary-card-value { color: var(--color-amber-dark); }
     .summary-card--error .summary-card-value { color: var(--color-indigo); }
     .summary-card-label {
       font-size: var(--text-sm);
@@ -166,7 +170,7 @@
       display: inline-flex;
       align-items: center;
       gap: var(--space-1);
-      padding: 2px 8px;
+      padding: var(--space-0-5) var(--space-2);
       font-size: var(--text-xs);
       font-weight: var(--weight-semi);
       border-radius: var(--radius-pill);
@@ -178,13 +182,13 @@
     }
     .severity-badge--warning {
       background: var(--color-amber-50);
-      color: #92400E;
+      color: var(--color-amber-dark);
     }
 
     .example-value {
       font-family: var(--font-mono);
       font-size: var(--text-xs);
-      padding: 2px 6px;
+      padding: var(--space-0-5) var(--space-1-5);
       background: var(--color-neutral-200);
       border-radius: var(--radius-sm);
       color: var(--color-text-secondary);
@@ -216,7 +220,7 @@
       margin-top: var(--space-4);
       padding: var(--space-3) var(--space-4);
       background: var(--color-indigo-50);
-      border: 1px solid #C4B5FD;
+      border: 1px solid var(--color-indigo-border);
       border-radius: var(--radius-md);
       font-size: var(--text-sm);
       color: var(--color-indigo);
@@ -405,5 +409,6 @@
     </div>
   </div>
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

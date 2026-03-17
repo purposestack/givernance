@@ -7,6 +7,7 @@
   <title>Givernance &mdash; Int&eacute;grations</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for admin/integrations (ADM-004) ── */
 
@@ -180,7 +181,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell"></i>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil">CD</div></a>
@@ -220,7 +221,7 @@
             </div>
             <p class="integration-meta">Acceptez les dons par carte bancaire et g&eacute;rez les pr&eacute;l&egrave;vements r&eacute;currents.</p>
             <div class="integration-footer">
-              <span class="badge badge-success">&#10003; Connect&eacute;</span>
+              <span class="badge badge-success"><i data-lucide="check"></i> Connect&eacute;</span>
               <button class="btn btn-secondary btn-sm" type="button">Configurer</button>
             </div>
           </div>
@@ -252,7 +253,7 @@
             </div>
             <p class="integration-meta">Synchronisez vos dons et d&eacute;penses avec votre comptabilit&eacute; Xero.</p>
             <div class="integration-footer">
-              <span class="badge badge-success">&#10003; Connect&eacute;</span>
+              <span class="badge badge-success"><i data-lucide="check"></i> Connect&eacute;</span>
               <button class="btn btn-secondary btn-sm" type="button">Configurer</button>
             </div>
           </div>
@@ -284,7 +285,7 @@
             </div>
             <p class="integration-meta">Synchronisez vos constituants et segmentez vos campagnes email.</p>
             <div class="integration-footer">
-              <span class="badge badge-success">&#10003; Connect&eacute;</span>
+              <span class="badge badge-success"><i data-lucide="check"></i> Connect&eacute;</span>
               <button class="btn btn-secondary btn-sm" type="button">Configurer</button>
             </div>
           </div>
@@ -344,5 +345,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

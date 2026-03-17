@@ -7,6 +7,7 @@
   <title>Givernance — Migration : Terminee</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     .migration-layout {
       min-height: 100vh;
@@ -29,6 +30,7 @@
       font-size: var(--text-sm);
       font-weight: var(--weight-medium);
       color: var(--color-text-secondary);
+      font-variant-numeric: tabular-nums;
     }
     .migration-container {
       max-width: 860px;
@@ -80,6 +82,7 @@
       font-weight: var(--weight-bold);
       color: var(--color-text);
       margin-bottom: var(--space-1);
+      font-variant-numeric: tabular-nums;
     }
     .summary-stat-label {
       font-size: var(--text-sm);
@@ -140,9 +143,16 @@
       color: var(--color-primary);
       font-weight: var(--weight-medium);
       white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
     }
     .post-checklist-action:hover {
       text-decoration: underline;
+    }
+    .post-checklist-action i[data-lucide] {
+      width: 14px;
+      height: 14px;
     }
 
     /* Final actions */
@@ -260,7 +270,7 @@
             <div class="post-checklist-check"></div>
             <span class="post-checklist-label">Verifier les doublons potentiels</span>
           </div>
-          <a href="#" class="post-checklist-action">Lancer la fusion guidee &rarr;</a>
+          <a href="#" class="post-checklist-action">Lancer la fusion guidee <i data-lucide="arrow-right"></i></a>
         </div>
 
         <div class="post-checklist-item">
@@ -268,7 +278,7 @@
             <div class="post-checklist-check"></div>
             <span class="post-checklist-label">Configurer les consentements RGPD</span>
           </div>
-          <a href="#" class="post-checklist-action">Aller aux parametres RGPD &rarr;</a>
+          <a href="#" class="post-checklist-action">Aller aux parametres RGPD <i data-lucide="arrow-right"></i></a>
         </div>
 
         <div class="post-checklist-item">
@@ -276,7 +286,7 @@
             <div class="post-checklist-check"></div>
             <span class="post-checklist-label">Tester un recu fiscal</span>
           </div>
-          <a href="#" class="post-checklist-action">Voir les dons &rarr;</a>
+          <a href="#" class="post-checklist-action">Voir les dons <i data-lucide="arrow-right"></i></a>
         </div>
       </div>
 
@@ -295,5 +305,6 @@
     </div>
   </div>
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
   <title>Givernance — Migration : Correspondance des champs</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     .migration-layout {
       min-height: 100vh;
@@ -29,6 +30,7 @@
       font-size: var(--text-sm);
       font-weight: var(--weight-medium);
       color: var(--color-text-secondary);
+      font-variant-numeric: tabular-nums;
     }
     .migration-container {
       max-width: 860px;
@@ -64,6 +66,7 @@
       background: var(--color-neutral-100);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-6);
+      font-variant-numeric: tabular-nums;
     }
     .stats-bar-item {
       display: flex;
@@ -73,8 +76,8 @@
       font-weight: var(--weight-medium);
     }
     .stats-bar-dot {
-      width: 8px;
-      height: 8px;
+      width: var(--space-2);
+      height: var(--space-2);
       border-radius: var(--radius-full);
       flex-shrink: 0;
     }
@@ -128,7 +131,7 @@
     }
     .field-type {
       font-size: var(--text-xs);
-      padding: 2px 6px;
+      padding: var(--space-0-5) var(--space-1-5);
       background: var(--color-neutral-200);
       border-radius: var(--radius-sm);
       font-family: var(--font-mono);
@@ -138,6 +141,10 @@
       text-align: center;
       color: var(--color-text-muted);
       font-size: var(--text-md);
+    }
+    .arrow-col i[data-lucide] {
+      width: 16px;
+      height: 16px;
     }
     .confidence {
       display: flex;
@@ -149,11 +156,11 @@
     }
     .confidence-dots {
       display: flex;
-      gap: 2px;
+      gap: var(--space-0-5);
     }
     .confidence-dot {
-      width: 6px;
-      height: 6px;
+      width: var(--space-1-5);
+      height: var(--space-1-5);
       border-radius: var(--radius-full);
       background: var(--color-neutral-300);
     }
@@ -282,7 +289,7 @@
               <tr>
                 <td><span class="field-name">Contact.FirstName</span></td>
                 <td><span class="field-type">TEXT</span></td>
-                <td class="arrow-col">&rarr;</td>
+                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
                 <td><span class="field-name">first_name</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -302,7 +309,7 @@
               <tr>
                 <td><span class="field-name">Contact.LastName</span></td>
                 <td><span class="field-type">TEXT</span></td>
-                <td class="arrow-col">&rarr;</td>
+                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
                 <td><span class="field-name">last_name</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -322,7 +329,7 @@
               <tr>
                 <td><span class="field-name">Contact.Email</span></td>
                 <td><span class="field-type">EMAIL</span></td>
-                <td class="arrow-col">&rarr;</td>
+                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
                 <td><span class="field-name">email</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -342,7 +349,7 @@
               <tr>
                 <td><span class="field-name">npe01__HomeEmail__c</span></td>
                 <td><span class="field-type">EMAIL</span></td>
-                <td class="arrow-col">&rarr;</td>
+                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
                 <td><span class="field-name">email_secondary</span></td>
                 <td>
                   <div class="confidence confidence--medium">
@@ -362,7 +369,7 @@
               <tr>
                 <td><span class="field-name">NPSP_Household__c</span></td>
                 <td><span class="field-type">LOOKUP</span></td>
-                <td class="arrow-col">&rarr;</td>
+                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
                 <td><span class="field-name">household_id</span></td>
                 <td>
                   <div class="confidence confidence--low">
@@ -382,7 +389,7 @@
               <tr>
                 <td><span class="field-name">Birthdate</span></td>
                 <td><span class="field-type">DATE</span></td>
-                <td class="arrow-col">&rarr;</td>
+                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
                 <td><span class="field-name">date_of_birth</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -402,7 +409,7 @@
               <tr>
                 <td><span class="field-name">Custom_Field_1__c</span></td>
                 <td><span class="field-type">TEXT</span></td>
-                <td class="arrow-col">&rarr;</td>
+                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
                 <td>
                   <select class="mapping-select">
                     <option value="" selected>Selectionner...</option>
@@ -423,7 +430,7 @@
               <tr>
                 <td><span class="field-name">Contact.Phone</span></td>
                 <td><span class="field-type">PHONE</span></td>
-                <td class="arrow-col">&rarr;</td>
+                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
                 <td><span class="field-name">phone</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -443,7 +450,7 @@
               <tr>
                 <td><span class="field-name">npo02__TotalOppAmount__c</span></td>
                 <td><span class="field-type">CURRENCY</span></td>
-                <td class="arrow-col">&rarr;</td>
+                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
                 <td><span class="field-name">total_donations</span></td>
                 <td>
                   <div class="confidence confidence--medium">
@@ -486,5 +493,6 @@
     </div>
   </div>
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>
