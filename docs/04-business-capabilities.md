@@ -139,23 +139,60 @@ scheduled → [due_date reached] → payment initiated → paid / failed
 
 ### 2.4 Campaign Management
 
-**Purpose**: Plan, track, and measure fundraising campaigns.
+**Purpose**: Plan, track, and measure fundraising campaigns across postal, door-drop, and digital channels.
 
 | Attribute | Detail |
 |---|---|
 | Primary module | `internal/campaigns` |
-| Key tables | `campaigns` |
-| Computed metrics | From donations: `raised_total`, `donor_count`, `avg_gift`, `response_rate` (donors/mailed) |
+| Key tables | `campaigns`, `campaign_documents`, `campaign_qr_codes`, `campaign_public_pages` |
+| Computed metrics | From donations: `raised_total`, `donor_count`, `avg_gift`, `response_rate` (donors/mailed), `roi_pct` |
+
+**Campaign types**:
+
+| Type | Description | QR code scope | Constituent known? |
+|---|---|---|---|
+| `nominative_postal` | Personalised letters to known constituents (~60% of NPO gifts) | Per constituent + campaign | Yes |
+| `door_drop` | Generic letter sent to a geographic zone via postal service | Per campaign only | No (created on first gift) |
+| `digital` | Online donation page/widget on NPO website (~20% of gifts) | N/A (Stripe ref) | Created via form |
+| `event` | Fundraising event with attendees | Per campaign | Mixed |
+| `mixed` | Multi-channel parent campaign | Inherited from children | Mixed |
 
 **Campaign hierarchy example**:
 ```
 Annual Giving 2026 (parent, goal €250,000)
 ├── Spring Appeal (email, goal €80,000)
 ├── Summer Event (event, goal €60,000)
-└── Year-End Direct Mail (postal, goal €110,000)
+└── Year-End Direct Mail (postal nominative, goal €110,000)
+    ├── Zone A Door-Drop (door_drop, goal €20,000)
+    └── Existing Donors Re-engage (nominative_postal, goal €90,000)
 ```
 
+**Key flows**:
+
+1. **Postal nominative campaign** — Create campaign → Select constituents (segment/tag) → Generate personalised PDFs with individual QR codes → Export for print/mail → Monitor incoming payments (3 months) → QR code auto-matches payment to constituent + campaign.
+2. **Door-drop campaign** — Create campaign → Define geographic zone → Generate generic PDF with campaign-level QR code → Send via La Poste → New constituents created when first gift arrives → Track ROI (cost of mailing vs. donations received).
+3. **Digital campaign** — Create campaign → Activate public donation page → Share URL / embed widget on NPO website → Stripe Connect processes payments → Webhook creates donation + constituent (if new) → Real-time campaign dashboard.
+
+**QR code generation**:
+- Uses open-source QR library (no Salesforce-style custom build needed — this is a key Salesforce gap)
+- Encodes: `campaign_id` + `constituent_id` (nominative) or `campaign_id` only (door-drop)
+- Payment matching: incoming bank transfer reference decoded → auto-link to constituent + campaign
+- Batch generation: `POST /v1/campaigns/:id/documents` generates QR codes + PDFs for all selected constituents
+
+**PDF letter generation**:
+- Template engine with merge fields: `{{salutation}}`, `{{first_name}}`, `{{last_name}}`, `{{last_gift_amount}}`, `{{last_gift_date}}`
+- Print-ready PDF batch output (A4, with QR code positioned for postal window envelope)
+- Customisable per campaign (header, body text, images)
+
+**Public donation page (digital campaigns)**:
+- `GET /v1/campaigns/:id/public-page` — public, unauthenticated endpoint
+- Embeddable as iframe or standalone page
+- Stripe Connect form (NPO's own account — Givernance never touches funds)
+- Inherits NPO branding (logo, colours) from org settings
+
 ROI calculation: `(raised_total - expected_cost) / expected_cost * 100`
+
+**Campaign ROI dashboard**: Cost tracking per campaign (printing, postage, digital ads) vs. raised total. Breakdown by channel. Essential for door-drop campaigns where cost-per-acquisition is the key metric.
 
 ---
 
@@ -316,6 +353,11 @@ Inputs (resources, funding) → Activities (programs) → Outputs (service deliv
 | `/v1/donations/{id}/refund` | POST | |
 | `/v1/pledges` | GET, POST | |
 | `/v1/campaigns` | GET, POST | |
+| `/v1/campaigns/{id}/documents` | POST, GET | Generate QR codes + PDFs for postal campaigns |
+| `/v1/campaigns/{id}/public-page` | GET | Public donation page (unauthenticated) |
+| `/v1/campaigns/{id}/roi` | GET | Campaign ROI breakdown |
+| `/v1/donations/stripe-webhook` | POST | Stripe Connect payment webhook |
+| `/v1/admin/stripe-connect` | GET, POST, DELETE | Stripe Connect onboarding and status |
 | `/v1/grants` | GET, POST | |
 | `/v1/programs` | GET, POST | |
 | `/v1/enrollments` | GET, POST | |

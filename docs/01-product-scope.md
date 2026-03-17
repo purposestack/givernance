@@ -142,23 +142,41 @@ These are the non-negotiable capabilities for v1. Any platform missing these can
 | In-kind gift (non-cash, with estimated value) | MUST | Can record in-kind with type and valuation; excluded from cash totals |
 | Matching gift tracking (employer match request, confirmation) | SHOULD | Match linked to original donation; shows as separate gift from employer org |
 | SEPA direct debit (EU standard recurring payment) | MUST | Integration with Stripe/Mollie SEPA; mandate reference on record |
+| Stripe Connect integration (NPO's own Stripe account) | MUST | NPO onboards via Stripe Connect OAuth; Givernance never handles funds directly |
 | Gift acknowledgement / receipt (EU tax receipt format) | MUST | Auto-generates PDF receipt with charity registration number, GDPR notice |
 | Fund allocation (split gift across restricted funds) | MUST | One donation split to multiple funds with amounts |
 | Soft credit (gift credited to a third party, e.g. solicitor) | SHOULD | Soft credit record linked to original donation |
 | Anonymous donation handling | MUST | Can mark anonymous; donor name not shown in reports/exports |
 | Donor lifecycle stage (prospect, first-time, repeat, lapsed, major donor) | MUST | Auto-calculated based on giving history |
 | LYBUNT / SYBUNT reports | MUST | "Gave Last Year But Unfortunately Not This" standard report |
+| QR code payment matching | MUST | Incoming payment matched to constituent + campaign via QR code identifier |
 
 ### 4.3 Campaigns
 **What**: Coordinated fundraising drives with goals, channels, and response tracking.
 
+#### Fundraising channels (field insight: ~60% postal, ~20% digital, ~20% other)
+
+European nonprofits collect donations through three primary channels, each requiring distinct platform capabilities:
+
+| Channel | Description | % of gifts (typical) | Key capability |
+|---|---|---|---|
+| **Postal nominative** | Personalised letter to known constituents with individual QR code | ~40-50% | QR code generation per constituent, PDF letter generation, payment matching |
+| **Door-drop** | Generic letter sent via La Poste to a geographic zone (constituents not yet known) | ~10-20% | Zone targeting, generic campaign QR code, new constituent creation on first gift |
+| **Digital** | Online donation page/widget embedded on NPO website | ~20% | Stripe Connect, embeddable form, public campaign page |
+
 | Feature | Priority | Acceptance check |
 |---|---|---|
 | Campaign record (name, start/end date, goal, type) | MUST | Can create campaign; donations linked to it |
+| Campaign types (nominative postal, door-drop, digital, event, mixed) | MUST | Type field on campaign; affects available actions |
 | Campaign hierarchy (parent/child campaigns) | SHOULD | Annual giving campaign → sub-campaigns by channel |
 | Source code tracking on donations | MUST | Donation carries campaign source code; used in ROI calc |
 | Campaign KPIs (raised, donors, average gift, response rate) | MUST | Auto-calculated from linked donations |
+| Campaign ROI tracking (cost vs. raised, per channel) | MUST | `expected_cost` field; ROI auto-calculated; breakdown by channel |
 | Multi-channel campaign (email, post, event, digital) | SHOULD | Channel field on campaign; breakdown in reports |
+| QR code generation (per constituent or per campaign) | MUST | Generate unique QR codes linking payment → constituent + campaign; open-source library |
+| PDF letter generation with personalisation | MUST | Merge fields (name, salutation, amount history); print-ready PDF batch |
+| Public donation page (per campaign) | MUST | Activatable public URL with embedded Stripe form; shareable link |
+| Embeddable donation widget | SHOULD | Iframe/JS snippet for NPO website; inherits site styling |
 | Campaign calendar view | NICE | Calendar showing active/planned campaigns |
 
 ### 4.4 Grant management
@@ -248,7 +266,7 @@ These are the non-negotiable capabilities for v1. Any platform missing these can
 | Full accounting / double-entry bookkeeping | Replaces accounting software; out of lane | GL export → external accounting |
 | Event management (ticketing, check-in) | Standalone market; integration preferred | Eventbrite API integration |
 | Peer-to-peer fundraising pages | Complex; separate product | Stripe-hosted donation forms as stopgap |
-| Legacy postal mail fulfilment | Physical logistics out of scope | Export → mail house |
+| Physical postal logistics (printing, fulfilment) | Out of scope; Givernance generates PDFs, NPO handles printing/sending | Integration with mail house APIs (v2) |
 | Staff HR / payroll | Not nonprofit-specific | Integration with HR system |
 | Board governance / meeting management | Different buyer | Integration with Boardable/BoardEffect |
 | US tax receipts (990, gift aid reclaim US) | Out of initial geography | v2 US market expansion |
