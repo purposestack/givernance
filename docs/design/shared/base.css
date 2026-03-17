@@ -60,6 +60,10 @@ h4 { font-size: var(--text-lg); line-height: var(--leading-heading-lg, 1.25); }
   font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
   font-size: 20px;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
 }
 
 /* ── App Layout ── */
