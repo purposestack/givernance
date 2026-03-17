@@ -1,7 +1,7 @@
 # 14 — Screen Inventory
 
 > **Givernance NPO Platform** — Inventaire complet de tous les écrans (v1)
-> Last updated: 2026-02-26
+> Last updated: 2026-03-17
 > Owner: Design Architect agent
 
 ---

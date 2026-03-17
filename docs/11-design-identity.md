@@ -52,26 +52,26 @@ Givernance's visual identity should communicate:
 | Primary 50 | Mint | `--color-primary-50` | `#E8F5EE` | Focus rings, success backgrounds |
 | Primary 100 | — | `--color-primary-100` | `#C8E6D7` | Subtle borders, success alert borders |
 
-#### Neutral palette (warm stone)
+#### Neutral palette (cool sophisticated gray)
 
 | Token | Name | Hex | Usage |
 |---|---|---|---|
-| `--color-neutral-50` | Warm White | `#FAFAF8` | Page backgrounds |
-| `--color-neutral-100` | Linen | `#F2F0EC` | Card surfaces, panel backgrounds |
-| `--color-neutral-200` | Stone | `#E4E0D9` | Borders, dividers |
-| `--color-neutral-300` | Pebble | `#D1CCC4` | Disabled borders, scrollbar thumbs |
-| `--color-neutral-400` | Ash | `#A8A29E` | Muted text, placeholders |
-| `--color-neutral-500` | Dusk | `#8A857E` | — |
-| `--color-neutral-600` | Slate | `#6B6760` | Secondary text |
-| `--color-neutral-700` | Shadow | `#4A4742` | — |
-| `--color-neutral-800` | Charcoal | `#2E2C28` | Dark UI surfaces |
-| `--color-neutral-900` | Ink | `#1C1B19` | Primary body text |
+| `--color-neutral-50` | Cloud | `#F8F9FA` | Page backgrounds |
+| `--color-neutral-100` | Mist | `#F1F3F5` | Card surfaces, panel backgrounds |
+| `--color-neutral-200` | Silver | `#E2E5E9` | Borders, dividers |
+| `--color-neutral-300` | Pewter | `#CED3D9` | Disabled borders, scrollbar thumbs |
+| `--color-neutral-400` | Ash | `#9BA3AD` | Muted text, placeholders |
+| `--color-neutral-500` | Dusk | `#6B7280` | — |
+| `--color-neutral-600` | Slate | `#4B5563` | Secondary text |
+| `--color-neutral-700` | Shadow | `#374151` | — |
+| `--color-neutral-800` | Charcoal | `#1F2937` | Dark UI surfaces |
+| `--color-neutral-900` | Ink | `#111827` | Primary body text |
 
 #### Semantic colors
 
 | Role | Token | Hex | Light / 50 | Usage |
 |---|---|---|---|---|
-| Success | `--color-success` → `--color-primary-light` | `#4CAF82` | `#E8F5EE` | Positive outcomes, completed states |
+| Success | `--color-success` → `--color-green` | `#16A34A` | `#F0FDF4` | Positive outcomes, completed states |
 | Warning | `--color-warning` → `--color-amber` | `#D97706` | `#FFFBEB` | Caution states, expiring items |
 | Error | `--color-error` → `--color-red` | `#DC2626` | `#FEF2F2` | Validation errors, destructive actions |
 | Info | `--color-info` → `--color-sky` | `#2E79A6` | `#F0F9FF` | Informational messages, links |
@@ -88,12 +88,12 @@ Givernance's visual identity should communicate:
 | Token | Value | Usage |
 |---|---|---|
 | `--color-surface` | `#FFFFFF` | Card/panel backgrounds |
-| `--color-surface-alt` | `#F2F0EC` | Alternate surface |
+| `--color-surface-alt` | `var(--color-neutral-100)` = `#F1F3F5` | Alternate surface |
 | `--color-surface-raised` | `#FFFFFF` | Elevated surfaces |
-| `--color-surface-sunken` | `#F2F0EC` | Inset/recessed areas |
-| `--color-overlay` | `rgba(28, 27, 25, 0.5)` | Modal/drawer backdrops |
+| `--color-surface-sunken` | `var(--color-neutral-100)` = `#F1F3F5` | Inset/recessed areas |
+| `--color-overlay` | `rgba(17, 24, 39, 0.5)` | Modal/drawer backdrops |
 
-**Rationale**: Warm off-whites and organic greens evoke sustainability, trust, and care. Error and destructive states use **red** (`#DC2626`) — a universally understood danger signal. Red is always paired with icons and text labels to ensure accessibility for all color vision types. Indigo is retained as a decorative accent, not a semantic signal.
+**Rationale**: Cool sophisticated grays paired with organic greens evoke trust, professionalism, and care. Error and destructive states use **red** (`#DC2626`) — a universally understood danger signal. Red is always paired with icons and text labels to ensure accessibility for all color vision types. Indigo is retained as a decorative accent, not a semantic signal.
 
 ### 2.2.1 Color accessibility constraints
 
@@ -112,7 +112,7 @@ Givernance's visual identity should communicate:
 |---|---|---|
 | Forest `#1A5240` on white | ~7.5:1 | AAA |
 | Primary `#2E7D5E` on white | ~4.6:1 | AA (large text) |
-| Ink `#1C1B19` on Warm White `#FAFAF8` | ~16:1 | AAA |
+| Ink `#111827` on Cloud `#F8F9FA` | ~15:1 | AAA |
 | Red `#DC2626` on white | ~4.5:1 | AA |
 | Red Dark `#991B1B` on white | ~7.8:1 | AAA |
 
@@ -205,7 +205,7 @@ Givernance's visual identity should communicate:
 | `--shadow-ring` | Focus state ring (primary color) |
 | `--shadow-inset` | Pressed/inset states |
 
-All shadows use warm-tinted `rgba(28, 27, 25, ...)` instead of pure black for a premium, cohesive feel.
+All shadows use cool-tinted `rgba(17, 24, 39, ...)` instead of pure black for a premium, cohesive feel.
 
 ### 2.8 Spacing
 
@@ -408,7 +408,7 @@ Priority order for UX research sessions:
 | Icons without tooltip on icon-only buttons | Undiscoverable for non-power-users |
 | "Are you sure?" generic confirmation dialogs | Tell the user exactly what will happen and what they'll lose |
 | Color as sole semantic signal | Always pair with icon + text label |
-| Pure black shadows | Use warm-tinted rgba(28,27,25,...) for cohesion |
+| Pure black shadows | Use cool-tinted rgba(17,24,39,...) for cohesion |
 
 ---
 
