@@ -33,24 +33,32 @@ The data model foundation. Every other module references constituents.
 
 **Done when**: `GET /v1/constituents`, `POST /v1/constituents`, `GET /v1/constituents/:id`, `PUT`, `DELETE` all pass integration tests with RLS tenant isolation verified.
 
-### Sprint 2 (Weeks 2–4): Donation Engine
-The core transaction. This is what generates revenue for NPOs.
+### Sprint 2 (Weeks 2–4): Donation Engine + Postal Campaign Core
+The core transaction and the primary fundraising channel. Postal campaigns represent ~60% of NPO donations — this is CORE MVP, not optional.
 
 - Donations API: one-time gifts, pledges, installments, fund allocation (issue #13)
 - SEPA/Stripe integration for recurring donations (issue #15)
 - PDF receipt generation — EU tax receipt format, country-specific (issue #17)
 - BullMQ job: receipt generation triggered on donation.created event
+- **QR code generation**: unique QR per constituent+campaign, stored in `campaign_documents` table — enables automatic payment→constituent matching on postal returns
+- **PDF letter generation**: personalized letters per constituent (name, address, donation history), batch PDF generation for print-ready output
+- **Door-drop support**: generic letter variant for geographic zone targeting (QR linked to campaign only, no constituent); new constituent created on first donation receipt
 
-**Done when**: A donation can be recorded, triggers a BullMQ job, generates a PDF receipt stored in R2/MinIO, and the constituent's donation history is updated.
+**Done when**: A donation can be recorded, triggers a BullMQ job, generates a PDF receipt stored in R2/MinIO, and the constituent's donation history is updated. A campaign can generate batch PDFs with individual QR codes for all selected constituents. A door-drop campaign can target a zone and generate generic letters.
 
-### Sprint 3 (Weeks 4–5): Campaigns + Donor Lifecycle
-Grouping mechanism + reporting foundation.
+### Sprint 3 (Weeks 4–6): Campaigns + Donor Lifecycle + Online Donations
+Grouping mechanism, reporting foundation, and the second fundraising channel (~20% of donations).
 
 - Campaigns API + source code tracking (issue #19)
+- Campaign types: nominative postal, door-drop, digital — each with distinct workflow
 - Donor lifecycle calculation: LYBUNT/SYBUNT flags (issue #21)
 - Donations linked to campaigns; campaign totals computed
+- **Campaign ROI dashboard**: cost vs. donations received per campaign, conversion rates, response monitoring (3-month tracking window for postal)
+- **Stripe Connect onboarding**: NPO connects their own Stripe account via OAuth — Givernance never holds funds, no PSP status required
+- **Public donation page**: embeddable widget/form per campaign, activatable and shareable URL, inherits host site styling when embedded
+- **Stripe webhook handler**: `POST /v1/donations/stripe-webhook` — auto-creates donation record, matches to campaign, creates constituent if new
 
-**Done when**: A campaign has a total raised figure. A constituent can be identified as LYBUNT.
+**Done when**: A campaign has a total raised figure with ROI metrics. A constituent can be identified as LYBUNT. An NPO can connect Stripe, activate a public donation page, and receive online donations that auto-reconcile to campaign totals.
 
 ### Sprint 4 (Weeks 5–7): UI Layer
 Frontend implementation of Sprints 1–3.
@@ -78,6 +86,9 @@ GDPR and finance integration to close the MVP.
 - Constituent + donation integration tests: >90% coverage on happy path
 - PDF receipt generated end-to-end (donation → BullMQ job → PDF → stored → URL returned)
 - LYBUNT report returns correct results on seeded test data
+- Postal campaign workflow end-to-end: create campaign → select constituents → generate QR+PDF batch → monitor incoming donations with auto-matching
+- Online donation workflow end-to-end: Stripe Connect onboarded → public page active → donation received → webhook creates record → campaign total updated
+- Campaign ROI dashboard shows cost vs. revenue for at least one postal and one digital campaign
 - One pilot NPO onboarded and using it for real donations
 
 ## Phase 2 (8 weeks): Program & Case

@@ -46,6 +46,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 13-ai-modes.md            — Manual / Assisted / Autopilot AI modes
 │   ├── 14-screen-inventory.md     — Complete 86-screen inventory
 │   ├── 15-infra-adr.md           — Architecture Decision Records (ADR-001, ADR-002, ADR-003)
+│   ├── 16-greg-field-insights.md — Field insights: fundraising channels, migration, pricing (Greg)
 │   ├── vision/
 │   │   └── conversational-mode.md — Future conversational AI mode (2026-2028)
 │   └── design/                    — 86 interactive HTML mockups
@@ -74,7 +75,7 @@ Use these agents for domain-specific tasks via Claude Code:
 
 ## Implementation Status
 
-**Phase 0 — Foundation (current)**: Architecture blueprint complete. 14 specification documents, 86 HTML mockups, 4 Mermaid diagrams. No production code yet.
+**Phase 0 — Foundation (current)**: Architecture blueprint complete. 16 specification documents, 86 HTML mockups, 4 Mermaid diagrams. No production code yet.
 
 Next: Phase 1 — Skeleton (TypeScript monorepo scaffolding with pnpm workspaces, Drizzle schema baseline, CI/CD, auth, first module).
 
@@ -87,4 +88,4 @@ HTML mockups are in `docs/design/`. Open `docs/design/index.html` locally or vie
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
 - Terminology: **NPO** (nonprofit organization), not "NGO"
 - GDPR in English docs, RGPD in French docs
-- All docs are in `docs/`, numbered 01-14 for architecture specs
+- All docs are in `docs/`, numbered 01-16 for architecture specs
