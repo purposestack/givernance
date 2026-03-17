@@ -7,7 +7,8 @@
   <title>Organisations &mdash; Constituants &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific: CON-004 Organizations list ── */
 
@@ -68,9 +69,8 @@
       text-decoration: none;
     }
 
-    .action-icon svg {
-      width: 16px;
-      height: 16px;
+    .action-icon .material-symbols-outlined {
+      font-size: 16px;
     }
 
     /* Org avatar */
@@ -134,43 +134,43 @@
   </div>
   <nav class="sidebar-nav">
     <a href="../dashboard.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="material-symbols-outlined nav-icon">dashboard</span>
       <span>Dashboard</span>
     </a>
     <a href="list.html" class="nav-item nav-item--active">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span class="material-symbols-outlined nav-icon">groups</span>
       <span>Constituants</span>
     </a>
     <a href="../donations/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
       <span>Dons &amp; Campagnes</span>
     </a>
     <a href="../grants/kanban.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="2"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="6"/></svg>
+      <span class="material-symbols-outlined nav-icon">account_tree</span>
       <span>Subventions</span>
     </a>
     <a href="../programs/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      <span class="material-symbols-outlined nav-icon">layers</span>
       <span>Programmes</span>
     </a>
     <a href="../volunteers/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><path d="M12 21.23V12"/><path d="M8.7 8.7 12 12l3.3-3.3"/></svg>
+      <span class="material-symbols-outlined nav-icon">front_hand</span>
       <span>B&eacute;n&eacute;voles</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span class="material-symbols-outlined nav-icon">monitoring</span>
       <span>Impact</span>
     </a>
     <a href="../communications/list.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <span class="material-symbols-outlined nav-icon">forum</span>
       <span>Communications</span>
     </a>
     <a href="../reports/library.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span class="material-symbols-outlined nav-icon">assessment</span>
       <span>Rapports</span>
     </a>
     <a href="../admin/index.html" class="nav-item">
-      <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/></svg>
+      <span class="material-symbols-outlined nav-icon">settings</span>
       <span>Param&egrave;tres</span>
     </a>
   </nav>
@@ -209,7 +209,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
-            <i data-lucide="bell" style="width:20px;height:20px;"></i>
+            <span class="material-symbols-outlined" style="font-size:20px">notifications</span>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -228,8 +228,8 @@
             <p class="page-subtitle">89 organisations</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary" type="button"><i data-lucide="download" style="width:16px;height:16px;"></i> Exporter</button>
-            <a href="new.html" class="btn btn-primary"><i data-lucide="plus" style="width:16px;height:16px;"></i> Nouvelle organisation</a>
+            <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px">download</span> Exporter</button>
+            <a href="new.html" class="btn btn-primary"><span class="material-symbols-outlined" style="font-size:16px">add</span> Nouvelle organisation</a>
           </div>
         </div>
 
@@ -272,12 +272,12 @@
                       </div>
                     </div>
                   </td>
-                  <td><span class="badge badge-fondation"><i data-lucide="star" style="width:12px;height:12px;"></i> Fondation</span></td>
+                  <td><span class="badge badge-fondation"><span class="material-symbols-outlined" style="font-size:12px">star</span> Fondation</span></td>
                   <td>Anne-Marie Leclerc</td>
                   <td class="text-right cell-mono">&euro;85&nbsp;000</td>
-                  <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> 2 actives</span></td>
+                  <td><span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:12px">check</span> 2 actives</span></td>
                   <td class="cell-secondary">12/02/2026</td>
-                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Fondation de France"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
+                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Fondation de France"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
                 </tr>
 
                 <!-- Row 2 -->
@@ -292,12 +292,12 @@
                       </div>
                     </div>
                   </td>
-                  <td><span class="badge badge-admin"><i data-lucide="landmark" style="width:12px;height:12px;"></i> Administration</span></td>
+                  <td><span class="badge badge-admin"><span class="material-symbols-outlined" style="font-size:12px">account_balance</span> Administration</span></td>
                   <td>Philippe Roux</td>
                   <td class="text-right cell-mono">&euro;120&nbsp;000</td>
-                  <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> 1 active</span></td>
+                  <td><span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:12px">check</span> 1 active</span></td>
                   <td class="cell-secondary">08/02/2026</td>
-                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir R&eacute;gion Sud"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
+                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir R&eacute;gion Sud"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
                 </tr>
 
                 <!-- Row 3 -->
@@ -312,12 +312,12 @@
                       </div>
                     </div>
                   </td>
-                  <td><span class="badge badge-fondation"><i data-lucide="star" style="width:12px;height:12px;"></i> Fondation</span></td>
+                  <td><span class="badge badge-fondation"><span class="material-symbols-outlined" style="font-size:12px">star</span> Fondation</span></td>
                   <td>Claire Dubois</td>
                   <td class="text-right cell-mono">&euro;45&nbsp;000</td>
-                  <td><span class="badge badge-warning"><i data-lucide="clock" style="width:12px;height:12px;"></i> 1 en attente</span></td>
+                  <td><span class="badge badge-warning"><span class="material-symbols-outlined" style="font-size:12px">schedule</span> 1 en attente</span></td>
                   <td class="cell-secondary">25/01/2026</td>
-                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Fondation Lumi&egrave;re Provence"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
+                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Fondation Lumi&egrave;re Provence"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
                 </tr>
 
                 <!-- Row 4 -->
@@ -332,12 +332,12 @@
                       </div>
                     </div>
                   </td>
-                  <td><span class="badge badge-entreprise"><i data-lucide="building-2" style="width:12px;height:12px;"></i> Entreprise</span></td>
+                  <td><span class="badge badge-entreprise"><span class="material-symbols-outlined" style="font-size:12px">business</span> Entreprise</span></td>
                   <td>Marc Delacroix</td>
                   <td class="text-right cell-mono">&euro;12&nbsp;500</td>
-                  <td><span class="badge badge-neutral"><i data-lucide="minus" style="width:12px;height:12px;"></i> Aucune</span></td>
+                  <td><span class="badge badge-neutral"><span class="material-symbols-outlined" style="font-size:12px">remove</span> Aucune</span></td>
                   <td class="cell-secondary">03/02/2026</td>
-                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Groupe M&eacute;ridien SA"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
+                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Groupe M&eacute;ridien SA"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
                 </tr>
 
                 <!-- Row 5 -->
@@ -352,12 +352,12 @@
                       </div>
                     </div>
                   </td>
-                  <td><span class="badge badge-association"><i data-lucide="users" style="width:12px;height:12px;"></i> Association</span></td>
+                  <td><span class="badge badge-association"><span class="material-symbols-outlined" style="font-size:12px">group</span> Association</span></td>
                   <td>Nathalie Girard</td>
                   <td class="text-right cell-mono">&euro;0</td>
-                  <td><span class="badge badge-neutral"><i data-lucide="minus" style="width:12px;height:12px;"></i> Aucune</span></td>
+                  <td><span class="badge badge-neutral"><span class="material-symbols-outlined" style="font-size:12px">remove</span> Aucune</span></td>
                   <td class="cell-secondary">18/01/2026</td>
-                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Croix-Rouge fran&ccedil;aise"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
+                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Croix-Rouge fran&ccedil;aise"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
                 </tr>
 
                 <!-- Row 6 -->
@@ -372,12 +372,12 @@
                       </div>
                     </div>
                   </td>
-                  <td><span class="badge badge-admin"><i data-lucide="landmark" style="width:12px;height:12px;"></i> Administration</span></td>
+                  <td><span class="badge badge-admin"><span class="material-symbols-outlined" style="font-size:12px">account_balance</span> Administration</span></td>
                   <td>Karim Bensalem</td>
                   <td class="text-right cell-mono">&euro;35&nbsp;000</td>
-                  <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> 1 active</span></td>
+                  <td><span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:12px">check</span> 1 active</span></td>
                   <td class="cell-secondary">20/02/2026</td>
-                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Mairie de Marseille"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
+                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Mairie de Marseille"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
                 </tr>
 
                 <!-- Row 7 -->
@@ -392,12 +392,12 @@
                       </div>
                     </div>
                   </td>
-                  <td><span class="badge badge-fondation"><i data-lucide="star" style="width:12px;height:12px;"></i> Fondation</span></td>
+                  <td><span class="badge badge-fondation"><span class="material-symbols-outlined" style="font-size:12px">star</span> Fondation</span></td>
                   <td>Sylvie Moreau</td>
                   <td class="text-right cell-mono">&euro;25&nbsp;000</td>
-                  <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> 1 active</span></td>
+                  <td><span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:12px">check</span> 1 active</span></td>
                   <td class="cell-secondary">15/02/2026</td>
-                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir BNP Paribas Foundation"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
+                  <td><a href="organization-detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir BNP Paribas Foundation"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
                 </tr>
 
               </tbody>
@@ -408,12 +408,12 @@
           <div class="pagination">
             <span class="pagination-info">Affichage 1&ndash;25 sur 89</span>
             <div class="pagination-controls">
-              <button class="pagination-btn" disabled aria-label="Page pr&eacute;c&eacute;dente"><i data-lucide="chevron-left" style="width:16px;height:16px;"></i></button>
+              <button class="pagination-btn" disabled aria-label="Page pr&eacute;c&eacute;dente"><span class="material-symbols-outlined" style="font-size:16px">chevron_left</span></button>
               <button class="pagination-btn active">1</button>
               <button class="pagination-btn">2</button>
               <button class="pagination-btn">3</button>
               <button class="pagination-btn">4</button>
-              <button class="pagination-btn" aria-label="Page suivante"><i data-lucide="chevron-right" style="width:16px;height:16px;"></i></button>
+              <button class="pagination-btn" aria-label="Page suivante"><span class="material-symbols-outlined" style="font-size:16px">chevron_right</span></button>
             </div>
           </div>
 
@@ -426,6 +426,5 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>
