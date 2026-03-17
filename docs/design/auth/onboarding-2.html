@@ -7,7 +7,6 @@
   <title>Givernance — Onboarding : Inviter votre equipe</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     .onboarding-actions {
       display: flex;
@@ -144,7 +143,7 @@
       <div class="wizard-progress">
         <div class="wizard-step completed">
           <div class="wizard-step-dot">
-            <i data-lucide="check" style="width:14px;height:14px;"></i>
+            <span class="material-symbols-outlined" style="font-size:14px;">check</span>
           </div>
           <span class="wizard-step-label">Organisation</span>
         </div>
@@ -212,7 +211,7 @@
                   </td>
                   <td>
                     <button class="remove-btn" title="Supprimer">
-                      <i data-lucide="x" style="width:16px;height:16px;"></i>
+                      <span class="material-symbols-outlined" style="font-size:16px;">close</span>
                     </button>
                   </td>
                 </tr>
@@ -238,7 +237,7 @@
                   </td>
                   <td>
                     <button class="remove-btn" title="Supprimer">
-                      <i data-lucide="x" style="width:16px;height:16px;"></i>
+                      <span class="material-symbols-outlined" style="font-size:16px;">close</span>
                     </button>
                   </td>
                 </tr>
@@ -265,7 +264,7 @@
                   </td>
                   <td>
                     <button class="remove-btn" title="Supprimer">
-                      <i data-lucide="x" style="width:16px;height:16px;"></i>
+                      <span class="material-symbols-outlined" style="font-size:16px;">close</span>
                     </button>
                   </td>
                 </tr>
@@ -276,7 +275,7 @@
           <!-- Add member button -->
           <div style="margin-top: var(--space-4);">
             <button class="btn btn-ghost btn-sm btn-add-member">
-              <i data-lucide="plus" style="width:14px;height:14px;"></i>
+              <span class="material-symbols-outlined" style="font-size:14px;">add</span>
               Ajouter un membre
             </button>
           </div>
@@ -341,18 +340,17 @@
       <div class="onboarding-actions">
         <button class="btn btn-ghost onboarding-actions-left">Passer cette etape</button>
         <a href="onboarding-1.html" class="btn btn-secondary" style="text-decoration:none;">
-          <i data-lucide="arrow-left" style="width:16px;height:16px;"></i>
+          <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
           Retour
         </a>
         <a href="onboarding-3.html" class="btn btn-primary" style="text-decoration:none;">
           Envoyer les invitations
-          <i data-lucide="send" style="width:16px;height:16px;"></i>
+          <span class="material-symbols-outlined" style="font-size:16px;">send</span>
         </a>
       </div>
 
     </div>
   </div>
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

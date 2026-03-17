@@ -7,7 +7,6 @@
   <title>Givernance — Onboarding : Importer vos donnees</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     .onboarding-actions {
       display: flex;
@@ -26,12 +25,15 @@
         grid-template-columns: 1fr;
       }
     }
-    .option-card-icon svg {
+    .option-card-icon svg,
+    .option-card-icon .material-symbols-outlined {
       width: 32px;
       height: 32px;
+      font-size: 32px;
       color: var(--color-primary);
     }
-    .option-card.selected .option-card-icon svg {
+    .option-card.selected .option-card-icon svg,
+    .option-card.selected .option-card-icon .material-symbols-outlined {
       color: var(--color-primary-dark);
     }
     .option-card-badge {
@@ -96,14 +98,14 @@
       <div class="wizard-progress">
         <div class="wizard-step completed">
           <div class="wizard-step-dot">
-            <i data-lucide="check" style="width:14px;height:14px;"></i>
+            <span class="material-symbols-outlined" style="font-size:14px;">check</span>
           </div>
           <span class="wizard-step-label">Organisation</span>
         </div>
         <div class="wizard-step-connector completed"></div>
         <div class="wizard-step completed">
           <div class="wizard-step-dot">
-            <i data-lucide="check" style="width:14px;height:14px;"></i>
+            <span class="material-symbols-outlined" style="font-size:14px;">check</span>
           </div>
           <span class="wizard-step-label">Equipe</span>
         </div>
@@ -136,14 +138,14 @@
         <!-- Option 1: Salesforce -->
         <div class="option-card">
           <div class="option-card-icon">
-            <i data-lucide="cloud" style="width:32px;height:32px;"></i>
+            <span class="material-symbols-outlined" style="font-size:32px;">cloud</span>
           </div>
           <div class="option-card-title">Migrer depuis Salesforce</div>
           <p class="option-card-desc">
             Connectez votre instance Salesforce NPSP et lancez l'assistant de migration automatique. Vos contacts, opportunites et campagnes seront importes.
           </p>
           <span class="option-card-badge">
-            <i data-lucide="zap" style="width:12px;height:12px;"></i>
+            <span class="material-symbols-outlined" style="font-size:12px;">bolt</span>
             Assiste par IA
           </span>
         </div>
@@ -151,14 +153,14 @@
         <!-- Option 2: CSV Import -->
         <div class="option-card selected">
           <div class="option-card-icon">
-            <i data-lucide="file-text" style="width:32px;height:32px;"></i>
+            <span class="material-symbols-outlined" style="font-size:32px;">description</span>
           </div>
           <div class="option-card-title">Importer un fichier CSV</div>
           <p class="option-card-desc">
             Telechargez un fichier CSV avec vos donnees de constituants. L'IA analysera les colonnes et proposera un mapping automatique des champs.
           </p>
           <span class="option-card-badge">
-            <i data-lucide="zap" style="width:12px;height:12px;"></i>
+            <span class="material-symbols-outlined" style="font-size:12px;">bolt</span>
             Mapping intelligent
           </span>
         </div>
@@ -166,7 +168,7 @@
         <!-- Option 3: Start Fresh -->
         <div class="option-card">
           <div class="option-card-icon">
-            <i data-lucide="star" style="width:32px;height:32px;"></i>
+            <span class="material-symbols-outlined" style="font-size:32px;">star</span>
           </div>
           <div class="option-card-title">Commencer de zero</div>
           <p class="option-card-desc">
@@ -179,14 +181,14 @@
       <!-- CSV Template Download -->
       <div class="template-download">
         <div class="template-download-icon">
-          <i data-lucide="download" style="width:20px;height:20px;"></i>
+          <span class="material-symbols-outlined" style="font-size:20px;">download</span>
         </div>
         <div class="template-download-info">
           <div class="template-download-name">Telecharger le modele CSV</div>
           <div class="template-download-meta">Modele pre-formate avec les colonnes attendues : nom, prenom, email, telephone, adresse, date de naissance, type de constituant. Format UTF-8.</div>
         </div>
         <a href="#" class="btn btn-secondary btn-sm">
-          <i data-lucide="download" style="width:14px;height:14px;"></i>
+          <span class="material-symbols-outlined" style="font-size:14px;">download</span>
           Telecharger
         </a>
       </div>
@@ -194,18 +196,17 @@
       <!-- Actions -->
       <div class="onboarding-actions">
         <a href="onboarding-2.html" class="btn btn-secondary" style="text-decoration:none;">
-          <i data-lucide="arrow-left" style="width:16px;height:16px;"></i>
+          <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
           Retour
         </a>
         <a href="onboarding-4.html" class="btn btn-primary" style="text-decoration:none;">
           Continuer
-          <i data-lucide="arrow-right" style="width:16px;height:16px;"></i>
+          <span class="material-symbols-outlined" style="font-size:16px;">arrow_forward</span>
         </a>
       </div>
 
     </div>
   </div>
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

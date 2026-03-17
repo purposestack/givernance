@@ -7,7 +7,6 @@
   <title>Connexion SSO &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for auth/sso (AUTH-002) ── */
 
@@ -286,7 +285,7 @@
 
         <!-- SAML Custom -->
         <button class="btn-sso btn-sso--saml" type="button">
-          <span class="btn-sso-icon--text"><i data-lucide="lock" style="width:20px;height:20px;"></i></span>
+          <span class="btn-sso-icon--text"><span class="material-symbols-outlined" style="font-size:20px;">lock</span></span>
           Continuer avec SAML (fournisseur personnalis&eacute;)
         </button>
 
@@ -319,7 +318,7 @@
 
       <!-- Back to classic login -->
       <div class="auth-links">
-        <a href="login.html" class="auth-link"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Retour &agrave; la connexion classique</a>
+        <a href="login.html" class="auth-link"><span class="material-symbols-outlined" style="font-size:14px;">arrow_back</span> Retour &agrave; la connexion classique</a>
       </div>
 
     </div>
@@ -361,6 +360,5 @@
   <!-- end .auth-layout -->
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

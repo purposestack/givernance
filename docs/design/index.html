@@ -7,53 +7,52 @@
   <title>Givernance NPO Platform — Index des maquettes</title>
   <link rel="stylesheet" href="shared/tokens.css">
   <link rel="stylesheet" href="shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
-    body { background: var(--color-bg, #FAFAF8); }
+    body { background: var(--color-bg); }
     .page { max-width: 1280px; margin: 0 auto; padding: 48px 24px 96px; }
 
     /* Header */
     .header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
-    .logo { width: 52px; height: 52px; background: #2E7D5E; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 22px; font-weight: 700; flex-shrink: 0; font-family: var(--font-heading); }
-    .header-text h1 { font-family: var(--font-heading); font-size: 32px; color: #1C1B19; margin: 0; }
-    .header-text p { font-size: 14px; color: #6B6760; margin: 4px 0 0; }
-    .divider { height: 1px; background: #E4E0D9; margin: 24px 0 40px; }
+    .logo { width: 52px; height: 52px; background: var(--color-primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--color-white); font-size: 22px; font-weight: 700; flex-shrink: 0; font-family: var(--font-heading); }
+    .header-text h1 { font-family: var(--font-heading); font-size: 32px; color: var(--color-on-surface); margin: 0; }
+    .header-text p { font-size: 14px; color: var(--color-text-secondary); margin: 4px 0 0; }
+    .divider { height: 1px; background: var(--color-border); margin: 24px 0 40px; }
 
     /* Stats bar */
     .stats { display: flex; gap: 32px; margin-bottom: 48px; }
     .stat { text-align: center; }
-    .stat-num { font-size: 36px; font-weight: 700; color: #2E7D5E; font-family: var(--font-heading); line-height: 1; }
-    .stat-label { font-size: 12px; color: #6B6760; margin-top: 4px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .stat-num { font-size: 36px; font-weight: 700; color: var(--color-primary); font-family: var(--font-heading); line-height: 1; }
+    .stat-label { font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; letter-spacing: 0.05em; text-transform: uppercase; }
 
     /* Quick links */
     .quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 56px; }
-    .quick-card { background: #fff; border: 2px solid #E4E0D9; border-radius: 12px; padding: 24px; text-decoration: none; color: inherit; transition: all 150ms ease-out; display: flex; flex-direction: column; gap: 8px; }
-    .quick-card:hover { border-color: #2E7D5E; box-shadow: 0 4px 16px rgba(0,0,0,0.1); transform: translateY(-2px); text-decoration: none; }
+    .quick-card { background: var(--color-surface-container-lowest); border: 2px solid var(--color-border); border-radius: var(--radius-xl); padding: 24px; text-decoration: none; color: inherit; transition: all 150ms ease-out; display: flex; flex-direction: column; gap: 8px; }
+    .quick-card:hover { border-color: var(--color-primary); box-shadow: 0 4px 16px rgba(0,0,0,0.1); transform: translateY(-2px); text-decoration: none; }
     .quick-icon { font-size: 28px; margin-bottom: 4px; }
-    .quick-title { font-family: var(--font-heading); font-size: 18px; color: #1C1B19; }
-    .quick-desc { font-size: 13px; color: #6B6760; }
+    .quick-title { font-family: var(--font-heading); font-size: 18px; color: var(--color-on-surface); }
+    .quick-desc { font-size: 13px; color: var(--color-text-secondary); }
 
     /* Module section */
     .module { margin-bottom: 48px; }
-    .module-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #E4E0D9; }
+    .module-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--color-border); }
     .module-emoji { font-size: 22px; }
-    .module-title { font-family: var(--font-heading); font-size: 24px; color: #1C1B19; margin: 0; }
-    .module-count { font-size: 11px; font-weight: 600; color: #2E7D5E; background: #F2F0EC; padding: 3px 10px; border-radius: 99px; letter-spacing: 0.04em; }
+    .module-title { font-family: var(--font-heading); font-size: 24px; color: var(--color-on-surface); margin: 0; }
+    .module-count { font-size: 11px; font-weight: 600; color: var(--color-primary); background: var(--color-neutral-100); padding: 3px 10px; border-radius: 99px; letter-spacing: 0.04em; }
 
     /* Screen grid */
     .screens { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-    .card { background: #fff; border: 1px solid #E4E0D9; border-radius: 8px; padding: 20px; text-decoration: none; color: inherit; transition: all 150ms ease-out; display: flex; flex-direction: column; gap: 8px; }
-    .card:hover { border-color: #2E7D5E; box-shadow: 0 1px 8px rgba(0,0,0,0.08); transform: translateY(-1px); text-decoration: none; }
+    .card { background: var(--color-surface-container-lowest); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 20px; text-decoration: none; color: inherit; transition: all 150ms ease-out; display: flex; flex-direction: column; gap: 8px; }
+    .card:hover { border-color: var(--color-primary); box-shadow: 0 1px 8px rgba(0,0,0,0.08); transform: translateY(-1px); text-decoration: none; }
     .card-top { display: flex; align-items: center; justify-content: space-between; }
-    .card-id { font-family: monospace; font-size: 11px; font-weight: 600; color: #1A5240; background: #F2F0EC; padding: 2px 8px; border-radius: 4px; }
-    .card-must { font-size: 11px; font-weight: 600; color: #2E7D5E; }
-    .card-should { font-size: 11px; font-weight: 600; color: #D97706; }
-    .card-title { font-family: var(--font-heading); font-size: 16px; color: #1C1B19; line-height: 1.3; }
-    .card-desc { font-size: 13px; color: #6B6760; line-height: 1.5; }
-    .card-arrow { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: #2E7D5E; margin-top: auto; padding-top: 12px; border-top: 1px solid #F2F0EC; }
+    .card-id { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--color-primary-dark); background: var(--color-neutral-100); padding: 2px 8px; border-radius: 4px; }
+    .card-must { font-size: 11px; font-weight: 600; color: var(--color-primary); }
+    .card-should { font-size: 11px; font-weight: 600; color: var(--color-amber); }
+    .card-title { font-family: var(--font-heading); font-size: 16px; color: var(--color-on-surface); line-height: 1.3; }
+    .card-desc { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
+    .card-arrow { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--color-primary); margin-top: auto; padding-top: 12px; border-top: 1px solid var(--color-neutral-100); }
 
     /* Footer */
-    .footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid #E4E0D9; text-align: center; font-size: 13px; color: #6B6760; }
+    .footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--color-border); text-align: center; font-size: 13px; color: var(--color-text-secondary); }
 
     @media (max-width: 768px) {
       .quick { grid-template-columns: 1fr; }
@@ -69,7 +68,7 @@
     <img src="shared/assets/logo-symbol.png" alt="Givernance" style="width:64px;height:64px;border-radius:12px;object-fit:contain;">
     <div class="header-text">
       <h1>Givernance NPO Platform</h1>
-      <p>Design Mockups — v2.0 · Février 2026</p>
+      <p>Design Mockups — v3.0 · Mars 2026</p>
     </div>
   </div>
   <div class="divider"></div>
@@ -85,17 +84,17 @@
   <!-- Quick links -->
   <div class="quick">
     <a href="moodboard.html" class="quick-card">
-      <div class="quick-icon"><i data-lucide="palette" style="width:28px;height:28px;color:#2E7D5E;"></i></div>
+      <div class="quick-icon"><span class="material-symbols-outlined" style="font-size:28px;color:var(--color-primary);">palette</span></div>
       <div class="quick-title">Moodboard</div>
       <div class="quick-desc">Identité visuelle, palette, typographie</div>
     </a>
     <a href="design-system.html" class="quick-card">
-      <div class="quick-icon"><i data-lucide="puzzle" style="width:28px;height:28px;color:#2E7D5E;"></i></div>
+      <div class="quick-icon"><span class="material-symbols-outlined" style="font-size:28px;color:var(--color-primary);">extension</span></div>
       <div class="quick-title">Design System</div>
       <div class="quick-desc">Tokens, composants, accessibilité</div>
     </a>
     <a href="dashboard.html" class="quick-card">
-      <div class="quick-icon"><i data-lucide="layout-dashboard" style="width:28px;height:28px;color:#2E7D5E;"></i></div>
+      <div class="quick-icon"><span class="material-symbols-outlined" style="font-size:28px;color:var(--color-primary);">dashboard</span></div>
       <div class="quick-title">Dashboard</div>
       <div class="quick-desc">Vue d'ensemble principale</div>
     </a>
@@ -104,7 +103,7 @@
   <!-- ── DASHBOARD ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="layout-dashboard" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">dashboard</span></span>
       <h2 class="module-title">Dashboard</h2>
       <span class="module-count">2 écrans</span>
     </div>
@@ -117,7 +116,7 @@
   <!-- ── AUTH ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="lock" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">lock</span></span>
       <h2 class="module-title">Authentification</h2>
       <span class="module-count">9 écrans</span>
     </div>
@@ -137,7 +136,7 @@
   <!-- ── CONSTITUANTS ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="users" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">groups</span></span>
       <h2 class="module-title">Constituants</h2>
       <span class="module-count">8 écrans</span>
     </div>
@@ -156,7 +155,7 @@
   <!-- ── DONS ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="wallet" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">account_balance_wallet</span></span>
       <h2 class="module-title">Dons</h2>
       <span class="module-count">6 écrans</span>
     </div>
@@ -173,7 +172,7 @@
   <!-- ── CAMPAGNES ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="megaphone" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">campaign</span></span>
       <h2 class="module-title">Campagnes</h2>
       <span class="module-count">4 écrans</span>
     </div>
@@ -188,7 +187,7 @@
   <!-- ── SUBVENTIONS ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="landmark" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">account_balance</span></span>
       <h2 class="module-title">Subventions</h2>
       <span class="module-count">4 écrans</span>
     </div>
@@ -203,7 +202,7 @@
   <!-- ── PROGRAMMES ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="handshake" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">handshake</span></span>
       <h2 class="module-title">Programmes</h2>
       <span class="module-count">5 écrans</span>
     </div>
@@ -219,7 +218,7 @@
   <!-- ── BÉNÉVOLES ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="hand-heart" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">front_hand</span></span>
       <h2 class="module-title">Bénévoles</h2>
       <span class="module-count">4 écrans</span>
     </div>
@@ -234,7 +233,7 @@
   <!-- ── IMPACT ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="trending-up" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">trending_up</span></span>
       <h2 class="module-title">Impact</h2>
       <span class="module-count">3 écrans</span>
     </div>
@@ -248,7 +247,7 @@
   <!-- ── COMMUNICATIONS ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="mail" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">mail</span></span>
       <h2 class="module-title">Communications</h2>
       <span class="module-count">4 écrans</span>
     </div>
@@ -263,7 +262,7 @@
   <!-- ── FINANCE ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="coins" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">payments</span></span>
       <h2 class="module-title">Finance</h2>
       <span class="module-count">3 écrans</span>
     </div>
@@ -277,7 +276,7 @@
   <!-- ── RGPD ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="shield" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">shield</span></span>
       <h2 class="module-title">RGPD</h2>
       <span class="module-count">3 écrans</span>
     </div>
@@ -291,7 +290,7 @@
   <!-- ── ADMIN ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="settings" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">settings</span></span>
       <h2 class="module-title">Administration</h2>
       <span class="module-count">6 écrans</span>
     </div>
@@ -308,7 +307,7 @@
   <!-- ── RAPPORTS ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="clipboard-list" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">assignment</span></span>
       <h2 class="module-title">Rapports</h2>
       <span class="module-count">4 écrans</span>
     </div>
@@ -323,7 +322,7 @@
   <!-- ── MIGRATION ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="truck" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">local_shipping</span></span>
       <h2 class="module-title">Migration</h2>
       <span class="module-count">5 écrans</span>
     </div>
@@ -339,7 +338,7 @@
   <!-- ── GLOBAL ── -->
   <div class="module">
     <div class="module-header">
-      <span class="module-emoji"><i data-lucide="globe" style="width:22px;height:22px;color:#2E7D5E;"></i></span>
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">language</span></span>
       <h2 class="module-title">Global</h2>
       <span class="module-count">4 écrans</span>
     </div>
@@ -354,18 +353,18 @@
   <!-- ── MODE CONVERSATIONNEL ── -->
   <div class="module">
     <div class="module-header">
-      <div class="module-emoji"><i data-lucide="bot" style="width:22px;height:22px;color:#2E7D5E;"></i></div>
+      <div class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">smart_toy</span></div>
       <h2 class="module-title">Mode Conversationnel</h2>
       <span class="module-count">11 écrans · Vision 2026-2028</span>
     </div>
-    <p style="font-size:14px;color:#6B6760;margin-bottom:16px;line-height:1.6;">
+    <p style="font-size:14px;color:var(--color-text-secondary);margin-bottom:16px;line-height:1.6;">
       Exploration prospective : comment Givernance évoluerait vers un paradigme agentique et conversationnel dans 2-3 ans.
       Interface naturelle, orchestration d'actions complexes, autonomie contrôlée.
     </p>
     <a href="./conversational-mode/index.html" class="card" style="max-width:400px;">
       <div class="card-top">
         <span class="card-id">VISION</span>
-        <span style="font-size:18px;"><i data-lucide="bot" style="width:18px;height:18px;color:#2E7D5E;"></i></span>
+        <span style="font-size:18px;"><span class="material-symbols-outlined" style="font-size:18px;color:var(--color-primary);">smart_toy</span></span>
       </div>
       <div class="card-title">Explorer le mode conversationnel</div>
       <div class="card-desc">11 mockups · Hub IA · Orchestration · Vue hybride · Mobile · Dashboard évolué</div>
@@ -374,11 +373,10 @@
   </div>
 
   <footer class="footer">
-    Givernance NPO Platform · Design System v2.2 · 74 écrans · MUST + SHOULD · Février 2026
+    Givernance NPO Platform · Design System v3.0 · 86 écrans · MUST + SHOULD · Mars 2026
   </footer>
 
 </div>
 <script src="shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>
