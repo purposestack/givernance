@@ -270,7 +270,15 @@
           </div>
           <div class="page-header-actions">
             <button class="btn btn-secondary"><span class="material-symbols-outlined" style="font-size:16px">calendar_today</span> Calendrier</button>
-            <a href="new.html" class="btn btn-primary"><span class="material-symbols-outlined" style="font-size:16px">add</span> Nouvelle campagne</a>
+            <div style="position:relative;display:inline-block;" class="dropdown-wrapper">
+              <button class="btn btn-primary" onclick="this.nextElementSibling.classList.toggle('show')" type="button"><span class="material-symbols-outlined" style="font-size:16px">add</span> Nouvelle campagne <span class="material-symbols-outlined" style="font-size:16px">expand_more</span></button>
+              <div class="dropdown-menu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-card-hover);min-width:220px;z-index:10;padding:var(--space-1) 0;">
+                <a href="new.html" style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);font-size:var(--text-sm);color:var(--color-text);text-decoration:none;transition:background 0.15s;" onmouseover="this.style.background='var(--color-surface-container-low)'" onmouseout="this.style.background='transparent'"><span class="material-symbols-outlined" style="font-size:16px">campaign</span> Campagne standard</a>
+                <a href="postal-wizard.html" style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);font-size:var(--text-sm);color:var(--color-text);text-decoration:none;transition:background 0.15s;" onmouseover="this.style.background='var(--color-surface-container-low)'" onmouseout="this.style.background='transparent'"><span class="material-symbols-outlined" style="font-size:16px">mail</span> Campagne postale</a>
+                <a href="door-drop.html" style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);font-size:var(--text-sm);color:var(--color-text);text-decoration:none;transition:background 0.15s;" onmouseover="this.style.background='var(--color-surface-container-low)'" onmouseout="this.style.background='transparent'"><span class="material-symbols-outlined" style="font-size:16px">location_on</span> Door-drop</a>
+              </div>
+            </div>
+            <script>document.addEventListener('click',function(e){document.querySelectorAll('.dropdown-menu.show').forEach(function(m){if(!m.parentElement.contains(e.target))m.classList.remove('show')});});document.querySelectorAll('.dropdown-menu').forEach(function(m){m.classList.contains('show')?m.style.display='block':new MutationObserver(function(){m.style.display=m.classList.contains('show')?'block':'none'}).observe(m,{attributes:true,attributeFilter:['class']})});</script>
           </div>
         </div>
 
