@@ -7,6 +7,7 @@
   <title>Givernance — &Eacute;ch&eacute;ances des subventions</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Deadlines Page Styles ── */
 
@@ -331,7 +332,7 @@
         </a>
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -401,7 +402,7 @@
                         </div>
                       </div>
                     </div>
-                    <span class="badge badge-error"><span class="badge-icon">&#9888;</span> Urgent &mdash; 4 jours</span>
+                    <span class="badge badge-error"><span class="badge-icon"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span> Urgent &mdash; 4 jours</span>
                   </div>
                 </div>
               </a>
@@ -429,7 +430,7 @@
                         </div>
                       </div>
                     </div>
-                    <span class="badge badge-warning"><span class="badge-icon">&#9888;</span> 11 jours</span>
+                    <span class="badge badge-warning"><span class="badge-icon"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span> 11 jours</span>
                   </div>
                 </div>
               </a>
@@ -457,7 +458,7 @@
                         </div>
                       </div>
                     </div>
-                    <span class="badge badge-warning"><span class="badge-icon">&#9888;</span> 16 jours</span>
+                    <span class="badge badge-warning"><span class="badge-icon"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span> 16 jours</span>
                   </div>
                 </div>
               </a>
@@ -485,7 +486,7 @@
                         </div>
                       </div>
                     </div>
-                    <span class="badge badge-warning"><span class="badge-icon">&#9888;</span> 16 jours</span>
+                    <span class="badge badge-warning"><span class="badge-icon"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span> 16 jours</span>
                   </div>
                 </div>
               </a>
@@ -513,7 +514,7 @@
                         </div>
                       </div>
                     </div>
-                    <span class="badge badge-success"><span class="badge-icon">&#10003;</span> 33 jours</span>
+                    <span class="badge badge-success"><span class="badge-icon"><i data-lucide="check" style="width:12px;height:12px;"></i></span> 33 jours</span>
                   </div>
                 </div>
               </a>
@@ -541,7 +542,7 @@
                         </div>
                       </div>
                     </div>
-                    <span class="badge badge-success"><span class="badge-icon">&#10003;</span> &gt; 4 mois</span>
+                    <span class="badge badge-success"><span class="badge-icon"><i data-lucide="check" style="width:12px;height:12px;"></i></span> &gt; 4 mois</span>
                   </div>
                 </div>
               </a>
@@ -569,7 +570,7 @@
                         </div>
                       </div>
                     </div>
-                    <span class="badge badge-success"><span class="badge-icon">&#10003;</span> &gt; 6 mois</span>
+                    <span class="badge badge-success"><span class="badge-icon"><i data-lucide="check" style="width:12px;height:12px;"></i></span> &gt; 6 mois</span>
                   </div>
                 </div>
               </a>
@@ -597,7 +598,7 @@
                         </div>
                       </div>
                     </div>
-                    <span class="badge badge-success"><span class="badge-icon">&#10003;</span> &gt; 9 mois</span>
+                    <span class="badge badge-success"><span class="badge-icon"><i data-lucide="check" style="width:12px;height:12px;"></i></span> &gt; 9 mois</span>
                   </div>
                 </div>
               </a>
@@ -728,5 +729,6 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>
