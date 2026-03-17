@@ -7,6 +7,7 @@
   <title>Nouvelle campagne &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for campaigns/new (CAMP-003) ── */
 
@@ -137,7 +138,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" type="button" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
@@ -306,7 +307,7 @@
             <div class="form-footer-left">
               <a href="list.html" class="btn btn-secondary">Annuler</a>
             </div>
-            <a href="detail.html" class="btn btn-primary">Sauvegarder</a>
+            <a href="detail.html" class="btn btn-primary"><i data-lucide="check" style="width:16px;height:16px;"></i> Sauvegarder</a>
           </div>
 
         </form>
@@ -320,5 +321,6 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

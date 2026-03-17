@@ -7,6 +7,7 @@
   <title>Re&ccedil;u fiscal RF-2026-0142 &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for donations/receipt (DON-004) ── */
     /* No sidebar, no topbar — standalone receipt preview */
@@ -39,6 +40,7 @@
 
     .receipt-toolbar a:hover {
       color: var(--color-primary-100);
+      text-decoration: none;
     }
 
     .receipt-toolbar-actions {
@@ -155,6 +157,7 @@
       font-family: var(--font-mono);
       font-weight: var(--weight-bold);
       font-size: var(--text-md);
+      font-variant-numeric: tabular-nums;
     }
 
     /* Legal mentions */
@@ -200,10 +203,10 @@
 
   <!-- Receipt Toolbar (not the app topbar) -->
   <div class="receipt-toolbar">
-    <a href="detail.html">&#8592; Retour au don</a>
+    <a href="detail.html"><i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Retour au don</a>
     <div class="receipt-toolbar-actions">
-      <button class="btn btn-secondary btn-sm" type="button">T&eacute;l&eacute;charger PDF</button>
-      <button class="btn btn-primary btn-sm" type="button">Envoyer par email</button>
+      <button class="btn btn-secondary btn-sm" type="button"><i data-lucide="download" style="width:16px;height:16px;"></i> T&eacute;l&eacute;charger PDF</button>
+      <button class="btn btn-primary btn-sm" type="button"><i data-lucide="mail" style="width:16px;height:16px;"></i> Envoyer par email</button>
     </div>
   </div>
 
@@ -291,5 +294,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

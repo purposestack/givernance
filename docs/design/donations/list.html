@@ -7,6 +7,7 @@
   <title>Liste des dons — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for donations/list (DON-001) ── */
 
@@ -42,6 +43,7 @@
     .cell-amount {
       font-family: var(--font-mono);
       font-weight: var(--weight-semi);
+      font-variant-numeric: tabular-nums;
       text-align: right;
       white-space: nowrap;
     }
@@ -53,7 +55,11 @@
       justify-content: center;
       width: 20px;
       height: 20px;
-      font-size: var(--text-xs);
+    }
+
+    .receipt-indicator svg {
+      width: 16px;
+      height: 16px;
     }
 
     .receipt-yes {
@@ -76,8 +82,12 @@
       color: var(--color-text-secondary);
       cursor: pointer;
       border-radius: var(--radius-sm);
-      font-size: var(--text-sm);
       transition: all var(--duration-normal) var(--ease-out);
+    }
+
+    .action-view svg {
+      width: 16px;
+      height: 16px;
     }
 
     .action-view:hover {
@@ -178,7 +188,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
@@ -195,8 +205,8 @@
             <p class="page-subtitle">247 dons &mdash; Total : &euro;89 340</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary" type="button">Exporter</button>
-            <a href="new.html"><button class="btn btn-primary" type="button">+ Enregistrer un don</button></a>
+            <button class="btn btn-secondary" type="button"><i data-lucide="download" style="width:16px;height:16px;"></i> Exporter</button>
+            <a href="new.html"><button class="btn btn-primary" type="button"><i data-lucide="plus" style="width:16px;height:16px;"></i> Enregistrer un don</button></a>
           </div>
         </div>
 
@@ -234,9 +244,9 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Donateur</th>
-                <th class="text-right">Montant</th>
+                <th data-sortable>Date</th>
+                <th data-sortable>Donateur</th>
+                <th class="text-right" data-sortable>Montant</th>
                 <th>Campagne</th>
                 <th>Type</th>
                 <th>Paiement</th>
@@ -254,10 +264,10 @@
                 <td>Hiver 2026</td>
                 <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">Virement</td>
-                <td><span class="badge badge-success">Confirm&eacute; &#10003;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-yes">&#10003;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-yes"><i data-lucide="check" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
               <!-- Row 2 -->
@@ -268,10 +278,10 @@
                 <td>Gala 2026</td>
                 <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">Ch&egrave;que</td>
-                <td><span class="badge badge-success">Confirm&eacute; &#10003;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-yes">&#10003;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-yes"><i data-lucide="check" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
               <!-- Row 3 -->
@@ -282,10 +292,10 @@
                 <td>Hiver 2026</td>
                 <td><span class="badge badge-neutral">Entreprise</span></td>
                 <td class="cell-secondary">Virement</td>
-                <td><span class="badge badge-success">Confirm&eacute; &#10003;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-yes">&#10003;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-yes"><i data-lucide="check" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
               <!-- Row 4 -->
@@ -296,10 +306,10 @@
                 <td>Hiver 2026</td>
                 <td><span class="badge badge-warning">R&eacute;current</span></td>
                 <td class="cell-secondary">SEPA</td>
-                <td><span class="badge badge-success">Confirm&eacute; &#10003;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-yes">&#10003;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-yes"><i data-lucide="check" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
               <!-- Row 5 -->
@@ -310,10 +320,10 @@
                 <td class="cell-secondary">&mdash;</td>
                 <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">CB</td>
-                <td><span class="badge badge-success">Confirm&eacute; &#10003;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-no">&#9675;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-no"><i data-lucide="minus" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
               <!-- Row 6 -->
@@ -324,10 +334,10 @@
                 <td>Urgence M&eacute;d.</td>
                 <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">Virement</td>
-                <td><span class="badge badge-success">Confirm&eacute; &#10003;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-yes">&#10003;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-yes"><i data-lucide="check" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
               <!-- Row 7 -->
@@ -338,10 +348,10 @@
                 <td class="cell-secondary">&mdash;</td>
                 <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">Esp&egrave;ces</td>
-                <td><span class="badge badge-warning">En attente &#9888;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-no">&#9675;</span></td>
+                <td><span class="badge badge-warning"><i data-lucide="clock" style="width:12px;height:12px;"></i> En attente</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-no"><i data-lucide="minus" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
               <!-- Row 8 -->
@@ -352,10 +362,10 @@
                 <td>Gala 2026</td>
                 <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">Virement</td>
-                <td><span class="badge badge-success">Confirm&eacute; &#10003;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-yes">&#10003;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-yes"><i data-lucide="check" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
               <!-- Row 9 -->
@@ -366,10 +376,10 @@
                 <td>Hiver 2026</td>
                 <td><span class="badge badge-warning">R&eacute;current</span></td>
                 <td class="cell-secondary">SEPA</td>
-                <td><span class="badge badge-error">&Eacute;chou&eacute; &#10005;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-no">&#9675;</span></td>
+                <td><span class="badge badge-error"><i data-lucide="x" style="width:12px;height:12px;"></i> &Eacute;chou&eacute;</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-no"><i data-lucide="minus" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
               <!-- Row 10 -->
@@ -380,10 +390,10 @@
                 <td>Urgence M&eacute;d.</td>
                 <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">Virement</td>
-                <td><span class="badge badge-success">Confirm&eacute; &#10003;</span></td>
-                <td class="text-center"><span class="receipt-indicator receipt-yes">&#10003;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
+                <td class="text-center"><span class="receipt-indicator receipt-yes"><i data-lucide="check" style="width:16px;height:16px;"></i></span></td>
                 <td class="text-center">
-                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail">&#128065;</button></a>
+                  <a href="detail.html"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail" title="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></a>
                 </td>
               </tr>
             </tbody>
@@ -394,13 +404,13 @@
         <div class="pagination">
           <span class="pagination-info">Affichage 1-25 sur 247</span>
           <div class="pagination-controls">
-            <button class="pagination-btn" disabled aria-label="Page pr&eacute;c&eacute;dente">&#8249;</button>
+            <button class="pagination-btn" disabled aria-label="Page pr&eacute;c&eacute;dente"><i data-lucide="chevron-left" style="width:16px;height:16px;"></i></button>
             <button class="pagination-btn active">1</button>
             <button class="pagination-btn">2</button>
             <button class="pagination-btn">3</button>
             <button class="pagination-btn">...</button>
             <button class="pagination-btn">10</button>
-            <button class="pagination-btn" aria-label="Page suivante">&#8250;</button>
+            <button class="pagination-btn" aria-label="Page suivante"><i data-lucide="chevron-right" style="width:16px;height:16px;"></i></button>
           </div>
         </div>
 
@@ -408,7 +418,7 @@
         <div class="ai-card-wrapper">
           <div class="ai-card">
             <div class="ai-card-header">
-              <span class="ai-card-icon">&#10024;</span>
+              <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
               <span class="ai-card-label">Suggestion IA</span>
             </div>
             <p class="ai-card-text">3 dons r&eacute;currents ont &eacute;chou&eacute; ce mois &mdash; voir la liste et relancer les pr&eacute;l&egrave;vements ?</p>
@@ -428,5 +438,6 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>
