@@ -7,6 +7,7 @@
   <title>Givernance — Onboarding : Votre organisation</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     .onboarding-actions {
       display: flex;
@@ -192,11 +193,7 @@
             <label class="form-label">Logo de l'organisation</label>
             <div class="form-upload-area">
               <div class="form-upload-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
+                <i data-lucide="upload" style="width:32px;height:32px;"></i>
               </div>
               <p class="form-upload-text"><strong>Cliquez pour telecharger</strong> ou glissez-deposez</p>
               <p class="form-upload-hint">PNG, JPG ou SVG. Taille maximale : 2 Mo.</p>
@@ -210,11 +207,7 @@
       <div class="ai-card">
         <div class="ai-card-header">
           <span class="ai-card-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
+            <i data-lucide="layers" style="width:16px;height:16px;"></i>
           </span>
           <span class="ai-card-label">Suggestion IA</span>
         </div>
@@ -232,15 +225,13 @@
         <button class="btn btn-secondary">Sauvegarder et reprendre plus tard</button>
         <a href="onboarding-2.html" class="btn btn-primary" style="text-decoration:none;">
           Continuer
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"/>
-            <polyline points="12 5 19 12 12 19"/>
-          </svg>
+          <i data-lucide="arrow-right" style="width:16px;height:16px;"></i>
         </a>
       </div>
 
     </div>
   </div>
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

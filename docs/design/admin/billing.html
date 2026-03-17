@@ -7,6 +7,7 @@
   <title>Givernance &mdash; Facturation</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── ADM-005: Billing & Subscription page-specific styles ── */
 
@@ -26,6 +27,7 @@
       font-weight: var(--weight-bold);
       color: var(--color-text);
       margin-bottom: var(--space-4);
+      font-variant-numeric: tabular-nums;
     }
 
     .plan-price .plan-price-period {
@@ -38,6 +40,7 @@
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
       margin-bottom: var(--space-2);
+      font-variant-numeric: tabular-nums;
     }
 
     .plan-renewal {
@@ -124,6 +127,7 @@
       margin-bottom: var(--space-4);
       position: relative;
       z-index: 1;
+      font-variant-numeric: tabular-nums;
     }
 
     .credit-card-bottom {
@@ -151,6 +155,7 @@
     .credit-card-expiry {
       font-family: var(--font-mono);
       font-size: var(--text-sm);
+      font-variant-numeric: tabular-nums;
     }
 
     .payment-note {
@@ -316,7 +321,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell"></i>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -421,11 +426,11 @@
                   <tr>
                     <td class="cell-name">1 f&#233;v. 2026</td>
                     <td class="cell-mono">INV-2026-02</td>
-                    <td class="cell-mono text-right">89,00&nbsp;&euro;</td>
+                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
                     <td><span class="badge badge-success">Pay&#233;e</span></td>
                     <td>
                       <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon">&#128196;</span>
+                        <span class="invoice-download-icon"><i data-lucide="download"></i></span>
                         T&#233;l&#233;charger
                       </a>
                     </td>
@@ -434,11 +439,11 @@
                   <tr>
                     <td class="cell-name">1 jan. 2026</td>
                     <td class="cell-mono">INV-2026-01</td>
-                    <td class="cell-mono text-right">89,00&nbsp;&euro;</td>
+                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
                     <td><span class="badge badge-success">Pay&#233;e</span></td>
                     <td>
                       <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon">&#128196;</span>
+                        <span class="invoice-download-icon"><i data-lucide="download"></i></span>
                         T&#233;l&#233;charger
                       </a>
                     </td>
@@ -447,11 +452,11 @@
                   <tr>
                     <td class="cell-name">1 d&#233;c. 2025</td>
                     <td class="cell-mono">INV-2025-12</td>
-                    <td class="cell-mono text-right">89,00&nbsp;&euro;</td>
+                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
                     <td><span class="badge badge-success">Pay&#233;e</span></td>
                     <td>
                       <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon">&#128196;</span>
+                        <span class="invoice-download-icon"><i data-lucide="download"></i></span>
                         T&#233;l&#233;charger
                       </a>
                     </td>
@@ -460,11 +465,11 @@
                   <tr>
                     <td class="cell-name">1 nov. 2025</td>
                     <td class="cell-mono">INV-2025-11</td>
-                    <td class="cell-mono text-right">89,00&nbsp;&euro;</td>
+                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
                     <td><span class="badge badge-success">Pay&#233;e</span></td>
                     <td>
                       <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon">&#128196;</span>
+                        <span class="invoice-download-icon"><i data-lucide="download"></i></span>
                         T&#233;l&#233;charger
                       </a>
                     </td>
@@ -473,11 +478,11 @@
                   <tr>
                     <td class="cell-name">1 oct. 2025</td>
                     <td class="cell-mono">INV-2025-10</td>
-                    <td class="cell-mono text-right">89,00&nbsp;&euro;</td>
+                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
                     <td><span class="badge badge-success">Pay&#233;e</span></td>
                     <td>
                       <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon">&#128196;</span>
+                        <span class="invoice-download-icon"><i data-lucide="download"></i></span>
                         T&#233;l&#233;charger
                       </a>
                     </td>
@@ -486,11 +491,11 @@
                   <tr>
                     <td class="cell-name">1 sept. 2025</td>
                     <td class="cell-mono">INV-2025-09</td>
-                    <td class="cell-mono text-right">49,00&nbsp;&euro;</td>
+                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">49,00&nbsp;&euro;</td>
                     <td><span class="badge badge-success">Pay&#233;e</span></td>
                     <td>
                       <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon">&#128196;</span>
+                        <span class="invoice-download-icon"><i data-lucide="download"></i></span>
                         T&#233;l&#233;charger
                       </a>
                     </td>
@@ -509,5 +514,6 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

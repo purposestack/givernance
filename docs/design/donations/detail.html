@@ -7,6 +7,7 @@
   <title>D&eacute;tail du don DON-2026-0142 &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for donations/detail (DON-003) ── */
 
@@ -56,6 +57,7 @@
     .detail-value .cell-mono {
       font-family: var(--font-mono);
       font-weight: var(--weight-semi);
+      font-variant-numeric: tabular-nums;
     }
 
     /* Allocation table */
@@ -91,6 +93,7 @@
       font-family: var(--font-mono);
       font-size: var(--text-xs);
       font-weight: var(--weight-semi);
+      font-variant-numeric: tabular-nums;
     }
 
     .allocation-table .total-row {
@@ -100,6 +103,18 @@
 
     .allocation-table .total-row td {
       border-bottom: none;
+    }
+
+    /* Timeline icon Lucide alignment */
+    .timeline-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .timeline-icon svg {
+      width: 16px;
+      height: 16px;
     }
   </style>
 </head>
@@ -192,7 +207,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
@@ -207,13 +222,13 @@
           <div class="page-header-left">
             <div class="page-header-title-row">
               <h1 class="page-title">D&eacute;tail du don &mdash; DON-2026-0142</h1>
-              <span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span>
+              <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span>
             </div>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary" type="button">Modifier</button>
-            <a href="receipt.html"><button class="btn btn-secondary" type="button">G&eacute;n&eacute;rer re&ccedil;u</button></a>
-            <button class="btn btn-destructive" type="button">Annuler le don</button>
+            <button class="btn btn-secondary" type="button"><i data-lucide="pencil" style="width:16px;height:16px;"></i> Modifier</button>
+            <a href="receipt.html"><button class="btn btn-secondary" type="button"><i data-lucide="receipt" style="width:16px;height:16px;"></i> G&eacute;n&eacute;rer re&ccedil;u</button></a>
+            <button class="btn btn-destructive" type="button"><i data-lucide="x" style="width:16px;height:16px;"></i> Annuler le don</button>
           </div>
         </div>
 
@@ -241,7 +256,7 @@
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Type</span>
-                  <span class="detail-value"><span class="badge badge-info"><span class="badge-icon">&#9679;</span> Ponctuel</span></span>
+                  <span class="detail-value"><span class="badge badge-info">Ponctuel</span></span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Mode de paiement</span>
@@ -261,7 +276,7 @@
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Export comptable</span>
-                  <span class="detail-value"><span class="badge badge-warning"><span class="badge-icon">&#9888;</span> Non export&eacute;</span></span>
+                  <span class="detail-value"><span class="badge badge-warning"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> Non export&eacute;</span></span>
                 </div>
               </div>
             </div>
@@ -314,7 +329,7 @@
 
               <!-- Entry 1 -->
               <div class="timeline-item">
-                <div class="timeline-icon">&#9998;</div>
+                <div class="timeline-icon"><i data-lucide="pencil" style="width:14px;height:14px;"></i></div>
                 <div class="timeline-content">
                   <div class="timeline-title">Don enregistr&eacute; &mdash; Montant : &euro;500,00</div>
                   <div class="timeline-meta">24/02/2026 14:32 &mdash; Claire Dubois</div>
@@ -323,7 +338,7 @@
 
               <!-- Entry 2 -->
               <div class="timeline-item">
-                <div class="timeline-icon">&#128196;</div>
+                <div class="timeline-icon"><i data-lucide="file-text" style="width:14px;height:14px;"></i></div>
                 <div class="timeline-content">
                   <div class="timeline-title">Re&ccedil;u fiscal g&eacute;n&eacute;r&eacute; &mdash; R&eacute;f : RF-2026-0142</div>
                   <div class="timeline-meta">24/02/2026 14:33 &mdash; Claire Dubois</div>
@@ -332,7 +347,7 @@
 
               <!-- Entry 3 -->
               <div class="timeline-item">
-                <div class="timeline-icon">&#10003;</div>
+                <div class="timeline-icon"><i data-lucide="check-circle" style="width:14px;height:14px;"></i></div>
                 <div class="timeline-content">
                   <div class="timeline-title">Confirmation de paiement re&ccedil;ue &mdash; Virement bancaire v&eacute;rifi&eacute;</div>
                   <div class="timeline-meta">24/02/2026 14:35 &mdash; Syst&egrave;me</div>
@@ -341,7 +356,7 @@
 
               <!-- Entry 4 -->
               <div class="timeline-item">
-                <div class="timeline-icon">&#9881;</div>
+                <div class="timeline-icon"><i data-lucide="settings" style="width:14px;height:14px;"></i></div>
                 <div class="timeline-content">
                   <div class="timeline-title">Allocation fonds modifi&eacute;e &mdash; Ajout aide alimentaire (&euro;200)</div>
                   <div class="timeline-meta">25/02/2026 09:10 &mdash; Marc Benali</div>
@@ -361,5 +376,6 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

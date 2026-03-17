@@ -7,6 +7,7 @@
   <title>Historique communications — Marie-Claire Fontaine — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for communications/constituent-history (COM-004) ── */
 
@@ -144,7 +145,7 @@
       gap: var(--space-1);
       font-size: var(--text-xs);
       font-weight: var(--weight-medium);
-      padding: 2px 8px;
+      padding: var(--space-0-5) var(--space-2);
       border-radius: var(--radius-pill);
     }
 
@@ -235,7 +236,7 @@
     </a>
     <a href="../volunteers/list.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><path d="M12 21.23V12"/><path d="M8.7 8.7 12 12l3.3-3.3"/></svg>
-      <span>Bénévoles</span>
+      <span>B&eacute;n&eacute;voles</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -251,11 +252,11 @@
     </a>
     <a href="../admin/index.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/></svg>
-      <span>Paramètres</span>
+      <span>Param&egrave;tres</span>
     </a>
   </nav>
   <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
+    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
     <div class="sidebar-footer-user">
       <div class="sidebar-footer-avatar">CM</div>
       <span class="sidebar-footer-name">Claire Martin</span>
@@ -280,7 +281,7 @@
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">&#128276;</a>
+          <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications"><i data-lucide="bell"></i></a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
         </div>
       </header>
@@ -293,12 +294,12 @@
           <div class="constituent-info">
             <h2>Marie-Claire Fontaine</h2>
             <div class="constituent-info-meta">
-              <span>&#9993; marie-claire.fontaine@email.fr</span>
-              <span>&#9742; 06 12 34 56 78</span>
+              <span><i data-lucide="mail" style="width:14px;height:14px;"></i> marie-claire.fontaine@email.fr</span>
+              <span><i data-lucide="phone" style="width:14px;height:14px;"></i> 06 12 34 56 78</span>
               <span><span class="badge badge-success">Donatrice active</span></span>
             </div>
           </div>
-          <a href="compose.html" class="btn btn-primary">&#9993; Envoyer un email</a>
+          <a href="compose.html" class="btn btn-primary"><i data-lucide="mail" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:var(--space-1);"></i> Envoyer un email</a>
         </div>
 
         <!-- Tabs -->
@@ -335,15 +336,15 @@
 
           <!-- Item 1 — email opened + clicked -->
           <div class="comm-timeline-item">
-            <div class="comm-timeline-icon comm-timeline-icon--email">&#9993;</div>
+            <div class="comm-timeline-icon comm-timeline-icon--email"><i data-lucide="mail" style="width:18px;height:18px;"></i></div>
             <div class="comm-timeline-body">
               <div class="comm-timeline-header">
                 <span class="comm-timeline-subject">Newsletter f&eacute;vrier &mdash; Nos projets en M&eacute;diterran&eacute;e</span>
                 <span class="comm-timeline-date">25 f&eacute;v. 2026</span>
               </div>
               <div class="comm-timeline-meta">
-                <span class="comm-status comm-status--opened">&#10003; Ouvert</span>
-                <span class="comm-status comm-status--clicked">&#128279; Cliqu&eacute;</span>
+                <span class="comm-status comm-status--opened"><i data-lucide="check" style="width:12px;height:12px;"></i> Ouvert</span>
+                <span class="comm-status comm-status--clicked"><i data-lucide="link" style="width:12px;height:12px;"></i> Cliqu&eacute;</span>
                 <span class="comm-timeline-campaign">Newsletter mensuelle</span>
               </div>
             </div>
@@ -351,14 +352,14 @@
 
           <!-- Item 2 — email opened -->
           <div class="comm-timeline-item">
-            <div class="comm-timeline-icon comm-timeline-icon--email">&#9993;</div>
+            <div class="comm-timeline-icon comm-timeline-icon--email"><i data-lucide="mail" style="width:18px;height:18px;"></i></div>
             <div class="comm-timeline-body">
               <div class="comm-timeline-header">
                 <span class="comm-timeline-subject">Appel aux dons &mdash; Urgence Hiver 2026</span>
                 <span class="comm-timeline-date">20 f&eacute;v. 2026</span>
               </div>
               <div class="comm-timeline-meta">
-                <span class="comm-status comm-status--opened">&#10003; Ouvert</span>
+                <span class="comm-status comm-status--opened"><i data-lucide="check" style="width:12px;height:12px;"></i> Ouvert</span>
                 <span class="comm-timeline-campaign">Appel Hiver 2026</span>
               </div>
             </div>
@@ -366,15 +367,15 @@
 
           <!-- Item 3 — transactional email -->
           <div class="comm-timeline-item">
-            <div class="comm-timeline-icon comm-timeline-icon--email">&#9993;</div>
+            <div class="comm-timeline-icon comm-timeline-icon--email"><i data-lucide="mail" style="width:18px;height:18px;"></i></div>
             <div class="comm-timeline-body">
               <div class="comm-timeline-header">
                 <span class="comm-timeline-subject">Confirmation de don &mdash; Re&ccedil;u fiscal n&deg;2026-0247</span>
                 <span class="comm-timeline-date">18 f&eacute;v. 2026</span>
               </div>
               <div class="comm-timeline-meta">
-                <span class="comm-status comm-status--opened">&#10003; Ouvert</span>
-                <span class="comm-status comm-status--clicked">&#128279; Cliqu&eacute;</span>
+                <span class="comm-status comm-status--opened"><i data-lucide="check" style="width:12px;height:12px;"></i> Ouvert</span>
+                <span class="comm-status comm-status--clicked"><i data-lucide="link" style="width:12px;height:12px;"></i> Cliqu&eacute;</span>
                 <span class="badge badge-neutral">Transactionnel</span>
               </div>
             </div>
@@ -382,14 +383,14 @@
 
           <!-- Item 4 — email, delivered only -->
           <div class="comm-timeline-item">
-            <div class="comm-timeline-icon comm-timeline-icon--email">&#9993;</div>
+            <div class="comm-timeline-icon comm-timeline-icon--email"><i data-lucide="mail" style="width:18px;height:18px;"></i></div>
             <div class="comm-timeline-body">
               <div class="comm-timeline-header">
                 <span class="comm-timeline-subject">Invitation Gala annuel 2026</span>
                 <span class="comm-timeline-date">12 f&eacute;v. 2026</span>
               </div>
               <div class="comm-timeline-meta">
-                <span class="comm-status comm-status--delivered">&#8594; D&eacute;livr&eacute;</span>
+                <span class="comm-status comm-status--delivered"><i data-lucide="arrow-right" style="width:12px;height:12px;"></i> D&eacute;livr&eacute;</span>
                 <span class="comm-timeline-campaign">Gala 2026</span>
               </div>
             </div>
@@ -397,14 +398,14 @@
 
           <!-- Item 5 — SMS -->
           <div class="comm-timeline-item">
-            <div class="comm-timeline-icon comm-timeline-icon--sms">&#128172;</div>
+            <div class="comm-timeline-icon comm-timeline-icon--sms"><i data-lucide="message-square" style="width:18px;height:18px;"></i></div>
             <div class="comm-timeline-body">
               <div class="comm-timeline-header">
                 <span class="comm-timeline-subject">Rappel : collecte alimentaire samedi 8 f&eacute;vrier</span>
                 <span class="comm-timeline-date">06 f&eacute;v. 2026</span>
               </div>
               <div class="comm-timeline-meta">
-                <span class="comm-status comm-status--delivered">&#8594; D&eacute;livr&eacute;</span>
+                <span class="comm-status comm-status--delivered"><i data-lucide="arrow-right" style="width:12px;height:12px;"></i> D&eacute;livr&eacute;</span>
                 <span class="badge badge-warning">SMS</span>
               </div>
             </div>
@@ -412,14 +413,14 @@
 
           <!-- Item 6 — newsletter january -->
           <div class="comm-timeline-item">
-            <div class="comm-timeline-icon comm-timeline-icon--email">&#9993;</div>
+            <div class="comm-timeline-icon comm-timeline-icon--email"><i data-lucide="mail" style="width:18px;height:18px;"></i></div>
             <div class="comm-timeline-body">
               <div class="comm-timeline-header">
                 <span class="comm-timeline-subject">Newsletter janvier &mdash; Bilan 2025 et perspectives</span>
                 <span class="comm-timeline-date">28 jan. 2026</span>
               </div>
               <div class="comm-timeline-meta">
-                <span class="comm-status comm-status--opened">&#10003; Ouvert</span>
+                <span class="comm-status comm-status--opened"><i data-lucide="check" style="width:12px;height:12px;"></i> Ouvert</span>
                 <span class="comm-timeline-campaign">Newsletter mensuelle</span>
               </div>
             </div>
@@ -427,14 +428,14 @@
 
           <!-- Item 7 — bounce -->
           <div class="comm-timeline-item">
-            <div class="comm-timeline-icon comm-timeline-icon--email">&#9993;</div>
+            <div class="comm-timeline-icon comm-timeline-icon--email"><i data-lucide="mail" style="width:18px;height:18px;"></i></div>
             <div class="comm-timeline-body">
               <div class="comm-timeline-header">
                 <span class="comm-timeline-subject">Remerciements fin d'ann&eacute;e 2025</span>
                 <span class="comm-timeline-date">22 d&eacute;c. 2025</span>
               </div>
               <div class="comm-timeline-meta">
-                <span class="comm-status comm-status--bounced">&#10005; Bounce (soft)</span>
+                <span class="comm-status comm-status--bounced"><i data-lucide="x" style="width:12px;height:12px;"></i> Bounce (soft)</span>
                 <span class="comm-timeline-campaign">Voeux 2025</span>
               </div>
             </div>
@@ -442,14 +443,14 @@
 
           <!-- Item 8 — postal letter -->
           <div class="comm-timeline-item">
-            <div class="comm-timeline-icon comm-timeline-icon--letter">&#9993;</div>
+            <div class="comm-timeline-icon comm-timeline-icon--letter"><i data-lucide="mail" style="width:18px;height:18px;"></i></div>
             <div class="comm-timeline-body">
               <div class="comm-timeline-header">
                 <span class="comm-timeline-subject">Re&ccedil;u fiscal annuel 2025 (courrier)</span>
                 <span class="comm-timeline-date">15 d&eacute;c. 2025</span>
               </div>
               <div class="comm-timeline-meta">
-                <span class="comm-status comm-status--delivered">&#8594; Envoy&eacute;</span>
+                <span class="comm-status comm-status--delivered"><i data-lucide="arrow-right" style="width:12px;height:12px;"></i> Envoy&eacute;</span>
                 <span class="badge badge-neutral">Lettre</span>
               </div>
             </div>
@@ -474,5 +475,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

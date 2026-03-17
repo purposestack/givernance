@@ -7,6 +7,7 @@
   <title>Planning des missions &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific: VOL-003 Weekly Mission Calendar ── */
 
@@ -342,7 +343,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell"></i>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -359,8 +360,8 @@
             <p class="page-subtitle">Semaine du 2 au 8 mars 2026</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-ghost btn-sm" type="button">&larr; Semaine pr&#233;c.</button>
-            <button class="btn btn-ghost btn-sm" type="button">Semaine suiv. &rarr;</button>
+            <button class="btn btn-ghost btn-sm" type="button"><i data-lucide="arrow-left"></i> Semaine pr&#233;c.</button>
+            <button class="btn btn-ghost btn-sm" type="button">Semaine suiv. <i data-lucide="arrow-right"></i></button>
             <button class="btn btn-secondary btn-sm" type="button">Aujourd'hui</button>
             <button class="btn btn-primary" type="button">+ Cr&#233;er une mission</button>
           </div>
@@ -557,5 +558,6 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
   <title>Notes de cas &mdash; Amira Al-Rashid &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific: PROG-005 Case notes ── */
 
@@ -334,7 +335,7 @@
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">&#128276;<span class="notification-dot"></span></button></a>
+          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications"><i data-lucide="bell" style="width:20px;height:20px;"></i><span class="notification-dot"></span></button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div></a>
         </div>
       </header>
@@ -349,7 +350,7 @@
             <p class="page-subtitle">Amira Al-Rashid &mdash; Accompagnement R&eacute;fugi&eacute;s &mdash; 12 notes</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary print-btn" type="button">&#128424; Imprimer</button>
+            <button class="btn btn-secondary print-btn" type="button"><i data-lucide="printer" style="width:16px;height:16px;"></i> Imprimer</button>
           </div>
         </div>
 
@@ -405,7 +406,7 @@
                 </div>
               </div>
               <div class="note-meta">
-                <span class="note-lock"><span class="note-lock-icon">&#128274;</span> Verrouill&eacute;e</span>
+                <span class="note-lock"><span class="note-lock-icon"><i data-lucide="lock" style="width:12px;height:12px;"></i></span> Verrouill&eacute;e</span>
                 <span class="note-timestamp">18/02/2026 &mdash; 16:05</span>
               </div>
             </div>
@@ -442,7 +443,7 @@
                 </div>
               </div>
               <div class="note-meta">
-                <span class="note-lock"><span class="note-lock-icon">&#128274;</span> Verrouill&eacute;e</span>
+                <span class="note-lock"><span class="note-lock-icon"><i data-lucide="lock" style="width:12px;height:12px;"></i></span> Verrouill&eacute;e</span>
                 <span class="note-timestamp">12/02/2026 &mdash; 17:20</span>
               </div>
             </div>
@@ -472,7 +473,7 @@
                 </div>
               </div>
               <div class="note-meta">
-                <span class="note-lock"><span class="note-lock-icon">&#128274;</span> Verrouill&eacute;e</span>
+                <span class="note-lock"><span class="note-lock-icon"><i data-lucide="lock" style="width:12px;height:12px;"></i></span> Verrouill&eacute;e</span>
                 <span class="note-timestamp">28/01/2026 &mdash; 11:45</span>
               </div>
             </div>
@@ -501,7 +502,7 @@
                 </div>
               </div>
               <div class="note-meta">
-                <span class="note-lock"><span class="note-lock-icon">&#128274;</span> Verrouill&eacute;e</span>
+                <span class="note-lock"><span class="note-lock-icon"><i data-lucide="lock" style="width:12px;height:12px;"></i></span> Verrouill&eacute;e</span>
                 <span class="note-timestamp">15/01/2026 &mdash; 15:10</span>
               </div>
             </div>
@@ -546,7 +547,7 @@
             <button class="richtext-toolbar-btn" type="button" title="Liste num&eacute;rot&eacute;e" aria-label="Liste num&eacute;rot&eacute;e">1.</button>
             <div class="richtext-toolbar-sep"></div>
             <button class="richtext-toolbar-btn" type="button" title="Titre" aria-label="Titre">H</button>
-            <button class="richtext-toolbar-btn" type="button" title="Lien" aria-label="Lien">&#128279;</button>
+            <button class="richtext-toolbar-btn" type="button" title="Lien" aria-label="Lien"><i data-lucide="link" style="width:14px;height:14px;"></i></button>
           </div>
 
           <!-- Text area -->
@@ -558,7 +559,7 @@
           ></textarea>
 
           <div class="note-input-footer">
-            <span class="note-input-hint">&#128274; Les notes sont verrouill&eacute;es automatiquement 24h apr&egrave;s leur cr&eacute;ation.</span>
+            <span class="note-input-hint"><i data-lucide="lock" style="width:12px;height:12px;"></i> Les notes sont verrouill&eacute;es automatiquement 24h apr&egrave;s leur cr&eacute;ation.</span>
             <div class="flex gap-3">
               <button class="btn btn-ghost" type="button">Annuler</button>
               <button class="btn btn-primary" type="button">Enregistrer la note</button>
@@ -571,5 +572,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
   <title>Givernance &mdash; Param&#232;tres de l'organisation</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── ADM-001: Organization Settings page-specific styles ── */
 
@@ -181,7 +182,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell"></i>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -272,7 +273,7 @@
             <div class="form-group">
               <label class="form-label">Logo de l'organisation</label>
               <div class="upload-area" role="button" tabindex="0" aria-label="D&#233;posez votre logo ici ou cliquez pour parcourir">
-                <div class="upload-area-icon">&#8682;</div>
+                <div class="upload-area-icon"><i data-lucide="upload"></i></div>
                 <div class="upload-area-text">D&#233;posez votre logo ici ou cliquez pour parcourir</div>
               </div>
               <p class="form-hint">PNG ou SVG, 400&#215;400px max, 2 Mo</p>
@@ -362,5 +363,6 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

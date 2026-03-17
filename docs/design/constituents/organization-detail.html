@@ -7,6 +7,7 @@
   <title>Fondation de France &mdash; Organisations &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific: CON-003 Organization detail ── */
 
@@ -108,6 +109,7 @@
       font-size: var(--text-xl);
       font-weight: var(--weight-bold);
       color: var(--color-text);
+      font-variant-numeric: tabular-nums;
     }
 
     .summary-stat-value--sm {
@@ -165,7 +167,7 @@
     /* Type badges */
     .badge-fondation {
       background: var(--color-sky-50);
-      color: #1E5A7E;
+      color: var(--color-sky-dark);
     }
 
     /* AI card */
@@ -193,6 +195,11 @@
       border-color: var(--color-neutral-300);
       color: var(--color-text);
       text-decoration: none;
+    }
+
+    .action-icon svg {
+      width: 16px;
+      height: 16px;
     }
   </style>
 </head>
@@ -231,7 +238,7 @@
     </a>
     <a href="../volunteers/list.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><path d="M12 21.23V12"/><path d="M8.7 8.7 12 12l3.3-3.3"/></svg>
-      <span>Bénévoles</span>
+      <span>B&eacute;n&eacute;voles</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -247,11 +254,11 @@
     </a>
     <a href="../admin/index.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/></svg>
-      <span>Paramètres</span>
+      <span>Param&egrave;tres</span>
     </a>
   </nav>
   <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
+    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
     <div class="sidebar-footer-user">
       <div class="sidebar-footer-avatar">CM</div>
       <span class="sidebar-footer-name">Claire Martin</span>
@@ -287,7 +294,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -305,15 +312,15 @@
           <div class="org-header-info">
             <h1 class="org-header-name">Fondation de France</h1>
             <div class="org-header-badges">
-              <span class="badge badge-fondation"><span class="badge-icon">&#9733;</span> Fondation</span>
-              <span class="badge badge-success"><span class="badge-icon">&#10003;</span> Active</span>
+              <span class="badge badge-fondation"><i data-lucide="star" style="width:12px;height:12px;"></i> Fondation</span>
+              <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Active</span>
             </div>
             <p class="org-header-subtitle">Philanthropie &middot; Partenaire depuis 2020</p>
           </div>
           <div class="org-header-actions">
-            <button class="btn btn-primary" type="button">Cr&eacute;er une subvention</button>
-            <button class="btn btn-secondary" type="button">Ajouter un contact</button>
-            <button class="btn btn-secondary" type="button">Modifier</button>
+            <button class="btn btn-primary" type="button"><i data-lucide="plus" style="width:16px;height:16px;"></i> Cr&eacute;er une subvention</button>
+            <button class="btn btn-secondary" type="button"><i data-lucide="user-plus" style="width:16px;height:16px;"></i> Ajouter un contact</button>
+            <button class="btn btn-secondary" type="button"><i data-lucide="pencil" style="width:16px;height:16px;"></i> Modifier</button>
           </div>
         </div>
 
@@ -359,7 +366,7 @@
              ============================================================ -->
         <div class="ai-card ai-card--wide mb-6">
           <div class="ai-card-header">
-            <span class="ai-card-icon">&#10024;</span>
+            <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
             <span class="ai-card-label">Suggestion IA</span>
           </div>
           <p class="ai-card-text">
@@ -392,7 +399,7 @@
               </div>
               <div class="detail-row">
                 <span class="detail-label">N&deg; SIRET</span>
-                <span class="detail-value font-medium text-mono" style="font-size: var(--text-xs);">784 421 099 00015</span>
+                <span class="detail-value" style="font-family: var(--font-mono); font-size: var(--text-xs);">784 421 099 00015</span>
               </div>
               <div class="detail-row">
                 <span class="detail-label">Secteur</span>
@@ -408,7 +415,7 @@
               </div>
               <div class="detail-row">
                 <span class="detail-label">Notes</span>
-                <span class="detail-value">Appels &agrave; projets annuels — pr&eacute;f&eacute;rence pour les projets M&eacute;diterran&eacute;e</span>
+                <span class="detail-value">Appels &agrave; projets annuels -- pr&eacute;f&eacute;rence pour les projets M&eacute;diterran&eacute;e</span>
               </div>
             </div>
           </div>
@@ -417,7 +424,7 @@
           <div class="card">
             <div class="card-header">
               <h3 class="card-title">Contacts principaux</h3>
-              <button class="btn btn-ghost btn-sm" type="button">+ Ajouter</button>
+              <button class="btn btn-ghost btn-sm" type="button"><i data-lucide="plus" style="width:14px;height:14px;"></i> Ajouter</button>
             </div>
             <div class="card-body">
 
@@ -468,7 +475,7 @@
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">Subventions li&eacute;es</h3>
-            <button class="btn btn-ghost btn-sm" type="button">Tout voir &rarr;</button>
+            <button class="btn btn-ghost btn-sm" type="button">Tout voir <i data-lucide="arrow-right" style="width:14px;height:14px;"></i></button>
           </div>
           <div class="card-body">
             <div class="data-table-wrapper">
@@ -486,31 +493,31 @@
                 <tbody>
                   <tr>
                     <td class="cell-name">Programme d'insertion sociale 2026</td>
-                    <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Accord&eacute;e</span></td>
+                    <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Accord&eacute;e</span></td>
                     <td class="text-right cell-mono">&euro;50&nbsp;000</td>
                     <td>Jan. 2026 &mdash; D&eacute;c. 2026</td>
                     <td>
-                      <span class="badge badge-warning"><span class="badge-icon">&#9888;</span> 3 mars</span>
+                      <span class="badge badge-warning"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> 3 mars</span>
                     </td>
-                    <td><a href="../grants/detail.html" class="action-icon" title="Voir la subvention" aria-label="Voir subvention">&#128065;</a></td>
+                    <td><a href="../grants/detail.html" class="action-icon" title="Voir la subvention" aria-label="Voir subvention"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
                   </tr>
                   <tr>
                     <td class="cell-name">Aide alimentaire Hiver 2025-2026</td>
-                    <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Accord&eacute;e</span></td>
+                    <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Accord&eacute;e</span></td>
                     <td class="text-right cell-mono">&euro;35&nbsp;000</td>
                     <td>Nov. 2025 &mdash; Avr. 2026</td>
                     <td>
-                      <span class="badge badge-info"><span class="badge-icon">&#9432;</span> 15 avr.</span>
+                      <span class="badge badge-info"><i data-lucide="info" style="width:12px;height:12px;"></i> 15 avr.</span>
                     </td>
-                    <td><a href="../grants/detail.html" class="action-icon" title="Voir la subvention" aria-label="Voir subvention">&#128065;</a></td>
+                    <td><a href="../grants/detail.html" class="action-icon" title="Voir la subvention" aria-label="Voir subvention"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
                   </tr>
                   <tr>
                     <td class="cell-name">Formation linguistique 2025</td>
-                    <td><span class="badge badge-neutral"><span class="badge-icon">&mdash;</span> Cl&ocirc;tur&eacute;e</span></td>
+                    <td><span class="badge badge-neutral"><i data-lucide="minus" style="width:12px;height:12px;"></i> Cl&ocirc;tur&eacute;e</span></td>
                     <td class="text-right cell-mono">&euro;20&nbsp;000</td>
                     <td>Jan. 2025 &mdash; D&eacute;c. 2025</td>
                     <td class="cell-secondary">&mdash;</td>
-                    <td><a href="../grants/detail.html" class="action-icon" title="Voir la subvention" aria-label="Voir subvention">&#128065;</a></td>
+                    <td><a href="../grants/detail.html" class="action-icon" title="Voir la subvention" aria-label="Voir subvention"><i data-lucide="eye" style="width:16px;height:16px;"></i></a></td>
                   </tr>
                 </tbody>
               </table>
@@ -525,5 +532,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
   <title>Statistiques campagne &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for campaigns/stats (CAMP-004) ── */
 
@@ -82,6 +83,7 @@
       font-family: var(--font-mono);
       color: var(--color-text-secondary);
       font-weight: var(--weight-medium);
+      font-variant-numeric: tabular-nums;
     }
 
     /* ── SVG Line chart ── */
@@ -155,6 +157,7 @@
       font-weight: var(--weight-bold);
       color: var(--color-text);
       line-height: 1;
+      font-variant-numeric: tabular-nums;
     }
 
     .pie-chart-center-label {
@@ -196,6 +199,7 @@
       font-weight: var(--weight-semi);
       color: var(--color-text);
       margin-left: auto;
+      font-variant-numeric: tabular-nums;
     }
 
     /* ── Channel bar chart (horizontal) ── */
@@ -249,6 +253,7 @@
       color: var(--color-text-secondary);
       min-width: 36px;
       text-align: right;
+      font-variant-numeric: tabular-nums;
     }
 
     /* ── Top donateurs table ── */
@@ -358,7 +363,7 @@
 
         <div class="topbar-actions">
           <button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </button>
           <div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div>
@@ -375,14 +380,14 @@
           <div class="page-header-left">
             <div class="page-header-title-row">
               <h1 class="page-title">Statistiques &mdash; Campagne &Eacute;t&eacute; 2026</h1>
-              <span class="badge badge-success"><span class="badge-icon">&#10003;</span> Active</span>
+              <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Active</span>
             </div>
             <p class="page-subtitle">P&eacute;riode : 1 mai &mdash; 31 ao&ucirc;t 2026</p>
           </div>
           <div class="page-header-actions">
             <div class="export-row">
-              <button class="btn btn-secondary" type="button">&#128196; Export PDF</button>
-              <button class="btn btn-secondary" type="button">&#128462; Export CSV</button>
+              <button class="btn btn-secondary" type="button"><i data-lucide="file-text" style="width:16px;height:16px;"></i> Export PDF</button>
+              <button class="btn btn-secondary" type="button"><i data-lucide="download" style="width:16px;height:16px;"></i> Export CSV</button>
             </div>
           </div>
         </div>
@@ -394,27 +399,27 @@
           <div class="stat-widget">
             <div class="stat-widget-label">Total collect&eacute;</div>
             <div class="stat-widget-value">&euro;47&nbsp;250</div>
-            <div class="stat-widget-trend stat-widget-trend--up">&#9650; +22% vs N-1</div>
+            <div class="stat-widget-trend stat-widget-trend--up"><i data-lucide="trending-up" style="width:14px;height:14px;"></i> +22% vs N-1</div>
           </div>
           <div class="stat-widget">
             <div class="stat-widget-label">Donateurs</div>
             <div class="stat-widget-value">312</div>
-            <div class="stat-widget-trend stat-widget-trend--up">&#9650; +45 ce mois</div>
+            <div class="stat-widget-trend stat-widget-trend--up"><i data-lucide="trending-up" style="width:14px;height:14px;"></i> +45 ce mois</div>
           </div>
           <div class="stat-widget">
             <div class="stat-widget-label">Don moyen</div>
             <div class="stat-widget-value">&euro;151</div>
-            <div class="stat-widget-trend stat-widget-trend--up">&#9650; +6%</div>
+            <div class="stat-widget-trend stat-widget-trend--up"><i data-lucide="trending-up" style="width:14px;height:14px;"></i> +6%</div>
           </div>
           <div class="stat-widget">
             <div class="stat-widget-label">Taux r&eacute;ponse</div>
             <div class="stat-widget-value">34%</div>
-            <div class="stat-widget-trend stat-widget-trend--down">&#9660; -2 pts</div>
+            <div class="stat-widget-trend stat-widget-trend--down"><i data-lucide="trending-down" style="width:14px;height:14px;"></i> -2 pts</div>
           </div>
           <div class="stat-widget">
             <div class="stat-widget-label">ROI</div>
             <div class="stat-widget-value">4,2x</div>
-            <div class="stat-widget-trend stat-widget-trend--up">&#9650; +0,8</div>
+            <div class="stat-widget-trend stat-widget-trend--up"><i data-lucide="trending-up" style="width:14px;height:14px;"></i> +0,8</div>
           </div>
         </div>
 
@@ -524,7 +529,7 @@
           <!-- Chart 4: AI Insight card -->
           <div class="ai-card ai-card-fullwidth" style="align-self: start;">
             <div class="ai-card-header">
-              <span class="ai-card-icon">&#10024;</span>
+              <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
               <span class="ai-card-label">Insight IA</span>
             </div>
             <p class="ai-card-text">
@@ -552,10 +557,10 @@
                 <thead>
                   <tr>
                     <th style="width: 40px;">#</th>
-                    <th>Donateur</th>
-                    <th class="text-right">Montant total</th>
+                    <th data-sortable>Donateur</th>
+                    <th class="text-right" data-sortable>Montant total</th>
                     <th>Type</th>
-                    <th>Dernier don</th>
+                    <th data-sortable>Dernier don</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -640,5 +645,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

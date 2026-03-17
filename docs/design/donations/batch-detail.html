@@ -7,6 +7,7 @@
   <title>Batch BATCH-2026-012 &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for donations/batch-detail (DON-006) ── */
 
@@ -21,6 +22,7 @@
     .cell-amount {
       font-family: var(--font-mono);
       font-weight: var(--weight-semi);
+      font-variant-numeric: tabular-nums;
       text-align: right;
       white-space: nowrap;
     }
@@ -58,6 +60,7 @@
       font-family: var(--font-mono);
       font-size: var(--text-xs);
       font-weight: var(--weight-semi);
+      font-variant-numeric: tabular-nums;
     }
 
     .summary-table .total-row {
@@ -67,27 +70,6 @@
 
     .summary-table .total-row td {
       border-bottom: none;
-    }
-
-    /* View action button */
-    .action-view {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      border: none;
-      background: transparent;
-      color: var(--color-text-secondary);
-      cursor: pointer;
-      border-radius: var(--radius-sm);
-      font-size: var(--text-sm);
-      transition: all var(--duration-normal) var(--ease-out);
-    }
-
-    .action-view:hover {
-      background: var(--color-neutral-100);
-      color: var(--color-primary);
     }
   </style>
 </head>
@@ -180,7 +162,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
@@ -195,25 +177,25 @@
           <div class="page-header-left">
             <div class="page-header-title-row">
               <h1 class="page-title">Batch BATCH-2026-012</h1>
-              <span class="badge badge-info"><span class="badge-icon">&#9998;</span> Ouvert</span>
+              <span class="badge badge-info"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Ouvert</span>
             </div>
             <p class="page-subtitle">F&eacute;vrier 2026 &mdash; 42 dons</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary" type="button">Cl&ocirc;turer le batch</button>
-            <button class="btn btn-primary" type="button">Exporter GL</button>
+            <button class="btn btn-secondary" type="button"><i data-lucide="lock" style="width:16px;height:16px;"></i> Cl&ocirc;turer le batch</button>
+            <button class="btn btn-primary" type="button"><i data-lucide="download" style="width:16px;height:16px;"></i> Exporter GL</button>
           </div>
         </div>
 
         <!-- Alert banner (visible — batch is open) -->
         <div class="alert alert-info mb-6">
-          <span class="alert-icon">&#8505;</span>
+          <span class="alert-icon"><i data-lucide="info" style="width:16px;height:16px;"></i></span>
           <div class="alert-content">Ce batch est ouvert. Vous pouvez ajouter ou retirer des dons.</div>
         </div>
 
         <!-- Commented-out alert for posted batch state -->
         <!-- <div class="alert alert-info mb-6">
-          <span class="alert-icon">&#8505;</span>
+          <span class="alert-icon"><i data-lucide="info" style="width:16px;height:16px;"></i></span>
           <div class="alert-content">Ce batch a &eacute;t&eacute; post&eacute; en comptabilit&eacute; le 15/01/2026. Les donn&eacute;es sont en lecture seule.</div>
         </div> -->
 
@@ -222,9 +204,9 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Donateur</th>
-                <th class="text-right">Montant</th>
+                <th data-sortable>Date</th>
+                <th data-sortable>Donateur</th>
+                <th class="text-right" data-sortable>Montant</th>
                 <th>Campagne</th>
                 <th>Type</th>
                 <th>Paiement</th>
@@ -238,9 +220,9 @@
                 <td class="cell-name"><a href="detail.html">Marie-Claire Fontaine</a></td>
                 <td class="cell-amount text-right">&euro;500,00</td>
                 <td>Hiver 2026</td>
-                <td><span class="badge badge-info"><span class="badge-icon">&#9679;</span> Ponctuel</span></td>
+                <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">Virement</td>
-                <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
               </tr>
               <!-- Row 2 -->
               <tr>
@@ -248,9 +230,9 @@
                 <td class="cell-name"><a href="detail.html">Pierre Lef&egrave;vre</a></td>
                 <td class="cell-amount text-right">&euro;2&nbsp;000,00</td>
                 <td>Gala 2026</td>
-                <td><span class="badge badge-info"><span class="badge-icon">&#9679;</span> Ponctuel</span></td>
+                <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">Ch&egrave;que</td>
-                <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
               </tr>
               <!-- Row 3 -->
               <tr>
@@ -258,9 +240,9 @@
                 <td class="cell-name"><a href="detail.html">Entreprise ACME SAS</a></td>
                 <td class="cell-amount text-right">&euro;5&nbsp;000,00</td>
                 <td>Hiver 2026</td>
-                <td><span class="badge badge-neutral"><span class="badge-icon">&#9634;</span> Entreprise</span></td>
+                <td><span class="badge badge-neutral">Entreprise</span></td>
                 <td class="cell-secondary">Virement</td>
-                <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
               </tr>
               <!-- Row 4 -->
               <tr>
@@ -268,9 +250,9 @@
                 <td class="cell-name"><a href="detail.html">Sophie Martin</a></td>
                 <td class="cell-amount text-right">&euro;150,00</td>
                 <td>Hiver 2026</td>
-                <td><span class="badge badge-warning"><span class="badge-icon">&#8634;</span> R&eacute;current</span></td>
+                <td><span class="badge badge-warning"><i data-lucide="repeat" style="width:12px;height:12px;"></i> R&eacute;current</span></td>
                 <td class="cell-secondary">SEPA</td>
-                <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
               </tr>
               <!-- Row 5 -->
               <tr>
@@ -278,9 +260,9 @@
                 <td class="cell-name"><a href="detail.html">Nadia Berger</a></td>
                 <td class="cell-amount text-right">&euro;200,00</td>
                 <td>Urgence M&eacute;d.</td>
-                <td><span class="badge badge-info"><span class="badge-icon">&#9679;</span> Ponctuel</span></td>
+                <td><span class="badge badge-info">Ponctuel</span></td>
                 <td class="cell-secondary">CB</td>
-                <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
               </tr>
             </tbody>
           </table>
@@ -385,5 +367,6 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

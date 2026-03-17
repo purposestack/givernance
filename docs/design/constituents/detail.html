@@ -7,6 +7,7 @@
   <title>Marie-Claire Fontaine &mdash; Constituants &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific: CON-002 Constituent detail ── */
 
@@ -132,6 +133,7 @@
       font-size: var(--text-xl);
       font-weight: var(--weight-bold);
       color: var(--color-text);
+      font-variant-numeric: tabular-nums;
     }
 
     .summary-stat-value--sm {
@@ -195,7 +197,7 @@
     </a>
     <a href="../volunteers/list.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><path d="M12 21.23V12"/><path d="M8.7 8.7 12 12l3.3-3.3"/></svg>
-      <span>Bénévoles</span>
+      <span>B&eacute;n&eacute;voles</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -211,11 +213,11 @@
     </a>
     <a href="../admin/index.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/></svg>
-      <span>Paramètres</span>
+      <span>Param&egrave;tres</span>
     </a>
   </nav>
   <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
+    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
     <div class="sidebar-footer-user">
       <div class="sidebar-footer-avatar">CM</div>
       <span class="sidebar-footer-name">Claire Martin</span>
@@ -250,7 +252,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -275,9 +277,9 @@
             <p class="profile-subtitle">Membre depuis janvier 2019</p>
           </div>
           <div class="profile-actions">
-            <a href="../donations/new.html" class="btn btn-primary">Enregistrer un don</a>
-            <button class="btn btn-secondary" type="button">Ajouter une note</button>
-            <a href="../communications/compose.html" class="btn btn-secondary">Envoyer un email</a>
+            <a href="../donations/new.html" class="btn btn-primary"><i data-lucide="heart" style="width:16px;height:16px;"></i> Enregistrer un don</a>
+            <button class="btn btn-secondary" type="button"><i data-lucide="file-text" style="width:16px;height:16px;"></i> Ajouter une note</button>
+            <a href="../communications/compose.html" class="btn btn-secondary"><i data-lucide="mail" style="width:16px;height:16px;"></i> Envoyer un email</a>
           </div>
         </div>
 
@@ -401,7 +403,7 @@
         <!-- ============================== -->
         <div class="ai-card ai-card--wide mb-6">
           <div class="ai-card-header">
-            <span class="ai-card-icon">&#10024;</span>
+            <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
             <span class="ai-card-label">Suggestion IA</span>
           </div>
           <p class="ai-card-text">
@@ -425,7 +427,7 @@
 
               <!-- Timeline item 1 -->
               <div class="timeline-item">
-                <div class="timeline-icon timeline-icon--green">&#9829;</div>
+                <div class="timeline-icon timeline-icon--green"><i data-lucide="heart" style="width:16px;height:16px;"></i></div>
                 <div class="timeline-content">
                   <div class="timeline-title">Don de &euro;500 re&ccedil;u</div>
                   <div class="timeline-meta">Campagne Hiver 2026 &mdash; 24 f&eacute;v. 2026</div>
@@ -434,7 +436,7 @@
 
               <!-- Timeline item 2 -->
               <div class="timeline-item">
-                <div class="timeline-icon timeline-icon--sky">&#9993;</div>
+                <div class="timeline-icon timeline-icon--sky"><i data-lucide="mail" style="width:16px;height:16px;"></i></div>
                 <div class="timeline-content">
                   <div class="timeline-title">Email envoy&eacute;</div>
                   <div class="timeline-meta">Remerciement don &mdash; 25 f&eacute;v. 2026</div>
@@ -443,7 +445,7 @@
 
               <!-- Timeline item 3 -->
               <div class="timeline-item">
-                <div class="timeline-icon timeline-icon--amber">&#9998;</div>
+                <div class="timeline-icon timeline-icon--amber"><i data-lucide="file-text" style="width:16px;height:16px;"></i></div>
                 <div class="timeline-content">
                   <div class="timeline-title">Note ajout&eacute;e</div>
                   <div class="timeline-meta">&laquo;&nbsp;Int&eacute;ress&eacute;e par le gala annuel&nbsp;&raquo; &mdash; 20 jan. 2026</div>
@@ -452,7 +454,7 @@
 
               <!-- Timeline item 4 -->
               <div class="timeline-item">
-                <div class="timeline-icon timeline-icon--green">&#9829;</div>
+                <div class="timeline-icon timeline-icon--green"><i data-lucide="heart" style="width:16px;height:16px;"></i></div>
                 <div class="timeline-content">
                   <div class="timeline-title">Don de &euro;250 re&ccedil;u</div>
                   <div class="timeline-meta">Campagne &Eacute;t&eacute; 2025 &mdash; 15 juil. 2025</div>
@@ -475,5 +477,6 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

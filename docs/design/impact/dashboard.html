@@ -7,6 +7,7 @@
   <title>Givernance &mdash; Tableau de bord Impact</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Impact Dashboard-specific layout ── */
     .impact-grid {
@@ -131,7 +132,7 @@
     /* ── Topbar search shortcut badge ── */
     .search-shortcut {
       position: absolute;
-      right: 10px;
+      right: var(--space-2-5);
       top: 50%;
       transform: translateY(-50%);
       font-size: var(--text-xs);
@@ -139,7 +140,7 @@
       background: var(--color-neutral-100);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm);
-      padding: 1px 6px;
+      padding: var(--space-0-5) var(--space-1-5);
       font-family: var(--font-mono);
       pointer-events: none;
     }
@@ -262,7 +263,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -323,53 +324,53 @@
           <!-- 1. Repas servis -->
           <div class="stat-widget">
             <div class="stat-widget-label">Repas servis</div>
-            <div class="stat-widget-value">12&nbsp;450</div>
+            <div class="stat-widget-value" style="font-variant-numeric: tabular-nums;">12&nbsp;450</div>
             <div class="stat-widget-trend stat-widget-trend--up">
-              &#9650; +8% vs T4 2025
+              <i data-lucide="trending-up"></i> +8% vs T4 2025
             </div>
             <div class="gauge-bar">
               <div class="gauge-bar-fill" style="width: 83%;"></div>
             </div>
-            <div class="gauge-bar-target">12 450 / 15 000</div>
+            <div class="gauge-bar-target" style="font-variant-numeric: tabular-nums;">12 450 / 15 000</div>
           </div>
 
           <!-- 2. Beneficiaires accompagnes -->
           <div class="stat-widget">
             <div class="stat-widget-label">B&#233;n&#233;ficiaires accompagn&#233;s</div>
-            <div class="stat-widget-value">342</div>
+            <div class="stat-widget-value" style="font-variant-numeric: tabular-nums;">342</div>
             <div class="stat-widget-trend stat-widget-trend--up">
-              &#9650; +12 ce mois
+              <i data-lucide="trending-up"></i> +12 ce mois
             </div>
             <div class="gauge-bar">
               <div class="gauge-bar-fill" style="width: 86%;"></div>
             </div>
-            <div class="gauge-bar-target">342 / 400</div>
+            <div class="gauge-bar-target" style="font-variant-numeric: tabular-nums;">342 / 400</div>
           </div>
 
           <!-- 3. Heures de formation -->
           <div class="stat-widget">
             <div class="stat-widget-label">Heures de formation</div>
-            <div class="stat-widget-value">1&nbsp;280</div>
+            <div class="stat-widget-value" style="font-variant-numeric: tabular-nums;">1&nbsp;280</div>
             <div class="stat-widget-trend stat-widget-trend--up">
-              &#9650; +15% vs N-1
+              <i data-lucide="trending-up"></i> +15% vs N-1
             </div>
             <div class="gauge-bar">
               <div class="gauge-bar-fill" style="width: 64%;"></div>
             </div>
-            <div class="gauge-bar-target">1 280 / 2 000</div>
+            <div class="gauge-bar-target" style="font-variant-numeric: tabular-nums;">1 280 / 2 000</div>
           </div>
 
           <!-- 4. Taux de reinsertion -->
           <div class="stat-widget">
             <div class="stat-widget-label">Taux de r&#233;insertion</div>
-            <div class="stat-widget-value">67%</div>
+            <div class="stat-widget-value" style="font-variant-numeric: tabular-nums;">67%</div>
             <div class="stat-widget-trend stat-widget-trend--down">
-              &#9660; -3pts vs T4
+              <i data-lucide="trending-down"></i> -3pts vs T4
             </div>
             <div class="gauge-bar">
               <div class="gauge-bar-fill gauge-bar-fill--amber" style="width: 67%;"></div>
             </div>
-            <div class="gauge-bar-target">67% / 75% cible</div>
+            <div class="gauge-bar-target" style="font-variant-numeric: tabular-nums;">67% / 75% cible</div>
           </div>
 
         </div>
@@ -527,15 +528,15 @@
                       <tr>
                         <td class="cell-name">Repas servis</td>
                         <td>Aide alimentaire</td>
-                        <td class="text-right cell-mono">12 450</td>
-                        <td class="text-right cell-mono">15 000</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">12 450</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">15 000</td>
                         <td>
                           <div class="table-progress">
                             <div class="progress">
                               <div class="progress-fill" style="width: 83%;"></div>
                             </div>
                           </div>
-                          <span class="text-xs" style="margin-left: 6px;">83%</span>
+                          <span class="text-xs" style="margin-left: var(--space-1-5); font-variant-numeric: tabular-nums;">83%</span>
                         </td>
                         <td><span class="badge badge-success">En progr&#232;s</span></td>
                       </tr>
@@ -543,15 +544,15 @@
                       <tr>
                         <td class="cell-name">B&#233;n&#233;ficiaires</td>
                         <td>Insertion</td>
-                        <td class="text-right cell-mono">342</td>
-                        <td class="text-right cell-mono">400</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">342</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">400</td>
                         <td>
                           <div class="table-progress">
                             <div class="progress">
                               <div class="progress-fill" style="width: 86%;"></div>
                             </div>
                           </div>
-                          <span class="text-xs" style="margin-left: 6px;">86%</span>
+                          <span class="text-xs" style="margin-left: var(--space-1-5); font-variant-numeric: tabular-nums;">86%</span>
                         </td>
                         <td><span class="badge badge-success">En progr&#232;s</span></td>
                       </tr>
@@ -559,15 +560,15 @@
                       <tr>
                         <td class="cell-name">Heures formation</td>
                         <td>Formation</td>
-                        <td class="text-right cell-mono">1 280</td>
-                        <td class="text-right cell-mono">2 000</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">1 280</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">2 000</td>
                         <td>
                           <div class="table-progress">
                             <div class="progress">
                               <div class="progress-fill" style="width: 64%;"></div>
                             </div>
                           </div>
-                          <span class="text-xs" style="margin-left: 6px;">64%</span>
+                          <span class="text-xs" style="margin-left: var(--space-1-5); font-variant-numeric: tabular-nums;">64%</span>
                         </td>
                         <td><span class="badge badge-info">En progr&#232;s</span></td>
                       </tr>
@@ -575,15 +576,15 @@
                       <tr>
                         <td class="cell-name">R&#233;insertion</td>
                         <td>Insertion</td>
-                        <td class="text-right cell-mono">67%</td>
-                        <td class="text-right cell-mono">75%</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">67%</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">75%</td>
                         <td>
                           <div class="table-progress">
                             <div class="progress">
                               <div class="progress-fill progress-fill--amber" style="width: 89%;"></div>
                             </div>
                           </div>
-                          <span class="text-xs" style="margin-left: 6px;">89%</span>
+                          <span class="text-xs" style="margin-left: var(--space-1-5); font-variant-numeric: tabular-nums;">89%</span>
                         </td>
                         <td><span class="badge badge-warning">En retard</span></td>
                       </tr>
@@ -591,15 +592,15 @@
                       <tr>
                         <td class="cell-name">Logements</td>
                         <td>H&#233;bergement</td>
-                        <td class="text-right cell-mono">48</td>
-                        <td class="text-right cell-mono">60</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">48</td>
+                        <td class="text-right cell-mono" style="font-variant-numeric: tabular-nums;">60</td>
                         <td>
                           <div class="table-progress">
                             <div class="progress">
                               <div class="progress-fill" style="width: 80%;"></div>
                             </div>
                           </div>
-                          <span class="text-xs" style="margin-left: 6px;">80%</span>
+                          <span class="text-xs" style="margin-left: var(--space-1-5); font-variant-numeric: tabular-nums;">80%</span>
                         </td>
                         <td><span class="badge badge-success">En progr&#232;s</span></td>
                       </tr>
@@ -620,7 +621,7 @@
             <!-- AI Suggestion Card -->
             <div class="ai-card">
               <div class="ai-card-header">
-                <span class="ai-card-icon">&#10024;</span>
+                <span class="ai-card-icon"><i data-lucide="sparkles"></i></span>
                 <span class="ai-card-label">Suggestion IA</span>
               </div>
               <p class="ai-card-text">
@@ -643,7 +644,7 @@
                   <!-- Timeline 1 -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-primary-50); color: var(--color-primary-dark);">
-                      &#9678;
+                      <i data-lucide="circle-dot"></i>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">Repas servis : 1 500 ajout&#233;</div>
@@ -654,7 +655,7 @@
                   <!-- Timeline 2 -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-sky-50); color: var(--color-sky);">
-                      &#9678;
+                      <i data-lucide="circle-dot"></i>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">B&#233;n&#233;ficiaires : +12 ce mois</div>
@@ -665,7 +666,7 @@
                   <!-- Timeline 3 -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-amber-50); color: var(--color-amber);">
-                      &#9678;
+                      <i data-lucide="circle-dot"></i>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">Formation : 120h ajout&#233;es</div>
@@ -676,7 +677,7 @@
                   <!-- Timeline 4 -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-indigo-50); color: var(--color-indigo);">
-                      &#9678;
+                      <i data-lucide="circle-dot"></i>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">R&#233;insertion : 67% mis &#224; jour</div>
@@ -697,7 +698,7 @@
                 <p class="export-card-description">
                   Exportez vos donn&#233;es d'impact pour vos bailleurs et rapports annuels.
                 </p>
-                <a href="report.html" class="btn btn-primary w-full">G&#233;n&#233;rer le rapport &#8594;</a>
+                <a href="report.html" class="btn btn-primary w-full">G&#233;n&#233;rer le rapport <i data-lucide="arrow-right"></i></a>
               </div>
             </div>
 
@@ -714,5 +715,6 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

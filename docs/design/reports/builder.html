@@ -7,6 +7,7 @@
   <title>Givernance &mdash; G&#233;n&#233;rateur de rapports</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Report Builder: override main-content to fill height ── */
     .main-content--builder {
@@ -572,7 +573,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -861,5 +862,6 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

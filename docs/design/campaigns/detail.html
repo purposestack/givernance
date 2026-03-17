@@ -7,6 +7,7 @@
   <title>Appel aux dons Hiver 2026 &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for campaigns/detail (CAMP-002) ── */
 
@@ -39,6 +40,7 @@
       font-size: var(--text-md);
       font-weight: var(--weight-semi);
       color: var(--color-text);
+      font-variant-numeric: tabular-nums;
     }
 
     .progress-meta-pct {
@@ -46,6 +48,7 @@
       font-size: var(--text-sm);
       font-weight: var(--weight-semi);
       color: var(--color-primary-dark);
+      font-variant-numeric: tabular-nums;
     }
 
     /* Full-width AI card override */
@@ -143,7 +146,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" type="button" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
@@ -160,14 +163,14 @@
           <div class="page-header-left">
             <div class="page-header-title-row">
               <h1 class="page-title">Appel aux dons Hiver 2026</h1>
-              <span class="badge badge-success"><span class="badge-icon">&#10003;</span> Active</span>
+              <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Active</span>
             </div>
             <p class="page-subtitle">Campagne email &mdash; 15 jan. 2026 au 15 mars 2026</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary" type="button">Modifier</button>
-            <button class="btn btn-secondary" type="button">Envoyer une communication</button>
-            <button class="btn btn-destructive" type="button">Cl&ocirc;turer</button>
+            <button class="btn btn-secondary" type="button"><i data-lucide="pencil" style="width:16px;height:16px;"></i> Modifier</button>
+            <button class="btn btn-secondary" type="button"><i data-lucide="mail" style="width:16px;height:16px;"></i> Envoyer une communication</button>
+            <button class="btn btn-destructive" type="button"><i data-lucide="x" style="width:16px;height:16px;"></i> Cl&ocirc;turer</button>
           </div>
         </div>
 
@@ -195,14 +198,14 @@
           <div class="stat-widget">
             <div class="stat-widget-label">Donateurs</div>
             <div class="stat-widget-value">89</div>
-            <div class="stat-widget-trend stat-widget-trend--up">&#9650; +12 ce mois</div>
+            <div class="stat-widget-trend stat-widget-trend--up"><i data-lucide="trending-up" style="width:14px;height:14px;"></i> +12 ce mois</div>
           </div>
 
           <!-- Stat 2: Don moyen -->
           <div class="stat-widget">
             <div class="stat-widget-label">Don moyen</div>
             <div class="stat-widget-value">&euro;384</div>
-            <div class="stat-widget-trend stat-widget-trend--up">&#9650; +8%</div>
+            <div class="stat-widget-trend stat-widget-trend--up"><i data-lucide="trending-up" style="width:14px;height:14px;"></i> +8%</div>
           </div>
 
           <!-- Stat 3: Co&ucirc;t campagne -->
@@ -235,9 +238,9 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Donateur</th>
-                  <th class="text-right">Montant</th>
+                  <th data-sortable>Date</th>
+                  <th data-sortable>Donateur</th>
+                  <th class="text-right" data-sortable>Montant</th>
                   <th>Type</th>
                   <th>Statut</th>
                 </tr>
@@ -247,36 +250,36 @@
                   <td>24/02/2026</td>
                   <td class="cell-name"><a href="../donations/detail.html">Marie-Claire Fontaine</a></td>
                   <td class="text-right cell-mono">&euro;500,00</td>
-                  <td><span class="badge badge-info"><span class="badge-icon">&#9679;</span> Ponctuel</span></td>
-                  <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                  <td><span class="badge badge-info">Ponctuel</span></td>
+                  <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
                 </tr>
                 <tr onclick="window.location='../donations/detail.html'" style="cursor:pointer;">
                   <td>23/02/2026</td>
                   <td class="cell-name"><a href="../donations/detail.html">Pierre Lef&egrave;vre</a></td>
                   <td class="text-right cell-mono">&euro;2&nbsp;000,00</td>
-                  <td><span class="badge badge-info"><span class="badge-icon">&#9679;</span> Ponctuel</span></td>
-                  <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                  <td><span class="badge badge-info">Ponctuel</span></td>
+                  <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
                 </tr>
                 <tr onclick="window.location='../donations/detail.html'" style="cursor:pointer;">
                   <td>20/02/2026</td>
                   <td class="cell-name"><a href="../donations/detail.html">Sophie Martin</a></td>
                   <td class="text-right cell-mono">&euro;150,00</td>
-                  <td><span class="badge badge-warning"><span class="badge-icon">&#8635;</span> R&eacute;current</span></td>
-                  <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                  <td><span class="badge badge-warning"><i data-lucide="repeat" style="width:12px;height:12px;"></i> R&eacute;current</span></td>
+                  <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
                 </tr>
                 <tr onclick="window.location='../donations/detail.html'" style="cursor:pointer;">
                   <td>18/02/2026</td>
                   <td class="cell-name"><a href="../donations/detail.html">Fran&ccedil;ois Dupont</a></td>
                   <td class="text-right cell-mono">&euro;75,00</td>
-                  <td><span class="badge badge-info"><span class="badge-icon">&#9679;</span> Ponctuel</span></td>
-                  <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                  <td><span class="badge badge-info">Ponctuel</span></td>
+                  <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
                 </tr>
                 <tr onclick="window.location='../donations/detail.html'" style="cursor:pointer;">
                   <td>15/02/2026</td>
                   <td class="cell-name"><a href="../donations/detail.html">Nadia Berger</a></td>
                   <td class="text-right cell-mono">&euro;200,00</td>
-                  <td><span class="badge badge-info"><span class="badge-icon">&#9679;</span> Ponctuel</span></td>
-                  <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Confirm&eacute;</span></td>
+                  <td><span class="badge badge-info">Ponctuel</span></td>
+                  <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Confirm&eacute;</span></td>
                 </tr>
               </tbody>
             </table>
@@ -286,12 +289,12 @@
           <div class="pagination">
             <span class="pagination-info">Affichage 1-25 sur 89</span>
             <div class="pagination-controls">
-              <button class="pagination-btn" disabled type="button">&#8249;</button>
+              <button class="pagination-btn" disabled type="button"><i data-lucide="chevron-left" style="width:16px;height:16px;"></i></button>
               <button class="pagination-btn active" type="button">1</button>
               <button class="pagination-btn" type="button">2</button>
               <button class="pagination-btn" type="button">3</button>
               <button class="pagination-btn" type="button">4</button>
-              <button class="pagination-btn" type="button">&#8250;</button>
+              <button class="pagination-btn" type="button"><i data-lucide="chevron-right" style="width:16px;height:16px;"></i></button>
             </div>
           </div>
 
@@ -302,7 +305,7 @@
              ============================================================ -->
         <div class="ai-card ai-card-fullwidth mt-6">
           <div class="ai-card-header">
-            <span class="ai-card-icon">&#10024;</span>
+            <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
             <span class="ai-card-label">Suggestion IA</span>
           </div>
           <p class="ai-card-text">
@@ -323,5 +326,6 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

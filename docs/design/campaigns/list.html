@@ -7,6 +7,7 @@
   <title>Givernance — Campagnes</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Campaign List Page Styles ── */
     .campaign-cards-grid {
@@ -40,7 +41,7 @@
     }
 
     .campaign-card:hover {
-      box-shadow: var(--shadow-md);
+      box-shadow: var(--shadow-card-hover);
     }
 
     .campaign-card-header {
@@ -85,6 +86,7 @@
       font-size: var(--text-sm);
       font-weight: var(--weight-semi);
       color: var(--color-text);
+      font-variant-numeric: tabular-nums;
     }
 
     .campaign-card-progress-pct {
@@ -92,6 +94,7 @@
       font-size: var(--text-xs);
       font-weight: var(--weight-semi);
       color: var(--color-text-secondary);
+      font-variant-numeric: tabular-nums;
     }
 
     .campaign-card-stats {
@@ -246,7 +249,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -263,8 +266,8 @@
             <p class="page-subtitle">12 campagnes</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary">Calendrier</button>
-            <a href="new.html" class="btn btn-primary">+ Nouvelle campagne</a>
+            <button class="btn btn-secondary"><i data-lucide="calendar" style="width:16px;height:16px;"></i> Calendrier</button>
+            <a href="new.html" class="btn btn-primary"><i data-lucide="plus" style="width:16px;height:16px;"></i> Nouvelle campagne</a>
           </div>
         </div>
 
@@ -285,7 +288,7 @@
           <a href="detail.html" class="campaign-card" style="text-decoration:none;color:inherit;">
             <div class="campaign-card-header">
               <div class="campaign-card-badges">
-                <span class="badge badge-success">&#10003; Active</span>
+                <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Active</span>
                 <span class="badge badge-neutral">Email</span>
               </div>
               <div class="campaign-card-title">Appel aux dons Hiver 2026</div>
@@ -315,7 +318,7 @@
           <a href="detail.html" class="campaign-card" style="text-decoration:none;color:inherit;">
             <div class="campaign-card-header">
               <div class="campaign-card-badges">
-                <span class="badge badge-success">&#10003; Active</span>
+                <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Active</span>
                 <span class="badge badge-neutral">&#201;v&#233;nement</span>
               </div>
               <div class="campaign-card-title">Gala Annuel 2026</div>
@@ -345,7 +348,7 @@
           <a href="detail.html" class="campaign-card" style="text-decoration:none;color:inherit;">
             <div class="campaign-card-header">
               <div class="campaign-card-badges">
-                <span class="badge badge-success">&#10003; Active</span>
+                <span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Active</span>
                 <span class="badge badge-neutral">Digital</span>
               </div>
               <div class="campaign-card-title">Urgence M&#233;diterran&#233;e</div>
@@ -465,7 +468,7 @@
              ============================================================ -->
         <div class="ai-card ai-card-fullwidth mt-6">
           <div class="ai-card-header">
-            <span class="ai-card-icon">&#10024;</span>
+            <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
             <span class="ai-card-label">Suggestion IA</span>
           </div>
           <p class="ai-card-text">
@@ -484,5 +487,6 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

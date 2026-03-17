@@ -7,6 +7,7 @@
   <title>Connexion — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for auth/login ── */
 
@@ -220,9 +221,9 @@
 
       <!-- Error alert (visible state example) -->
       <div class="alert alert-error" role="alert">
-        <span class="alert-icon">&#9888;</span>
+        <span class="alert-icon"><i data-lucide="alert-triangle" style="width:16px;height:16px;"></i></span>
         <span class="alert-content">Identifiants incorrects. V&eacute;rifiez votre email et mot de passe.</span>
-        <button class="alert-close" type="button" aria-label="Fermer">&times;</button>
+        <button class="alert-close" type="button" aria-label="Fermer"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
       </div>
 
       <!-- Login form -->
@@ -256,7 +257,7 @@
               required
             >
             <button class="input-password-toggle" type="button" aria-label="Afficher le mot de passe">
-              &#128065;
+              <i data-lucide="eye" style="width:16px;height:16px;"></i>
             </button>
           </div>
         </div>
@@ -311,5 +312,6 @@
   <!-- end .auth-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
   <title>Givernance &mdash; Rapport LYBUNT</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for reports/view (REP-003) ── */
 
@@ -277,7 +278,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil">CD</div></a>
@@ -300,15 +301,15 @@
               <!-- Export dropdown (visible for mockup) -->
               <div class="export-menu">
                 <a href="#" class="export-menu-item">
-                  <span class="export-menu-icon">&#128196;</span>
+                  <span class="export-menu-icon"><i data-lucide="file-text" style="width:16px;height:16px;"></i></span>
                   CSV
                 </a>
                 <a href="#" class="export-menu-item">
-                  <span class="export-menu-icon">&#128202;</span>
+                  <span class="export-menu-icon"><i data-lucide="bar-chart-2" style="width:16px;height:16px;"></i></span>
                   Excel (.xlsx)
                 </a>
                 <a href="#" class="export-menu-item">
-                  <span class="export-menu-icon">&#128462;</span>
+                  <span class="export-menu-icon"><i data-lucide="file-text" style="width:16px;height:16px;"></i></span>
                   PDF
                 </a>
               </div>
@@ -491,5 +492,6 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
   <title>Nouveau don — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for donations/new (DON-002) ── */
 
@@ -25,9 +26,10 @@
       top: 50%;
       transform: translateY(-50%);
       color: var(--color-text-muted);
-      font-size: var(--text-sm);
       pointer-events: none;
       line-height: 1;
+      display: flex;
+      align-items: center;
     }
 
     /* Donor preview card */
@@ -78,11 +80,12 @@
       border: none;
       cursor: pointer;
       color: var(--color-text-muted);
-      font-size: var(--text-md);
       padding: var(--space-1);
       line-height: 1;
       border-radius: var(--radius-sm);
       transition: color var(--duration-normal) var(--ease-out);
+      display: flex;
+      align-items: center;
     }
 
     .donor-preview-close:hover {
@@ -98,6 +101,7 @@
       padding-left: var(--space-8);
       font-family: var(--font-mono);
       font-weight: var(--weight-semi);
+      font-variant-numeric: tabular-nums;
     }
 
     .currency-prefix {
@@ -148,6 +152,7 @@
       font-family: var(--font-mono);
       font-size: var(--text-xs);
       font-weight: var(--weight-semi);
+      font-variant-numeric: tabular-nums;
     }
 
     /* Form footer with sticky positioning */
@@ -260,7 +265,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
@@ -289,7 +294,7 @@
             <div class="form-group">
               <label class="form-label form-label-required" for="donor-search">Constituant</label>
               <div class="search-autocomplete">
-                <span class="search-autocomplete-icon">&#128269;</span>
+                <span class="search-autocomplete-icon"><i data-lucide="search" style="width:16px;height:16px;"></i></span>
                 <input
                   class="form-input"
                   type="text"
@@ -306,7 +311,7 @@
                   <div class="donor-preview-name"><a href="../constituents/detail.html">Marie-Claire Fontaine</a></div>
                   <div class="donor-preview-meta">m.fontaine@email.fr &mdash; 12 dons pr&eacute;c&eacute;dents &mdash; Total : &euro;7 500</div>
                 </div>
-                <button class="donor-preview-close" type="button" aria-label="Retirer le donateur">&times;</button>
+                <button class="donor-preview-close" type="button" aria-label="Retirer le donateur"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
               </div>
             </div>
           </div>
@@ -449,7 +454,7 @@
           <div class="ai-card-form">
             <div class="ai-card">
               <div class="ai-card-header">
-                <span class="ai-card-icon">&#10024;</span>
+                <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
                 <span class="ai-card-label">Suggestion IA</span>
               </div>
               <p class="ai-card-text">Bas&eacute; sur l'historique de Marie-Claire Fontaine, le montant moyen de ses dons est de &euro;625 &mdash; ajuster ?</p>
@@ -466,7 +471,7 @@
               <a href="list.html"><button class="btn btn-secondary" type="button">Annuler</button></a>
             </div>
             <button class="btn btn-secondary" type="button">Sauvegarder et ajouter un autre</button>
-            <a href="detail.html"><button class="btn btn-primary" type="submit">Sauvegarder le don</button></a>
+            <a href="detail.html"><button class="btn btn-primary" type="submit"><i data-lucide="check" style="width:16px;height:16px;"></i> Sauvegarder le don</button></a>
           </div>
 
         </form>
@@ -480,5 +485,6 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

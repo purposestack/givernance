@@ -7,6 +7,7 @@
   <title>Givernance — Migration : Import en cours</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     .migration-layout {
       min-height: 100vh;
@@ -29,6 +30,7 @@
       font-size: var(--text-sm);
       font-weight: var(--weight-medium);
       color: var(--color-text-secondary);
+      font-variant-numeric: tabular-nums;
     }
     .migration-container {
       max-width: 860px;
@@ -63,13 +65,14 @@
       font-size: var(--text-2xl);
       font-weight: var(--weight-bold);
       color: var(--color-primary-dark);
+      font-variant-numeric: tabular-nums;
     }
     .main-progress-eta {
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
     }
     .main-progress .progress {
-      height: 12px;
+      height: var(--space-3);
     }
 
     /* Sub-progress items */
@@ -94,7 +97,7 @@
       position: relative;
     }
     .sub-progress-bar .progress {
-      height: 8px;
+      height: var(--space-2);
     }
     .sub-progress-count {
       font-family: var(--font-mono);
@@ -102,6 +105,7 @@
       color: var(--color-text-secondary);
       text-align: right;
       white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
 
     /* Live log */
@@ -128,8 +132,8 @@
       color: var(--color-text-secondary);
     }
     .live-log-dot {
-      width: 6px;
-      height: 6px;
+      width: var(--space-1-5);
+      height: var(--space-1-5);
       border-radius: var(--radius-full);
       background: var(--color-primary);
       animation: pulse 1.5s ease-in-out infinite;
@@ -275,15 +279,15 @@
             <span class="live-log-title">Journal en direct</span>
             <div class="live-log-dot"></div>
           </div>
-          <div class="log-line"><span class="log-time">[12:34:01]</span> <span class="log-ok">&#10003;</span> Importe : Jean Dupont <span style="color: var(--color-text-muted);">(contact_id: C001247)</span></div>
-          <div class="log-line"><span class="log-time">[12:34:01]</span> <span class="log-ok">&#10003;</span> Importe : Association Medecins du Monde <span style="color: var(--color-text-muted);">(org_id: O000312)</span></div>
-          <div class="log-line"><span class="log-time">[12:34:02]</span> <span class="log-warn">&#9888;</span> Doublon ignore : Marie Martin <span style="color: var(--color-text-muted);">(email deja existant)</span></div>
-          <div class="log-line"><span class="log-time">[12:34:02]</span> <span class="log-ok">&#10003;</span> Don importe : 250&#8364; — Jean Dupont <span style="color: var(--color-text-muted);">(don_id: D008432)</span></div>
-          <div class="log-line"><span class="log-time">[12:34:03]</span> <span class="log-ok">&#10003;</span> Importe : Sophie Bernard <span style="color: var(--color-text-muted);">(contact_id: C001248)</span></div>
-          <div class="log-line"><span class="log-time">[12:34:03]</span> <span class="log-ok">&#10003;</span> Don importe : 100&#8364; — Sophie Bernard <span style="color: var(--color-text-muted);">(don_id: D008433)</span></div>
-          <div class="log-line"><span class="log-time">[12:34:04]</span> <span class="log-ok">&#10003;</span> Campagne importee : Noel 2024 <span style="color: var(--color-text-muted);">(campaign_id: CAM012)</span></div>
-          <div class="log-line"><span class="log-time">[12:34:04]</span> <span class="log-warn">&#9888;</span> Doublon ignore : Pierre Durand <span style="color: var(--color-text-muted);">(email deja existant)</span></div>
-          <div class="log-line"><span class="log-time">[12:34:05]</span> <span class="log-ok">&#10003;</span> Importe : Fondation Agir Ensemble <span style="color: var(--color-text-muted);">(org_id: O000313)</span></div>
+          <div class="log-line"><span class="log-time">[12:34:01]</span> <span class="log-ok"><i data-lucide="check" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i></span> Importe : Jean Dupont <span style="color: var(--color-text-muted);">(contact_id: C001247)</span></div>
+          <div class="log-line"><span class="log-time">[12:34:01]</span> <span class="log-ok"><i data-lucide="check" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i></span> Importe : Association Medecins du Monde <span style="color: var(--color-text-muted);">(org_id: O000312)</span></div>
+          <div class="log-line"><span class="log-time">[12:34:02]</span> <span class="log-warn"><i data-lucide="alert-triangle" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i></span> Doublon ignore : Marie Martin <span style="color: var(--color-text-muted);">(email deja existant)</span></div>
+          <div class="log-line"><span class="log-time">[12:34:02]</span> <span class="log-ok"><i data-lucide="check" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i></span> Don importe : 250&#8364; — Jean Dupont <span style="color: var(--color-text-muted);">(don_id: D008432)</span></div>
+          <div class="log-line"><span class="log-time">[12:34:03]</span> <span class="log-ok"><i data-lucide="check" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i></span> Importe : Sophie Bernard <span style="color: var(--color-text-muted);">(contact_id: C001248)</span></div>
+          <div class="log-line"><span class="log-time">[12:34:03]</span> <span class="log-ok"><i data-lucide="check" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i></span> Don importe : 100&#8364; — Sophie Bernard <span style="color: var(--color-text-muted);">(don_id: D008433)</span></div>
+          <div class="log-line"><span class="log-time">[12:34:04]</span> <span class="log-ok"><i data-lucide="check" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i></span> Campagne importee : Noel 2024 <span style="color: var(--color-text-muted);">(campaign_id: CAM012)</span></div>
+          <div class="log-line"><span class="log-time">[12:34:04]</span> <span class="log-warn"><i data-lucide="alert-triangle" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i></span> Doublon ignore : Pierre Durand <span style="color: var(--color-text-muted);">(email deja existant)</span></div>
+          <div class="log-line"><span class="log-time">[12:34:05]</span> <span class="log-ok"><i data-lucide="check" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i></span> Importe : Fondation Agir Ensemble <span style="color: var(--color-text-muted);">(org_id: O000313)</span></div>
         </div>
 
         <!-- Footer -->
@@ -300,5 +304,6 @@
     </div>
   </div>
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

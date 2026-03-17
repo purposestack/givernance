@@ -7,6 +7,7 @@
   <title>Givernance — Nouvelle subvention</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Grant Creation Form Styles ── */
 
@@ -236,7 +237,7 @@
         </a>
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -266,7 +267,7 @@
             <div class="form-group">
               <label class="form-label form-label-required">Bailleur</label>
               <div class="input-with-search">
-                <span class="input-search-icon">&#128269;</span>
+                <span class="input-search-icon"><i data-lucide="search" style="width:16px;height:16px;"></i></span>
                 <input type="text" class="form-input" placeholder="Rechercher un bailleur..." required>
               </div>
               <p class="form-hint">Tapez le nom du bailleur pour rechercher dans vos contacts</p>
@@ -451,5 +452,6 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

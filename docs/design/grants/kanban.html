@@ -7,6 +7,7 @@
   <title>Givernance — Pipeline des subventions</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Grants Kanban Page Styles ── */
 
@@ -183,7 +184,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -448,7 +449,7 @@
              ============================================================ -->
         <div class="ai-card ai-card-fullwidth mt-6">
           <div class="ai-card-header">
-            <span class="ai-card-icon">&#10024;</span>
+            <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
             <span class="ai-card-label">Suggestion IA</span>
           </div>
           <p class="ai-card-text">
@@ -467,5 +468,6 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

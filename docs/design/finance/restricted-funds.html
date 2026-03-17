@@ -7,6 +7,7 @@
   <title>Fonds restreints — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for finance/restricted-funds (FIN-003) ── */
 
@@ -195,7 +196,7 @@
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">&#128276;</a>
+          <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications"><i data-lucide="bell" style="width:20px;height:20px;"></i></a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
         </div>
       </header>
@@ -237,7 +238,7 @@
 
         <!-- Alerts -->
         <div class="alert alert-error mb-4">
-          <span class="alert-icon">&#9888;</span>
+          <span class="alert-icon"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span>
           <div class="alert-content">
             <strong>Solde n&eacute;gatif :</strong> Le fonds &laquo; Aide alimentaire 2025 &raquo; affiche un solde de &minus;&euro;1 200. V&eacute;rifiez les imputations comptables.
           </div>
@@ -290,8 +291,8 @@
                   <span class="cell-progress-label">41%</span>
                 </td>
                 <td class="cell-secondary">30/06/2026</td>
-                <td><span class="badge badge-success">Actif &#10003;</span></td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail">&#128065;</button></td>
+                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
               </tr>
               <!-- Row 2 -->
               <tr>
@@ -305,8 +306,8 @@
                   <span class="cell-progress-label">70%</span>
                 </td>
                 <td class="cell-secondary">31/12/2027</td>
-                <td><span class="badge badge-success">Actif &#10003;</span></td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail">&#128065;</button></td>
+                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
               </tr>
               <!-- Row 3 — nearing expiry -->
               <tr>
@@ -319,9 +320,9 @@
                   <div class="cell-progress-bar"><div class="cell-progress-fill cell-progress-fill--amber" style="width: 70%;"></div></div>
                   <span class="cell-progress-label">70%</span>
                 </td>
-                <td class="cell-expiry--near">30/04/2026 &#9888;</td>
-                <td><span class="badge badge-warning">Proche &eacute;ch&eacute;ance &#9888;</span></td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail">&#128065;</button></td>
+                <td class="cell-expiry--near">30/04/2026 <i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></td>
+                <td><span class="badge badge-warning">Proche &eacute;ch&eacute;ance <i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
               </tr>
               <!-- Row 4 -->
               <tr>
@@ -335,8 +336,8 @@
                   <span class="cell-progress-label">68%</span>
                 </td>
                 <td class="cell-secondary">31/12/2026</td>
-                <td><span class="badge badge-success">Actif &#10003;</span></td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail">&#128065;</button></td>
+                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
               </tr>
               <!-- Row 5 — negative balance -->
               <tr>
@@ -344,14 +345,14 @@
                 <td>Donateurs priv&eacute;s</td>
                 <td class="cell-amount text-right">&euro;15 000</td>
                 <td class="cell-amount text-right">&euro;16 200</td>
-                <td class="cell-amount cell-amount--negative text-right">&minus;&euro;1 200 &#9888;</td>
+                <td class="cell-amount cell-amount--negative text-right">&minus;&euro;1 200 <i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></td>
                 <td class="cell-progress">
                   <div class="cell-progress-bar"><div class="cell-progress-fill cell-progress-fill--red" style="width: 100%;"></div></div>
                   <span class="cell-progress-label">108%</span>
                 </td>
                 <td class="cell-expiry--past">31/12/2025</td>
-                <td><span class="badge badge-error">D&eacute;passement &#10005;</span></td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail">&#128065;</button></td>
+                <td><span class="badge badge-error">D&eacute;passement <i data-lucide="x" style="width:12px;height:12px;"></i></span></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
               </tr>
               <!-- Row 6 -->
               <tr>
@@ -365,8 +366,8 @@
                   <span class="cell-progress-label">24%</span>
                 </td>
                 <td class="cell-secondary">31/12/2026</td>
-                <td><span class="badge badge-success">Actif &#10003;</span></td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail">&#128065;</button></td>
+                <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
               </tr>
               <!-- Row 7 — closed -->
               <tr>
@@ -381,7 +382,7 @@
                 </td>
                 <td class="cell-secondary">30/06/2025</td>
                 <td><span class="badge badge-neutral">Cl&ocirc;tur&eacute;</span></td>
-                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail">&#128065;</button></td>
+                <td class="text-center"><button class="action-view" type="button" aria-label="Voir le d&eacute;tail"><i data-lucide="eye" style="width:16px;height:16px;"></i></button></td>
               </tr>
             </tbody>
           </table>
@@ -401,7 +402,7 @@
         <div class="ai-card-wrapper">
           <div class="ai-card">
             <div class="ai-card-header">
-              <span class="ai-card-icon">&#10024;</span>
+              <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
               <span class="ai-card-label">Suggestion IA</span>
             </div>
             <p class="ai-card-text">Le fonds &laquo; Solidarit&eacute; Locale &raquo; expire dans 2 mois avec 30% non d&eacute;pens&eacute;. Pr&eacute;voyez une planification des d&eacute;penses pour &eacute;viter le retour de fonds au bailleur.</p>
@@ -417,5 +418,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

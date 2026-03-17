@@ -7,6 +7,7 @@
   <title>Gestion des r&ocirc;les &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for admin/roles (ADM-003) ── */
 
@@ -70,6 +71,7 @@
       padding: 1px 7px;
       border-radius: var(--radius-pill);
       font-weight: var(--weight-medium);
+      font-variant-numeric: tabular-nums;
     }
 
     .role-list-item.active .role-list-item-count {
@@ -332,7 +334,7 @@
 
         <div class="topbar-actions">
           <button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell"></i>
             <span class="notification-dot"></span>
           </button>
           <div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div>
@@ -403,11 +405,11 @@
               <h3 class="matrix-card-title">Matrice des permissions</h3>
               <div class="matrix-legend">
                 <div class="matrix-legend-item">
-                  <span class="perm-full">&#10003;</span>
+                  <span class="perm-full"><i data-lucide="check"></i></span>
                   <span>Acc&egrave;s complet</span>
                 </div>
                 <div class="matrix-legend-item">
-                  <span class="perm-read">&#128065;</span>
+                  <span class="perm-read"><i data-lucide="eye"></i></span>
                   <span>Lecture seule</span>
                 </div>
                 <div class="matrix-legend-item">
@@ -433,97 +435,97 @@
                 <tbody>
                   <tr>
                     <td>Dashboard</td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                   </tr>
                   <tr>
                     <td>Constituants</td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                   </tr>
                   <tr>
                     <td>Dons</td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                   </tr>
                   <tr>
                     <td>Campagnes</td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
                     <td><span class="perm-none">&mdash;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                   </tr>
                   <tr>
                     <td>Subventions</td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                   </tr>
                   <tr>
                     <td>Programmes</td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                   </tr>
                   <tr>
                     <td>B&eacute;n&eacute;voles</td>
-                    <td><span class="perm-full">&#10003;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                   </tr>
                   <tr>
                     <td>Impact</td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
                   </tr>
                   <tr>
                     <td>Communications</td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
                     <td><span class="perm-none">&mdash;</span></td>
                   </tr>
                   <tr>
                     <td>Finance</td>
-                    <td><span class="perm-full">&#10003;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
                     <td><span class="perm-none">&mdash;</span></td>
                     <td><span class="perm-none">&mdash;</span></td>
-                    <td><span class="perm-full">&#10003;</span></td>
-                    <td><span class="perm-read">&#128065;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
+                    <td><span class="perm-read"><i data-lucide="eye"></i></span></td>
                   </tr>
                   <tr>
                     <td>RGPD</td>
-                    <td><span class="perm-full">&#10003;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
                     <td><span class="perm-none">&mdash;</span></td>
                     <td><span class="perm-none">&mdash;</span></td>
@@ -532,7 +534,7 @@
                   </tr>
                   <tr>
                     <td>Admin</td>
-                    <td><span class="perm-full">&#10003;</span></td>
+                    <td><span class="perm-full"><i data-lucide="check"></i></span></td>
                     <td><span class="perm-none">&mdash;</span></td>
                     <td><span class="perm-none">&mdash;</span></td>
                     <td><span class="perm-none">&mdash;</span></td>
@@ -545,7 +547,7 @@
 
             <!-- Note Banner -->
             <div class="note-banner">
-              <span class="note-banner-icon">&#9432;</span>
+              <span class="note-banner-icon"><i data-lucide="info"></i></span>
               <span>Les r&ocirc;les pr&eacute;d&eacute;finis ne sont pas modifiables. Les r&ocirc;les personnalis&eacute;s seront disponibles en version 1.1.</span>
             </div>
           </div>
@@ -557,5 +559,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

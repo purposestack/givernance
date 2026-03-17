@@ -7,6 +7,7 @@
   <title>Import CSV &mdash; Constituants &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific: CON-008 CSV Import Wizard ── */
 
@@ -27,9 +28,8 @@
     }
 
     .upload-zone-icon {
-      font-size: 48px;
       margin-bottom: var(--space-4);
-      opacity: 0.4;
+      color: var(--color-text-muted);
     }
 
     .upload-zone-title {
@@ -94,8 +94,10 @@
       border: none;
       cursor: pointer;
       color: var(--color-text-muted);
-      font-size: var(--text-md);
       padding: var(--space-1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .file-preview-remove:hover {
@@ -210,10 +212,11 @@
       font-weight: var(--weight-bold);
       line-height: 1.2;
       margin-bottom: var(--space-1);
+      font-variant-numeric: tabular-nums;
     }
 
     .validation-stat--success .validation-stat-value { color: var(--color-primary-dark); }
-    .validation-stat--warning .validation-stat-value { color: #92400E; }
+    .validation-stat--warning .validation-stat-value { color: var(--color-amber-dark); }
     .validation-stat--error .validation-stat-value { color: var(--color-indigo); }
 
     .validation-stat-label {
@@ -222,7 +225,7 @@
     }
 
     .validation-stat--success .validation-stat-label { color: var(--color-primary-dark); }
-    .validation-stat--warning .validation-stat-label { color: #92400E; }
+    .validation-stat--warning .validation-stat-label { color: var(--color-amber-dark); }
     .validation-stat--error .validation-stat-label { color: var(--color-indigo); }
 
     /* Wizard footer */
@@ -245,7 +248,7 @@
       max-width: 100%;
     }
 
-    /* Step visibility helpers — shows step 2 (mapping) */
+    /* Step visibility helpers -- shows step 2 (mapping) */
     .step-content { display: none; }
     .step-content.active { display: block; }
   </style>
@@ -285,7 +288,7 @@
     </a>
     <a href="../volunteers/list.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><path d="M12 21.23V12"/><path d="M8.7 8.7 12 12l3.3-3.3"/></svg>
-      <span>Bénévoles</span>
+      <span>B&eacute;n&eacute;voles</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -301,11 +304,11 @@
     </a>
     <a href="../admin/index.html" class="nav-item">
       <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/></svg>
-      <span>Paramètres</span>
+      <span>Param&egrave;tres</span>
     </a>
   </nav>
   <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
+    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
     <div class="sidebar-footer-user">
       <div class="sidebar-footer-avatar">CM</div>
       <span class="sidebar-footer-name">Claire Martin</span>
@@ -339,7 +342,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell" style="width:20px;height:20px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -362,7 +365,7 @@
              ============================================================ -->
         <div class="wizard-progress">
           <div class="wizard-step completed">
-            <div class="wizard-step-dot">&#10003;</div>
+            <div class="wizard-step-dot"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
             <span class="wizard-step-label">Upload</span>
           </div>
           <div class="wizard-step-connector completed"></div>
@@ -378,7 +381,7 @@
         </div>
 
         <!-- ============================================================
-             STEP 1: UPLOAD (hidden — completed)
+             STEP 1: UPLOAD (hidden -- completed)
              ============================================================ -->
         <div class="step-content" id="step-1">
           <div class="card">
@@ -387,7 +390,7 @@
             </div>
             <div class="card-body">
               <div class="upload-zone">
-                <div class="upload-zone-icon">&#128196;</div>
+                <div class="upload-zone-icon"><i data-lucide="upload-cloud" style="width:48px;height:48px;"></i></div>
                 <div class="upload-zone-title">Glissez votre fichier CSV ici</div>
                 <p class="upload-zone-text">ou <a href="#" style="color: var(--color-primary); font-weight: var(--weight-medium);">parcourez vos fichiers</a></p>
                 <p class="upload-zone-hint">Format accept&eacute; : .csv &middot; Taille max. : 10 Mo &middot; Encodage : UTF-8</p>
@@ -408,13 +411,13 @@
               <div class="file-preview-name">export_constituants_2026.csv</div>
               <div class="file-preview-meta">342 lignes &middot; 12 colonnes &middot; 145 Ko &middot; UTF-8</div>
             </div>
-            <button class="file-preview-remove" type="button" aria-label="Supprimer le fichier">&times;</button>
+            <button class="file-preview-remove" type="button" aria-label="Supprimer le fichier"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
           </div>
 
           <!-- AI Suggestion -->
           <div class="ai-card ai-card--wide mb-6">
             <div class="ai-card-header">
-              <span class="ai-card-icon">&#10024;</span>
+              <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
               <span class="ai-card-label">Suggestion IA</span>
             </div>
             <p class="ai-card-text">
@@ -453,7 +456,7 @@
                           <option value="email">Email</option>
                           <option value="ignore">-- Ignorer --</option>
                         </select>
-                        <span class="mapping-auto-badge">&#10024; Auto</span>
+                        <span class="mapping-auto-badge"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Auto</span>
                       </td>
                     </tr>
                     <tr>
@@ -465,7 +468,7 @@
                           <option value="prenom">Pr&eacute;nom</option>
                           <option value="ignore">-- Ignorer --</option>
                         </select>
-                        <span class="mapping-auto-badge">&#10024; Auto</span>
+                        <span class="mapping-auto-badge"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Auto</span>
                       </td>
                     </tr>
                     <tr>
@@ -476,7 +479,7 @@
                           <option value="email" selected>Email</option>
                           <option value="ignore">-- Ignorer --</option>
                         </select>
-                        <span class="mapping-auto-badge">&#10024; Auto</span>
+                        <span class="mapping-auto-badge"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Auto</span>
                       </td>
                     </tr>
                     <tr>
@@ -487,7 +490,7 @@
                           <option value="telephone" selected>T&eacute;l&eacute;phone</option>
                           <option value="ignore">-- Ignorer --</option>
                         </select>
-                        <span class="mapping-auto-badge">&#10024; Auto</span>
+                        <span class="mapping-auto-badge"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Auto</span>
                       </td>
                     </tr>
                     <tr>
@@ -498,7 +501,7 @@
                           <option value="adresse" selected>Adresse</option>
                           <option value="ignore">-- Ignorer --</option>
                         </select>
-                        <span class="mapping-auto-badge">&#10024; Auto</span>
+                        <span class="mapping-auto-badge"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Auto</span>
                       </td>
                     </tr>
                     <tr>
@@ -509,7 +512,7 @@
                           <option value="ville" selected>Ville</option>
                           <option value="ignore">-- Ignorer --</option>
                         </select>
-                        <span class="mapping-auto-badge">&#10024; Auto</span>
+                        <span class="mapping-auto-badge"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Auto</span>
                       </td>
                     </tr>
                     <tr>
@@ -520,7 +523,7 @@
                           <option value="code_postal" selected>Code postal</option>
                           <option value="ignore">-- Ignorer --</option>
                         </select>
-                        <span class="mapping-auto-badge">&#10024; Auto</span>
+                        <span class="mapping-auto-badge"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Auto</span>
                       </td>
                     </tr>
                     <tr>
@@ -531,7 +534,7 @@
                           <option value="civilite" selected>Civilit&eacute;</option>
                           <option value="ignore">-- Ignorer --</option>
                         </select>
-                        <span class="mapping-auto-badge">&#10024; Auto</span>
+                        <span class="mapping-auto-badge"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Auto</span>
                       </td>
                     </tr>
                     <tr>
@@ -543,7 +546,7 @@
                           <option value="source">Source</option>
                           <option value="ignore">-- Ignorer --</option>
                         </select>
-                        <span class="mapping-auto-badge">&#10024; Auto</span>
+                        <span class="mapping-auto-badge"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Auto</span>
                       </td>
                     </tr>
                     <tr>
@@ -587,10 +590,10 @@
 
           <!-- Wizard footer -->
           <div class="wizard-footer">
-            <button class="btn btn-ghost" type="button">&larr; Retour</button>
+            <button class="btn btn-ghost" type="button"><i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Retour</button>
             <div class="wizard-footer-right">
               <a href="list.html" class="btn btn-secondary">Annuler</a>
-              <button class="btn btn-primary" type="button">Valider et pr&eacute;visualiser &rarr;</button>
+              <button class="btn btn-primary" type="button">Valider et pr&eacute;visualiser <i data-lucide="arrow-right" style="width:16px;height:16px;"></i></button>
             </div>
           </div>
         </div>
@@ -604,15 +607,15 @@
           <div class="validation-summary">
             <div class="validation-stat validation-stat--success">
               <div class="validation-stat-value">312</div>
-              <div class="validation-stat-label">&#10003; Pr&ecirc;ts &agrave; importer</div>
+              <div class="validation-stat-label"><i data-lucide="check" style="width:12px;height:12px;"></i> Pr&ecirc;ts &agrave; importer</div>
             </div>
             <div class="validation-stat validation-stat--warning">
               <div class="validation-stat-value">18</div>
-              <div class="validation-stat-label">&#9888; Doublons d&eacute;tect&eacute;s</div>
+              <div class="validation-stat-label"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> Doublons d&eacute;tect&eacute;s</div>
             </div>
             <div class="validation-stat validation-stat--error">
               <div class="validation-stat-value">12</div>
-              <div class="validation-stat-label">&#10005; Erreurs</div>
+              <div class="validation-stat-label"><i data-lucide="x" style="width:12px;height:12px;"></i> Erreurs</div>
             </div>
           </div>
 
@@ -636,7 +639,7 @@
                   </thead>
                   <tbody>
                     <tr>
-                      <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Valide</span></td>
+                      <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Valide</span></td>
                       <td>Jacques</td>
                       <td>Moreau</td>
                       <td>j.moreau@free.fr</td>
@@ -644,7 +647,7 @@
                       <td>Lyon</td>
                     </tr>
                     <tr>
-                      <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Valide</span></td>
+                      <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Valide</span></td>
                       <td>Isabelle</td>
                       <td>Renaud</td>
                       <td>i.renaud@gmail.com</td>
@@ -652,7 +655,7 @@
                       <td>Marseille</td>
                     </tr>
                     <tr>
-                      <td><span class="badge badge-warning"><span class="badge-icon">&#9888;</span> Doublon</span></td>
+                      <td><span class="badge badge-warning"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> Doublon</span></td>
                       <td>Marie-Claire</td>
                       <td>Fontaine</td>
                       <td>mc.fontaine@gmail.com</td>
@@ -660,7 +663,7 @@
                       <td>Marseille</td>
                     </tr>
                     <tr>
-                      <td><span class="badge badge-error"><span class="badge-icon">&#10005;</span> Erreur</span></td>
+                      <td><span class="badge badge-error"><i data-lucide="x" style="width:12px;height:12px;"></i> Erreur</span></td>
                       <td>Thomas</td>
                       <td>Blanc</td>
                       <td>thomas.blanc@</td>
@@ -668,7 +671,7 @@
                       <td>Paris</td>
                     </tr>
                     <tr>
-                      <td><span class="badge badge-success"><span class="badge-icon">&#10003;</span> Valide</span></td>
+                      <td><span class="badge badge-success"><i data-lucide="check" style="width:12px;height:12px;"></i> Valide</span></td>
                       <td>Amina</td>
                       <td>Khelifi</td>
                       <td>a.khelifi@outlook.fr</td>
@@ -683,7 +686,7 @@
 
           <!-- Error details -->
           <div class="alert alert-error mb-6" role="alert">
-            <span class="alert-icon">&#10005;</span>
+            <span class="alert-icon"><i data-lucide="x-circle" style="width:16px;height:16px;"></i></span>
             <div class="alert-content">
               <strong>12 erreurs d&eacute;tect&eacute;es :</strong> 8 emails invalides, 3 noms manquants, 1 code postal non reconnu.
               <a href="#" style="color: var(--color-indigo); font-weight: var(--weight-medium); margin-left: var(--space-2);">T&eacute;l&eacute;charger le rapport d'erreurs</a>
@@ -692,10 +695,10 @@
 
           <!-- Wizard footer -->
           <div class="wizard-footer">
-            <button class="btn btn-ghost" type="button">&larr; Retour au mapping</button>
+            <button class="btn btn-ghost" type="button"><i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Retour au mapping</button>
             <div class="wizard-footer-right">
               <a href="list.html" class="btn btn-secondary">Annuler</a>
-              <button class="btn btn-primary" type="button">Importer 312 constituants</button>
+              <button class="btn btn-primary" type="button"><i data-lucide="upload" style="width:16px;height:16px;"></i> Importer 312 constituants</button>
             </div>
           </div>
         </div>
@@ -707,5 +710,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

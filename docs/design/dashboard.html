@@ -7,6 +7,7 @@
   <title>Givernance — Tableau de bord</title>
   <link rel="stylesheet" href="shared/tokens.css">
   <link rel="stylesheet" href="shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Dashboard-specific layout ── */
     .dashboard-grid {
@@ -56,6 +57,7 @@
       font-size: var(--text-xs);
       color: var(--color-text-secondary);
       font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
       margin-bottom: var(--space-2);
     }
 
@@ -261,7 +263,7 @@
 
         <div class="topbar-actions">
           <a href="global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications" style="text-decoration:none;color:inherit;">
-            &#128276;
+            <i data-lucide="bell" style="width:18px;height:18px;"></i>
             <span class="notification-dot"></span>
           </a>
           <a href="admin/users.html" style="text-decoration:none;color:inherit;"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -288,7 +290,7 @@
             <div class="stat-widget-label">Dons ce mois</div>
             <div class="stat-widget-value">&euro;12&nbsp;450</div>
             <div class="stat-widget-trend stat-widget-trend--up">
-              &#9650; +18% vs N-1
+              <i data-lucide="trending-up" style="width:14px;height:14px;"></i> +18% vs N-1
             </div>
           </a>
 
@@ -297,7 +299,7 @@
             <div class="stat-widget-label">Constituants actifs</div>
             <div class="stat-widget-value">1&nbsp;247</div>
             <div class="stat-widget-trend stat-widget-trend--up">
-              &#9650; +23 ce mois
+              <i data-lucide="trending-up" style="width:14px;height:14px;"></i> +23 ce mois
             </div>
           </a>
 
@@ -315,7 +317,7 @@
             <div class="stat-widget-label">&#201;ch&#233;ances subventions</div>
             <div class="stat-widget-value">2</div>
             <div class="stat-widget-trend stat-widget-trend--down">
-              &#9888; dans les 7 prochains jours
+              <i data-lucide="alert-triangle" style="width:14px;height:14px;"></i> dans les 7 prochains jours
             </div>
           </a>
         </div>
@@ -410,7 +412,7 @@
                   <!-- Timeline: Don recu -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-primary-50); color: var(--color-primary-dark);">
-                      &#9829;
+                      <i data-lucide="heart" style="width:16px;height:16px;"></i>
                     </div>
                     <div class="timeline-content">
                       <a href="donations/detail.html" style="text-decoration:none;color:inherit;"><div class="timeline-title">Don de &euro;500 re&#231;u</div></a>
@@ -421,7 +423,7 @@
                   <!-- Timeline: Nouveau constituant -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-sky-50); color: var(--color-sky);">
-                      &#9775;
+                      <i data-lucide="user-plus" style="width:16px;height:16px;"></i>
                     </div>
                     <div class="timeline-content">
                       <a href="constituents/detail.html" style="text-decoration:none;color:inherit;"><div class="timeline-title">Nouveau constituant ajout&#233;</div></a>
@@ -432,7 +434,7 @@
                   <!-- Timeline: Rapport soumis -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-amber-50); color: var(--color-amber);">
-                      &#9733;
+                      <i data-lucide="file-check" style="width:16px;height:16px;"></i>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">Rapport soumis</div>
@@ -443,7 +445,7 @@
                   <!-- Timeline: Campagne lancee -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-primary-50); color: var(--color-primary-dark);">
-                      &#9670;
+                      <i data-lucide="rocket" style="width:16px;height:16px;"></i>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">Campagne lanc&#233;e</div>
@@ -466,7 +468,7 @@
             <!-- AI Suggestion Card -->
             <div class="ai-card">
               <div class="ai-card-header">
-                <span class="ai-card-icon">&#10024;</span>
+                <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
                 <span class="ai-card-label">Suggestion IA</span>
               </div>
               <p class="ai-card-text">
@@ -521,25 +523,25 @@
 
                 <!-- Completed: Organisation configuree -->
                 <div class="checklist-item completed">
-                  <div class="checklist-icon">&#10003;</div>
+                  <div class="checklist-icon"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
                   <span class="checklist-text">Organisation configur&#233;e</span>
                 </div>
 
                 <!-- Completed: Equipe invitee -->
                 <div class="checklist-item completed">
-                  <div class="checklist-icon">&#10003;</div>
+                  <div class="checklist-icon"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
                   <span class="checklist-text">&#201;quipe invit&#233;e</span>
                 </div>
 
                 <!-- Pending: Importer constituants -->
                 <a href="constituents/import.html" class="checklist-item" style="text-decoration:none;color:inherit;display:flex;">
-                  <div class="checklist-icon">&#9675;</div>
+                  <div class="checklist-icon"><i data-lucide="circle" style="width:14px;height:14px;"></i></div>
                   <span class="checklist-text">Importer vos constituants</span>
                 </a>
 
                 <!-- Pending: Creer premiere campagne -->
                 <a href="campaigns/new.html" class="checklist-item" style="text-decoration:none;color:inherit;display:flex;">
-                  <div class="checklist-icon">&#9675;</div>
+                  <div class="checklist-icon"><i data-lucide="circle" style="width:14px;height:14px;"></i></div>
                   <span class="checklist-text">Cr&#233;er votre premi&#232;re campagne</span>
                 </a>
 
@@ -559,5 +561,6 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

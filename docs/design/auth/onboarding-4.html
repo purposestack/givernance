@@ -7,6 +7,7 @@
   <title>Givernance — Onboarding : Parametres RGPD</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     .onboarding-actions {
       display: flex;
@@ -111,21 +112,21 @@
       <div class="wizard-progress">
         <div class="wizard-step completed">
           <div class="wizard-step-dot">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <i data-lucide="check" style="width:14px;height:14px;"></i>
           </div>
           <span class="wizard-step-label">Organisation</span>
         </div>
         <div class="wizard-step-connector completed"></div>
         <div class="wizard-step completed">
           <div class="wizard-step-dot">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <i data-lucide="check" style="width:14px;height:14px;"></i>
           </div>
           <span class="wizard-step-label">Equipe</span>
         </div>
         <div class="wizard-step-connector completed"></div>
         <div class="wizard-step completed">
           <div class="wizard-step-dot">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <i data-lucide="check" style="width:14px;height:14px;"></i>
           </div>
           <span class="wizard-step-label">Donnees</span>
         </div>
@@ -150,11 +151,7 @@
       <!-- Info Alert -->
       <div class="alert alert-info" style="margin-bottom: var(--space-6);">
         <span class="alert-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="16" x2="12" y2="12"/>
-            <line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
+          <i data-lucide="info" style="width:18px;height:18px;"></i>
         </span>
         <div class="alert-content">
           <strong>Conformite RGPD</strong><br>
@@ -231,11 +228,7 @@
       <div class="ai-card">
         <div class="ai-card-header">
           <span class="ai-card-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
+            <i data-lucide="layers" style="width:16px;height:16px;"></i>
           </span>
           <span class="ai-card-label">Suggestion IA</span>
         </div>
@@ -251,20 +244,14 @@
       <!-- Privacy Policy Template Download -->
       <div class="privacy-link">
         <div class="privacy-link-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          </svg>
+          <i data-lucide="shield" style="width:20px;height:20px;"></i>
         </div>
         <div class="privacy-link-info">
           <div class="privacy-link-name">Modele de politique de confidentialite</div>
           <div class="privacy-link-meta">Document Word pre-rempli avec les informations de votre organisation. Conforme RGPD, adapte aux associations loi 1901. A faire valider par votre DPO.</div>
         </div>
         <a href="#" class="btn btn-secondary btn-sm">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
+          <i data-lucide="download" style="width:14px;height:14px;"></i>
           Telecharger
         </a>
       </div>
@@ -272,17 +259,18 @@
       <!-- Actions -->
       <div class="onboarding-actions">
         <a href="onboarding-3.html" class="btn btn-secondary" style="text-decoration:none;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          <i data-lucide="arrow-left" style="width:16px;height:16px;"></i>
           Retour
         </a>
         <a href="onboarding-5.html" class="btn btn-primary" style="text-decoration:none;">
           Continuer
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          <i data-lucide="arrow-right" style="width:16px;height:16px;"></i>
         </a>
       </div>
 
     </div>
   </div>
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

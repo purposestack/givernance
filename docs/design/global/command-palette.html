@@ -7,6 +7,7 @@
   <title>Givernance &mdash; Palette de commandes</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ================================================================
        GLO-001: Command Palette — Page-specific styles
@@ -317,43 +318,43 @@
 
       <nav class="sidebar-nav">
         <a href="../dashboard.html" class="nav-item active">
-          <span class="nav-item-icon">&#9634;</span>
+          <span class="nav-item-icon"><i data-lucide="layout-grid" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Dashboard</span>
         </a>
         <a href="../constituents/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9775;</span>
+          <span class="nav-item-icon"><i data-lucide="users" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Constituants</span>
         </a>
         <a href="../donations/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9829;</span>
+          <span class="nav-item-icon"><i data-lucide="heart" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Dons &amp; Campagnes</span>
         </a>
         <a href="../grants/kanban.html" class="nav-item">
-          <span class="nav-item-icon">&#9733;</span>
+          <span class="nav-item-icon"><i data-lucide="bar-chart-3" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Subventions</span>
         </a>
         <a href="../programs/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9670;</span>
+          <span class="nav-item-icon"><i data-lucide="layers" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Programmes</span>
         </a>
         <a href="../volunteers/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9996;</span>
+          <span class="nav-item-icon"><i data-lucide="hand-heart" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">B&#233;n&#233;voles</span>
         </a>
         <a href="../impact/dashboard.html" class="nav-item">
-          <span class="nav-item-icon">&#9678;</span>
+          <span class="nav-item-icon"><i data-lucide="activity" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Impact</span>
         </a>
         <a href="../communications/list.html" class="nav-item">
-          <span class="nav-item-icon">&#9993;</span>
+          <span class="nav-item-icon"><i data-lucide="mail" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Communications</span>
         </a>
         <a href="../reports/library.html" class="nav-item">
-          <span class="nav-item-icon">&#9776;</span>
+          <span class="nav-item-icon"><i data-lucide="bar-chart" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Rapports</span>
         </a>
         <a href="../admin/index.html" class="nav-item">
-          <span class="nav-item-icon">&#9881;</span>
+          <span class="nav-item-icon"><i data-lucide="settings" style="width:18px;height:18px;"></i></span>
           <span class="nav-item-label">Param&#232;tres</span>
         </a>
       </nav>
@@ -379,7 +380,7 @@
           <input type="text" class="topbar-search-input" placeholder="Rechercher..." tabindex="-1">
         </div>
         <div class="topbar-actions">
-          <button class="topbar-icon-btn" tabindex="-1">&#128276;</button>
+          <button class="topbar-icon-btn" tabindex="-1"><i data-lucide="bell" style="width:18px;height:18px;"></i></button>
           <div class="topbar-avatar">CD</div>
         </div>
       </header>
@@ -448,7 +449,7 @@
 
       <!-- ── Search input ── -->
       <div class="command-input-wrapper">
-        <span class="command-input-icon">&#128269;</span>
+        <span class="command-input-icon"><i data-lucide="search" style="width:20px;height:20px;"></i></span>
         <input
           type="text"
           class="command-input"
@@ -466,7 +467,7 @@
         <div class="command-section">Constituants</div>
 
         <a href="../constituents/detail.html" class="command-result selected">
-          <div class="command-result-icon">&#128100;</div>
+          <div class="command-result-icon"><i data-lucide="user" style="width:16px;height:16px;"></i></div>
           <div class="command-result-body">
             <div class="command-result-name">Marie-Claire Fontaine</div>
             <div class="command-result-meta">Donatrice &middot; Marseille</div>
@@ -474,7 +475,7 @@
         </a>
 
         <a href="../constituents/detail.html" class="command-result">
-          <div class="command-result-icon">&#128100;</div>
+          <div class="command-result-icon"><i data-lucide="user" style="width:16px;height:16px;"></i></div>
           <div class="command-result-body">
             <div class="command-result-name">Ahmed Benali</div>
             <div class="command-result-meta">Donateur &middot; Lyon</div>
@@ -482,7 +483,7 @@
         </a>
 
         <a href="../constituents/detail.html" class="command-result">
-          <div class="command-result-icon">&#128100;</div>
+          <div class="command-result-icon"><i data-lucide="user" style="width:16px;height:16px;"></i></div>
           <div class="command-result-body">
             <div class="command-result-name">Association Les Amis du Parc</div>
             <div class="command-result-meta">Organisation &middot; Paris</div>
@@ -493,7 +494,7 @@
         <div class="command-section">Dons</div>
 
         <a href="../donations/detail.html" class="command-result">
-          <div class="command-result-icon">&#128157;</div>
+          <div class="command-result-icon"><i data-lucide="heart" style="width:16px;height:16px;"></i></div>
           <div class="command-result-body">
             <div class="command-result-name">Don #D-2026-0142</div>
             <div class="command-result-meta">500&nbsp;&euro; &middot; Marie-Claire Fontaine &middot; 25 f&#233;v. 2026</div>
@@ -501,7 +502,7 @@
         </a>
 
         <a href="../donations/detail.html" class="command-result">
-          <div class="command-result-icon">&#128157;</div>
+          <div class="command-result-icon"><i data-lucide="heart" style="width:16px;height:16px;"></i></div>
           <div class="command-result-body">
             <div class="command-result-name">Don #D-2026-0139</div>
             <div class="command-result-meta">200&nbsp;&euro; &middot; Ahmed Benali &middot; 23 f&#233;v. 2026</div>
@@ -512,7 +513,7 @@
         <div class="command-section">Actions rapides</div>
 
         <div class="command-result">
-          <div class="command-result-icon">&#10133;</div>
+          <div class="command-result-icon"><i data-lucide="plus" style="width:16px;height:16px;"></i></div>
           <div class="command-result-body">
             <div class="command-result-name">Nouveau constituant</div>
           </div>
@@ -520,7 +521,7 @@
         </div>
 
         <div class="command-result">
-          <div class="command-result-icon">&#128176;</div>
+          <div class="command-result-icon"><i data-lucide="wallet" style="width:16px;height:16px;"></i></div>
           <div class="command-result-body">
             <div class="command-result-name">Enregistrer un don</div>
           </div>
@@ -528,7 +529,7 @@
         </div>
 
         <div class="command-result">
-          <div class="command-result-icon">&#128202;</div>
+          <div class="command-result-icon"><i data-lucide="bar-chart" style="width:16px;height:16px;"></i></div>
           <div class="command-result-body">
             <div class="command-result-name">Ouvrir les rapports</div>
           </div>
@@ -536,7 +537,7 @@
         </div>
 
         <div class="command-result">
-          <div class="command-result-icon">&#9881;</div>
+          <div class="command-result-icon"><i data-lucide="settings" style="width:16px;height:16px;"></i></div>
           <div class="command-result-body">
             <div class="command-result-name">Param&#232;tres</div>
           </div>
@@ -557,5 +558,6 @@
   </div>
   <!-- END COMMAND PALETTE OVERLAY -->
 
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

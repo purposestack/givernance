@@ -7,6 +7,7 @@
   <title>Givernance &mdash; Gestion des utilisateurs</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific styles for admin/users (ADM-002) ── */
 
@@ -266,7 +267,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            &#128276;
+            <i data-lucide="bell"></i>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div></a>
@@ -305,7 +306,7 @@
             </div>
           </div>
           <div class="table-controls-right">
-            <span class="user-count">8 utilisateurs</span>
+            <span class="user-count" style="font-variant-numeric: tabular-nums">8 utilisateurs</span>
           </div>
         </div>
 
@@ -339,7 +340,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">27 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Claire Dubois">&#8943;</button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Claire Dubois"><i data-lucide="more-horizontal"></i></button>
                 </td>
               </tr>
 
@@ -358,7 +359,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">26 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Marc Laurent">&#8943;</button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Marc Laurent"><i data-lucide="more-horizontal"></i></button>
                 </td>
               </tr>
 
@@ -377,7 +378,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">25 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Sophie Bertrand">&#8943;</button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Sophie Bertrand"><i data-lucide="more-horizontal"></i></button>
                 </td>
               </tr>
 
@@ -396,7 +397,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">24 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Pierre Dupont">&#8943;</button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Pierre Dupont"><i data-lucide="more-horizontal"></i></button>
                 </td>
               </tr>
 
@@ -415,7 +416,7 @@
                 <td><span class="badge badge-warning"><span class="status-dot status-dot--invited"></span>Invit&eacute;</span></td>
                 <td class="cell-secondary">&mdash;</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Amina Benali">&#8943;</button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Amina Benali"><i data-lucide="more-horizontal"></i></button>
                 </td>
               </tr>
 
@@ -434,7 +435,7 @@
                 <td><span class="badge badge-error"><span class="status-dot status-dot--disabled"></span>D&eacute;sactiv&eacute;</span></td>
                 <td class="cell-secondary">10 jan. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Jacques Renault">&#8943;</button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Jacques Renault"><i data-lucide="more-horizontal"></i></button>
                 </td>
               </tr>
 
@@ -453,7 +454,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">23 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Lina Moreau">&#8943;</button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Lina Moreau"><i data-lucide="more-horizontal"></i></button>
                 </td>
               </tr>
 
@@ -472,7 +473,7 @@
                 <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
                 <td class="cell-secondary">22 f&eacute;v. 2026</td>
                 <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Thomas Garcia">&#8943;</button>
+                  <button class="action-menu-btn" type="button" aria-label="Actions pour Thomas Garcia"><i data-lucide="more-horizontal"></i></button>
                 </td>
               </tr>
 
@@ -546,5 +547,6 @@
   <!-- end .modal-overlay -->
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
   <title>Accompagnement R&eacute;fugi&eacute;s &mdash; Programme &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     /* ── Page-specific: PROG-002 Program detail ── */
 
@@ -299,7 +300,7 @@
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">&#128276;<span class="notification-dot"></span></button></a>
+          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications"><i data-lucide="bell" style="width:20px;height:20px;"></i><span class="notification-dot"></span></button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div></a>
         </div>
       </header>
@@ -311,11 +312,11 @@
         <!--        Program Header           -->
         <!-- ============================== -->
         <div class="program-header">
-          <div class="program-icon">&#9829;</div>
+          <div class="program-icon"><i data-lucide="heart" style="width:28px;height:28px;"></i></div>
           <div class="program-info">
             <h1 class="program-name">Accompagnement R&eacute;fugi&eacute;s</h1>
             <div class="program-meta">
-              <span class="badge badge-success">Actif &#10003;</span>
+              <span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span>
               <span class="program-meta-sep">&middot;</span>
               <span>Accompagnement global</span>
               <span class="program-meta-sep">&middot;</span>
@@ -376,7 +377,7 @@
         <div class="card mb-6">
           <div class="card-header">
             <h3 class="card-title">B&eacute;n&eacute;ficiaires inscrits</h3>
-            <a href="beneficiaries.html" class="btn btn-ghost btn-sm">Voir tout &#8594;</a>
+            <a href="beneficiaries.html" class="btn btn-ghost btn-sm">Voir tout <i data-lucide="arrow-right" style="width:16px;height:16px;"></i></a>
           </div>
           <div class="card-body">
             <table class="mini-table">
@@ -393,28 +394,28 @@
                 <tr>
                   <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Amira Al-Rashid</a></td>
                   <td class="cell-mono">12/09/2025</td>
-                  <td><span class="badge badge-success">Actif &#10003;</span></td>
+                  <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
                   <td>Fatima Hadji</td>
                   <td class="cell-mono">7</td>
                 </tr>
                 <tr>
                   <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Youssef Karam</a></td>
                   <td class="cell-mono">03/11/2025</td>
-                  <td><span class="badge badge-success">Actif &#10003;</span></td>
+                  <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
                   <td>Samira Benali</td>
                   <td class="cell-mono">5</td>
                 </tr>
                 <tr>
                   <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Marie Nguema</a></td>
                   <td class="cell-mono">20/01/2026</td>
-                  <td><span class="badge badge-success">Actif &#10003;</span></td>
+                  <td><span class="badge badge-success">Actif <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
                   <td>Fatima Hadji</td>
                   <td class="cell-mono">3</td>
                 </tr>
                 <tr>
                   <td class="cell-name"><a href="beneficiary-detail.html" style="color: var(--color-sky);">Hassan Diallo</a></td>
                   <td class="cell-mono">08/02/2026</td>
-                  <td><span class="badge badge-warning">En attente &#9888;</span></td>
+                  <td><span class="badge badge-warning">En attente <i data-lucide="alert-triangle" style="width:12px;height:12px;"></i></span></td>
                   <td>&mdash;</td>
                   <td class="cell-mono">0</td>
                 </tr>
@@ -442,17 +443,17 @@
               <div class="indicator-card">
                 <div class="indicator-card-label">Taux d'acc&egrave;s au logement</div>
                 <div class="indicator-card-value">68%</div>
-                <div class="indicator-card-target">Objectif : 75% &mdash; <span style="color: var(--color-amber);">&#9888; En dessous</span></div>
+                <div class="indicator-card-target">Objectif : 75% &mdash; <span style="color: var(--color-amber);"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> En dessous</span></div>
               </div>
               <div class="indicator-card">
                 <div class="indicator-card-label">Taux d'insertion professionnelle</div>
                 <div class="indicator-card-value">42%</div>
-                <div class="indicator-card-target">Objectif : 40% &mdash; <span style="color: var(--color-primary);">&#10003; Atteint</span></div>
+                <div class="indicator-card-target">Objectif : 40% &mdash; <span style="color: var(--color-primary);"><i data-lucide="check" style="width:12px;height:12px;"></i> Atteint</span></div>
               </div>
               <div class="indicator-card">
                 <div class="indicator-card-label">D&eacute;lai moyen d'acc&egrave;s aux droits</div>
                 <div class="indicator-card-value">4,2 mois</div>
-                <div class="indicator-card-target">Objectif : &lt;6 mois &mdash; <span style="color: var(--color-primary);">&#10003; Atteint</span></div>
+                <div class="indicator-card-target">Objectif : &lt;6 mois &mdash; <span style="color: var(--color-primary);"><i data-lucide="check" style="width:12px;height:12px;"></i> Atteint</span></div>
               </div>
               <div class="indicator-card">
                 <div class="indicator-card-label">Sorties positives</div>
@@ -478,7 +479,7 @@
         <!-- ============================== -->
         <div class="ai-card ai-card--wide mb-6">
           <div class="ai-card-header">
-            <span class="ai-card-icon">&#10024;</span>
+            <span class="ai-card-icon"><i data-lucide="sparkles" style="width:16px;height:16px;"></i></span>
             <span class="ai-card-label">Suggestion IA</span>
           </div>
           <p class="ai-card-text">
@@ -516,7 +517,7 @@
                   <td class="cell-mono">&euro;75 000</td>
                   <td class="cell-mono">&euro;58 200 (78%)</td>
                   <td>01/2025 &ndash; 12/2025</td>
-                  <td><span class="badge badge-success">En cours &#10003;</span></td>
+                  <td><span class="badge badge-success">En cours <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
                 </tr>
                 <tr>
                   <td class="cell-name">Conseil r&eacute;gional PACA</td>
@@ -524,7 +525,7 @@
                   <td class="cell-mono">&euro;30 000</td>
                   <td class="cell-mono">&euro;22 400 (75%)</td>
                   <td>07/2025 &ndash; 06/2026</td>
-                  <td><span class="badge badge-success">En cours &#10003;</span></td>
+                  <td><span class="badge badge-success">En cours <i data-lucide="check" style="width:12px;height:12px;"></i></span></td>
                 </tr>
                 <tr>
                   <td class="cell-name">Fondation de France</td>
@@ -544,5 +545,6 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
+<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>
