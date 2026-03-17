@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="../shared/assets/logo-icon.png">
+  <title>Givernance &mdash; Page publique de don</title>
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+  <style>
+    /* ── Page-specific styles for public-page-editor ── */
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-6);
+      align-items: start;
+    }
+
+    /* ── Actions row ── */
+    .actions-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      flex-wrap: wrap;
+    }
+
+    /* ── Toggle switch ── */
+    .toggle-group {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-text);
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: var(--color-outline-variant);
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      transition: background var(--duration-normal) var(--ease-out);
+    }
+
+    .toggle-switch.active {
+      background: var(--color-primary);
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: var(--color-white);
+      border-radius: var(--radius-full);
+      transition: transform var(--duration-normal) var(--ease-out);
+      box-shadow: var(--shadow-xs);
+    }
+
+    .toggle-switch.active::after {
+      transform: translateX(20px);
+    }
+
+    /* ── Live preview simulation ── */
+    .preview-frame {
+      background: var(--color-white);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      padding: var(--space-8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-5);
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    .preview-logo-placeholder {
+      width: 56px;
+      height: 56px;
+      border-radius: var(--radius-full);
+      background: var(--color-surface-container);
+      border: 2px dashed var(--color-outline-variant);
+    }
+
+    .preview-title {
+      font-family: var(--font-heading);
+      font-size: var(--text-xl);
+      font-weight: var(--weight-medium);
+      text-align: center;
+      color: var(--color-text);
+    }
+
+    .preview-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      text-align: center;
+      line-height: var(--leading-relaxed);
+    }
+
+    .preview-progress-section {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .preview-progress-text {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semi);
+      color: var(--color-text);
+    }
+
+    .preview-progress-bar {
+      width: 100%;
+      height: 8px;
+      background: var(--color-surface-container);
+      border-radius: var(--radius-pill);
+      overflow: hidden;
+    }
+
+    .preview-progress-fill {
+      height: 100%;
+      width: 31%;
+      background: var(--color-primary);
+      border-radius: var(--radius-pill);
+      transition: width var(--duration-slow) var(--ease-out);
+    }
+
+    .preview-donors {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    /* ── Amount pills ── */
+    .amount-pills {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      justify-content: center;
+      width: 100%;
+    }
+
+    .amount-pill {
+      padding: var(--space-2) var(--space-4);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-pill);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-text);
+      background: var(--color-white);
+      cursor: pointer;
+      transition: var(--transition-base);
+    }
+
+    .amount-pill:hover {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+    }
+
+    .amount-pill.selected {
+      background: var(--color-primary);
+      color: var(--color-on-primary);
+      border-color: var(--color-primary);
+    }
+
+    /* ── Frequency toggle ── */
+    .freq-toggle {
+      display: flex;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-pill);
+      overflow: hidden;
+    }
+
+    .freq-toggle-btn {
+      padding: var(--space-2) var(--space-5);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-text-secondary);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      transition: var(--transition-base);
+    }
+
+    .freq-toggle-btn.selected {
+      background: var(--color-primary);
+      color: var(--color-on-primary);
+    }
+
+    /* ── Preview form fields ── */
+    .preview-fields {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .preview-input {
+      width: 100%;
+      height: 36px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-input);
+      padding: 0 var(--space-3);
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      background: var(--color-white);
+      font-family: var(--font-body);
+    }
+
+    .preview-submit {
+      width: 100%;
+      height: 44px;
+      background: var(--color-primary);
+      color: var(--color-on-primary);
+      border: none;
+      border-radius: var(--radius-button);
+      font-size: var(--text-md);
+      font-weight: var(--weight-semi);
+      font-family: var(--font-body);
+      cursor: pointer;
+    }
+
+    .preview-secure {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-1);
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    /* ── Config panel ── */
+    .config-stack {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+    }
+
+    .card-title-sm {
+      font-family: var(--font-heading);
+      font-size: var(--text-lg);
+      font-weight: var(--weight-medium);
+      color: var(--color-text);
+      margin-bottom: var(--space-4);
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1-5);
+      margin-bottom: var(--space-4);
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-label {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-text);
+    }
+
+    .form-input {
+      height: var(--input-height);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-input);
+      padding: 0 var(--space-3);
+      font-size: var(--text-base);
+      font-family: var(--font-body);
+      color: var(--color-text);
+      background: var(--color-white);
+      transition: var(--transition-base);
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: var(--shadow-ring);
+    }
+
+    .form-textarea {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-input);
+      padding: var(--space-3);
+      font-size: var(--text-base);
+      font-family: var(--font-body);
+      color: var(--color-text);
+      background: var(--color-white);
+      resize: vertical;
+      min-height: 80px;
+      line-height: var(--leading-normal);
+      transition: var(--transition-base);
+    }
+
+    .form-textarea:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: var(--shadow-ring);
+    }
+
+    .upload-area {
+      border: 2px dashed var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-base);
+    }
+
+    .upload-area:hover {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+    }
+
+    /* ── Amounts row ── */
+    .amounts-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+
+    .amount-input {
+      height: var(--input-height);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-input);
+      padding: 0 var(--space-3);
+      font-size: var(--text-base);
+      font-family: var(--font-body);
+      color: var(--color-text);
+      background: var(--color-white);
+      text-align: center;
+    }
+
+    /* ── Checkbox rows ── */
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) 0;
+      font-size: var(--text-sm);
+      color: var(--color-text);
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--color-primary);
+      cursor: pointer;
+    }
+
+    /* ── Field toggles ── */
+    .field-toggle-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+
+    .field-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
+      transition: var(--transition-base);
+    }
+
+    .field-toggle:hover {
+      background: var(--color-surface-container-low);
+    }
+
+    .field-toggle-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .field-toggle-name {
+      font-size: var(--text-sm);
+      color: var(--color-text);
+    }
+
+    .field-toggle-req {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      font-style: italic;
+    }
+
+    .field-toggle input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--color-primary);
+      cursor: pointer;
+    }
+
+    /* ── Stripe status ── */
+    .stripe-status {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .stripe-status-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .stripe-account {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .stripe-mode {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1-5);
+      font-size: var(--text-sm);
+      color: var(--color-text);
+    }
+
+    .green-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: var(--radius-full);
+      background: var(--color-green);
+      display: inline-block;
+    }
+
+    /* ── Code snippet ── */
+    .code-box {
+      background: var(--color-inverse-surface);
+      color: var(--color-inverse-on-surface);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      line-height: var(--leading-relaxed);
+      overflow-x: auto;
+      position: relative;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+
+    .code-box-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: var(--space-3);
+    }
+
+    @media (max-width: 1024px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-layout">
+
+    <!-- ============================== -->
+    <!--           Sidebar               -->
+    <!-- ============================== -->
+    <aside class="sidebar">
+  <div class="sidebar-brand">
+    <img src="../shared/assets/logo-icon.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+    <span class="sidebar-brand-text">Givernance</span>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="../dashboard.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">dashboard</span>
+      <span>Dashboard</span>
+    </a>
+    <a href="../constituents/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">groups</span>
+      <span>Constituants</span>
+    </a>
+    <a href="../donations/list.html" class="nav-item nav-item--active">
+      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+      <span>Dons &amp; Campagnes</span>
+    </a>
+    <a href="../grants/kanban.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">account_balance</span>
+      <span>Subventions</span>
+    </a>
+    <a href="../programs/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">layers</span>
+      <span>Programmes</span>
+    </a>
+    <a href="../volunteers/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">front_hand</span>
+      <span>B&eacute;n&eacute;voles</span>
+    </a>
+    <a href="../impact/dashboard.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">bar_chart</span>
+      <span>Impact</span>
+    </a>
+    <a href="../communications/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">forum</span>
+      <span>Communications</span>
+    </a>
+    <a href="../reports/library.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">assessment</span>
+      <span>Rapports</span>
+    </a>
+    <a href="../admin/index.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">settings</span>
+      <span>Param&egrave;tres</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
+    <div class="sidebar-footer-user">
+      <div class="sidebar-footer-avatar">CM</div>
+      <span class="sidebar-footer-name">Claire Martin</span>
+    </div>
+  </div>
+</aside>
+
+    <!-- ============================== -->
+    <!--         Main Wrapper            -->
+    <!-- ============================== -->
+    <div class="main-wrapper">
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
+          <a href="../donations/list.html">Dons &amp; Campagnes</a>
+          <span class="topbar-breadcrumb-sep">&#8250;</span>
+          <a href="list.html">Campagnes</a>
+          <span class="topbar-breadcrumb-sep">&#8250;</span>
+          <span class="topbar-breadcrumb-current">Page publique</span>
+        </nav>
+
+        <a href="../global/command-palette.html" class="topbar-search">
+          <input
+            class="topbar-search-input"
+            type="search"
+            placeholder="Rechercher..."
+            aria-label="Recherche globale"
+          >
+        </a>
+
+        <div class="topbar-actions">
+          <a href="../global/notifications.html" class="topbar-icon-btn" type="button" aria-label="Notifications">
+            <span class="material-symbols-outlined" style="font-size:20px">notifications</span>
+            <span class="notification-dot"></span>
+          </a>
+          <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Martin">CM</a>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main-content">
+
+        <!-- ============================================================
+             PAGE HEADER
+             ============================================================ -->
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Page publique de don</h1>
+            <p class="page-subtitle">Urgence M&eacute;diterran&eacute;e</p>
+          </div>
+          <div class="actions-row">
+            <div class="toggle-group">
+              <span class="toggle-switch active" role="switch" aria-checked="true" tabindex="0" aria-label="Page active"></span>
+              <span>Page active</span>
+            </div>
+            <button class="btn btn-secondary" type="button">
+              <span class="material-symbols-outlined" style="font-size:16px">link</span>
+              Copier le lien
+            </button>
+            <button class="btn btn-ghost" type="button">
+              <span class="material-symbols-outlined" style="font-size:16px">open_in_new</span>
+              Pr&eacute;visualiser
+            </button>
+          </div>
+        </div>
+
+        <!-- ============================================================
+             TWO-COLUMN LAYOUT
+             ============================================================ -->
+        <div class="two-col">
+
+          <!-- ──────────────────────────────────────────────── -->
+          <!-- LEFT: Live Preview                               -->
+          <!-- ──────────────────────────────────────────────── -->
+          <div class="card">
+            <div class="card-title-sm">Aper&ccedil;u</div>
+
+            <div class="preview-frame">
+              <!-- Logo placeholder -->
+              <div class="preview-logo-placeholder"></div>
+
+              <!-- Campaign name -->
+              <div class="preview-title">Urgence M&eacute;diterran&eacute;e</div>
+
+              <!-- Description -->
+              <div class="preview-desc">
+                Aidez-nous &agrave; fournir une aide m&eacute;dicale d&rsquo;urgence aux communaut&eacute;s c&ocirc;ti&egrave;res touch&eacute;es par la crise.
+              </div>
+
+              <!-- Progress -->
+              <div class="preview-progress-section">
+                <div class="preview-progress-text">&euro;3&nbsp;100 collect&eacute;s sur &euro;10&nbsp;000</div>
+                <div class="preview-progress-bar">
+                  <div class="preview-progress-fill"></div>
+                </div>
+                <div class="preview-donors">18 donateurs</div>
+              </div>
+
+              <!-- Suggested amounts -->
+              <div class="amount-pills">
+                <span class="amount-pill">&euro;25</span>
+                <span class="amount-pill selected">&euro;50</span>
+                <span class="amount-pill">&euro;100</span>
+                <span class="amount-pill">&euro;250</span>
+                <span class="amount-pill">Autre</span>
+              </div>
+
+              <!-- Frequency toggle -->
+              <div class="freq-toggle">
+                <button class="freq-toggle-btn selected" type="button">Ponctuel</button>
+                <button class="freq-toggle-btn" type="button">Mensuel</button>
+              </div>
+
+              <!-- Form fields -->
+              <div class="preview-fields">
+                <input class="preview-input" type="text" placeholder="Pr&eacute;nom" disabled>
+                <input class="preview-input" type="text" placeholder="Nom" disabled>
+                <input class="preview-input" type="email" placeholder="Email" disabled>
+              </div>
+
+              <!-- Submit -->
+              <button class="preview-submit" type="button">Faire un don</button>
+
+              <!-- Secure notice -->
+              <div class="preview-secure">
+                <span class="material-symbols-outlined" style="font-size:14px">lock</span>
+                Paiement s&eacute;curis&eacute; par Stripe
+              </div>
+            </div>
+          </div>
+
+          <!-- ──────────────────────────────────────────────── -->
+          <!-- RIGHT: Configuration Panel                       -->
+          <!-- ──────────────────────────────────────────────── -->
+          <div class="config-stack">
+
+            <!-- Card: Param&egrave;tres de la page -->
+            <div class="card">
+              <div class="card-title-sm">Param&egrave;tres de la page</div>
+
+              <div class="form-group">
+                <label class="form-label">Titre de la campagne</label>
+                <input class="form-input" type="text" value="Urgence M&eacute;diterran&eacute;e">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Description</label>
+                <textarea class="form-textarea" rows="3">Aidez-nous &agrave; fournir une aide m&eacute;dicale d'urgence aux communaut&eacute;s c&ocirc;ti&egrave;res touch&eacute;es par la crise.</textarea>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Objectif (&euro;)</label>
+                <input class="form-input" type="text" value="10 000">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Image de couverture</label>
+                <div class="upload-area">
+                  <span class="material-symbols-outlined" style="font-size:28px">cloud_upload</span>
+                  <span>Glissez une image ou cliquez pour parcourir</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card: Montants sugg&eacute;r&eacute;s -->
+            <div class="card">
+              <div class="card-title-sm">Montants sugg&eacute;r&eacute;s</div>
+
+              <div class="amounts-row">
+                <input class="amount-input" type="text" value="25">
+                <input class="amount-input" type="text" value="50">
+                <input class="amount-input" type="text" value="100">
+                <input class="amount-input" type="text" value="250">
+              </div>
+
+              <div class="checkbox-row">
+                <input type="checkbox" id="free-amount" checked>
+                <label for="free-amount">Autoriser un montant libre</label>
+              </div>
+              <div class="checkbox-row">
+                <input type="checkbox" id="monthly" checked>
+                <label for="monthly">Proposer le don mensuel</label>
+              </div>
+            </div>
+
+            <!-- Card: Champs collect&eacute;s -->
+            <div class="card">
+              <div class="card-title-sm">Champs collect&eacute;s</div>
+
+              <div class="field-toggle-list">
+                <div class="field-toggle">
+                  <div class="field-toggle-left">
+                    <input type="checkbox" checked disabled>
+                    <span class="field-toggle-name">Pr&eacute;nom</span>
+                    <span class="field-toggle-req">obligatoire</span>
+                  </div>
+                </div>
+                <div class="field-toggle">
+                  <div class="field-toggle-left">
+                    <input type="checkbox" checked disabled>
+                    <span class="field-toggle-name">Nom</span>
+                    <span class="field-toggle-req">obligatoire</span>
+                  </div>
+                </div>
+                <div class="field-toggle">
+                  <div class="field-toggle-left">
+                    <input type="checkbox" checked disabled>
+                    <span class="field-toggle-name">Email</span>
+                    <span class="field-toggle-req">obligatoire</span>
+                  </div>
+                </div>
+                <div class="field-toggle">
+                  <div class="field-toggle-left">
+                    <input type="checkbox">
+                    <span class="field-toggle-name">T&eacute;l&eacute;phone</span>
+                  </div>
+                </div>
+                <div class="field-toggle">
+                  <div class="field-toggle-left">
+                    <input type="checkbox">
+                    <span class="field-toggle-name">Adresse postale</span>
+                  </div>
+                </div>
+                <div class="field-toggle">
+                  <div class="field-toggle-left">
+                    <input type="checkbox" checked>
+                    <span class="field-toggle-name">Message du donateur</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card: Stripe Connect -->
+            <div class="card">
+              <div class="card-title-sm">Stripe Connect</div>
+
+              <div class="stripe-status">
+                <div class="stripe-status-row">
+                  <span class="badge badge-success">Connect&eacute;</span>
+                  <span style="font-size:var(--text-sm);font-weight:var(--weight-medium);color:var(--color-text)">Stripe Connect</span>
+                </div>
+                <div class="stripe-account">Association Solidarit&eacute; M&eacute;d. &mdash; acct_1234567</div>
+                <div class="stripe-mode">
+                  <span class="green-dot"></span>
+                  Mode : Production
+                </div>
+                <a href="../admin/index.html" style="font-size:var(--text-sm)">G&eacute;rer dans Param&egrave;tres &rarr;</a>
+              </div>
+            </div>
+
+            <!-- Card: Code d'int&eacute;gration -->
+            <div class="card">
+              <div class="card-title-sm">Code d&rsquo;int&eacute;gration</div>
+
+              <div class="code-box">&lt;iframe src="https://app.givernance.org/donate/cf-2026-003" width="100%" height="800" frameborder="0"&gt;&lt;/iframe&gt;</div>
+
+              <div class="code-box-actions">
+                <button class="btn btn-secondary btn-sm" type="button">
+                  <span class="material-symbols-outlined" style="font-size:14px">content_copy</span>
+                  Copier
+                </button>
+              </div>
+            </div>
+
+          </div>
+          <!-- end config-stack -->
+
+        </div>
+        <!-- end two-col -->
+
+      </main>
+
+    </div>
+    <!-- end .main-wrapper -->
+
+  </div>
+  <!-- end .app-layout -->
+
+<script src="../shared/mobile.js"></script>
+</body>
+</html>
