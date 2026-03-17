@@ -7,7 +7,8 @@
   <title>Givernance — Migration : Correspondance des champs</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     .migration-layout {
       min-height: 100vh;
@@ -142,9 +143,8 @@
       color: var(--color-text-muted);
       font-size: var(--text-md);
     }
-    .arrow-col i[data-lucide] {
-      width: 16px;
-      height: 16px;
+    .arrow-col .material-symbols-outlined {
+      font-size: 16px;
     }
     .confidence {
       display: flex;
@@ -289,7 +289,7 @@
               <tr>
                 <td><span class="field-name">Contact.FirstName</span></td>
                 <td><span class="field-type">TEXT</span></td>
-                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
+                <td class="arrow-col"><span class="material-symbols-outlined">arrow_forward</span></td>
                 <td><span class="field-name">first_name</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -309,7 +309,7 @@
               <tr>
                 <td><span class="field-name">Contact.LastName</span></td>
                 <td><span class="field-type">TEXT</span></td>
-                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
+                <td class="arrow-col"><span class="material-symbols-outlined">arrow_forward</span></td>
                 <td><span class="field-name">last_name</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -329,7 +329,7 @@
               <tr>
                 <td><span class="field-name">Contact.Email</span></td>
                 <td><span class="field-type">EMAIL</span></td>
-                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
+                <td class="arrow-col"><span class="material-symbols-outlined">arrow_forward</span></td>
                 <td><span class="field-name">email</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -349,7 +349,7 @@
               <tr>
                 <td><span class="field-name">npe01__HomeEmail__c</span></td>
                 <td><span class="field-type">EMAIL</span></td>
-                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
+                <td class="arrow-col"><span class="material-symbols-outlined">arrow_forward</span></td>
                 <td><span class="field-name">email_secondary</span></td>
                 <td>
                   <div class="confidence confidence--medium">
@@ -369,7 +369,7 @@
               <tr>
                 <td><span class="field-name">NPSP_Household__c</span></td>
                 <td><span class="field-type">LOOKUP</span></td>
-                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
+                <td class="arrow-col"><span class="material-symbols-outlined">arrow_forward</span></td>
                 <td><span class="field-name">household_id</span></td>
                 <td>
                   <div class="confidence confidence--low">
@@ -389,7 +389,7 @@
               <tr>
                 <td><span class="field-name">Birthdate</span></td>
                 <td><span class="field-type">DATE</span></td>
-                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
+                <td class="arrow-col"><span class="material-symbols-outlined">arrow_forward</span></td>
                 <td><span class="field-name">date_of_birth</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -409,7 +409,7 @@
               <tr>
                 <td><span class="field-name">Custom_Field_1__c</span></td>
                 <td><span class="field-type">TEXT</span></td>
-                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
+                <td class="arrow-col"><span class="material-symbols-outlined">arrow_forward</span></td>
                 <td>
                   <select class="mapping-select">
                     <option value="" selected>Selectionner...</option>
@@ -430,7 +430,7 @@
               <tr>
                 <td><span class="field-name">Contact.Phone</span></td>
                 <td><span class="field-type">PHONE</span></td>
-                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
+                <td class="arrow-col"><span class="material-symbols-outlined">arrow_forward</span></td>
                 <td><span class="field-name">phone</span></td>
                 <td>
                   <div class="confidence confidence--high">
@@ -450,7 +450,7 @@
               <tr>
                 <td><span class="field-name">npo02__TotalOppAmount__c</span></td>
                 <td><span class="field-type">CURRENCY</span></td>
-                <td class="arrow-col"><i data-lucide="arrow-right"></i></td>
+                <td class="arrow-col"><span class="material-symbols-outlined">arrow_forward</span></td>
                 <td><span class="field-name">total_donations</span></td>
                 <td>
                   <div class="confidence confidence--medium">
@@ -493,6 +493,5 @@
     </div>
   </div>
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

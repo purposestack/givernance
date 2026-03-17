@@ -7,7 +7,8 @@
   <title>Sophie Martin &mdash; B&#233;n&#233;voles &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific: VOL-002 Volunteer detail ── */
 
@@ -412,7 +413,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            <i data-lucide="bell"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -483,7 +484,7 @@
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Lien constituant</span>
-                  <span class="detail-value"><a href="../constituents/detail.html">Voir la fiche constituant <i data-lucide="arrow-right"></i></a></span>
+                  <span class="detail-value"><a href="../constituents/detail.html">Voir la fiche constituant <span class="material-symbols-outlined">arrow_forward</span></a></span>
                 </div>
               </div>
             </div>
@@ -587,7 +588,7 @@
                 </div>
               </div>
               <div class="card-footer">
-                <a href="schedule.html" class="btn btn-ghost btn-sm">Voir tout l'historique <i data-lucide="arrow-right"></i></a>
+                <a href="schedule.html" class="btn btn-ghost btn-sm">Voir tout l'historique <span class="material-symbols-outlined">arrow_forward</span></a>
               </div>
             </div>
 
@@ -606,7 +607,7 @@
               </div>
               <div class="card-body">
                 <div class="dbs-status">
-                  <div class="dbs-icon"><i data-lucide="shield-check"></i></div>
+                  <div class="dbs-icon"><span class="material-symbols-outlined">verified_user</span></div>
                   <div class="dbs-valid">Valide</div>
                   <div class="dbs-details">
                     <div class="dbs-row">
@@ -650,7 +651,7 @@
             <!-- AI Suggestion Card -->
             <div class="ai-card">
               <div class="ai-card-header">
-                <span class="ai-card-icon"><i data-lucide="sparkles"></i></span>
+                <span class="ai-card-icon"><span class="material-symbols-outlined">auto_awesome</span></span>
                 <span class="ai-card-label">Suggestion IA</span>
               </div>
               <p class="ai-card-text">
@@ -678,6 +679,5 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

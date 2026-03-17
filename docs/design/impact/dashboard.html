@@ -7,7 +7,8 @@
   <title>Givernance &mdash; Tableau de bord Impact</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Impact Dashboard-specific layout ── */
     .impact-grid {
@@ -263,7 +264,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            <i data-lucide="bell"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -326,7 +327,7 @@
             <div class="stat-widget-label">Repas servis</div>
             <div class="stat-widget-value" style="font-variant-numeric: tabular-nums;">12&nbsp;450</div>
             <div class="stat-widget-trend stat-widget-trend--up">
-              <i data-lucide="trending-up"></i> +8% vs T4 2025
+              <span class="material-symbols-outlined">trending_up</span> +8% vs T4 2025
             </div>
             <div class="gauge-bar">
               <div class="gauge-bar-fill" style="width: 83%;"></div>
@@ -339,7 +340,7 @@
             <div class="stat-widget-label">B&#233;n&#233;ficiaires accompagn&#233;s</div>
             <div class="stat-widget-value" style="font-variant-numeric: tabular-nums;">342</div>
             <div class="stat-widget-trend stat-widget-trend--up">
-              <i data-lucide="trending-up"></i> +12 ce mois
+              <span class="material-symbols-outlined">trending_up</span> +12 ce mois
             </div>
             <div class="gauge-bar">
               <div class="gauge-bar-fill" style="width: 86%;"></div>
@@ -352,7 +353,7 @@
             <div class="stat-widget-label">Heures de formation</div>
             <div class="stat-widget-value" style="font-variant-numeric: tabular-nums;">1&nbsp;280</div>
             <div class="stat-widget-trend stat-widget-trend--up">
-              <i data-lucide="trending-up"></i> +15% vs N-1
+              <span class="material-symbols-outlined">trending_up</span> +15% vs N-1
             </div>
             <div class="gauge-bar">
               <div class="gauge-bar-fill" style="width: 64%;"></div>
@@ -365,7 +366,7 @@
             <div class="stat-widget-label">Taux de r&#233;insertion</div>
             <div class="stat-widget-value" style="font-variant-numeric: tabular-nums;">67%</div>
             <div class="stat-widget-trend stat-widget-trend--down">
-              <i data-lucide="trending-down"></i> -3pts vs T4
+              <span class="material-symbols-outlined">trending_down</span> -3pts vs T4
             </div>
             <div class="gauge-bar">
               <div class="gauge-bar-fill gauge-bar-fill--amber" style="width: 67%;"></div>
@@ -436,7 +437,7 @@
                     <!-- 800=158, 900=146.5, 950=140.75, 1000=135, 1050=129.25, 1100=123.5, 1200=112, 1150=117.75, 1300=100.5, 1350=94.75, 1400=89, 1500=77.5 -->
                     <polyline
                       fill="none"
-                      stroke="#2E7D5E"
+                      stroke="var(--color-primary)"
                       stroke-width="2.5"
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -448,18 +449,18 @@
                       points="60,158 118,146.5 176,140.75 234,135 292,129.25 350,123.5 408,112 466,117.75 524,100.5 582,94.75 640,89 700,77.5 700,250 60,250"
                     />
                     <!-- Dots for Line 1 -->
-                    <circle cx="60" cy="158" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="118" cy="146.5" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="176" cy="140.75" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="234" cy="135" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="292" cy="129.25" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="350" cy="123.5" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="408" cy="112" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="466" cy="117.75" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="524" cy="100.5" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="582" cy="94.75" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="640" cy="89" r="3.5" fill="#2E7D5E"/>
-                    <circle cx="700" cy="77.5" r="3.5" fill="#fff" stroke="#2E7D5E" stroke-width="2.5"/>
+                    <circle cx="60" cy="158" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="118" cy="146.5" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="176" cy="140.75" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="234" cy="135" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="292" cy="129.25" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="350" cy="123.5" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="408" cy="112" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="466" cy="117.75" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="524" cy="100.5" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="582" cy="94.75" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="640" cy="89" r="3.5" fill="var(--color-primary)"/>
+                    <circle cx="700" cy="77.5" r="3.5" fill="#fff" stroke="var(--color-primary)" stroke-width="2.5"/>
 
                     <!-- Line 2: Beneficiaires (sky blue) -->
                     <!-- Values: 200,220,240,250,260,270,280,290,300,310,330,342 -->
@@ -621,7 +622,7 @@
             <!-- AI Suggestion Card -->
             <div class="ai-card">
               <div class="ai-card-header">
-                <span class="ai-card-icon"><i data-lucide="sparkles"></i></span>
+                <span class="ai-card-icon"><span class="material-symbols-outlined">auto_awesome</span></span>
                 <span class="ai-card-label">Suggestion IA</span>
               </div>
               <p class="ai-card-text">
@@ -644,7 +645,7 @@
                   <!-- Timeline 1 -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-primary-50); color: var(--color-primary-dark);">
-                      <i data-lucide="circle-dot"></i>
+                      <span class="material-symbols-outlined">radio_button_checked</span>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">Repas servis : 1 500 ajout&#233;</div>
@@ -655,7 +656,7 @@
                   <!-- Timeline 2 -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-sky-50); color: var(--color-sky);">
-                      <i data-lucide="circle-dot"></i>
+                      <span class="material-symbols-outlined">radio_button_checked</span>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">B&#233;n&#233;ficiaires : +12 ce mois</div>
@@ -666,7 +667,7 @@
                   <!-- Timeline 3 -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-amber-50); color: var(--color-amber);">
-                      <i data-lucide="circle-dot"></i>
+                      <span class="material-symbols-outlined">radio_button_checked</span>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">Formation : 120h ajout&#233;es</div>
@@ -677,7 +678,7 @@
                   <!-- Timeline 4 -->
                   <div class="timeline-item">
                     <div class="timeline-icon" style="background: var(--color-indigo-50); color: var(--color-indigo);">
-                      <i data-lucide="circle-dot"></i>
+                      <span class="material-symbols-outlined">radio_button_checked</span>
                     </div>
                     <div class="timeline-content">
                       <div class="timeline-title">R&#233;insertion : 67% mis &#224; jour</div>
@@ -698,7 +699,7 @@
                 <p class="export-card-description">
                   Exportez vos donn&#233;es d'impact pour vos bailleurs et rapports annuels.
                 </p>
-                <a href="report.html" class="btn btn-primary w-full">G&#233;n&#233;rer le rapport <i data-lucide="arrow-right"></i></a>
+                <a href="report.html" class="btn btn-primary w-full">G&#233;n&#233;rer le rapport <span class="material-symbols-outlined">arrow_forward</span></a>
               </div>
             </div>
 
@@ -715,6 +716,5 @@
   </div>
   <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

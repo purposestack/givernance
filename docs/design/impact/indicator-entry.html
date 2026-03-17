@@ -7,7 +7,8 @@
   <title>Nouvelle mesure &mdash; Repas servis &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific styles for impact/indicator-entry (IMP-002) ── */
 
@@ -306,7 +307,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            <i data-lucide="bell"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
@@ -432,7 +433,7 @@
                 <div class="form-group">
                   <label class="form-label">Pi&#232;ce jointe</label>
                   <div class="file-upload-zone">
-                    <div class="upload-icon"><i data-lucide="paperclip"></i></div>
+                    <div class="upload-icon"><span class="material-symbols-outlined">attach_file</span></div>
                     <div class="upload-text">Glissez un fichier ou cliquez pour parcourir</div>
                   </div>
                 </div>
@@ -483,7 +484,7 @@
                     <!-- Déc: 1300 => h=72 => y=18 -->
                     <rect x="130" y="18" width="26" height="72" rx="3" fill="#4CAF82"/>
                     <!-- Jan: 1350 => h=75 => y=15 -->
-                    <rect x="165" y="15" width="26" height="75" rx="3" fill="#2E7D5E"/>
+                    <rect x="165" y="15" width="26" height="75" rx="3" fill="var(--color-primary)"/>
                     <!-- Fév: empty/dotted placeholder -->
                     <rect x="200" y="15" width="26" height="75" rx="3" fill="none" stroke="#A8A29E" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
 
@@ -503,7 +504,7 @@
                     <text x="73" y="19" text-anchor="middle" font-size="7" fill="#4A4742" font-family="JetBrains Mono, monospace" font-weight="500">1200</text>
                     <text x="108" y="22" text-anchor="middle" font-size="7" fill="#4A4742" font-family="JetBrains Mono, monospace" font-weight="500">1150</text>
                     <text x="143" y="14" text-anchor="middle" font-size="7" fill="#4A4742" font-family="JetBrains Mono, monospace" font-weight="500">1300</text>
-                    <text x="178" y="11" text-anchor="middle" font-size="7" fill="#1A5240" font-family="JetBrains Mono, monospace" font-weight="600">1350</text>
+                    <text x="178" y="11" text-anchor="middle" font-size="7" fill="var(--color-primary-dark)" font-family="JetBrains Mono, monospace" font-weight="600">1350</text>
                     <text x="213" y="11" text-anchor="middle" font-size="7" fill="#A8A29E" font-family="Inter, sans-serif">?</text>
                   </svg>
                 </div>
@@ -544,7 +545,7 @@
             <!-- AI Anomaly Detection Card -->
             <div class="ai-card">
               <div class="ai-card-header">
-                <span class="ai-card-icon"><i data-lucide="alert-triangle"></i></span>
+                <span class="ai-card-icon"><span class="material-symbols-outlined">warning</span></span>
                 <span class="ai-card-label">D&#233;tection d'anomalie</span>
               </div>
               <p class="ai-card-text">
@@ -575,6 +576,5 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

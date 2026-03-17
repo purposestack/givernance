@@ -7,7 +7,8 @@
   <title>B&#233;n&#233;voles &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific: VOL-001 Volunteers list ── */
 
@@ -224,7 +225,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            <i data-lucide="bell"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -250,7 +251,7 @@
 
         <!-- Alert Banner -->
         <div class="alert alert-warning mb-4">
-          <span class="alert-icon"><i data-lucide="alert-triangle"></i></span>
+          <span class="alert-icon"><span class="material-symbols-outlined">warning</span></span>
           <div class="alert-content">
             3 b&#233;n&#233;voles ont leur v&#233;rification DBS expir&#233;e &mdash; action requise.
           </div>
@@ -309,14 +310,14 @@
                   </td>
                   <td>
                     <div class="dbs-cell">
-                      <span class="badge badge-success"><i data-lucide="check"></i> Valide</span>
+                      <span class="badge badge-success"><span class="material-symbols-outlined">check</span> Valide</span>
                       <span class="dbs-expiry">exp. 15/09/2027</span>
                     </div>
                   </td>
                   <td class="cell-mono">142h</td>
                   <td>Collecte alimentaire 08/03</td>
                   <td><span class="badge badge-success">Actif</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Sophie Martin"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Sophie Martin"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 2: Karim Bouaziz -->
@@ -338,14 +339,14 @@
                   </td>
                   <td>
                     <div class="dbs-cell">
-                      <span class="badge badge-success"><i data-lucide="check"></i> Valide</span>
+                      <span class="badge badge-success"><span class="material-symbols-outlined">check</span> Valide</span>
                       <span class="dbs-expiry">exp. 22/06/2026</span>
                     </div>
                   </td>
                   <td class="cell-mono">98h</td>
                   <td>Tri v&#234;tements 05/03</td>
                   <td><span class="badge badge-success">Actif</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Karim Bouaziz"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Karim Bouaziz"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 3: Marie-Claire Fontaine -->
@@ -367,14 +368,14 @@
                   </td>
                   <td>
                     <div class="dbs-cell">
-                      <span class="badge badge-warning"><i data-lucide="alert-triangle"></i> Expir&#233;</span>
+                      <span class="badge badge-warning"><span class="material-symbols-outlined">warning</span> Expir&#233;</span>
                       <span class="dbs-expiry">exp. 01/01/2026</span>
                     </div>
                   </td>
                   <td class="cell-mono">76h</td>
                   <td>Cours FLE 10/03</td>
                   <td><span class="badge badge-success">Actif</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Marie-Claire Fontaine"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Marie-Claire Fontaine"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 4: Ahmed Benali -->
@@ -396,14 +397,14 @@
                   </td>
                   <td>
                     <div class="dbs-cell">
-                      <span class="badge badge-success"><i data-lucide="check"></i> Valide</span>
+                      <span class="badge badge-success"><span class="material-symbols-outlined">check</span> Valide</span>
                       <span class="dbs-expiry">exp. 30/11/2027</span>
                     </div>
                   </td>
                   <td class="cell-mono">64h</td>
                   <td>Atelier jardin 15/03</td>
                   <td><span class="badge badge-success">Actif</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Ahmed Benali"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Ahmed Benali"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 5: Isabelle Roux -->
@@ -425,14 +426,14 @@
                   </td>
                   <td>
                     <div class="dbs-cell">
-                      <span class="badge badge-warning"><i data-lucide="alert-triangle"></i> Expir&#233;</span>
+                      <span class="badge badge-warning"><span class="material-symbols-outlined">warning</span> Expir&#233;</span>
                       <span class="dbs-expiry">exp. 15/12/2025</span>
                     </div>
                   </td>
                   <td class="cell-mono">53h</td>
                   <td>Permanence 06/03</td>
                   <td><span class="badge badge-success">Actif</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Isabelle Roux"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Isabelle Roux"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 6: Thomas Nguyen -->
@@ -454,14 +455,14 @@
                   </td>
                   <td>
                     <div class="dbs-cell">
-                      <span class="badge badge-success"><i data-lucide="check"></i> Valide</span>
+                      <span class="badge badge-success"><span class="material-symbols-outlined">check</span> Valide</span>
                       <span class="dbs-expiry">exp. 04/08/2027</span>
                     </div>
                   </td>
                   <td class="cell-mono">41h</td>
                   <td>Livraison 12/03</td>
                   <td><span class="badge badge-neutral">En pause</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Thomas Nguyen"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Thomas Nguyen"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 7: Fatima El Amrani -->
@@ -489,7 +490,7 @@
                   <td class="cell-mono">28h</td>
                   <td class="cell-secondary">&mdash;</td>
                   <td><span class="badge badge-neutral">En pause</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Fatima El Amrani"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Fatima El Amrani"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 8: Lucas Petit -->
@@ -511,14 +512,14 @@
                   </td>
                   <td>
                     <div class="dbs-cell">
-                      <span class="badge badge-warning"><i data-lucide="alert-triangle"></i> Expir&#233;</span>
+                      <span class="badge badge-warning"><span class="material-symbols-outlined">warning</span> Expir&#233;</span>
                       <span class="dbs-expiry">exp. 20/02/2026</span>
                     </div>
                   </td>
                   <td class="cell-mono">112h</td>
                   <td>&#201;v&#233;nement 20/03</td>
                   <td><span class="badge badge-success">Actif</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Lucas Petit"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Lucas Petit"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
               </tbody>
@@ -544,7 +545,7 @@
         <!-- AI Suggestion Card -->
         <div class="ai-card ai-card--wide mt-6">
           <div class="ai-card-header">
-            <span class="ai-card-icon"><i data-lucide="sparkles"></i></span>
+            <span class="ai-card-icon"><span class="material-symbols-outlined">auto_awesome</span></span>
             <span class="ai-card-label">Suggestion IA</span>
           </div>
           <p class="ai-card-text">
@@ -566,6 +567,5 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

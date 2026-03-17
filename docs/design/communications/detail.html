@@ -7,7 +7,8 @@
   <title>D&eacute;tail envoi &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific styles for communications/detail (COM-003) ── */
 
@@ -306,7 +307,7 @@
 
         <div class="topbar-actions">
           <button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            <i data-lucide="bell"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </button>
           <div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div>
@@ -323,7 +324,7 @@
           <div class="page-header-left">
             <div class="page-header-title-row">
               <h1 class="page-title">Newsletter Printemps 2026</h1>
-              <span class="badge badge-success"><span class="badge-icon"><i data-lucide="check" style="width:12px;height:12px;display:inline-block;vertical-align:middle;"></i></span> Envoy&eacute;</span>
+              <span class="badge badge-success"><span class="badge-icon"><span class="material-symbols-outlined" style="width:12px;height:12px;display:inline-block;vertical-align:middle;">check</span></span> Envoy&eacute;</span>
             </div>
             <p class="page-subtitle">Email &mdash; Envoy&eacute; le 15/03/2026 &agrave; 09:30</p>
           </div>
@@ -388,7 +389,7 @@
                       fill="#E8F5EE" opacity="0.7"/>
                 <!-- Opens line -->
                 <polyline points="0,150 25,140 50,100 75,45 100,20 125,30 150,50 175,65 200,75 250,90 300,100 350,110 400,118 450,125 500,130 550,135 600,140"
-                          fill="none" stroke="#2E7D5E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                          fill="none" stroke="var(--color-primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
                 <!-- Clicks area -->
                 <path d="M0,155 L25,152 L50,140 L75,120 L100,110 L125,115 L150,125 L175,130 L200,133 L250,138 L300,142 L350,145 L400,147 L450,149 L500,150 L550,152 L600,153 L600,160 L0,160 Z"
                       fill="#E0F2FE" opacity="0.5"/>
@@ -569,6 +570,5 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

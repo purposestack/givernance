@@ -7,7 +7,8 @@
   <title>Planning des missions &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific: VOL-003 Weekly Mission Calendar ── */
 
@@ -343,7 +344,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            <i data-lucide="bell"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -360,8 +361,8 @@
             <p class="page-subtitle">Semaine du 2 au 8 mars 2026</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-ghost btn-sm" type="button"><i data-lucide="arrow-left"></i> Semaine pr&#233;c.</button>
-            <button class="btn btn-ghost btn-sm" type="button">Semaine suiv. <i data-lucide="arrow-right"></i></button>
+            <button class="btn btn-ghost btn-sm" type="button"><span class="material-symbols-outlined">arrow_back</span> Semaine pr&#233;c.</button>
+            <button class="btn btn-ghost btn-sm" type="button">Semaine suiv. <span class="material-symbols-outlined">arrow_forward</span></button>
             <button class="btn btn-secondary btn-sm" type="button">Aujourd'hui</button>
             <button class="btn btn-primary" type="button">+ Cr&#233;er une mission</button>
           </div>
@@ -558,6 +559,5 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

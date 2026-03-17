@@ -7,7 +7,8 @@
   <title>Saisie des heures &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific: VOL-004 Hours Entry Table ── */
 
@@ -255,7 +256,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            <i data-lucide="bell"></i>
+            <span class="material-symbols-outlined">notifications</span>
             <span class="notification-dot"></span>
           </button></a>
           <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
@@ -332,7 +333,7 @@
                   <td class="cell-mono">4h30</td>
                   <td class="cell-mono ecart-positive">+0h30</td>
                   <td><span class="badge badge-success">Valid&#233;</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Sophie Martin"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Sophie Martin"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 2: Karim Bouaziz — Validé -->
@@ -347,7 +348,7 @@
                   <td class="cell-mono">4h00</td>
                   <td class="cell-mono">0h00</td>
                   <td><span class="badge badge-success">Valid&#233;</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Karim Bouaziz"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Karim Bouaziz"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 3: Ahmed Benali — Soumis (pending review) -->
@@ -364,8 +365,8 @@
                   <td><span class="badge badge-info">Soumis</span></td>
                   <td>
                     <div class="inline-actions">
-                      <button class="btn btn-sm btn-primary" type="button"><i data-lucide="check"></i> Valider</button>
-                      <button class="btn btn-sm btn-ghost" type="button"><i data-lucide="x"></i></button>
+                      <button class="btn btn-sm btn-primary" type="button"><span class="material-symbols-outlined">check</span> Valider</button>
+                      <button class="btn btn-sm btn-ghost" type="button"><span class="material-symbols-outlined">close</span></button>
                     </div>
                   </td>
                 </tr>
@@ -389,7 +390,7 @@
                   </td>
                   <td class="cell-mono"></td>
                   <td><span class="badge badge-neutral">Brouillon</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Isabelle Roux"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Isabelle Roux"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
                 <!-- Row 5: Lucas Petit — Non saisi (empty input) -->
@@ -411,7 +412,7 @@
                   </td>
                   <td class="cell-mono"></td>
                   <td><span class="badge badge-neutral">Non saisi</span></td>
-                  <td><button class="action-icon" type="button" aria-label="Actions pour Lucas Petit"><i data-lucide="more-horizontal"></i></button></td>
+                  <td><button class="action-icon" type="button" aria-label="Actions pour Lucas Petit"><span class="material-symbols-outlined">more_horiz</span></button></td>
                 </tr>
 
               </tbody>
@@ -454,6 +455,5 @@
   <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>

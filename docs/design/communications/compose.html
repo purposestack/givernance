@@ -7,7 +7,8 @@
   <title>Composer un email — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <style>
     /* ── Page-specific styles for communications/compose (COM-002) ── */
 
@@ -399,7 +400,7 @@
 
         <div class="topbar-actions">
           <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
-            <i data-lucide="bell"></i>
+            <span class="material-symbols-outlined">notifications</span>
           </a>
           <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
         </div>
@@ -415,16 +416,16 @@
           </div>
           <div class="page-header-actions">
             <div class="preview-toggle">
-              <button class="preview-toggle-btn active" type="button"><i data-lucide="pen-line" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:var(--space-1);"></i> &Eacute;diteur</button>
-              <button class="preview-toggle-btn" type="button"><i data-lucide="monitor" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:var(--space-1);"></i> Desktop</button>
-              <button class="preview-toggle-btn" type="button"><i data-lucide="smartphone" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:var(--space-1);"></i> Mobile</button>
+              <button class="preview-toggle-btn active" type="button"><span class="material-symbols-outlined" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:var(--space-1);">edit</span> &Eacute;diteur</button>
+              <button class="preview-toggle-btn" type="button"><span class="material-symbols-outlined" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:var(--space-1);">desktop_windows</span> Desktop</button>
+              <button class="preview-toggle-btn" type="button"><span class="material-symbols-outlined" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:var(--space-1);">smartphone</span> Mobile</button>
             </div>
           </div>
         </div>
 
         <!-- GDPR Suppressions Alert -->
         <div class="gdpr-alert mb-4">
-          <span class="gdpr-alert-icon"><i data-lucide="alert-triangle" style="width:18px;height:18px;"></i></span>
+          <span class="gdpr-alert-icon"><span class="material-symbols-outlined" style="width:18px;height:18px;">warning</span></span>
           <div>
             <strong>Suppressions RGPD :</strong> <span class="gdpr-alert-count">23 contacts</span> seront automatiquement exclus de cet envoi (d&eacute;sinscriptions, consentements r&eacute;voqu&eacute;s, demandes d'effacement).
             <a href="../constituents/list.html" style="color: inherit; text-decoration: underline; margin-left: var(--space-1);">Voir la liste</a>
@@ -453,21 +454,21 @@
 
             <a href="../constituents/list.html" class="segment-rule">
               <span>Dernier don &lt; 12 mois</span>
-              <button class="segment-rule-remove" aria-label="Supprimer la r&egrave;gle"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+              <button class="segment-rule-remove" aria-label="Supprimer la r&egrave;gle"><span class="material-symbols-outlined" style="width:14px;height:14px;">close</span></button>
             </a>
 
             <div class="segment-connector">ET</div>
 
             <a href="../constituents/list.html" class="segment-rule">
               <span>Montant total &ge; 100 &euro;</span>
-              <button class="segment-rule-remove" aria-label="Supprimer la r&egrave;gle"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+              <button class="segment-rule-remove" aria-label="Supprimer la r&egrave;gle"><span class="material-symbols-outlined" style="width:14px;height:14px;">close</span></button>
             </a>
 
             <div class="segment-connector">ET</div>
 
             <a href="../constituents/list.html" class="segment-rule">
               <span>Canal email = actif</span>
-              <button class="segment-rule-remove" aria-label="Supprimer la r&egrave;gle"><i data-lucide="x" style="width:14px;height:14px;"></i></button>
+              <button class="segment-rule-remove" aria-label="Supprimer la r&egrave;gle"><span class="material-symbols-outlined" style="width:14px;height:14px;">close</span></button>
             </a>
 
             <button class="btn btn-ghost btn-sm w-full mt-2" type="button" style="justify-content: center;">+ Ajouter une r&egrave;gle</button>
@@ -519,12 +520,12 @@
                 <button class="editor-toolbar-btn" type="button" title="Titre 1">H1</button>
                 <button class="editor-toolbar-btn" type="button" title="Titre 2">H2</button>
                 <div class="editor-toolbar-sep"></div>
-                <button class="editor-toolbar-btn" type="button" title="Liste &agrave; puces"><i data-lucide="list" style="width:16px;height:16px;"></i></button>
-                <button class="editor-toolbar-btn" type="button" title="Liste num&eacute;rot&eacute;e"><i data-lucide="list-ordered" style="width:16px;height:16px;"></i></button>
+                <button class="editor-toolbar-btn" type="button" title="Liste &agrave; puces"><span class="material-symbols-outlined" style="width:16px;height:16px;">list</span></button>
+                <button class="editor-toolbar-btn" type="button" title="Liste num&eacute;rot&eacute;e"><span class="material-symbols-outlined" style="width:16px;height:16px;">format_list_numbered</span></button>
                 <div class="editor-toolbar-sep"></div>
-                <button class="editor-toolbar-btn" type="button" title="Lien"><i data-lucide="link" style="width:16px;height:16px;"></i></button>
-                <button class="editor-toolbar-btn" type="button" title="Image"><i data-lucide="image" style="width:16px;height:16px;"></i></button>
-                <button class="editor-toolbar-btn" type="button" title="Bouton"><i data-lucide="square" style="width:16px;height:16px;"></i></button>
+                <button class="editor-toolbar-btn" type="button" title="Lien"><span class="material-symbols-outlined" style="width:16px;height:16px;">link</span></button>
+                <button class="editor-toolbar-btn" type="button" title="Image"><span class="material-symbols-outlined" style="width:16px;height:16px;">image</span></button>
+                <button class="editor-toolbar-btn" type="button" title="Bouton"><span class="material-symbols-outlined" style="width:16px;height:16px;">crop_square</span></button>
                 <div class="editor-toolbar-sep"></div>
                 <button class="editor-toolbar-btn" type="button" title="Ins&eacute;rer un champ de fusion">&#123;&#125;</button>
               </div>
@@ -551,7 +552,7 @@
                 <button class="btn btn-secondary" type="button">Envoyer un test</button>
               </div>
               <div class="compose-actions-right">
-                <button class="btn btn-secondary" type="button"><i data-lucide="clock" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:var(--space-1);"></i> Planifier</button>
+                <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:var(--space-1);">schedule</span> Planifier</button>
                 <button class="btn btn-primary" type="button">Envoyer maintenant</button>
               </div>
             </div>
@@ -567,6 +568,5 @@
   </div>
 
 <script src="../shared/mobile.js"></script>
-<script>lucide.createIcons({attrs:{'stroke-width':'1.5'}});</script>
 </body>
 </html>
