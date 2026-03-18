@@ -1,169 +1,110 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Givernance — Phoenix Logo</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #0f1a16;
-    color: #fff;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    background: #0f1117;
+    color: #e4e4e7;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 48px 24px;
-    gap: 48px;
   }
-  .header {
-    text-align: center;
-  }
-  .header h1 {
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.4);
-  }
-  .header h2 {
+  .title {
+    font-family: 'Newsreader', Georgia, serif;
     font-size: 32px;
-    font-weight: 300;
-    letter-spacing: -0.5px;
-    color: #fff;
-    margin-top: 8px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: #ffffff;
+    margin-bottom: 8px;
   }
-  .variants {
-    display: flex;
-    gap: 24px;
-    flex-wrap: wrap;
-    justify-content: center;
+  .subtitle {
+    font-size: 14px;
+    color: #71717a;
+    letter-spacing: 0.04em;
+    margin-bottom: 56px;
   }
-  .variant-card {
-    width: 200px;
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 200px);
+    gap: 32px;
+    margin-bottom: 56px;
+  }
+  .card {
     border-radius: 20px;
-    padding: 32px 24px 24px;
+    padding: 40px 32px 28px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 20px;
+    transition: transform 150ms ease;
   }
-  .variant-card.light  { background: #eee7de; }
-  .variant-card.white  { background: #ffffff; }
-  .variant-card.dark   { background: #096447; }
-  .variant-card img {
-    width: 72px;
-    height: 72px;
-    object-fit: contain;
+  .card:hover { transform: translateY(-4px); }
+  .card img { width: 72px; height: 72px; object-fit: contain; }
+  .card-label {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
   }
-  .variant-label {
-    text-align: center;
-  }
-  .variant-name {
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-  .variant-card.light .variant-name,
-  .variant-card.white .variant-name { color: #096447; }
-  .variant-card.dark  .variant-name { color: rgba(255,255,255,0.9); }
-  .variant-usage {
+  .card-usage {
     font-size: 11px;
-    margin-top: 4px;
+    opacity: 0.6;
+    text-align: center;
     line-height: 1.5;
   }
-  .variant-card.light .variant-usage,
-  .variant-card.white .variant-usage { color: #555; }
-  .variant-card.dark  .variant-usage { color: rgba(255,255,255,0.6); }
-  .sizes {
-    display: flex;
-    gap: 24px;
-    align-items: flex-end;
-    background: rgba(255,255,255,0.05);
-    padding: 32px 40px;
-    border-radius: 20px;
+  .card-dark {
+    background: #096447;
+    color: #ffffff;
   }
-  .size-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
+  .card-light {
+    background: #f0faf5;
+    border: 1px solid rgba(9, 100, 71, 0.12);
+    color: #1a5240;
   }
-  .size-label {
-    font-size: 11px;
-    color: rgba(255,255,255,0.4);
-    letter-spacing: 1px;
+  .card-white {
+    background: #ffffff;
+    border: 1px solid #e4e4e7;
+    color: #27272a;
   }
-  footer {
-    font-size: 11px;
-    color: rgba(255,255,255,0.2);
-    letter-spacing: 2px;
+  .footer {
+    font-size: 12px;
+    color: #52525b;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
+  }
+  @media (max-width: 700px) {
+    .grid { grid-template-columns: 1fr; max-width: 240px; }
   }
 </style>
 </head>
 <body>
-
-  <div class="header">
-    <h1>Givernance · Brand Identity</h1>
-    <h2>Phoenix Logo</h2>
-  </div>
-
-  <div class="variants">
-    <div class="variant-card light">
-      <img src="logo-pheonix-vert.png" alt="Phoenix Vert">
-      <div class="variant-label">
-        <div class="variant-name">Vert</div>
-        <div class="variant-usage">Fonds clairs<br>Sidebar · Favicon · Défaut</div>
-      </div>
-    </div>
-    <div class="variant-card white">
-      <img src="logo-pheonix-noir.png" alt="Phoenix Noir">
-      <div class="variant-label">
-        <div class="variant-name">Noir</div>
-        <div class="variant-usage">Fonds blancs<br>Print · Mono · Contraste</div>
-      </div>
-    </div>
-    <div class="variant-card dark">
+  <h1 class="title">Givernance — Phoenix Logo</h1>
+  <p class="subtitle">Brand identity — three variants for all contexts</p>
+  <div class="grid">
+    <div class="card card-dark">
       <img src="logo-pheonix-blanc.png" alt="Phoenix Blanc">
-      <div class="variant-label">
-        <div class="variant-name">Blanc</div>
-        <div class="variant-usage">Fonds sombres<br>Email · Hero · Primaire</div>
-      </div>
+      <div class="card-label">Blanc</div>
+      <div class="card-usage">Fonds sombres<br>Sidebar, hero sections</div>
+    </div>
+    <div class="card card-light">
+      <img src="logo-pheonix-vert.png" alt="Phoenix Vert">
+      <div class="card-label">Vert</div>
+      <div class="card-usage">Fonds clairs<br>Usage principal</div>
+    </div>
+    <div class="card card-white">
+      <img src="logo-pheonix-noir.png" alt="Phoenix Noir">
+      <div class="card-label">Noir</div>
+      <div class="card-usage">Fonds blancs<br>Documents, print</div>
     </div>
   </div>
-
-  <div class="sizes">
-    <div class="size-item">
-      <img src="logo-pheonix-vert.png" alt="" style="width:16px;height:16px;object-fit:contain;">
-      <div class="size-label">16px</div>
-    </div>
-    <div class="size-item">
-      <img src="logo-pheonix-vert.png" alt="" style="width:24px;height:24px;object-fit:contain;">
-      <div class="size-label">24px</div>
-    </div>
-    <div class="size-item">
-      <img src="logo-pheonix-vert.png" alt="" style="width:36px;height:36px;object-fit:contain;">
-      <div class="size-label">36px</div>
-    </div>
-    <div class="size-item">
-      <img src="logo-pheonix-vert.png" alt="" style="width:48px;height:48px;object-fit:contain;">
-      <div class="size-label">48px</div>
-    </div>
-    <div class="size-item">
-      <img src="logo-pheonix-vert.png" alt="" style="width:64px;height:64px;object-fit:contain;">
-      <div class="size-label">64px</div>
-    </div>
-    <div class="size-item">
-      <img src="logo-pheonix-vert.png" alt="" style="width:96px;height:96px;object-fit:contain;">
-      <div class="size-label">96px</div>
-    </div>
-  </div>
-
-  <footer>Givernance NPO Platform · 2026</footer>
-
+  <p class="footer">Givernance NPO Platform · Mars 2026</p>
 </body>
 </html>
