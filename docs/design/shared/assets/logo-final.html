@@ -1,56 +1,88 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Givernance — Logo Final</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html { width:520px; height:420px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    width:520px; height:420px;
-    background:#eae7e1;
-    display:flex; align-items:center; justify-content:center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #096447;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    gap: 40px;
   }
-  .card {
-    background:#fff;
-    border-radius:24px;
-    padding:40px 56px;
-    box-shadow:0 16px 48px rgba(26,82,64,0.13);
-    display:flex; flex-direction:column;
-    align-items:center; gap:20px;
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
   }
-  .name {
-    font-family:Georgia,'Times New Roman',serif;
-    font-size:21px; letter-spacing:5px;
-    color:#1A5240; font-weight:400;
-    text-transform:uppercase;
+  .hero img {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+    filter: drop-shadow(0 4px 24px rgba(0,0,0,0.3));
   }
-  .tag {
-    font-family:-apple-system,system-ui,sans-serif;
-    font-size:9px; letter-spacing:3px;
-    color:#4CAF82; text-transform:uppercase;
+  .hero-name {
+    font-size: 42px;
+    font-weight: 200;
+    letter-spacing: 8px;
+    text-transform: uppercase;
+    color: #ffffff;
+  }
+  .hero-sub {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+  }
+  .variants-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .v {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+  }
+  .v img { width: 100%; height: 100%; object-fit: contain; }
+  .v-light { background: #eee7de; }
+  .v-white { background: #ffffff; }
+  .v-dark  { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); }
+  .footer {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.2);
+    text-transform: uppercase;
   }
 </style>
 </head>
 <body>
-<div class="card">
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="156" height="156">
-    <rect width="200" height="200" fill="#fff"/>
-    <!-- G arc: opens on the right, 290° shown, 70° gap centred at 3-o'clock -->
-    <circle cx="96" cy="104" r="60"
-      fill="none" stroke="#2E7D5E" stroke-width="17" stroke-linecap="round"
-      stroke-dasharray="303.8 73.2" stroke-dashoffset="-36.6"/>
-    <!-- Crossbar pointing inward from right -->
-    <line x1="156" y1="104" x2="118" y2="104"
-      stroke="#2E7D5E" stroke-width="17" stroke-linecap="round"/>
-    <!-- Leaf at upper-right gap, accent green, tip pointing NE -->
-    <path d="M152,86 C157,70 170,58 185,54 C187,67 179,82 165,88 C159,91 153,90 152,86Z"
-      fill="#4CAF82"/>
-    <!-- Leaf midrib vein -->
-    <path d="M155,84 Q165,71 178,60"
-      fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" opacity="0.85"/>
-  </svg>
-  <div class="name">Givernance</div>
-  <div class="tag">NPO Platform</div>
-</div>
+
+  <div class="hero">
+    <img src="logo-pheonix-blanc.png" alt="Givernance Phoenix">
+    <div class="hero-name">Givernance</div>
+    <div class="hero-sub">NPO Management Platform</div>
+  </div>
+
+  <div class="variants-row">
+    <div class="v v-light"><img src="logo-pheonix-vert.png" alt="vert"></div>
+    <div class="v v-white"><img src="logo-pheonix-noir.png" alt="noir"></div>
+    <div class="v v-dark" ><img src="logo-pheonix-blanc.png" alt="blanc"></div>
+  </div>
+
+  <div class="footer">Phoenix · Résilience · Transformation · 2026</div>
+
 </body>
 </html>

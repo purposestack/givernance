@@ -1738,16 +1738,15 @@ h4 { font-size: var(--text-lg); line-height: var(--leading-heading-lg, 1.25); }
 }
 
 .auth-logo-mark {
-  width: 48px;
-  height: 48px;
-  background: var(--color-primary);
-  border-radius: var(--radius-xl);
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: var(--color-primary-50);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-white);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-bold);
+  overflow: hidden;
+  padding: 8px;
 }
 
 .auth-logo-text {

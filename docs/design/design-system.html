@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Givernance Design System</title>
-  <link rel="icon" type="image/png" href="shared/assets/logo-icon.png">
+  <link rel="icon" type="image/png" href="shared/assets/logo-pheonix-vert.png">
   <link rel="stylesheet" href="shared/tokens.css">
   <link rel="stylesheet" href="shared/base.css">
   <style>
@@ -853,6 +853,55 @@
     <!-- ============================================================
          3. DESIGN PRINCIPLES
          ============================================================ -->
+    <!-- LOGO SECTION -->
+    <section class="ds-section" id="logo">
+      <h2 class="ds-section-title">Logo &amp; Phoenix</h2>
+      <p class="ds-section-desc">The Givernance phoenix — resilience, transformation, growth. Three variants for every context.</p>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-6);margin-top:var(--space-6);">
+
+        <!-- Vert — fonds clairs -->
+        <div style="background:var(--color-surface-container-high);border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);border:1px solid var(--color-border);">
+          <img src="shared/assets/logo-pheonix-vert.png" alt="Phoenix Vert" style="width:80px;height:80px;object-fit:contain;">
+          <div style="text-align:center;">
+            <div style="font-weight:var(--weight-semibold);font-size:var(--text-sm);color:var(--color-text);">Vert</div>
+            <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px;">Fonds clairs · Sidebar · Défaut</div>
+            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;">#096447</code>
+          </div>
+        </div>
+
+        <!-- Noir — fonds blancs -->
+        <div style="background:#ffffff;border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);border:1px solid var(--color-border);">
+          <img src="shared/assets/logo-pheonix-noir.png" alt="Phoenix Noir" style="width:80px;height:80px;object-fit:contain;">
+          <div style="text-align:center;">
+            <div style="font-weight:var(--weight-semibold);font-size:var(--text-sm);color:var(--color-text);">Noir</div>
+            <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px;">Fonds blancs · Print · Mono</div>
+            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;">#000000</code>
+          </div>
+        </div>
+
+        <!-- Blanc — fonds sombres -->
+        <div style="background:var(--color-primary);border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);">
+          <img src="shared/assets/logo-pheonix-blanc.png" alt="Phoenix Blanc" style="width:80px;height:80px;object-fit:contain;">
+          <div style="text-align:center;">
+            <div style="font-weight:var(--weight-semibold);font-size:var(--text-sm);color:var(--color-on-primary);">Blanc</div>
+            <div style="font-size:var(--text-xs);color:rgba(255,255,255,0.7);margin-top:2px;">Fonds sombres · Email · Hero</div>
+            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;background:rgba(255,255,255,0.15);color:var(--color-on-primary);border-color:rgba(255,255,255,0.3);">#FFFFFF</code>
+          </div>
+        </div>
+
+      </div>
+
+      <h3 class="ds-section-subtitle" style="margin-top:var(--space-10);">Usage guidelines</h3>
+      <ul style="font-size:var(--text-sm);color:var(--color-text-secondary);line-height:1.8;padding-left:var(--space-5);">
+        <li>Toujours utiliser la version <strong>vert</strong> sur fond clair (sidebar, cards, favicon)</li>
+        <li>Utiliser la version <strong>noir</strong> pour print, email monochrome, ou contrastes élevés</li>
+        <li>Utiliser la version <strong>blanc</strong> sur fond primaire vert ou tout fond sombre</li>
+        <li>Ne jamais déformer, recadrer ou recolorer le phoenix manuellement</li>
+        <li>Taille minimale recommandée : <strong>32×32px</strong></li>
+      </ul>
+    </section>
+
     <section class="ds-section" id="principles">
       <h2 class="ds-section-title">Design Principles</h2>
       <p class="ds-section-desc">
@@ -2267,7 +2316,7 @@
         <!-- Mini Sidebar -->
         <div class="ds-mini-sidebar">
           <div class="sidebar-brand" style="padding: var(--space-4);">
-            <div class="sidebar-brand-logo">G</div>
+            <img src="shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img">
             <span class="sidebar-brand-text">Givernance</span>
           </div>
           <div style="padding: var(--space-2) 0;">
