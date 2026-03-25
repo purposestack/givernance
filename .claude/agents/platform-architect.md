@@ -19,32 +19,37 @@ You are the principal platform architect for Givernance. You own the system arch
 ### Application tier
 | Layer | Choice | Rationale |
 |---|---|---|
-| API runtime | **Go 1.23** | Low memory, fast startup, excellent concurrency, easy Docker packaging |
-| API framework | **Chi** or **Fiber** | Lightweight, idiomatic, no ORM lock-in |
+| API runtime | **Node.js 22 LTS (TypeScript)** | LTS stability, strong ecosystem, excellent async I/O, unified language across the monorepo |
+| API framework | **Fastify 5** | High-throughput, low-overhead, native TypeScript support, schema-first with TypeBox, plugin architecture |
+| Schema validation | **TypeBox** (OpenAPI/Fastify) + **Zod** (runtime, shared) | TypeBox for compile-time OpenAPI 3.1 schemas in Fastify; Zod for runtime validation in `@givernance/shared` |
+| ORM | **Drizzle ORM** | Type-safe SQL, schema-as-code, minimal overhead, shared schema via `@givernance/shared` |
+| Background jobs | **BullMQ 5** (Redis-backed) | Reliable job queues with retries, priorities, and delay — used in Phases 0–3 |
+| Async messaging (Phase 4+) | **NATS JetStream** | Lightweight pub/sub with persistence for multi-service fan-out; not introduced before Phase 4 |
 | Frontend | **Next.js 15 / React 19** | SSR for data-heavy pages, TypeScript, strong ecosystem |
 | UI components | **shadcn/ui + Tailwind CSS** | Accessible, unstyled base, easy white-label |
+| Monorepo tooling | **pnpm workspaces** | Packages: `api`, `worker`, `migrate`, `shared` |
 | Mobile (future) | React Native (shared business logic) | Low priority for v1 |
 
 ### Data tier
 | Layer | Choice | Rationale |
 |---|---|---|
 | Primary DB | **PostgreSQL 16** | RLS, JSONB, ltree, mature, self-hostable |
-| DB pooling | **PgBouncer** (transaction mode) | Required for Go's goroutine model |
-| Cache / queues | **Redis 7** | Session store, rate limiting, job queue (BullMQ or Asynq) |
+| DB pooling | **PgBouncer** (transaction mode) | Required for connection-pooling in serverless/multi-instance deployments |
+| Cache / job broker | **Redis 7** | Session store, rate limiting, BullMQ job queues (SaaS: Upstash EU · Self-hosted: Redis 7) |
 | Search | **PostgreSQL FTS + pg_trgm** | Sufficient for <1M constituents; Meilisearch add-on for larger |
-| File storage | **S3-compatible** (AWS S3 / MinIO) | Documents, exports, receipts |
+| File storage | **Cloudflare R2** (SaaS) · **MinIO** (self-hosted) | Documents, exports, receipts — S3-compatible API |
 | Time-series (future) | **TimescaleDB** extension | Impact KPI trends, donation trends |
 
 ### Infrastructure
 | Layer | Choice | Rationale |
 |---|---|---|
 | Containers | **Docker** | Universal, predictable |
-| Orchestration (small) | **Docker Compose + Kamal** | One-click deploy for SME NPOs |
-| Orchestration (large) | **Kubernetes (K3s or GKE)** | Multi-tenant SaaS hosting |
-| IaC | **Terraform / OpenTofu** | Cloud-agnostic |
+| Orchestration (self-hosted) | **Docker Compose + Kamal** | One-click deploy on Hetzner EU for SME NPOs |
+| Orchestration (SaaS) | **Kamal + Hetzner EU** | Managed deploys with zero-downtime rolling updates |
+| IaC | **TBD** | Not yet defined; evaluate OpenTofu or Pulumi when multi-cloud needs emerge |
 | CI/CD | **GitHub Actions** | Free for nonprofits, widely understood |
-| Secrets | **Vault** or **AWS SSM** | Never in env files |
-| Observability | **OpenTelemetry → Grafana + Tempo + Loki + Prometheus** | Full OSS stack |
+| Secrets | **TBD** | Not yet defined; avoid env file secrets in production — evaluate at deployment phase |
+| Observability | **OpenTelemetry → Grafana + Loki + Prometheus** | Full OSS stack (Tempo for traces — to confirm) |
 
 ### Auth & access control
 | Layer | Choice | Rationale |
@@ -57,7 +62,8 @@ You are the principal platform architect for Givernance. You own the system arch
 ### Integration
 | Layer | Choice | Rationale |
 |---|---|---|
-| Sync events | **NATS JetStream** | Lightweight pub/sub with persistence; fits single-server and K8s |
+| Async jobs (Phase 0–3) | **BullMQ 5** | Redis-backed job queue; handles email dispatch, export generation, webhooks outbox |
+| Sync events (Phase 4+) | **NATS JetStream** | Lightweight pub/sub with persistence; fits single-server and K8s |
 | Webhooks | Outbound HTTP with retry + signature | Standard SaaS pattern |
 | Payment gateway | **Stripe** (primary), **Mollie** (EU alt) | Recurring donations, SEPA |
 | Email | **Resend** or **Postmark** | Transactional; DKIM/SPF managed |
@@ -71,8 +77,9 @@ You are the principal platform architect for Givernance. You own the system arch
 3. **Every mutation emits a domain event** to the outbox table (transactional outbox pattern)
 4. **CQRS-lite**: separate read models (views/materialized views) from write models
 5. **API-first**: every UI action goes through the API; no direct DB from frontend
-6. **Offline-capable exports**: reports generate async, stored in S3, fetched by polling or webhook
+6. **Offline-capable exports**: reports generate async, stored in R2/MinIO, fetched by polling or webhook
 7. **Template deployments**: org onboarding creates schema, seeds roles, runs org-level config from a versioned template
+8. **Shared package as single source of truth**: `@givernance/shared` owns Drizzle schema, Zod validators, domain event types, and BullMQ job type definitions — no duplication across packages
 
 ## RBAC model (summarized)
 
@@ -97,7 +104,7 @@ Resource-level permissions expressed as `{resource}:{action}` e.g. `constituent:
 | API p99 latency | < 300 ms for list queries, < 100 ms for single record |
 | Uptime SLA | 99.5% monthly (SME tier), 99.9% (enterprise tier) |
 | RTO | 4 hours |
-| RPO | 1 hour (WAL archiving to S3) |
+| RPO | 1 hour (WAL archiving to S3-compatible storage) |
 | Backup retention | 30 days |
 | Max tenant DB size | 50 GB (soft limit) |
 | GDPR erasure SLA | 30 days from verified request |
@@ -116,5 +123,5 @@ Resource-level permissions expressed as `{resource}:{action}` e.g. `constituent:
 - Architecture decisions: use ADR (Architecture Decision Record) format
 - Diagrams: Mermaid C4 context and container diagrams
 - Tradeoffs: explicit table (option | pros | cons | verdict)
-- API contracts: OpenAPI 3.1 snippets
+- API contracts: OpenAPI 3.1 snippets (TypeBox schemas in Fastify route definitions)
 - Be specific: say "PgBouncer in transaction mode on port 6432" not "a connection pool"
