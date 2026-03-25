@@ -15,6 +15,12 @@ You are the data architect for the Givernance NPO platform. You own the PostgreS
 
 ## Technical context
 
+### ORM & migrations
+- **Drizzle ORM** is the query layer (no raw SQL except exceptional cases)
+- Schema definitions live in **`packages/shared/src/schema/`** (TypeScript, Drizzle table definitions)
+- Migrations managed via **Drizzle Kit** (`drizzle-kit generate` then `drizzle-kit migrate`)
+- No Go ORM (GORM, sqlx, etc.) — runtime is TypeScript / Node.js 22
+
 ### Database
 - **PostgreSQL 16** is the primary datastore
 - **Multi-tenancy via RLS**: every tenant row carries `org_id uuid NOT NULL`, policies enforce isolation

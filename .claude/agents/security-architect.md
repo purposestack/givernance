@@ -65,13 +65,22 @@ SET LOCAL app.current_role = 'fundraising_manager';
 - PgBouncer in **transaction mode** — session-level settings must be re-applied per transaction via `SET LOCAL`
 - No direct DB access for application users; only the API service user
 - Separate DB credentials per service (API user, migration user, reporting user)
-- DB credentials rotated via Vault; never in `.env` files
+- DB credentials managed via environment secrets management (e.g., `.env` + secret manager for production); never committed to source control
 
 ### Network security
 - All external traffic: TLS 1.3 minimum; HSTS preload
 - Internal services: mTLS (Istio or manual cert provisioning)
-- No public access to DB, Redis, NATS ports
+- No public access to DB, Redis, BullMQ/queue ports
 - Admin APIs on separate internal port, not exposed externally
+
+## RBAC implementation
+
+RBAC is enforced at the **application level via Fastify middleware** (not at DB or network layer). On each request:
+1. JWT decoded and validated (Keycloak 24 OIDC); `org_id`, `user_id`, `role` extracted from claims
+2. Fastify `preHandler` hook checks `role` against the permission matrix for the requested `resource:action`
+3. PostgreSQL session context is set (`SET LOCAL app.current_org_id`, `app.current_user_id`) so RLS policies can enforce tenant isolation at DB level
+
+Audit log entries are persisted to the `audit_logs` table using **Drizzle ORM** from the `packages/shared` schema (see `packages/api/src/plugins/audit.ts`).
 
 ## RBAC permission matrix
 
@@ -148,7 +157,7 @@ CREATE TABLE audit_logs (
 - **Breach notification SLA**: 72-hour GDPR notification to supervisory authority
 - **Data classification**: Public, Internal, Confidential, Special Category
 - **Encryption at rest**: AES-256 for DB volumes; column-level for special category data
-- **Key management**: Vault with annual rotation; HSM for production
+- **Key management**: environment secrets management (Doppler, AWS Secrets Manager, or equivalent); rotate annually; HSM for production if applicable
 
 ## How you work
 
