@@ -72,6 +72,9 @@ Use these agents for domain-specific tasks via Claude Code:
 | Pricing Strategist | `.claude/agents/pricing-strategist.md` | Pricing model, packaging |
 | UX Researcher | `.claude/agents/ux-researcher.md` | User research, personas, usability |
 | Design Architect | `.claude/agents/design-architect.md` | Visual identity, design system |
+| MVP Engineer | `.claude/agents/mvp-engineer.md` | Full-stack implementation, Fastify routes, Drizzle ORM, BullMQ jobs |
+| API Contract Designer | `.claude/agents/api-contract-designer.md` | REST API contracts, TypeBox schemas, OpenAPI 3.1, RFC 7807 errors |
+| QA Engineer | `.claude/agents/qa-engineer.md` | Integration tests, RLS isolation, GDPR compliance, Stripe webhooks |
 
 ## Implementation Status
 
