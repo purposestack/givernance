@@ -9,13 +9,15 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 | API | TypeScript (Node.js 22 LTS), Fastify 5, modular monolith |
 | Worker | TypeScript, BullMQ 5 (Redis-backed) |
 | Web | Next.js 15 (React, TypeScript) |
-| Database | PostgreSQL 16 + Drizzle ORM (SaaS: Neon.tech EU · Self-hosted: Postgres 16 + PgBouncer) |
+| Database | PostgreSQL 16 + Drizzle ORM (SaaS: Scaleway Managed PostgreSQL EU · Self-hosted: Postgres 16 + PgBouncer) |
 | Job Queue / Events | BullMQ 5 + Redis (Phase 0-3) — NATS JetStream added Phase 4+ |
-| Cache / Rate-limit | Redis (SaaS: Upstash EU · Self-hosted: Redis 7) |
-| Storage | Cloudflare R2 (SaaS) · MinIO (Self-hosted) |
-| Auth | Keycloak 24 (OIDC / SAML — all deployments) |
-| Deployment | Docker Compose (self-hosted) · Kamal + Hetzner EU (SaaS) |
-| Infra | Docker, pnpm workspaces monorepo |
+| Cache / Rate-limit | Redis (SaaS: Scaleway Managed Redis EU · Self-hosted: Redis 7) |
+| Storage | Scaleway Object Storage EU (SaaS) · MinIO (Self-hosted) |
+| Auth | Keycloak 24 (OIDC / SAML — all deployments, self-hosted on Scaleway VMs for SaaS) |
+| Observability | Scaleway Cockpit (Grafana + Loki + Mimir + Tempo) — SaaS managed |
+| AI Inference EU | Scaleway Generative APIs (Mistral, Llama 3.1) — GDPR Art. 9, beneficiary data |
+| Deployment | Docker Compose (self-hosted) · Kamal + Scaleway EU VMs (SaaS) |
+| Infra | Docker, pnpm workspaces monorepo, single Scaleway GDPR DPA |
 
 ## Directory Structure
 

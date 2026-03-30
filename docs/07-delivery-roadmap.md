@@ -7,7 +7,7 @@ Before writing Phase 1 code, verify:
 - [ ] Drizzle schema baseline committed (`packages/shared/src/schema/`)
 - [ ] At least one integration test passes (`GET /healthz`)
 - [ ] Local dev environment boots cleanly (`docker-compose up`)
-- [ ] Neon.tech EU project provisioned (for SaaS target) OR local Postgres running
+- [ ] Scaleway Managed PostgreSQL EU instance provisioned (for SaaS target) OR local Postgres running
 - [ ] GitHub issues for Sprint 1 assigned and labeled `priority:1`
 
 ## Phase 0 (4 weeks): Foundation
@@ -15,11 +15,13 @@ Before writing Phase 1 code, verify:
 - Core data model skeleton
 - TypeScript monorepo scaffolding (pnpm workspaces, tsconfig, Drizzle schema baseline)
 - CI/CD + infra baseline
-- **Infra (SaaS)**: Neon.tech EU (PostgreSQL managed), Upstash Redis EU (serverless), Cloudflare R2 (storage)
+- **Infra (SaaS)**: Scaleway Managed PostgreSQL EU, Scaleway Managed Redis EU, Scaleway Object Storage EU — all under single Scaleway GDPR DPA (~67€/month). Observability via Scaleway Cockpit (Grafana + Loki + Mimir + Tempo, free for Scaleway-native data). See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
 - **Infra (self-hosted)**: Docker Compose (Postgres 16, Redis 7, MinIO, Keycloak, Caddy)
 - **Event bus**: BullMQ + Redis via transactional outbox — NATS deferred to Phase 4 (see ADR-005)
 
 ## Phase 1 (8 weeks): Fundraising Core — Donor Management MVP
+
+> **Infra (SaaS) cost estimate**: ~281€/month for 1 NPO pilot (API × 2, Worker, Web, PostgreSQL + replica, Redis, Keycloak HA, Cockpit, Load Balancer). Budget alternative with Keycloak co-located on API VM: ~180€/month. Phase 1 extended (5–10 NPOs): ~458€/month. All on Scaleway EU — see [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
 
 > **This is the MVP phase.** An NPO completing Phase 1 can replace Salesforce NPSP for their core fundraising operations.
 > Flagship domain: donor management. Sequence is strict — each sprint depends on the previous.

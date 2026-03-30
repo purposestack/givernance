@@ -39,7 +39,7 @@ External systems:
 - **Stripe / Mollie** — payment processing (recurring donations, SEPA)
 - **Keycloak** — identity and access management
 - **Resend / Brevo** — transactional and bulk email
-- **Cloudflare R2 / S3-compatible storage** — documents, exports, receipts
+- **Scaleway Object Storage / S3-compatible storage** — documents, exports, receipts
 - **Xero / QuickBooks** — accounting integration (write)
 - **Salesforce** — migration source (read-only during migration)
 - **NATS JetStream** — internal event bus *(Phase 4+ only — see ADR-001)*
@@ -92,7 +92,7 @@ See: /diagrams/container.mmd
 - Logical replication slot for read replica (reporting workload)
 - Extensions: `uuid-ossp`, `pgcrypto`, `pg_trgm`, `ltree`, `pg_audit`
 - **Self-hosted deployments**: PostgreSQL 16 + PgBouncer (Docker Compose)
-- **SaaS managed deployment**: [Neon.tech](https://neon.tech) EU region (Frankfurt) — includes connection pooling, branching, WAL backup, full extension support. See [ADR-006](./15-infra-adr.md#adr-006-managed-infrastructure-for-saas-deployment).
+- **SaaS managed deployment**: [Scaleway Managed PostgreSQL](https://www.scaleway.com/en/database/) EU region — includes connection pooling, read replicas, WAL backup, full extension support. See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
 
 #### `pgbouncer` (PgBouncer 1.22)
 - Transaction-mode pooling — **self-hosted deployments only**
@@ -107,7 +107,7 @@ See: /diagrams/container.mmd
 - Session cache (short-lived, separate DB index)
 - Feature flags cache
 - **Self-hosted deployments**: Redis 7 / Valkey (Docker Compose)
-- **SaaS managed deployment**: [Upstash Redis](https://upstash.com) EU region — serverless, pay-per-use, GDPR-compliant. See [ADR-006](./15-infra-adr.md#adr-006-managed-infrastructure-for-saas-deployment).
+- **SaaS managed deployment**: [Scaleway Managed Redis](https://www.scaleway.com/en/managed-databases-for-redis/) EU region — managed, GDPR-compliant, single vendor DPA. See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
 
 #### `keycloak` (Keycloak 24)
 - OIDC provider; issues JWTs consumed by `givernance-api`
@@ -120,7 +120,7 @@ See: /diagrams/container.mmd
 - Stores: PDF receipts, bulk export files, imported constituent lists, document attachments
 - Lifecycle policy: exports deleted after 7 days; receipts retained 7 years
 - **Self-hosted deployments**: [MinIO](https://min.io) (S3-compatible, Docker Compose)
-- **SaaS managed deployment**: [Cloudflare R2](https://developers.cloudflare.com/r2/) — S3-compatible API, no egress fees, EU storage. See [ADR-006](./15-infra-adr.md#adr-006-managed-infrastructure-for-saas-deployment).
+- **SaaS managed deployment**: [Scaleway Object Storage](https://www.scaleway.com/en/object-storage/) — S3-compatible API, EU storage, native GDPR coverage. See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
 
 #### `nats` ⚠️ Phase 4+ only
 > **NATS JetStream is deferred to Phase 4.** It is not part of the Phase 0-3 infrastructure.
@@ -383,13 +383,17 @@ Managed services replace self-hosted infra for zero-ops database, cache and stor
 ```
 CDN (Cloudflare) → Load Balancer → givernance-web (2 replicas)
                                  → givernance-api (3 replicas)
-                                 → Neon.tech PostgreSQL EU (managed, built-in pooling + read replica)
-                                 → Upstash Redis EU (serverless)
-                                 → Keycloak (2 replicas, self-hosted on VPS)
-                                 → Cloudflare R2 (documents, receipts, exports)
+                                 → Scaleway Managed PostgreSQL EU (managed, pooling + read replica)
+                                 → Scaleway Managed Redis EU (managed)
+                                 → Keycloak (2 replicas, self-hosted on Scaleway VMs)
+                                 → Scaleway Object Storage EU (documents, receipts, exports)
+                                 → Scaleway Cockpit (Grafana + Loki + Mimir + Tempo — observability)
+                                 → Scaleway Generative APIs (Mistral / Llama 3.1 — AI inference EU)
 ```
 
-Deployment: Kamal on Hetzner EU VPS (CX31, ~€20/month per deployment). TLS via Caddy.
+Deployment: Kamal on Scaleway EU VMs. TLS via Caddy. All services under single Scaleway GDPR DPA.
+
+> See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider) for full rationale and cost estimates by phase.
 
 > **Phase 4 addition**: NATS JetStream cluster (3 nodes) added for domain event fan-out and webhook scaling.
 
@@ -397,15 +401,18 @@ Deployment: Kamal on Hetzner EU VPS (CX31, ~€20/month per deployment). TLS via
 
 | Component | Self-hosted NPO | Managed SaaS (Phase 0-3) | Managed SaaS (Phase 4+) |
 |---|---|---|---|
-| PostgreSQL | Self-hosted 16 + PgBouncer | Neon.tech EU (managed) | Neon.tech EU (managed) |
-| Redis / Cache | Self-hosted Redis 7 | Upstash Redis EU (serverless) | Upstash Redis EU |
-| Object Storage | MinIO | Cloudflare R2 | Cloudflare R2 |
+| PostgreSQL | Self-hosted 16 + PgBouncer | Scaleway Managed PostgreSQL EU | Scaleway Managed PostgreSQL EU |
+| Redis / Cache | Self-hosted Redis 7 | Scaleway Managed Redis EU | Scaleway Managed Redis EU |
+| Object Storage | MinIO | Scaleway Object Storage EU | Scaleway Object Storage EU |
 | Event bus | BullMQ via outbox (Redis) | BullMQ via outbox (Redis) | NATS JetStream + BullMQ |
-| Auth | Self-hosted Keycloak 24 | Self-hosted Keycloak 24 | Self-hosted Keycloak 24 |
-| Deployment | Docker Compose + Caddy | Kamal + Hetzner EU VPS | Kamal + Hetzner EU VPS |
+| Auth | Self-hosted Keycloak 24 | Self-hosted Keycloak 24 (Scaleway VM) | Self-hosted Keycloak 24 (Scaleway VM) |
+| Observability | Self-managed (Prometheus + Grafana) | Scaleway Cockpit (Grafana + Loki + Mimir + Tempo) | Scaleway Cockpit |
+| AI Inference (EU) | Ollama self-hosted | Scaleway Generative APIs (Mistral, Llama 3.1) | Scaleway Managed Inference or Generative APIs |
+| Deployment | Docker Compose + Caddy | Kamal + Scaleway EU VMs | Kamal + Scaleway EU VMs |
 | Services to operate | 8 | 4 (API, Worker, Web, Keycloak) | 5 (+NATS) |
+| GDPR DPA | Self-managed | Single Scaleway DPA | Single Scaleway DPA |
 
-> See [ADR-005](./15-infra-adr.md#adr-005-nats-jetstream--deferred-to-phase-4) and [ADR-006](./15-infra-adr.md#adr-006-managed-infrastructure-for-saas-deployment) for full rationale.
+> See [ADR-005](./15-infra-adr.md#adr-005-nats-jetstream--deferred-to-phase-4) and [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider) for full rationale.
 
 ### 9.4 Template deployment (Kamal)
 
@@ -473,7 +480,7 @@ packages/api/src/modules/ai/
 | Text suggestions (emails, thank-you letters) | Claude Haiku 3.5 | Anthropic API (EU DPA) | Fast, economical, good writing |
 | Donor trend analysis, scoring, impact narratives | Claude Sonnet 4.5 | Anthropic API (EU DPA) | Stronger reasoning required |
 | Grant classification (long documents) | GPT-4o | Azure OpenAI EU region | Good long-text performance |
-| Beneficiary data (case notes, medical status) | Mistral 7B / Llama 3.1 8B | Self-hosted EU (Ollama) | **No beneficiary PII leaves EU infrastructure** |
+| Beneficiary data (case notes, medical status) | Mistral 7B / Llama 3.1 8B | Scaleway Generative APIs EU | **No beneficiary PII leaves EU infrastructure — GDPR Art. 9 compliant** |
 | Duplicate detection (fuzzy name/email) | pg_trgm + local model | PostgreSQL + local | Lightweight, no LLM needed |
 
 ### 11.4 Data policy (non-negotiable)

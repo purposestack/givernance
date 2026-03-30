@@ -232,7 +232,7 @@ The transactional outbox pattern intentionally abstracts the publish backend. Sw
 
 ## ADR-006: Managed SaaS Infrastructure — Neon.tech + Upstash + Cloudflare R2
 
-**Status:** Accepted
+**Status:** Superseded by ADR-009
 **Date:** 2026-03-09
 
 ### Context
@@ -365,6 +365,134 @@ Self-hosted Convex now exists (Docker + PostgreSQL backend, released Feb 2025). 
   - **Inngest**: hosted only, adds vendor dependency
   - **Trigger.dev**: interesting but adds complexity for Phase 0
 - **Migration path from BullMQ**: Direct swap in `packages/worker/`. Same job types, same processors — only the queue client changes (BullMQ Queue → pg-boss). Schema: `packages/shared/src/jobs/index.ts` types stay identical.
+
+---
+
+---
+
+## ADR-009 — Scaleway as Primary SaaS Managed Cloud Provider
+
+**Status**: Accepted
+**Date**: 2026-03-30
+**Deciders**: Magino (founder/architect)
+**Supersedes**: ADR-006 (Neon.tech + Upstash + Cloudflare R2)
+
+### Context
+
+ADR-006 selected Neon.tech (PostgreSQL), Upstash (Redis), and Cloudflare R2 (storage) as managed SaaS components. While each service individually satisfied functional requirements, the combination results in three separate vendors with three separate DPAs, three separate billing relationships, and no unified observability layer.
+
+The beneficiary data processing requirement (GDPR Art. 9 special category data) requires that AI inference for case notes and medical/social status run on EU infrastructure with no data leaving EU jurisdiction. The original plan specified self-hosted Ollama on a VPS — adding operational burden and GPU procurement complexity.
+
+A holistic evaluation was conducted to identify a single European cloud provider covering compute, managed databases, cache, storage, observability, and AI inference in an integrated platform under a single GDPR-native contract.
+
+### Options evaluated
+
+| Criterion | **Scaleway** | UpCloud | OVH Cloud | Railway |
+|---|---|---|---|---|
+| Headquarters | Paris, FR 🇫🇷 | Helsinki, FI 🇫🇮 | Roubaix, FR 🇫🇷 | San Francisco, US 🇺🇸 |
+| Regions | Paris, Amsterdam, Warsaw | 12 regions (EU + US) | Gravelines, Strasbourg | US/EU (limited) |
+| Managed PostgreSQL | ✅ Native | ✅ Native | ✅ Native | ✅ (Postgres add-on) |
+| Managed Redis | ✅ Native | ✅ Native | ✅ Native | ✅ (Redis add-on) |
+| Object Storage | ✅ S3-compatible | ✅ S3-compatible | ✅ S3-compatible | ❌ No native storage |
+| Integrated Observability | ✅ **Cockpit** (Grafana + Loki + Mimir + Tempo) | ❌ External only | ⚠️ Logs only | ❌ External only |
+| Managed AI Inference EU | ✅ **Generative APIs** (Mistral, Llama) | ❌ No | ❌ No | ❌ No |
+| GDPR / DPA | ✅ Native EU, single DPA | ✅ EU DPA | ✅ EU DPA | ⚠️ US company, EU DPA only |
+| Pricing transparency | ✅ Fixed hourly | ✅ Fixed hourly | ✅ Fixed hourly | ⚠️ Usage-based, unpredictable |
+| Self-hosted Keycloak support | ✅ Any VM | ✅ Any VM | ✅ Any VM | ⚠️ Container-only, no VMs |
+
+### Decision
+
+**Scaleway** is selected as the primary cloud provider for the Givernance SaaS managed offering, replacing the Neon.tech + Upstash + Cloudflare R2 tri-vendor setup (ADR-006).
+
+### Rationale
+
+1. **Cockpit (Grafana + Loki + Mimir + Tempo)**: Unified observability platform included natively. Scaleway-native metrics and logs are free; custom log ingestion billed at volume. Eliminates the need to self-host Grafana/Loki stacks or pay for a separate SaaS observability tool.
+
+2. **Managed Inference EU (Mistral, Llama 3.1)**: Scaleway's Generative APIs provide pay-per-token and dedicated GPU inference endpoints hosted exclusively in EU datacenters. This directly replaces the self-hosted Ollama requirement for beneficiary data (GDPR Art. 9) — no GPU procurement, no ML ops overhead, full GDPR coverage under the Scaleway DPA.
+
+3. **Single European cloud, single DPA**: All infrastructure (compute, database, cache, storage, inference, observability) operates under one GDPR-native contract from a French company. Eliminates the multi-vendor DPA management overhead of ADR-006.
+
+4. **Managed PostgreSQL, Redis, Object Storage**: Direct functional equivalents to Neon.tech, Upstash, and Cloudflare R2. PostgreSQL supports all required extensions (uuid-ossp, pgcrypto, pg_trgm, ltree, pg_audit). Redis covers BullMQ job queue + rate limiting. Object Storage is S3-compatible.
+
+5. **Predictable fixed pricing**: Hourly billed VMs and managed services with published pricing. No cold-start latency (vs Neon free tier), no per-request surprise billing (vs Upstash at scale).
+
+6. **Keycloak compatibility**: Scaleway VMs support self-hosted Keycloak in all configurations — single instance (Phase 0) and HA pair (Phase 1+). Keycloak remains self-hosted; no managed identity provider introduced.
+
+### Cost estimates
+
+#### Phase 0 — Dev/staging (~67€/month)
+
+| Service | Config | Cost |
+|---|---|---|
+| VM Small (1vCPU/2GB) — API + Worker | 1 instance | ~12€ |
+| Managed PostgreSQL | 1vCPU/2GB/20GB | ~7€ |
+| Managed Redis | 2GB | ~35€ |
+| Object Storage | 10GB | ~1€ |
+| Keycloak VM Small (1vCPU/2GB) | 1 instance | ~12€ |
+| Cockpit (Scaleway-native metrics/logs) | Free for Scaleway data | 0€ |
+| **Total** | | **~67€/month** |
+
+#### Phase 1 — 1 NPO pilot (~281€/month)
+
+| Service | Config | Cost |
+|---|---|---|
+| VM Medium (4vCPU/8GB) — API | 2 replicas | ~90€ |
+| VM Small — BullMQ Worker | 1 instance | ~12€ |
+| VM Small — Next.js Web | 1 instance | ~12€ |
+| Managed PostgreSQL | 2vCPU/4GB/96GB + read replica | ~74€ |
+| Managed Redis | 2GB | ~35€ |
+| Object Storage | 50GB | ~1€ |
+| Keycloak HA (VM Medium × 2) | 2 instances | ~45€ |
+| Cockpit custom logs | ~5GB/month | ~2€ |
+| Load Balancer + Flexible IPs | — | ~10€ |
+| **Total** | | **~281€/month** |
+
+> **Budget alternative**: Keycloak co-located on the API VM → ~180€/month (recommended for early pilots).
+
+#### Phase 1 extended — 5–10 NPOs (~458€/month)
+
+| Service | Config | Cost |
+|---|---|---|
+| VM Medium (4vCPU/8GB) — API | 3 replicas | ~135€ |
+| VM Small — BullMQ Worker | 2 instances | ~24€ |
+| VM Small — Next.js Web | 2 instances | ~24€ |
+| Managed PostgreSQL | 4vCPU/8GB/200GB + replica | ~150€ |
+| Managed Redis | 4GB | ~55€ |
+| Object Storage | 200GB | ~3€ |
+| Keycloak HA (VM Medium × 2) | 2 instances | ~45€ |
+| Cockpit custom logs | ~20GB/month | ~7€ |
+| Load Balancer + Flexible IPs | — | ~15€ |
+| **Total** | | **~458€/month** |
+
+#### AI Inference (optional add-on)
+
+| Option | Config | Cost |
+|---|---|---|
+| Generative API (pay-per-token) | ~50M tokens | ~10–20€ |
+| Managed Inference dédié (Llama 3.1 8B, L4 GPU) | dedicated endpoint | ~679€ |
+
+> **Recommendation**: Start with pay-per-token Generative API. Migrate to dedicated endpoint only if token volume justifies it (>200M tokens/month).
+
+### Consequences
+
+- ✅ **Replaces** Neon.tech → Scaleway Managed PostgreSQL EU
+- ✅ **Replaces** Upstash Redis → Scaleway Managed Redis EU
+- ✅ **Replaces** Cloudflare R2 → Scaleway Object Storage (S3-compatible API, zero application changes)
+- ✅ **Replaces** self-hosted Ollama → Scaleway Generative APIs (Mistral, Llama 3.1) for beneficiary data AI (GDPR Art. 9 compliant)
+- ✅ **Adds** Scaleway Cockpit: Grafana dashboards, Loki log aggregation, Mimir metrics, Tempo traces — eliminates need for self-hosted observability stack
+- ✅ **Single vendor DPA** replaces three separate DPAs (Neon, Upstash, Cloudflare)
+- ✅ Keycloak remains **self-hosted on Scaleway VMs** in all configurations — no managed identity provider
+- ⚠️ NATS JetStream remains **Phase 4+** — no change to the BullMQ + Redis outbox pipeline for Phase 0-3
+- ⚠️ Self-hosted Docker Compose deployment (NPO on-premises) is **unchanged** — continues to use PostgreSQL 16 + Redis 7 + MinIO locally
+
+### Revisit criteria
+
+- Scaleway Managed PostgreSQL pricing increases beyond the self-hosted break-even point (~150€/month for a dedicated VPS with equivalent capacity)
+- A required PostgreSQL extension is not supported by Scaleway Managed PostgreSQL
+- An NPO's data protection authority requires jurisdiction stricter than EU-region (e.g., Swiss DPA requiring Swiss-only infrastructure)
+- Scaleway Generative API adds unacceptable latency for interactive AI features (measure p95 before switching to dedicated endpoint)
+- NATS JetStream is introduced in Phase 4 — re-evaluate whether Scaleway supports managed NATS or if self-hosted NATS cluster on Scaleway VMs is preferred
+- Phase 4 GPU inference demand justifies dedicated Scaleway Managed Inference endpoint (~679€/month) over pay-per-token model
 
 ---
 
