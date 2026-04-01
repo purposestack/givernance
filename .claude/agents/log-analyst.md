@@ -77,6 +77,7 @@ const childLogger = logger.child({ tenantId, level: effectiveLevel });
 | Indirect identifiers | Full IP addresses, user-agent + timestamp combos | Hash or truncate (log `192.168.1.x`) |
 | Sensitive data | Donation amounts tied to identifiable individuals | Use opaque references (donationId, not donor name + amount) |
 | Authentication secrets | Passwords, tokens, API keys, session cookies | Always redact |
+| Criminal record data | DBS reference, check dates, expiry dates | Redact — GDPR Art. 10 special category |
 | Request/response bodies | POST bodies with form data | Redact or log only schema shape |
 
 ### Pino redact paths (minimum set)
@@ -84,22 +85,54 @@ const childLogger = logger.child({ tenantId, level: effectiveLevel });
 ```typescript
 redact: {
   paths: [
+    // Auth / secrets
     'req.headers.authorization',
     'req.headers.cookie',
     'req.headers["x-api-key"]',
     'body.password',
+    // Direct identifiers (from doc-03 constituents schema)
     'body.email',
     'body.firstName',
     'body.lastName',
+    'body.preferredName',
+    'body.salutation',
+    'body.emailPrimary',
+    'body.emailSecondary',
+    'body.phonePrimary',
+    'body.phoneMobile',
     'body.phone',
     'body.dateOfBirth',
     'body.nationalId',
     'body.iban',
+    // Address fields
     'body.address',
     'body.address.*',
+    'body.addrLine1',
+    'body.addrLine2',
+    'body.addrPostcode',
+    'body.addrCity',
+    'body.addrCountry',
+    // Contact arrays
     'body.contacts[*].email',
     'body.contacts[*].phone',
+    'body.contacts[*].name',
+    'body.contacts[*].firstName',
+    'body.contacts[*].lastName',
     'body.donors[*].name',
+    // Emergency contacts (third-party PII)
+    'body.emergencyContactName',
+    'body.emergencyContactPhone',
+    // Criminal record data — GDPR Art. 10 special category
+    'body.dbsCheckDate',
+    'body.dbsExpiryDate',
+    'body.dbsReference',
+    // Free-text / arbitrary JSONB fields (may contain PII)
+    'body.notes',
+    'body.customFields',
+    'body.customFields.*',
+    'body.custom_fields',
+    'body.custom_fields.*',
+    'body.relationships[*].notes',
   ],
   censor: '[REDACTED]',
 }
@@ -150,6 +183,8 @@ redact: {
 | GDPR actions | Consent recorded/withdrawn, data export requested, erasure requested | info |
 | Admin actions | Tenant settings changed, user invited/removed, API key rotated | info |
 | Security events | Rate limit hit, CORS violation, invalid JWT, IP blocklist match | warn |
+| AI actions | Suggestion generated, action executed, action blocked, guard denied | info (generated/executed), warn (blocked/denied) |
+| Migration | Migration started, batch loaded, validation error, migration completed | info |
 
 ### Audit log schema
 
@@ -163,7 +198,8 @@ export const auditLogs = pgTable('audit_logs', {
   resourceType: text('resource_type').notNull(),
   resourceId: uuid('resource_id'),
   changes: jsonb('changes'),               // { before: {...}, after: {...} } — REDACTED PII
-  metadata: jsonb('metadata'),             // { ip: 'hashed', correlationId }
+  metadata: jsonb('metadata'),             // { ipHash: 'sha256-truncated', correlationId, userAgent: 'truncated' }
+  // Raw IP is never stored in audit_logs. Use SHA-256 truncated hash for forensics without GDPR exposure.
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 ```
@@ -229,4 +265,4 @@ When analyzing code, produce a structured report:
 | Logging stack traces at `info` level | Stack traces belong at `error` or `fatal` only |
 | Catching errors without logging them | Always `log.error({ err }, 'description')` before re-throwing |
 | Using `cls-hooked` for context propagation | Use Node.js native `AsyncLocalStorage` (stable since Node 16) |
-| Installing `@opentelemetry/auto-instrumentations-node` | Install only specific instrumentations needed (fastify, pg, ioredis) |
+| Installing `@opentelemetry/auto-instrumentations-node` | Install only specific instrumentations needed (fastify, pg, ioredis, undici) |

@@ -66,8 +66,9 @@ Pino is the **only** logger for Givernance. It is Fastify's built-in logger — 
 | `@opentelemetry/instrumentation-fastify` | Auto-instrument Fastify routes |
 | `@opentelemetry/instrumentation-pg` | Auto-instrument PostgreSQL queries |
 | `@opentelemetry/instrumentation-ioredis` | Auto-instrument Redis (BullMQ) |
+| `@opentelemetry/instrumentation-undici` | Auto-instrument outbound HTTP (fetch) — Stripe, Keycloak, email providers, AI APIs |
 
-**Do NOT use** `@opentelemetry/auto-instrumentations-node` — it pulls in 40+ instrumentations. Install only the three we need.
+**Do NOT use** `@opentelemetry/auto-instrumentations-node` — it pulls in 40+ instrumentations. Install only the four we need.
 
 ### 3.3 Log Aggregation: Grafana Loki
 
@@ -106,6 +107,7 @@ Every log line across all services follows this JSON schema:
 | `service` | Logger `name` option | Always |
 | `correlationId` | `X-Request-Id` header or UUIDv7 | Always (API + Worker) |
 | `tenantId` | Auth middleware / job metadata | Always (after auth) |
+| `userId` | Auth middleware / job metadata | After authentication (null for system/webhook/health requests) |
 | `msg` | Explicit log message | Always |
 | `traceId` / `spanId` | OTel SDK (auto-injected) | When OTel is active |
 
@@ -128,6 +130,11 @@ Fastify API (onRequest hook)
   │     ├─ Drizzle queries traced via OTel instrumentation-pg
   │     └─ Enqueue BullMQ job:
   │         job.data._meta = { correlationId, tenantId, userId }
+  │
+  ├─► Transactional outbox (domain_events table):
+  │     domain_events.payload must include _meta.correlationId from
+  │     the originating request. The outbox poller extracts this when
+  │     enqueuing the BullMQ job — never generates a fresh one.
   │
   └─► Response to client
 
@@ -164,6 +171,7 @@ Three layers of protection:
 1. **Pino `redact` option** — strips known PII paths from all log output (see agent for full path list)
 2. **Custom serializers** — domain objects are logged with safe projections only (`{ id, type }`, never `{ email, name }`)
 3. **Code review rule** — the Log Analyst agent flags any logged field that could contain PII
+4. **Custom Pino serializers for domain objects** — register serializers for `constituent`, `volunteer`, `donation` objects that return only safe projections (`{ id, type }`). This prevents PII leakage even if developers accidentally log full domain objects (e.g., in error handlers or catch blocks).
 
 ### 6.2 Retention Policy
 
@@ -178,10 +186,23 @@ Three layers of protection:
 ### 6.3 Right to Erasure (Art. 17)
 
 - **Log files/streams**: retention-based deletion is the accepted approach (DPAs accept this as proportionate)
-- **audit_logs table**: anonymize `actor_id` and `target_entity` after retention period via scheduled job
+- **audit_logs table**: anonymize `actor_id`, `target_entity`, `ip_address` (the `ipHash` in `metadata` JSONB), `user_agent` (in `metadata` JSONB), and PII within `changes` JSONB `before`/`after` diffs after retention period via scheduled job
 - **Prevention > deletion**: do not store PII in logs in the first place
 
+> **Exception**: `gdpr_consent_log.ip_address` (doc-03) retains raw IP. Lawful basis: proof of consent per GDPR Art. 7 requires recording the IP from which consent was given. The `audit_logs.metadata` JSONB always uses hashed IP — these are distinct storage contexts.
+
+### 6.4 Special JSONB fields
+
+Several JSONB columns across the schema require special GDPR handling because their contents are dynamic or free-text:
+
+- **`domain_events.payload`** — may contain full entity snapshots including PII. Must be included in the PII redaction spec (apply `sanitizeAuditDiff` before logging payload contents) or excluded from Pino log output entirely.
+- **`custom_fields` JSONB** on `constituents`, `donations`, `volunteer_profiles`, and other entities — contains arbitrary tenant-defined data whose schema is unknown at build time. Exclude from logging entirely (cannot redact unknown schemas). Add `body.customFields`, `body.customFields.*`, `body.custom_fields`, `body.custom_fields.*` to Pino redact paths.
+- **`constituent_relationships.notes`** — free-text field that may contain PII. Add `body.relationships[*].notes` to Pino redact paths.
+- **`body.notes`** — free-text notes fields on donations, grants, case notes, etc. Add to Pino redact paths.
+
 ## 7. Security Audit Trail
+
+> **Reconciliation note — `pg_audit` vs `audit_logs`**: Doc-02 lists the `pg_audit` PostgreSQL extension. This provides **database-level** change tracking (DDL/DML statements) as a safety net and compliance backstop. The custom `audit_logs` Drizzle table defined below provides **application-level** structured audit events with business semantics (who did what, with before/after diffs). They are complementary: `pg_audit` catches changes that bypass the application layer; `audit_logs` provides rich, queryable, tenant-scoped business context.
 
 ### 7.1 Dual approach
 
@@ -199,6 +220,8 @@ Three layers of protection:
 | GDPR | consent_recorded/withdrawn, export_requested, erasure_requested | Yes | Yes |
 | Admin | tenant_settings_changed, user_invited/removed, api_key_rotated | Yes | Yes |
 | Security | rate_limit_hit, cors_violation, invalid_jwt, ip_blocklist | Yes | Yes (warn) |
+| AI actions | ai.suggestion_generated, ai.action_executed, ai.action_blocked, ai.guard_denied | Yes | Yes (info for generated/executed, warn for blocked/denied) |
+| Migration | migration.started, migration.batch_loaded, migration.validation_error, migration.completed | Yes | Yes |
 
 ### 7.3 Audit log schema
 
@@ -206,9 +229,25 @@ See Log Analyst agent for full Drizzle schema. Key design decisions:
 
 - **UUID v7 primary key** (project convention)
 - **`changes` JSONB column** — stores `{ before, after }` diff with PII redacted
-- **`metadata` JSONB column** — hashed IP, correlationId, user-agent (truncated)
+- **`metadata` JSONB column** — SHA-256 truncated hash of IP (`ipHash`), correlationId, user-agent (truncated). Raw IP is never stored in `audit_logs` — use hashed IP for forensic correlation without GDPR exposure.
+- **Partitioned by `created_at`** (monthly range). Glacier/archive after 12 months.
 - **Composite index** on `(tenant_id, action, created_at DESC)` for tenant-scoped queries
 - **RLS-protected** — tenants can only query their own audit logs
+
+> **Reconciliation note — doc-03 naming**: Doc-03's `audit_log` table uses `entity_type`/`entity_id` and separate `before_state`/`after_state` JSONB columns. This document's `audit_logs` schema uses `resourceType`/`resourceId` (Drizzle camelCase convention) and a single `changes` JSONB with `{ before, after }` (more flexible, avoids null ambiguity). The canonical definition is here in doc-17 — doc-03 will be reconciled during Phase 1 schema implementation.
+
+### 7.4 Change diff sanitization
+
+The `changes` JSONB column stores `{ before, after }` diffs of entity mutations. **The service layer must sanitize these diffs before inserting into `audit_logs`** — this is NOT Pino's job (Pino redacts log output; audit diffs are written directly to the database).
+
+**Pattern**: Define a `sanitizeAuditDiff(entityType, changes)` utility in `packages/shared` that:
+
+1. Accepts the entity type and the raw `{ before, after }` diff
+2. Strips PII fields using the same canonical field list as the Pino redact paths (e.g., `firstName`, `lastName`, `email`, `phone`, `address`, `iban`, `nationalId`, `emergencyContactName`, `emergencyContactPhone`, `dbsReference`)
+3. Replaces stripped values with `'[REDACTED]'`
+4. Returns the sanitized diff for DB insertion
+
+This ensures PII never enters the `audit_logs` table, even if a developer forgets to exclude sensitive fields from the diff. The canonical PII field list is maintained in one place and shared between Pino redact config and this utility.
 
 ## 8. Performance Observability
 
@@ -221,6 +260,8 @@ See Log Analyst agent for full Drizzle schema. Key design decisions:
 | BullMQ job duration | > 30 s | > 120 s | `job.finishedOn - job.processedOn` |
 | Queue backlog (waiting) | > 1 000 | > 5 000 | `queue.getJobCounts()` periodic check |
 | Queue failed jobs | > 100 | > 500 | `queue.getJobCounts()` periodic check |
+
+> **Threshold semantics**: Warn thresholds are aligned to doc-02 NFR targets. When warn fires, the NFR is breached. When error fires, the system is degraded.
 
 ### 8.2 Slow query detection
 
@@ -275,6 +316,17 @@ When a test is flaky:
 3. Check `tenantId` isolation — flaky tests often share state between tenants
 4. Check BullMQ job logs — race conditions between API response and async worker
 
+### 9.4 Redact path coverage test
+
+Maintain a canonical PII field list derived from the Drizzle schema (all columns marked as PII in the `constituents`, `volunteer_profiles`, `households`, `gdpr_consent_log`, and `constituent_relationships` tables). Write a test that:
+
+1. Imports the canonical PII field list
+2. Imports the Pino redact paths from the shared config
+3. Asserts that every PII field has a corresponding Pino redact path
+4. Fails when a new PII column is added to the Drizzle schema without a matching redact path
+
+This prevents PII redaction drift: when a developer adds a new PII column, the test breaks until the redact paths are updated.
+
 ## 10. Agent Rules — Cross-Agent Logging Enforcement
 
 The following rules should be added to existing agents to enforce logging standards:
@@ -311,7 +363,7 @@ The following rules should be added to existing agents to enforce logging standa
 
 | Rule | Description |
 |------|-------------|
-| OTel instrumentations: fastify + pg + ioredis only | No auto-instrumentations-node (too broad) |
+| OTel instrumentations: fastify + pg + ioredis + undici only | No auto-instrumentations-node (too broad) |
 | Grafana Loki retention config | Match retention policy from this document |
 | Docker log driver: json-file with max-size | Prevent disk exhaustion on self-hosted |
 | OTel Collector resource attributes | `service.name`, `service.version`, `deployment.environment` |
@@ -367,6 +419,7 @@ pino-pretty@^13            # devDependency
 @opentelemetry/instrumentation-fastify@^0.57
 @opentelemetry/instrumentation-pg@^0.66
 @opentelemetry/instrumentation-ioredis@^0.62
+@opentelemetry/instrumentation-undici@^0.24
 pino-opentelemetry-transport@^3
 ```
 
@@ -383,3 +436,13 @@ pino-loki@^3               # if shipping direct to Loki
 - `morgan` — Express-only
 - `@opentelemetry/auto-instrumentations-node` — too broad
 - `@sentry/node` without GDPR `beforeSend` — PII would leak to Sentry
+
+## 13. Observability Gaps — Future Work
+
+The following items are not covered by this document and need separate specification:
+
+- **`givernance-migrate` ETL tool** — needs its own Pino setup, correlation ID strategy (no incoming HTTP requests to derive from), and structured progress logging for batch operations (rows imported, validation errors, elapsed time).
+- **Next.js SSR** — needs Pino configuration for server-side rendering, error boundary logging (React `ErrorBoundary` → Pino), and client-side error capture strategy.
+- **Outbound webhook delivery** — needs a logging spec covering delivery attempts, failures, retry counts, circuit-breaking state transitions, and response status codes.
+- **Cron / repeatable jobs** — need a `batchCorrelationId` strategy. These are system-initiated (not request-initiated), so there is no incoming `X-Request-Id`. Generate a UUIDv7 at job creation time and propagate through all downstream work.
+- **OTel resource attributes** — should include `service.instance.id` (unique per replica) for multi-replica SaaS deployment on Hetzner. This enables per-instance log filtering in Grafana when debugging replica-specific issues.
