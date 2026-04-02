@@ -72,9 +72,15 @@ Pino is the **only** logger for Givernance. It is Fastify's built-in logger — 
 
 ### 3.3 Log Aggregation: Grafana Loki
 
-Lighter than ELK (no JVM), pairs with Prometheus (metrics) and Tempo (traces) for a unified Grafana observability stack. Perfect for Hetzner self-hosted deployment.
+Lighter than ELK (no JVM), pairs with Prometheus/Mimir (metrics) and Tempo (traces) for a unified Grafana observability stack.
 
-**Collection method**: Docker log driver → Promtail/Alloy → Loki. Alternative: direct `pino-loki` transport.
+**SaaS deployment**: Scaleway Cockpit provides Grafana + Loki + Mimir + Tempo as a fully managed service under the Scaleway DPA. No self-hosted Loki stack needed — Cockpit ingests OTel-format logs and traces natively.
+
+**Self-hosted deployment**: Docker log driver → Promtail/Alloy → self-hosted Loki. Identical LogQL queries and dashboards.
+
+**Collection method (SaaS)**: OTel Collector → Scaleway Cockpit (native OTLP endpoint). No `pino-loki` transport needed for SaaS — Cockpit ingests OTLP directly.
+
+**Collection method (self-hosted)**: Docker log driver → Promtail/Alloy → self-hosted Loki. Or direct `pino-loki` transport.
 
 ### 3.4 Error Tracking: Sentry (optional)
 
@@ -445,4 +451,4 @@ The following items are not covered by this document and need separate specifica
 - **Next.js SSR** — needs Pino configuration for server-side rendering, error boundary logging (React `ErrorBoundary` → Pino), and client-side error capture strategy.
 - **Outbound webhook delivery** — needs a logging spec covering delivery attempts, failures, retry counts, circuit-breaking state transitions, and response status codes.
 - **Cron / repeatable jobs** — need a `batchCorrelationId` strategy. These are system-initiated (not request-initiated), so there is no incoming `X-Request-Id`. Generate a UUIDv7 at job creation time and propagate through all downstream work.
-- **OTel resource attributes** — should include `service.instance.id` (unique per replica) for multi-replica SaaS deployment on Hetzner. This enables per-instance log filtering in Grafana when debugging replica-specific issues.
+- **OTel resource attributes** — should include `service.instance.id` (unique per replica) for multi-replica SaaS deployment on Scaleway. This enables per-instance log filtering in Grafana Cockpit when debugging replica-specific issues.
