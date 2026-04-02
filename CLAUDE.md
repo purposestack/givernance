@@ -50,6 +50,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 15-infra-adr.md           — Architecture Decision Records (ADR-001, ADR-002, ADR-003)
 │   ├── 16-greg-field-insights.md — Field insights: fundraising channels, migration, pricing (Greg)
 │   ├── 17-log-management.md      — Log management strategy, structured logging, audit trail, GDPR
+│   ├── 18-feature-flags.md        — Feature flag strategy: schema, evaluation, backend/frontend enforcement, lifecycle
 │   ├── vision/
 │   │   └── conversational-mode.md — Future conversational AI mode (2026-2028)
 │   └── design/                    — 86 interactive HTML mockups
@@ -79,6 +80,7 @@ Use these agents for domain-specific tasks via Claude Code:
 | API Contract Designer | `.claude/agents/api-contract-designer.md` | REST API contracts, TypeBox schemas, OpenAPI 3.1, RFC 7807 errors |
 | QA Engineer | `.claude/agents/qa-engineer.md` | Integration tests, RLS isolation, GDPR compliance, Stripe webhooks |
 | Log Analyst | `.claude/agents/log-analyst.md` | Structured logging, distributed tracing, audit trail, GDPR log compliance, performance diagnostics |
+| Feature Flag Engineer | `.claude/agents/feature-flag-engineer.md` | Feature flags: schema, evaluation, backend/frontend enforcement, lifecycle, plan-gating |
 
 ## Implementation Status
 
@@ -95,4 +97,4 @@ HTML mockups are in `docs/design/`. Open `docs/design/index.html` locally or vie
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
 - Terminology: **NPO** (nonprofit organization), not "NGO"
 - GDPR in English docs, RGPD in French docs
-- All docs are in `docs/`, numbered 01-17 for architecture specs
+- All docs are in `docs/`, numbered 01-18 for architecture specs
