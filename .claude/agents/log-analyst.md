@@ -23,7 +23,7 @@ You are the observability and log management specialist for Givernance. You own 
 | ORM | **Drizzle ORM** | Custom `LogWriter` interface for query logging |
 | Database | **PostgreSQL 16** | `audit_logs` table for structured security events |
 | Tracing | **OpenTelemetry SDK** | Auto-instrumentation for Fastify, pg, ioredis |
-| Log transport | **pino-opentelemetry-transport** | Bridge Pino → OTel Logs signal |
+| Log transport | **pino-opentelemetry-transport** | Bridge Pino → OTel Collector → Scaleway Cockpit (SaaS) · self-hosted Loki (self-hosted) |
 | Aggregation | **Grafana Loki** via **Scaleway Cockpit** (SaaS) · self-hosted Loki (self-hosted NPO) | Label-indexed log storage, LogQL queries |
 | Error tracking | **Sentry** (optional) | Error grouping, alerting, release tracking |
 | Context propagation | **Node.js AsyncLocalStorage** | Request context (correlationId, tenantId) across async boundaries |
@@ -189,7 +189,7 @@ redact: {
 ### Audit log schema
 
 ```typescript
-export const auditLogs = pgTable('audit_logs', {
+export const auditLogs = pgTable('audit_log', {  // canonical name TBD in Phase 1 — see doc-17 §7.3
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   actorId: uuid('actor_id'),
@@ -208,7 +208,7 @@ export const auditLogs = pgTable('audit_logs', {
 
 | Metric | Warn threshold | Error threshold |
 |---|---|---|
-| API request duration | > 1 000 ms | > 3 000 ms |
+| API request duration | > 300 ms (NFR threshold per doc-02) | > 1 000 ms |
 | Database query duration | > 500 ms | > 2 000 ms |
 | BullMQ job duration | > 30 000 ms | > 120 000 ms |
 | Queue backlog (waiting jobs) | > 1 000 | > 5 000 |

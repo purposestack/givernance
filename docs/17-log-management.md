@@ -37,7 +37,7 @@ The log management strategy must support investigation of:
        │                   │
        ▼                   ▼
 ┌──────────────────────────────────────────────────────────────┐
-│    PostgreSQL 16 (instrumentation-pg + audit_logs table)      │
+│    PostgreSQL 16 (instrumentation-pg + audit_log table)       │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -52,7 +52,7 @@ Pino is the **only** logger for Givernance. It is Fastify's built-in logger — 
 | `pino` | Core structured JSON logger | Both |
 | `pino-pretty` | Human-readable colored output | Dev only |
 | `pino-opentelemetry-transport` | Bridge logs → OTel Collector | Prod |
-| `pino-loki` | Direct ship to Grafana Loki (alternative to OTel) | Prod |
+| `pino-loki` | Direct ship to self-hosted Grafana Loki (self-hosted NPO only) | Prod (self-hosted only) |
 
 **Why not winston?** Pino is 5-10x faster (async worker-thread architecture vs. synchronous transforms). Fastify's `fastify.log` and `req.log` are already Pino instances.
 
@@ -68,7 +68,7 @@ Pino is the **only** logger for Givernance. It is Fastify's built-in logger — 
 | `@opentelemetry/instrumentation-ioredis` | Auto-instrument Redis (BullMQ) |
 | `@opentelemetry/instrumentation-undici` | Auto-instrument outbound HTTP (fetch) — Stripe, Keycloak, email providers, AI APIs |
 
-**Do NOT use** `@opentelemetry/auto-instrumentations-node` — it pulls in 40+ instrumentations. Install only the four we need.
+**Do NOT use** `@opentelemetry/auto-instrumentations-node` — it pulls in 40+ instrumentations. Install only the specific ones we need (fastify, pg, ioredis, undici = 4 instrumentations + api + sdk-node + exporter = 7 packages total).
 
 ### 3.3 Log Aggregation: Grafana Loki
 
@@ -192,7 +192,7 @@ Three layers of protection:
 ### 6.3 Right to Erasure (Art. 17)
 
 - **Log files/streams**: retention-based deletion is the accepted approach (DPAs accept this as proportionate)
-- **audit_logs table**: anonymize `actor_id`, `target_entity`, `ip_address` (the `ipHash` in `metadata` JSONB), `user_agent` (in `metadata` JSONB), and PII within `changes` JSONB `before`/`after` diffs after retention period via scheduled job
+- **`audit_log` table** (name TBD in Phase 1 — see §7.3 reconciliation note): anonymize `actor_id`, `target_entity`, `ipHash`, `user_agent`, and PII within `changes` JSONB `before`/`after` diffs after retention period via scheduled job
 - **Prevention > deletion**: do not store PII in logs in the first place
 
 > **Exception**: `gdpr_consent_log.ip_address` (doc-03) retains raw IP. Lawful basis: proof of consent per GDPR Art. 7 requires recording the IP from which consent was given. The `audit_logs.metadata` JSONB always uses hashed IP — these are distinct storage contexts.
@@ -240,7 +240,7 @@ See Log Analyst agent for full Drizzle schema. Key design decisions:
 - **Composite index** on `(tenant_id, action, created_at DESC)` for tenant-scoped queries
 - **RLS-protected** — tenants can only query their own audit logs
 
-> **Reconciliation note — doc-03 naming**: Doc-03's `audit_log` table uses `entity_type`/`entity_id` and separate `before_state`/`after_state` JSONB columns. This document's `audit_logs` schema uses `resourceType`/`resourceId` (Drizzle camelCase convention) and a single `changes` JSONB with `{ before, after }` (more flexible, avoids null ambiguity). The canonical definition is here in doc-17 — doc-03 will be reconciled during Phase 1 schema implementation.
+> **Schema reconciliation (Phase 1 task)**: Doc-03 calls the table `audit_log` (singular) and uses `entity_type`/`entity_id` + separate `before_state`/`after_state` columns. This document uses `resourceType`/`resourceId` (Drizzle camelCase) and a single `changes: { before, after }` JSONB (avoids null ambiguity, more flexible). **Canonical table name will be decided in Phase 1 Drizzle schema baseline** — all references throughout the codebase must be consistent. Track as an open question in doc-10.
 
 ### 7.4 Change diff sanitization
 
@@ -395,12 +395,12 @@ The following rules should be added to existing agents to enforce logging standa
 | Phase | Scope | Priority |
 |-------|-------|----------|
 | **Phase 1 — Skeleton** | Pino setup in shared package, Fastify logger config, correlation ID plugin, PII redact paths, `testLogger` util | P0 |
-| **Phase 1 — Skeleton** | `audit_logs` Drizzle schema + migration | P0 |
+| **Phase 1 — Skeleton** | `audit_log` Drizzle schema + migration (canonical table name to be decided in Phase 1) | P0 |
 | **Phase 1 — Skeleton** | AsyncLocalStorage context propagation | P1 |
 | **Phase 2 — Core modules** | Audit log entries on all mutations (transactional outbox) | P0 |
 | **Phase 2 — Core modules** | BullMQ job lifecycle logging with correlation | P0 |
 | **Phase 2 — Core modules** | Slow query / slow request detection | P1 |
-| **Phase 3 — Launch** | Grafana Loki + Promtail deployment | P0 |
+| **Phase 3 — Launch** | SaaS: OTel Collector → Scaleway Cockpit config · Self-hosted: Grafana Loki + Promtail deployment | P0 |
 | **Phase 3 — Launch** | OTel SDK + instrumentations + Tempo | P1 |
 | **Phase 3 — Launch** | Sentry integration (optional) | P2 |
 | **Phase 3 — Launch** | Queue health monitoring repeatable job | P1 |
