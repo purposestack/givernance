@@ -52,6 +52,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 17-log-management.md      — Log management strategy, structured logging, audit trail, GDPR
 │   ├── 18-feature-flags.md        — Feature flag strategy: schema, evaluation, backend/frontend enforcement, lifecycle
 │   ├── 19-impersonation.md         — Impersonation strategy: token design, session lifecycle, double-attribution, GDPR
+│   ├── 20-payment-strategy.md      — Payment systems: Stripe/Mollie/Mangopay comparison, ADR-010, PCI DSS, GDPR
 │   ├── vision/
 │   │   └── conversational-mode.md — Future conversational AI mode (2026-2028)
 │   └── design/                    — 86 interactive HTML mockups
@@ -83,6 +84,7 @@ Use these agents for domain-specific tasks via Claude Code:
 | Log Analyst | `.claude/agents/log-analyst.md` | Structured logging, distributed tracing, audit trail, GDPR log compliance, performance diagnostics |
 | Feature Flag Engineer | `.claude/agents/feature-flag-engineer.md` | Feature flags: schema, evaluation, backend/frontend enforcement, lifecycle, plan-gating |
 | Impersonation Engineer | `.claude/agents/impersonation-engineer.md` | Impersonation: token design, session lifecycle, double-attribution audit trail, GDPR |
+| Payment Engineer | `.claude/agents/payment-engineer.md` | Payments: Stripe Connect, Mollie, SEPA DD, webhooks, PCI DSS SAQ A, reconciliation |
 
 ## Implementation Status
 
@@ -99,4 +101,4 @@ HTML mockups are in `docs/design/`. Open `docs/design/index.html` locally or vie
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
 - Terminology: **NPO** (nonprofit organization), not "NGO"
 - GDPR in English docs, RGPD in French docs
-- All docs are in `docs/`, numbered 01-19 for architecture specs
+- All docs are in `docs/`, numbered 01-20 for architecture specs
