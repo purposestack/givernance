@@ -35,17 +35,17 @@ You are the principal platform architect for Givernance. You own the system arch
 |---|---|---|
 | Primary DB | **PostgreSQL 16** | RLS, JSONB, ltree, mature, self-hostable |
 | DB pooling | **PgBouncer** (transaction mode) | Required for connection-pooling in serverless/multi-instance deployments |
-| Cache / job broker | **Redis 7** | Session store, rate limiting, BullMQ job queues (SaaS: Upstash EU · Self-hosted: Redis 7) |
+| Cache / job broker | **Redis 7** | Session store, rate limiting, BullMQ job queues (SaaS: Scaleway Managed Redis EU · Self-hosted: Redis 7 / Valkey) |
 | Search | **PostgreSQL FTS + pg_trgm** | Sufficient for <1M constituents; Meilisearch add-on for larger |
-| File storage | **Cloudflare R2** (SaaS) · **MinIO** (self-hosted) | Documents, exports, receipts — S3-compatible API |
+| File storage | **Scaleway Object Storage EU** (SaaS) · **MinIO** (self-hosted) | Documents, exports, receipts — S3-compatible API |
 | Time-series (future) | **TimescaleDB** extension | Impact KPI trends, donation trends |
 
 ### Infrastructure
 | Layer | Choice | Rationale |
 |---|---|---|
 | Containers | **Docker** | Universal, predictable |
-| Orchestration (self-hosted) | **Docker Compose + Kamal** | One-click deploy on Hetzner EU for SME NPOs |
-| Orchestration (SaaS) | **Kamal + Hetzner EU** | Managed deploys with zero-downtime rolling updates |
+| Orchestration (self-hosted) | **Docker Compose + Kamal** | One-click deploy for SME NPOs |
+| Orchestration (SaaS) | **Kamal + Scaleway EU VMs** | Managed deploys with zero-downtime rolling updates |
 | IaC | **TBD** | Not yet defined; evaluate OpenTofu or Pulumi when multi-cloud needs emerge |
 | CI/CD | **GitHub Actions** | Free for nonprofits, widely understood |
 | Secrets | **TBD** | Not yet defined; avoid env file secrets in production — evaluate at deployment phase |
