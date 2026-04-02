@@ -107,16 +107,16 @@ Source of truth for all flag definitions.
 
 ```sql
 CREATE TABLE feature_flags (
-  id            UUID PRIMARY KEY,
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
   key           TEXT NOT NULL UNIQUE,        -- 'ff.payments.sepa_direct_debit'
   default_value BOOLEAN NOT NULL DEFAULT false,
   scope         TEXT NOT NULL,               -- 'global' | 'tenant' | 'user'
-  plan_gate     TEXT,                        -- 'starter' | 'pro' | 'enterprise' | NULL
+  plan_gate     TEXT,                        -- matches tenants.plan_id values (e.g. 'starter', 'pro', 'enterprise') — align with doc-08 when tiers are finalised
   description   TEXT NOT NULL,
   deprecated    BOOLEAN NOT NULL DEFAULT false,
   deprecated_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()  -- must be kept current via Drizzle $onUpdateFn(() => new Date()) or a DB trigger
 );
 ```
 
@@ -126,7 +126,7 @@ Per-organisation overrides. Highest precedence in evaluation.
 
 ```sql
 CREATE TABLE tenant_flag_overrides (
-  id         UUID PRIMARY KEY,
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
   tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   flag_key   TEXT NOT NULL REFERENCES feature_flags(key),
   value      BOOLEAN NOT NULL,
@@ -140,7 +140,7 @@ CREATE TABLE tenant_flag_overrides (
 
 ### 4.3 Audit integration
 
-Every `tenant_flag_overrides` INSERT/UPDATE/DELETE MUST emit an `audit_logs` entry:
+Every `tenant_flag_overrides` INSERT/UPDATE/DELETE MUST emit an `audit_log` entry (note: doc-03 uses `audit_log` singular — align table name during Phase 1 schema reconciliation):
 
 | Action | `action` field | `resource_type` |
 |--------|----------------|-----------------|
@@ -211,7 +211,8 @@ Worker jobs must also check the flag at the start of processing, because the fla
 async function processSepaMandateJob(job: Job) {
   const enabled = await flagService.isEnabled('ff.payments.sepa_direct_debit', job.data.tenantId);
   if (!enabled) {
-    await job.discard(); // Drop silently — flag was disabled after enqueue
+    await job.moveToCompleted('flag-disabled', true); // Drop silently — flag was disabled after enqueue
+    // Note: job.discard() was removed in BullMQ 5; use moveToCompleted or simply return
     return;
   }
   // ... rest of processor
@@ -290,7 +291,7 @@ GET    /admin/feature-flags/:key          → single flag detail
 PATCH  /admin/feature-flags/:key          → update default_value, plan_gate, deprecated
 
 GET    /admin/tenants/:id/feature-flags   → list all overrides for a tenant
-PUT    /admin/tenants/:id/feature-flags/:key   → create/update override
+PUT    /admin/tenants/:id/feature-flags/:key   → upsert override (PUT semantics: full replacement; use PATCH if partial update needed)
 DELETE /admin/tenants/:id/feature-flags/:key   → remove override (revert to default)
 ```
 
@@ -313,7 +314,7 @@ PATCH  /org/feature-flags/:key            → toggle flag (only scope=tenant fla
 | `reason` field | Free-text field — document rule: **do not write constituent names, emails, or other PII into `reason`** |
 | `expires_at` | Always set for temporary test access; prevents forgotten "test" overrides becoming permanent |
 | Flag evaluation logs | Log `flagKey` + `tenantId` + boolean result only — never userId, email, or other PII |
-| Audit trail | Every override change → `audit_logs` entry (see §4.3) |
+| Audit trail | Every override change → `audit_log` entry (see §4.3) |
 | Tenant deletion | `tenant_flag_overrides` rows cascade-delete on tenant deletion |
 | Data portability | `tenant_flag_overrides` included in GDPR Art. 15 data export for that tenant |
 
@@ -352,7 +353,7 @@ PATCH  /org/feature-flags/:key            → toggle flag (only scope=tenant fla
 ### For Log Analyst
 
 - Flag evaluation **MUST NOT** log PII — only `flagKey`, `tenantId`, and the boolean result
-- Override changes **MUST** be logged at `info` level with `audit: true` in the structured log + written to `audit_logs`
+- Override changes **MUST** be logged at `info` level with `audit: true` in the structured log + written to `audit_log`
 - Redis cache miss events are `debug` level only (high volume, not business-relevant)
 - Add `ff.override_set`, `ff.override_removed` to the audit events catalog in `docs/17-log-management.md`
 

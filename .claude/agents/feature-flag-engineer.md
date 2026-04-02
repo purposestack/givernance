@@ -73,7 +73,7 @@ export const featureFlags = pgTable('feature_flags', {
   deprecated: boolean('deprecated').notNull().default(false),
   deprecatedAt: timestamp('deprecated_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull().$onUpdateFn(() => new Date()),
 });
 ```
 
