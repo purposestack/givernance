@@ -77,6 +77,9 @@ Every API request evaluates flags. PostgreSQL round-trips on every request are n
 - Populated on API startup + refreshed on every `tenant_flag_overrides` write
 - Invalidated immediately on override change (via BullMQ job or direct `DEL`)
 
+**SaaS deployment**: Scaleway Managed Redis EU (single GDPR DPA, no cluster to operate).
+**Self-hosted NPO deployment**: Redis 7 / Valkey via Docker Compose.
+
 ### 3.3 Evaluation: `@givernance/shared/flags`
 
 A pure TypeScript module in the `shared` package resolves flags with no external I/O:
