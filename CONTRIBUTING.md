@@ -2,6 +2,43 @@
 
 Thank you for your interest in contributing to Givernance, the open-source NPO platform.
 
+## Quick Start
+
+One command to get everything running:
+
+```bash
+git clone git@github.com:Onigam/givernance.git
+cd givernance
+pnpm install && pnpm docker:up && pnpm build
+```
+
+That's it. You now have:
+- **Dependencies** installed across all packages
+- **Infrastructure** running (PostgreSQL, Redis, Keycloak) via Docker Compose
+- **All packages** built and ready
+
+### Prerequisites
+
+- **Node.js 22+** (see `.nvmrc` for exact version)
+- **pnpm 9+** (`corepack enable` or `npm i -g pnpm`)
+- **Docker & Docker Compose**
+
+### Common Commands
+
+| Command | What it does |
+|---|---|
+| `pnpm install` | Install all dependencies |
+| `pnpm dev` | Start all packages in watch mode |
+| `pnpm build` | Build all packages |
+| `pnpm test` | Run test suite |
+| `pnpm lint` | Check code quality (Biome) |
+| `pnpm lint:fix` | Auto-fix lint issues |
+| `pnpm typecheck` | TypeScript type checking across all packages |
+| `pnpm docker:up` | Start infra services (PG, Redis, Keycloak) |
+| `pnpm docker:down` | Stop infra services |
+| `pnpm db:generate` | Generate Drizzle migrations |
+| `pnpm db:migrate` | Run database migrations |
+
 ## Development Workflow
 
 ### 1. Pick an Issue
@@ -17,7 +54,7 @@ feature/GIV-<issue-number>-short-description
 ```
 
 Examples:
-- `feature/GIV-12-scaffold-go-monorepo`
+- `feature/GIV-15-monorepo-scaffolding`
 - `feature/GIV-25-donations-api`
 - `fix/GIV-42-pagination-off-by-one`
 
@@ -35,20 +72,20 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 
 **Types:** `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `perf`, `ci`
 
-**Scopes:** `auth`, `constituents`, `donations`, `campaigns`, `grants`, `programs`, `volunteers`, `impact`, `finance`, `comms`, `gdpr`, `admin`, `reports`, `migration`, `infra`
+**Scopes:** `api`, `shared`, `worker`, `migrate`, `infra`, `auth`, `db`, `ci`
 
 Examples:
-- `feat(donations): add SEPA recurring donation support`
-- `fix(auth): correct JWT expiry validation`
-- `chore(infra): update Docker Compose to PG 16.2`
-- `test(constituents): add fuzzy match integration tests`
+- `feat(api): add SEPA recurring donation endpoint`
+- `fix(shared): correct UUIDv7 generation for PostgreSQL`
+- `chore(ci): add biome lint to GitHub Actions`
+- `test(worker): add BullMQ job retry tests`
 
 ### 4. Pull Requests
 
 - Open a PR against `main`
 - Reference the issue: `Closes #<issue-number>`
 - Fill in the PR template (auto-loaded from `.github/PULL_REQUEST_TEMPLATE.md`)
-- Ensure all CI checks pass (tests, lint, build)
+- Ensure all CI checks pass (lint, typecheck, build, tests)
 - Request review from at least one maintainer
 
 ### 5. Code Review
@@ -57,50 +94,55 @@ Examples:
 - Address review comments as new commits (do not force-push during review)
 - Squash merge into `main`
 
-## Running the Dev Environment
+## Code Quality
 
-### Prerequisites
+### Biome (Lint + Format)
 
-- Go 1.23+
-- Node.js 20+ / pnpm
-- Docker & Docker Compose
-- Make
-
-### Quick Start
+We use [Biome](https://biomejs.dev/) for linting and formatting — it replaces ESLint + Prettier with a single, fast tool.
 
 ```bash
-# Clone the repo
-git clone git@github.com:Onigam/givernance.git
-cd givernance
+# Check (lint + format)
+pnpm lint
 
-# Start all services
-docker compose up -d
+# Auto-fix
+pnpm lint:fix
 
-# Run backend
-make run-api
-
-# Run frontend
-cd frontend && pnpm install && pnpm dev
-
-# Run tests
-make test
+# Format only
+pnpm format
 ```
 
-### Environment Variables
+Config is in `biome.json`. Rules:
+- **TypeScript strict** — no `any`, no unused variables
+- **Organize imports** — automatic sort on `lint:fix`
+- **Double quotes, 2-space indent, 100 char line width**
 
-Copy `.env.example` to `.env` and fill in the required values. Never commit `.env` files.
+## Project Structure
+
+```
+givernance/
+├── packages/
+│   ├── api/          # Fastify backend (TypeScript)
+│   ├── shared/       # Shared types, schemas, validators
+│   ├── worker/       # BullMQ background jobs
+│   └── migrate/      # Database migrations + data import CLI
+├── docs/             # Architecture decisions, specs, docs
+├── .github/          # CI workflows, issue/PR templates
+├── docker-compose.yml  # Local infra (PG, Redis, Keycloak)
+├── biome.json        # Lint + format config
+└── tsconfig.base.json  # Shared TypeScript config
+```
 
 ## Architecture
 
 See [docs/02-reference-architecture.md](docs/02-reference-architecture.md) for the full architecture decision record.
 
 Key decisions:
-- **Backend:** Go modular monolith with clean architecture
-- **Frontend:** Next.js 15 (App Router) + Tailwind CSS
+- **Backend:** TypeScript modular monolith (Fastify)
 - **Database:** PostgreSQL 16 with Row-Level Security for multi-tenancy
-- **Auth:** Keycloak 24 (OIDC)
-- **Messaging:** NATS JetStream + transactional outbox
-- **Jobs:** Asynq + Redis
+- **ORM:** Drizzle ORM
+- **Auth:** Keycloak (OIDC)
+- **Messaging:** NATS + transactional outbox
+- **Jobs:** BullMQ + Redis
 
 ## Questions?
 
