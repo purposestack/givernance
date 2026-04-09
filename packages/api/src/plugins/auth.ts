@@ -7,7 +7,7 @@ import fp from "fastify-plugin";
 
 declare module "fastify" {
   interface FastifyRequest {
-    auth: AuthContext;
+    auth: AuthContext | null;
   }
 }
 
