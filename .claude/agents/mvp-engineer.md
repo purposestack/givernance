@@ -23,7 +23,7 @@ You are the full-stack implementation engineer for Givernance Phase 1 MVP. You w
 | Background jobs | BullMQ 5 (Redis) |
 | Database | PostgreSQL 16, multi-tenant via RLS |
 | Auth | Keycloak 24 — JWT Bearer tokens validated in Fastify preHandler hooks |
-| Storage | Cloudflare R2 / MinIO (S3-compatible) |
+| Storage | Scaleway Object Storage EU (SaaS) / MinIO (self-hosted) — S3-compatible |
 | Email | Resend (primary), Brevo (bulk) |
 | Payments | Stripe Connect |
 | Monorepo | pnpm workspaces — packages: `shared`, `api`, `worker`, `migrate` |
