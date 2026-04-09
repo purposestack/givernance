@@ -2,56 +2,56 @@
 
 interface BaseEvent {
   /** Unique event ID (UUID v7) */
-  eventId: string
+  eventId: string;
   /** ISO 8601 timestamp */
-  timestamp: string
+  timestamp: string;
   /** Organization ID for multi-tenancy */
-  orgId: string
+  orgId: string;
   /** User who triggered the event */
-  userId: string
+  userId: string;
 }
 
 export interface DonationCreated extends BaseEvent {
-  type: 'donation.created'
+  type: "donation.created";
   payload: {
-    donationId: string
-    constituentId: string
-    amountCents: number
-    currency: string
-  }
+    donationId: string;
+    constituentId: string;
+    amountCents: number;
+    currency: string;
+  };
 }
 
 export interface ConstituentUpdated extends BaseEvent {
-  type: 'constituent.updated'
+  type: "constituent.updated";
   payload: {
-    constituentId: string
-    changedFields: string[]
-  }
+    constituentId: string;
+    changedFields: string[];
+  };
 }
 
 export interface ConstituentMerged extends BaseEvent {
-  type: 'constituent.merged'
+  type: "constituent.merged";
   payload: {
-    survivorId: string
-    mergedIds: string[]
-  }
+    survivorId: string;
+    mergedIds: string[];
+  };
 }
 
 export interface ReceiptGenerated extends BaseEvent {
-  type: 'receipt.generated'
+  type: "receipt.generated";
   payload: {
-    donationId: string
-    receiptNumber: string
-    fiscalYear: number
-  }
+    donationId: string;
+    receiptNumber: string;
+    fiscalYear: number;
+  };
 }
 
 export interface GdprErasureRequested extends BaseEvent {
-  type: 'gdpr.erasure_requested'
+  type: "gdpr.erasure_requested";
   payload: {
-    constituentId: string
-    requestedBy: string
-  }
+    constituentId: string;
+    requestedBy: string;
+  };
 }
 
 /** Union of all domain events */
@@ -60,4 +60,4 @@ export type DomainEvent =
   | ConstituentUpdated
   | ConstituentMerged
   | ReceiptGenerated
-  | GdprErasureRequested
+  | GdprErasureRequested;
