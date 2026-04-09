@@ -1,14 +1,14 @@
 /** Database client for migration package */
 
-import { drizzle } from 'drizzle-orm/node-postgres'
-import pg from 'pg'
-import * as schema from '@givernance/shared/schema'
+import * as schema from "@givernance/shared/schema";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
 
 const pool = new pg.Pool({
   connectionString:
-    process.env['DATABASE_URL'] ?? 'postgresql://givernance:givernance_dev@localhost:5432/givernance',
+    process.env.DATABASE_URL ?? "postgresql://givernance:givernance_dev@localhost:5432/givernance",
   max: 5,
-})
+});
 
 /** Drizzle ORM instance for migrations */
-export const db = drizzle(pool, { schema })
+export const db = drizzle(pool, { schema });

@@ -1,7 +1,12 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
-  "organizeImports": {
-    "enabled": true
+  "$schema": "https://biomejs.dev/schemas/2.4.0/schema.json",
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
   },
   "linter": {
     "enabled": true,
@@ -17,7 +22,8 @@
         }
       },
       "complexity": {
-        "noExcessiveCognitiveComplexity": "warn"
+        "noExcessiveCognitiveComplexity": "warn",
+        "useLiteralKeys": "off"
       }
     }
   },
@@ -36,7 +42,6 @@
     }
   },
   "files": {
-    "includes": ["packages/**/*.ts", "packages/**/*.tsx"],
-    "excludes": ["**/dist", "**/node_modules", "**/.specify"]
+    "includes": ["packages/**/*.ts", "packages/**/*.tsx"]
   }
 }
