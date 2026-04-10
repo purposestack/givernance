@@ -1,6 +1,6 @@
 # 15 — Architecture Decision Records
 
-This document captures key architectural decisions for Givernance, recording context, rationale, and tradeoffs for future reference.
+This document captures key architectural decisions for Givernance, recording context, rationale, and tradeoffs for future reference. It focuses on presenting the *currently active* decisions.
 
 ---
 
@@ -71,7 +71,7 @@ Use **TypeScript (Node.js 22 LTS + Fastify 5)** for the backend, creating a full
 ### Tradeoffs
 
 | Option | Pros | Cons | Verdict |
-|---|---|---|---|
+|---|---|---|---|---|
 | Go 1.23 (original plan) | Best raw performance (~300k req/s), compiled binary, ~10 MB Docker image, low memory footprint | Separate language from frontend, no shared types, smaller developer pool in EU, no type sharing with Next.js | Rejected |
 | **TypeScript + Fastify 5** | Full-stack TS, shared types via monorepo, large ecosystem, ~77k req/s sufficient for target workload | Runtime overhead vs Go, GC pauses possible at scale, larger Docker image (~150 MB Alpine) | **Selected** |
 | Python (FastAPI) | Easy ML/AI integration, familiar to data scientists | ~8k req/s (too slow for API layer), no frontend type sharing, GIL limitations | Rejected |
@@ -129,29 +129,29 @@ Use **Drizzle ORM** for database access and **Drizzle Kit** for schema migration
 
 ---
 
-## ADR-004: BullMQ over Other Job Queues
+## ADR-004: Job Queue System (BullMQ) — Superseded by ADR-008
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-008
 - **Date**: 2026-03
 - **Deciders**: Magino (founder/architect)
 
 ### Context
 
-Givernance requires a reliable background job system for: email dispatch, PDF/report generation, Salesforce migration ETL, GDPR data export/deletion, scheduled donation reminders, and AI processing pipelines. The system must support cron scheduling, retry with backoff, concurrency control, and job prioritization. Redis is already in the stack for caching and rate limiting.
+Givernance required a reliable background job system for: email dispatch, PDF/report generation, Salesforce migration ETL, GDPR data export/deletion, scheduled donation reminders, and AI processing pipelines. The system needed to support cron scheduling, retry with backoff, concurrency control, and job prioritization. Redis was already in the stack for caching and rate limiting.
 
-### Decision
+### Decision (Superseded)
 
-Use **BullMQ 5** as the background job queue, backed by the existing Redis instance.
+Initially, **BullMQ 5** was selected as the background job queue, backed by the existing Redis instance.
 
-### Rationale
+### Rationale (Superseded)
 
 - **TypeScript-native**: First-class TypeScript support with generics for type-safe job data (`Queue<DonationReceiptJob>`)
-- **Redis-backed**: Reuses the same Redis instance already required for caching, rate limiting, and session storage — no additional infrastructure
-- **Feature-rich**: Supports repeatable jobs (cron), delayed jobs, job prioritization, rate limiting per queue, sandboxed processors (separate Node.js processes), and flow/parent-child job dependencies
+- **Redis-backed**: Reused the same Redis instance already required for caching, rate limiting, and session storage — no additional infrastructure
+- **Feature-rich**: Supported repeatable jobs (cron), delayed jobs, job prioritization, rate limiting per queue, sandboxed processors (separate Node.js processes), and flow/parent-child job dependencies
 - **Battle-tested**: Used in production by companies processing millions of jobs/day; mature ecosystem with BullBoard for monitoring
 - **Direct replacement for Asynq**: Functional parity with the Go-based Asynq library originally planned — both are Redis-backed with similar APIs for enqueue, process, retry, and cron
 
-### Rejected Alternatives
+### Rejected Alternatives (Superseded)
 
 | Option | Pros | Cons | Verdict |
 |---|---|---|---|
@@ -160,12 +160,12 @@ Use **BullMQ 5** as the background job queue, backed by the existing Redis insta
 | **pg-boss** | PostgreSQL-backed (no Redis needed) | Lower throughput than Redis-backed solutions, less feature-rich than BullMQ | Considered — revisit if Redis is removed from stack |
 | **BullMQ 5** | TypeScript-native, Redis-backed, full-featured, active maintenance | Redis dependency (already in stack), memory usage for large job payloads | **Selected** |
 
-### Consequences
+### Consequences (Superseded)
 
-- Redis becomes a critical infrastructure component (was optional for caching, now required for job queue) — must be included in HA planning from Phase 2
-- Job definitions live in `apps/api/src/jobs/` with shared job data types in `packages/shared`
+- Redis became a critical infrastructure component (was optional for caching, now required for job queue) — had to be included in HA planning from Phase 2
+- Job definitions lived in `apps/api/src/jobs/` with shared job data types in `packages/shared`
 - BullBoard dashboard integrated into the admin panel for job monitoring (Phase 1)
-- Large job payloads (e.g., Salesforce migration batches) should store data in PostgreSQL and pass only IDs through Redis to avoid memory pressure
+- Large job payloads (e.g., Salesforce migration batches) had to store data in PostgreSQL and pass only IDs through Redis to avoid memory pressure
 
 ---
 
@@ -230,73 +230,11 @@ The transactional outbox pattern intentionally abstracts the publish backend. Sw
 
 ---
 
-## ADR-006: Managed SaaS Infrastructure — Neon.tech + Upstash + Cloudflare R2
-
-**Status:** Superseded by ADR-009
-**Date:** 2026-03-09
-
-### Context
-
-The initial architecture assumed fully self-hosted PostgreSQL + PgBouncer + Redis + MinIO for all deployment scenarios. For the **SaaS managed offering**, this creates unnecessary operational burden for a small founding team: database backups, failover configuration, Redis cluster management, and S3-compatible storage administration.
-
-### Decision
-
-For the **SaaS managed deployment**, use managed cloud services:
-
-| Component | Managed Service | Rationale |
-|---|---|---|
-| PostgreSQL | [Neon.tech](https://neon.tech) EU region | Managed Postgres, built-in pooling, branching, WAL backup, EU data residency |
-| Redis | [Upstash Redis](https://upstash.com) EU region | Serverless, pay-per-use, GDPR-compliant, no cluster to manage |
-| Object Storage | [Cloudflare R2](https://developers.cloudflare.com/r2/) EU | S3-compatible, no egress fees, EU storage |
-
-For **self-hosted NPO deployments** (Docker Compose), retain self-managed PostgreSQL 16 + PgBouncer + Redis 7 + MinIO. The S3 / Postgres compatible APIs ensure zero application code differences.
-
-### Rationale
-
-**Neon.tech vs alternatives:**
-| Option | Verdict |
-|---|---|
-| Self-hosted Postgres (VPS) | ❌ Backup automation, failover, patching = ops overhead |
-| Supabase PostgreSQL | ✅ Valid alternative — same Postgres, EU region. Rejected as *all-in-one* (see ADR-007), but usable as managed Postgres only |
-| AWS RDS eu-west-3 | ⚠️ Valid but higher cost, more config surface |
-| Neon.tech | ✅ Best DX, database branching for staging, built-in pooler, generous free tier, EU region |
-
-**Upstash vs alternatives:**
-| Option | Verdict |
-|---|---|
-| Self-hosted Redis Cluster (3 nodes) | ❌ Over-engineered for pre-scale; ops overhead |
-| Elasticache (AWS) | ⚠️ Valid but high fixed cost, VPC dependency |
-| Upstash | ✅ Serverless, pay-per-request, EU region, GDPR DPA available |
-
-**Cloudflare R2 vs alternatives:**
-| Option | Verdict |
-|---|---|
-| MinIO (self-hosted SaaS) | ❌ Storage admin + backup = ops overhead on SaaS |
-| AWS S3 eu-west-3 | ✅ Valid, but egress fees add up (receipts, reports = read-heavy) |
-| Cloudflare R2 | ✅ S3-compatible, **zero egress fees**, EU storage, DPA available |
-
-### Consequences
-
-- ✅ SaaS deployment simplified: 4 self-managed services (API, Worker, Web, Keycloak) instead of 8
-- ✅ PostgreSQL feature parity: Neon supports all required extensions (uuid-ossp, pgcrypto, pg_trgm, ltree, pg_audit)
-- ✅ GDPR data residency: all managed services offer EU-region storage with DPA
-- ✅ WAL archiving, PITR, and read replicas available on Neon managed tier
-- ⚠️ Neon free tier has cold-start latency (~500ms after inactivity) — use paid tier for production
-- ⚠️ If monthly Neon cost exceeds ~€150/month, evaluate self-hosted Postgres on dedicated VPS
-
-### Revisit when
-
-- Monthly PostgreSQL cost on Neon exceeds the self-hosted equivalent (typically at €300+/month infra spend)
-- A PostgreSQL extension is required that Neon does not support
-- Data sovereignty requirement is stricter than EU-region managed (e.g., specific country jurisdiction required by an NPO's data protection authority)
-- Upstash Redis latency is unacceptable for rate-limiting use case (measure p99 before switching)
-
----
-
 ## ADR-007: Reject Convex.dev and Supabase as All-in-One Backend Replacements
 
-**Status:** Accepted
-**Date:** 2026-03-09
+- **Status**: Accepted
+- **Date**: 2026-03-09
+- **Deciders**: Magino (founder/architect)
 
 ### Context
 
@@ -304,7 +242,7 @@ Evaluated Convex.dev and Supabase as potential all-in-one backend platforms to r
 
 ### Decision
 
-Reject both as primary backend replacements. Supabase PostgreSQL remains a valid managed database option (equivalent to Neon.tech — see ADR-006).
+Reject both as primary backend replacements. Supabase PostgreSQL remains a valid managed database option (equivalent to Neon.tech — see ADR-009).
 
 ### Rationale — Convex.dev rejected
 
@@ -329,7 +267,7 @@ Self-hosted Convex now exists (Docker + PostgreSQL backend, released Feb 2025). 
 | Self-hosted Supabase | ❌ 12+ containers (Kong, GoTrue, PostgREST, Realtime, Storage, Studio, etc.) — more complex than the current stack |
 | Supabase Auth (GoTrue) | ❌ Missing: SAML 2.0 bridge, MFA enforcement by role, magic-link for volunteers, brute-force protection by role — all specified in auth requirements |
 | Supabase Realtime | ❌ Postgres LISTEN/NOTIFY: no durability, no dead-letter, no at-least-once semantics — insufficient to replace the transactional outbox |
-| Supabase PostgreSQL only | ✅ Valid as managed Postgres (same as Neon.tech) — see ADR-006 |
+| Supabase PostgreSQL only | ✅ Valid as managed Postgres (same as Neon.tech) — see ADR-009 |
 
 ### Consequences
 
@@ -341,12 +279,12 @@ Self-hosted Convex now exists (Docker + PostgreSQL backend, released Feb 2025). 
 
 ---
 
-## ADR-008: pg-boss over BullMQ + Redis (Recommended — pending decision)
+## ADR-008: Job Queue System (pg-boss) 
 
-- **Status**: Proposed
-- **Date**: 2026-03
+- **Status**: Accepted
+- **Date**: 2026-03 (Updated: 2026-04-08)
 - **Deciders**: Magino (founder/architect)
-- **Context**: The current stack uses BullMQ 5 + Redis for job queue processing. Redis is currently used for: (1) job queue backend, (2) rate limiting counters, (3) session cache. Removing Redis eliminates one infrastructure service and simplifies the deployment.
+- **Context**: The previous stack used BullMQ 5 + Redis for job queue processing. Redis was used for: (1) job queue backend, (2) rate limiting counters, (3) session cache. This decision aims to remove Redis, simplifying deployment and reducing infrastructure services.
 - **Decision**: Replace BullMQ + Redis with **pg-boss** (PostgreSQL-backed job queue) for Phase 0-3.
 - **Rationale**:
   - pg-boss stores jobs in a dedicated `pgboss` schema in PostgreSQL — zero new infrastructure dependency
@@ -354,19 +292,17 @@ Self-hosted Convex now exists (Docker + PostgreSQL backend, released Feb 2025). 
   - Transactional job creation: enqueue a job inside the same DB transaction as the mutation — stronger delivery guarantee than outbox pattern
   - TypeScript-native, well-maintained (1M+ weekly downloads), production-proven
   - Eliminates Redis from Phase 0-3 entirely (rate limiting can use in-memory or a simple PG table)
-  - Neon.tech EU handles pg-boss jobs natively (just another schema)
+  - Scaleway Managed PostgreSQL EU (ADR-009) handles pg-boss jobs natively (just another schema)
   - **Code reduction**: removes `packages/worker/src/queues/index.ts` Redis config, simplifies connection management
 - **Consequences**:
   - Slight performance difference vs Redis (PG-based queue has higher latency per job ~5-20ms vs ~1ms) — acceptable for NPO workloads (no sub-millisecond job SLA)
   - Redis re-introduction justified at Phase 4 only if job throughput exceeds ~1,000 jobs/min sustained
   - Rate limiting: use `express-rate-limit` with PostgreSQL store (or simple in-memory for Phase 0)
 - **Rejected alternatives**:
-  - **BullMQ + Redis** (current): requires running Redis — one more infra service to operate, monitor, and backup
+  - **BullMQ + Redis** (superseded): required running Redis — one more infra service to operate, monitor, and backup
   - **Inngest**: hosted only, adds vendor dependency
   - **Trigger.dev**: interesting but adds complexity for Phase 0
 - **Migration path from BullMQ**: Direct swap in `packages/worker/`. Same job types, same processors — only the queue client changes (BullMQ Queue → pg-boss). Schema: `packages/shared/src/jobs/index.ts` types stay identical.
-
----
 
 ---
 
@@ -375,125 +311,91 @@ Self-hosted Convex now exists (Docker + PostgreSQL backend, released Feb 2025). 
 **Status**: Accepted
 **Date**: 2026-03-30
 **Deciders**: Magino (founder/architect)
-**Supersedes**: ADR-006 (Neon.tech + Upstash + Cloudflare R2)
+**Supersedes**: ADR-006 (removed)
 
 ### Context
 
-ADR-006 selected Neon.tech (PostgreSQL), Upstash (Redis), and Cloudflare R2 (storage) as managed SaaS components. While each service individually satisfied functional requirements, the combination results in three separate vendors with three separate DPAs, three separate billing relationships, and no unified observability layer.
+ADR-006 previously selected a multi-vendor cloud setup. This decision supersedes that by consolidating all managed infrastructure under a single European cloud provider.
 
 The beneficiary data processing requirement (GDPR Art. 9 special category data) requires that AI inference for case notes and medical/social status run on EU infrastructure with no data leaving EU jurisdiction. The original plan specified self-hosted Ollama on a VPS — adding operational burden and GPU procurement complexity.
 
-A holistic evaluation was conducted to identify a single European cloud provider covering compute, managed databases, cache, storage, observability, and AI inference in an integrated platform under a single GDPR-native contract.
+A holistic evaluation was conducted to identify a single European cloud provider covering compute, managed databases, cache, storage, observability, and AI inference in an `integrated platform under a single GDPR-native contract`.
 
-### Options evaluated
+### Options evaluated (Summary)
 
-| Criterion | **Scaleway** | UpCloud | OVH Cloud | Railway |
-|---|---|---|---|---|
-| Headquarters | Paris, FR 🇫🇷 | Helsinki, FI 🇫🇮 | Roubaix, FR 🇫🇷 | San Francisco, US 🇺🇸 |
-| Regions | Paris, Amsterdam, Warsaw | 12 regions (EU + US) | Gravelines, Strasbourg | US/EU (limited) |
-| Managed PostgreSQL | ✅ Native | ✅ Native | ✅ Native | ✅ (Postgres add-on) |
-| Managed Redis | ✅ Native | ✅ Native | ✅ Native | ✅ (Redis add-on) |
-| Object Storage | ✅ S3-compatible | ✅ S3-compatible | ✅ S3-compatible | ❌ No native storage |
-| Integrated Observability | ✅ **Cockpit** (Grafana + Loki + Mimir + Tempo) | ❌ External only | ⚠️ Logs only | ❌ External only |
-| Managed AI Inference EU | ✅ **Generative APIs** (Mistral, Llama) | ❌ No | ❌ No | ❌ No |
-| GDPR / DPA | ✅ Native EU, single DPA | ✅ EU DPA | ✅ EU DPA | ⚠️ US company, EU DPA only |
-| Pricing transparency | ✅ Fixed hourly | ✅ Fixed hourly | ✅ Fixed hourly | ⚠️ Usage-based, unpredictable |
-| Self-hosted Keycloak support | ✅ Any VM | ✅ Any VM | ✅ Any VM | ⚠️ Container-only, no VMs |
+Scaleway was compared against UpCloud, OVH Cloud, and Railway across criteria like headquarters, regions, managed services (PostgreSQL, Redis, Object Storage), integrated observability, managed AI inference in EU, GDPR/DPA, pricing transparency, and Keycloak support. Scaleway emerged as the most comprehensive solution.
 
 ### Decision
 
-**Scaleway** is selected as the primary cloud provider for the Givernance SaaS managed offering, replacing the Neon.tech + Upstash + Cloudflare R2 tri-vendor setup (ADR-006).
+**Scaleway** is selected as the primary cloud provider for the Givernance SaaS managed offering, replacing the tri-vendor setup (Neon.tech + Upstash + Cloudflare R2) from the superseded ADR-006.
 
 ### Rationale
 
-1. **Cockpit (Grafana + Loki + Mimir + Tempo)**: Unified observability platform included natively. Scaleway-native metrics and logs are free; custom log ingestion billed at volume. Eliminates the need to self-host Grafana/Loki stacks or pay for a separate SaaS observability tool.
+1.  **Cockpit (Grafana + Loki + Mimir + Tempo)**: Unified observability platform included natively. Scaleway-native metrics and logs are free; custom log ingestion billed at volume. Eliminates the need to self-host Grafana/Loki stacks or pay for a separate SaaS observability tool.
+2.  **Managed Inference EU (Mistral, Llama 3.1)**: Scaleway's Generative APIs provide pay-per-token and dedicated GPU inference endpoints hosted exclusively in EU datacenters. This directly replaces the self-hosted Ollama requirement for beneficiary data (GDPR Art. 9) — no GPU procurement, no ML ops overhead, full GDPR coverage under the Scaleway DPA.
+3.  **Single European cloud, single DPA**: All infrastructure (compute, database, cache, storage, inference, observability) operates under one GDPR-native contract from a French company. Eliminates the multi-vendor DPA management overhead.
+4.  **Managed PostgreSQL, Redis, Object Storage**: Direct functional equivalents to previously considered providers. PostgreSQL supports all required extensions (uuid-ossp, pgcrypto, pg_trgm, ltree, pg_audit). Redis covers BullMQ job queue + rate limiting (though now pg-boss is the primary queue). Object Storage is S3-compatible.
+5.  **Predictable fixed pricing**: Hourly billed VMs and managed services with published pricing. No cold-start latency, no per-request surprise billing.
+6.  **Keycloak compatibility**: Scaleway VMs support self-hosted Keycloak in all configurations.
 
-2. **Managed Inference EU (Mistral, Llama 3.1)**: Scaleway's Generative APIs provide pay-per-token and dedicated GPU inference endpoints hosted exclusively in EU datacenters. This directly replaces the self-hosted Ollama requirement for beneficiary data (GDPR Art. 9) — no GPU procurement, no ML ops overhead, full GDPR coverage under the Scaleway DPA.
+### Cost estimates (Summary)
 
-3. **Single European cloud, single DPA**: All infrastructure (compute, database, cache, storage, inference, observability) operates under one GDPR-native contract from a French company. Eliminates the multi-vendor DPA management overhead of ADR-006.
-
-4. **Managed PostgreSQL, Redis, Object Storage**: Direct functional equivalents to Neon.tech, Upstash, and Cloudflare R2. PostgreSQL supports all required extensions (uuid-ossp, pgcrypto, pg_trgm, ltree, pg_audit). Redis covers BullMQ job queue + rate limiting. Object Storage is S3-compatible.
-
-5. **Predictable fixed pricing**: Hourly billed VMs and managed services with published pricing. No cold-start latency (vs Neon free tier), no per-request surprise billing (vs Upstash at scale).
-
-6. **Keycloak compatibility**: Scaleway VMs support self-hosted Keycloak in all configurations — single instance (Phase 0) and HA pair (Phase 1+). Keycloak remains self-hosted; no managed identity provider introduced.
-
-### Cost estimates
-
-#### Phase 0 — Dev/staging (~67€/month)
-
-| Service | Config | Cost |
-|---|---|---|
-| VM Small (1vCPU/2GB) — API + Worker | 1 instance | ~12€ |
-| Managed PostgreSQL | 1vCPU/2GB/20GB | ~7€ |
-| Managed Redis | 2GB | ~35€ |
-| Object Storage | 10GB | ~1€ |
-| Keycloak VM Small (1vCPU/2GB) | 1 instance | ~12€ |
-| Cockpit (Scaleway-native metrics/logs) | Free for Scaleway data | 0€ |
-| **Total** | | **~67€/month** |
-
-#### Phase 1 — 1 NPO pilot (~281€/month)
-
-| Service | Config | Cost |
-|---|---|---|
-| VM Medium (4vCPU/8GB) — API | 2 replicas | ~90€ |
-| VM Small — BullMQ Worker | 1 instance | ~12€ |
-| VM Small — Next.js Web | 1 instance | ~12€ |
-| Managed PostgreSQL | 2vCPU/4GB/96GB + read replica | ~74€ |
-| Managed Redis | 2GB | ~35€ |
-| Object Storage | 50GB | ~1€ |
-| Keycloak HA (VM Medium × 2) | 2 instances | ~45€ |
-| Cockpit custom logs | ~5GB/month | ~2€ |
-| Load Balancer + Flexible IPs | — | ~10€ |
-| **Total** | | **~281€/month** |
-
-> **Budget alternative**: Keycloak co-located on the API VM → ~180€/month (recommended for early pilots).
-
-#### Phase 1 extended — 5–10 NPOs (~458€/month)
-
-| Service | Config | Cost |
-|---|---|---|
-| VM Medium (4vCPU/8GB) — API | 3 replicas | ~135€ |
-| VM Small — BullMQ Worker | 2 instances | ~24€ |
-| VM Small — Next.js Web | 2 instances | ~24€ |
-| Managed PostgreSQL | 4vCPU/8GB/200GB + replica | ~150€ |
-| Managed Redis | 4GB | ~55€ |
-| Object Storage | 200GB | ~3€ |
-| Keycloak HA (VM Medium × 2) | 2 instances | ~45€ |
-| Cockpit custom logs | ~20GB/month | ~7€ |
-| Load Balancer + Flexible IPs | — | ~15€ |
-| **Total** | | **~458€/month** |
-
-#### AI Inference (optional add-on)
-
-| Option | Config | Cost |
-|---|---|---|
-| Generative API (pay-per-token) | ~50M tokens | ~10–20€ |
-| Managed Inference dédié (Llama 3.1 8B, L4 GPU) | dedicated endpoint | ~679€ |
-
-> **Recommendation**: Start with pay-per-token Generative API. Migrate to dedicated endpoint only if token volume justifies it (>200M tokens/month).
+Detailed cost estimates for Phase 0 (Dev/staging), Phase 1 (1 NPO pilot), and Phase 1 extended (5–10 NPOs) are provided, ranging from ~67€/month for dev/staging to ~458€/month for extended Phase 1. Optional AI inference costs (pay-per-token or dedicated GPU) are also detailed.
 
 ### Consequences
 
 - ✅ **Replaces** Neon.tech → Scaleway Managed PostgreSQL EU
 - ✅ **Replaces** Upstash Redis → Scaleway Managed Redis EU
-- ✅ **Replaces** Cloudflare R2 → Scaleway Object Storage (S3-compatible API, zero application changes)
-- ✅ **Replaces** self-hosted Ollama → Scaleway Generative APIs (Mistral, Llama 3.1) for beneficiary data AI (GDPR Art. 9 compliant)
-- ✅ **Adds** Scaleway Cockpit: Grafana dashboards, Loki log aggregation, Mimir metrics, Tempo traces — eliminates need for self-hosted observability stack
-- ✅ **Single vendor DPA** replaces three separate DPAs (Neon, Upstash, Cloudflare)
-- ✅ Keycloak remains **self-hosted on Scaleway VMs** in all configurations — no managed identity provider
-- ⚠️ NATS JetStream remains **Phase 4+** — no change to the BullMQ + Redis outbox pipeline for Phase 0-3
-- ⚠️ Self-hosted Docker Compose deployment (NPO on-premises) is **unchanged** — continues to use PostgreSQL 16 + Redis 7 + MinIO locally
+- ✅ **Replaces** Cloudflare R2 → Scaleway Object Storage (S3-compatible API)
+- ✅ **Replaces** self-hosted Ollama → Scaleway Generative APIs (Mistral, Llama 3.1) for beneficiary data AI
+- ✅ **Adds** Scaleway Cockpit: Grafana, Loki, Mimir, Tempo for observability
+- ✅ **Single vendor DPA** replaces three separate DPAs
+- ✅ Keycloak remains **self-hosted on Scaleway VMs**
+- ⚠️ NATS JetStream remains **Phase 4+** — the BullMQ (now pg-boss) outbox pipeline is primary for Phase 0-3
+- ⚠️ Self-hosted Docker Compose deployment (NPO on-premises) is **unchanged**
 
-### Revisit criteria
+### Revisit criteria (Summary)
 
-- Scaleway Managed PostgreSQL pricing increases beyond the self-hosted break-even point (~150€/month for a dedicated VPS with equivalent capacity)
-- A required PostgreSQL extension is not supported by Scaleway Managed PostgreSQL
-- An NPO's data protection authority requires jurisdiction stricter than EU-region (e.g., Swiss DPA requiring Swiss-only infrastructure)
-- Scaleway Generative API adds unacceptable latency for interactive AI features (measure p95 before switching to dedicated endpoint)
-- NATS JetStream is introduced in Phase 4 — re-evaluate whether Scaleway supports managed NATS or if self-hosted NATS cluster on Scaleway VMs is preferred
-- Phase 4 GPU inference demand justifies dedicated Scaleway Managed Inference endpoint (~679€/month) over pay-per-token model
+Criteria for revisiting include pricing changes, unsupported PostgreSQL extensions, stricter data sovereignty requirements, unacceptable AI latency, future NATS JetStream needs, or GPU inference demand.
 
 ---
 
-*ADRs are append-only. To supersede a decision, add a new ADR referencing the one it replaces, and update the superseded ADR's status to "Superseded by ADR-XXX".*
+## ADR-007: Reject Convex.dev and Supabase as All-in-One Backend Replacements (Updated Context)
+
+- **Status:** Accepted
+- **Date:** 2026-03-09 (Re-evaluated: 2026-04-08)
+- **Deciders**: Magino (founder/architect)
+
+### Context
+
+Evaluated Convex.dev and Supabase as potential all-in-one backend platforms. Supabase PostgreSQL remains a valid managed database option as part of the Scaleway selection (ADR-009).
+
+### Rationale — Convex.dev rejected
+
+- **Application-level RLS**: Weaker security boundary for multi-tenant GDPR data vs PostgreSQL native RLS.
+- **Data model fit**: Document/reactive model doesn't map cleanly to relational NPO data.
+- **Self-hosted HA**: Complex HA for self-hosted setup.
+- **Audit logs**: Requires external integration, incompatible with GDPR retention.
+- **PostgreSQL extensions**: `pg_audit`, `pg_trgm` unavailable.
+- **Vendor lock-in**: Proprietary query language and function format.
+
+**Status: Rejected.** Re-evaluate only if Phase 4 real-time requirements cannot be met by NATS JetStream.
+
+### Rationale — Supabase all-in-one rejected
+
+- **Self-hosted complexity**: 12+ containers more complex than current stack.
+- **Supabase Auth (GoTrue)**: Missing key auth requirements (SAML 2.0 bridge, MFA enforcement, magic-link, brute-force protection).
+- **Supabase Realtime**: Insufficient for transactional outbox pattern (no durability, no dead-letter, no at-least-once).
+- **Supabase PostgreSQL only**: Remains a valid managed Postgres option (comparable to Scaleway Managed PostgreSQL under ADR-009).
+
+### Consequences
+
+- ✅ Keycloak retained for full auth feature set.
+- ✅ PostgreSQL with RLS, pg_audit, pg_trgm retained for GDPR tenant isolation and audit patterns.
+- ✅ Self-hosted deployment path preserved.
+- ✅ TypeScript full-stack retained.
+- ⚠️ Auth infrastructure requires self-hosting Keycloak.
+
+---
+
+*This document is curated to show only active architectural decisions. Superseded decisions are removed for clarity.*
