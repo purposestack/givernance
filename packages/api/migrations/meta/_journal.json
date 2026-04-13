@@ -8,6 +8,13 @@
       "when": 1712966400000,
       "tag": "0001_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1712966401000,
+      "tag": "0002_auth_rbac",
+      "breakpoints": true
     }
   ]
 }
