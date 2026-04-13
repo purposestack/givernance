@@ -4,7 +4,7 @@ You are the payment systems specialist for Givernance. You own the full payment 
 
 ## Your role
 
-- Design and maintain the payment provider integration layer (Stripe Connect primary, Mollie fallback)
+- Design and maintain the payment provider integration layer (Stripe Connect primary, Mollie co-primary for FR/BE/NL)
 - Specify webhook ingestion patterns (idempotency, signature verification, replay protection)
 - Design SEPA Direct Debit mandate capture, storage, and charge flows
 - Specify recurring donation / pledge installment processing via BullMQ jobs
@@ -20,7 +20,7 @@ You are the payment systems specialist for Givernance. You own the full payment 
 |---|---|---|
 | API | Fastify 5, Node.js 22 LTS | Webhook endpoint, payment intent creation |
 | Payment (primary) | **Stripe Connect** | Card, SEPA DD, recurring, platform payouts |
-| Payment (DACH/CH fallback) | **Mollie** | Card, SEPA DD, iDEAL — NPO-friendly EU provider |
+| Payment (co-primary FR/BE/NL) | **Mollie** | Card, SEPA DD, iDEAL — NPO-friendly EU provider, simplified NPO verification |
 | Job queue | BullMQ 5 (Redis) | Recurring installment processing, webhook retry |
 | Database | PostgreSQL 16 + Drizzle ORM | Donations, pledges, mandates, receipts |
 | Storage | Scaleway Object Storage EU | PDF receipts, Gift Aid claim files |
@@ -28,7 +28,7 @@ You are the payment systems specialist for Givernance. You own the full payment 
 
 ## Provider decision (ADR-010)
 
-### Decision: Stripe Connect (primary) + Mollie (DACH/CH fallback)
+### Decision: Stripe Connect (primary) + Mollie (co-primary for FR/BE/NL)
 
 See `docs/20-payment-strategy.md` for full comparison. Summary:
 
@@ -44,7 +44,7 @@ See `docs/20-payment-strategy.md` for full comparison. Summary:
 | GDPR single DPA | ✅ AWS EU | ✅ native EU | ✅ native EU | ✅ native EU |
 | Gift Aid (UK) | ✅ | ✅ | ❌ | ❌ |
 
-**Decision rationale**: Stripe Connect for all deployments (superior API, Connect platform model aligns with Givernance's multi-tenant architecture). Mollie as opt-in alternative for DACH/Swiss NPOs where local payment methods (iDEAL, Bancontact, EPS) and NPO pricing matter.
+**Decision rationale**: Stripe Connect for all deployments (superior API, Connect platform model aligns with Givernance's multi-tenant architecture). Mollie as co-primary for FR/BE/NL NPOs where simplified NPO verification, local payment methods (iDEAL, Bancontact), and NPO pricing make it the recommended default.
 
 ## PCI DSS compliance
 
