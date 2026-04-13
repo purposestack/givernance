@@ -1,0 +1,12 @@
+# Givernance — local reverse proxy (optional)
+# Activated with: docker compose --profile proxy up -d
+
+:3000 {
+	# API server (Fastify)
+	reverse_proxy host.docker.internal:4000
+}
+
+:3001 {
+	# Web app (Next.js dev server)
+	reverse_proxy host.docker.internal:3100
+}
