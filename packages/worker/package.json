@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsup src/worker.ts --format esm",
+    "build": "tsup src/worker.ts src/outbox-relay.ts --format esm",
     "dev": "tsx watch src/worker.ts",
+    "dev:relay": "tsx watch src/outbox-relay.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "resend": "^4.0.1"
   },
   "devDependencies": {
+    "@types/pg": "^8.11.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

@@ -54,4 +54,5 @@ export const QUEUE_NAMES = {
   EMAILS: "emails",
   EXPORTS: "exports",
   GDPR: "gdpr",
+  EVENTS: "givernance_events",
 } as const;
