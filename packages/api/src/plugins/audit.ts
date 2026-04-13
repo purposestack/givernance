@@ -1,9 +1,9 @@
 /** Audit log middleware — persists all mutating requests to audit_logs */
 
+import { auditLogs } from "@givernance/shared/schema";
 import { createHash } from "crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
-import { auditLogs } from "@givernance/shared/schema";
 import { db } from "../lib/db.js";
 
 /** Extract the top-level resource type from a /v1/<resource>/... URL */
