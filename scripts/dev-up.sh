@@ -30,6 +30,11 @@ done
 echo "Redis is ready."
 
 echo ""
+echo "Running database migrations..."
+pnpm db:migrate
+echo "Migrations complete."
+
+echo ""
 echo "====================================="
 echo " Givernance — Local Dev Stack"
 echo "====================================="
@@ -42,6 +47,7 @@ echo " MinIO UI     http://localhost:${MINIO_CONSOLE_PORT:-9001}   (givernance/g
 echo " Mailpit SMTP localhost:${MAILPIT_SMTP_PORT:-1025}"
 echo " Mailpit UI   http://localhost:${MAILPIT_UI_PORT:-8025}"
 echo ""
+echo " Start API + Worker:  pnpm dev"
 echo " Caddy proxy (optional): docker compose --profile proxy up -d"
 echo ""
 echo "====================================="

@@ -1,44 +1,49 @@
 /** Tenant routes — platform-admin CRUD for organizations */
 
-import { tenants } from "@givernance/shared/schema";
+import { outboxEvents, tenants } from "@givernance/shared/schema";
+import { Type } from "@sinclair/typebox";
 import { eq } from "drizzle-orm";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { z } from "zod";
+import type { FastifyInstance } from "fastify";
 import { db } from "../../lib/db.js";
+import { requireAdminSecret } from "../../lib/guards.js";
 
-const CreateTenantBody = z.object({
-  name: z.string().min(1).max(255),
-  slug: z
-    .string()
-    .min(1)
-    .max(100)
-    .regex(/^[a-z0-9-]+$/, "slug must be lowercase alphanumeric with hyphens"),
-  plan: z.enum(["starter", "pro", "enterprise"]).optional().default("starter"),
+const CreateTenantBody = Type.Object({
+  name: Type.String({ minLength: 1, maxLength: 255 }),
+  slug: Type.String({ minLength: 1, maxLength: 100, pattern: "^[a-z0-9-]+$" }),
+  plan: Type.Optional(
+    Type.Union([Type.Literal("starter"), Type.Literal("pro"), Type.Literal("enterprise")]),
+  ),
 });
-
-/** Guard: require x-admin-secret header matching ADMIN_SECRET env var */
-async function requireAdminSecret(request: FastifyRequest, reply: FastifyReply) {
-  const secret = request.headers["x-admin-secret"] as string | undefined;
-  const adminSecret = process.env["ADMIN_SECRET"];
-  if (!secret || !adminSecret || secret !== adminSecret) {
-    return reply
-      .status(401)
-      .send({ statusCode: 401, error: "Unauthorized", message: "Invalid admin secret" });
-  }
-}
 
 export async function tenantRoutes(app: FastifyInstance) {
   /** POST /v1/tenants — create a new organization (platform admin only) */
-  app.post("/tenants", { preHandler: requireAdminSecret }, async (request, reply) => {
-    const body = CreateTenantBody.parse(request.body);
+  app.post(
+    "/tenants",
+    { preHandler: requireAdminSecret, schema: { body: CreateTenantBody } },
+    async (request, reply) => {
+      const body = request.body as { name: string; slug: string; plan?: string };
 
-    const [tenant] = await db
-      .insert(tenants)
-      .values({ name: body.name, slug: body.slug, plan: body.plan })
-      .returning();
+      // Transactional outbox: insert tenant + outbox event in same transaction (C4 fix)
+      const result = await db.transaction(async (tx) => {
+        const [tenant] = await tx
+          .insert(tenants)
+          .values({ name: body.name, slug: body.slug, plan: body.plan ?? "starter" })
+          .returning();
 
-    return reply.status(201).send({ data: tenant });
-  });
+        // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row for single insert
+        const t = tenant!;
+        await tx.insert(outboxEvents).values({
+          tenantId: t.id,
+          type: "tenant.created",
+          payload: { tenantId: t.id, name: t.name, slug: t.slug },
+        });
+
+        return tenant;
+      });
+
+      return reply.status(201).send({ data: result });
+    },
+  );
 
   /** GET /v1/tenants — list all organizations (platform admin only) */
   app.get("/tenants", { preHandler: requireAdminSecret }, async (_request, reply) => {
@@ -52,11 +57,31 @@ export async function tenantRoutes(app: FastifyInstance) {
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, id));
 
     if (!tenant) {
-      return reply
-        .status(404)
-        .send({ statusCode: 404, error: "Not Found", message: "Tenant not found" });
+      return reply.status(404).send({
+        type: "https://httpproblems.com/http-status/404",
+        title: "Not Found",
+        status: 404,
+        detail: "Tenant not found",
+      });
     }
 
     return reply.send({ data: tenant });
+  });
+
+  /** DELETE /v1/tenants/:id — delete an organization (platform admin only) */
+  app.delete("/tenants/:id", { preHandler: requireAdminSecret }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const [deleted] = await db.delete(tenants).where(eq(tenants.id, id)).returning();
+
+    if (!deleted) {
+      return reply.status(404).send({
+        type: "https://httpproblems.com/http-status/404",
+        title: "Not Found",
+        status: 404,
+        detail: "Tenant not found",
+      });
+    }
+
+    return reply.status(200).send({ data: deleted });
   });
 }

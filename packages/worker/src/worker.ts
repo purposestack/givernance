@@ -28,44 +28,54 @@ async function processDomainEvent(job: Job): Promise<void> {
     payload: unknown;
   };
 
-  console.error(`[events] Processing domain event: type=${type} id=${id} tenant=${tenantId}`);
-  console.error(`[events] Payload: ${JSON.stringify(payload)}`);
+  // Worker process — stderr is the correct output stream for operational logs
+  console.warn(`[events] Processing domain event: type=${type} id=${id} tenant=${tenantId}`);
+  console.warn(`[events] Payload: ${JSON.stringify(payload)}`);
 }
 
 /** Start all queue workers */
 function startWorkers() {
+  const defaultJobOpts = {
+    attempts: 3,
+    backoff: { type: "exponential" as const, delay: 1000 },
+  };
+
   const receiptsWorker = new Worker(QUEUE_NAMES.RECEIPTS, processGenerateReceipt, {
     connection,
     concurrency: 5,
+    ...defaultJobOpts,
   });
 
   const emailsWorker = new Worker(QUEUE_NAMES.EMAILS, processSendBulkEmail, {
     connection,
     concurrency: 2,
+    ...defaultJobOpts,
   });
 
   const gdprWorker = new Worker(QUEUE_NAMES.GDPR, processGdprErasure, {
     connection,
     concurrency: 1,
+    ...defaultJobOpts,
   });
 
   const eventsWorker = new Worker(QUEUE_NAMES.EVENTS, processDomainEvent, {
     connection,
     concurrency: 10,
+    ...defaultJobOpts,
   });
 
   const workers = [receiptsWorker, emailsWorker, gdprWorker, eventsWorker];
 
   for (const w of workers) {
     w.on("completed", (job) => {
-      console.error(`[${w.name}] Job ${job.id} completed`);
+      console.warn(`[${w.name}] Job ${job.id} completed`);
     });
     w.on("failed", (job, err) => {
       console.error(`[${w.name}] Job ${job?.id} failed:`, err.message);
     });
   }
 
-  console.error(`Workers started: ${workers.map((w) => w.name).join(", ")}`);
+  console.warn(`Workers started: ${workers.map((w) => w.name).join(", ")}`);
 }
 
 startWorkers();

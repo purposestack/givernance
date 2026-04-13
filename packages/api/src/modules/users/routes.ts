@@ -1,59 +1,43 @@
 /** User routes — user profile and org-admin user management */
 
-import { users } from "@givernance/shared/schema";
+import { outboxEvents, users } from "@givernance/shared/schema";
+import { Type } from "@sinclair/typebox";
 import { and, eq } from "drizzle-orm";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { z } from "zod";
+import type { FastifyInstance } from "fastify";
 import { db } from "../../lib/db.js";
+import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 
-const CreateUserBody = z.object({
-  email: z.string().email(),
-  firstName: z.string().min(1).max(255),
-  lastName: z.string().min(1).max(255),
-  role: z.enum(["org_admin", "user", "viewer"]).default("user"),
+const CreateUserBody = Type.Object({
+  email: Type.String({ format: "email" }),
+  firstName: Type.String({ minLength: 1, maxLength: 255 }),
+  lastName: Type.String({ minLength: 1, maxLength: 255 }),
+  role: Type.Optional(
+    Type.Union([Type.Literal("org_admin"), Type.Literal("user"), Type.Literal("viewer")]),
+  ),
 });
 
-const UpdateRoleBody = z.object({
-  role: z.enum(["org_admin", "user", "viewer"]),
+const UpdateRoleBody = Type.Object({
+  role: Type.Union([Type.Literal("org_admin"), Type.Literal("user"), Type.Literal("viewer")]),
 });
-
-/** Guard: require valid JWT */
-async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
-  if (!request.auth?.userId) {
-    return reply
-      .status(401)
-      .send({ statusCode: 401, error: "Unauthorized", message: "Authentication required" });
-  }
-}
-
-/** Guard: require org_admin role */
-async function requireOrgAdmin(request: FastifyRequest, reply: FastifyReply) {
-  if (!request.auth?.userId) {
-    return reply
-      .status(401)
-      .send({ statusCode: 401, error: "Unauthorized", message: "Authentication required" });
-  }
-  if (request.auth.role !== "org_admin") {
-    return reply
-      .status(403)
-      .send({ statusCode: 403, error: "Forbidden", message: "org_admin role required" });
-  }
-}
 
 export async function userRoutes(app: FastifyInstance) {
   /** GET /v1/users/me — current user profile (requires JWT) */
   app.get("/users/me", { preHandler: requireAuth }, async (request, reply) => {
-    // auth is guaranteed non-null by requireAuth guard
-    const auth = request.auth!;
+    // requireAuth guarantees auth is non-null
+    const userId = request.auth?.userId as string;
+    const orgId = request.auth?.orgId as string;
     const [user] = await db
       .select()
       .from(users)
-      .where(and(eq(users.keycloakId, auth.userId), eq(users.orgId, auth.orgId)));
+      .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
 
     if (!user) {
-      return reply
-        .status(404)
-        .send({ statusCode: 404, error: "Not Found", message: "User profile not found" });
+      return reply.status(404).send({
+        type: "https://httpproblems.com/http-status/404",
+        title: "Not Found",
+        status: 404,
+        detail: "User profile not found",
+      });
     }
 
     return reply.send({ data: user });
@@ -61,42 +45,97 @@ export async function userRoutes(app: FastifyInstance) {
 
   /** GET /v1/users — list users in tenant (org_admin only) */
   app.get("/users", { preHandler: requireOrgAdmin }, async (request, reply) => {
-    const { orgId } = request.auth!;
+    const orgId = request.auth?.orgId as string;
     const all = await db.select().from(users).where(eq(users.orgId, orgId));
     return reply.send({ data: all });
   });
 
   /** POST /v1/users — create user in tenant (org_admin only) */
-  app.post("/users", { preHandler: requireOrgAdmin }, async (request, reply) => {
-    const { orgId } = request.auth!;
-    const body = CreateUserBody.parse(request.body);
+  app.post(
+    "/users",
+    { preHandler: requireOrgAdmin, schema: { body: CreateUserBody } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId as string;
+      const body = request.body as {
+        email: string;
+        firstName: string;
+        lastName: string;
+        role?: string;
+      };
 
-    const [user] = await db
-      .insert(users)
-      .values({ ...body, orgId })
-      .returning();
+      // Transactional outbox: insert user + outbox event in same transaction (C4 fix)
+      const result = await db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(users)
+          .values({
+            ...body,
+            role: (body.role as "org_admin" | "user" | "viewer") ?? "user",
+            orgId,
+          })
+          .returning();
 
-    return reply.status(201).send({ data: user });
-  });
+        // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row for single insert
+        const user = inserted!;
+        await tx.insert(outboxEvents).values({
+          tenantId: orgId,
+          type: "user.created",
+          payload: { userId: user.id, email: user.email, orgId },
+        });
+
+        return user;
+      });
+
+      return reply.status(201).send({ data: result });
+    },
+  );
 
   /** PATCH /v1/users/:id/role — update user role (org_admin only) */
-  app.patch("/users/:id/role", { preHandler: requireOrgAdmin }, async (request, reply) => {
-    const { orgId } = request.auth!;
-    const { id } = request.params as { id: string };
-    const { role } = UpdateRoleBody.parse(request.body);
+  app.patch(
+    "/users/:id/role",
+    { preHandler: requireOrgAdmin, schema: { body: UpdateRoleBody } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId as string;
+      const { id } = request.params as { id: string };
+      const body = request.body as { role: "org_admin" | "user" | "viewer" };
 
-    const [updated] = await db
-      .update(users)
-      .set({ role, updatedAt: new Date() })
+      const [updated] = await db
+        .update(users)
+        .set({ role: body.role, updatedAt: new Date() })
+        .where(and(eq(users.id, id), eq(users.orgId, orgId)))
+        .returning();
+
+      if (!updated) {
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: "User not found",
+        });
+      }
+
+      return reply.send({ data: updated });
+    },
+  );
+
+  /** DELETE /v1/users/:id — remove user from tenant (org_admin only) */
+  app.delete("/users/:id", { preHandler: requireOrgAdmin }, async (request, reply) => {
+    const orgId = request.auth?.orgId as string;
+    const { id } = request.params as { id: string };
+
+    const [deleted] = await db
+      .delete(users)
       .where(and(eq(users.id, id), eq(users.orgId, orgId)))
       .returning();
 
-    if (!updated) {
-      return reply
-        .status(404)
-        .send({ statusCode: 404, error: "Not Found", message: "User not found" });
+    if (!deleted) {
+      return reply.status(404).send({
+        type: "https://httpproblems.com/http-status/404",
+        title: "Not Found",
+        status: 404,
+        detail: "User not found",
+      });
     }
 
-    return reply.send({ data: updated });
+    return reply.status(200).send({ data: deleted });
   });
 }

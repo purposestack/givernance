@@ -42,6 +42,7 @@
     }
   },
   "files": {
-    "includes": ["packages/**/*.ts", "packages/**/*.tsx"]
+    "includes": ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
+    "ignoreUnknown": true
   }
 }

@@ -12,9 +12,14 @@ declare module "fastify" {
 }
 
 async function auth(app: FastifyInstance) {
-  await app.register(fjwt, {
-    secret: process.env["JWT_SECRET"] ?? "dev-secret-change-in-production",
-  });
+  const jwtSecret = process.env["JWT_SECRET"];
+  if (!jwtSecret) {
+    throw new Error(
+      "JWT_SECRET environment variable is required. Refusing to start with no secret.",
+    );
+  }
+
+  await app.register(fjwt, { secret: jwtSecret });
 
   /** Extract auth context from verified JWT claims */
   app.decorateRequest("auth", null);
