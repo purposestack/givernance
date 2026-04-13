@@ -11,7 +11,7 @@ The payment strategy must answer:
 
 1. **Which provider(s)** should Givernance integrate for Phase 1?
 2. **What architecture** — direct integration, abstraction layer, or Connect platform model?
-3. **How** do we handle SEPA Direct Debit, recurring donations, refunds, and reconciliation?
+3. **How** do we handle recurring donations, refunds, and reconciliation? (SEPA Direct Debit deferred to Phase 2 — see §2 and §11)
 4. **How** do we stay PCI DSS compliant without the burden of SAQ D?
 5. **How** do we remain GDPR-compliant with EU data residency?
 
@@ -22,7 +22,7 @@ The payment strategy must answer:
 | Requirement | Priority |
 |---|---|
 | Online card payments (one-off donations) | P0 — Phase 1 |
-| SEPA Direct Debit (recurring mandates) | P0 — Phase 1 |
+| SEPA Direct Debit (recurring mandates) | P1 — Phase 2 |
 | Recurring / subscription billing | P0 — Phase 1 |
 | Refunds and credit notes | P0 — Phase 1 |
 | Webhook-driven donation recording | P0 — Phase 1 |
@@ -100,7 +100,7 @@ This means Givernance **never touches donor funds** — clean separation, no e-m
 | SDK quality | ✅ Good — Node.js SDK, TypeScript support |
 | Webhooks | ✅ Signed, good documentation |
 
-**Assessment**: Mollie is excellent for DACH/Benelux NPOs due to local payment methods and NPO pricing. Not ideal as primary for multi-tenant platform (Connect model less mature). Best as opt-in alternative for specific markets.
+**Assessment**: Mollie is excellent for FR/BE/NL NPOs due to local payment methods, NPO pricing, and simplified NPO verification. Co-primary alongside Stripe for French, Belgian, and Dutch associations from Phase 1. Connect model less mature than Stripe, but sufficient for single-tenant payment flows in these markets.
 
 ### 3.3 Mangopay
 
@@ -173,7 +173,7 @@ This means Givernance **never touches donor funds** — clean separation, no e-m
 ### Decision
 
 **Primary: Stripe Connect** for all deployments from Phase 1.
-**Secondary: Mollie** as opt-in alternative, enabled via `ff.payments.mollie` feature flag, for DACH/Benelux NPOs.
+**Co-primary: Mollie** for FR/BE/NL NPOs from Phase 1, enabled via `ff.payments.mollie` feature flag. Mollie is the recommended default for French, Belgian, and Dutch associations (simplified NPO verification, native EU, NPO pricing).
 
 ### Rationale
 
@@ -185,11 +185,12 @@ This means Givernance **never touches donor funds** — clean separation, no e-m
 4. **Developer experience**: best-in-class Node.js SDK, TypeScript types, Stripe CLI for local webhook testing
 5. **Ecosystem**: Gift Aid claims work on top of Stripe payments; iDEAL/Bancontact/EPS available via single Payment Element
 
-**Mollie as fallback because:**
-1. NPO-specific pricing makes it more cost-effective for small DACH/NL NPOs
-2. iDEAL/Bancontact are dominant payment methods in NL/BE
-3. EU-native (no SCC needed) is a selling point for privacy-conscious NPOs
-4. Abstract enough to add without changing donation core logic
+**Mollie as co-primary for FR/BE/NL because:**
+1. **Simplified NPO verification** — Mollie's NPO program offers faster onboarding for French, Belgian, and Dutch associations than Stripe's standard KYB
+2. NPO-specific pricing makes it more cost-effective for small FR/BE/NL NPOs
+3. iDEAL/Bancontact are dominant payment methods in NL/BE
+4. EU-native (no SCC needed) is a selling point for privacy-conscious NPOs
+5. Abstract enough to add without changing donation core logic
 
 **Mangopay rejected for Phase 1**: requires wallet-based architecture and is overkill for the Phase 1 donation model. Revisit at Phase 3+ if umbrella/pooling use cases emerge.
 
@@ -210,7 +211,7 @@ This means Givernance **never touches donor funds** — clean separation, no e-m
 packages/api/src/lib/payments/
   gateway.interface.ts        ← PaymentGateway interface (createIntent, captureWebhook, refund, createMandate)
   stripe.gateway.ts           ← Stripe implementation
-  mollie.gateway.ts           ← Mollie implementation (Phase 2)
+  mollie.gateway.ts           ← Mollie implementation (Phase 1 for FR/BE/NL tenants)
   gateway.factory.ts          ← Returns correct gateway based on tenant.payment_gateway setting
 ```
 
@@ -233,15 +234,19 @@ interface PaymentGateway {
 2. API calls: stripe.accounts.create({ type: 'express', country: 'FR', email })
 3. API calls: stripe.accountLinks.create({ account, type: 'account_onboarding' })
 4. Returns onboarding URL → NPO admin completes KYC on Stripe
-5. Webhook: account.updated { charges_enabled: true } → mark tenant as payment-enabled
-6. All subsequent charges: { stripe_account: tenant.stripe_account_id, application_fee_amount }
+5. NPO immediately enters TEST MODE — can use Stripe test keys to run
+   the full donation flow (test cards, test SEPA) while KYB is pending (2-5 days)
+6. Webhook: account.updated { charges_enabled: true } → switch tenant to LIVE MODE
+7. All subsequent charges: { stripe_account: tenant.stripe_account_id, application_fee_amount }
 ```
+
+> **Test mode for fast onboarding**: KYB verification takes 2-5 business days, which blocks the "demo → first donation in < 1 hour" goal. To solve this, every new NPO starts in **Stripe test mode** immediately after step 4. The NPO admin can validate the complete flow — donation page, webhook processing, receipt generation — using Stripe test cards (`4242...`) and test SEPA IBANs. Once `account.updated { charges_enabled: true }` fires, the tenant is automatically switched to live mode. This ensures the "first donation in < 1 hour" experience while KYB runs in the background.
 
 ### 5.3 Webhook ingestion
 
 ```
 POST /v1/donations/stripe-webhook   (public endpoint — no auth)
-POST /v1/donations/mollie-webhook   (public endpoint — no auth, Phase 2 — add to doc-04 API surface when ff.payments.mollie ships)
+POST /v1/donations/mollie-webhook   (public endpoint — no auth, Phase 1 for FR/BE/NL — add to doc-04 API surface when ff.payments.mollie ships)
 ```
 
 Both endpoints:
@@ -368,7 +373,7 @@ Givernance targets **PCI DSS SAQ A** — the lightest compliance level — by en
 
 ### For Feature Flag Engineer
 - `ff.payments.sepa_direct_debit` — gates all SEPA DD routes and the installment processor
-- `ff.payments.mollie` — gates Mollie gateway activation for a tenant (Phase 2)
+- `ff.payments.mollie` — gates Mollie gateway activation for a tenant (Phase 1 for FR/BE/NL)
 - `ff.integrations.xero` — payment data feeds into GL export; check Xero flag in reconciliation job
 - No flag needed for basic Stripe card payments — P0 MVP functionality
 
@@ -433,6 +438,7 @@ This is reflected in the `payment_gateway` tenant setting at onboarding — guid
 ## 10. Open Questions
 
 - [ ] **Stripe Connect account type**: `express` vs `standard` vs `custom`? Proposal: `express` for Phase 1 (Stripe hosts KYC/dashboard); `standard` for larger NPOs who want full Stripe dashboard access.
+- [x] **Onboarding speed — KYB delay**: KYB takes 2-5 business days. **Resolved**: NPOs start in Stripe test mode immediately (see §5.2). Full flow validation in < 1 hour; auto-switch to live when `charges_enabled: true`. No KYB wait for first experience.
 - [ ] **Platform fee model**: flat `application_fee_amount` per transaction, or percentage? Proposal: percentage (e.g. 0.5%) — aligns with doc-08 commission model discussion.
 - [ ] **Stripe vs Mollie for first NPO**: should the first pilot NPO be on Stripe or Mollie? Proposal: depends on country — FR/BE/NL default to Mollie; UK/multi-currency default to Stripe (see §9 GDPR assessment).
 - [ ] **Dispute/chargeback handling**: when a charge is disputed, Stripe freezes funds. What is the NPO notification and resolution flow? Needs a runbook.
@@ -449,28 +455,30 @@ This is reflected in the `payment_gateway` tenant setting at onboarding — guid
 
 ## 11. Implementation Phases
 
-### Phase 1 (Core payment — Stripe Connect)
+### Phase 1 (Core payment — Stripe Connect + Mollie for FR/BE/NL)
 
 - [ ] `PaymentGateway` interface in `packages/shared/src/lib/payments/`
 - [ ] `StripeGateway` implementation
+- [ ] `MollieGateway` implementation (FR/BE/NL tenants)
+- [ ] `ff.payments.mollie` feature flag
+- [ ] Tenant payment gateway selection at onboarding (country-based routing)
 - [ ] `webhook_events` Drizzle schema + unique index
-- [ ] Stripe Connect onboarding flow (`POST /admin/tenants/:id/stripe-connect`)
+- [ ] Stripe Connect onboarding flow (`POST /admin/tenants/:id/stripe-connect`) with test mode support
+- [ ] Mollie webhook endpoint + handler
 - [ ] Webhook endpoint with signature verification + idempotency
 - [ ] BullMQ webhook processor
 - [ ] One-off donation payment intent + `payment_intent.succeeded` handler
 - [ ] Receipt generation BullMQ job
-- [ ] SEPA mandate setup (`POST /v1/pledges/:id/setup-mandate`) — gated behind `ff.payments.sepa_direct_debit`
-- [ ] `process_pledge_installments` BullMQ repeatable job
 - [ ] Refund flow with GL batch check
 - [ ] Platform fee configuration per tenant (`application_fee_amount`)
 - [ ] Integration tests (see QA cross-agent rules)
 
-### Phase 2 (Mollie opt-in)
+### Phase 2 (SEPA Direct Debit + expansion)
 
-- [ ] `MollieGateway` implementation
-- [ ] `ff.payments.mollie` feature flag
-- [ ] Tenant payment gateway selection at onboarding
-- [ ] Mollie webhook endpoint + handler
+- [ ] SEPA mandate setup (`POST /v1/pledges/:id/setup-mandate`) — gated behind `ff.payments.sepa_direct_debit`
+- [ ] `process_pledge_installments` BullMQ repeatable job (SEPA DD recurring charges)
+- [ ] SEPA DD webhook handling (`setup_intent.succeeded`, mandate lifecycle)
+- [ ] Mollie expansion to additional markets beyond FR/BE/NL
 
 ### Phase 3+ (Saferpay / TWINT / Mangopay evaluation)
 
