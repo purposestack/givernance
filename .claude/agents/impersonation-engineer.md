@@ -31,13 +31,13 @@ You are the impersonation and delegated-access specialist for Givernance. You ow
 
 Every action performed during an impersonation session MUST record two identities:
 
-| Field | Value | Meaning |
+| Field | JWT source | Meaning |
 |---|---|---|
-| `actor_user_id` | impersonated user's UUID | Who the action appears to come from (for data integrity) |
-| `impersonator_id` | super_admin's UUID | Who actually performed the action (for accountability) |
-| `impersonation_session_id` | UUID of the session | Groups all actions from one impersonation session |
+| `actor_user_id` | `sub` (impersonated user's UUID) | Who the action appears to come from (for data integrity) |
+| `impersonator_id` | `act.sub` (super_admin's UUID, per RFC 8693 §4.1) | Who actually performed the action (for accountability) |
+| `impersonation_session_id` | `imp_session_id` (UUID of the session) | Groups all actions from one impersonation session |
 
-The impersonated user's `actor_user_id` is used for **data integrity** (e.g. "donated by this user"). The `impersonator_id` is used for **accountability** and is never hidden.
+The impersonated user's `actor_user_id` is used for **data integrity** (e.g. "donated by this user"). The `act.sub` (impersonator) is used for **accountability** and is never hidden. The presence of the `act` claim is the canonical RFC 8693 signal that a token is a delegation token.
 
 ### Roles allowed to impersonate
 
@@ -57,7 +57,7 @@ Only `super_admin` can initiate impersonation. `org_admin` cannot impersonate �
 
 ### Option A — Keycloak Token Exchange (RFC 8693) [RECOMMENDED]
 
-Keycloak 24 supports Token Exchange. The super_admin exchanges their own access token for a short-lived access token representing the target user, with an additional `impersonator_sub` claim injected by Keycloak.
+Keycloak 24 supports Token Exchange. The super_admin exchanges their own access token for a short-lived access token representing the target user, with the standard RFC 8693 `act` claim injected via a custom Script Mapper.
 
 ```
 POST /realms/givernance/protocol/openid-connect/token
@@ -67,38 +67,45 @@ POST /realms/givernance/protocol/openid-connect/token
   requested_subject=<target_user_id>
 ```
 
-Result: a new JWT with the target user's claims + a custom `impersonator_sub` claim containing the admin's user ID.
+Result: a new JWT with the target user's claims + the RFC 8693 `act` claim containing the admin's identity (`act: { sub: <admin_uuid> }`).
 
-**Advantages:** Standard OAuth2 flow; Keycloak handles token signing and validation; impersonator claim survives in all downstream token verifications.
+**Advantages:** Standard OAuth2 flow; Keycloak handles token signing and validation; `act` claim is the RFC 8693 standard for delegation — recognized by OPA policies, SIEM parsers, OAuth2 proxies, and any RFC 8693-aware tooling.
 
-**Considerations:** Requires Keycloak `impersonation` client scope and `impersonation` role on the admin's realm role. Must be audited in Keycloak admin events too.
+**Considerations:** Requires Keycloak `impersonation` client scope and `impersonation` role on the admin's realm role. Must be audited in Keycloak admin events too. Keycloak 24 does not produce `act` natively (keycloak/keycloak#12076) — requires a custom Script Mapper (~50 lines JS).
 
 ### Option B — Application-layer impersonation token (fallback)
 
 If Keycloak Token Exchange is not available (e.g. self-hosted Keycloak without the permission configured):
 
 1. Super_admin authenticates normally → has their own JWT
-2. API issues a signed short-lived **impersonation JWT** containing the target user's claims + `impersonator_id` + `impersonation_session_id` + `exp` (max 2h)
+2. API issues a signed short-lived **delegation JWT** containing the target user's claims + `act: { sub: <admin_uuid> }` + `imp_session_id` + `exp` (max 2h)
 3. This token is stored in Redis: `impersonation:{session_id}` with TTL
-4. The API middleware detects `impersonation_session_id` claim and loads the full context
+4. The API middleware detects the `act` claim and loads the full impersonation context
 
 **When to use:** Phase 1 fallback if Keycloak Token Exchange setup is complex. Migrate to Option A in Phase 2.
 
-### JWT claims for impersonation (both options)
+### JWT claims for delegation (both options) — RFC 8693-compliant
+
+> RFC 8693 §4.1 distinguishes **impersonation** (admin identity erased) from **delegation** (both identities preserved via `act` claim). Givernance uses **delegation** semantics — the `act` claim carries the admin's identity for double-attribution audit.
 
 ```json
 {
   "sub": "<impersonated_user_uuid>",
   "org_id": "<impersonated_tenant_uuid>",
   "role": "<impersonated_user_role>",
-  // email omitted — PII unnecessary in impersonation token; identify by sub (UUID)
-  "impersonator_id": "<super_admin_uuid>",
-  "impersonation_session_id": "<session_uuid>",
-  "impersonation_reason": "Support ticket #1234 — user cannot access donations",
+  "act": {
+    "sub": "<super_admin_uuid>"
+  },
+  "imp_session_id": "<session_uuid>",
+  "imp_reason": "Support ticket #1234 — user cannot access donations",
   "iat": 1712000000,
   "exp": 1712007200
 }
 ```
+
+- `act.sub` = admin identity (RFC 8693 standard) — replaces the previous non-standard `impersonator_id`
+- Detect delegation via `decoded.act?.sub` — the presence of `act` is the canonical signal
+- `imp_session_id` and `imp_reason` are Givernance-specific (no RFC equivalent)
 
 ## Session lifecycle
 
@@ -112,8 +119,8 @@ If Keycloak Token Exchange is not available (e.g. self-hosted Keycloak without t
    Returns: impersonation token (short-lived, max 2h)
 
 2. ACTIVE
-   All API calls use impersonation token
-   Middleware detects impersonator_id claim → sets dual context
+   All API calls use delegation token
+   Middleware detects act claim (RFC 8693) → sets dual context
    All writes → audit_logs with both actor_user_id + impersonator_id
    RLS uses impersonated user's org_id
 
@@ -184,21 +191,21 @@ impersonationSessionId: uuid('impersonation_session_id'), // null for real-user 
 // packages/api/src/lib/auth/impersonation.middleware.ts
 
 export async function impersonationMiddleware(req: FastifyRequest, reply: FastifyReply) {
-  const { impersonator_id, impersonation_session_id } = req.jwtPayload;
+  const { act, imp_session_id } = req.jwtPayload;
 
-  if (!impersonator_id) return; // Not an impersonation request — nothing to do
+  if (!act?.sub) return; // No `act` claim — not a delegation token, nothing to do
 
   // 1. Validate session is still active in Redis
-  const session = await redis.get(`impersonation:${impersonation_session_id}`);
+  const session = await redis.get(`impersonation:${imp_session_id}`);
   if (!session) {
     return reply.status(401).send({ error: 'Impersonation session expired or revoked' });
   }
 
-  // 2. Attach dual context to request
+  // 2. Attach dual context to request (act.sub = admin, per RFC 8693 §4.1)
   req.impersonation = {
     isActive: true,
-    impersonatorId: impersonator_id,
-    sessionId: impersonation_session_id,
+    impersonatorId: act.sub,
+    sessionId: imp_session_id,
   };
 
   // 3. RLS context uses the impersonated user's org (already in JWT sub/org_id claims)
@@ -213,9 +220,9 @@ export async function impersonationMiddleware(req: FastifyRequest, reply: Fastif
 
 export function buildAuditEntry(req: FastifyRequest, action: string, resource: AuditResource) {
   return {
-    actorUserId: req.user.id,                                    // impersonated user's ID
-    impersonatorId: req.impersonation?.impersonatorId ?? null,   // admin's ID (null if not impersonating)
-    impersonationSessionId: req.impersonation?.sessionId ?? null,
+    actorUserId: req.user.id,                                    // sub = impersonated user's ID
+    impersonatorId: req.impersonation?.impersonatorId ?? null,   // act.sub = admin's ID (null if not delegating)
+    impersonationSessionId: req.impersonation?.sessionId ?? null, // imp_session_id
     actorRole: req.user.role,
     orgId: req.tenant.id,
     action,
@@ -253,13 +260,13 @@ When an impersonation token is detected on the frontend, a **persistent, non-dis
 ```typescript
 // packages/web/src/lib/auth/impersonation.ts
 export function getImpersonationContext(token: DecodedToken): ImpersonationContext | null {
-  if (!token.impersonator_id) return null;
+  if (!token.act?.sub) return null; // No act claim = not a delegation token
   return {
     isImpersonating: true,
-    impersonatorId: token.impersonator_id,
-    sessionId: token.impersonation_session_id,
+    impersonatorId: token.act.sub,        // RFC 8693 §4.1 actor claim
+    sessionId: token.imp_session_id,
     sessionExpiry: new Date(token.exp * 1000),
-    reason: token.impersonation_reason,
+    reason: token.imp_reason,
   };
 }
 ```
@@ -330,7 +337,7 @@ All endpoints: `RBAC.SUPER_ADMIN` required. All mutating endpoints: audit logged
 
 | Anti-pattern | Correct approach |
 |---|---|
-| Logging only the impersonated user for actions | Always double-attribute: `actor_user_id` + `impersonator_id` |
+| Logging only the impersonated user for actions | Always double-attribute: `actor_user_id` (from `sub`) + `impersonator_id` (from `act.sub`) |
 | Using super_admin's RBAC during impersonation | RBAC must reflect the **impersonated user's role**, not the admin's |
 | Skipping RLS during impersonation | RLS uses impersonated user's `org_id` — no bypass |
 | Allowing org_admin to impersonate | Only `super_admin` can initiate — this is a platform-level operation |
@@ -344,14 +351,15 @@ All endpoints: `RBAC.SUPER_ADMIN` required. All mutating endpoints: audit logged
 
 ### MVP Engineer
 - `POST /admin/impersonation` must require `RBAC.SUPER_ADMIN` + step-up TOTP verification
-- Every Drizzle write helper must accept an optional `impersonatorId` parameter and pass it to `buildAuditEntry()`
+- The delegation token must include the RFC 8693 `act` claim: `act: { sub: <admin_uuid> }` — detect delegation via `decoded.act?.sub`
+- Every Drizzle write helper must accept an optional `impersonatorId` (from `act.sub`) parameter and pass it to `buildAuditEntry()`
 - BullMQ job data `_meta` must carry `impersonatorId` and `impersonationSessionId` when enqueued during an impersonation session
-- The impersonation token must be stored in an `httpOnly` cookie (same as the normal session token) — never in `localStorage`
+- The delegation token must be stored in an `httpOnly` cookie (same as the normal session token) — never in `localStorage`
 
 ### QA Engineer
 - Test: impersonated session cannot access resources outside the target tenant (RLS isolation still enforced)
 - Test: impersonated session cannot perform actions the target user's role prohibits (RBAC still enforced)
-- Test: every write during impersonation produces an `audit_logs` row with both `actor_user_id` and `impersonator_id` populated
+- Test: every write during impersonation produces an `audit_logs` row with both `actor_user_id` and `impersonator_id` (from `act.sub`) populated
 - Test: session expires after TTL and subsequent requests return 401
 - Test: `POST /admin/impersonation` with an empty or short `reason` returns 400
 - Test: non-super_admin cannot call `POST /admin/impersonation` (returns 403)
@@ -366,14 +374,14 @@ All endpoints: `RBAC.SUPER_ADMIN` required. All mutating endpoints: audit logged
 
 ### Data Architect
 - `impersonation_sessions` is a platform table (not tenant-scoped) — no RLS needed on the table itself
-- Add `impersonator_id` and `impersonation_session_id` columns to `audit_logs` (nullable — null for normal actions)
+- Add `impersonator_id` (sourced from JWT `act.sub`) and `impersonation_session_id` (from `imp_session_id`) columns to `audit_logs` (nullable — null for normal actions)
 - Include `impersonation_sessions` in GDPR Art. 15 data export for both the impersonated user and the admin
 - `impersonation_sessions` rows are audit records — exempt from GDPR erasure (document exception in `docs/06-security-compliance.md`)
 
 ### Log Analyst
 - `impersonation.started` and `impersonation.ended_*` events must be logged at `warn` level with `audit: true`
-- Log lines during impersonation must include both `userId` (impersonated) and `impersonatorId` fields
-- Never log the `stepUpCode` (TOTP) — redact via Pino `redact` paths: `body.stepUpCode`
+- Log lines during impersonation must include both `userId` (from `sub`, impersonated) and `impersonatorId` (from `act.sub`) fields
+- Never log the `stepUpCode` (TOTP) — redact via Pino `redact` paths: `body.stepUpCode`, `body.step_up_code`
 - Add `impersonation.*` events to the audit events catalog in `docs/17-log-management.md`
 
 ### Feature Flag Engineer

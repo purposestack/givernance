@@ -33,15 +33,15 @@ The impersonation system must allow a platform admin (`super_admin`) to:
 │                      Fastify 5 API                                     │
 │                                                                        │
 │  Auth middleware:                                                      │
-│   - Decode JWT → extract sub (impersonated user), impersonator_id,    │
-│     impersonation_session_id                                           │
+│   - Decode JWT → extract sub (impersonated user), act.sub (admin),    │
+│     imp_session_id                                                     │
 │   - Validate session is still active in Redis                         │
 │   - Set RLS context from impersonated user's org_id                   │
 │                                                                        │
 │  Audit plugin:                                                         │
-│   - buildAuditEntry() → actor_user_id = impersonated user             │
-│                          impersonator_id = admin UUID                  │
-│                          impersonation_session_id = session UUID       │
+│   - buildAuditEntry() → actor_user_id = sub (impersonated user)       │
+│                          impersonator_id = act.sub (admin UUID)        │
+│                          impersonation_session_id = imp_session_id     │
 └──────────────────────────┬────────────────────────────────────────────┘
                            │
           ┌────────────────┴──────────────────┐
@@ -58,7 +58,7 @@ The impersonation system must allow a platform admin (`super_admin`) to:
 
 ### Recommended: Keycloak Token Exchange (RFC 8693)
 
-Keycloak 24 supports OAuth2 Token Exchange. The super_admin exchanges their own valid access token for a short-lived token representing the target user, with an additional `impersonator_sub` claim injected:
+Keycloak 24 supports OAuth2 Token Exchange. The super_admin exchanges their own valid access token for a short-lived token representing the target user, with the standard RFC 8693 `act` claim injected via a custom Script Mapper:
 
 ```http
 POST /realms/givernance/protocol/openid-connect/token
@@ -74,7 +74,7 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 **Keycloak setup required:**
 - Enable `Token Exchange` feature flag in Keycloak realm settings (`Features → token-exchange`)
 - Create a realm policy granting the `impersonation` role only to the `givernance-api` service account (not all clients)
-- Inject custom `impersonator_sub` claim via a Script Mapper or Hardcoded Mapper on the target client
+- Inject the RFC 8693 `act` claim via a Script Mapper on the `givernance-api` client (detects `token-exchange` grant type, injects `act: { sub: <original_subject> }`)
 - **Note**: Token Exchange is an admin-only feature in Keycloak 24 — requires `realm-management` client role on the service account
 
 ### Fallback: Application-layer impersonation JWT
@@ -82,23 +82,28 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 If Keycloak Token Exchange is not configured in Phase 1:
 
 1. `POST /admin/impersonation` validated by the API
-2. API issues a signed short-lived JWT containing the target user's claims + impersonation fields
+2. API issues a signed short-lived JWT containing the target user's claims + `act` claim + impersonation metadata
 3. JWT stored by reference in Redis: `impersonation:{sessionId}` with TTL = 2h
 4. All subsequent requests validated against Redis (allows instant revocation)
 
 **Migration path**: Start with the application-layer approach in Phase 1; migrate to Keycloak Token Exchange in Phase 2. The token shape is identical either way.
 
-### JWT claims
+### JWT claims (RFC 8693-compliant)
+
+> **RFC 8693 compliance note**: RFC 8693 Section 4.1 distinguishes **impersonation** (admin identity erased, no `act` claim) from **delegation** (both identities preserved via the `act` claim). Givernance requires double-attribution — both identities must survive in the token for audit. This is semantically **delegation**, so we use the standard `act` claim to carry the actor (admin) identity. Application-specific claims (`imp_session_id`, `imp_reason`) remain as custom top-level claims — the RFC does not define equivalents.
+>
+> **Keycloak limitation**: Keycloak 24 (and even 26.2) does not produce the `act` claim natively — `actor_token`/`actor_token_type` parameters are not supported (keycloak/keycloak#12076, open since 2022). Phase 1 (app-layer JWT) injects `act` directly. Phase 2 uses a custom Keycloak Script Mapper (~50 lines JS) to inject `act` during token exchange — no custom Java SPI required.
 
 ```json
 {
   "sub": "<impersonated_user_uuid>",
   "org_id": "<impersonated_tenant_uuid>",
   "role": "<impersonated_user_role>",
-  // email claim omitted — PII not needed in impersonation token; use sub (UUID) for identity
-  "impersonator_id": "<super_admin_uuid>",
-  "impersonation_session_id": "<session_uuid_v7>",
-  "impersonation_reason": "Support ticket #1234 — user cannot access donations",
+  "act": {
+    "sub": "<super_admin_uuid>"
+  },
+  "imp_session_id": "<session_uuid_v7>",
+  "imp_reason": "Support ticket #1234 — user cannot access donations",
   "iat": 1712000000,
   "exp": 1712007200
 }
@@ -106,9 +111,11 @@ If Keycloak Token Exchange is not configured in Phase 1:
 
 Key design decisions:
 - `sub` is the **impersonated user** — RBAC and RLS behave as if the real user is logged in
-- `impersonator_id` is always present — no ambiguity about who is really acting
+- `act.sub` carries the **admin's identity** per RFC 8693 Section 4.1 — the presence of the `act` claim is the canonical signal that a token is a delegation token
+- `imp_session_id` and `imp_reason` are Givernance-specific claims (no RFC equivalent) — shortened from `impersonation_*` to minimize JWT size
 - `exp` is capped at 2h from `iat` — tokens are not renewable, a new INITIATE is required
 - Token is delivered as an `httpOnly` cookie (same as normal session tokens — never `localStorage`)
+- Middleware detects delegation via `decoded.act?.sub` (not a custom claim name) — any RFC 8693-aware tool (OPA policies, SIEM parsers, OAuth2 proxies) will correctly identify these as delegation tokens
 
 ## 4. Session Lifecycle
 
@@ -300,7 +307,7 @@ All mutating endpoints: audit logged (even if the action is the admin ending the
 | Legal basis for impersonation | Legitimate interest (Art. 6(1)(f)) — support and platform integrity; document in the privacy policy |
 | `reason` field | Mandatory, non-blank — creates an auditable paper trail of why the admin accessed the account |
 | Art. 15 data export | `impersonation_sessions` rows included in both: the impersonated user's export (they have the right to know their account was accessed) AND the admin's activity export |
-| `impersonator_id` visible in user's audit export | Yes — transparency is required. The user can see "a platform admin accessed your account on <date> for reason <reason>" |
+| `act.sub` (impersonator) visible in user's audit export | Yes — transparency is required. The user can see "a platform admin accessed your account on <date> for reason <reason>" |
 | User notification | Platform-configurable (default: off). When enabled: post-session email to impersonated user. Notification is sent **after** the session ends, not during (to avoid tipping off a user being investigated for abuse). |
 | Right to erasure | `impersonation_sessions` rows are **audit records exempt from erasure** (same principle as `audit_logs`). Document this exception explicitly in `docs/06-security-compliance.md`. |
 | Retention | 7–10 years (aligned with `audit_logs` retention policy from doc-17) |
@@ -312,7 +319,8 @@ All mutating endpoints: audit logged (even if the action is the admin ending the
 ### For MVP Engineer
 
 - `POST /admin/impersonation` must require `RBAC.SUPER_ADMIN` + TOTP step-up before issuing any token
-- Every Drizzle audit write helper must accept optional `impersonatorId` and `impersonationSessionId` parameters and pass them to the `audit_logs` insert
+- The delegation token must include the RFC 8693 `act` claim: `act: { sub: <admin_uuid> }` — detect delegation via `decoded.act?.sub`, not a custom claim
+- Every Drizzle audit write helper must accept optional `impersonatorId` (extracted from `act.sub`) and `impersonationSessionId` (from `imp_session_id`) parameters and pass them to the `audit_logs` insert
 - BullMQ `job.data._meta` must include `impersonatorId` and `impersonationSessionId` when jobs are enqueued during an impersonation session — workers must propagate these to their own audit writes
 - The impersonation token is delivered as `httpOnly` cookie — never exposed to JavaScript
 - Reason field minimum length: 20 characters — enforced with a Zod validator in `packages/shared/validators`
@@ -321,7 +329,7 @@ All mutating endpoints: audit logged (even if the action is the admin ending the
 
 - Test: impersonated session cannot access resources outside the target tenant (RLS still fully enforced)
 - Test: impersonated session cannot call super_admin-only routes (JWT `role` claim = impersonated user's role)
-- Test: every write during impersonation produces an `audit_logs` row with both `actor_user_id` and `impersonator_id` non-null
+- Test: every write during impersonation produces an `audit_logs` row with both `actor_user_id` and `impersonator_id` (from `act.sub`) non-null
 - Test: session expires after 2h TTL and subsequent requests return 401
 - Test: `POST /admin/impersonation` with `reason` shorter than 20 chars returns 400
 - Test: `POST /admin/impersonation` with wrong TOTP returns 401 + `impersonation.denied` audit event
@@ -349,8 +357,8 @@ All mutating endpoints: audit logged (even if the action is the admin ending the
 ### For Log Analyst
 
 - `impersonation.started` and `impersonation.revoked` must be logged at `warn` level with `audit: true`
-- All log lines during an impersonation session must include both `userId` (impersonated) and `impersonatorId` fields
-- Add `body.stepUpCode` to the Pino redact paths — TOTP codes must never appear in logs
+- All log lines during an impersonation session must include both `userId` (impersonated, from `sub`) and `impersonatorId` (from `act.sub`) fields
+- Add `body.stepUpCode` and `body.step_up_code` to the Pino redact paths — TOTP codes must never appear in logs
 - Add `impersonation.*` events to the audit events catalog in `docs/17-log-management.md`
 - Log the impersonation session ID as a structured field (`impersonationSessionId`) for LogQL correlation
 
@@ -391,8 +399,10 @@ All mutating endpoints: audit logged (even if the action is the admin ending the
 ### Phase 2 (Keycloak Token Exchange)
 
 - [ ] Enable Token Exchange in Keycloak realm configuration
-- [ ] Custom Keycloak mapper for `impersonator_sub` claim
-- [ ] Migrate `POST /admin/impersonation` to use Keycloak Token Exchange
+- [ ] Custom Keycloak Script Mapper to inject RFC 8693 `act` claim (`act: { sub: <original_subject> }`) on `token-exchange` grant type — ~50 lines JS, no custom Java SPI required
+- [ ] Pass `imp_session_id` and `imp_reason` as custom request parameters to the Script Mapper
+- [ ] Migrate `POST /admin/impersonation` to use Keycloak Token Exchange (token shape is identical — `act` claim already used in Phase 1)
 - [ ] Retain Redis session store for instant revocation (Keycloak tokens cannot be instantly revoked)
 - [ ] User notification system (configurable per platform policy)
 - [ ] Admin impersonation dashboard with session history
+- [ ] Monitor keycloak/keycloak#12076 — when native `act` claim support lands, remove the custom Script Mapper
