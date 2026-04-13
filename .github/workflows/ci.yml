@@ -10,6 +10,24 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: givernance
+          POSTGRES_PASSWORD: givernance_dev
+          POSTGRES_DB: givernance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U givernance -d givernance_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://givernance:givernance_dev@localhost:5432/givernance_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -33,6 +51,9 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Run database migrations
+        run: pnpm db:migrate
 
       - name: Test
         run: pnpm test
