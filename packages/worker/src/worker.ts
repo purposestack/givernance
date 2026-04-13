@@ -1,8 +1,8 @@
 /** BullMQ Worker entry point — registers all job processors */
 
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
-import { Worker } from "bullmq";
 import type { Job } from "bullmq";
+import { Worker } from "bullmq";
 import Redis from "ioredis";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
@@ -28,9 +28,7 @@ async function processDomainEvent(job: Job): Promise<void> {
     payload: unknown;
   };
 
-  console.error(
-    `[events] Processing domain event: type=${type} id=${id} tenant=${tenantId}`,
-  );
+  console.error(`[events] Processing domain event: type=${type} id=${id} tenant=${tenantId}`);
   console.error(`[events] Payload: ${JSON.stringify(payload)}`);
 }
 
