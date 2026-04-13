@@ -5,6 +5,8 @@
 
 import { integer, numeric, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 
+export { outboxEvents } from "./outbox.js";
+
 /** Constituents — donors, volunteers, members, beneficiaries */
 export const constituents = pgTable("constituents", {
   id: uuid("id").primaryKey().defaultRandom(),
