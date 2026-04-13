@@ -4,8 +4,12 @@ import cors from "@fastify/cors";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify from "fastify";
+import { auditRoutes } from "./modules/audit/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
 import { healthRoutes } from "./modules/health/routes.js";
+import { invitationRoutes } from "./modules/invitations/routes.js";
+import { tenantRoutes } from "./modules/tenants/routes.js";
+import { userRoutes } from "./modules/users/routes.js";
 import { auditPlugin } from "./plugins/audit.js";
 import { authPlugin } from "./plugins/auth.js";
 import { rlsPlugin } from "./plugins/rls.js";
@@ -14,13 +18,13 @@ import { rlsPlugin } from "./plugins/rls.js";
 export async function createServer() {
   const app = Fastify({
     logger: {
-      level: process.env.LOG_LEVEL ?? "info",
+      level: process.env["LOG_LEVEL"] ?? "info",
     },
   });
 
   // --- Core plugins ---
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
+    origin: process.env["CORS_ORIGIN"] ?? "http://localhost:3000",
     credentials: true,
   });
 
@@ -31,7 +35,7 @@ export async function createServer() {
         description: "CRM API for European nonprofits",
         version: "0.1.0",
       },
-      servers: [{ url: `http://localhost:${process.env.PORT ?? 4000}` }],
+      servers: [{ url: `http://localhost:${process.env["PORT"] ?? 4000}` }],
     },
   });
 
@@ -47,6 +51,10 @@ export async function createServer() {
   // --- Routes ---
   await app.register(healthRoutes);
   await app.register(constituentRoutes, { prefix: "/v1" });
+  await app.register(tenantRoutes, { prefix: "/v1" });
+  await app.register(userRoutes, { prefix: "/v1" });
+  await app.register(invitationRoutes, { prefix: "/v1" });
+  await app.register(auditRoutes, { prefix: "/v1" });
 
   return app;
 }
