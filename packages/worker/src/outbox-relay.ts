@@ -9,13 +9,13 @@
  *   3. Mark rows as 'completed' (or 'failed' on error)
  */
 
-import { outboxEvents } from "@givernance/shared/schema";
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
-import { eq, asc } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
+import { outboxEvents } from "@givernance/shared/schema";
 import { Queue } from "bullmq";
+import { asc, eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
 import Redis from "ioredis";
+import pg from "pg";
 
 const POLL_INTERVAL_MS = Number(process.env.OUTBOX_POLL_INTERVAL_MS ?? "500");
 const BATCH_SIZE = 100;
@@ -47,16 +47,20 @@ async function relayPendingEvents(): Promise<number> {
 
   for (const row of pending) {
     try {
-      await eventsQueue.add(row.type, {
-        id: row.id,
-        tenantId: row.tenantId,
-        type: row.type,
-        payload: row.payload,
-      }, {
-        jobId: row.id,
-        removeOnComplete: 1000,
-        removeOnFail: 5000,
-      });
+      await eventsQueue.add(
+        row.type,
+        {
+          id: row.id,
+          tenantId: row.tenantId,
+          type: row.type,
+          payload: row.payload,
+        },
+        {
+          jobId: row.id,
+          removeOnComplete: 1000,
+          removeOnFail: 5000,
+        },
+      );
 
       await db
         .update(outboxEvents)
@@ -108,7 +112,10 @@ async function start(): Promise<void> {
 function shutdown(): void {
   console.error("[outbox-relay] Shutting down…");
   running = false;
-  void eventsQueue.close().then(() => redis.disconnect()).then(() => pool.end());
+  void eventsQueue
+    .close()
+    .then(() => redis.disconnect())
+    .then(() => pool.end());
 }
 
 process.on("SIGINT", shutdown);
