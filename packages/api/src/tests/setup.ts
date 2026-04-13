@@ -5,4 +5,5 @@
 
 process.env.DATABASE_URL ??= "postgresql://givernance:givernance_dev@localhost:5432/givernance_test";
 process.env.JWT_SECRET ??= "test-secret";
+process.env.ADMIN_SECRET ??= "test-secret";
 process.env.LOG_LEVEL ??= "silent";
