@@ -5,7 +5,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import { db } from "../lib/db.js";
 
-/** Validate UUID format to prevent injection in SET LOCAL (which cannot use $1 params) */
+/** Validate UUID format to prevent injection */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function rls(app: FastifyInstance) {
@@ -14,11 +14,11 @@ async function rls(app: FastifyInstance) {
 
     const { orgId, userId } = request.auth;
 
-    // SET LOCAL does not support parameterized queries — validate UUIDs to prevent injection
     if (!UUID_RE.test(orgId) || !UUID_RE.test(userId)) return;
 
-    await db.execute(sql.raw(`SET LOCAL app.current_org_id = '${orgId}'`));
-    await db.execute(sql.raw(`SET LOCAL app.current_user_id = '${userId}'`));
+    // Use parameterized set_config() instead of SET LOCAL with string interpolation (C1 fix)
+    await db.execute(sql`SELECT set_config('app.current_org_id', ${orgId}, true)`);
+    await db.execute(sql`SELECT set_config('app.current_user_id', ${userId}, true)`);
   });
 }
 

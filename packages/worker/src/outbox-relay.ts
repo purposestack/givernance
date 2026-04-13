@@ -4,7 +4,7 @@
  *
  * Runs on a configurable interval (default 500ms per ADR-005).
  * Each cycle:
- *   1. SELECT rows with status = 'pending' (batch of 100, oldest first)
+ *   1. SELECT rows with status = 'pending' FOR UPDATE SKIP LOCKED (C5 fix — prevents duplicate delivery)
  *   2. Enqueue each into BullMQ givernance_events queue
  *   3. Mark rows as 'completed' (or 'failed' on error)
  */
@@ -12,7 +12,7 @@
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
 import { outboxEvents } from "@givernance/shared/schema";
 import { Queue } from "bullmq";
-import { asc, eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import Redis from "ioredis";
 import pg from "pg";
@@ -36,22 +36,31 @@ const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
 const eventsQueue = new Queue(QUEUE_NAMES.EVENTS, { connection: redis });
 
 async function relayPendingEvents(): Promise<number> {
-  const pending = await db
-    .select()
-    .from(outboxEvents)
-    .where(eq(outboxEvents.status, "pending"))
-    .orderBy(asc(outboxEvents.createdAt))
-    .limit(BATCH_SIZE);
+  // SELECT FOR UPDATE SKIP LOCKED prevents multiple relay instances from racing
+  // on the same rows (C5 fix). Each instance locks different pending rows.
+  const pending = await db.execute<{
+    id: string;
+    tenant_id: string;
+    type: string;
+    payload: unknown;
+  }>(
+    sql`SELECT id, tenant_id, type, payload
+        FROM outbox_events
+        WHERE status = 'pending'
+        ORDER BY created_at ASC
+        LIMIT ${BATCH_SIZE}
+        FOR UPDATE SKIP LOCKED`,
+  );
 
   let processed = 0;
 
-  for (const row of pending) {
+  for (const row of pending.rows) {
     try {
       await eventsQueue.add(
         row.type,
         {
           id: row.id,
-          tenantId: row.tenantId,
+          tenantId: row.tenant_id,
           type: row.type,
           payload: row.payload,
         },
@@ -93,13 +102,13 @@ async function relayPendingEvents(): Promise<number> {
 let running = true;
 
 async function start(): Promise<void> {
-  console.error(`[outbox-relay] Starting — polling every ${POLL_INTERVAL_MS}ms`);
+  console.warn(`[outbox-relay] Starting — polling every ${POLL_INTERVAL_MS}ms`);
 
   while (running) {
     try {
       const count = await relayPendingEvents();
       if (count > 0) {
-        console.error(`[outbox-relay] Relayed ${count} events`);
+        console.warn(`[outbox-relay] Relayed ${count} events`);
       }
     } catch (err) {
       console.error("[outbox-relay] Poll cycle error:", err);
@@ -110,7 +119,7 @@ async function start(): Promise<void> {
 }
 
 function shutdown(): void {
-  console.error("[outbox-relay] Shutting down…");
+  console.warn("[outbox-relay] Shutting down…");
   running = false;
   void eventsQueue
     .close()

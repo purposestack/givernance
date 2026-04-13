@@ -12,6 +12,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -51,7 +52,11 @@ export const users = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("users_org_id_idx").on(table.orgId), index("users_email_idx").on(table.email)],
+  (table) => [
+    index("users_org_id_idx").on(table.orgId),
+    index("users_email_idx").on(table.email),
+    unique("users_org_id_email_uniq").on(table.orgId, table.email),
+  ],
 );
 
 // ─── Invitations ──────────────────────────────────────────────────────────────
@@ -85,7 +90,9 @@ export const auditLogs = pgTable(
   "audit_logs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    orgId: uuid("org_id").notNull(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
     userId: varchar("user_id", { length: 255 }),
     action: varchar("action", { length: 255 }).notNull(),
     resourceType: varchar("resource_type", { length: 100 }),
@@ -109,7 +116,9 @@ export { outboxEvents } from "./outbox.js";
 /** Constituents — donors, volunteers, members, beneficiaries */
 export const constituents = pgTable("constituents", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").notNull(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
   firstName: varchar("first_name", { length: 255 }).notNull(),
   lastName: varchar("last_name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
@@ -123,7 +132,9 @@ export const constituents = pgTable("constituents", {
 /** Donations — financial contributions linked to a constituent */
 export const donations = pgTable("donations", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").notNull(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
   constituentId: uuid("constituent_id")
     .notNull()
     .references(() => constituents.id),

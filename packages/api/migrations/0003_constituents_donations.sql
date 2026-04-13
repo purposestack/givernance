@@ -1,9 +1,9 @@
 -- Migration: 0003_constituents_donations
--- Creates constituents and donations tables (missing from prior migrations)
+-- Creates constituents and donations tables
 
 -- ─── Constituents ────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS constituents (
+CREATE TABLE constituents (
   id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id      UUID         NOT NULL,
   first_name  VARCHAR(255) NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS constituents (
 
 -- ─── Donations ───────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS donations (
+CREATE TABLE donations (
   id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id          UUID         NOT NULL,
   constituent_id  UUID         NOT NULL REFERENCES constituents(id),

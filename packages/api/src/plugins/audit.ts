@@ -1,7 +1,7 @@
 /** Audit log middleware — persists all mutating requests to audit_logs */
 
+import { createHash } from "node:crypto";
 import { auditLogs } from "@givernance/shared/schema";
-import { createHash } from "crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import { db } from "../lib/db.js";
@@ -32,8 +32,13 @@ async function audit(app: FastifyInstance) {
         userAgent: request.headers["user-agent"] ?? undefined,
       });
     } catch (err) {
-      // Log but never fail the request due to an audit error
-      request.log.error({ err, method: request.method, url: request.url }, "audit insert failed");
+      // Log error prominently — GDPR Art. 5(2) requires accountability (M3 fix).
+      // We still don't fail the request, but we emit a structured error at 'error' level
+      // so alerting can catch audit failures.
+      request.log.error(
+        { err, method: request.method, url: request.url, audit: "INSERT_FAILED" },
+        "CRITICAL: audit log insert failed — GDPR accountability gap",
+      );
     }
 
     request.log.info(

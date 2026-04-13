@@ -6,38 +6,55 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+const mockTenant = {
+  id: "aaaaaaaa-0000-0000-0000-000000000001",
+  name: "Test Org",
+  slug: "test-org",
+  plan: "starter",
+  status: "active",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
 // Mock DB module before importing the server — Vitest hoists vi.mock() calls.
-vi.mock("../../lib/db.js", () => ({
-  db: {
-    execute: vi.fn().mockResolvedValue([]),
-    insert: vi.fn(() => ({
-      values: vi.fn(() => ({
-        returning: vi.fn().mockResolvedValue([
-          {
-            id: "aaaaaaaa-0000-0000-0000-000000000001",
-            name: "Test Org",
-            slug: "test-org",
-            plan: "starter",
-            status: "active",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ]),
-      })),
+vi.mock("../../lib/db.js", () => {
+  const insertChain = {
+    values: vi.fn(() => ({
+      returning: vi.fn().mockResolvedValue([mockTenant]),
     })),
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        where: vi.fn().mockResolvedValue([]),
-        orderBy: vi.fn(() => ({ limit: vi.fn(() => ({ offset: vi.fn().mockResolvedValue([]) })) })),
-      })),
+  };
+  const selectChain = {
+    from: vi.fn(() => ({
+      where: vi.fn().mockResolvedValue([]),
+      orderBy: vi.fn(() => ({ limit: vi.fn(() => ({ offset: vi.fn().mockResolvedValue([]) })) })),
     })),
-    update: vi.fn(() => ({
-      set: vi.fn(() => ({
-        where: vi.fn().mockResolvedValue([]),
+  };
+  return {
+    db: {
+      execute: vi.fn().mockResolvedValue([]),
+      insert: vi.fn(() => insertChain),
+      select: vi.fn(() => selectChain),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([]),
+        })),
       })),
-    })),
-  },
-}));
+      delete: vi.fn(() => ({
+        where: vi.fn(() => ({
+          returning: vi.fn().mockResolvedValue([]),
+        })),
+      })),
+      // Support db.transaction(async (tx) => ...) by passing the same mock as tx
+      transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          insert: vi.fn(() => insertChain),
+          select: vi.fn(() => selectChain),
+        };
+        return fn(tx);
+      }),
+    },
+  };
+});
 
 // Import server after mocks are registered
 import { createServer } from "../../server.js";
