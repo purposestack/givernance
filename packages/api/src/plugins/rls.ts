@@ -16,9 +16,18 @@ async function rls(app: FastifyInstance) {
 
     if (!UUID_RE.test(orgId) || !UUID_RE.test(userId)) return;
 
-    // Use parameterized set_config() instead of SET LOCAL with string interpolation (C1 fix)
-    await db.execute(sql`SELECT set_config('app.current_org_id', ${orgId}, true)`);
-    await db.execute(sql`SELECT set_config('app.current_user_id', ${userId}, true)`);
+    // Session-scoped (false) so the setting persists across queries within the request lifecycle.
+    // Transaction-scoped (true) was lost immediately because Drizzle creates new transactions. (B1 fix)
+    await db.execute(sql`SELECT set_config('app.current_org_id', ${orgId}, false)`);
+    await db.execute(sql`SELECT set_config('app.current_user_id', ${userId}, false)`);
+  });
+
+  // Reset session-scoped settings on response so pooled connections don't leak tenant context (B1 fix)
+  app.addHook("onResponse", async (request) => {
+    if (request.auth?.orgId) {
+      await db.execute(sql`SELECT set_config('app.current_org_id', '', false)`);
+      await db.execute(sql`SELECT set_config('app.current_user_id', '', false)`);
+    }
   });
 }
 

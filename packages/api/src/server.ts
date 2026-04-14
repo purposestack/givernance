@@ -1,9 +1,11 @@
 /** Fastify app factory — registers all plugins and routes */
 
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify from "fastify";
+import { redis } from "./lib/redis.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
 import { healthRoutes } from "./modules/health/routes.js";
@@ -26,6 +28,13 @@ export async function createServer() {
   await app.register(cors, {
     origin: process.env["CORS_ORIGIN"] ?? "http://localhost:3000",
     credentials: true,
+  });
+
+  await app.register(rateLimit, {
+    global: false, // Only apply to routes that opt in
+    max: 100,
+    timeWindow: "1 minute",
+    redis,
   });
 
   await app.register(swagger, {
