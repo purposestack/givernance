@@ -3,42 +3,16 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
+import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
 
 let app: FastifyInstance;
-
-const ORG_A = "00000000-0000-0000-0000-000000000001";
-const ORG_B = "00000000-0000-0000-0000-000000000002";
-const USER_A = "00000000-0000-0000-0000-000000000099";
-const USER_B = "00000000-0000-0000-0000-000000000098";
-
-function signToken(app: FastifyInstance, claims: Record<string, unknown> = {}) {
-  return app.jwt.sign({
-    sub: USER_A,
-    org_id: ORG_A,
-    realm_access: { roles: ["admin"] },
-    email: "user-a@example.org",
-    role: "org_admin",
-    ...claims,
-  });
-}
-
-function authHeader(token: string) {
-  return { authorization: `Bearer ${token}` };
-}
 
 let constituentIdA: string;
 
 beforeAll(async () => {
   app = await createServer();
   await app.ready();
-
-  // Ensure test tenants exist
-  await db.execute(
-    sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_A}, 'Org A', 'test-org-a') ON CONFLICT (id) DO NOTHING`,
-  );
-  await db.execute(
-    sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_B}, 'Org B', 'test-org-b') ON CONFLICT (id) DO NOTHING`,
-  );
+  await ensureTestTenants();
 
   // Create a constituent for nominative campaign tests
   const tokenA = signToken(app);
@@ -132,6 +106,18 @@ describe("Campaigns CRUD", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("POST /v1/campaigns/:id/documents returns 400 for invalid UUID", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns/not-a-valid-uuid/documents",
+      headers: authHeader(token),
+      payload: { constituentIds: [] },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
   it("CampaignDocumentsRequested outbox event is emitted", async () => {
     const rows = await db.execute(
       sql`SELECT type, payload FROM outbox_events
@@ -144,7 +130,7 @@ describe("Campaigns CRUD", () => {
   });
 });
 
-// ─── Campaigns RLS Tenant Isolation ────────────────────────────────────────
+// ─── Campaigns RLS Tenant Isolation (QA #4) ─────────────────────────────────
 
 describe("Campaigns RLS tenant isolation", () => {
   let campaignInA: string;
@@ -161,7 +147,7 @@ describe("Campaigns RLS tenant isolation", () => {
   });
 
   it("Tenant B list does not include Tenant A campaigns", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "GET",
       url: "/v1/campaigns",
@@ -175,7 +161,7 @@ describe("Campaigns RLS tenant isolation", () => {
   });
 
   it("Tenant B cannot trigger documents for Tenant A campaign", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "POST",
       url: `/v1/campaigns/${campaignInA}/documents`,
@@ -184,6 +170,22 @@ describe("Campaigns RLS tenant isolation", () => {
     });
 
     expect(res.statusCode).toBe(404);
+  });
+
+  it("Tenant A campaign ID is not accessible by Tenant B via document trigger (GET-by-ID equivalent)", async () => {
+    // No GET /v1/campaigns/:id route exists yet — testing via documents endpoint
+    // which requires knowing the campaign ID and returns 404 if RLS blocks it
+    const tokenB = signTokenB(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${campaignInA}/documents`,
+      headers: authHeader(tokenB),
+      payload: { constituentIds: [] },
+    });
+
+    expect(res.statusCode).toBe(404);
+    const body = res.json<{ detail: string }>();
+    expect(body.detail).toBe("Campaign not found");
   });
 });
 

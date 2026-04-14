@@ -2,47 +2,22 @@ import { funds } from "@givernance/shared/schema";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
+import { db, withTenantContext } from "../../lib/db.js";
 import { createServer } from "../../server.js";
+import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
 
 let app: FastifyInstance;
 
-const ORG_A = "00000000-0000-0000-0000-000000000001";
-const ORG_B = "00000000-0000-0000-0000-000000000002";
-const USER_A = "00000000-0000-0000-0000-000000000099";
-const USER_B = "00000000-0000-0000-0000-000000000098";
-
-function signToken(app: FastifyInstance, claims: Record<string, unknown> = {}) {
-  return app.jwt.sign({
-    sub: USER_A,
-    org_id: ORG_A,
-    realm_access: { roles: ["admin"] },
-    email: "user-a@example.org",
-    role: "org_admin",
-    ...claims,
-  });
-}
-
-function authHeader(token: string) {
-  return { authorization: `Bearer ${token}` };
-}
-
 let constituentIdA: string;
+let constituentIdB: string;
 let fundIdA: string;
 
 beforeAll(async () => {
   app = await createServer();
   await app.ready();
+  await ensureTestTenants();
 
-  // Ensure test tenants exist
-  await db.execute(
-    sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_A}, 'Org A', 'test-org-a') ON CONFLICT (id) DO NOTHING`,
-  );
-  await db.execute(
-    sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_B}, 'Org B', 'test-org-b') ON CONFLICT (id) DO NOTHING`,
-  );
-
-  // Create constituents for donation tests
+  // Create constituent in Tenant A
   const tokenA = signToken(app);
   const res1 = await app.inject({
     method: "POST",
@@ -52,14 +27,25 @@ beforeAll(async () => {
   });
   constituentIdA = res1.json<{ data: { id: string } }>().data.id;
 
-  // Create a fund for allocation tests
-  await db.execute(sql`SELECT set_config('app.current_org_id', ${ORG_A}, false)`);
-  const [fund] = await db
-    .insert(funds)
-    .values({ orgId: ORG_A, name: "General Fund", type: "unrestricted" })
-    .returning();
-  // biome-ignore lint/style/noNonNullAssertion: test setup — insert always returns a row
-  fundIdA = fund!.id;
+  // Create constituent in Tenant B (for cross-tenant FK test)
+  const tokenB = signTokenB(app);
+  const res2 = await app.inject({
+    method: "POST",
+    url: "/v1/constituents?force=true",
+    headers: authHeader(tokenB),
+    payload: { firstName: "Donor", lastName: "Beta", type: "donor" },
+  });
+  constituentIdB = res2.json<{ data: { id: string } }>().data.id;
+
+  // Create a fund for allocation tests (use withTenantContext instead of session-scoped set_config)
+  await withTenantContext(ORG_A, async (tx) => {
+    const [fund] = await tx
+      .insert(funds)
+      .values({ orgId: ORG_A, name: "General Fund", type: "unrestricted" })
+      .returning();
+    // biome-ignore lint/style/noNonNullAssertion: test setup — insert always returns a row
+    fundIdA = fund!.id;
+  });
 });
 
 afterAll(async () => {
@@ -187,6 +173,17 @@ describe("Donations CRUD", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("GET /v1/donations/:id returns 400 for invalid UUID", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations/not-a-valid-uuid",
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
   it("DonationCreated outbox event is emitted", async () => {
     const rows = await db.execute(
       sql`SELECT type, payload FROM outbox_events
@@ -220,7 +217,7 @@ describe("Donations RLS tenant isolation", () => {
   });
 
   it("Tenant B cannot GET a donation from Tenant A", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "GET",
       url: `/v1/donations/${donationInA}`,
@@ -231,7 +228,7 @@ describe("Donations RLS tenant isolation", () => {
   });
 
   it("Tenant B list does not include Tenant A donations", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "GET",
       url: "/v1/donations",
@@ -242,6 +239,27 @@ describe("Donations RLS tenant isolation", () => {
     const body = res.json<{ data: { id: string }[] }>();
     const ids = body.data.map((d) => d.id);
     expect(ids).not.toContain(donationInA);
+  });
+});
+
+// ─── Cross-tenant FK rejection (QA #2) ─────────────────────────────────────
+
+describe("Donations cross-tenant FK rejection", () => {
+  it("POST /v1/donations rejects constituentId from another tenant", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdB,
+        amountCents: 1000,
+        currency: "EUR",
+      },
+    });
+
+    // constituentIdB belongs to Tenant B — Tenant A must not reference it
+    expect(res.statusCode).toBe(404);
   });
 });
 
@@ -339,6 +357,17 @@ describe("Pledges CRUD", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("GET /v1/pledges/:id/installments returns 400 for invalid UUID", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/pledges/not-a-valid-uuid/installments",
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
   it("PledgeCreated outbox event is emitted", async () => {
     const rows = await db.execute(
       sql`SELECT type FROM outbox_events
@@ -371,7 +400,7 @@ describe("Pledges RLS tenant isolation", () => {
   });
 
   it("Tenant B cannot GET installments for Tenant A pledge", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "GET",
       url: `/v1/pledges/${pledgeInA}/installments`,
