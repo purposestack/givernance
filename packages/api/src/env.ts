@@ -58,4 +58,9 @@ if (!Value.Check(EnvSchema, value)) {
   process.exit(1);
 }
 
+if (process.env.NODE_ENV === "production" && !value.DATABASE_URL_APP) {
+  console.error("[api] DATABASE_URL_APP is strictly required in production for RLS isolation.");
+  process.exit(1);
+}
+
 export const env: ApiEnv = value;
