@@ -9,4 +9,4 @@
 | Integration fragility | M | M | Adapter pattern + retry/idempotency |
 | Support burden at launch | M | M | Onboarding playbooks + knowledge base |
 | Node.js TypeScript performance vs compiled languages | L | M | Fastify 5 (one of fastest Node.js frameworks), connection pooling via PgBouncer, horizontal scaling |
-| Type safety at runtime | M | M | Zod validation at API boundaries + Drizzle ORM type-safe queries |
+| Type safety at runtime | M | M | TypeBox validation at API boundaries + Drizzle ORM type-safe queries |
