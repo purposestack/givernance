@@ -43,6 +43,13 @@
       "when": 1744502405000,
       "tag": "0006_constituents_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1712910000000,
+      "tag": "0007_enable_pg_trgm",
+      "breakpoints": true
     }
   ]
 }
