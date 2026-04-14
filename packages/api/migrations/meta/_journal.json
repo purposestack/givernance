@@ -45,28 +45,28 @@
       "breakpoints": true
     },
     {
-      "idx": 7,
+      "idx": 6,
       "version": "7",
       "when": 1712910000000,
       "tag": "0007_enable_pg_trgm",
       "breakpoints": true
     },
     {
-      "idx": 8,
+      "idx": 7,
       "version": "7",
       "when": 1712910001000,
       "tag": "0008_donations_core",
       "breakpoints": true
     },
     {
-      "idx": 9,
+      "idx": 8,
       "version": "7",
       "when": 1712910002000,
       "tag": "0009_receipts",
       "breakpoints": true
     },
     {
-      "idx": 10,
+      "idx": 9,
       "version": "7",
       "when": 1712910003000,
       "tag": "0010_postal_campaigns",
