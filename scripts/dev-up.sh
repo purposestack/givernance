@@ -35,6 +35,22 @@ pnpm db:migrate
 echo "Migrations complete."
 
 echo ""
+echo "Creating test database if it doesn't exist..."
+docker compose exec -T postgres psql -U "${POSTGRES_USER:-givernance}" -d postgres \
+  -tc "SELECT 1 FROM pg_database WHERE datname='givernance_test'" | grep -q 1 || \
+  docker compose exec -T postgres psql -U "${POSTGRES_USER:-givernance}" -d postgres \
+  -c "CREATE DATABASE givernance_test"
+
+echo "Running migrations on test database..."
+DATABASE_URL="postgresql://${POSTGRES_USER:-givernance}:${POSTGRES_PASSWORD:-givernance_dev}@localhost:5432/givernance_test" \
+  pnpm --filter @givernance/api db:migrate
+
+echo "Relaxing Keycloak SSL requirement for local dev..."
+docker compose exec -T postgres psql -U "${POSTGRES_USER:-givernance}" -d "${POSTGRES_DB:-givernance}" \
+  -c "UPDATE realm SET ssl_required='NONE' WHERE name='master';" > /dev/null 2>&1 || true
+docker compose restart keycloak > /dev/null
+
+echo ""
 echo "====================================="
 echo " Givernance — Local Dev Stack"
 echo "====================================="

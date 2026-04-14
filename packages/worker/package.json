@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsup src/worker.ts src/outbox-relay.ts --format esm",
-    "dev": "tsx watch src/worker.ts",
+    "dev": "tsx --env-file=../../.env watch src/worker.ts",
     "dev:relay": "tsx watch src/outbox-relay.ts",
     "typecheck": "tsc --noEmit"
   },
