@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { auditLogs } from "@givernance/shared/schema";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
-import { db } from "../lib/db.js";
+import { withTenantContext } from "../lib/db.js";
 
 /** Extract the top-level resource type from a /v1/<resource>/... URL */
 function extractResourceType(url: string): string | undefined {
@@ -23,13 +23,15 @@ async function audit(app: FastifyInstance) {
     const ipHash = createHash("sha256").update(request.ip).digest("hex").slice(0, 16);
 
     try {
-      await db.insert(auditLogs).values({
-        orgId: request.auth.orgId,
-        userId: request.auth.userId,
-        action: `${request.method}:${routeUrl}`,
-        resourceType: extractResourceType(routeUrl),
-        ipHash,
-        userAgent: request.headers["user-agent"] ?? undefined,
+      await withTenantContext(request.auth.orgId, async (tx) => {
+        await tx.insert(auditLogs).values({
+          orgId: request.auth!.orgId,
+          userId: request.auth!.userId,
+          action: `${request.method}:${routeUrl}`,
+          resourceType: extractResourceType(routeUrl),
+          ipHash,
+          userAgent: request.headers["user-agent"] ?? undefined,
+        });
       });
     } catch (err) {
       // Log error prominently — GDPR Art. 5(2) requires accountability (M3 fix).

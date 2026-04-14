@@ -4,7 +4,7 @@ import { invitations, users } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { db } from "../../lib/db.js";
+import { db, withTenantContext } from "../../lib/db.js";
 import { requireOrgAdmin } from "../../lib/guards.js";
 
 const CreateInvitationBody = Type.Object({
@@ -28,29 +28,31 @@ export async function invitationRoutes(app: FastifyInstance) {
     "/invitations",
     { preHandler: requireOrgAdmin, schema: { body: CreateInvitationBody } },
     async (request, reply) => {
-      // requireOrgAdmin guarantees auth is non-null
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
       const body = request.body as { email: string; role?: string };
 
-      // Look up the inviting user's internal ID
-      const [inviter] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
+      const invitation = await withTenantContext(orgId, async (tx) => {
+        const [inviter] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
 
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-      const [invitation] = await db
-        .insert(invitations)
-        .values({
-          orgId,
-          email: body.email,
-          role: (body.role as "org_admin" | "user" | "viewer") ?? "user",
-          invitedById: inviter?.id ?? null,
-          expiresAt,
-        })
-        .returning();
+        const [row] = await tx
+          .insert(invitations)
+          .values({
+            orgId,
+            email: body.email,
+            role: (body.role as "org_admin" | "user" | "viewer") ?? "user",
+            invitedById: inviter?.id ?? null,
+            expiresAt,
+          })
+          .returning();
+
+        return row;
+      });
 
       return reply.status(201).send({ data: invitation });
     },
@@ -59,6 +61,11 @@ export async function invitationRoutes(app: FastifyInstance) {
   /**
    * POST /v1/invitations/:token/accept — accept an invitation (no auth required)
    * The token itself is the credential. Creates a user record in the tenant.
+   *
+   * Invitation lookup uses `db` directly (no tenant context) because this endpoint
+   * is unauthenticated and the orgId isn't known until the invitation is found.
+   * FORCE RLS is intentionally omitted on invitations for this reason.
+   * Writes to users/invitations then use withTenantContext for RLS compliance.
    */
   app.post(
     "/invitations/:token/accept",
@@ -70,6 +77,7 @@ export async function invitationRoutes(app: FastifyInstance) {
       const { token } = request.params as { token: string };
       const body = request.body as { firstName: string; lastName: string };
 
+      // Step 1: Look up invitation without tenant context (no FORCE RLS on invitations)
       const [invitation] = await db
         .select()
         .from(invitations)
@@ -93,21 +101,26 @@ export async function invitationRoutes(app: FastifyInstance) {
         });
       }
 
-      const [user] = await db
-        .insert(users)
-        .values({
-          orgId: invitation.orgId,
-          email: invitation.email,
-          firstName: body.firstName,
-          lastName: body.lastName,
-          role: invitation.role,
-        })
-        .returning();
+      // Step 2: Create user and mark invitation accepted within tenant context
+      const user = await withTenantContext(invitation.orgId, async (tx) => {
+        const [newUser] = await tx
+          .insert(users)
+          .values({
+            orgId: invitation.orgId,
+            email: invitation.email,
+            firstName: body.firstName,
+            lastName: body.lastName,
+            role: invitation.role,
+          })
+          .returning();
 
-      await db
-        .update(invitations)
-        .set({ acceptedAt: new Date() })
-        .where(eq(invitations.id, invitation.id));
+        await tx
+          .update(invitations)
+          .set({ acceptedAt: new Date() })
+          .where(eq(invitations.id, invitation.id));
+
+        return newUser;
+      });
 
       return reply.status(201).send({ data: user });
     },

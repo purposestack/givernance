@@ -4,7 +4,7 @@ import { outboxEvents, users } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { db } from "../../lib/db.js";
+import { withTenantContext } from "../../lib/db.js";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 
 const CreateUserBody = Type.Object({
@@ -23,13 +23,16 @@ const UpdateRoleBody = Type.Object({
 export async function userRoutes(app: FastifyInstance) {
   /** GET /v1/users/me — current user profile (requires JWT) */
   app.get("/users/me", { preHandler: requireAuth }, async (request, reply) => {
-    // requireAuth guarantees auth is non-null
     const userId = request.auth?.userId as string;
     const orgId = request.auth?.orgId as string;
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
+
+    const user = await withTenantContext(orgId, async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(users)
+        .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
+      return row;
+    });
 
     if (!user) {
       return reply.status(404).send({
@@ -46,7 +49,9 @@ export async function userRoutes(app: FastifyInstance) {
   /** GET /v1/users — list users in tenant (org_admin only) */
   app.get("/users", { preHandler: requireOrgAdmin }, async (request, reply) => {
     const orgId = request.auth?.orgId as string;
-    const all = await db.select().from(users).where(eq(users.orgId, orgId));
+    const all = await withTenantContext(orgId, async (tx) => {
+      return tx.select().from(users).where(eq(users.orgId, orgId));
+    });
     return reply.send({ data: all });
   });
 
@@ -63,8 +68,8 @@ export async function userRoutes(app: FastifyInstance) {
         role?: string;
       };
 
-      // Transactional outbox: insert user + outbox event in same transaction (C4 fix)
-      const result = await db.transaction(async (tx) => {
+      // withTenantContext already wraps in a transaction — use tx for outbox pattern
+      const result = await withTenantContext(orgId, async (tx) => {
         const [inserted] = await tx
           .insert(users)
           .values({
@@ -98,11 +103,14 @@ export async function userRoutes(app: FastifyInstance) {
       const { id } = request.params as { id: string };
       const body = request.body as { role: "org_admin" | "user" | "viewer" };
 
-      const [updated] = await db
-        .update(users)
-        .set({ role: body.role, updatedAt: new Date() })
-        .where(and(eq(users.id, id), eq(users.orgId, orgId)))
-        .returning();
+      const updated = await withTenantContext(orgId, async (tx) => {
+        const [row] = await tx
+          .update(users)
+          .set({ role: body.role, updatedAt: new Date() })
+          .where(and(eq(users.id, id), eq(users.orgId, orgId)))
+          .returning();
+        return row;
+      });
 
       if (!updated) {
         return reply.status(404).send({
@@ -122,10 +130,13 @@ export async function userRoutes(app: FastifyInstance) {
     const orgId = request.auth?.orgId as string;
     const { id } = request.params as { id: string };
 
-    const [deleted] = await db
-      .delete(users)
-      .where(and(eq(users.id, id), eq(users.orgId, orgId)))
-      .returning();
+    const deleted = await withTenantContext(orgId, async (tx) => {
+      const [row] = await tx
+        .delete(users)
+        .where(and(eq(users.id, id), eq(users.orgId, orgId)))
+        .returning();
+      return row;
+    });
 
     if (!deleted) {
       return reply.status(404).send({

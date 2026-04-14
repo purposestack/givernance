@@ -2,7 +2,7 @@
 
 import { outboxEvents, tenants } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../../lib/db.js";
 import { requireAdminSecret } from "../../lib/guards.js";
@@ -23,7 +23,9 @@ export async function tenantRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const body = request.body as { name: string; slug: string; plan?: string };
 
-      // Transactional outbox: insert tenant + outbox event in same transaction (C4 fix)
+      // Transactional outbox: insert tenant + outbox event in same transaction.
+      // outbox_events has FORCE RLS, so we set tenant context within the transaction
+      // using the newly created tenant's ID.
       const result = await db.transaction(async (tx) => {
         const [tenant] = await tx
           .insert(tenants)
@@ -32,6 +34,9 @@ export async function tenantRoutes(app: FastifyInstance) {
 
         // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row for single insert
         const t = tenant!;
+
+        // Set RLS context for outbox_events insert (FORCE RLS is active on that table)
+        await tx.execute(sql`SELECT set_config('app.current_org_id', ${t.id}, true)`);
         await tx.insert(outboxEvents).values({
           tenantId: t.id,
           type: "tenant.created",
