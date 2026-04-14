@@ -1,48 +1,61 @@
 /** Strict environment validation for the API process — crash early on missing vars */
 
-import { z } from "zod";
+import { type Static, Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 
-const envSchema = z.object({
+const LogLevel = Type.Union(
+  [
+    Type.Literal("fatal"),
+    Type.Literal("error"),
+    Type.Literal("warn"),
+    Type.Literal("info"),
+    Type.Literal("debug"),
+    Type.Literal("trace"),
+    Type.Literal("silent"),
+  ],
+  { default: "info" },
+);
+
+const EnvSchema = Type.Object({
   /** PostgreSQL connection string */
-  DATABASE_URL: z.string().url(),
+  DATABASE_URL: Type.String({ minLength: 1 }),
   /** PostgreSQL connection string (app role, optional — falls back to DATABASE_URL) */
-  DATABASE_URL_APP: z.string().url().optional(),
+  DATABASE_URL_APP: Type.Optional(Type.String({ minLength: 1 })),
   /** Redis connection URL */
-  REDIS_URL: z.string().url(),
+  REDIS_URL: Type.String({ minLength: 1 }),
   /** S3-compatible endpoint URL */
-  S3_ENDPOINT: z.string().url(),
+  S3_ENDPOINT: Type.String({ minLength: 1 }),
   /** S3 access key */
-  S3_ACCESS_KEY_ID: z.string().min(1),
+  S3_ACCESS_KEY_ID: Type.String({ minLength: 1 }),
   /** S3 secret key */
-  S3_SECRET_ACCESS_KEY: z.string().min(1),
+  S3_SECRET_ACCESS_KEY: Type.String({ minLength: 1 }),
   /** S3 bucket for receipts */
-  S3_RECEIPTS_BUCKET: z.string().min(1).default("receipts"),
+  S3_RECEIPTS_BUCKET: Type.String({ minLength: 1, default: "receipts" }),
   /** S3 region */
-  S3_REGION: z.string().min(1).default("us-east-1"),
+  S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
   /** JWT secret for token verification */
-  JWT_SECRET: z.string().min(1),
+  JWT_SECRET: Type.String({ minLength: 1 }),
   /** HTTP port */
-  PORT: z.coerce.number().int().positive().default(4000),
+  PORT: Type.Number({ default: 4000 }),
   /** HTTP bind address */
-  HOST: z.string().min(1).default("0.0.0.0"),
+  HOST: Type.String({ minLength: 1, default: "0.0.0.0" }),
   /** CORS origin */
-  CORS_ORIGIN: z.string().min(1).default("http://localhost:3000"),
+  CORS_ORIGIN: Type.String({ minLength: 1, default: "http://localhost:3000" }),
   /** Log level */
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+  LOG_LEVEL: LogLevel,
   /** NATS WebSocket URL */
-  NATS_URL: z.string().default("ws://localhost:4222"),
+  NATS_URL: Type.String({ default: "ws://localhost:4222" }),
 });
 
-export type ApiEnv = z.infer<typeof envSchema>;
+export type ApiEnv = Static<typeof EnvSchema>;
 
-const parsed = envSchema.safeParse(process.env);
+const value = Value.Default(EnvSchema, Value.Convert(EnvSchema, { ...process.env }));
 
-if (!parsed.success) {
-  const formatted = parsed.error.issues
-    .map((i) => `  ${i.path.join(".")}: ${i.message}`)
-    .join("\n");
+if (!Value.Check(EnvSchema, value)) {
+  const errors = [...Value.Errors(EnvSchema, value)];
+  const formatted = errors.map((e) => `  ${e.path.slice(1)}: ${e.message}`).join("\n");
   console.error(`[api] Missing or invalid environment variables:\n${formatted}`);
   process.exit(1);
 }
 
-export const env: ApiEnv = parsed.data;
+export const env: ApiEnv = value;
