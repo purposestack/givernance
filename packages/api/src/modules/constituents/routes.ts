@@ -6,8 +6,10 @@ import { requireAuth } from "../../lib/guards.js";
 import {
   createConstituent,
   deleteConstituent,
+  findDuplicates,
   getConstituent,
   listConstituents,
+  mergeConstituents,
   updateConstituent,
 } from "./service.js";
 
@@ -49,6 +51,22 @@ const ListQuery = Type.Object({
     ]),
   ),
   includeDeleted: Type.Optional(Type.Boolean({ default: false })),
+});
+
+const DuplicateSearchQuery = Type.Object({
+  firstName: Type.String({ minLength: 1, maxLength: 255 }),
+  lastName: Type.String({ minLength: 1, maxLength: 255 }),
+  email: Type.Optional(Type.String({ maxLength: 255 })),
+});
+
+const CreateQuery = Type.Object({
+  force: Type.Optional(Type.Boolean({ default: false })),
+});
+
+const MergeBody = Type.Object({
+  targetId: Type.String({
+    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+  }),
 });
 
 export async function constituentRoutes(app: FastifyInstance) {
@@ -116,10 +134,28 @@ export async function constituentRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Create a new constituent */
+  /** Search for potential duplicate constituents */
+  app.get(
+    "/constituents/duplicates/search",
+    { preHandler: requireAuth, schema: { querystring: DuplicateSearchQuery } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply
+          .status(401)
+          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+      }
+
+      const query = request.query as { firstName: string; lastName: string; email?: string };
+      const duplicates = await findDuplicates(orgId, query);
+      return { data: duplicates };
+    },
+  );
+
+  /** Create a new constituent (with duplicate pre-check unless force=true) */
   app.post(
     "/constituents",
-    { preHandler: requireAuth, schema: { body: ConstituentCreateBody } },
+    { preHandler: requireAuth, schema: { body: ConstituentCreateBody, querystring: CreateQuery } },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       if (!orgId) {
@@ -136,6 +172,24 @@ export async function constituentRoutes(app: FastifyInstance) {
         type?: string;
         tags?: string[];
       };
+      const query = request.query as { force?: boolean };
+
+      if (!query.force) {
+        const duplicates = await findDuplicates(orgId, {
+          firstName: body.firstName,
+          lastName: body.lastName,
+          email: body.email,
+        });
+        if (duplicates.length > 0) {
+          return reply.status(409).send({
+            type: "https://httpproblems.com/http-status/409",
+            title: "Conflict",
+            status: 409,
+            detail: "Potential duplicate constituents found",
+            duplicates,
+          });
+        }
+      }
 
       const constituent = await createConstituent(orgId, body);
       return reply.status(201).send({ data: constituent });
@@ -206,6 +260,46 @@ export async function constituentRoutes(app: FastifyInstance) {
       }
 
       return { data: deleted };
+    },
+  );
+
+  /** Merge a duplicate constituent into a primary constituent */
+  app.post(
+    "/constituents/:id/merge",
+    { preHandler: requireAuth, schema: { params: IdParams, body: MergeBody } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply
+          .status(401)
+          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+      }
+
+      const { id } = request.params as { id: string };
+      const { targetId } = request.body as { targetId: string };
+
+      if (id === targetId) {
+        return reply.status(400).send({
+          type: "https://httpproblems.com/http-status/400",
+          title: "Bad Request",
+          status: 400,
+          detail: "Cannot merge a constituent into itself",
+        });
+      }
+
+      const result = await mergeConstituents(orgId, id, targetId, userId);
+
+      if (!result) {
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: "One or both constituents not found",
+        });
+      }
+
+      return { data: result };
     },
   );
 }
