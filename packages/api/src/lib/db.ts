@@ -4,14 +4,12 @@ import * as schema from "@givernance/shared/schema";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import { env } from "../env.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const pool = new pg.Pool({
-  connectionString:
-    process.env.DATABASE_URL_APP ??
-    process.env.DATABASE_URL ??
-    "postgresql://givernance:givernance_dev@localhost:5432/givernance",
+  connectionString: env.DATABASE_URL_APP ?? env.DATABASE_URL,
   max: 20,
 });
 

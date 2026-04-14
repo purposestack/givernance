@@ -5,6 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify, { type FastifyError } from "fastify";
+import { env } from "./env.js";
 import { redis } from "./lib/redis.js";
 import { PROBLEM_JSON, problemDetail } from "./lib/schemas.js";
 import { auditRoutes } from "./modules/audit/routes.js";
@@ -23,13 +24,13 @@ import { authPlugin } from "./plugins/auth.js";
 export async function createServer() {
   const app = Fastify({
     logger: {
-      level: process.env["LOG_LEVEL"] ?? "info",
+      level: env.LOG_LEVEL,
     },
   });
 
   // --- Core plugins ---
   await app.register(cors, {
-    origin: process.env["CORS_ORIGIN"] ?? "http://localhost:3000",
+    origin: env.CORS_ORIGIN,
     credentials: true,
   });
 
@@ -47,7 +48,7 @@ export async function createServer() {
         description: "CRM API for European nonprofits",
         version: "0.1.0",
       },
-      servers: [{ url: `http://localhost:${process.env["PORT"] ?? 4000}` }],
+      servers: [{ url: `http://localhost:${env.PORT}` }],
     },
   });
 
