@@ -2,42 +2,23 @@ import { donations } from "@givernance/shared/schema";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
+import { db, withTenantContext } from "../../lib/db.js";
 import { createServer } from "../../server.js";
+import {
+  authHeader,
+  ensureTestTenants,
+  ORG_A,
+  signToken,
+  signTokenB,
+  USER_A,
+} from "../helpers/auth.js";
 
 let app: FastifyInstance;
-
-const ORG_A = "00000000-0000-0000-0000-000000000001";
-const ORG_B = "00000000-0000-0000-0000-000000000002";
-const USER_A = "00000000-0000-0000-0000-000000000099";
-const USER_B = "00000000-0000-0000-0000-000000000098";
-
-function signToken(app: FastifyInstance, claims: Record<string, unknown> = {}) {
-  return app.jwt.sign({
-    sub: USER_A,
-    org_id: ORG_A,
-    realm_access: { roles: ["admin"] },
-    email: "user-a@example.org",
-    role: "org_admin",
-    ...claims,
-  });
-}
-
-function authHeader(token: string) {
-  return { authorization: `Bearer ${token}` };
-}
 
 beforeAll(async () => {
   app = await createServer();
   await app.ready();
-
-  // Ensure test tenants exist with specific IDs (upsert via ON CONFLICT)
-  await db.execute(
-    sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_A}, 'Org A', 'test-org-a') ON CONFLICT (id) DO NOTHING`,
-  );
-  await db.execute(
-    sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_B}, 'Org B', 'test-org-b') ON CONFLICT (id) DO NOTHING`,
-  );
+  await ensureTestTenants();
 });
 
 afterAll(async () => {
@@ -79,7 +60,6 @@ describe("Constituents CRUD", () => {
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { id: string; activities: unknown[] } }>();
     expect(body.data.id).toBe(constituentId);
@@ -95,7 +75,6 @@ describe("Constituents CRUD", () => {
       payload: { lastName: "Martin" },
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { lastName: string } }>();
     expect(body.data.lastName).toBe("Martin");
@@ -112,6 +91,17 @@ describe("Constituents CRUD", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("GET /v1/constituents/:id returns 400 for invalid UUID", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/not-a-valid-uuid",
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
   it("PUT /v1/constituents/:id returns 404 for non-existent ID", async () => {
     const tokenA = signToken(app);
     const res = await app.inject({
@@ -124,6 +114,18 @@ describe("Constituents CRUD", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("PUT /v1/constituents/:id returns 400 for invalid UUID", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/constituents/not-a-valid-uuid",
+      headers: authHeader(tokenA),
+      payload: { firstName: "Ghost" },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
   it("DELETE /v1/constituents/:id soft-deletes the constituent", async () => {
     const tokenA = signToken(app);
     const res = await app.inject({
@@ -132,7 +134,6 @@ describe("Constituents CRUD", () => {
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { deletedAt: string } }>();
     expect(body.data.deletedAt).toBeTruthy();
@@ -166,7 +167,6 @@ describe("Constituents CRUD", () => {
 describe("Constituents search and filtering", () => {
   beforeAll(async () => {
     const tokenA = signToken(app);
-    // Create a few constituents for searching
     const entries = [
       {
         firstName: "Marie",
@@ -209,7 +209,6 @@ describe("Constituents search and filtering", () => {
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { lastName: string }[]; pagination: { total: number } }>();
     expect(body.data.length).toBeGreaterThanOrEqual(2);
@@ -226,7 +225,6 @@ describe("Constituents search and filtering", () => {
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: unknown[] }>();
     expect(body.data.length).toBeGreaterThanOrEqual(1);
@@ -240,7 +238,6 @@ describe("Constituents search and filtering", () => {
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { type: string }[] }>();
     expect(body.data.length).toBeGreaterThanOrEqual(1);
@@ -257,7 +254,6 @@ describe("Constituents search and filtering", () => {
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { tags: string[] }[] }>();
     expect(body.data.length).toBeGreaterThanOrEqual(2);
@@ -265,14 +261,12 @@ describe("Constituents search and filtering", () => {
 
   it("soft-deleted constituents are excluded by default", async () => {
     const tokenA = signToken(app);
-    // The constituent deleted in the CRUD tests above should NOT appear
     const res = await app.inject({
       method: "GET",
       url: "/v1/constituents",
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { deletedAt: string | null }[] }>();
     for (const c of body.data) {
@@ -298,7 +292,7 @@ describe("Constituents RLS tenant isolation", () => {
   });
 
   it("Tenant B cannot GET a constituent from Tenant A", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "GET",
       url: `/v1/constituents/${constituentInA}`,
@@ -309,7 +303,7 @@ describe("Constituents RLS tenant isolation", () => {
   });
 
   it("Tenant B cannot PUT a constituent from Tenant A", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "PUT",
       url: `/v1/constituents/${constituentInA}`,
@@ -321,7 +315,7 @@ describe("Constituents RLS tenant isolation", () => {
   });
 
   it("Tenant B cannot DELETE a constituent from Tenant A", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "DELETE",
       url: `/v1/constituents/${constituentInA}`,
@@ -332,14 +326,13 @@ describe("Constituents RLS tenant isolation", () => {
   });
 
   it("Tenant B list does not include Tenant A constituents", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "GET",
       url: "/v1/constituents",
       headers: authHeader(tokenB),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { id: string }[] }>();
     const ids = body.data.map((c) => c.id);
@@ -379,7 +372,6 @@ describe("Constituents unauthenticated access", () => {
 // ─── Duplicate Detection ──────────────────────────────────────────────────────
 
 describe("Constituents duplicate detection", () => {
-  // Use a unique name to avoid conflicts from accumulated test data
   const uniqueSuffix = Date.now().toString(36);
   const dedupFirst = `Zdravko${uniqueSuffix}`;
   const dedupLast = `Petrovic${uniqueSuffix}`;
@@ -410,7 +402,6 @@ describe("Constituents duplicate detection", () => {
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { id: string; score: number }[] }>();
     expect(body.data.length).toBeGreaterThanOrEqual(1);
@@ -427,7 +418,6 @@ describe("Constituents duplicate detection", () => {
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { id: string; score: number }[] }>();
     const match = body.data.find((d) => d.id === dedupId);
@@ -448,7 +438,6 @@ describe("Constituents duplicate detection", () => {
       },
     });
 
-    if (res.statusCode !== 409) console.error("TEST FAILED RESPONSE 409:", res.json());
     expect(res.statusCode).toBe(409);
     const body = res.json<{ duplicates: { id: string }[] }>();
     expect(body.duplicates.length).toBeGreaterThanOrEqual(1);
@@ -512,19 +501,20 @@ describe("Constituents merge", () => {
     });
     duplicateId = res2.json<{ data: { id: string } }>().data.id;
 
-    // Create a donation linked to the duplicate
-    await db.execute(sql`SELECT set_config('app.current_org_id', ${ORG_A}, false)`);
-    const [don] = await db
-      .insert(donations)
-      .values({
-        orgId: ORG_A,
-        constituentId: duplicateId,
-        amountCents: 5000,
-        currency: "EUR",
-      })
-      .returning();
-    // biome-ignore lint/style/noNonNullAssertion: test setup — insert always returns a row
-    donationId = don!.id;
+    // Create a donation linked to the duplicate (use withTenantContext, not session-scoped set_config)
+    await withTenantContext(ORG_A, async (tx) => {
+      const [don] = await tx
+        .insert(donations)
+        .values({
+          orgId: ORG_A,
+          constituentId: duplicateId,
+          amountCents: 5000,
+          currency: "EUR",
+        })
+        .returning();
+      // biome-ignore lint/style/noNonNullAssertion: test setup — insert always returns a row
+      donationId = don!.id;
+    });
   });
 
   it("POST /v1/constituents/:id/merge merges duplicate into primary", async () => {
@@ -536,7 +526,6 @@ describe("Constituents merge", () => {
       payload: { targetId: duplicateId },
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     expect(res.json<{ data: { merged: boolean } }>().data.merged).toBe(true);
   });
@@ -549,16 +538,12 @@ describe("Constituents merge", () => {
       headers: authHeader(tokenA),
     });
 
-    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const data = res.json<{
       data: { email: string; phone: string; tags: string[] };
     }>().data;
-    // email was null on primary, should be filled from duplicate
     expect(data.email).toBe("marie@merge.org");
-    // phone was already on primary, should remain
     expect(data.phone).toBe("+33123456789");
-    // tags should be merged (union)
     expect(data.tags).toContain("annual");
     expect(data.tags).toContain("vip");
   });
@@ -575,16 +560,15 @@ describe("Constituents merge", () => {
   });
 
   it("donations are moved to primary constituent", async () => {
-    // Query directly to verify donation was reassigned
-    await db.execute(sql`SELECT set_config('app.current_org_id', ${ORG_A}, false)`);
-    const rows = await db.select().from(donations).where(sql`id = ${donationId}`);
-
-    expect(rows.length).toBe(1);
-    // biome-ignore lint/style/noNonNullAssertion: asserted rows.length === 1 above
-    expect(rows[0]!.constituentId).toBe(primaryId);
+    await withTenantContext(ORG_A, async (tx) => {
+      const rows = await tx.select().from(donations).where(sql`id = ${donationId}`);
+      expect(rows.length).toBe(1);
+      // biome-ignore lint/style/noNonNullAssertion: asserted rows.length === 1 above
+      expect(rows[0]!.constituentId).toBe(primaryId);
+    });
   });
 
-  it("outbox events are emitted for merge", async () => {
+  it("outbox events are emitted for merge with correct payload", async () => {
     const rows = await db.execute(
       sql`SELECT type, payload FROM outbox_events
           WHERE tenant_id = ${ORG_A}
@@ -595,6 +579,15 @@ describe("Constituents merge", () => {
     const types = rows.rows.map((r) => (r as { type: string }).type);
     expect(types).toContain("constituent.merged");
     expect(types).toContain("constituent.deleted");
+
+    // Verify merged event payload contains double-attribution data
+    const mergedEvent = rows.rows.find(
+      (r) => (r as { type: string }).type === "constituent.merged",
+    ) as { payload: Record<string, unknown> } | undefined;
+    expect(mergedEvent).toBeTruthy();
+    expect(mergedEvent?.payload).toHaveProperty("survivorId");
+    expect(mergedEvent?.payload).toHaveProperty("mergedId");
+    expect(mergedEvent?.payload).toHaveProperty("mergedBy");
   });
 
   it("returns 400 when merging a constituent into itself", async () => {
@@ -620,12 +613,25 @@ describe("Constituents merge", () => {
 
     expect(res.statusCode).toBe(404);
   });
+
+  it("POST /v1/constituents/:id/merge returns 400 for invalid UUID in targetId", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/${primaryId}/merge`,
+      headers: authHeader(tokenA),
+      payload: { targetId: "not-a-valid-uuid" },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
 });
 
-// ─── Merge RLS Isolation ──────────────────────────────────────────────────────
+// ─── Merge RLS Isolation (QA #3 — bidirectional) ────────────────────────────
 
 describe("Constituents merge RLS isolation", () => {
   let tenantAConstituentId: string;
+  let tenantAConstituentId2: string;
   let tenantBConstituentId: string;
 
   beforeAll(async () => {
@@ -638,7 +644,15 @@ describe("Constituents merge RLS isolation", () => {
     });
     tenantAConstituentId = res1.json<{ data: { id: string } }>().data.id;
 
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const res1b = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenA),
+      payload: { firstName: "RLS", lastName: "MergeA2", type: "donor" },
+    });
+    tenantAConstituentId2 = res1b.json<{ data: { id: string } }>().data.id;
+
+    const tokenB = signTokenB(app);
     const res2 = await app.inject({
       method: "POST",
       url: "/v1/constituents?force=true",
@@ -648,8 +662,34 @@ describe("Constituents merge RLS isolation", () => {
     tenantBConstituentId = res2.json<{ data: { id: string } }>().data.id;
   });
 
+  it("Tenant A cannot merge Tenant A constituent INTO Tenant B constituent", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/${tenantAConstituentId}/merge`,
+      headers: authHeader(tokenA),
+      payload: { targetId: tenantBConstituentId },
+    });
+
+    // targetId (Tenant B) is invisible to Tenant A — merge fails with 404
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("Tenant A cannot merge Tenant B constituent INTO Tenant A constituent", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/${tenantBConstituentId}/merge`,
+      headers: authHeader(tokenA),
+      payload: { targetId: tenantAConstituentId2 },
+    });
+
+    // primary (Tenant B) is invisible to Tenant A — merge fails with 404
+    expect(res.statusCode).toBe(404);
+  });
+
   it("Tenant B cannot merge Tenant A constituents", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "POST",
       url: `/v1/constituents/${tenantAConstituentId}/merge`,
@@ -657,7 +697,51 @@ describe("Constituents merge RLS isolation", () => {
       payload: { targetId: tenantBConstituentId },
     });
 
-    // Should 404 because tenant B cannot see tenant A's constituent
+    // primary (Tenant A) is invisible to Tenant B — merge fails with 404
     expect(res.statusCode).toBe(404);
+  });
+
+  it("audit_logs record merge actions with correct attribution", async () => {
+    // Perform a successful merge within Tenant A to verify audit logging
+    const tokenA = signToken(app);
+
+    // Create two fresh constituents for a successful merge
+    const res1 = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenA),
+      payload: { firstName: "Audit", lastName: "Primary", type: "donor" },
+    });
+    const auditPrimaryId = res1.json<{ data: { id: string } }>().data.id;
+
+    const res2 = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenA),
+      payload: { firstName: "Audit", lastName: "Duplicate", type: "donor" },
+    });
+    const auditDuplicateId = res2.json<{ data: { id: string } }>().data.id;
+
+    const mergeRes = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/${auditPrimaryId}/merge`,
+      headers: authHeader(tokenA),
+      payload: { targetId: auditDuplicateId },
+    });
+    expect(mergeRes.statusCode).toBe(200);
+
+    // Verify outbox events contain correct actor_user_id attribution
+    const rows = await db.execute(
+      sql`SELECT type, payload FROM outbox_events
+          WHERE tenant_id = ${ORG_A}
+            AND type = 'constituent.merged'
+          ORDER BY created_at DESC LIMIT 1`,
+    );
+
+    expect(rows.rows.length).toBe(1);
+    const payload = (rows.rows[0] as { payload: Record<string, unknown> }).payload;
+    expect(payload.survivorId).toBe(auditPrimaryId);
+    expect(payload.mergedId).toBe(auditDuplicateId);
+    expect(payload.mergedBy).toBe(USER_A);
   });
 });

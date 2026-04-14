@@ -145,7 +145,8 @@ export async function getReceiptByDonation(orgId: string, donationId: string) {
   });
 }
 
-/** Create a donation with optional allocations, emitting DonationCreated event transactionally */
+/** Create a donation with optional allocations, emitting DonationCreated event transactionally.
+ *  Returns null if the constituent does not exist within the tenant context. */
 export async function createDonation(orgId: string, userId: string, input: DonationInput) {
   if (input.allocations && input.allocations.length > 0) {
     const allocSum = input.allocations.reduce((sum, a) => sum + a.amountCents, 0);
@@ -155,6 +156,14 @@ export async function createDonation(orgId: string, userId: string, input: Donat
   }
 
   return withTenantContext(orgId, async (tx) => {
+    // Verify constituent belongs to this tenant (FK check alone doesn't enforce RLS)
+    const [constituent] = await tx
+      .select({ id: constituents.id })
+      .from(constituents)
+      .where(and(eq(constituents.id, input.constituentId), eq(constituents.orgId, orgId)));
+
+    if (!constituent) return null;
+
     const [donation] = await tx
       .insert(donations)
       .values({
