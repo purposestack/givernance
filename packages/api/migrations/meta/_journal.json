@@ -47,36 +47,50 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1712910000000,
+      "when": 1744502406000,
       "tag": "0007_enable_pg_trgm",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "7",
-      "when": 1712910001000,
+      "when": 1744502407000,
       "tag": "0008_donations_core",
       "breakpoints": true
     },
     {
       "idx": 8,
       "version": "7",
-      "when": 1712910002000,
+      "when": 1744502408000,
       "tag": "0009_receipts",
       "breakpoints": true
     },
     {
       "idx": 9,
       "version": "7",
-      "when": 1712910003000,
+      "when": 1744502409000,
       "tag": "0010_postal_campaigns",
       "breakpoints": true
     },
     {
       "idx": 10,
       "version": "7",
-      "when": 1712910004000,
+      "when": 1744502410000,
       "tag": "0011_receipt_sequences",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1744502411000,
+      "tag": "0012_force_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1744502412000,
+      "tag": "0013_allocation_trigger",
       "breakpoints": true
     }
   ]

@@ -2,7 +2,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../lib/guards.js";
+import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 import { createCampaign, listCampaigns, requestCampaignDocuments } from "./service.js";
 
 const IdParams = Type.Object({
@@ -76,7 +76,7 @@ export async function campaignRoutes(app: FastifyInstance) {
   /** Trigger batch document generation for a campaign */
   app.post(
     "/campaigns/:id/documents",
-    { preHandler: requireAuth, schema: { params: IdParams, body: DocumentsCreateBody } },
+    { preHandler: requireOrgAdmin, schema: { params: IdParams, body: DocumentsCreateBody } },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       const userId = request.auth?.userId;
