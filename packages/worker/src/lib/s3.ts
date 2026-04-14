@@ -13,6 +13,7 @@ const s3 = new S3Client({
 });
 
 const RECEIPTS_BUCKET = process.env.S3_RECEIPTS_BUCKET ?? "receipts";
+const CAMPAIGNS_BUCKET = process.env.S3_CAMPAIGNS_BUCKET ?? "campaigns";
 
 /** Upload a PDF buffer to the receipts bucket */
 export async function uploadReceiptPdf(
@@ -25,6 +26,27 @@ export async function uploadReceiptPdf(
   await s3.send(
     new PutObjectCommand({
       Bucket: RECEIPTS_BUCKET,
+      Key: key,
+      Body: pdfBuffer,
+      ContentType: "application/pdf",
+    }),
+  );
+
+  return key;
+}
+
+/** Upload a campaign document PDF to the campaigns bucket */
+export async function uploadCampaignPdf(
+  tenantId: string,
+  campaignId: string,
+  documentId: string,
+  pdfBuffer: Buffer,
+): Promise<string> {
+  const key = `${tenantId}/campaigns/${campaignId}/${documentId}.pdf`;
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: CAMPAIGNS_BUCKET,
       Key: key,
       Body: pdfBuffer,
       ContentType: "application/pdf",

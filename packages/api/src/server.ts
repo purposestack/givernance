@@ -7,6 +7,7 @@ import swaggerUi from "@fastify/swagger-ui";
 import Fastify from "fastify";
 import { redis } from "./lib/redis.js";
 import { auditRoutes } from "./modules/audit/routes.js";
+import { campaignRoutes } from "./modules/campaigns/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
 import { donationRoutes } from "./modules/donations/routes.js";
 import { healthRoutes } from "./modules/health/routes.js";
@@ -66,6 +67,7 @@ export async function createServer() {
   await app.register(auditRoutes, { prefix: "/v1" });
   await app.register(donationRoutes, { prefix: "/v1" });
   await app.register(pledgeRoutes, { prefix: "/v1" });
+  await app.register(campaignRoutes, { prefix: "/v1" });
 
   return app;
 }

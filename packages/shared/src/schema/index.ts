@@ -21,6 +21,22 @@ import {
 
 export const receiptStatusEnum = pgEnum("receipt_status", ["pending", "generated", "failed"]);
 
+// ─── Campaign Enums ─────────────────────────────────────────────────────────
+
+export const campaignTypeEnum = pgEnum("campaign_type", [
+  "nominative_postal",
+  "door_drop",
+  "digital",
+]);
+
+export const campaignStatusEnum = pgEnum("campaign_status", ["draft", "active", "closed"]);
+
+export const campaignDocumentStatusEnum = pgEnum("campaign_document_status", [
+  "pending",
+  "generated",
+  "failed",
+]);
+
 // ─── Donation-related Enums ──────────────────────────────────────────────────
 
 export const fundTypeEnum = pgEnum("fund_type", ["restricted", "unrestricted"]);
@@ -295,5 +311,77 @@ export const receipts = pgTable(
   (table) => [
     index("receipts_org_id_idx").on(table.orgId),
     index("receipts_donation_id_idx").on(table.donationId),
+  ],
+);
+
+// ─── Campaigns ──────────────────────────────────────────────────────────────
+
+/** Campaigns — postal (nominative or door-drop) and digital campaigns */
+export const campaigns = pgTable(
+  "campaigns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    type: campaignTypeEnum("type").notNull(),
+    status: campaignStatusEnum("status").notNull().default("draft"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("campaigns_org_id_idx").on(table.orgId)],
+);
+
+// ─── Campaign Documents ─────────────────────────────────────────────────────
+
+/** Campaign Documents — generated PDF letters linked to a campaign (and optionally a constituent) */
+export const campaignDocuments = pgTable(
+  "campaign_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    constituentId: uuid("constituent_id").references(() => constituents.id, {
+      onDelete: "set null",
+    }),
+    s3Path: varchar("s3_path", { length: 500 }).notNull(),
+    status: campaignDocumentStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("campaign_documents_org_id_idx").on(table.orgId),
+    index("campaign_documents_campaign_id_idx").on(table.campaignId),
+  ],
+);
+
+// ─── Campaign QR Codes ──────────────────────────────────────────────────────
+
+/** Campaign QR Codes — unique trackable codes embedded in campaign letters */
+export const campaignQrCodes = pgTable(
+  "campaign_qr_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    constituentId: uuid("constituent_id").references(() => constituents.id, {
+      onDelete: "set null",
+    }),
+    code: varchar("code", { length: 255 }).notNull().unique(),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("campaign_qr_codes_org_id_idx").on(table.orgId),
+    index("campaign_qr_codes_campaign_id_idx").on(table.campaignId),
   ],
 );

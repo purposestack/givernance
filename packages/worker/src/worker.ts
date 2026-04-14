@@ -4,6 +4,7 @@ import { QUEUE_NAMES } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
+import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
@@ -15,6 +16,9 @@ const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", 
 
 /** Queue handle for enqueuing receipt generation jobs */
 const receiptsQueue = new Queue(QUEUE_NAMES.RECEIPTS, { connection });
+
+/** Queue handle for enqueuing campaign document generation jobs */
+const campaignsQueue = new Queue(QUEUE_NAMES.CAMPAIGNS, { connection });
 
 /**
  * Process a domain event from the transactional outbox relay.
@@ -42,6 +46,20 @@ async function processDomainEvent(job: Job): Promise<void> {
     });
 
     console.warn(`[events] Enqueued receipt generation for donation ${donationId}`);
+    return;
+  }
+
+  if (type === "campaign.documents_requested") {
+    const campaignId = payload.campaignId as string;
+    const constituentIds = payload.constituentIds as string[];
+
+    await campaignsQueue.add("generate-campaign-documents", {
+      campaignId,
+      orgId: tenantId,
+      constituentIds,
+    });
+
+    console.warn(`[events] Enqueued campaign document generation for campaign ${campaignId}`);
     return;
   }
 
@@ -73,13 +91,19 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
+  const campaignsWorker = new Worker(QUEUE_NAMES.CAMPAIGNS, processGenerateCampaignDocuments, {
+    connection,
+    concurrency: 3,
+    ...defaultJobOpts,
+  });
+
   const eventsWorker = new Worker(QUEUE_NAMES.EVENTS, processDomainEvent, {
     connection,
     concurrency: 10,
     ...defaultJobOpts,
   });
 
-  const workers = [receiptsWorker, emailsWorker, gdprWorker, eventsWorker];
+  const workers = [receiptsWorker, emailsWorker, gdprWorker, campaignsWorker, eventsWorker];
 
   for (const w of workers) {
     w.on("completed", (job) => {

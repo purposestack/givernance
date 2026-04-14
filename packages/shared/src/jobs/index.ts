@@ -45,8 +45,23 @@ export interface GdprErasureJob {
   };
 }
 
+/** Generate campaign document PDFs with QR codes */
+export interface GenerateCampaignDocumentsJob {
+  name: "generate-campaign-documents";
+  data: {
+    campaignId: string;
+    orgId: string;
+    constituentIds: string[];
+  };
+}
+
 /** Union of all job types */
-export type JobDefinition = GenerateReceiptJob | SendBulkEmailJob | ExportDataJob | GdprErasureJob;
+export type JobDefinition =
+  | GenerateReceiptJob
+  | SendBulkEmailJob
+  | ExportDataJob
+  | GdprErasureJob
+  | GenerateCampaignDocumentsJob;
 
 /** Queue names */
 export const QUEUE_NAMES = {
@@ -54,5 +69,6 @@ export const QUEUE_NAMES = {
   EMAILS: "emails",
   EXPORTS: "exports",
   GDPR: "gdpr",
+  CAMPAIGNS: "campaigns",
   EVENTS: "givernance_events",
 } as const;

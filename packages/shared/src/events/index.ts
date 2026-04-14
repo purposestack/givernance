@@ -54,10 +54,19 @@ export interface GdprErasureRequested extends BaseEvent {
   };
 }
 
+export interface CampaignDocumentsRequested extends BaseEvent {
+  type: "campaign.documents_requested";
+  payload: {
+    campaignId: string;
+    constituentIds: string[];
+  };
+}
+
 /** Union of all domain events */
 export type DomainEvent =
   | DonationCreated
   | ConstituentUpdated
   | ConstituentMerged
   | ReceiptGenerated
-  | GdprErasureRequested;
+  | GdprErasureRequested
+  | CampaignDocumentsRequested;
