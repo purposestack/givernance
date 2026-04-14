@@ -5,6 +5,9 @@
 
 process.env.DATABASE_URL ??=
   "postgresql://givernance:givernance_dev@localhost:5432/givernance_test";
+// DATABASE_URL_APP intentionally NOT set in tests — falls back to DATABASE_URL (owner role).
+// The givernance_app role is created by migration 0005 and applied in real environments;
+// tests use the owner role so they can set up fixtures without RLS restrictions.
 process.env.JWT_SECRET ??= "test-secret";
 process.env.ADMIN_SECRET ??= "test-secret";
 process.env.LOG_LEVEL ??= "silent";
