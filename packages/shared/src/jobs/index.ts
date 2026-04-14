@@ -55,13 +55,26 @@ export interface GenerateCampaignDocumentsJob {
   };
 }
 
+/** Process a Stripe webhook event asynchronously */
+export interface ProcessStripeWebhookJob {
+  name: "process-stripe-webhook";
+  data: {
+    webhookEventId: string;
+    stripeEventId: string;
+    eventType: string;
+    accountId: string | null;
+    payload: Record<string, unknown>;
+  };
+}
+
 /** Union of all job types */
 export type JobDefinition =
   | GenerateReceiptJob
   | SendBulkEmailJob
   | ExportDataJob
   | GdprErasureJob
-  | GenerateCampaignDocumentsJob;
+  | GenerateCampaignDocumentsJob
+  | ProcessStripeWebhookJob;
 
 /** Queue names */
 export const QUEUE_NAMES = {
@@ -71,4 +84,5 @@ export const QUEUE_NAMES = {
   GDPR: "gdpr",
   CAMPAIGNS: "campaigns",
   EVENTS: "givernance_events",
+  WEBHOOKS: "webhooks",
 } as const;

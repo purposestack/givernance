@@ -45,6 +45,10 @@ const EnvSchema = Type.Object({
   LOG_LEVEL: LogLevel,
   /** NATS WebSocket URL */
   NATS_URL: Type.String({ default: "ws://localhost:4222" }),
+  /** Stripe secret key (sk_test_... or sk_live_...) */
+  STRIPE_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /** Stripe webhook endpoint secret (whsec_...) */
+  STRIPE_WEBHOOK_SECRET: Type.Optional(Type.String({ minLength: 1 })),
 });
 
 export type ApiEnv = Static<typeof EnvSchema>;

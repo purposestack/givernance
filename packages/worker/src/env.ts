@@ -37,6 +37,8 @@ const EnvSchema = Type.Object({
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
   /** Log level */
   LOG_LEVEL: LogLevel,
+  /** Stripe secret key (sk_test_... or sk_live_...) */
+  STRIPE_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
 });
 
 export type WorkerEnv = Static<typeof EnvSchema>;

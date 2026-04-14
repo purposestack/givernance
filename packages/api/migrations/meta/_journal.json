@@ -113,6 +113,13 @@
       "when": 1744502415000,
       "tag": "0016_fix_cost_cents_bigint",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1744502416000,
+      "tag": "0017_stripe_connect",
+      "breakpoints": true
     }
   ]
 }

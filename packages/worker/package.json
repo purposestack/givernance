@@ -13,6 +13,7 @@
     "@aws-sdk/client-s3": "^3.1030.0",
     "@aws-sdk/lib-storage": "^3.1030.0",
     "@givernance/shared": "workspace:*",
+    "@sinclair/typebox": "^0.34.12",
     "bullmq": "^5.31.0",
     "drizzle-orm": "^0.36.4",
     "ioredis": "^5.4.2",
@@ -21,7 +22,7 @@
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
     "resend": "^4.0.1",
-    "@sinclair/typebox": "^0.34.12"
+    "stripe": "^22.0.1"
   },
   "devDependencies": {
     "@types/pdfkit": "^0.17.5",

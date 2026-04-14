@@ -14,6 +14,7 @@ import { constituentRoutes } from "./modules/constituents/routes.js";
 import { donationRoutes } from "./modules/donations/routes.js";
 import { healthRoutes } from "./modules/health/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
+import { paymentRoutes, stripeWebhookRoute } from "./modules/payments/routes.js";
 import { pledgeRoutes } from "./modules/pledges/routes.js";
 import { reportsRoutes } from "./modules/reports/routes.js";
 import { tenantRoutes } from "./modules/tenants/routes.js";
@@ -97,6 +98,8 @@ export async function createServer() {
   await app.register(donationRoutes, { prefix: "/v1" });
   await app.register(pledgeRoutes, { prefix: "/v1" });
   await app.register(campaignRoutes, { prefix: "/v1" });
+  await app.register(paymentRoutes, { prefix: "/v1" });
+  await app.register(stripeWebhookRoute, { prefix: "/v1" });
   await app.register(reportsRoutes, { prefix: "/v1" });
 
   return app;
