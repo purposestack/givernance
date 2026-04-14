@@ -1,42 +1,76 @@
-/** Zod validation schemas for core entities */
+/** TypeBox validation schemas for core entities */
 
-import { z } from "zod";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 
 /** Schema for creating a new constituent */
-export const ConstituentCreateSchema = z.object({
-  firstName: z.string().min(1).max(255),
-  lastName: z.string().min(1).max(255),
-  email: z.string().email().max(255).optional(),
-  phone: z.string().max(50).optional(),
-  type: z.enum(["donor", "volunteer", "member", "beneficiary", "partner"]).default("donor"),
-  tags: z.array(z.string()).optional(),
+export const ConstituentCreateSchema = Type.Object({
+  firstName: Type.String({ minLength: 1, maxLength: 255 }),
+  lastName: Type.String({ minLength: 1, maxLength: 255 }),
+  email: Type.Optional(Type.String({ format: "email", maxLength: 255 })),
+  phone: Type.Optional(Type.String({ maxLength: 50 })),
+  type: Type.Union(
+    [
+      Type.Literal("donor"),
+      Type.Literal("volunteer"),
+      Type.Literal("member"),
+      Type.Literal("beneficiary"),
+      Type.Literal("partner"),
+    ],
+    { default: "donor" },
+  ),
+  tags: Type.Optional(Type.Array(Type.String())),
 });
 
 /** Schema for updating a constituent (all fields optional) */
-export const ConstituentUpdateSchema = ConstituentCreateSchema.partial();
+export const ConstituentUpdateSchema = Type.Partial(ConstituentCreateSchema);
 
 /** Schema for creating a new donation */
-export const DonationCreateSchema = z.object({
-  constituentId: z.string().uuid(),
-  amountCents: z.number().int().positive(),
-  currency: z.enum(["EUR", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK"]).default("EUR"),
-  campaignId: z.string().uuid().optional(),
-  paymentMethod: z.string().max(50).optional(),
-  paymentRef: z.string().max(255).optional(),
-  donatedAt: z.string().datetime().optional(),
-  fiscalYear: z.number().int().optional(),
+export const DonationCreateSchema = Type.Object({
+  constituentId: Type.String({ format: "uuid" }),
+  amountCents: Type.Integer({ exclusiveMinimum: 0 }),
+  currency: Type.Union(
+    [
+      Type.Literal("EUR"),
+      Type.Literal("GBP"),
+      Type.Literal("CHF"),
+      Type.Literal("SEK"),
+      Type.Literal("NOK"),
+      Type.Literal("DKK"),
+      Type.Literal("PLN"),
+      Type.Literal("CZK"),
+    ],
+    { default: "EUR" },
+  ),
+  campaignId: Type.Optional(Type.String({ format: "uuid" })),
+  paymentMethod: Type.Optional(Type.String({ maxLength: 50 })),
+  paymentRef: Type.Optional(Type.String({ maxLength: 255 })),
+  donatedAt: Type.Optional(Type.String({ format: "date-time" })),
+  fiscalYear: Type.Optional(Type.Integer()),
 });
 
 /** Schema for list query parameters */
-export const PaginationQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  perPage: z.coerce.number().int().positive().max(100).default(20),
-  sort: z.string().optional(),
-  order: z.enum(["asc", "desc"]).default("desc"),
+export const PaginationQuerySchema = Type.Object({
+  page: Type.Number({ minimum: 1, default: 1 }),
+  perPage: Type.Number({ minimum: 1, maximum: 100, default: 20 }),
+  sort: Type.Optional(Type.String()),
+  order: Type.Union([Type.Literal("asc"), Type.Literal("desc")], { default: "desc" }),
 });
 
-/** Inferred types from Zod schemas */
-export type ConstituentCreate = z.infer<typeof ConstituentCreateSchema>;
-export type ConstituentUpdate = z.infer<typeof ConstituentUpdateSchema>;
-export type DonationCreate = z.infer<typeof DonationCreateSchema>;
-export type PaginationQuery = z.infer<typeof PaginationQuerySchema>;
+/** Inferred types from TypeBox schemas */
+export type ConstituentCreate = Static<typeof ConstituentCreateSchema>;
+export type ConstituentUpdate = Static<typeof ConstituentUpdateSchema>;
+export type DonationCreate = Static<typeof DonationCreateSchema>;
+export type PaginationQuery = Static<typeof PaginationQuerySchema>;
+
+/** Validate, coerce, and apply defaults — throws on failure */
+export function parseSchema<T extends TSchema>(schema: T, data: unknown): Static<T> {
+  const converted = Value.Default(schema, Value.Convert(schema, structuredClone(data)));
+  if (!Value.Check(schema, converted)) {
+    const errors = [...Value.Errors(schema, converted)];
+    throw new Error(
+      `Validation failed: ${errors.map((e) => `${e.path}: ${e.message}`).join(", ")}`,
+    );
+  }
+  return converted as Static<T>;
+}
