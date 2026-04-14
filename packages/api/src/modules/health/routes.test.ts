@@ -47,6 +47,7 @@ vi.mock("../../lib/db.js", () => {
       // Support db.transaction(async (tx) => ...) by passing the same mock as tx
       transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
+          execute: vi.fn().mockResolvedValue([]),
           insert: vi.fn(() => insertChain),
           select: vi.fn(() => selectChain),
         };

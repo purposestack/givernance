@@ -14,7 +14,6 @@ import { tenantRoutes } from "./modules/tenants/routes.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { auditPlugin } from "./plugins/audit.js";
 import { authPlugin } from "./plugins/auth.js";
-import { rlsPlugin } from "./plugins/rls.js";
 
 /** Create and configure the Fastify server instance */
 export async function createServer() {
@@ -54,7 +53,6 @@ export async function createServer() {
 
   // --- Custom plugins ---
   await app.register(authPlugin);
-  await app.register(rlsPlugin);
   await app.register(auditPlugin);
 
   // --- Routes ---
