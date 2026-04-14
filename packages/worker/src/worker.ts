@@ -10,6 +10,7 @@ import { processGenerateCampaignDocuments } from "./processors/campaign-document
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
+import { processStripeWebhook } from "./processors/stripe-webhook.js";
 
 /** Create a fresh ioredis connection — BullMQ requires separate connections for Queue vs Worker */
 function createRedisConnection() {
@@ -118,7 +119,20 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
-  const workers = [receiptsWorker, emailsWorker, gdprWorker, campaignsWorker, eventsWorker];
+  const webhooksWorker = new Worker(QUEUE_NAMES.WEBHOOKS, processStripeWebhook, {
+    connection: createRedisConnection(),
+    concurrency: 5,
+    ...defaultJobOpts,
+  });
+
+  const workers = [
+    receiptsWorker,
+    emailsWorker,
+    gdprWorker,
+    campaignsWorker,
+    eventsWorker,
+    webhooksWorker,
+  ];
 
   for (const w of workers) {
     w.on("completed", (job) => {

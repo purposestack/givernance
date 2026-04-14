@@ -6,6 +6,7 @@
 import {
   type AnyPgColumn,
   bigint,
+  boolean,
   index,
   integer,
   jsonb,
@@ -52,6 +53,15 @@ export const pledgeStatusEnum = pgEnum("pledge_status", ["active", "paused", "ca
 
 export const installmentStatusEnum = pgEnum("installment_status", ["pending", "paid", "failed"]);
 
+// ─── Webhook Enums ─────────────────────────────────────────────────────────
+
+export const webhookEventStatusEnum = pgEnum("webhook_event_status", [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+]);
+
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
 export const userRoleEnum = pgEnum("user_role", ["org_admin", "user", "viewer"]);
@@ -59,15 +69,20 @@ export const userRoleEnum = pgEnum("user_role", ["org_admin", "user", "viewer"])
 // ─── Tenants (organizations) ──────────────────────────────────────────────────
 
 /** Tenants — registered organizations using Givernance */
-export const tenants = pgTable("tenants", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: varchar("name", { length: 255 }).notNull(),
-  slug: varchar("slug", { length: 100 }).notNull().unique(),
-  plan: varchar("plan", { length: 50 }).notNull().default("starter"),
-  status: varchar("status", { length: 50 }).notNull().default("active"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const tenants = pgTable(
+  "tenants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 255 }).notNull(),
+    slug: varchar("slug", { length: 100 }).notNull().unique(),
+    plan: varchar("plan", { length: 50 }).notNull().default("starter"),
+    status: varchar("status", { length: 50 }).notNull().default("active"),
+    stripeAccountId: varchar("stripe_account_id", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("tenants_stripe_account_id_uniq").on(table.stripeAccountId)],
+);
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -192,6 +207,7 @@ export const donations = pgTable(
     index("donations_org_id_idx").on(table.orgId),
     index("donations_constituent_id_idx").on(table.constituentId),
     index("donations_donated_at_idx").on(table.donatedAt),
+    unique("donations_org_payment_uniq").on(table.orgId, table.paymentMethod, table.paymentRef),
   ],
 );
 
@@ -416,4 +432,24 @@ export const campaignQrCodes = pgTable(
     index("campaign_qr_codes_org_id_idx").on(table.orgId),
     index("campaign_qr_codes_campaign_id_idx").on(table.campaignId),
   ],
+);
+
+// ─── Webhook Events ────────────────────────────────────────────────────────
+
+/** Webhook Events — idempotent tracking of inbound payment gateway webhooks */
+export const webhookEvents = pgTable(
+  "webhook_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    stripeEventId: varchar("stripe_event_id", { length: 255 }).notNull().unique(),
+    eventType: varchar("event_type", { length: 255 }).notNull(),
+    accountId: varchar("account_id", { length: 255 }),
+    payload: jsonb("payload").notNull(),
+    status: webhookEventStatusEnum("status").notNull().default("pending"),
+    error: text("error"),
+    livemode: boolean("livemode").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+  },
+  (table) => [index("webhook_events_stripe_event_id_idx").on(table.stripeEventId)],
 );
