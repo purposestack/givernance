@@ -24,6 +24,7 @@ CREATE TABLE receipts (
 
 CREATE INDEX receipts_org_id_idx ON receipts (org_id);
 CREATE INDEX receipts_donation_id_idx ON receipts (donation_id);
+CREATE UNIQUE INDEX receipts_org_fiscal_number_uniq ON receipts (org_id, fiscal_year, receipt_number);
 
 -- ─── RLS ───────────────────────────────────────────────────────────────────
 

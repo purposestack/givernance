@@ -95,15 +95,27 @@ describe("Receipt endpoint", () => {
   });
 
   it("GET /v1/donations/:id/receipt returns presigned URL after receipt is inserted", async () => {
-    // Simulate the worker inserting a receipt record (skip actual S3 upload)
-    await db.execute(sql`SELECT set_config('app.current_org_id', ${ORG_A}, false)`);
-    await db.insert(receipts).values({
-      orgId: ORG_A,
-      donationId: donationIdA,
-      receiptNumber: "REC-2026-0001",
-      fiscalYear: 2026,
-      s3Path: `${ORG_A}/receipts/REC-2026-0001.pdf`,
-      status: "generated",
+    // Clean up any existing receipt and insert a fresh one in a single transaction
+    // (ensures RLS set_config applies to both operations on the same connection)
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_org_id', ${ORG_A}, true)`);
+      await tx
+        .delete(receipts)
+        .where(
+          and(
+            eq(receipts.orgId, ORG_A),
+            eq(receipts.fiscalYear, 2026),
+            eq(receipts.receiptNumber, "REC-2026-0001"),
+          ),
+        );
+      await tx.insert(receipts).values({
+        orgId: ORG_A,
+        donationId: donationIdA,
+        receiptNumber: "REC-2026-0001",
+        fiscalYear: 2026,
+        s3Path: `${ORG_A}/receipts/REC-2026-0001.pdf`,
+        status: "generated",
+      });
     });
 
     const tokenA = signToken(app);
