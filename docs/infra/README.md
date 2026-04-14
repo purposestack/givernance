@@ -108,3 +108,19 @@ Production self-hosted deployments should add:
 - Database backups (pg_dump cron or WAL archiving)
 - Redis persistence configuration
 - MinIO replication for storage durability
+
+---
+
+## Troubleshooting
+
+### Keycloak Admin Console: "HTTPS required"
+
+Keycloak 24 defaults to `ssl_required=EXTERNAL` on the `master` realm. In local dev (`start-dev` mode), this can trigger an "HTTPS required" error when accessing `http://localhost:8080` — especially if your browser has cached an HSTS header for `localhost` from a previous project.
+
+**The `dev-up.sh` script handles this automatically** by setting `ssl_required=NONE` on the master realm after first boot.
+
+If you still see the error, it's likely your browser's HSTS cache. To clear it:
+
+- **Chrome**: Navigate to `chrome://net-internals/#hsts`, enter `localhost` under "Delete domain security policies", and click Delete.
+- **Firefox**: Close all tabs to `localhost`, then clear your recent history (Ctrl+Shift+Delete) with only "Active Logins" and "Site Settings" checked.
+- **Quick workaround**: Open the Keycloak admin console in an **Incognito/Private window**.
