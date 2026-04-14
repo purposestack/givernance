@@ -1,6 +1,6 @@
 /** Constituent service — business logic for constituent operations */
 
-import { constituents, outboxEvents } from "@givernance/shared/schema";
+import { constituents, donations, outboxEvents } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
@@ -163,5 +163,150 @@ export async function deleteConstituent(orgId: string, id: string, userId: strin
     });
 
     return deleted;
+  });
+}
+
+export interface DuplicateSearchInput {
+  firstName: string;
+  lastName: string;
+  email?: string;
+}
+
+export interface DuplicateMatch {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  type: string;
+  score: number;
+}
+
+/** Find potential duplicate constituents using trigram similarity and exact email match */
+export async function findDuplicates(
+  orgId: string,
+  input: DuplicateSearchInput,
+): Promise<DuplicateMatch[]> {
+  return withTenantContext(orgId, async (tx) => {
+    // Build a score from trigram similarity on names + exact email match
+    // similarity() returns 0..1; we weight first+last name and add a bonus for email match
+    const rows = await tx.execute(sql`
+      SELECT
+        id,
+        first_name AS "firstName",
+        last_name AS "lastName",
+        email,
+        type,
+        (
+          similarity(first_name, ${input.firstName}) * 0.35
+          + similarity(last_name, ${input.lastName}) * 0.35
+          + CASE WHEN ${input.email ?? null}::text IS NOT NULL
+                      AND email IS NOT NULL
+                      AND lower(email) = lower(${input.email ?? null}::text)
+                 THEN 0.30
+                 ELSE 0.0
+            END
+        ) AS score
+      FROM constituents
+      WHERE org_id = ${orgId}
+        AND deleted_at IS NULL
+        AND (
+          similarity(first_name, ${input.firstName}) > 0.3
+          OR similarity(last_name, ${input.lastName}) > 0.3
+          OR (
+            ${input.email ?? null}::text IS NOT NULL
+            AND email IS NOT NULL
+            AND lower(email) = lower(${input.email ?? null}::text)
+          )
+        )
+      ORDER BY score DESC, created_at DESC
+      LIMIT 10
+    `);
+
+    return (rows.rows as unknown as DuplicateMatch[]).filter((r) => r.score >= 0.3);
+  });
+}
+
+/** Merge a duplicate constituent into a primary (survivor) constituent */
+export async function mergeConstituents(
+  orgId: string,
+  primaryId: string,
+  duplicateId: string,
+  userId: string,
+): Promise<{ merged: true } | null> {
+  if (primaryId === duplicateId) {
+    throw new Error("Cannot merge a constituent into itself");
+  }
+
+  return withTenantContext(orgId, async (tx) => {
+    // Fetch both constituents (must be in same org, not deleted)
+    const [primary] = await tx
+      .select()
+      .from(constituents)
+      .where(
+        and(
+          eq(constituents.id, primaryId),
+          eq(constituents.orgId, orgId),
+          isNull(constituents.deletedAt),
+        ),
+      );
+
+    const [duplicate] = await tx
+      .select()
+      .from(constituents)
+      .where(
+        and(
+          eq(constituents.id, duplicateId),
+          eq(constituents.orgId, orgId),
+          isNull(constituents.deletedAt),
+        ),
+      );
+
+    if (!primary || !duplicate) return null;
+
+    // Fill null fields on primary with values from duplicate
+    const fieldsToFill: Partial<ConstituentInput> = {};
+    if (!primary.email && duplicate.email) fieldsToFill.email = duplicate.email;
+    if (!primary.phone && duplicate.phone) fieldsToFill.phone = duplicate.phone;
+
+    // Merge tags (union, deduplicate)
+    const primaryTags = primary.tags ?? [];
+    const duplicateTags = duplicate.tags ?? [];
+    const mergedTags = [...new Set([...primaryTags, ...duplicateTags])];
+
+    const now = new Date();
+
+    // Update primary with filled fields + merged tags
+    await tx
+      .update(constituents)
+      .set({ ...fieldsToFill, tags: mergedTags, updatedAt: now })
+      .where(eq(constituents.id, primaryId));
+
+    // Move all donations from duplicate to primary
+    await tx
+      .update(donations)
+      .set({ constituentId: primaryId, updatedAt: now })
+      .where(and(eq(donations.constituentId, duplicateId), eq(donations.orgId, orgId)));
+
+    // Soft-delete the duplicate
+    await tx
+      .update(constituents)
+      .set({ deletedAt: now, updatedAt: now })
+      .where(eq(constituents.id, duplicateId));
+
+    // Emit events in the same transaction
+    await tx.insert(outboxEvents).values([
+      {
+        tenantId: orgId,
+        type: "constituent.merged",
+        payload: { survivorId: primaryId, mergedId: duplicateId, mergedBy: userId },
+      },
+      {
+        tenantId: orgId,
+        type: "constituent.deleted",
+        payload: { constituentId: duplicateId, deletedBy: userId, reason: "merged" },
+      },
+    ]);
+
+    return { merged: true };
   });
 }
