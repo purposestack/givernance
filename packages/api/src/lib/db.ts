@@ -9,7 +9,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const pool = new pg.Pool({
   connectionString:
-    process.env.DATABASE_URL ?? "postgresql://givernance:givernance_dev@localhost:5432/givernance",
+    process.env.DATABASE_URL_APP ??
+    process.env.DATABASE_URL ??
+    "postgresql://givernance:givernance_dev@localhost:5432/givernance",
   max: 20,
 });
 
