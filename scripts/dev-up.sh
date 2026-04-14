@@ -51,9 +51,19 @@ echo "Running migrations on test database..."
 DATABASE_URL="postgresql://${POSTGRES_USER:-givernance}:${POSTGRES_PASSWORD:-givernance_dev}@localhost:5432/givernance_test" \
   pnpm --filter @givernance/api db:migrate
 
+echo "Waiting for Keycloak to initialize its database schema..."
+until docker compose exec -T postgres psql \
+  -U "${POSTGRES_USER:-givernance}" \
+  -d "${POSTGRES_DB:-givernance}" \
+  -tc "SELECT 1 FROM realm WHERE name='master'" 2>/dev/null | grep -q 1; do
+  sleep 2
+done
+
 echo "Relaxing Keycloak SSL requirement for local dev..."
-docker compose exec -T postgres psql -U "${POSTGRES_USER:-givernance}" -d "${POSTGRES_DB:-givernance}" \
-  -c "UPDATE realm SET ssl_required='NONE' WHERE name='master';" > /dev/null 2>&1 || true
+docker compose exec -T postgres psql \
+  -U "${POSTGRES_USER:-givernance}" \
+  -d "${POSTGRES_DB:-givernance}" \
+  -c "UPDATE realm SET ssl_required='NONE' WHERE name='master';"
 docker compose restart keycloak > /dev/null
 
 echo ""
