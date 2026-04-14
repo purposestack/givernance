@@ -57,6 +57,13 @@
       "when": 1712910001000,
       "tag": "0008_donations_core",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1712910002000,
+      "tag": "0009_receipts",
+      "breakpoints": true
     }
   ]
 }

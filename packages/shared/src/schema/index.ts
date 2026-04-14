@@ -17,6 +17,10 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
+// ─── Receipt Enums ──────────────────────────────────────────────────────────
+
+export const receiptStatusEnum = pgEnum("receipt_status", ["pending", "generated", "failed"]);
+
 // ─── Donation-related Enums ──────────────────────────────────────────────────
 
 export const fundTypeEnum = pgEnum("fund_type", ["restricted", "unrestricted"]);
@@ -265,5 +269,31 @@ export const pledgeInstallments = pgTable(
   (table) => [
     index("pledge_installments_org_id_idx").on(table.orgId),
     index("pledge_installments_pledge_id_idx").on(table.pledgeId),
+  ],
+);
+
+// ─── Receipts ───────────────────────────────────────────────────────────────
+
+/** Receipts — generated tax receipt PDFs linked to donations */
+export const receipts = pgTable(
+  "receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    donationId: uuid("donation_id")
+      .notNull()
+      .references(() => donations.id, { onDelete: "cascade" }),
+    receiptNumber: varchar("receipt_number", { length: 100 }).notNull(),
+    fiscalYear: integer("fiscal_year").notNull(),
+    s3Path: varchar("s3_path", { length: 500 }).notNull(),
+    status: receiptStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("receipts_org_id_idx").on(table.orgId),
+    index("receipts_donation_id_idx").on(table.donationId),
   ],
 );
