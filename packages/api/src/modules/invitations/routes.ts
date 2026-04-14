@@ -19,25 +19,6 @@ const AcceptInvitationBody = Type.Object({
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
 });
 
-/**
- * Simple in-memory rate limiter for unauthenticated endpoints (M2 fix).
- * Limits per-IP to MAX_ATTEMPTS within WINDOW_MS.
- */
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const RATE_LIMIT_MAX = 10;
-const ipAttempts = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = ipAttempts.get(ip);
-  if (!entry || now > entry.resetAt) {
-    ipAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= RATE_LIMIT_MAX;
-}
-
 export async function invitationRoutes(app: FastifyInstance) {
   /**
    * POST /v1/invitations — invite a user by email (org_admin only)
@@ -81,18 +62,11 @@ export async function invitationRoutes(app: FastifyInstance) {
    */
   app.post(
     "/invitations/:token/accept",
-    { schema: { body: AcceptInvitationBody } },
+    {
+      schema: { body: AcceptInvitationBody },
+      config: { rateLimit: { max: 10, timeWindow: "15 minutes" } },
+    },
     async (request, reply) => {
-      // Rate limiting for unauthenticated endpoint (M2 fix)
-      if (!checkRateLimit(request.ip)) {
-        return reply.status(429).send({
-          type: "https://httpproblems.com/http-status/429",
-          title: "Too Many Requests",
-          status: 429,
-          detail: "Rate limit exceeded. Try again later.",
-        });
-      }
-
       const { token } = request.params as { token: string };
       const body = request.body as { firstName: string; lastName: string };
 
