@@ -5,21 +5,19 @@ import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import { env } from "../env.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Owner pool — bypasses RLS. Only for non-tenant-scoped operations. */
 const ownerPool = new pg.Pool({
-  connectionString:
-    process.env.DATABASE_URL ?? "postgresql://givernance:givernance_dev@localhost:5432/givernance",
+  connectionString: env.DATABASE_URL,
   max: 5,
 });
 
 /** App-role pool — subject to RLS policies. Used by withWorkerContext. */
 const appPool = new pg.Pool({
-  connectionString:
-    process.env.DATABASE_URL_APP ??
-    "postgresql://givernance_app:givernance_app_dev@localhost:5432/givernance",
+  connectionString: env.DATABASE_URL_APP,
   max: 10,
 });
 

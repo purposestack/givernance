@@ -1,6 +1,7 @@
 /** NATS JetStream connection for domain events */
 
 import { connect, type JetStreamClient, type NatsConnection } from "nats.ws";
+import { env } from "../env.js";
 
 let nc: NatsConnection | null = null;
 let js: JetStreamClient | null = null;
@@ -10,7 +11,7 @@ export async function getNats(): Promise<JetStreamClient> {
   if (js) return js;
 
   nc = await connect({
-    servers: process.env.NATS_URL ?? "ws://localhost:4222",
+    servers: env.NATS_URL,
   });
 
   js = nc.jetstream();
