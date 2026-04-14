@@ -119,6 +119,34 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  packages/relay:
+    dependencies:
+      '@givernance/shared':
+        specifier: workspace:*
+        version: link:../shared
+      bullmq:
+        specifier: ^5.31.0
+        version: 5.73.5
+      drizzle-orm:
+        specifier: ^0.36.4
+        version: 0.36.4(@types/pg@8.20.0)(pg@8.20.0)(react@19.2.5)
+      ioredis:
+        specifier: ^5.4.2
+        version: 5.10.1
+      pg:
+        specifier: ^8.13.1
+        version: 8.20.0
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   packages/shared:
     dependencies:
       drizzle-orm:

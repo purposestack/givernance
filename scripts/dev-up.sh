@@ -6,6 +6,12 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$ROOT_DIR"
 
+# Install dependencies if needed
+if [ ! -d "node_modules" ]; then
+  echo "📦 Installing dependencies..."
+  pnpm install
+fi
+
 # Copy .env if it doesn't exist
 if [ ! -f .env ]; then
   echo "No .env file found — copying from .env.example"
@@ -63,7 +69,7 @@ echo " MinIO UI     http://localhost:${MINIO_CONSOLE_PORT:-9001}   (givernance/g
 echo " Mailpit SMTP localhost:${MAILPIT_SMTP_PORT:-1025}"
 echo " Mailpit UI   http://localhost:${MAILPIT_UI_PORT:-8025}"
 echo ""
-echo " Start API + Worker:  pnpm dev"
+echo " Start API + Worker + Relay:  pnpm dev"
 echo " Caddy proxy (optional): docker compose --profile proxy up -d"
 echo ""
 echo "====================================="
