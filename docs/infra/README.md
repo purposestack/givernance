@@ -42,6 +42,22 @@ docker compose up -d
 | Mailpit | `localhost:1025` (SMTP), `http://localhost:8025` (UI) | Local email capture and testing |
 | Caddy | `localhost:3000`, `localhost:3001` | Reverse proxy (optional, `--profile proxy`) |
 
+### Recommended Local Tooling (macOS Apple Silicon)
+
+| Tool | Purpose | Download |
+|------|---------|---------|
+| [Beekeeper Studio](https://www.beekeeperstudio.io/) | SQL client — browse and query PostgreSQL | [Download .dmg (arm64)](https://www.beekeeperstudio.io/download/?ext=dmg&arch=arm64&type=&edition=community) |
+| [RedisInsight](https://redis.io/insight/) | Redis GUI — inspect keys, streams, BullMQ queues | [Download .dmg (arm64)](https://github.com/redis/RedisInsight/releases/download/3.2.0/Redis-Insight-mac-arm64.dmg) |
+
+**Beekeeper Studio** — connect to the local PostgreSQL instance:
+- Host: `localhost`, Port: `5432`
+- Database: `givernance`, User: `givernance`, Password: `givernance_dev`
+
+**RedisInsight** — connect to the local Redis instance:
+- Host: `localhost`, Port: `6379`
+
+---
+
 ### Connecting the App
 
 The application reads connection strings from environment variables. See `.env.example` for defaults:
