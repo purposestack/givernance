@@ -25,6 +25,19 @@ export async function createServer() {
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
+      base: { service: "givernance-api", env: process.env.NODE_ENV },
+      redact: [
+        "req.headers.authorization",
+        "req.headers.cookie",
+        "body.password",
+        "body.token",
+        "body.iban",
+        "body.cardNumber",
+        "body.cvv",
+        "body.pan",
+        "headers.authorization",
+        "headers.cookie",
+      ],
     },
   });
 
