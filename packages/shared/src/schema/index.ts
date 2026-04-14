@@ -434,6 +434,38 @@ export const campaignQrCodes = pgTable(
   ],
 );
 
+// ─── Public Page Status Enum ───────────────────────────────────────────────
+
+export const publicPageStatusEnum = pgEnum("public_page_status", ["draft", "published"]);
+
+// ─── Campaign Public Pages ─────────────────────────────────────────────────
+
+/** Campaign Public Pages — embeddable donation page configuration per campaign */
+export const campaignPublicPages = pgTable(
+  "campaign_public_pages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" })
+      .unique(),
+    status: publicPageStatusEnum("status").notNull().default("draft"),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description"),
+    colorPrimary: varchar("color_primary", { length: 7 }),
+    goalAmountCents: integer("goal_amount_cents"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("campaign_public_pages_org_id_idx").on(table.orgId),
+    index("campaign_public_pages_campaign_id_idx").on(table.campaignId),
+  ],
+);
+
 // ─── Webhook Events ────────────────────────────────────────────────────────
 
 /** Webhook Events — idempotent tracking of inbound payment gateway webhooks */

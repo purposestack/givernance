@@ -120,6 +120,13 @@
       "when": 1744502416000,
       "tag": "0017_stripe_connect",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1744502415000,
+      "tag": "0016_public_pages",
+      "breakpoints": true
     }
   ]
 }
