@@ -10,14 +10,18 @@ const ReadyResponse = Type.Object({ status: Type.String(), db: Type.String() });
 
 export async function healthRoutes(app: FastifyInstance) {
   /** Liveness probe — always returns 200 if process is running */
-  app.get("/healthz", { schema: { response: { 200: HealthResponse } } }, async () => {
-    return { status: "ok" };
-  });
+  app.get(
+    "/healthz",
+    { schema: { tags: ["Health"], response: { 200: HealthResponse } } },
+    async () => {
+      return { status: "ok" };
+    },
+  );
 
   /** Readiness probe — checks database connectivity */
   app.get(
     "/readyz",
-    { schema: { response: { 200: ReadyResponse, 503: ReadyResponse } } },
+    { schema: { tags: ["Health"], response: { 200: ReadyResponse, 503: ReadyResponse } } },
     async (_request, reply) => {
       try {
         await db.execute(sql`SELECT 1`);

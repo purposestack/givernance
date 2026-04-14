@@ -11,6 +11,7 @@ import {
   ErrorResponses,
   ProblemDetailSchema,
   problemDetail,
+  UuidSchema,
 } from "../../lib/schemas.js";
 
 const CreateInvitationBody = Type.Object({
@@ -26,20 +27,20 @@ const AcceptInvitationBody = Type.Object({
 });
 
 const InvitationResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
+  id: UuidSchema,
+  orgId: UuidSchema,
   email: Type.String(),
   role: Type.String(),
   token: Type.String(),
-  invitedById: Type.Union([Type.String(), Type.Null()]),
+  invitedById: Type.Union([UuidSchema, Type.Null()]),
   acceptedAt: Type.Union([Type.String(), Type.Null()]),
   expiresAt: Type.String(),
   createdAt: Type.String(),
 });
 
 const AcceptedUserResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
+  id: UuidSchema,
+  orgId: UuidSchema,
   email: Type.String(),
   firstName: Type.String(),
   lastName: Type.String(),
@@ -58,6 +59,7 @@ export async function invitationRoutes(app: FastifyInstance) {
     {
       preHandler: requireOrgAdmin,
       schema: {
+        tags: ["Invitations"],
         body: CreateInvitationBody,
         response: { 201: DataResponse(InvitationResponse), ...ErrorResponses },
       },
@@ -106,6 +108,7 @@ export async function invitationRoutes(app: FastifyInstance) {
     "/invitations/:token/accept",
     {
       schema: {
+        tags: ["Invitations"],
         body: AcceptInvitationBody,
         response: {
           201: DataResponse(AcceptedUserResponse),

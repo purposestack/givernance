@@ -11,6 +11,7 @@ import {
   DataResponse,
   ErrorResponses,
   IdParams,
+  UuidSchema,
 } from "../../lib/schemas.js";
 
 const CreateUserBody = Type.Object({
@@ -27,8 +28,8 @@ const UpdateRoleBody = Type.Object({
 });
 
 const UserResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
+  id: UuidSchema,
+  orgId: UuidSchema,
   keycloakId: Type.Union([Type.String(), Type.Null()]),
   email: Type.String(),
   firstName: Type.String(),
@@ -45,6 +46,7 @@ export async function userRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Users"],
         response: { 200: DataResponse(UserResponse), ...ErrorResponses },
       },
     },
@@ -79,6 +81,7 @@ export async function userRoutes(app: FastifyInstance) {
     {
       preHandler: requireOrgAdmin,
       schema: {
+        tags: ["Users"],
         response: { 200: DataArrayResponseNoPagination(UserResponse), ...ErrorResponses },
       },
     },
@@ -97,6 +100,7 @@ export async function userRoutes(app: FastifyInstance) {
     {
       preHandler: requireOrgAdmin,
       schema: {
+        tags: ["Users"],
         body: CreateUserBody,
         response: { 201: DataResponse(UserResponse), ...ErrorResponses },
       },
@@ -142,6 +146,7 @@ export async function userRoutes(app: FastifyInstance) {
     {
       preHandler: requireOrgAdmin,
       schema: {
+        tags: ["Users"],
         params: IdParams,
         body: UpdateRoleBody,
         response: { 200: DataResponse(UserResponse), ...ErrorResponses },
@@ -180,6 +185,7 @@ export async function userRoutes(app: FastifyInstance) {
     {
       preHandler: requireOrgAdmin,
       schema: {
+        tags: ["Users"],
         params: IdParams,
         response: { 200: DataResponse(UserResponse), ...ErrorResponses },
       },

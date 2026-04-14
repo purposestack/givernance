@@ -38,11 +38,11 @@ const PledgeCreateBody = Type.Object({
 });
 
 const PledgeResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
-  constituentId: Type.String(),
+  id: UuidSchema,
+  orgId: UuidSchema,
+  constituentId: UuidSchema,
   amountCents: Type.Integer(),
-  currency: Type.String(),
+  currency: CurrencySchema,
   frequency: Type.String(),
   status: Type.String(),
   stripeCustomerId: Type.Union([Type.String(), Type.Null()]),
@@ -53,10 +53,10 @@ const PledgeResponse = Type.Object({
 });
 
 const InstallmentResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
-  pledgeId: Type.String(),
-  donationId: Type.Union([Type.String(), Type.Null()]),
+  id: UuidSchema,
+  orgId: UuidSchema,
+  pledgeId: UuidSchema,
+  donationId: Type.Union([UuidSchema, Type.Null()]),
   expectedAt: Type.String(),
   status: Type.String(),
   createdAt: Type.String(),
@@ -70,6 +70,7 @@ export async function pledgeRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Pledges"],
         body: PledgeCreateBody,
         headers: IdempotencyKeyHeader,
         response: { 201: DataResponse(PledgeResponse), ...ErrorResponses },
@@ -103,6 +104,7 @@ export async function pledgeRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Pledges"],
         params: IdParams,
         response: {
           200: DataArrayResponseNoPagination(InstallmentResponse),
