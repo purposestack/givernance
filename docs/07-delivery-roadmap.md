@@ -29,20 +29,20 @@ Before writing Phase 1 code, verify:
 ### Sprint 1 (Weeks 1–2): Constituent Foundation
 The data model foundation. Every other module references constituents.
 
-- Constituents API: CRUD for individuals, households, organizations (issue #9)
-- Constituent duplicate detection — fuzzy match on name+email (issue #11)
-- Multi-tenant RLS applied to constituents table (prerequisite from Phase 0: issue #12)
+- Constituents API: CRUD for individuals, households, organizations (issue #32)
+- Constituent duplicate detection — fuzzy match on name+email (issue #33)
+- Multi-tenant RLS applied to constituents table (prerequisite from Phase 0: issue #31)
 
 **Done when**: `GET /v1/constituents`, `POST /v1/constituents`, `GET /v1/constituents/:id`, `PUT`, `DELETE` all pass integration tests with RLS tenant isolation verified.
 
 ### Sprint 2 (Weeks 2–4): Donation Engine + Postal Campaign Core
 The core transaction and the primary fundraising channel. Postal campaigns represent ~60% of NPO donations — this is CORE MVP, not optional.
 
-- Donations API: one-time gifts, pledges, installments, fund allocation (issue #13)
-- SEPA/Stripe integration for recurring donations (issue #15)
-- PDF receipt generation — EU tax receipt format, country-specific (issue #17)
+- Donations API: one-time gifts, pledges, installments, fund allocation (issue #34)
+- SEPA/Stripe integration for recurring donations (issue #38)
+- PDF receipt generation — EU tax receipt format, country-specific (issue #35)
 - BullMQ job: receipt generation triggered on donation.created event
-- **QR code generation**: unique QR per constituent+campaign, stored in `campaign_documents` table — enables automatic payment→constituent matching on postal returns
+- **QR code generation**: unique QR per constituent+campaign, stored in `campaign_documents` table (issue #36)
 - **PDF letter generation**: personalized letters per constituent (name, address, donation history), batch PDF generation for print-ready output
 - **Door-drop support**: generic letter variant for geographic zone targeting (QR linked to campaign only, no constituent); new constituent created on first donation receipt
 
@@ -51,9 +51,9 @@ The core transaction and the primary fundraising channel. Postal campaigns repre
 ### Sprint 3 (Weeks 4–6): Campaigns + Donor Lifecycle + Online Donations
 Grouping mechanism, reporting foundation, and the second fundraising channel (~20% of donations).
 
-- Campaigns API + source code tracking (issue #19)
+- Campaigns API + source code tracking (issue #37)
 - Campaign types: nominative postal, door-drop, digital — each with distinct workflow
-- Donor lifecycle calculation: LYBUNT/SYBUNT flags (issue #21)
+- Donor lifecycle calculation: LYBUNT/SYBUNT flags (issue #37)
 - Donations linked to campaigns; campaign totals computed
 - **Campaign ROI dashboard**: cost vs. donations received per campaign, conversion rates, response monitoring (3-month tracking window for postal)
 - **Stripe Connect onboarding**: NPO connects their own Stripe account via OAuth — Givernance never holds funds, no PSP status required
@@ -65,10 +65,10 @@ Grouping mechanism, reporting foundation, and the second fundraising channel (~2
 ### Sprint 4 (Weeks 5–7): UI Layer
 Frontend implementation of Sprints 1–3.
 
-- Constituents UI: list, detail, create, import CSV (issue #29)
-- Donations UI: list, new donation form, receipt preview (issue #31)
-- Dashboard UI: key widgets — total raised, active campaigns, grant deadlines (issue #32)
-- Auth UI: login, SSO, onboarding wizard 5 steps (issue #33)
+- Constituents UI: list, detail, create, import CSV (issue #41)
+- Donations UI: list, new donation form, receipt preview (issue #41)
+- Dashboard UI: key widgets — total raised, active campaigns, grant deadlines (issue #42)
+- Auth UI: login, SSO, onboarding wizard 5 steps (issue #40)
 
 **Done when**: A non-technical NPO staff member can log in, find a donor, record a gift, and see the receipt — without reading any documentation.
 
