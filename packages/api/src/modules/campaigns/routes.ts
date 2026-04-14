@@ -28,8 +28,8 @@ const DocumentsCreateBody = Type.Object({
 });
 
 const CampaignResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
+  id: UuidSchema,
+  orgId: UuidSchema,
   name: Type.String(),
   type: Type.String(),
   status: Type.String(),
@@ -38,7 +38,7 @@ const CampaignResponse = Type.Object({
 });
 
 const DocumentsResult = Type.Object({
-  campaignId: Type.String(),
+  campaignId: UuidSchema,
   documentCount: Type.Integer(),
 });
 
@@ -49,6 +49,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Campaigns"],
         querystring: PaginationQuery,
         response: { 200: DataArrayResponse(CampaignResponse), ...ErrorResponses },
       },
@@ -75,6 +76,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Campaigns"],
         body: CampaignCreateBody,
         response: { 201: DataResponse(CampaignResponse), ...ErrorResponses },
       },
@@ -100,6 +102,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     {
       preHandler: requireOrgAdmin,
       schema: {
+        tags: ["Campaigns"],
         params: IdParams,
         body: DocumentsCreateBody,
         response: { 202: DataResponse(DocumentsResult), ...ErrorResponses },
