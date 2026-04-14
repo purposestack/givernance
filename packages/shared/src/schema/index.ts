@@ -125,6 +125,7 @@ export const constituents = pgTable("constituents", {
   phone: varchar("phone", { length: 50 }),
   type: varchar("type", { length: 50 }).notNull().default("donor"),
   tags: text("tags").array(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
