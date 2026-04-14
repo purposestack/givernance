@@ -15,12 +15,12 @@ export interface ApiResponse<T> {
   meta?: Record<string, unknown>;
 }
 
-/** Standard API error response */
+/** Standard API error response (RFC 7807 Problem Details) */
 export interface ApiError {
-  statusCode: number;
-  error: string;
-  message: string;
-  details?: Record<string, unknown>;
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
 }
 
 /** Application-level user role */

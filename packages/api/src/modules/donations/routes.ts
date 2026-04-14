@@ -5,6 +5,16 @@ import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../../lib/guards.js";
 import { getReceiptPresignedUrl } from "../../lib/s3.js";
 import {
+  CurrencySchema,
+  DataArrayResponse,
+  DataResponse,
+  ErrorResponses,
+  IdParams,
+  PaginationQuery,
+  problemDetail,
+  UuidSchema,
+} from "../../lib/schemas.js";
+import {
   AllocationSumMismatchError,
   createDonation,
   getDonation,
@@ -12,47 +22,28 @@ import {
   listDonations,
 } from "./service.js";
 
-const IdParams = Type.Object({
-  id: Type.String({ pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }),
-});
-
-const ListQuery = Type.Object({
-  page: Type.Optional(Type.Integer({ minimum: 1, default: 1 })),
-  perPage: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 20 })),
-  dateFrom: Type.Optional(Type.String({ format: "date" })),
-  dateTo: Type.Optional(Type.String({ format: "date" })),
-  amountMin: Type.Optional(Type.Integer({ minimum: 0 })),
-  amountMax: Type.Optional(Type.Integer({ minimum: 0 })),
-  constituentId: Type.Optional(
-    Type.String({
-      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    }),
-  ),
-  campaignId: Type.Optional(
-    Type.String({
-      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    }),
-  ),
-});
+const ListQuery = Type.Intersect([
+  PaginationQuery,
+  Type.Object({
+    dateFrom: Type.Optional(Type.String({ format: "date" })),
+    dateTo: Type.Optional(Type.String({ format: "date" })),
+    amountMin: Type.Optional(Type.Integer({ minimum: 0 })),
+    amountMax: Type.Optional(Type.Integer({ minimum: 0 })),
+    constituentId: Type.Optional(UuidSchema),
+    campaignId: Type.Optional(UuidSchema),
+  }),
+]);
 
 const AllocationSchema = Type.Object({
-  fundId: Type.String({
-    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-  }),
+  fundId: UuidSchema,
   amountCents: Type.Integer({ minimum: 1 }),
 });
 
 const DonationCreateBody = Type.Object({
-  constituentId: Type.String({
-    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-  }),
+  constituentId: UuidSchema,
   amountCents: Type.Integer({ minimum: 1 }),
-  currency: Type.Optional(Type.String({ minLength: 3, maxLength: 3 })),
-  campaignId: Type.Optional(
-    Type.String({
-      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    }),
-  ),
+  currency: Type.Optional(CurrencySchema),
+  campaignId: Type.Optional(UuidSchema),
   paymentMethod: Type.Optional(Type.String({ maxLength: 50 })),
   paymentRef: Type.Optional(Type.String({ maxLength: 255 })),
   donatedAt: Type.Optional(Type.String({ format: "date-time" })),
@@ -72,17 +63,69 @@ const IdempotencyKeyHeader = Type.Object({
   ),
 });
 
+/** Donation shape returned by the API */
+const DonationResponse = Type.Object({
+  id: Type.String(),
+  orgId: Type.String(),
+  constituentId: Type.String(),
+  amountCents: Type.Integer(),
+  currency: Type.String(),
+  campaignId: Type.Union([Type.String(), Type.Null()]),
+  paymentMethod: Type.Union([Type.String(), Type.Null()]),
+  paymentRef: Type.Union([Type.String(), Type.Null()]),
+  donatedAt: Type.String(),
+  fiscalYear: Type.Integer(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+
+const DonationDetailResponse = Type.Object({
+  id: Type.String(),
+  orgId: Type.String(),
+  constituentId: Type.String(),
+  amountCents: Type.Integer(),
+  currency: Type.String(),
+  campaignId: Type.Union([Type.String(), Type.Null()]),
+  paymentMethod: Type.Union([Type.String(), Type.Null()]),
+  paymentRef: Type.Union([Type.String(), Type.Null()]),
+  donatedAt: Type.String(),
+  fiscalYear: Type.Integer(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  constituent: Type.Object({
+    id: Type.String(),
+    firstName: Type.String(),
+    lastName: Type.String(),
+    email: Type.Union([Type.String(), Type.Null()]),
+  }),
+  allocations: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      fundId: Type.String(),
+      amountCents: Type.Integer(),
+    }),
+  ),
+});
+
+const ReceiptUrlResponse = Type.Object({
+  url: Type.String(),
+});
+
 export async function donationRoutes(app: FastifyInstance) {
   /** List donations with pagination and filters */
   app.get(
     "/donations",
-    { preHandler: requireAuth, schema: { querystring: ListQuery } },
+    {
+      preHandler: requireAuth,
+      schema: {
+        querystring: ListQuery,
+        response: { 200: DataArrayResponse(DonationResponse), ...ErrorResponses },
+      },
+    },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       if (!orgId) {
-        return reply
-          .status(401)
-          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
       const query = request.query as {
@@ -114,25 +157,24 @@ export async function donationRoutes(app: FastifyInstance) {
   /** Get a single donation with constituent and allocations */
   app.get(
     "/donations/:id",
-    { preHandler: requireAuth, schema: { params: IdParams } },
+    {
+      preHandler: requireAuth,
+      schema: {
+        params: IdParams,
+        response: { 200: DataResponse(DonationDetailResponse), ...ErrorResponses },
+      },
+    },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       if (!orgId) {
-        return reply
-          .status(401)
-          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
       const { id } = request.params as { id: string };
       const donation = await getDonation(orgId, id);
 
       if (!donation) {
-        return reply.status(404).send({
-          type: "https://httpproblems.com/http-status/404",
-          title: "Not Found",
-          status: 404,
-          detail: "Donation not found",
-        });
+        return reply.status(404).send(problemDetail(404, "Not Found", "Donation not found"));
       }
 
       return { data: donation };
@@ -144,15 +186,17 @@ export async function donationRoutes(app: FastifyInstance) {
     "/donations",
     {
       preHandler: requireAuth,
-      schema: { body: DonationCreateBody, headers: IdempotencyKeyHeader },
+      schema: {
+        body: DonationCreateBody,
+        headers: IdempotencyKeyHeader,
+        response: { 201: DataResponse(DonationResponse), ...ErrorResponses },
+      },
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       const userId = request.auth?.userId;
       if (!orgId || !userId) {
-        return reply
-          .status(401)
-          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
       const body = request.body as {
@@ -187,13 +231,17 @@ export async function donationRoutes(app: FastifyInstance) {
   /** Get a presigned URL for downloading a donation's tax receipt PDF */
   app.get(
     "/donations/:id/receipt",
-    { preHandler: requireAuth, schema: { params: IdParams } },
+    {
+      preHandler: requireAuth,
+      schema: {
+        params: IdParams,
+        response: { 200: DataResponse(ReceiptUrlResponse), ...ErrorResponses },
+      },
+    },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       if (!orgId) {
-        return reply
-          .status(401)
-          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
       const { id } = request.params as { id: string };
@@ -212,12 +260,9 @@ export async function donationRoutes(app: FastifyInstance) {
       const receipt = await getReceiptByDonation(orgId, id);
 
       if (!receipt) {
-        return reply.status(404).send({
-          type: "https://httpproblems.com/http-status/404",
-          title: "Not Found",
-          status: 404,
-          detail: "Receipt not found for this donation",
-        });
+        return reply
+          .status(404)
+          .send(problemDetail(404, "Not Found", "Receipt not found for this donation"));
       }
 
       const url = await getReceiptPresignedUrl(receipt.s3Path);
