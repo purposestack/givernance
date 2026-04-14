@@ -11,6 +11,17 @@ import type { Pagination } from "@givernance/shared/types";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
+/** Thrown when allocation amounts don't sum to the donation total */
+export class AllocationSumMismatchError extends Error {
+  constructor(
+    public readonly allocSum: number,
+    public readonly donationAmount: number,
+  ) {
+    super(`Allocation sum (${allocSum}) does not equal donation amount (${donationAmount})`);
+    this.name = "AllocationSumMismatchError";
+  }
+}
+
 export interface ListDonationsQuery {
   page: number;
   perPage: number;
@@ -136,6 +147,13 @@ export async function getReceiptByDonation(orgId: string, donationId: string) {
 
 /** Create a donation with optional allocations, emitting DonationCreated event transactionally */
 export async function createDonation(orgId: string, userId: string, input: DonationInput) {
+  if (input.allocations && input.allocations.length > 0) {
+    const allocSum = input.allocations.reduce((sum, a) => sum + a.amountCents, 0);
+    if (allocSum !== input.amountCents) {
+      throw new AllocationSumMismatchError(allocSum, input.amountCents);
+    }
+  }
+
   return withTenantContext(orgId, async (tx) => {
     const [donation] = await tx
       .insert(donations)

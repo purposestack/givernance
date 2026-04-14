@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsup src/worker.ts --format esm",
     "dev": "tsx watch --env-file=../../.env src/worker.ts",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -34,6 +34,9 @@ beforeAll(async () => {
   app = await createServer();
   await app.ready();
 
+  // Clean up stale receipt data from prior runs
+  await db.execute(sql`DELETE FROM receipts WHERE org_id = ${ORG_A}`);
+
   // Ensure test tenants exist
   await db.execute(
     sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_A}, 'Org A', 'test-org-a') ON CONFLICT (id) DO NOTHING`,

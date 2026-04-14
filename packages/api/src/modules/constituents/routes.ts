@@ -2,7 +2,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../lib/guards.js";
+import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 import {
   createConstituent,
   deleteConstituent,
@@ -266,7 +266,7 @@ export async function constituentRoutes(app: FastifyInstance) {
   /** Merge a duplicate constituent into a primary constituent */
   app.post(
     "/constituents/:id/merge",
-    { preHandler: requireAuth, schema: { params: IdParams, body: MergeBody } },
+    { preHandler: requireOrgAdmin, schema: { params: IdParams, body: MergeBody } },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       const userId = request.auth?.userId;

@@ -29,6 +29,7 @@ export async function uploadReceiptPdf(
       Key: key,
       Body: pdfBuffer,
       ContentType: "application/pdf",
+      ServerSideEncryption: "AES256",
     }),
   );
 
@@ -50,6 +51,7 @@ export async function uploadCampaignPdf(
       Key: key,
       Body: pdfBuffer,
       ContentType: "application/pdf",
+      ServerSideEncryption: "AES256",
     }),
   );
 
