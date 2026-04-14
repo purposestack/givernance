@@ -66,6 +66,8 @@ async function relayPendingEvents(): Promise<number> {
         },
         {
           jobId: row.id,
+          attempts: 5,
+          backoff: { type: "exponential", delay: 1000 },
           removeOnComplete: 1000,
           removeOnFail: 5000,
         },
