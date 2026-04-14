@@ -11,7 +11,7 @@ import type { Job } from "bullmq";
 import { and, eq, inArray } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
 import { uploadCampaignPdf } from "../lib/s3.js";
-import { generateCampaignLetterPdf } from "../services/campaign-pdf.js";
+import { createCampaignLetterPdfStream } from "../services/campaign-pdf.js";
 
 type Tx = Parameters<Parameters<typeof withWorkerContext>[1]>[0];
 
@@ -32,7 +32,7 @@ async function generateConstituentDocument(
     code,
   });
 
-  const pdfBuffer = await generateCampaignLetterPdf({
+  const pdfStream = await createCampaignLetterPdfStream({
     campaignName,
     orgId,
     qrCode: code,
@@ -56,7 +56,7 @@ async function generateConstituentDocument(
     );
 
   const docId = pendingDoc?.id ?? constituent.id;
-  const s3Path = await uploadCampaignPdf(orgId, campaignId, docId, pdfBuffer);
+  const s3Path = await uploadCampaignPdf(orgId, campaignId, docId, pdfStream);
 
   if (pendingDoc) {
     await tx
@@ -96,7 +96,7 @@ export async function processGenerateCampaignDocuments(
         code,
       });
 
-      const pdfBuffer = await generateCampaignLetterPdf({
+      const pdfStream = await createCampaignLetterPdfStream({
         campaignName: campaign.name,
         orgId,
         qrCode: code,
@@ -115,7 +115,7 @@ export async function processGenerateCampaignDocuments(
         );
 
       const docId = pendingDoc?.id ?? campaignId;
-      const s3Path = await uploadCampaignPdf(orgId, campaignId, docId, pdfBuffer);
+      const s3Path = await uploadCampaignPdf(orgId, campaignId, docId, pdfStream);
 
       if (pendingDoc) {
         await tx

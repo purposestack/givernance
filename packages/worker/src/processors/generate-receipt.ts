@@ -6,7 +6,7 @@ import type { Job } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
 import { uploadReceiptPdf } from "../lib/s3.js";
-import { generateReceiptPdf } from "../services/pdf.js";
+import { createReceiptPdfStream } from "../services/pdf.js";
 
 /**
  * Atomically allocate the next receipt number for an org/fiscal year.
@@ -63,7 +63,7 @@ export async function processGenerateReceipt(job: Job<GenerateReceiptJob["data"]
 
     const receiptNumber = await nextReceiptNumber(tx, orgId, fiscalYear);
 
-    const pdfBuffer = await generateReceiptPdf({
+    const pdfStream = createReceiptPdfStream({
       receiptNumber,
       orgId,
       donorName: `${constituent.firstName} ${constituent.lastName}`,
@@ -74,7 +74,7 @@ export async function processGenerateReceipt(job: Job<GenerateReceiptJob["data"]
       fiscalYear,
     });
 
-    const s3Path = await uploadReceiptPdf(orgId, receiptNumber, pdfBuffer);
+    const s3Path = await uploadReceiptPdf(orgId, receiptNumber, pdfStream);
 
     await tx.insert(receipts).values({
       orgId,

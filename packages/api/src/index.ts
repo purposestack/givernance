@@ -1,9 +1,9 @@
 /** API entry point — creates server and starts listening */
 
+import { env } from "./env.js";
 import { createServer } from "./server.js";
 
-const PORT = Number(process.env.PORT ?? 4000);
-const HOST = process.env.HOST ?? "0.0.0.0";
+const { PORT, HOST } = env;
 
 async function main() {
   const server = await createServer();

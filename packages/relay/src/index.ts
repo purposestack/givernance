@@ -16,19 +16,19 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import Redis from "ioredis";
 import pg from "pg";
+import { env } from "./env.js";
+import { logger } from "./lib/logger.js";
 
-const POLL_INTERVAL_MS = Number(process.env.OUTBOX_POLL_INTERVAL_MS ?? "500");
 const BATCH_SIZE = 100;
 
 const pool = new pg.Pool({
-  connectionString:
-    process.env.DATABASE_URL ?? "postgresql://givernance:givernance_dev@localhost:5432/givernance",
+  connectionString: env.DATABASE_URL,
   max: 5,
 });
 
 const db = drizzle(pool);
 
-const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
+const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
 });
@@ -85,7 +85,7 @@ async function relayPendingEvents(): Promise<number> {
       processed++;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[outbox-relay] Failed to relay event ${row.id}:`, message);
+      logger.error({ eventId: row.id, err: message }, "Failed to relay event");
 
       await db
         .update(outboxEvents)
@@ -104,24 +104,24 @@ async function relayPendingEvents(): Promise<number> {
 let running = true;
 
 async function start(): Promise<void> {
-  console.warn(`[outbox-relay] Starting — polling every ${POLL_INTERVAL_MS}ms`);
+  logger.info({ pollIntervalMs: env.OUTBOX_POLL_INTERVAL_MS }, "Outbox relay starting");
 
   while (running) {
     try {
       const count = await relayPendingEvents();
       if (count > 0) {
-        console.warn(`[outbox-relay] Relayed ${count} events`);
+        logger.info({ count }, "Relayed events");
       }
     } catch (err) {
-      console.error("[outbox-relay] Poll cycle error:", err);
+      logger.error({ err }, "Poll cycle error");
     }
 
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    await new Promise((resolve) => setTimeout(resolve, env.OUTBOX_POLL_INTERVAL_MS));
   }
 }
 
 function shutdown(): void {
-  console.warn("[outbox-relay] Shutting down…");
+  logger.info("Shutting down");
   running = false;
   void eventsQueue
     .close()

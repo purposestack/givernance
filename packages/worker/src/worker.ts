@@ -4,21 +4,25 @@ import { QUEUE_NAMES } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
+import { env } from "./env.js";
+import { jobLogger, logger } from "./lib/logger.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 
-const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-});
+/** Create a fresh ioredis connection — BullMQ requires separate connections for Queue vs Worker */
+function createRedisConnection() {
+  return new Redis(env.REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  });
+}
 
-/** Queue handle for enqueuing receipt generation jobs */
-const receiptsQueue = new Queue(QUEUE_NAMES.RECEIPTS, { connection });
-
-/** Queue handle for enqueuing campaign document generation jobs */
-const campaignsQueue = new Queue(QUEUE_NAMES.CAMPAIGNS, { connection });
+/** Queue handles use their own Redis connection (separate from workers) */
+const queueConnection = createRedisConnection();
+const receiptsQueue = new Queue(QUEUE_NAMES.RECEIPTS, { connection: queueConnection });
+const campaignsQueue = new Queue(QUEUE_NAMES.CAMPAIGNS, { connection: queueConnection });
 
 /**
  * Process a domain event from the transactional outbox relay.
@@ -32,7 +36,9 @@ async function processDomainEvent(job: Job): Promise<void> {
     payload: Record<string, unknown>;
   };
 
-  console.warn(`[events] Processing domain event: type=${type} id=${id} tenant=${tenantId}`);
+  const log = jobLogger({ tenantId, jobId: job.id, traceId: id });
+
+  log.info({ eventType: type }, "Processing domain event");
 
   if (type === "donation.created") {
     const donationId = payload.donationId as string;
@@ -49,7 +55,7 @@ async function processDomainEvent(job: Job): Promise<void> {
       { jobId: `receipt-${donationId}` },
     );
 
-    console.warn(`[events] Enqueued receipt generation for donation ${donationId}`);
+    log.info({ donationId }, "Enqueued receipt generation");
     return;
   }
 
@@ -67,11 +73,11 @@ async function processDomainEvent(job: Job): Promise<void> {
       { jobId: `campaign-docs-${campaignId}` },
     );
 
-    console.warn(`[events] Enqueued campaign document generation for campaign ${campaignId}`);
+    log.info({ campaignId }, "Enqueued campaign document generation");
     return;
   }
 
-  console.warn(`[events] Unhandled event type: ${type}`);
+  log.warn({ eventType: type }, "Unhandled event type");
 }
 
 /** Start all queue workers */
@@ -81,32 +87,33 @@ function startWorkers() {
     backoff: { type: "exponential" as const, delay: 1000 },
   };
 
+  /** Each Worker gets its own Redis connection per BullMQ best practices */
   const receiptsWorker = new Worker(QUEUE_NAMES.RECEIPTS, processGenerateReceipt, {
-    connection,
+    connection: createRedisConnection(),
     concurrency: 5,
     ...defaultJobOpts,
   });
 
   const emailsWorker = new Worker(QUEUE_NAMES.EMAILS, processSendBulkEmail, {
-    connection,
+    connection: createRedisConnection(),
     concurrency: 2,
     ...defaultJobOpts,
   });
 
   const gdprWorker = new Worker(QUEUE_NAMES.GDPR, processGdprErasure, {
-    connection,
+    connection: createRedisConnection(),
     concurrency: 1,
     ...defaultJobOpts,
   });
 
   const campaignsWorker = new Worker(QUEUE_NAMES.CAMPAIGNS, processGenerateCampaignDocuments, {
-    connection,
+    connection: createRedisConnection(),
     concurrency: 3,
     ...defaultJobOpts,
   });
 
   const eventsWorker = new Worker(QUEUE_NAMES.EVENTS, processDomainEvent, {
-    connection,
+    connection: createRedisConnection(),
     concurrency: 10,
     ...defaultJobOpts,
   });
@@ -115,14 +122,14 @@ function startWorkers() {
 
   for (const w of workers) {
     w.on("completed", (job) => {
-      console.warn(`[${w.name}] Job ${job.id} completed`);
+      logger.info({ worker: w.name, jobId: job.id }, "Job completed");
     });
     w.on("failed", (job, err) => {
-      console.error(`[${w.name}] Job ${job?.id} failed:`, err.message);
+      logger.error({ worker: w.name, jobId: job?.id, err: err.message }, "Job failed");
     });
   }
 
-  console.warn(`Workers started: ${workers.map((w) => w.name).join(", ")}`);
+  logger.info({ workers: workers.map((w) => w.name) }, "Workers started");
 }
 
 startWorkers();

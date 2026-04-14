@@ -3,8 +3,9 @@
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
 import { Queue } from "bullmq";
 import Redis from "ioredis";
+import { env } from "../env.js";
 
-const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
+const connection = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
 });

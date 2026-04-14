@@ -1,59 +1,58 @@
-/** S3/MinIO client for uploading generated files */
+/** S3/MinIO client for uploading generated files (supports streaming) */
 
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import type { Readable } from "node:stream";
+import { S3Client } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
+import { env } from "../env.js";
 
 const s3 = new S3Client({
-  endpoint: process.env.S3_ENDPOINT ?? "http://localhost:9000",
-  region: process.env.S3_REGION ?? "us-east-1",
+  endpoint: env.S3_ENDPOINT,
+  region: env.S3_REGION,
   forcePathStyle: true,
   credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "minioadmin",
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "minioadmin",
+    accessKeyId: env.S3_ACCESS_KEY_ID,
+    secretAccessKey: env.S3_SECRET_ACCESS_KEY,
   },
 });
 
-const RECEIPTS_BUCKET = process.env.S3_RECEIPTS_BUCKET ?? "receipts";
-const CAMPAIGNS_BUCKET = process.env.S3_CAMPAIGNS_BUCKET ?? "campaigns";
-
-/** Upload a PDF buffer to the receipts bucket */
-export async function uploadReceiptPdf(
-  tenantId: string,
-  receiptNumber: string,
-  pdfBuffer: Buffer,
+/** Stream a PDFKit document directly to S3 via multipart upload */
+export async function streamPdfToS3(
+  bucket: string,
+  key: string,
+  doc: NodeJS.ReadableStream,
 ): Promise<string> {
-  const key = `${tenantId}/receipts/${receiptNumber}.pdf`;
-
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: RECEIPTS_BUCKET,
+  const upload = new Upload({
+    client: s3,
+    params: {
+      Bucket: bucket,
       Key: key,
-      Body: pdfBuffer,
+      Body: doc as unknown as Readable,
       ContentType: "application/pdf",
       ServerSideEncryption: "AES256",
-    }),
-  );
+    },
+  });
 
+  await upload.done();
   return key;
 }
 
-/** Upload a campaign document PDF to the campaigns bucket */
+/** Upload a receipt PDF (streamed) to the receipts bucket */
+export async function uploadReceiptPdf(
+  tenantId: string,
+  receiptNumber: string,
+  doc: NodeJS.ReadableStream,
+): Promise<string> {
+  const key = `${tenantId}/receipts/${receiptNumber}.pdf`;
+  return streamPdfToS3(env.S3_RECEIPTS_BUCKET, key, doc);
+}
+
+/** Upload a campaign document PDF (streamed) to the campaigns bucket */
 export async function uploadCampaignPdf(
   tenantId: string,
   campaignId: string,
   documentId: string,
-  pdfBuffer: Buffer,
+  doc: NodeJS.ReadableStream,
 ): Promise<string> {
   const key = `${tenantId}/campaigns/${campaignId}/${documentId}.pdf`;
-
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: CAMPAIGNS_BUCKET,
-      Key: key,
-      Body: pdfBuffer,
-      ContentType: "application/pdf",
-      ServerSideEncryption: "AES256",
-    }),
-  );
-
-  return key;
+  return streamPdfToS3(env.S3_CAMPAIGNS_BUCKET, key, doc);
 }
