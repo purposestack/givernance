@@ -102,3 +102,19 @@ HTML mockups are in `docs/design/`. Open `docs/design/index.html` locally or vie
 - Terminology: **NPO** (nonprofit organization), not "NGO"
 - GDPR in English docs, RGPD in French docs
 - All docs are in `docs/`, numbered 01-20 for architecture specs
+
+---
+
+## 🛑 DEV PROCESS (CRITICAL FOR CI)
+
+**Every time you commit code in this repository, YOU MUST ENSURE the GitHub Actions CI pipeline will pass.**
+
+Before concluding your task or pushing to origin, you must run and verify:
+1. `pnpm install` (to sync dependencies)
+2. `pnpm build` (to check compilation)
+3. `pnpm run format` (to fix any Biome formatting)
+4. `pnpm run lint` (to fix any Biome linter rules)
+5. `pnpm typecheck` (to catch TypeScript strict errors)
+6. `pnpm test` (to ensure the integration tests still pass)
+
+If any of these fail, **fix the underlying issue** before pushing. Never leave a branch with a failing `typecheck` or `lint` command.
