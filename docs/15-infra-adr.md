@@ -60,13 +60,15 @@ Use **TypeScript (Node.js 22 LTS + Fastify 5)** for the backend, creating a full
 ### Rationale
 
 - **Single language across the stack** → eliminates context switching for a solo/small team
-- **Shared types** between frontend (Next.js) and backend (Fastify) via `packages/shared` — a single Zod schema defines API contract, request validation, and form validation
-- **TypeScript type safety + Zod runtime validation** covers Go's compile-time safety advantage with the added benefit of runtime enforcement
+- **Shared types** between frontend (Next.js) and backend (Fastify) via `packages/shared` — a single TypeBox schema defines API contract, request validation, OpenAPI generation, and form validation
+- **TypeScript type safety + TypeBox runtime validation** covers Go's compile-time safety advantage with the added benefit of runtime enforcement and native Fastify JSON serialization performance
 - **Fastify 5 benchmarks at ~77,000 req/s** on Node.js 22 — well above the target NPO workload of ~500 req/s at peak (200-staff org, 50 concurrent users)
 - **BullMQ** (TypeScript-native) is a direct functional equivalent to Asynq (Go) — both Redis-backed, both support cron, retries, and concurrency control
 - **Drizzle ORM** provides Go-like type safety for SQL queries in TypeScript, with explicit SQL semantics (no magic)
 - **Ecosystem advantage**: TypeScript has a significantly larger developer pool than Go; easier hiring for a European NPO-focused startup
-- **Immediate benefit**: Zod schemas reused from API validation in Next.js forms create a single source of truth for data contracts
+- **Immediate benefit**: TypeBox schemas reused from API validation in Next.js forms create a single source of truth for data contracts
+
+> **Implementation note (2026-04-14)**: Zod was initially selected but **abandoned during Phase 1** in favor of `@sinclair/typebox`. TypeBox provides native Fastify integration (JSON serialization + OpenAPI 3.1 schema generation without conversion), better performance (no runtime Zod→JSON Schema transformation), and direct Swagger/OpenAPI compatibility. All validators in `packages/shared/src/validators/` and all route schemas in `packages/api/` use TypeBox exclusively.
 
 ### Tradeoffs
 
@@ -122,9 +124,9 @@ Use **Drizzle ORM** for database access and **Drizzle Kit** for schema migration
 
 ### Consequences
 
-- Schema definitions live in `packages/db/schema/` as TypeScript files — these are the source of truth for both migrations and application types
+- Schema definitions live in `packages/shared/src/schema/` as TypeScript files — these are the source of truth for both migrations and application types
 - Migration workflow: modify schema → `drizzle-kit generate` → review SQL → `drizzle-kit migrate`
-- RLS enforcement pattern: Fastify request hook calls `SET LOCAL app.tenant_id = $1` at transaction start — must be tested in Phase 1 integration tests
+- RLS enforcement pattern: The API uses the `givernance_app` PostgreSQL role (NOBYPASSRLS) and wraps queries in `withTenantContext(orgId, callback)`, which calls `set_config('app.current_org_id', orgId, true)` inside a Drizzle transaction. A global Fastify `preHandler` with session-level `SET LOCAL` was explicitly rejected as unsafe with PgBouncer transaction-mode pooling. See [03-data-model.md §4](./03-data-model.md) for the full 3-role pattern.
 - Team members must learn Drizzle's API (smaller community means fewer Stack Overflow answers, but official docs are comprehensive)
 
 ---
@@ -191,8 +193,8 @@ With the move to a TypeScript modular monolith using BullMQ for async processing
 
 Flow:
 ```
-DB transaction (mutation + domain_events row)
-  → Outbox poller (500ms)
+DB transaction (mutation + outbox_events row, status='pending')
+  → givernance-relay polls (500ms, SELECT ... FOR UPDATE SKIP LOCKED)
   → BullMQ enqueue (Redis)
   → givernance-worker (at-least-once, retries, dead-letter)
 ```
@@ -223,7 +225,7 @@ The transactional outbox pattern intentionally abstracts the publish backend. Sw
 - ✅ Phase 0 infrastructure: 8 services instead of 9 (simpler Docker Compose, faster local dev)
 - ✅ No NATS operational knowledge required until Phase 4
 - ✅ Webhook fan-out handled by BullMQ retry mechanism (sufficient for <1,000 webhooks/org at Phase 0-3 scale)
-- ⚠️ No event replay in Phase 0-3 — if needed, query `domain_events` table directly
+- ⚠️ No event replay in Phase 0-3 — if needed, query `outbox_events` table directly
 - ⚠️ Multi-subscriber fan-out not available until Phase 4 — enforce single-consumer contract in outbox design
 - Module event contracts should still be defined as TypeScript interfaces (in `packages/shared/events/`) to ease future NATS integration
 - BullMQ becomes the sole async backbone — its Redis dependency must be treated as critical infrastructure

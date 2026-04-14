@@ -323,7 +323,7 @@ All mutating endpoints: audit logged (even if the action is the admin ending the
 - Every Drizzle audit write helper must accept optional `impersonatorId` (extracted from `act.sub`) and `impersonationSessionId` (from `imp_session_id`) parameters and pass them to the `audit_logs` insert
 - BullMQ `job.data._meta` must include `impersonatorId` and `impersonationSessionId` when jobs are enqueued during an impersonation session — workers must propagate these to their own audit writes
 - The impersonation token is delivered as `httpOnly` cookie — never exposed to JavaScript
-- Reason field minimum length: 20 characters — enforced with a Zod validator in `packages/shared/validators`
+- Reason field minimum length: 20 characters — enforced with a TypeBox validator in `packages/shared/validators`
 
 ### For QA Engineer
 

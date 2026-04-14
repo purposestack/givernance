@@ -1,6 +1,6 @@
 # 03 — Data Model
 
-> Last updated: 2026-02-24
+> Last updated: 2026-04-14
 
 ---
 
@@ -34,7 +34,7 @@ PARTY (constituents, households, organisations)
   └── IMPACT (indicators, readings)
   └── COMMS (email_sends, receipts, consent_log)
   └── FINANCE (funds, gl_batches, gl_export_lines)
-  └── PLATFORM (orgs, users, roles, audit_log, domain_events)
+  └── PLATFORM (orgs, users, roles, audit_log, outbox_events, receipt_sequences)
 ```
 
 ---
@@ -95,21 +95,48 @@ CREATE TABLE audit_log (
 -- Monthly partitions; Glacier archive after 12 months
 ```
 
-#### `domain_events` (transactional outbox)
+#### `outbox_events` (transactional outbox)
+
+> **Implementation note**: This table was originally designed as `domain_events` with a `published` boolean. The implemented table is named `outbox_events` with a `status` enum (`pending` / `completed` / `failed`) and a `processed_at` timestamp, which provides richer operational visibility.
+
 ```sql
-CREATE TABLE domain_events (
+CREATE TABLE outbox_events (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-    org_id          UUID NOT NULL,
-    event_type      TEXT NOT NULL,
-    aggregate_type  TEXT NOT NULL,
-    aggregate_id    UUID NOT NULL,
+    tenant_id       UUID NOT NULL,                    -- org_id (named tenant_id for clarity)
+    type            TEXT NOT NULL,                     -- e.g. 'DonationCreated', 'ConstituentUpdated'
     payload         JSONB NOT NULL,
-    published       BOOLEAN NOT NULL DEFAULT false,
-    published_at    TIMESTAMPTZ,
+    status          TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'completed', 'failed')),
+    processed_at    TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX ON domain_events (published, created_at) WHERE published = false;
+CREATE INDEX ON outbox_events (status, created_at) WHERE status = 'pending';
 ```
+
+The `packages/relay` microservice polls this table using `SELECT ... FOR UPDATE SKIP LOCKED` and enqueues to BullMQ. See [02-reference-architecture.md §7.1](./02-reference-architecture.md) for the full flow.
+
+#### `receipt_sequences` (atomic receipt numbering)
+
+```sql
+CREATE TABLE receipt_sequences (
+    org_id          UUID NOT NULL REFERENCES orgs(id),
+    fiscal_year     INTEGER NOT NULL,
+    next_val        INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (org_id, fiscal_year)
+);
+```
+
+Used by the receipt generation worker to produce gapless, race-condition-safe receipt numbers via:
+
+```sql
+INSERT INTO receipt_sequences (org_id, fiscal_year, next_val)
+VALUES ($1, $2, 1)
+ON CONFLICT ON CONSTRAINT receipt_sequences_pkey
+DO UPDATE SET next_val = receipt_sequences.next_val + 1
+RETURNING next_val;
+```
+
+Receipt numbers follow the format `REC-YYYY-NNNN` (zero-padded). Uniqueness is enforced by a separate constraint on the `receipts` table: `UNIQUE(org_id, fiscal_year, receipt_number)`.
 
 ---
 
@@ -727,15 +754,56 @@ CREATE TABLE gl_export_lines (
 
 ---
 
-## 4. Row-level security policies (representative)
+## 4. Row-level security policies
+
+### 4.1 PostgreSQL 3-Role Pattern
+
+Givernance uses a **3-role pattern** for database access:
+
+| Role | Attributes | Used by | RLS behavior |
+|------|-----------|---------|-------------|
+| `givernance` | Owner, `BYPASSRLS` | Migrations, relay, workers | Bypasses RLS (needs cross-tenant access) |
+| `givernance_app` | `NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS` | API server | **Subject to all RLS policies** |
+| `postgres` | Superuser | Infrastructure only | Never used by application code |
+
+The API server connects via `DATABASE_URL_APP` (the `givernance_app` role). Workers and the relay connect via `DATABASE_URL` (the `givernance` owner role) because they process jobs across tenants.
+
+### 4.2 FORCE ROW LEVEL SECURITY
+
+All tenant-scoped tables have both `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`. The `FORCE` keyword ensures that RLS policies apply even to the table owner — an extra safety net in case application code accidentally uses the wrong connection.
 
 ```sql
--- Enable RLS on all tenant tables
+-- Migration 0004: Enable RLS + create policies
 ALTER TABLE constituents ENABLE ROW LEVEL SECURITY;
 
+-- Migration 0012: FORCE RLS on all tenant tables
+ALTER TABLE constituents FORCE ROW LEVEL SECURITY;
+ALTER TABLE users FORCE ROW LEVEL SECURITY;
+ALTER TABLE donations FORCE ROW LEVEL SECURITY;
+ALTER TABLE outbox_events FORCE ROW LEVEL SECURITY;
+-- ... (all 14 tenant-scoped tables)
+```
+
+### 4.3 Tenant context per transaction
+
+The API sets the tenant context inside a Drizzle transaction using `withTenantContext()`:
+
+```sql
+-- Executed by withTenantContext(orgId, callback) in packages/api/src/lib/db.ts:
+BEGIN;
+SELECT set_config('app.current_org_id', '018e1234-...', true);  -- true = transaction-scoped
+-- All queries within this transaction are filtered by RLS policies
+COMMIT;
+```
+
+> **Why `set_config(..., true)` instead of `SET LOCAL`?** Both are transaction-scoped. `set_config` returns a value and integrates cleanly with Drizzle's `sql` template tag. The `true` parameter ensures the setting is discarded at transaction end — safe with connection pooling.
+
+### 4.4 Representative policies
+
+```sql
 -- Policy: users can only see their own org's data
 CREATE POLICY constituent_org_isolation ON constituents
-    USING (org_id = current_setting('app.current_org_id')::UUID);
+    USING (org_id = current_setting('app.current_org_id', true)::UUID);
 
 -- Policy: erased constituents visible only to gdpr_admin role
 CREATE POLICY constituent_erasure_visibility ON constituents
@@ -795,4 +863,4 @@ Financial records (donations, GL lines) are RETAINED with the constituent ID poi
 | Tag filtering | GIN on array | `constituents.tags` |
 | Custom field queries | GIN on JSONB | `constituents`, `donations` |
 | Soft-delete exclusion | Partial index `WHERE deleted_at IS NULL` | `constituents`, `donations` |
-| Event outbox poll | Partial index `WHERE published = false` | `domain_events` |
+| Event outbox poll | Partial index `WHERE status = 'pending'` | `outbox_events` |

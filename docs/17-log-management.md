@@ -1,6 +1,6 @@
 # 17 — Log Management Strategy
 
-> **Status**: Spike / Analysis — Phase 1 implementation target
+> **Status**: Partially implemented (Phase 1 Sprint 1-2) — Pino + redaction live in API, Worker, and Relay
 > **Owner**: Log Analyst agent (`.claude/agents/log-analyst.md`)
 > **Related**: `02-reference-architecture.md`, `06-security-compliance.md`, `15-infra-adr.md`
 
@@ -30,10 +30,10 @@ The log management strategy must support investigation of:
 │              OTel Collector (optional gateway)                │
 └──────▲───────────────────▲──────────────────▲────────────────┘
        │                   │                  │
-┌──────┴──────┐     ┌──────┴──────┐    ┌──────┴──────┐
-│ Fastify API │     │BullMQ Worker│    │ Next.js SSR │
-│ pino + OTel │     │ pino + OTel │    │ pino + OTel │
-└──────┬──────┘     └──────┬──────┘    └─────────────┘
+┌──────┴──────┐  ┌──────┴──────┐  ┌──────┴──────┐  ┌─────────────┐
+│ Fastify API │  │Outbox Relay │  │BullMQ Worker│  │ Next.js SSR │
+│ pino + OTel │  │ pino + OTel │  │ pino + OTel │  │ pino + OTel │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └─────────────┘
        │                   │
        ▼                   ▼
 ┌──────────────────────────────────────────────────────────────┐
@@ -137,8 +137,8 @@ Fastify API (onRequest hook)
   │     └─ Enqueue BullMQ job:
   │         job.data._meta = { correlationId, tenantId, userId }
   │
-  ├─► Transactional outbox (domain_events table):
-  │     domain_events.payload must include _meta.correlationId from
+  ├─► Transactional outbox (outbox_events table):
+  │     outbox_events.payload must include _meta.correlationId from
   │     the originating request. The outbox poller extracts this when
   │     enqueuing the BullMQ job — never generates a fresh one.
   │
@@ -174,7 +174,9 @@ export const requestContext = new AsyncLocalStorage<RequestContext>();
 
 Three layers of protection:
 
-1. **Pino `redact` option** — strips known PII paths from all log output (see agent for full path list)
+1. **Pino `redact` option** (**implemented**) — strips known PII paths from all log output. The following paths are redacted across API (`packages/api/src/server.ts`), Worker (`packages/worker/src/lib/logger.ts`), and Relay (`packages/relay/src/lib/logger.ts`):
+   - `req.headers.authorization`, `req.headers.cookie`
+   - `body.password`, `body.token`, `body.iban`, `body.cardNumber`, `body.cvv`, `body.pan`
 2. **Custom serializers** — domain objects are logged with safe projections only (`{ id, type }`, never `{ email, name }`)
 3. **Code review rule** — the Log Analyst agent flags any logged field that could contain PII
 4. **Custom Pino serializers for domain objects** — register serializers for `constituent`, `volunteer`, `donation` objects that return only safe projections (`{ id, type }`). This prevents PII leakage even if developers accidentally log full domain objects (e.g., in error handlers or catch blocks).
@@ -201,7 +203,7 @@ Three layers of protection:
 
 Several JSONB columns across the schema require special GDPR handling because their contents are dynamic or free-text:
 
-- **`domain_events.payload`** — may contain full entity snapshots including PII. Must be included in the PII redaction spec (apply `sanitizeAuditDiff` before logging payload contents) or excluded from Pino log output entirely.
+- **`outbox_events.payload`** — may contain full entity snapshots including PII. Must be included in the PII redaction spec (apply `sanitizeAuditDiff` before logging payload contents) or excluded from Pino log output entirely.
 - **`custom_fields` JSONB** on `constituents`, `donations`, `volunteer_profiles`, and other entities — contains arbitrary tenant-defined data whose schema is unknown at build time. Exclude from logging entirely (cannot redact unknown schemas). Add `body.customFields`, `body.customFields.*`, `body.custom_fields`, `body.custom_fields.*` to Pino redact paths.
 - **`constituent_relationships.notes`** — free-text field that may contain PII. Add `body.relationships[*].notes` to Pino redact paths.
 - **`body.notes`** — free-text notes fields on donations, grants, case notes, etc. Add to Pino redact paths.
@@ -394,7 +396,7 @@ The following rules should be added to existing agents to enforce logging standa
 
 | Phase | Scope | Priority |
 |-------|-------|----------|
-| **Phase 1 — Skeleton** | Pino setup in shared package, Fastify logger config, correlation ID plugin, PII redact paths, `testLogger` util | P0 |
+| **Phase 1 — Skeleton** | ~~Pino setup in shared package, Fastify logger config, correlation ID plugin, PII redact paths, `testLogger` util~~ **Done** — Pino with redaction implemented in API (`server.ts`), Worker (`lib/logger.ts`), and Relay (`lib/logger.ts`). TypeBox env validation in all three packages. | P0 ✅ |
 | **Phase 1 — Skeleton** | `audit_log` Drizzle schema + migration (canonical table name to be decided in Phase 1) | P0 |
 | **Phase 1 — Skeleton** | AsyncLocalStorage context propagation | P1 |
 | **Phase 2 — Core modules** | Audit log entries on all mutations (transactional outbox) | P0 |
