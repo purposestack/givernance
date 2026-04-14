@@ -2,48 +2,24 @@ import { receipts } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
+import { db, withTenantContext } from "../../lib/db.js";
 import { createServer } from "../../server.js";
+import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
 
 let app: FastifyInstance;
 
-const ORG_A = "00000000-0000-0000-0000-000000000001";
-const ORG_B = "00000000-0000-0000-0000-000000000002";
-const USER_A = "00000000-0000-0000-0000-000000000099";
-const USER_B = "00000000-0000-0000-0000-000000000098";
-
-function signToken(app: FastifyInstance, claims: Record<string, unknown> = {}) {
-  return app.jwt.sign({
-    sub: USER_A,
-    org_id: ORG_A,
-    realm_access: { roles: ["admin"] },
-    email: "user-a@example.org",
-    role: "org_admin",
-    ...claims,
-  });
-}
-
-function authHeader(token: string) {
-  return { authorization: `Bearer ${token}` };
-}
-
 let constituentIdA: string;
 let donationIdA: string;
+const receiptSuffix = Date.now().toString(36);
+const receiptNumber = `REC-2026-${receiptSuffix}`;
 
 beforeAll(async () => {
   app = await createServer();
   await app.ready();
+  await ensureTestTenants();
 
   // Clean up stale receipt data from prior runs
   await db.execute(sql`DELETE FROM receipts WHERE org_id = ${ORG_A}`);
-
-  // Ensure test tenants exist
-  await db.execute(
-    sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_A}, 'Org A', 'test-org-a') ON CONFLICT (id) DO NOTHING`,
-  );
-  await db.execute(
-    sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_B}, 'Org B', 'test-org-b') ON CONFLICT (id) DO NOTHING`,
-  );
 
   // Create a constituent
   const tokenA = signToken(app);
@@ -95,15 +71,16 @@ describe("Receipt endpoint", () => {
   });
 
   it("GET /v1/donations/:id/receipt returns presigned URL after receipt is inserted", async () => {
-    // Simulate the worker inserting a receipt record (skip actual S3 upload)
-    await db.execute(sql`SELECT set_config('app.current_org_id', ${ORG_A}, false)`);
-    await db.insert(receipts).values({
-      orgId: ORG_A,
-      donationId: donationIdA,
-      receiptNumber: "REC-2026-0001",
-      fiscalYear: 2026,
-      s3Path: `${ORG_A}/receipts/REC-2026-0001.pdf`,
-      status: "generated",
+    // Simulate the worker inserting a receipt record (use withTenantContext, not session-scoped set_config)
+    await withTenantContext(ORG_A, async (tx) => {
+      await tx.insert(receipts).values({
+        orgId: ORG_A,
+        donationId: donationIdA,
+        receiptNumber,
+        fiscalYear: 2026,
+        s3Path: `${ORG_A}/receipts/${receiptNumber}.pdf`,
+        status: "generated",
+      });
     });
 
     const tokenA = signToken(app);
@@ -116,7 +93,7 @@ describe("Receipt endpoint", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { url: string } }>();
     expect(body.data).toHaveProperty("url");
-    expect(body.data.url).toContain("REC-2026-0001.pdf");
+    expect(body.data.url).toContain(`${receiptNumber}.pdf`);
   });
 
   it("GET /v1/donations/:id/receipt returns 404 for non-existent donation", async () => {
@@ -129,13 +106,24 @@ describe("Receipt endpoint", () => {
 
     expect(res.statusCode).toBe(404);
   });
+
+  it("GET /v1/donations/:id/receipt returns 400 for invalid UUID", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations/not-a-valid-uuid/receipt",
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 // ─── Receipt RLS Tenant Isolation ──────────────────────────────────────────
 
 describe("Receipt RLS tenant isolation", () => {
   it("Tenant B cannot access Tenant A receipt", async () => {
-    const tokenB = signToken(app, { sub: USER_B, org_id: ORG_B, email: "user-b@example.org" });
+    const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "GET",
       url: `/v1/donations/${donationIdA}/receipt`,
@@ -162,16 +150,17 @@ describe("Receipt unauthenticated access", () => {
 
 describe("Receipt DB record", () => {
   it("Receipt record has correct fields", async () => {
-    await db.execute(sql`SELECT set_config('app.current_org_id', ${ORG_A}, false)`);
-    const [receipt] = await db
-      .select()
-      .from(receipts)
-      .where(and(eq(receipts.donationId, donationIdA), eq(receipts.orgId, ORG_A)));
+    await withTenantContext(ORG_A, async (tx) => {
+      const [receipt] = await tx
+        .select()
+        .from(receipts)
+        .where(and(eq(receipts.donationId, donationIdA), eq(receipts.orgId, ORG_A)));
 
-    expect(receipt).toBeTruthy();
-    expect(receipt?.receiptNumber).toBe("REC-2026-0001");
-    expect(receipt?.fiscalYear).toBe(2026);
-    expect(receipt?.status).toBe("generated");
-    expect(receipt?.s3Path).toContain("REC-2026-0001.pdf");
+      expect(receipt).toBeTruthy();
+      expect(receipt?.receiptNumber).toBe(receiptNumber);
+      expect(receipt?.fiscalYear).toBe(2026);
+      expect(receipt?.status).toBe("generated");
+      expect(receipt?.s3Path).toContain(`${receiptNumber}.pdf`);
+    });
   });
 });

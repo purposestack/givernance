@@ -26,7 +26,6 @@ const IdempotencyKeyHeader = Type.Object({
   ),
 });
 
-
 const PledgeCreateBody = Type.Object({
   constituentId: UuidSchema,
   amountCents: Type.Integer({ minimum: 1 }),

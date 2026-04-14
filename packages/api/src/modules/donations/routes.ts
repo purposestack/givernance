@@ -111,7 +111,6 @@ const ReceiptUrlResponse = Type.Object({
   url: Type.String(),
 });
 
-
 export async function donationRoutes(app: FastifyInstance) {
   /** List donations with pagination and filters */
   app.get(
@@ -217,6 +216,11 @@ export async function donationRoutes(app: FastifyInstance) {
 
       try {
         const donation = await createDonation(orgId, userId, body);
+
+        if (!donation) {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Constituent not found"));
+        }
+
         return reply.status(201).send({ data: donation });
       } catch (err) {
         if (err instanceof AllocationSumMismatchError) {
