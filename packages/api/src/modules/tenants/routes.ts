@@ -11,6 +11,7 @@ import {
   DataResponse,
   ErrorResponses,
   IdParams,
+  UuidSchema,
 } from "../../lib/schemas.js";
 
 const CreateTenantBody = Type.Object({
@@ -22,7 +23,7 @@ const CreateTenantBody = Type.Object({
 });
 
 const TenantResponse = Type.Object({
-  id: Type.String(),
+  id: UuidSchema,
   name: Type.String(),
   slug: Type.String(),
   plan: Type.String(),
@@ -37,6 +38,7 @@ export async function tenantRoutes(app: FastifyInstance) {
     {
       preHandler: requireAdminSecret,
       schema: {
+        tags: ["Tenants"],
         body: CreateTenantBody,
         response: { 201: DataResponse(TenantResponse), ...ErrorResponses },
       },
@@ -77,6 +79,7 @@ export async function tenantRoutes(app: FastifyInstance) {
     {
       preHandler: requireAdminSecret,
       schema: {
+        tags: ["Tenants"],
         response: { 200: DataArrayResponseNoPagination(TenantResponse), ...ErrorResponses },
       },
     },
@@ -92,6 +95,7 @@ export async function tenantRoutes(app: FastifyInstance) {
     {
       preHandler: requireAdminSecret,
       schema: {
+        tags: ["Tenants"],
         params: IdParams,
         response: { 200: DataResponse(TenantResponse), ...ErrorResponses },
       },
@@ -119,6 +123,7 @@ export async function tenantRoutes(app: FastifyInstance) {
     {
       preHandler: requireAdminSecret,
       schema: {
+        tags: ["Tenants"],
         params: IdParams,
         response: { 200: DataResponse(TenantResponse), ...ErrorResponses },
       },

@@ -4,8 +4,9 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import Fastify from "fastify";
+import Fastify, { type FastifyError } from "fastify";
 import { redis } from "./lib/redis.js";
+import { PROBLEM_JSON, problemDetail } from "./lib/schemas.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { campaignRoutes } from "./modules/campaigns/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
@@ -52,6 +53,19 @@ export async function createServer() {
 
   await app.register(swaggerUi, {
     routePrefix: "/docs",
+  });
+
+  // --- Global error handler (RFC 7807 application/problem+json) ---
+  app.setErrorHandler((error: FastifyError, _request, reply) => {
+    const status = error.statusCode ?? 500;
+    const body = problemDetail(
+      status,
+      error.message || "Internal Server Error",
+      error.validation
+        ? `Validation failed: ${error.validation.map((v) => v.message).join("; ")}`
+        : error.message || "An unexpected error occurred",
+    );
+    return reply.status(status).header("content-type", PROBLEM_JSON).send(body);
   });
 
   // --- Custom plugins ---

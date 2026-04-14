@@ -65,12 +65,12 @@ const IdempotencyKeyHeader = Type.Object({
 
 /** Donation shape returned by the API */
 const DonationResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
-  constituentId: Type.String(),
+  id: UuidSchema,
+  orgId: UuidSchema,
+  constituentId: UuidSchema,
   amountCents: Type.Integer(),
-  currency: Type.String(),
-  campaignId: Type.Union([Type.String(), Type.Null()]),
+  currency: CurrencySchema,
+  campaignId: Type.Union([UuidSchema, Type.Null()]),
   paymentMethod: Type.Union([Type.String(), Type.Null()]),
   paymentRef: Type.Union([Type.String(), Type.Null()]),
   donatedAt: Type.String(),
@@ -80,12 +80,12 @@ const DonationResponse = Type.Object({
 });
 
 const DonationDetailResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
-  constituentId: Type.String(),
+  id: UuidSchema,
+  orgId: UuidSchema,
+  constituentId: UuidSchema,
   amountCents: Type.Integer(),
-  currency: Type.String(),
-  campaignId: Type.Union([Type.String(), Type.Null()]),
+  currency: CurrencySchema,
+  campaignId: Type.Union([UuidSchema, Type.Null()]),
   paymentMethod: Type.Union([Type.String(), Type.Null()]),
   paymentRef: Type.Union([Type.String(), Type.Null()]),
   donatedAt: Type.String(),
@@ -93,15 +93,15 @@ const DonationDetailResponse = Type.Object({
   createdAt: Type.String(),
   updatedAt: Type.String(),
   constituent: Type.Object({
-    id: Type.String(),
+    id: UuidSchema,
     firstName: Type.String(),
     lastName: Type.String(),
     email: Type.Union([Type.String(), Type.Null()]),
   }),
   allocations: Type.Array(
     Type.Object({
-      id: Type.String(),
-      fundId: Type.String(),
+      id: UuidSchema,
+      fundId: UuidSchema,
       amountCents: Type.Integer(),
     }),
   ),
@@ -118,6 +118,7 @@ export async function donationRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Donations"],
         querystring: ListQuery,
         response: { 200: DataArrayResponse(DonationResponse), ...ErrorResponses },
       },
@@ -160,6 +161,7 @@ export async function donationRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Donations"],
         params: IdParams,
         response: { 200: DataResponse(DonationDetailResponse), ...ErrorResponses },
       },
@@ -187,6 +189,7 @@ export async function donationRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Donations"],
         body: DonationCreateBody,
         headers: IdempotencyKeyHeader,
         response: { 201: DataResponse(DonationResponse), ...ErrorResponses },
@@ -234,6 +237,7 @@ export async function donationRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Donations"],
         params: IdParams,
         response: { 200: DataResponse(ReceiptUrlResponse), ...ErrorResponses },
       },
