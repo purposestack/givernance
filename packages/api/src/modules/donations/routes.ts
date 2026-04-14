@@ -4,7 +4,13 @@ import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../../lib/guards.js";
 import { getReceiptPresignedUrl } from "../../lib/s3.js";
-import { createDonation, getDonation, getReceiptByDonation, listDonations } from "./service.js";
+import {
+  AllocationSumMismatchError,
+  createDonation,
+  getDonation,
+  getReceiptByDonation,
+  listDonations,
+} from "./service.js";
 
 const IdParams = Type.Object({
   id: Type.String({ pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }),
@@ -161,8 +167,20 @@ export async function donationRoutes(app: FastifyInstance) {
         allocations?: { fundId: string; amountCents: number }[];
       };
 
-      const donation = await createDonation(orgId, userId, body);
-      return reply.status(201).send({ data: donation });
+      try {
+        const donation = await createDonation(orgId, userId, body);
+        return reply.status(201).send({ data: donation });
+      } catch (err) {
+        if (err instanceof AllocationSumMismatchError) {
+          return reply.status(422).send({
+            type: "https://httpproblems.com/http-status/422",
+            title: "Unprocessable Entity",
+            status: 422,
+            detail: err.message,
+          });
+        }
+        throw err;
+      }
     },
   );
 
@@ -179,6 +197,18 @@ export async function donationRoutes(app: FastifyInstance) {
       }
 
       const { id } = request.params as { id: string };
+
+      // Verify donation belongs to this org before exposing receipt
+      const donation = await getDonation(orgId, id);
+      if (!donation) {
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: "Donation not found",
+        });
+      }
+
       const receipt = await getReceiptByDonation(orgId, id);
 
       if (!receipt) {
