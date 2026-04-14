@@ -6,6 +6,12 @@ import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
+import {
+  DataArrayResponseNoPagination,
+  DataResponse,
+  ErrorResponses,
+  IdParams,
+} from "../../lib/schemas.js";
 
 const CreateUserBody = Type.Object({
   email: Type.String({ format: "email" }),
@@ -20,45 +26,81 @@ const UpdateRoleBody = Type.Object({
   role: Type.Union([Type.Literal("org_admin"), Type.Literal("user"), Type.Literal("viewer")]),
 });
 
+const UserResponse = Type.Object({
+  id: Type.String(),
+  orgId: Type.String(),
+  keycloakId: Type.Union([Type.String(), Type.Null()]),
+  email: Type.String(),
+  firstName: Type.String(),
+  lastName: Type.String(),
+  role: Type.String(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+
 export async function userRoutes(app: FastifyInstance) {
   /** GET /v1/users/me — current user profile (requires JWT) */
-  app.get("/users/me", { preHandler: requireAuth }, async (request, reply) => {
-    const userId = request.auth?.userId as string;
-    const orgId = request.auth?.orgId as string;
+  app.get(
+    "/users/me",
+    {
+      preHandler: requireAuth,
+      schema: {
+        response: { 200: DataResponse(UserResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.auth?.userId as string;
+      const orgId = request.auth?.orgId as string;
 
-    const user = await withTenantContext(orgId, async (tx) => {
-      const [row] = await tx
-        .select()
-        .from(users)
-        .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
-      return row;
-    });
-
-    if (!user) {
-      return reply.status(404).send({
-        type: "https://httpproblems.com/http-status/404",
-        title: "Not Found",
-        status: 404,
-        detail: "User profile not found",
+      const user = await withTenantContext(orgId, async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(users)
+          .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
+        return row;
       });
-    }
 
-    return reply.send({ data: user });
-  });
+      if (!user) {
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: "User profile not found",
+        });
+      }
+
+      return reply.send({ data: user });
+    },
+  );
 
   /** GET /v1/users — list users in tenant (org_admin only) */
-  app.get("/users", { preHandler: requireOrgAdmin }, async (request, reply) => {
-    const orgId = request.auth?.orgId as string;
-    const all = await withTenantContext(orgId, async (tx) => {
-      return tx.select().from(users).where(eq(users.orgId, orgId));
-    });
-    return reply.send({ data: all });
-  });
+  app.get(
+    "/users",
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        response: { 200: DataArrayResponseNoPagination(UserResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId as string;
+      const all = await withTenantContext(orgId, async (tx) => {
+        return tx.select().from(users).where(eq(users.orgId, orgId));
+      });
+      return reply.send({ data: all });
+    },
+  );
 
   /** POST /v1/users — create user in tenant (org_admin only) */
   app.post(
     "/users",
-    { preHandler: requireOrgAdmin, schema: { body: CreateUserBody } },
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        body: CreateUserBody,
+        response: { 201: DataResponse(UserResponse), ...ErrorResponses },
+      },
+    },
     async (request, reply) => {
       const orgId = request.auth?.orgId as string;
       const body = request.body as {
@@ -97,7 +139,14 @@ export async function userRoutes(app: FastifyInstance) {
   /** PATCH /v1/users/:id/role — update user role (org_admin only) */
   app.patch(
     "/users/:id/role",
-    { preHandler: requireOrgAdmin, schema: { body: UpdateRoleBody } },
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        params: IdParams,
+        body: UpdateRoleBody,
+        response: { 200: DataResponse(UserResponse), ...ErrorResponses },
+      },
+    },
     async (request, reply) => {
       const orgId = request.auth?.orgId as string;
       const { id } = request.params as { id: string };
@@ -126,27 +175,37 @@ export async function userRoutes(app: FastifyInstance) {
   );
 
   /** DELETE /v1/users/:id — remove user from tenant (org_admin only) */
-  app.delete("/users/:id", { preHandler: requireOrgAdmin }, async (request, reply) => {
-    const orgId = request.auth?.orgId as string;
-    const { id } = request.params as { id: string };
+  app.delete(
+    "/users/:id",
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        params: IdParams,
+        response: { 200: DataResponse(UserResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId as string;
+      const { id } = request.params as { id: string };
 
-    const deleted = await withTenantContext(orgId, async (tx) => {
-      const [row] = await tx
-        .delete(users)
-        .where(and(eq(users.id, id), eq(users.orgId, orgId)))
-        .returning();
-      return row;
-    });
-
-    if (!deleted) {
-      return reply.status(404).send({
-        type: "https://httpproblems.com/http-status/404",
-        title: "Not Found",
-        status: 404,
-        detail: "User not found",
+      const deleted = await withTenantContext(orgId, async (tx) => {
+        const [row] = await tx
+          .delete(users)
+          .where(and(eq(users.id, id), eq(users.orgId, orgId)))
+          .returning();
+        return row;
       });
-    }
 
-    return reply.status(200).send({ data: deleted });
-  });
+      if (!deleted) {
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: "User not found",
+        });
+      }
+
+      return reply.status(200).send({ data: deleted });
+    },
+  );
 }
