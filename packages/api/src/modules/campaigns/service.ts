@@ -1,6 +1,6 @@
 /** Campaigns service — business logic for postal campaign operations */
 
-import { campaignDocuments, campaigns, outboxEvents } from "@givernance/shared/schema";
+import { campaignDocuments, campaigns, donations, outboxEvents } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import { and, eq, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
@@ -8,6 +8,16 @@ import { withTenantContext } from "../../lib/db.js";
 export interface CreateCampaignInput {
   name: string;
   type: "nominative_postal" | "door_drop" | "digital";
+  parentId?: string | null;
+  costCents?: number | null;
+}
+
+export interface UpdateCampaignInput {
+  name?: string;
+  type?: "nominative_postal" | "door_drop" | "digital";
+  status?: "draft" | "active" | "closed";
+  parentId?: string | null;
+  costCents?: number | null;
 }
 
 export interface ListCampaignsQuery {
@@ -47,7 +57,7 @@ export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
 }
 
 /** Create a new campaign */
-export async function createCampaign(orgId: string, input: CreateCampaignInput) {
+export async function createCampaign(orgId: string, input: CreateCampaignInput, userId?: string) {
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
       .insert(campaigns)
@@ -55,10 +65,151 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput) 
         orgId,
         name: input.name,
         type: input.type,
+        parentId: input.parentId ?? null,
+        costCents: input.costCents ?? null,
       })
       .returning();
 
+    await tx.insert(outboxEvents).values({
+      tenantId: orgId,
+      type: "campaign.updated",
+      payload: { campaignId: campaign?.id, changes: input, action: "created", updatedBy: userId },
+    });
+
     return campaign;
+  });
+}
+
+/** Get a single campaign by ID */
+export async function getCampaign(orgId: string, id: string) {
+  return withTenantContext(orgId, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(campaigns)
+      .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)));
+
+    return row ?? null;
+  });
+}
+
+/** Update a campaign (partial update) */
+export async function updateCampaign(
+  orgId: string,
+  id: string,
+  input: UpdateCampaignInput,
+  userId: string,
+) {
+  return withTenantContext(orgId, async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(campaigns)
+      .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)));
+
+    if (!existing) return null;
+
+    const [updated] = await tx
+      .update(campaigns)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(campaigns.id, id))
+      .returning();
+
+    await tx.insert(outboxEvents).values({
+      tenantId: orgId,
+      type: "campaign.updated",
+      payload: { campaignId: id, changes: input, action: "updated", updatedBy: userId },
+    });
+
+    return updated;
+  });
+}
+
+/** Close (soft-delete) a campaign by setting status to 'closed' */
+export async function closeCampaign(orgId: string, id: string, userId: string) {
+  return withTenantContext(orgId, async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(campaigns)
+      .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)));
+
+    if (!existing) return null;
+
+    const now = new Date();
+    const [closed] = await tx
+      .update(campaigns)
+      .set({ status: "closed", updatedAt: now })
+      .where(eq(campaigns.id, id))
+      .returning();
+
+    await tx.insert(outboxEvents).values({
+      tenantId: orgId,
+      type: "campaign.updated",
+      payload: {
+        campaignId: id,
+        changes: { status: "closed" },
+        action: "closed",
+        updatedBy: userId,
+      },
+    });
+
+    return closed;
+  });
+}
+
+/** Get campaign stats: total raised, donation count, unique donors */
+export async function getCampaignStats(orgId: string, campaignId: string) {
+  return withTenantContext(orgId, async (tx) => {
+    const [campaign] = await tx
+      .select()
+      .from(campaigns)
+      .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+
+    if (!campaign) return null;
+
+    const [stats] = await tx
+      .select({
+        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountCents}), 0)`,
+        donationCount: sql<number>`COUNT(${donations.id})`,
+        uniqueDonors: sql<number>`COUNT(DISTINCT ${donations.constituentId})`,
+      })
+      .from(donations)
+      .where(and(eq(donations.campaignId, campaignId), eq(donations.orgId, orgId)));
+
+    return {
+      campaignId,
+      totalRaisedCents: Number(stats?.totalRaisedCents ?? 0),
+      donationCount: Number(stats?.donationCount ?? 0),
+      uniqueDonors: Number(stats?.uniqueDonors ?? 0),
+    };
+  });
+}
+
+/** Get campaign ROI: (totalRaised - costCents) / costCents */
+export async function getCampaignRoi(orgId: string, campaignId: string) {
+  return withTenantContext(orgId, async (tx) => {
+    const [campaign] = await tx
+      .select()
+      .from(campaigns)
+      .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+
+    if (!campaign) return null;
+
+    const [stats] = await tx
+      .select({
+        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountCents}), 0)`,
+      })
+      .from(donations)
+      .where(and(eq(donations.campaignId, campaignId), eq(donations.orgId, orgId)));
+
+    const totalRaisedCents = Number(stats?.totalRaisedCents ?? 0);
+    const costCents = campaign.costCents ?? 0;
+    const roi = costCents > 0 ? (totalRaisedCents - costCents) / costCents : null;
+
+    return {
+      campaignId,
+      totalRaisedCents,
+      costCents,
+      roi,
+    };
   });
 }
 

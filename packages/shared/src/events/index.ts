@@ -62,6 +62,14 @@ export interface CampaignDocumentsRequested extends BaseEvent {
   };
 }
 
+export interface CampaignUpdated extends BaseEvent {
+  type: "campaign.updated";
+  payload: {
+    campaignId: string;
+    changes: Record<string, unknown>;
+  };
+}
+
 /** Union of all domain events */
 export type DomainEvent =
   | DonationCreated
@@ -69,4 +77,5 @@ export type DomainEvent =
   | ConstituentMerged
   | ReceiptGenerated
   | GdprErasureRequested
-  | CampaignDocumentsRequested;
+  | CampaignDocumentsRequested
+  | CampaignUpdated;
