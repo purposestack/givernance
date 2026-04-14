@@ -25,8 +25,8 @@ async function audit(app: FastifyInstance) {
     try {
       await withTenantContext(request.auth.orgId, async (tx) => {
         await tx.insert(auditLogs).values({
-          orgId: request.auth?.orgId,
-          userId: request.auth?.userId,
+          orgId: request.auth?.orgId ?? "",
+          userId: request.auth?.userId ?? "",
           action: `${request.method}:${routeUrl}`,
           resourceType: extractResourceType(routeUrl),
           ipHash,
