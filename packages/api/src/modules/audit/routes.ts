@@ -2,7 +2,7 @@
 
 import { auditLogs } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { PaginationQuerySchema } from "@givernance/shared/validators";
+import { PaginationQuerySchema, parseSchema } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import { desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -36,7 +36,7 @@ export async function auditRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const query = PaginationQuerySchema.parse(request.query);
+      const query = parseSchema(PaginationQuerySchema, request.query);
       const { page, perPage } = query;
       const offset = (page - 1) * perPage;
       const orgId = request.auth?.orgId as string;

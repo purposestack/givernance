@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.36.4",
-    "zod": "^3.24.1"
+    "@sinclair/typebox": "^0.34.12"
   },
   "devDependencies": {
     "@types/pg": "^8.20.0",
