@@ -16,7 +16,7 @@ export async function listCsvFiles(bucket: string, prefix: string): Promise<stri
 
   return (response.Contents ?? [])
     .map((obj) => obj.Key)
-    .filter((key): key is string => key?.endsWith(".csv"));
+    .filter((key): key is string => (key != null && key.endsWith(".csv")));
 }
 
 /** Stream and parse a CSV file from S3 */
