@@ -6,6 +6,12 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db, withTenantContext } from "../../lib/db.js";
 import { requireOrgAdmin } from "../../lib/guards.js";
+import {
+  DataResponse,
+  ErrorResponses,
+  ProblemDetailSchema,
+  problemDetail,
+} from "../../lib/schemas.js";
 
 const CreateInvitationBody = Type.Object({
   email: Type.String({ format: "email" }),
@@ -19,6 +25,29 @@ const AcceptInvitationBody = Type.Object({
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
 });
 
+const InvitationResponse = Type.Object({
+  id: Type.String(),
+  orgId: Type.String(),
+  email: Type.String(),
+  role: Type.String(),
+  token: Type.String(),
+  invitedById: Type.Union([Type.String(), Type.Null()]),
+  acceptedAt: Type.Union([Type.String(), Type.Null()]),
+  expiresAt: Type.String(),
+  createdAt: Type.String(),
+});
+
+const AcceptedUserResponse = Type.Object({
+  id: Type.String(),
+  orgId: Type.String(),
+  email: Type.String(),
+  firstName: Type.String(),
+  lastName: Type.String(),
+  role: Type.String(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+
 export async function invitationRoutes(app: FastifyInstance) {
   /**
    * POST /v1/invitations — invite a user by email (org_admin only)
@@ -26,7 +55,13 @@ export async function invitationRoutes(app: FastifyInstance) {
    */
   app.post(
     "/invitations",
-    { preHandler: requireOrgAdmin, schema: { body: CreateInvitationBody } },
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        body: CreateInvitationBody,
+        response: { 201: DataResponse(InvitationResponse), ...ErrorResponses },
+      },
+    },
     async (request, reply) => {
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
@@ -70,7 +105,14 @@ export async function invitationRoutes(app: FastifyInstance) {
   app.post(
     "/invitations/:token/accept",
     {
-      schema: { body: AcceptInvitationBody },
+      schema: {
+        body: AcceptInvitationBody,
+        response: {
+          201: DataResponse(AcceptedUserResponse),
+          410: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
       config: { rateLimit: { max: 10, timeWindow: "15 minutes" } },
     },
     async (request, reply) => {
@@ -84,21 +126,13 @@ export async function invitationRoutes(app: FastifyInstance) {
         .where(and(eq(invitations.token, token), isNull(invitations.acceptedAt)));
 
       if (!invitation) {
-        return reply.status(404).send({
-          type: "https://httpproblems.com/http-status/404",
-          title: "Not Found",
-          status: 404,
-          detail: "Invalid or already used invitation token",
-        });
+        return reply
+          .status(404)
+          .send(problemDetail(404, "Not Found", "Invalid or already used invitation token"));
       }
 
       if (invitation.expiresAt < new Date()) {
-        return reply.status(410).send({
-          type: "https://httpproblems.com/http-status/410",
-          title: "Gone",
-          status: 410,
-          detail: "Invitation has expired",
-        });
+        return reply.status(410).send(problemDetail(410, "Gone", "Invitation has expired"));
       }
 
       // Step 2: Create user and mark invitation accepted within tenant context
