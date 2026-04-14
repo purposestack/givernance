@@ -8,8 +8,10 @@ import Fastify from "fastify";
 import { redis } from "./lib/redis.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
+import { donationRoutes } from "./modules/donations/routes.js";
 import { healthRoutes } from "./modules/health/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
+import { pledgeRoutes } from "./modules/pledges/routes.js";
 import { tenantRoutes } from "./modules/tenants/routes.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { auditPlugin } from "./plugins/audit.js";
@@ -62,6 +64,8 @@ export async function createServer() {
   await app.register(userRoutes, { prefix: "/v1" });
   await app.register(invitationRoutes, { prefix: "/v1" });
   await app.register(auditRoutes, { prefix: "/v1" });
+  await app.register(donationRoutes, { prefix: "/v1" });
+  await app.register(pledgeRoutes, { prefix: "/v1" });
 
   return app;
 }

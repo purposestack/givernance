@@ -17,6 +17,16 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
+// ─── Donation-related Enums ──────────────────────────────────────────────────
+
+export const fundTypeEnum = pgEnum("fund_type", ["restricted", "unrestricted"]);
+
+export const pledgeFrequencyEnum = pgEnum("pledge_frequency", ["monthly", "yearly"]);
+
+export const pledgeStatusEnum = pgEnum("pledge_status", ["active", "paused", "cancelled"]);
+
+export const installmentStatusEnum = pgEnum("installment_status", ["pending", "paid", "failed"]);
+
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
 export const userRoleEnum = pgEnum("user_role", ["org_admin", "user", "viewer"]);
@@ -131,23 +141,129 @@ export const constituents = pgTable("constituents", {
 });
 
 /** Donations — financial contributions linked to a constituent */
-export const donations = pgTable("donations", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id")
-    .notNull()
-    .references(() => tenants.id, { onDelete: "cascade" }),
-  constituentId: uuid("constituent_id")
-    .notNull()
-    .references(() => constituents.id),
-  amountCents: integer("amount_cents").notNull(),
-  currency: varchar("currency", { length: 3 }).notNull().default("EUR"),
-  campaignId: uuid("campaign_id"),
-  paymentMethod: varchar("payment_method", { length: 50 }),
-  paymentRef: varchar("payment_ref", { length: 255 }),
-  donatedAt: timestamp("donated_at", { withTimezone: true }).notNull().defaultNow(),
-  fiscalYear: integer("fiscal_year"),
-  receiptNumber: varchar("receipt_number", { length: 100 }),
-  receiptAmount: numeric("receipt_amount", { precision: 12, scale: 2 }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const donations = pgTable(
+  "donations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    constituentId: uuid("constituent_id")
+      .notNull()
+      .references(() => constituents.id),
+    amountCents: integer("amount_cents").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("EUR"),
+    campaignId: uuid("campaign_id"),
+    paymentMethod: varchar("payment_method", { length: 50 }),
+    paymentRef: varchar("payment_ref", { length: 255 }),
+    donatedAt: timestamp("donated_at", { withTimezone: true }).notNull().defaultNow(),
+    fiscalYear: integer("fiscal_year"),
+    receiptNumber: varchar("receipt_number", { length: 100 }),
+    receiptAmount: numeric("receipt_amount", { precision: 12, scale: 2 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("donations_org_id_idx").on(table.orgId),
+    index("donations_constituent_id_idx").on(table.constituentId),
+    index("donations_donated_at_idx").on(table.donatedAt),
+  ],
+);
+
+// ─── Funds ───────────────────────────────────────────────────────────────────
+
+/** Funds — restricted or unrestricted fund designations for donation allocations */
+export const funds = pgTable(
+  "funds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    type: fundTypeEnum("type").notNull().default("unrestricted"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("funds_org_id_idx").on(table.orgId)],
+);
+
+// ─── Donation Allocations ────────────────────────────────────────────────────
+
+/** Donation Allocations — split a donation across one or more funds */
+export const donationAllocations = pgTable(
+  "donation_allocations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    donationId: uuid("donation_id")
+      .notNull()
+      .references(() => donations.id, { onDelete: "cascade" }),
+    fundId: uuid("fund_id")
+      .notNull()
+      .references(() => funds.id, { onDelete: "restrict" }),
+    amountCents: integer("amount_cents").notNull(),
+  },
+  (table) => [
+    index("donation_allocations_org_id_idx").on(table.orgId),
+    index("donation_allocations_donation_id_idx").on(table.donationId),
+    index("donation_allocations_fund_id_idx").on(table.fundId),
+  ],
+);
+
+// ─── Pledges ─────────────────────────────────────────────────────────────────
+
+/** Pledges — recurring commitment from a constituent */
+export const pledges = pgTable(
+  "pledges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    constituentId: uuid("constituent_id")
+      .notNull()
+      .references(() => constituents.id),
+    amountCents: integer("amount_cents").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("EUR"),
+    frequency: pledgeFrequencyEnum("frequency").notNull(),
+    status: pledgeStatusEnum("status").notNull().default("active"),
+    stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+    stripeAccountId: varchar("stripe_account_id", { length: 255 }),
+    paymentGateway: varchar("payment_gateway", { length: 50 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("pledges_org_id_idx").on(table.orgId),
+    index("pledges_constituent_id_idx").on(table.constituentId),
+  ],
+);
+
+// ─── Pledge Installments ─────────────────────────────────────────────────────
+
+/** Pledge Installments — expected payments for a pledge */
+export const pledgeInstallments = pgTable(
+  "pledge_installments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    pledgeId: uuid("pledge_id")
+      .notNull()
+      .references(() => pledges.id, { onDelete: "cascade" }),
+    donationId: uuid("donation_id").references(() => donations.id, { onDelete: "set null" }),
+    expectedAt: timestamp("expected_at", { withTimezone: true }).notNull(),
+    status: installmentStatusEnum("installment_status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("pledge_installments_org_id_idx").on(table.orgId),
+    index("pledge_installments_pledge_id_idx").on(table.pledgeId),
+  ],
+);
