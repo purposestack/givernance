@@ -69,8 +69,8 @@ const MergeBody = Type.Object({
 
 /** Constituent shape returned by the API */
 const ConstituentResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
+  id: UuidSchema,
+  orgId: UuidSchema,
   firstName: Type.String(),
   lastName: Type.String(),
   email: Type.Union([Type.String(), Type.Null()]),
@@ -84,7 +84,7 @@ const ConstituentResponse = Type.Object({
 });
 
 const DuplicateResponse = Type.Object({
-  id: Type.String(),
+  id: UuidSchema,
   firstName: Type.String(),
   lastName: Type.String(),
   email: Type.Union([Type.String(), Type.Null()]),
@@ -105,6 +105,7 @@ export async function constituentRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Constituents"],
         querystring: ListQuery,
         response: { 200: DataArrayResponse(ConstituentResponse), ...ErrorResponses },
       },
@@ -145,6 +146,7 @@ export async function constituentRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Constituents"],
         params: IdParams,
         response: { 200: DataResponse(ConstituentResponse), ...ErrorResponses },
       },
@@ -172,6 +174,7 @@ export async function constituentRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Constituents"],
         querystring: DuplicateSearchQuery,
         response: {
           200: DataArrayResponseNoPagination(DuplicateResponse),
@@ -197,6 +200,7 @@ export async function constituentRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Constituents"],
         body: ConstituentCreateBody,
         querystring: CreateQuery,
         response: {
@@ -247,6 +251,7 @@ export async function constituentRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Constituents"],
         params: IdParams,
         body: ConstituentUpdateBody,
         response: { 200: DataResponse(ConstituentResponse), ...ErrorResponses },
@@ -285,6 +290,7 @@ export async function constituentRoutes(app: FastifyInstance) {
     {
       preHandler: requireAuth,
       schema: {
+        tags: ["Constituents"],
         params: IdParams,
         response: { 200: DataResponse(ConstituentResponse), ...ErrorResponses },
       },
@@ -313,6 +319,7 @@ export async function constituentRoutes(app: FastifyInstance) {
     {
       preHandler: requireOrgAdmin,
       schema: {
+        tags: ["Constituents"],
         params: IdParams,
         body: MergeBody,
         response: {

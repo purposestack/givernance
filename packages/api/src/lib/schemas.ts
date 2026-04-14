@@ -17,13 +17,17 @@ export const PaginationQuery = Type.Object({
   perPage: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 20 })),
 });
 
-/** RFC 7807 Problem Details response schema */
-export const ProblemDetailSchema = Type.Object({
-  type: Type.String(),
-  title: Type.String(),
-  status: Type.Integer(),
-  detail: Type.String(),
-});
+/** RFC 7807 Problem Details response schema (all members optional per spec) */
+export const ProblemDetailSchema = Type.Object(
+  {
+    type: Type.Optional(Type.String()),
+    title: Type.Optional(Type.String()),
+    status: Type.Optional(Type.Integer()),
+    detail: Type.Optional(Type.String()),
+    instance: Type.Optional(Type.String()),
+  },
+  { additionalProperties: true },
+);
 
 /** Supported ISO 4217 currency codes for European NPOs */
 export const CurrencySchema = Type.Union([
@@ -79,3 +83,6 @@ export function problemDetail(status: number, title: string, detail: string) {
     detail,
   };
 }
+
+/** Content-Type for RFC 7807 responses */
+export const PROBLEM_JSON = "application/problem+json";

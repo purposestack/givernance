@@ -8,15 +8,15 @@ import { desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { requireOrgAdmin } from "../../lib/guards.js";
-import { DataArrayResponse, ErrorResponses } from "../../lib/schemas.js";
+import { DataArrayResponse, ErrorResponses, UuidSchema } from "../../lib/schemas.js";
 
 const AuditLogResponse = Type.Object({
-  id: Type.String(),
-  orgId: Type.String(),
-  userId: Type.Union([Type.String(), Type.Null()]),
+  id: UuidSchema,
+  orgId: UuidSchema,
+  userId: Type.Union([UuidSchema, Type.Null()]),
   action: Type.String(),
   resourceType: Type.Union([Type.String(), Type.Null()]),
-  resourceId: Type.Union([Type.String(), Type.Null()]),
+  resourceId: Type.Union([UuidSchema, Type.Null()]),
   oldValues: Type.Unknown(),
   newValues: Type.Unknown(),
   ipHash: Type.Union([Type.String(), Type.Null()]),
@@ -31,6 +31,7 @@ export async function auditRoutes(app: FastifyInstance) {
     {
       preHandler: requireOrgAdmin,
       schema: {
+        tags: ["Audit"],
         response: { 200: DataArrayResponse(AuditLogResponse), ...ErrorResponses },
       },
     },
