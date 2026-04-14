@@ -79,6 +79,7 @@ describe("Constituents CRUD", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { id: string; activities: unknown[] } }>();
     expect(body.data.id).toBe(constituentId);
@@ -94,6 +95,7 @@ describe("Constituents CRUD", () => {
       payload: { lastName: "Martin" },
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { lastName: string } }>();
     expect(body.data.lastName).toBe("Martin");
@@ -130,6 +132,7 @@ describe("Constituents CRUD", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { deletedAt: string } }>();
     expect(body.data.deletedAt).toBeTruthy();
@@ -206,6 +209,7 @@ describe("Constituents search and filtering", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { lastName: string }[]; pagination: { total: number } }>();
     expect(body.data.length).toBeGreaterThanOrEqual(2);
@@ -222,6 +226,7 @@ describe("Constituents search and filtering", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: unknown[] }>();
     expect(body.data.length).toBeGreaterThanOrEqual(1);
@@ -235,6 +240,7 @@ describe("Constituents search and filtering", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { type: string }[] }>();
     expect(body.data.length).toBeGreaterThanOrEqual(1);
@@ -251,6 +257,7 @@ describe("Constituents search and filtering", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { tags: string[] }[] }>();
     expect(body.data.length).toBeGreaterThanOrEqual(2);
@@ -265,6 +272,7 @@ describe("Constituents search and filtering", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { deletedAt: string | null }[] }>();
     for (const c of body.data) {
@@ -331,6 +339,7 @@ describe("Constituents RLS tenant isolation", () => {
       headers: authHeader(tokenB),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { id: string }[] }>();
     const ids = body.data.map((c) => c.id);
@@ -401,6 +410,7 @@ describe("Constituents duplicate detection", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { id: string; score: number }[] }>();
     expect(body.data.length).toBeGreaterThanOrEqual(1);
@@ -417,6 +427,7 @@ describe("Constituents duplicate detection", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { id: string; score: number }[] }>();
     const match = body.data.find((d) => d.id === dedupId);
@@ -437,6 +448,7 @@ describe("Constituents duplicate detection", () => {
       },
     });
 
+    if (res.statusCode !== 409) console.error("TEST FAILED RESPONSE 409:", res.json());
     expect(res.statusCode).toBe(409);
     const body = res.json<{ duplicates: { id: string }[] }>();
     expect(body.duplicates.length).toBeGreaterThanOrEqual(1);
@@ -524,6 +536,7 @@ describe("Constituents merge", () => {
       payload: { targetId: duplicateId },
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     expect(res.json<{ data: { merged: boolean } }>().data.merged).toBe(true);
   });
@@ -536,6 +549,7 @@ describe("Constituents merge", () => {
       headers: authHeader(tokenA),
     });
 
+    if (res.statusCode !== 200) console.error("TEST FAILED RESPONSE:", res.json());
     expect(res.statusCode).toBe(200);
     const data = res.json<{
       data: { email: string; phone: string; tags: string[] };
