@@ -311,7 +311,27 @@ export const receipts = pgTable(
   (table) => [
     index("receipts_org_id_idx").on(table.orgId),
     index("receipts_donation_id_idx").on(table.donationId),
+    unique("receipts_org_fiscal_number_uniq").on(
+      table.orgId,
+      table.fiscalYear,
+      table.receiptNumber,
+    ),
   ],
+);
+
+// ─── Receipt Sequences ─────────────────────────────────────────────────────
+
+/** Receipt Sequences — gapless counter per org/fiscal year for sequential receipt numbering */
+export const receiptSequences = pgTable(
+  "receipt_sequences",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    fiscalYear: integer("fiscal_year").notNull(),
+    nextVal: integer("next_val").notNull().default(1),
+  },
+  (table) => [unique("receipt_sequences_pkey").on(table.orgId, table.fiscalYear)],
 );
 
 // ─── Campaigns ──────────────────────────────────────────────────────────────

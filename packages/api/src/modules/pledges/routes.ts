@@ -9,6 +9,18 @@ const IdParams = Type.Object({
   id: Type.String({ pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }),
 });
 
+/** Idempotency-Key header schema — accepted on financial POST routes for future dedup enforcement */
+const IdempotencyKeyHeader = Type.Object({
+  "idempotency-key": Type.Optional(
+    Type.String({
+      minLength: 1,
+      maxLength: 255,
+      description:
+        "Client-generated idempotency key for safe retries. Stored for future deduplication enforcement.",
+    }),
+  ),
+});
+
 const PledgeCreateBody = Type.Object({
   constituentId: Type.String({
     pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -25,7 +37,7 @@ export async function pledgeRoutes(app: FastifyInstance) {
   /** Create a pledge with first year of installments */
   app.post(
     "/pledges",
-    { preHandler: requireAuth, schema: { body: PledgeCreateBody } },
+    { preHandler: requireAuth, schema: { body: PledgeCreateBody, headers: IdempotencyKeyHeader } },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       const userId = request.auth?.userId;
