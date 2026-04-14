@@ -92,6 +92,13 @@
       "when": 1744502412000,
       "tag": "0013_allocation_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1744502413000,
+      "tag": "0014_campaign_hierarchy",
+      "breakpoints": true
     }
   ]
 }
