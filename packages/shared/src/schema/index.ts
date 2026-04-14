@@ -347,10 +347,15 @@ export const campaigns = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     type: campaignTypeEnum("type").notNull(),
     status: campaignStatusEnum("status").notNull().default("draft"),
+    parentId: uuid("parent_id"),
+    costCents: integer("cost_cents"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("campaigns_org_id_idx").on(table.orgId)],
+  (table) => [
+    index("campaigns_org_id_idx").on(table.orgId),
+    index("campaigns_parent_id_idx").on(table.parentId),
+  ],
 );
 
 // ─── Campaign Documents ─────────────────────────────────────────────────────
