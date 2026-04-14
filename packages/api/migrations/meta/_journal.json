@@ -36,6 +36,13 @@
       "when": 1744502404000,
       "tag": "0005_rls_app_role",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1744502405000,
+      "tag": "0006_constituents_soft_delete",
+      "breakpoints": true
     }
   ]
 }

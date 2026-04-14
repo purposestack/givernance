@@ -1,42 +1,211 @@
-/** Constituent routes — GET /v1/constituents, POST /v1/constituents */
+/** Constituent routes — full CRUD with search, filtering, and soft-delete */
 
-import type { ApiResponse } from "@givernance/shared/types";
-import { ConstituentCreateSchema, PaginationQuerySchema } from "@givernance/shared/validators";
+import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { createConstituent, listConstituents } from "./service.js";
+import { requireAuth } from "../../lib/guards.js";
+import {
+  createConstituent,
+  deleteConstituent,
+  getConstituent,
+  listConstituents,
+  updateConstituent,
+} from "./service.js";
+
+const ConstituentCreateBody = Type.Object({
+  firstName: Type.String({ minLength: 1, maxLength: 255 }),
+  lastName: Type.String({ minLength: 1, maxLength: 255 }),
+  email: Type.Optional(Type.String({ maxLength: 255 })),
+  phone: Type.Optional(Type.String({ maxLength: 50 })),
+  type: Type.Optional(
+    Type.Union([
+      Type.Literal("donor"),
+      Type.Literal("volunteer"),
+      Type.Literal("member"),
+      Type.Literal("beneficiary"),
+      Type.Literal("partner"),
+    ]),
+  ),
+  tags: Type.Optional(Type.Array(Type.String())),
+});
+
+const ConstituentUpdateBody = Type.Partial(ConstituentCreateBody);
+
+const IdParams = Type.Object({
+  id: Type.String({ pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }),
+});
+
+const ListQuery = Type.Object({
+  page: Type.Optional(Type.Integer({ minimum: 1, default: 1 })),
+  perPage: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 20 })),
+  search: Type.Optional(Type.String()),
+  tags: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()])),
+  type: Type.Optional(
+    Type.Union([
+      Type.Literal("donor"),
+      Type.Literal("volunteer"),
+      Type.Literal("member"),
+      Type.Literal("beneficiary"),
+      Type.Literal("partner"),
+    ]),
+  ),
+  includeDeleted: Type.Optional(Type.Boolean({ default: false })),
+});
 
 export async function constituentRoutes(app: FastifyInstance) {
-  /** List constituents with pagination */
-  app.get("/constituents", async (request, reply) => {
-    const query = PaginationQuerySchema.parse(request.query);
-    const orgId = request.auth?.orgId;
+  /** List constituents with pagination, search, and filtering */
+  app.get(
+    "/constituents",
+    { preHandler: requireAuth, schema: { querystring: ListQuery } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply
+          .status(401)
+          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+      }
 
-    if (!orgId) {
-      return reply
-        .status(401)
-        .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
-    }
+      const query = request.query as {
+        page?: number;
+        perPage?: number;
+        search?: string;
+        tags?: string[] | string;
+        type?: string;
+        includeDeleted?: boolean;
+      };
 
-    const result = await listConstituents(orgId, query);
-    const response: ApiResponse<typeof result.data> = {
-      data: result.data,
-      pagination: result.pagination,
-    };
-    return response;
-  });
+      const tags = query.tags ? (Array.isArray(query.tags) ? query.tags : [query.tags]) : undefined;
+
+      const result = await listConstituents(orgId, {
+        page: query.page ?? 1,
+        perPage: query.perPage ?? 20,
+        search: query.search,
+        tags,
+        type: query.type,
+        includeDeleted: query.includeDeleted,
+      });
+
+      return { data: result.data, pagination: result.pagination };
+    },
+  );
+
+  /** Get a single constituent by ID */
+  app.get(
+    "/constituents/:id",
+    { preHandler: requireAuth, schema: { params: IdParams } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply
+          .status(401)
+          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+      }
+
+      const { id } = request.params as { id: string };
+      const constituent = await getConstituent(orgId, id);
+
+      if (!constituent) {
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: "Constituent not found",
+        });
+      }
+
+      return { data: constituent };
+    },
+  );
 
   /** Create a new constituent */
-  app.post("/constituents", async (request, reply) => {
-    const body = ConstituentCreateSchema.parse(request.body);
-    const orgId = request.auth?.orgId;
+  app.post(
+    "/constituents",
+    { preHandler: requireAuth, schema: { body: ConstituentCreateBody } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply
+          .status(401)
+          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+      }
 
-    if (!orgId) {
-      return reply
-        .status(401)
-        .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
-    }
+      const body = request.body as {
+        firstName: string;
+        lastName: string;
+        email?: string;
+        phone?: string;
+        type?: string;
+        tags?: string[];
+      };
 
-    const constituent = await createConstituent(orgId, body);
-    return reply.status(201).send({ data: constituent });
-  });
+      const constituent = await createConstituent(orgId, body);
+      return reply.status(201).send({ data: constituent });
+    },
+  );
+
+  /** Update a constituent (partial update) */
+  app.put(
+    "/constituents/:id",
+    { preHandler: requireAuth, schema: { params: IdParams, body: ConstituentUpdateBody } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply
+          .status(401)
+          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+      }
+
+      const { id } = request.params as { id: string };
+      const body = request.body as {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+        phone?: string;
+        type?: string;
+        tags?: string[];
+      };
+
+      const updated = await updateConstituent(orgId, id, body, userId);
+
+      if (!updated) {
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: "Constituent not found",
+        });
+      }
+
+      return { data: updated };
+    },
+  );
+
+  /** Soft-delete a constituent */
+  app.delete(
+    "/constituents/:id",
+    { preHandler: requireAuth, schema: { params: IdParams } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply
+          .status(401)
+          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+      }
+
+      const { id } = request.params as { id: string };
+      const deleted = await deleteConstituent(orgId, id, userId);
+
+      if (!deleted) {
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: "Constituent not found",
+        });
+      }
+
+      return { data: deleted };
+    },
+  );
 }
