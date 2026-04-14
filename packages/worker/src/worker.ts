@@ -38,12 +38,16 @@ async function processDomainEvent(job: Job): Promise<void> {
     const donationId = payload.donationId as string;
     const fiscalYear = new Date().getFullYear();
 
-    await receiptsQueue.add("generate-receipt", {
-      donationId,
-      orgId: tenantId,
-      fiscalYear,
-      locale: "en",
-    });
+    await receiptsQueue.add(
+      "generate-receipt",
+      {
+        donationId,
+        orgId: tenantId,
+        fiscalYear,
+        locale: "en",
+      },
+      { jobId: `receipt-${donationId}` },
+    );
 
     console.warn(`[events] Enqueued receipt generation for donation ${donationId}`);
     return;
@@ -53,11 +57,15 @@ async function processDomainEvent(job: Job): Promise<void> {
     const campaignId = payload.campaignId as string;
     const constituentIds = payload.constituentIds as string[];
 
-    await campaignsQueue.add("generate-campaign-documents", {
-      campaignId,
-      orgId: tenantId,
-      constituentIds,
-    });
+    await campaignsQueue.add(
+      "generate-campaign-documents",
+      {
+        campaignId,
+        orgId: tenantId,
+        constituentIds,
+      },
+      { jobId: `campaign-docs-${campaignId}` },
+    );
 
     console.warn(`[events] Enqueued campaign document generation for campaign ${campaignId}`);
     return;

@@ -54,6 +54,18 @@ const DonationCreateBody = Type.Object({
   allocations: Type.Optional(Type.Array(AllocationSchema)),
 });
 
+/** Idempotency-Key header schema — accepted on financial POST routes for future dedup enforcement */
+const IdempotencyKeyHeader = Type.Object({
+  "idempotency-key": Type.Optional(
+    Type.String({
+      minLength: 1,
+      maxLength: 255,
+      description:
+        "Client-generated idempotency key for safe retries. Stored for future deduplication enforcement.",
+    }),
+  ),
+});
+
 export async function donationRoutes(app: FastifyInstance) {
   /** List donations with pagination and filters */
   app.get(
@@ -124,7 +136,10 @@ export async function donationRoutes(app: FastifyInstance) {
   /** Record a manual donation (check, cash, wire) */
   app.post(
     "/donations",
-    { preHandler: requireAuth, schema: { body: DonationCreateBody } },
+    {
+      preHandler: requireAuth,
+      schema: { body: DonationCreateBody, headers: IdempotencyKeyHeader },
+    },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       const userId = request.auth?.userId;
