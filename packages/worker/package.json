@@ -16,11 +16,13 @@
     "ioredis": "^5.4.2",
     "pdfkit": "^0.18.0",
     "pg": "^8.13.1",
+    "qrcode": "^1.5.4",
     "resend": "^4.0.1"
   },
   "devDependencies": {
     "@types/pdfkit": "^0.17.5",
     "@types/pg": "^8.20.0",
+    "@types/qrcode": "^1.5.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
