@@ -216,6 +216,16 @@ export async function donationRoutes(app: FastifyInstance) {
 
       try {
         const donation = await createDonation(orgId, userId, body);
+
+        if (!donation) {
+          return reply.status(404).send({
+            type: "https://httpproblems.com/http-status/404",
+            title: "Not Found",
+            status: 404,
+            detail: "Constituent not found",
+          });
+        }
+
         return reply.status(201).send({ data: donation });
       } catch (err) {
         if (err instanceof AllocationSumMismatchError) {

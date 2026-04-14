@@ -1,27 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "../../server.js";
+import { authHeader, signToken } from "../helpers/auth.js";
 
 let app: FastifyInstance;
-
-const TEST_ORG_ID = "00000000-0000-0000-0000-000000000001";
-const TEST_USER_ID = "00000000-0000-0000-0000-000000000099";
-
-/** Helper to create a signed JWT for testing */
-function signToken(claims: Record<string, unknown> = {}) {
-  return app.jwt.sign({
-    sub: TEST_USER_ID,
-    org_id: TEST_ORG_ID,
-    realm_access: { roles: ["admin"] },
-    email: "test@example.org",
-    role: "org_admin",
-    ...claims,
-  });
-}
-
-function authHeader(token?: string) {
-  return { authorization: `Bearer ${token ?? signToken()}` };
-}
 
 beforeAll(async () => {
   app = await createServer();
@@ -87,7 +69,7 @@ describe("RBAC — authenticated access", () => {
     const res = await app.inject({
       method: "GET",
       url: "/v1/constituents",
-      headers: authHeader(),
+      headers: authHeader(signToken(app)),
     });
 
     expect(res.statusCode).toBe(200);
@@ -161,14 +143,13 @@ describe("User routes", () => {
     const res = await app.inject({
       method: "GET",
       url: "/v1/users/me",
-      headers: authHeader(),
+      headers: authHeader(signToken(app)),
     });
-    // User exists in JWT but may not exist in DB — 404 is expected
     expect(res.statusCode).toBe(404);
   });
 
   it("GET /v1/users requires org_admin role", async () => {
-    const viewerToken = signToken({ role: "viewer" });
+    const viewerToken = signToken(app, { role: "viewer" });
     const res = await app.inject({
       method: "GET",
       url: "/v1/users",
@@ -181,14 +162,14 @@ describe("User routes", () => {
     const res = await app.inject({
       method: "GET",
       url: "/v1/users",
-      headers: authHeader(),
+      headers: authHeader(signToken(app)),
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveProperty("data");
   });
 
   it("PATCH /v1/users/:id/role — viewer cannot update roles (403)", async () => {
-    const viewerToken = signToken({ role: "user" });
+    const viewerToken = signToken(app, { role: "user" });
     const res = await app.inject({
       method: "PATCH",
       url: "/v1/users/00000000-0000-0000-0000-000000000000/role",
@@ -202,7 +183,7 @@ describe("User routes", () => {
     const res = await app.inject({
       method: "DELETE",
       url: "/v1/users/00000000-0000-0000-0000-000000000000",
-      headers: authHeader(),
+      headers: authHeader(signToken(app)),
     });
     expect(res.statusCode).toBe(404);
   });
@@ -212,7 +193,7 @@ describe("User routes", () => {
 
 describe("Invitation routes", () => {
   it("POST /v1/invitations requires org_admin role", async () => {
-    const userToken = signToken({ role: "user" });
+    const userToken = signToken(app, { role: "user" });
     const res = await app.inject({
       method: "POST",
       url: "/v1/invitations",
@@ -236,7 +217,7 @@ describe("Invitation routes", () => {
 
 describe("Audit routes", () => {
   it("GET /v1/audit requires org_admin role", async () => {
-    const userToken = signToken({ role: "user" });
+    const userToken = signToken(app, { role: "user" });
     const res = await app.inject({
       method: "GET",
       url: "/v1/audit",
@@ -249,7 +230,7 @@ describe("Audit routes", () => {
     const res = await app.inject({
       method: "GET",
       url: "/v1/audit",
-      headers: authHeader(),
+      headers: authHeader(signToken(app)),
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
