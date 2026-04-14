@@ -1,6 +1,6 @@
 # 02 — Reference Architecture
 
-> Last updated: 2026-03-09
+> Last updated: 2026-04-14
 
 ---
 
@@ -57,10 +57,12 @@ See: /diagrams/container.mmd
 #### `givernance-api` (TypeScript, Fastify 5)
 - TypeScript ESM application running on Node.js 22 LTS
 - Domain modules: `auth`, `constituents`, `donations`, `campaigns`, `grants`, `programs`, `beneficiaries`, `volunteers`, `impact`, `finance`, `comms`, `reporting`, `gdpr`, `admin`, `platform`
-- Fastify 5 router + plugin stack (auth, audit, rate limit, tracing); TypeBox for OpenAPI schema validation + type-safe routes
-- Drizzle ORM for type-safe PostgreSQL queries; connects via PgBouncer (transaction mode, or directly to managed Neon.tech in SaaS deployment)
-- Zod for runtime input validation with inferred TypeScript types
-- Publishes domain events via transactional outbox → BullMQ job queue (NATS JetStream deferred to Phase 4+)
+- Fastify 5 router + plugin stack (auth, audit, rate limit, tracing); `@sinclair/typebox` for OpenAPI schema validation, JSON serialization, and type-safe routes (Zod was abandoned — see ADR-002 note)
+- Drizzle ORM for type-safe PostgreSQL queries; connects via PgBouncer (transaction mode) or directly to Scaleway Managed PostgreSQL in SaaS deployment
+- **TypeBox** for runtime input validation with inferred TypeScript types (replaces Zod for better Fastify JSON serialization performance and native Swagger/OpenAPI integration)
+- All API error responses conform to **RFC 7807** (`application/problem+json`) with strict `schema.response` on all routes to prevent PII leakage
+- Connects to PostgreSQL via `DATABASE_URL_APP` using the `givernance_app` role (NOBYPASSRLS) — see §6 Tenancy model
+- Publishes domain events via transactional outbox (`outbox_events` table) → `packages/relay` poller → BullMQ job queue (NATS JetStream deferred to Phase 4+)
 - Serves REST API on `:8080`; admin API on `:8081` (internal only)
 - Health: `GET /healthz`, `GET /readyz`
 
@@ -71,9 +73,18 @@ See: /diagrams/container.mmd
 - Auth: OIDC flow through Keycloak; JWT stored in httpOnly cookie
 - Static assets served from CDN (CloudFront / Cloudflare)
 
+#### `givernance-relay` (TypeScript, standalone)
+- Outbox relay microservice: polls the `outbox_events` table using `SELECT ... FOR UPDATE SKIP LOCKED` to prevent duplicate delivery across multiple relay instances
+- Enqueues events to BullMQ `givernance_events` queue, marks rows as `completed` or `failed`
+- Connects to PostgreSQL via `DATABASE_URL` using the `givernance` owner role (bypasses RLS — needs access to all tenant events)
+- Strict TypeBox environment validation; Pino structured logging with PII redaction
+
 #### `givernance-worker` (TypeScript, BullMQ 5)
 - Async job processor (BullMQ queues on Redis)
-- Jobs: PDF generation, bulk email send, import processing, scheduled reports, GL export, GDPR erasure execution, recurring donation installment creation
+- Jobs: PDF generation (streamed to S3 via `@aws-sdk/lib-storage` — no memory buffering), bulk email send, import processing, scheduled reports, GL export, GDPR erasure execution, recurring donation installment creation
+- Uses atomic receipt numbering via `INSERT ... ON CONFLICT ... UPDATE ... RETURNING next_val` on the `receipt_sequences` table (gapless, race-condition-safe, bounded by `UNIQUE(org_id, fiscal_year, receipt_number)`)
+- Connects to PostgreSQL via `DATABASE_URL` using the `givernance` owner role (bypasses RLS — workers process jobs across tenants)
+- Strict TypeBox environment validation; Pino structured logging with PII redaction (`authorization`, `cookie`, `password`, `token`, `iban`, `cardNumber`, `cvv`, `pan`)
 - Shares types and schemas with `givernance-api` via `@givernance/shared` package; separate process entry point
 
 #### `givernance-migrate` (TypeScript, Drizzle Kit)
@@ -148,7 +159,7 @@ packages/
 │   │   ├── types/           # Shared TypeScript types
 │   │   ├── events/          # Domain event types (CloudEvents)
 │   │   ├── jobs/            # BullMQ job type definitions
-│   │   └── validators/      # Zod schemas for API input validation
+│   │   └── validators/      # TypeBox schemas for API input validation
 │   └── package.json
 ├── api/                     # @givernance/api — Fastify API server
 │   ├── src/
@@ -172,9 +183,18 @@ packages/
 │   │   │   └── platform/    # Super-admin: org provisioning, feature flags
 │   │   └── lib/             # DB client (Drizzle), Redis client, NATS client, RLS helper
 │   └── package.json
+├── relay/                   # @givernance/relay — outbox event relay
+│   ├── src/
+│   │   ├── index.ts         # Outbox poller (SELECT ... FOR UPDATE SKIP LOCKED → BullMQ enqueue)
+│   │   ├── env.ts           # TypeBox environment validation
+│   │   └── lib/logger.ts    # Pino logger with PII redaction
+│   └── package.json
 ├── worker/                  # @givernance/worker — BullMQ job processor
 │   ├── src/
 │   │   ├── worker.ts        # BullMQ worker entry point
+│   │   ├── env.ts           # TypeBox environment validation
+│   │   ├── lib/logger.ts    # Pino logger with PII redaction
+│   │   ├── lib/s3.ts        # S3 streaming upload via @aws-sdk/lib-storage
 │   │   ├── queues/          # Queue definitions
 │   │   └── processors/      # Job processor handlers (one per job type)
 │   └── package.json
@@ -230,17 +250,40 @@ packages/
 
 **Model**: Shared database, shared schema, row-level isolation.
 
-```sql
--- RLS enforced via PostgreSQL policies
--- Connection context set per request by API middleware:
+### 6.1 PostgreSQL 3-Role Pattern
 
-BEGIN;
-SET LOCAL app.current_org_id   = '018e1234-...'; -- UUID v7
-SET LOCAL app.current_user_id  = '018e5678-...';
-SET LOCAL app.current_role     = 'fundraising_manager';
--- All queries in this transaction are automatically filtered by org_id
-COMMIT;
+We use a **3-role pattern** to enforce RLS at the database level:
+
+| Role | Attributes | Connection var | Used by |
+|------|-----------|----------------|---------|
+| `givernance` | Owner, `BYPASSRLS` | `DATABASE_URL` | Migrations, relay, workers (needs cross-tenant access) |
+| `givernance_app` | `NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS` | `DATABASE_URL_APP` | API server (subject to all RLS policies) |
+| `postgres` | Superuser | — | Infrastructure only (never used by application code) |
+
+> **Why not a global Fastify `preHandler` with `set_config`?** In earlier designs, we considered setting `app.current_org_id` in a Fastify `preHandler` hook. This is **unsafe with connection pooling**: `SET LOCAL` scoped to a transaction is safe, but `set_config` at session level leaks across pooled connections. The 3-role pattern eliminates this class of bug entirely — the `givernance_app` role physically cannot bypass RLS, regardless of application-layer mistakes.
+
+### 6.2 Tenant context per transaction
+
+The API **MUST** wrap all tenant-scoped queries in `withTenantContext`:
+
+```typescript
+// packages/api/src/lib/db.ts
+import { withTenantContext } from './db';
+
+// Inside a route handler:
+const result = await withTenantContext(orgId, async (tx) => {
+  // tx is a Drizzle transaction with app.current_org_id set via SET LOCAL
+  return tx.select().from(constituents).where(...);
+});
 ```
+
+Under the hood, `withTenantContext` opens a Drizzle transaction on the `givernance_app` connection and executes `set_config('app.current_org_id', orgId, true)` (the `true` flag scopes the setting to the current transaction). All RLS policies filter on `current_setting('app.current_org_id', true)::UUID`.
+
+### 6.3 FORCE ROW LEVEL SECURITY
+
+All tenant-scoped tables have `FORCE ROW LEVEL SECURITY` enabled (migration `0012_force_rls.sql`). This means RLS policies apply even to the table owner — an extra safety net ensuring that if any code accidentally uses the `givernance` owner connection for tenant queries, it still cannot bypass isolation. Tables covered: `users`, `invitations`, `audit_logs`, `constituents`, `donations`, `outbox_events`, `funds`, `donation_allocations`, `pledges`, `pledge_installments`, `receipts`, `campaigns`, `campaign_documents`, `campaign_qr_codes`.
+
+### 6.4 Schema rationale
 
 **Why shared schema over separate schemas**:
 - Simpler migrations (one migration file applies to all orgs)
@@ -248,7 +291,7 @@ COMMIT;
 - Lower DB overhead (no thousands of schema namespaces)
 - PgBouncer works correctly in transaction mode
 
-**Security boundary**: RLS policies are the only tenant boundary. All policies tested in integration test suite with cross-tenant access attempts. PgBouncer user does NOT have permission to bypass RLS (no `BYPASSRLS`).
+**Security boundary**: RLS policies are the primary tenant boundary. All policies tested in integration test suite with cross-tenant access attempts. The `givernance_app` role does NOT have `BYPASSRLS` — this is the role used by the API server for all user-facing requests.
 
 ---
 
@@ -258,15 +301,21 @@ COMMIT;
 
 ```
 1. API handler writes mutation to DB (e.g., INSERT INTO donations)
-2. In same DB transaction: INSERT INTO domain_events (event_type, payload, published=false)
-3. Transaction commits
-4. Background poller (every 500ms): SELECT unpublished events → enqueue BullMQ job → mark published
-5. BullMQ (Redis) delivers job to givernance-worker (at-least-once, with retries + dead-letter)
+2. In same Drizzle transaction: INSERT INTO outbox_events (type, tenant_id, payload, status='pending')
+3. Transaction commits atomically (mutation + event in one commit)
+4. givernance-relay (packages/relay) polls every 500ms:
+   SELECT ... FROM outbox_events WHERE status = 'pending'
+   ORDER BY created_at ASC LIMIT 100
+   FOR UPDATE SKIP LOCKED            ← prevents duplicate delivery across relay instances
+5. Relay enqueues to BullMQ `givernance_events` queue, marks row status = 'completed' (or 'failed')
+6. BullMQ (Redis) delivers job to givernance-worker (at-least-once, with retries + dead-letter)
 ```
+
+> **Implementation note**: The outbox table is named `outbox_events` (not `domain_events` as in the original design). The relay is a standalone microservice (`packages/relay`) — not a background poller inside the API process — so it can be scaled independently and doesn't compete with API request handling for resources.
 
 **Why outbox, not direct publish**: Guarantees job delivery even if Redis is temporarily unavailable; no dual-write problem. BullMQ provides at-least-once delivery, configurable retries, dead-letter queues, and job inspection — all natively.
 
-**Phase 4 migration path**: When NATS is introduced (see §7.4), the outbox poller will publish to NATS instead of enqueueing BullMQ directly. The domain event types and outbox table are unchanged — only `packages/shared/src/events/publisher.ts` is swapped.
+**Phase 4 migration path**: When NATS is introduced (see §7.4), the relay will publish to NATS instead of enqueueing BullMQ directly. The outbox table schema and domain event types are unchanged — only the relay's publish target is swapped.
 
 ### 7.2 Domain events (key examples)
 
@@ -363,6 +412,7 @@ All services run locally via Docker Compose. No managed cloud dependencies.
 services:
   api:         givernance/api:latest
   web:         givernance/web:latest
+  relay:       givernance/relay:latest   # outbox event relay
   worker:      givernance/worker:latest
   postgres:    postgres:16-alpine
   pgbouncer:   pgbouncer/pgbouncer:latest
@@ -409,7 +459,7 @@ Deployment: Kamal on Scaleway EU VMs. TLS via Caddy. All services under single S
 | Observability | Self-managed (Prometheus + Grafana) | Scaleway Cockpit (Grafana + Loki + Mimir + Tempo) | Scaleway Cockpit |
 | AI Inference (EU) | Ollama self-hosted | Scaleway Generative APIs (Mistral, Llama 3.1) | Scaleway Managed Inference or Generative APIs |
 | Deployment | Docker Compose + Caddy | Kamal + Scaleway EU VMs | Kamal + Scaleway EU VMs |
-| Services to operate | 8 | 4 (API, Worker, Web, Keycloak) | 5 (+NATS) |
+| Services to operate | 9 | 5 (API, Relay, Worker, Web, Keycloak) | 6 (+NATS) |
 | GDPR DPA | Self-managed | Single Scaleway DPA | Single Scaleway DPA |
 
 > See [ADR-005](./15-infra-adr.md#adr-005-nats-jetstream--deferred-to-phase-4) and [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider) for full rationale.
