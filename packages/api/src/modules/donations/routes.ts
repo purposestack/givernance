@@ -3,7 +3,8 @@
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../../lib/guards.js";
-import { createDonation, getDonation, listDonations } from "./service.js";
+import { getReceiptPresignedUrl } from "../../lib/s3.js";
+import { createDonation, getDonation, getReceiptByDonation, listDonations } from "./service.js";
 
 const IdParams = Type.Object({
   id: Type.String({ pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }),
@@ -147,6 +148,35 @@ export async function donationRoutes(app: FastifyInstance) {
 
       const donation = await createDonation(orgId, userId, body);
       return reply.status(201).send({ data: donation });
+    },
+  );
+
+  /** Get a presigned URL for downloading a donation's tax receipt PDF */
+  app.get(
+    "/donations/:id/receipt",
+    { preHandler: requireAuth, schema: { params: IdParams } },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply
+          .status(401)
+          .send({ statusCode: 401, error: "Unauthorized", message: "Missing auth context" });
+      }
+
+      const { id } = request.params as { id: string };
+      const receipt = await getReceiptByDonation(orgId, id);
+
+      if (!receipt) {
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: "Receipt not found for this donation",
+        });
+      }
+
+      const url = await getReceiptPresignedUrl(receipt.s3Path);
+      return { data: { url } };
     },
   );
 }

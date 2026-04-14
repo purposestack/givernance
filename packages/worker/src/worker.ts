@@ -2,7 +2,7 @@
 
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
-import { Worker } from "bullmq";
+import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
@@ -13,24 +13,39 @@ const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", 
   enableReadyCheck: false,
 });
 
+/** Queue handle for enqueuing receipt generation jobs */
+const receiptsQueue = new Queue(QUEUE_NAMES.RECEIPTS, { connection });
+
 /**
  * Process a domain event from the transactional outbox relay.
- * This is the end of the pipeline:
- *   DB tx (mutation + outbox row) → outbox relay → BullMQ → this worker.
- *
- * In Phase 1+ each event type will be routed to its own handler.
+ * Routes events to specific handlers based on type.
  */
 async function processDomainEvent(job: Job): Promise<void> {
   const { id, tenantId, type, payload } = job.data as {
     id: string;
     tenantId: string;
     type: string;
-    payload: unknown;
+    payload: Record<string, unknown>;
   };
 
-  // Worker process — stderr is the correct output stream for operational logs
   console.warn(`[events] Processing domain event: type=${type} id=${id} tenant=${tenantId}`);
-  console.warn(`[events] Payload: ${JSON.stringify(payload)}`);
+
+  if (type === "donation.created") {
+    const donationId = payload.donationId as string;
+    const fiscalYear = new Date().getFullYear();
+
+    await receiptsQueue.add("generate-receipt", {
+      donationId,
+      orgId: tenantId,
+      fiscalYear,
+      locale: "en",
+    });
+
+    console.warn(`[events] Enqueued receipt generation for donation ${donationId}`);
+    return;
+  }
+
+  console.warn(`[events] Unhandled event type: ${type}`);
 }
 
 /** Start all queue workers */

@@ -5,6 +5,7 @@ import {
   donationAllocations,
   donations,
   outboxEvents,
+  receipts,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
@@ -112,6 +113,24 @@ export async function getDonation(orgId: string, id: string) {
       .where(eq(donationAllocations.donationId, id));
 
     return { ...donation, constituent: constituent ?? null, allocations };
+  });
+}
+
+/** Get the generated receipt for a donation */
+export async function getReceiptByDonation(orgId: string, donationId: string) {
+  return withTenantContext(orgId, async (tx) => {
+    const [receipt] = await tx
+      .select()
+      .from(receipts)
+      .where(
+        and(
+          eq(receipts.donationId, donationId),
+          eq(receipts.orgId, orgId),
+          eq(receipts.status, "generated"),
+        ),
+      );
+
+    return receipt ?? null;
   });
 }
 
