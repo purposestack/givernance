@@ -25,7 +25,10 @@ export async function auditRoutes(app: FastifyInstance) {
           .orderBy(desc(auditLogs.createdAt))
           .limit(perPage)
           .offset(offset),
-        tx.select({ count: sql<number>`count(*)` }).from(auditLogs).where(eq(auditLogs.orgId, orgId)),
+        tx
+          .select({ count: sql<number>`count(*)` })
+          .from(auditLogs)
+          .where(eq(auditLogs.orgId, orgId)),
       ]);
 
       const total = Number(countResult[0]?.count ?? 0);
