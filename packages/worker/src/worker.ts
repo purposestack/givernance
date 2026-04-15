@@ -85,7 +85,7 @@ async function processDomainEvent(job: Job): Promise<void> {
 function startWorkers() {
   const defaultJobOpts = {
     attempts: 3,
-    backoff: { type: "exponential" as const, delay: 1000 },
+    backoff: { type: "exponential" as const, delay: 5000 },
   };
 
   /** Each Worker gets its own Redis connection per BullMQ best practices */
