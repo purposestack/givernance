@@ -9,6 +9,8 @@ interface BaseEvent {
   orgId: string;
   /** User who triggered the event */
   userId: string;
+  /** Schema version for forward-compatible evolution (default 1) */
+  schemaVersion: number;
 }
 
 export interface DonationCreated extends BaseEvent {
@@ -62,11 +64,37 @@ export interface CampaignDocumentsRequested extends BaseEvent {
   };
 }
 
+/** Partial campaign fields that can appear in an update changeset */
+export interface CampaignChanges {
+  name?: string;
+  type?: "nominative_postal" | "door_drop" | "digital";
+  status?: "draft" | "active" | "closed";
+  parentId?: string | null;
+  costCents?: number | null;
+}
+
+export interface CampaignCreated extends BaseEvent {
+  type: "campaign.created";
+  payload: {
+    campaignId: string;
+    name: string;
+    campaignType: "nominative_postal" | "door_drop" | "digital";
+  };
+}
+
 export interface CampaignUpdated extends BaseEvent {
   type: "campaign.updated";
   payload: {
     campaignId: string;
-    changes: Record<string, unknown>;
+    changes: CampaignChanges;
+  };
+}
+
+export interface CampaignClosed extends BaseEvent {
+  type: "campaign.closed";
+  payload: {
+    campaignId: string;
+    closedBy: string;
   };
 }
 
@@ -78,4 +106,6 @@ export type DomainEvent =
   | ReceiptGenerated
   | GdprErasureRequested
   | CampaignDocumentsRequested
-  | CampaignUpdated;
+  | CampaignCreated
+  | CampaignUpdated
+  | CampaignClosed;

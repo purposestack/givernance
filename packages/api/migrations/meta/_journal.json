@@ -99,6 +99,13 @@
       "when": 1744502413000,
       "tag": "0014_campaign_hierarchy",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1744502414000,
+      "tag": "0015_donation_indices",
+      "breakpoints": true
     }
   ]
 }
