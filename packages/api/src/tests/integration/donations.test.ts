@@ -68,10 +68,11 @@ describe("Donations CRUD", () => {
         amountCents: 10000,
         currency: "EUR",
         paymentMethod: "check",
-        paymentRef: "CHK-002",
+        paymentRef: `CHK-${Date.now()}-${Math.random()}`,
       },
     });
 
+    if (res.statusCode !== 201) console.log(res.json());
     expect(res.statusCode).toBe(201);
     const body = res.json<{ data: { id: string; amountCents: number } }>();
     expect(body.data).toHaveProperty("id");
@@ -92,6 +93,7 @@ describe("Donations CRUD", () => {
       },
     });
 
+    if (res.statusCode !== 201) console.log(res.json());
     expect(res.statusCode).toBe(201);
   });
 
@@ -299,6 +301,7 @@ describe("Pledges CRUD", () => {
       },
     });
 
+    if (res.statusCode !== 201) console.log(res.json());
     expect(res.statusCode).toBe(201);
     const body = res.json<{ data: { id: string; frequency: string } }>();
     expect(body.data).toHaveProperty("id");
@@ -332,6 +335,7 @@ describe("Pledges CRUD", () => {
       },
     });
 
+    if (res.statusCode !== 201) console.log(res.json());
     expect(res.statusCode).toBe(201);
     const yearlyPledgeId = res.json<{ data: { id: string } }>().data.id;
 
