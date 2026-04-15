@@ -56,9 +56,28 @@ export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
   });
 }
 
+/** Custom error for campaign validation failures */
+export class CampaignValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CampaignValidationError";
+  }
+}
+
 /** Create a new campaign */
 export async function createCampaign(orgId: string, input: CreateCampaignInput, userId?: string) {
   return withTenantContext(orgId, async (tx) => {
+    // Validate parentId if provided
+    if (input.parentId) {
+      const [parent] = await tx
+        .select({ id: campaigns.id })
+        .from(campaigns)
+        .where(and(eq(campaigns.id, input.parentId), eq(campaigns.orgId, orgId)));
+      if (!parent) {
+        throw new CampaignValidationError("Parent campaign not found in this organization");
+      }
+    }
+
     const [campaign] = await tx
       .insert(campaigns)
       .values({
@@ -106,6 +125,20 @@ export async function updateCampaign(
       .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)));
 
     if (!existing) return null;
+
+    // Validate parentId: must not be self, must exist, must belong to same org
+    if (input.parentId !== undefined && input.parentId !== null) {
+      if (input.parentId === id) {
+        throw new CampaignValidationError("A campaign cannot be its own parent");
+      }
+      const [parent] = await tx
+        .select({ id: campaigns.id })
+        .from(campaigns)
+        .where(and(eq(campaigns.id, input.parentId), eq(campaigns.orgId, orgId)));
+      if (!parent) {
+        throw new CampaignValidationError("Parent campaign not found in this organization");
+      }
+    }
 
     const [updated] = await tx
       .update(campaigns)

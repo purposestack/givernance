@@ -4,6 +4,7 @@
  */
 
 import {
+  type AnyPgColumn,
   index,
   integer,
   jsonb,
@@ -347,7 +348,9 @@ export const campaigns = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     type: campaignTypeEnum("type").notNull(),
     status: campaignStatusEnum("status").notNull().default("draft"),
-    parentId: uuid("parent_id"),
+    parentId: uuid("parent_id").references((): AnyPgColumn => campaigns.id, {
+      onDelete: "set null",
+    }),
     costCents: integer("cost_cents"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

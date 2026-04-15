@@ -9,10 +9,12 @@ import {
   ErrorResponses,
   IdParams,
   PaginationQuery,
+  ProblemDetailSchema,
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
+  CampaignValidationError,
   closeCampaign,
   createCampaign,
   getCampaign,
@@ -120,7 +122,11 @@ export async function campaignRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Campaigns"],
         body: CampaignCreateBody,
-        response: { 201: DataResponse(CampaignResponse), ...ErrorResponses },
+        response: {
+          201: DataResponse(CampaignResponse),
+          400: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -136,8 +142,15 @@ export async function campaignRoutes(app: FastifyInstance) {
         parentId?: string | null;
         costCents?: number | null;
       };
-      const campaign = await createCampaign(orgId, body, userId);
-      return reply.status(201).send({ data: campaign });
+      try {
+        const campaign = await createCampaign(orgId, body, userId);
+        return reply.status(201).send({ data: campaign });
+      } catch (err) {
+        if (err instanceof CampaignValidationError) {
+          return reply.status(400).send(problemDetail(400, "Bad Request", err.message));
+        }
+        throw err;
+      }
     },
   );
 
@@ -170,15 +183,19 @@ export async function campaignRoutes(app: FastifyInstance) {
   );
 
   /** Update a campaign (partial update) */
-  app.put(
+  app.patch(
     "/campaigns/:id",
     {
-      preHandler: requireAuth,
+      preHandler: requireOrgAdmin,
       schema: {
         tags: ["Campaigns"],
         params: IdParams,
         body: CampaignUpdateBody,
-        response: { 200: DataResponse(CampaignResponse), ...ErrorResponses },
+        response: {
+          200: DataResponse(CampaignResponse),
+          400: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -197,21 +214,28 @@ export async function campaignRoutes(app: FastifyInstance) {
         costCents?: number | null;
       };
 
-      const updated = await updateCampaign(orgId, id, body, userId);
+      try {
+        const updated = await updateCampaign(orgId, id, body, userId);
 
-      if (!updated) {
-        return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+        if (!updated) {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+        }
+
+        return { data: updated };
+      } catch (err) {
+        if (err instanceof CampaignValidationError) {
+          return reply.status(400).send(problemDetail(400, "Bad Request", err.message));
+        }
+        throw err;
       }
-
-      return { data: updated };
     },
   );
 
   /** Close a campaign (soft delete — sets status to 'closed') */
-  app.delete(
-    "/campaigns/:id",
+  app.post(
+    "/campaigns/:id/close",
     {
-      preHandler: requireAuth,
+      preHandler: requireOrgAdmin,
       schema: {
         tags: ["Campaigns"],
         params: IdParams,

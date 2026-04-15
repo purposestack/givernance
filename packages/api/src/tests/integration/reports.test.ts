@@ -167,3 +167,29 @@ describe("Reports RLS tenant isolation", () => {
     expect(names).not.toContain("Lybunt");
   });
 });
+
+// ─── Reports RBAC (wrong role) ──────────────────────────────────────────────
+
+describe("Reports RBAC — non-admin forbidden", () => {
+  it("GET /v1/reports/lybunt with viewer role returns 403", async () => {
+    const token = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/lybunt",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("GET /v1/reports/sybunt with user role returns 403", async () => {
+    const token = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/sybunt",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+});

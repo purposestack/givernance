@@ -5,3 +5,6 @@ ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES campaig
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS cost_cents INTEGER;
 
 CREATE INDEX IF NOT EXISTS campaigns_parent_id_idx ON campaigns(parent_id);
+
+-- Prevent a campaign from being its own parent
+ALTER TABLE campaigns ADD CONSTRAINT campaigns_no_self_parent CHECK (parent_id <> id);
