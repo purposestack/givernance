@@ -5,6 +5,7 @@
 
 import {
   type AnyPgColumn,
+  bigint,
   index,
   integer,
   jsonb,
@@ -24,11 +25,11 @@ export const receiptStatusEnum = pgEnum("receipt_status", ["pending", "generated
 
 // ─── Campaign Enums ─────────────────────────────────────────────────────────
 
-export const campaignTypeEnum = pgEnum("campaign_type", [
-  "nominative_postal",
-  "door_drop",
-  "digital",
-]);
+/** Canonical campaign type values — used in DB enum, TypeBox schemas, and service types */
+export const CAMPAIGN_TYPE_VALUES = ["nominative_postal", "door_drop", "digital"] as const;
+export type CampaignType = (typeof CAMPAIGN_TYPE_VALUES)[number];
+
+export const campaignTypeEnum = pgEnum("campaign_type", [...CAMPAIGN_TYPE_VALUES]);
 
 export const campaignStatusEnum = pgEnum("campaign_status", ["draft", "active", "closed"]);
 
@@ -351,13 +352,13 @@ export const campaigns = pgTable(
     parentId: uuid("parent_id").references((): AnyPgColumn => campaigns.id, {
       onDelete: "set null",
     }),
-    costCents: integer("cost_cents"),
+    costCents: bigint("cost_cents", { mode: "number" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("campaigns_org_id_idx").on(table.orgId),
-    index("campaigns_parent_id_idx").on(table.parentId),
+    index("campaigns_org_parent_id_idx").on(table.orgId, table.parentId),
   ],
 );
 

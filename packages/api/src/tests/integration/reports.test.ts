@@ -10,6 +10,7 @@ let app: FastifyInstance;
 const thisYear = new Date().getFullYear();
 const lastYear = thisYear - 1;
 const twoYearsAgo = thisYear - 2;
+const threeYearsAgo = thisYear - 3;
 
 beforeAll(async () => {
   app = await createServer();
@@ -43,6 +44,24 @@ beforeAll(async () => {
   });
   const activeId = activeRes.json<{ data: { id: string } }>().data.id;
 
+  // Multi-year donor: donated last year AND two years ago (LYBUNT with multiple past years)
+  const multiYearRes = await app.inject({
+    method: "POST",
+    url: "/v1/constituents?force=true",
+    headers: authHeader(tokenA),
+    payload: { firstName: "MultiYear", lastName: "Donor", type: "donor" },
+  });
+  const multiYearId = multiYearRes.json<{ data: { id: string } }>().data.id;
+
+  // Ancient-only donor: donated 3+ years ago only (SYBUNT boundary)
+  const ancientRes = await app.inject({
+    method: "POST",
+    url: "/v1/constituents?force=true",
+    headers: authHeader(tokenA),
+    payload: { firstName: "Ancient", lastName: "Donor", type: "donor" },
+  });
+  const ancientId = ancientRes.json<{ data: { id: string } }>().data.id;
+
   // Insert donations directly for precise date control
   await db.execute(sql`
     INSERT INTO donations (org_id, constituent_id, amount_cents, currency, donated_at)
@@ -54,7 +73,12 @@ beforeAll(async () => {
       -- Active donor: donated this year (should NOT appear in either report)
       (${ORG_A}, ${activeId}, 10000, 'EUR', ${`${thisYear}-01-20`}::timestamptz),
       -- Active donor also donated last year
-      (${ORG_A}, ${activeId}, 8000, 'EUR', ${`${lastYear}-11-05`}::timestamptz)
+      (${ORG_A}, ${activeId}, 8000, 'EUR', ${`${lastYear}-11-05`}::timestamptz),
+      -- MultiYear donor: donated last year + two years ago (LYBUNT, total = 12000)
+      (${ORG_A}, ${multiYearId}, 7000, 'EUR', ${`${lastYear}-04-01`}::timestamptz),
+      (${ORG_A}, ${multiYearId}, 5000, 'EUR', ${`${twoYearsAgo}-09-20`}::timestamptz),
+      -- Ancient donor: donated 3 years ago only (SYBUNT boundary, total = 2500)
+      (${ORG_A}, ${ancientId}, 2500, 'EUR', ${`${threeYearsAgo}-12-01`}::timestamptz)
   `);
 });
 
@@ -79,6 +103,50 @@ describe("LYBUNT Report", () => {
     expect(names).toContain("Lybunt");
     expect(names).not.toContain("Active");
     expect(names).not.toContain("Sybunt");
+  });
+
+  it("includes multi-year donor with correct totalDonatedCents (last year donations only)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/lybunt",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
+    const multiYear = body.data.find((d) => d.firstName === "MultiYear");
+    expect(multiYear).toBeDefined();
+    // LYBUNT only sums last-year donations: 7000
+    expect(multiYear?.totalDonatedCents).toBe(7000);
+  });
+
+  it("does not include ancient-only donor (no last year donations)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/lybunt",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { firstName: string }[] }>();
+    const names = body.data.map((d) => d.firstName);
+    expect(names).not.toContain("Ancient");
+  });
+
+  it("Lybunt donor totalDonatedCents is correct", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/lybunt",
+      headers: authHeader(token),
+    });
+
+    const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
+    const lybunt = body.data.find((d) => d.firstName === "Lybunt");
+    expect(lybunt).toBeDefined();
+    expect(lybunt?.totalDonatedCents).toBe(5000);
   });
 
   it("GET /v1/reports/lybunt accepts year query parameter", async () => {
@@ -123,6 +191,51 @@ describe("SYBUNT Report", () => {
     expect(names).toContain("Lybunt");
     expect(names).toContain("Sybunt");
     expect(names).not.toContain("Active");
+  });
+
+  it("includes ancient-only donor (SYBUNT boundary — 3+ years ago)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/sybunt",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
+    const ancient = body.data.find((d) => d.firstName === "Ancient");
+    expect(ancient).toBeDefined();
+    expect(ancient?.totalDonatedCents).toBe(2500);
+  });
+
+  it("multi-year donor totalDonatedCents aggregates all past donations", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/sybunt",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
+    const multiYear = body.data.find((d) => d.firstName === "MultiYear");
+    expect(multiYear).toBeDefined();
+    // SYBUNT sums all past donations: 7000 + 5000 = 12000
+    expect(multiYear?.totalDonatedCents).toBe(12000);
+  });
+
+  it("Sybunt donor totalDonatedCents is correct", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/sybunt",
+      headers: authHeader(token),
+    });
+
+    const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
+    const sybunt = body.data.find((d) => d.firstName === "Sybunt");
+    expect(sybunt).toBeDefined();
+    expect(sybunt?.totalDonatedCents).toBe(3000);
   });
 
   it("GET /v1/reports/sybunt without auth returns 401", async () => {

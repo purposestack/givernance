@@ -82,6 +82,49 @@ describe("Campaigns CRUD", () => {
     expect(body.data.costCents).toBe(50000);
   });
 
+  it("POST /v1/campaigns rejects non-existent parent UUID", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: {
+        name: "Bad Parent",
+        type: "digital",
+        parentId: "00000000-0000-0000-0000-ffffffffffff",
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ detail: string }>();
+    expect(body.detail).toContain("Parent campaign not found");
+  });
+
+  it("POST /v1/campaigns rejects cross-tenant parent", async () => {
+    // Create a campaign in Org B
+    const tokenB = signTokenB(app);
+    const orgBRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(tokenB),
+      payload: { name: "Org B Campaign", type: "digital" },
+    });
+    const orgBCampaignId = orgBRes.json<{ data: { id: string } }>().data.id;
+
+    // Try to create campaign in Org A with Org B's campaign as parent
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(tokenA),
+      payload: { name: "Cross Tenant Child", type: "digital", parentId: orgBCampaignId },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ detail: string }>();
+    expect(body.detail).toContain("Parent campaign not found");
+  });
+
   it("GET /v1/campaigns lists campaigns", async () => {
     const token = signToken(app);
     const res = await app.inject({
@@ -233,11 +276,214 @@ describe("Campaigns CRUD", () => {
 
     expect(res.statusCode).toBe(400);
   });
+});
 
-  it("CampaignUpdated outbox event is emitted on create", async () => {
+// ─── Soft-delete visibility ──────────────────────────────────────────────────
+
+describe("Closed campaign visibility", () => {
+  it("GET /v1/campaigns/:id returns a closed campaign with status 'closed'", async () => {
+    const token = signToken(app);
+
+    // Create and close a campaign
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Soft Delete Test", type: "digital" },
+    });
+    const id = createRes.json<{ data: { id: string } }>().data.id;
+
+    await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${id}/close`,
+      headers: authHeader(token),
+    });
+
+    // Verify it's still visible via GET
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${id}`,
+      headers: authHeader(token),
+    });
+
+    expect(getRes.statusCode).toBe(200);
+    const body = getRes.json<{ data: { id: string; status: string } }>();
+    expect(body.data.id).toBe(id);
+    expect(body.data.status).toBe("closed");
+  });
+});
+
+// ─── Parent ID Validation ───────────────────────────────────────────────────
+
+describe("Parent ID validation", () => {
+  it("PATCH rejects multi-level cycle (A -> B -> A)", async () => {
+    const token = signToken(app);
+
+    // Create campaign A
+    const aRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Cycle A", type: "digital" },
+    });
+    const aId = aRes.json<{ data: { id: string } }>().data.id;
+
+    // Create campaign B with parent A
+    const bRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Cycle B", type: "digital", parentId: aId },
+    });
+    const bId = bRes.json<{ data: { id: string } }>().data.id;
+
+    // Try to set A's parent to B — should fail (A -> B -> A cycle)
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${aId}`,
+      headers: authHeader(token),
+      payload: { parentId: bId },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ detail: string }>();
+    expect(body.detail).toContain("cycle");
+  });
+
+  it("PATCH rejects cross-tenant parent", async () => {
+    const tokenA = signToken(app);
+    const tokenB = signTokenB(app);
+
+    // Create campaign in Org A
+    const aRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(tokenA),
+      payload: { name: "Org A for cross-tenant", type: "digital" },
+    });
+    const aId = aRes.json<{ data: { id: string } }>().data.id;
+
+    // Create campaign in Org B
+    const bRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(tokenB),
+      payload: { name: "Org B for cross-tenant", type: "digital" },
+    });
+    const bId = bRes.json<{ data: { id: string } }>().data.id;
+
+    // Try to set Org A campaign's parent to Org B campaign
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${aId}`,
+      headers: authHeader(tokenA),
+      payload: { parentId: bId },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ detail: string }>();
+    expect(body.detail).toContain("Parent campaign not found");
+  });
+
+  it("PATCH rejects non-existent parent UUID", async () => {
+    const token = signToken(app);
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Bad Parent Target", type: "digital" },
+    });
+    const id = createRes.json<{ data: { id: string } }>().data.id;
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${id}`,
+      headers: authHeader(token),
+      payload: { parentId: "00000000-0000-0000-0000-ffffffffffff" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ detail: string }>();
+    expect(body.detail).toContain("Parent campaign not found");
+  });
+});
+
+// ─── Outbox Events ──────────────────────────────────────────────────────────
+
+describe("Outbox domain events", () => {
+  it("campaign.created event is emitted on POST /v1/campaigns", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Outbox Created Test", type: "digital" },
+    });
+    const campaignId = res.json<{ data: { id: string } }>().data.id;
+
+    const rows = await db.execute(
+      sql`SELECT type, payload FROM outbox_events
+          WHERE tenant_id = ${ORG_A} AND type = 'campaign.created'
+          AND (payload->>'campaignId') = ${campaignId}
+          ORDER BY created_at DESC LIMIT 1`,
+    );
+
+    expect(rows.rows.length).toBe(1);
+    expect((rows.rows[0] as { type: string }).type).toBe("campaign.created");
+  });
+
+  it("campaign.closed event is emitted on POST /v1/campaigns/:id/close", async () => {
+    const token = signToken(app);
+
+    // Create and close
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Outbox Closed Test", type: "digital" },
+    });
+    const campaignId = createRes.json<{ data: { id: string } }>().data.id;
+
+    await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${campaignId}/close`,
+      headers: authHeader(token),
+    });
+
+    const rows = await db.execute(
+      sql`SELECT type, payload FROM outbox_events
+          WHERE tenant_id = ${ORG_A} AND type = 'campaign.closed'
+          AND (payload->>'campaignId') = ${campaignId}
+          ORDER BY created_at DESC LIMIT 1`,
+    );
+
+    expect(rows.rows.length).toBe(1);
+    expect((rows.rows[0] as { type: string }).type).toBe("campaign.closed");
+  });
+
+  it("campaign.updated event is emitted on PATCH", async () => {
+    const token = signToken(app);
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Outbox Update Test", type: "digital" },
+    });
+    const campaignId = createRes.json<{ data: { id: string } }>().data.id;
+
+    await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${campaignId}`,
+      headers: authHeader(token),
+      payload: { name: "Outbox Update Test Renamed" },
+    });
+
     const rows = await db.execute(
       sql`SELECT type, payload FROM outbox_events
           WHERE tenant_id = ${ORG_A} AND type = 'campaign.updated'
+          AND (payload->>'campaignId') = ${campaignId}
           ORDER BY created_at DESC LIMIT 1`,
     );
 
@@ -254,6 +500,46 @@ describe("Campaigns CRUD", () => {
 
     expect(rows.rows.length).toBe(1);
     expect((rows.rows[0] as { type: string }).type).toBe("campaign.documents_requested");
+  });
+});
+
+// ─── Pagination ─────────────────────────────────────────────────────────────
+
+describe("Campaign pagination", () => {
+  it("GET /v1/campaigns respects limit and offset via page/perPage", async () => {
+    const token = signToken(app);
+
+    // Request page 1 with perPage=2
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/campaigns?perPage=2&page=1",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: unknown[];
+      pagination: { page: number; perPage: number; total: number; totalPages: number };
+    }>();
+    expect(body.data.length).toBeLessThanOrEqual(2);
+    expect(body.pagination.page).toBe(1);
+    expect(body.pagination.perPage).toBe(2);
+    expect(body.pagination.totalPages).toBeGreaterThanOrEqual(1);
+  });
+
+  it("GET /v1/campaigns page overflow returns empty data", async () => {
+    const token = signToken(app);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/campaigns?page=9999&perPage=10",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: unknown[]; pagination: { page: number; total: number } }>();
+    expect(body.data.length).toBe(0);
+    expect(body.pagination.page).toBe(9999);
   });
 });
 
@@ -352,7 +638,7 @@ describe("Campaign Stats & ROI", () => {
     expect(body.data.roi).toBe(1.0);
   });
 
-  it("GET /v1/campaigns/:id/roi returns null ROI when costCents is 0", async () => {
+  it("GET /v1/campaigns/:id/roi returns null ROI and null costCents when no cost set", async () => {
     const token = signToken(app);
 
     // Create campaign without cost
@@ -371,8 +657,9 @@ describe("Campaign Stats & ROI", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ data: { roi: number | null } }>();
+    const body = res.json<{ data: { roi: number | null; costCents: number | null } }>();
     expect(body.data.roi).toBeNull();
+    expect(body.data.costCents).toBeNull();
   });
 
   it("GET /v1/campaigns/:id/roi returns negative ROI when cost exceeds raised", async () => {

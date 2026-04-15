@@ -1,5 +1,6 @@
 /** Campaign routes — full CRUD, stats, ROI, and document generation */
 
+import { CAMPAIGN_TYPE_VALUES } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
@@ -25,15 +26,23 @@ import {
   updateCampaign,
 } from "./service.js";
 
-const CampaignTypeEnum = Type.Union([
-  Type.Literal("nominative_postal"),
-  Type.Literal("door_drop"),
-  Type.Literal("digital"),
-]);
+/** Shared campaign type TypeBox union built from the canonical CAMPAIGN_TYPE_VALUES */
+const CampaignTypeSchema = Type.Union(CAMPAIGN_TYPE_VALUES.map((v) => Type.Literal(v)));
+
+/** Idempotency-Key header schema — accepted on POST routes for future dedup enforcement */
+const IdempotencyKeyHeader = Type.Object({
+  "idempotency-key": Type.Optional(
+    Type.String({
+      minLength: 1,
+      maxLength: 255,
+      description: "Client-supplied idempotency key for safe retries",
+    }),
+  ),
+});
 
 const CampaignCreateBody = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
-  type: CampaignTypeEnum,
+  type: CampaignTypeSchema,
   parentId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
   costCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
 });
@@ -41,7 +50,7 @@ const CampaignCreateBody = Type.Object({
 const CampaignUpdateBody = Type.Object(
   {
     name: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
-    type: Type.Optional(CampaignTypeEnum),
+    type: Type.Optional(CampaignTypeSchema),
     status: Type.Optional(
       Type.Union([Type.Literal("draft"), Type.Literal("active"), Type.Literal("closed")]),
     ),
@@ -82,7 +91,7 @@ const CampaignStatsResponse = Type.Object({
 const CampaignRoiResponse = Type.Object({
   campaignId: UuidSchema,
   totalRaisedCents: Type.Integer(),
-  costCents: Type.Integer(),
+  costCents: Type.Union([Type.Integer(), Type.Null()]),
   roi: Type.Union([Type.Number(), Type.Null()]),
 });
 
@@ -122,6 +131,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Campaigns"],
         body: CampaignCreateBody,
+        headers: IdempotencyKeyHeader,
         response: {
           201: DataResponse(CampaignResponse),
           400: ProblemDetailSchema,
@@ -325,6 +335,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         tags: ["Campaigns"],
         params: IdParams,
         body: DocumentsCreateBody,
+        headers: IdempotencyKeyHeader,
         response: { 202: DataResponse(DocumentsResult), ...ErrorResponses },
       },
     },
