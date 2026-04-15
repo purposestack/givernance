@@ -31,7 +31,10 @@ export type CampaignType = (typeof CAMPAIGN_TYPE_VALUES)[number];
 
 export const campaignTypeEnum = pgEnum("campaign_type", [...CAMPAIGN_TYPE_VALUES]);
 
-export const campaignStatusEnum = pgEnum("campaign_status", ["draft", "active", "closed"]);
+export const CAMPAIGN_STATUS_VALUES = ["draft", "active", "closed"] as const;
+export type CampaignStatus = (typeof CAMPAIGN_STATUS_VALUES)[number];
+
+export const campaignStatusEnum = pgEnum("campaign_status", [...CAMPAIGN_STATUS_VALUES]);
 
 export const campaignDocumentStatusEnum = pgEnum("campaign_document_status", [
   "pending",

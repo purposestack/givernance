@@ -1,5 +1,6 @@
 /** Reports service — donor lifecycle analytics (LYBUNT/SYBUNT) */
 
+import { outboxEvents } from "@givernance/shared/schema";
 import { sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
@@ -25,6 +26,7 @@ export async function getLybuntReport(
   orgId: string,
   referenceYear?: number,
   pagination?: ReportPagination,
+  userId?: string,
 ) {
   const thisYear = referenceYear ?? new Date().getFullYear();
   const lastYear = thisYear - 1;
@@ -63,7 +65,19 @@ export async function getLybuntReport(
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    return rows.rows as unknown as LifecycleConstituent[];
+    const results = rows.rows as unknown as LifecycleConstituent[];
+
+    await tx.insert(outboxEvents).values({
+      tenantId: orgId,
+      type: "reports.lybunt_exported",
+      payload: {
+        year: thisYear,
+        resultCount: results.length,
+        exportedBy: userId,
+      },
+    });
+
+    return results;
   });
 }
 
@@ -75,6 +89,7 @@ export async function getSybuntReport(
   orgId: string,
   referenceYear?: number,
   pagination?: ReportPagination,
+  userId?: string,
 ) {
   const thisYear = referenceYear ?? new Date().getFullYear();
   const thisYearStart = `${thisYear}-01-01`;
@@ -109,6 +124,18 @@ export async function getSybuntReport(
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    return rows.rows as unknown as LifecycleConstituent[];
+    const results = rows.rows as unknown as LifecycleConstituent[];
+
+    await tx.insert(outboxEvents).values({
+      tenantId: orgId,
+      type: "reports.sybunt_exported",
+      payload: {
+        year: thisYear,
+        resultCount: results.length,
+        exportedBy: userId,
+      },
+    });
+
+    return results;
   });
 }

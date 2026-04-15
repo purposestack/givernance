@@ -180,7 +180,7 @@ export async function updateCampaign(
     const [updated] = await tx
       .update(campaigns)
       .set({ ...input, updatedAt: new Date() })
-      .where(eq(campaigns.id, id))
+      .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)))
       .returning();
 
     await tx.insert(outboxEvents).values({
@@ -207,7 +207,7 @@ export async function closeCampaign(orgId: string, id: string, userId: string) {
     const [closed] = await tx
       .update(campaigns)
       .set({ status: "closed", updatedAt: now })
-      .where(eq(campaigns.id, id))
+      .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)))
       .returning();
 
     await tx.insert(outboxEvents).values({

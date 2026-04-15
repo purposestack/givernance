@@ -281,6 +281,52 @@ describe("Reports RLS tenant isolation", () => {
   });
 });
 
+// ─── PII Export Audit Trail ──────────────────────────────────────────────────
+
+describe("PII export audit trail", () => {
+  it("reports.lybunt_exported outbox event is emitted on GET /v1/reports/lybunt", async () => {
+    const token = signToken(app);
+    await app.inject({
+      method: "GET",
+      url: "/v1/reports/lybunt",
+      headers: authHeader(token),
+    });
+
+    const rows = await db.execute(
+      sql`SELECT type, payload FROM outbox_events
+          WHERE tenant_id = ${ORG_A} AND type = 'reports.lybunt_exported'
+          ORDER BY created_at DESC LIMIT 1`,
+    );
+
+    expect(rows.rows.length).toBe(1);
+    expect((rows.rows[0] as { type: string }).type).toBe("reports.lybunt_exported");
+    const payload = (rows.rows[0] as { payload: { year: number; resultCount: number } }).payload;
+    expect(payload.year).toBe(thisYear);
+    expect(typeof payload.resultCount).toBe("number");
+  });
+
+  it("reports.sybunt_exported outbox event is emitted on GET /v1/reports/sybunt", async () => {
+    const token = signToken(app);
+    await app.inject({
+      method: "GET",
+      url: "/v1/reports/sybunt",
+      headers: authHeader(token),
+    });
+
+    const rows = await db.execute(
+      sql`SELECT type, payload FROM outbox_events
+          WHERE tenant_id = ${ORG_A} AND type = 'reports.sybunt_exported'
+          ORDER BY created_at DESC LIMIT 1`,
+    );
+
+    expect(rows.rows.length).toBe(1);
+    expect((rows.rows[0] as { type: string }).type).toBe("reports.sybunt_exported");
+    const payload = (rows.rows[0] as { payload: { year: number; resultCount: number } }).payload;
+    expect(payload.year).toBe(thisYear);
+    expect(typeof payload.resultCount).toBe("number");
+  });
+});
+
 // ─── Reports RBAC (wrong role) ──────────────────────────────────────────────
 
 describe("Reports RBAC — non-admin forbidden", () => {

@@ -106,6 +106,13 @@
       "when": 1744502414000,
       "tag": "0015_donation_indices",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1744502415000,
+      "tag": "0016_fix_cost_cents_bigint",
+      "breakpoints": true
     }
   ]
 }
