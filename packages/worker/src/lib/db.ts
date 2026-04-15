@@ -30,7 +30,7 @@ const appDb: NodePgDatabase<typeof schema> = drizzle(appPool, { schema });
 /**
  * Execute a callback within a transaction that enforces RLS tenant isolation.
  *
- * Connects as `givernance_app` (subject to RLS) and pins `app.current_org_id`
+ * Connects as `givernance_app` (subject to RLS) and pins `app.current_organization_id`
  * to the transaction, ensuring the worker cannot accidentally read or write
  * data belonging to another tenant.
  */
@@ -43,7 +43,7 @@ export async function withWorkerContext<T>(
   }
 
   return appDb.transaction(async (tx) => {
-    await tx.execute(sql`SELECT set_config('app.current_org_id', ${orgId}, true)`);
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${orgId}, true)`);
     return callback(tx);
   });
 }

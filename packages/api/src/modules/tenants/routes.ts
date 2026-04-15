@@ -59,7 +59,7 @@ export async function tenantRoutes(app: FastifyInstance) {
         const t = tenant!;
 
         // Set RLS context for outbox_events insert (FORCE RLS is active on that table)
-        await tx.execute(sql`SELECT set_config('app.current_org_id', ${t.id}, true)`);
+        await tx.execute(sql`SELECT set_config('app.current_organization_id', ${t.id}, true)`);
         await tx.insert(outboxEvents).values({
           tenantId: t.id,
           type: "tenant.created",

@@ -33,7 +33,7 @@ export async function withTenantContext<T>(
   }
 
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT set_config('app.current_org_id', ${orgId}, true)`);
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${orgId}, true)`);
     return callback(tx);
   });
 }
