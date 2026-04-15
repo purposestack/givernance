@@ -72,7 +72,7 @@ describe("Donations CRUD", () => {
       },
     });
 
-    if (res.statusCode !== 201) expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(201);
     const body = res.json<{ data: { id: string; amountCents: number } }>();
     expect(body.data).toHaveProperty("id");
     expect(body.data.amountCents).toBe(10000);
@@ -92,7 +92,7 @@ describe("Donations CRUD", () => {
       },
     });
 
-    if (res.statusCode !== 201) expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(201);
   });
 
   it("GET /v1/donations lists donations", async () => {
@@ -299,7 +299,7 @@ describe("Pledges CRUD", () => {
       },
     });
 
-    if (res.statusCode !== 201) expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(201);
     const body = res.json<{ data: { id: string; frequency: string } }>();
     expect(body.data).toHaveProperty("id");
     expect(body.data.frequency).toBe("monthly");
@@ -332,7 +332,7 @@ describe("Pledges CRUD", () => {
       },
     });
 
-    if (res.statusCode !== 201) expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(201);
     const yearlyPledgeId = res.json<{ data: { id: string } }>().data.id;
 
     const installRes = await app.inject({

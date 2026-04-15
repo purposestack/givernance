@@ -251,6 +251,8 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
         application_fee_amount: 105, // (5000 * 0.015) + 30
         metadata: expect.objectContaining({
           campaign_id: campaign.id,
+          constituent_first_name: "Jane",
+          constituent_last_name: "Doe",
         }),
       }),
       expect.objectContaining({
