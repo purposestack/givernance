@@ -18,7 +18,7 @@ const PublicPageResponse = Type.Object({
 });
 
 const DonateBody = Type.Object({
-  amountCents: Type.Integer({ minimum: 100 }),
+  amountCents: Type.Integer({ minimum: 100, maximum: 1000000 }),
   currency: Type.Union([Type.Literal("EUR"), Type.Literal("CHF")]),
   email: Type.String({ format: "email" }),
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
@@ -26,7 +26,7 @@ const DonateBody = Type.Object({
 });
 
 const DonateHeaders = Type.Object({
-  "idempotency-key": Type.Optional(Type.String()),
+  "idempotency-key": Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
 });
 
 const DonateResponse = Type.Object({
@@ -47,13 +47,13 @@ const PublicPageAdminResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
   campaignId: UuidSchema,
-  status: Type.String(),
+  status: Type.Union([Type.Literal("draft"), Type.Literal("published")]),
   title: Type.String(),
   description: Type.Union([Type.String(), Type.Null()]),
   colorPrimary: Type.Union([Type.String(), Type.Null()]),
   goalAmountCents: Type.Union([Type.Integer(), Type.Null()]),
-  createdAt: Type.String(),
-  updatedAt: Type.String(),
+  createdAt: Type.String({ format: "date-time" }),
+  updatedAt: Type.String({ format: "date-time" }),
 });
 
 export async function publicDonationRoutes(app: FastifyInstance) {
@@ -64,7 +64,7 @@ export async function publicDonationRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Public Donations"],
         params: CampaignIdParams,
-        response: { 200: DataResponse(PublicPageResponse), ...ErrorResponses },
+        response: { 200: DataResponse(PublicPageResponse), 400: Type.Any(), 429: Type.Any(), 502: Type.Any(), ...ErrorResponses },
       },
     },
     async (request, reply) => {
@@ -89,7 +89,7 @@ export async function publicDonationRoutes(app: FastifyInstance) {
         params: CampaignIdParams,
         headers: DonateHeaders,
         body: DonateBody,
-        response: { 200: DataResponse(DonateResponse), ...ErrorResponses },
+        response: { 200: DataResponse(DonateResponse), 400: Type.Any(), 429: Type.Any(), 502: Type.Any(), ...ErrorResponses },
       },
     },
     async (request, reply) => {
@@ -138,7 +138,7 @@ export async function publicDonationRoutes(app: FastifyInstance) {
         tags: ["Campaigns"],
         params: CampaignIdParams,
         body: PublicPageCreateBody,
-        response: { 200: DataResponse(PublicPageAdminResponse), ...ErrorResponses },
+        response: { 200: DataResponse(PublicPageAdminResponse), 400: Type.Any(), 429: Type.Any(), 502: Type.Any(), ...ErrorResponses },
       },
     },
     async (request, reply) => {

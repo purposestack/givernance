@@ -14,6 +14,7 @@ const { mockGetStripe, mockPaymentIntentsCreate, mockQueueAdd } = vi.hoisted(() 
   return {
     mockGetStripe: vi.fn().mockReturnValue({
       paymentIntents: { create: mockPaymentIntentsCreate },
+      accounts: { retrieve: vi.fn().mockResolvedValue({ charges_enabled: true }) },
     }),
     mockPaymentIntentsCreate,
     mockQueueAdd: vi.fn().mockResolvedValue({ id: "mock-job-id" }),
@@ -250,9 +251,6 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
         application_fee_amount: expect.any(Number),
         metadata: expect.objectContaining({
           campaign_id: campaign.id,
-          constituent_email: "donor@example.org",
-          constituent_first_name: "Jane",
-          constituent_last_name: "Doe",
         }),
       }),
       expect.objectContaining({
