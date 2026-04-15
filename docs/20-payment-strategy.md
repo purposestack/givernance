@@ -102,6 +102,8 @@ This means Givernance **never touches donor funds** — clean separation, no e-m
 
 **Assessment**: Mollie is excellent for FR/BE/NL NPOs due to local payment methods, NPO pricing, and simplified NPO verification. Co-primary alongside Stripe for French, Belgian, and Dutch associations from Phase 1. Connect model less mature than Stripe, but sufficient for single-tenant payment flows in these markets.
 
+> **Note:** Mollie integration implementation deferred to Sprint 4 (Issue #62) to keep the initial Stripe MVP PR focused.
+
 ### 3.3 Mangopay
 
 | Attribute | Detail |
@@ -237,10 +239,13 @@ interface PaymentGateway {
 5. NPO immediately enters TEST MODE — can use Stripe test keys to run
    the full donation flow (test cards, test SEPA) while KYB is pending (2-5 days)
 6. Webhook: account.updated { charges_enabled: true } → switch tenant to LIVE MODE
+   > **Note:** The `account.updated` webhook handler is deferred to Sprint 4 (Issue #62) to keep the initial Stripe MVP PR focused. For now, tenant live-mode activation is manual.
 7. All subsequent charges: { stripe_account: tenant.stripe_account_id, application_fee_amount }
 ```
 
 > **Test mode for fast onboarding**: KYB verification takes 2-5 business days, which blocks the "demo → first donation in < 1 hour" goal. To solve this, every new NPO starts in **Stripe test mode** immediately after step 4. The NPO admin can validate the complete flow — donation page, webhook processing, receipt generation — using Stripe test cards (`4242...`) and test SEPA IBANs. Once `account.updated { charges_enabled: true }` fires, the tenant is automatically switched to live mode. This ensures the "first donation in < 1 hour" experience while KYB runs in the background.
+>
+> **Note:** The automatic live-mode switch via `account.updated` webhook is deferred to Sprint 4 (Issue #62). Until then, live-mode activation requires manual intervention.
 
 ### 5.3 Webhook ingestion
 
@@ -459,12 +464,12 @@ This is reflected in the `payment_gateway` tenant setting at onboarding — guid
 
 - [ ] `PaymentGateway` interface in `packages/shared/src/lib/payments/`
 - [ ] `StripeGateway` implementation
-- [ ] `MollieGateway` implementation (FR/BE/NL tenants)
-- [ ] `ff.payments.mollie` feature flag
-- [ ] Tenant payment gateway selection at onboarding (country-based routing)
+- [ ] `MollieGateway` implementation (FR/BE/NL tenants) — **deferred to Sprint 4 (Issue #62)**
+- [ ] `ff.payments.mollie` feature flag — **deferred to Sprint 4 (Issue #62)**
+- [ ] Tenant payment gateway selection at onboarding (country-based routing) — **deferred to Sprint 4 (Issue #62)**
 - [ ] `webhook_events` Drizzle schema + unique index
 - [ ] Stripe Connect onboarding flow (`POST /admin/tenants/:id/stripe-connect`) with test mode support
-- [ ] Mollie webhook endpoint + handler
+- [ ] Mollie webhook endpoint + handler — **deferred to Sprint 4 (Issue #62)**
 - [ ] Webhook endpoint with signature verification + idempotency
 - [ ] BullMQ webhook processor
 - [ ] One-off donation payment intent + `payment_intent.succeeded` handler
