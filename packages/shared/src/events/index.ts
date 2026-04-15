@@ -98,6 +98,22 @@ export interface CampaignClosed extends BaseEvent {
   };
 }
 
+export interface ReportsLybuntExported extends BaseEvent {
+  type: "reports.lybunt_exported";
+  payload: {
+    year: number;
+    resultCount: number;
+  };
+}
+
+export interface ReportsSybuntExported extends BaseEvent {
+  type: "reports.sybunt_exported";
+  payload: {
+    year: number;
+    resultCount: number;
+  };
+}
+
 /** Union of all domain events */
 export type DomainEvent =
   | DonationCreated
@@ -108,4 +124,6 @@ export type DomainEvent =
   | CampaignDocumentsRequested
   | CampaignCreated
   | CampaignUpdated
-  | CampaignClosed;
+  | CampaignClosed
+  | ReportsLybuntExported
+  | ReportsSybuntExported;

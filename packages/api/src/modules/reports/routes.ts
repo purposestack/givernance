@@ -43,15 +43,18 @@ export async function reportsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
       if (!orgId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
       const query = request.query as { year?: number; limit?: number; offset?: number };
-      const data = await getLybuntReport(orgId, query.year, {
-        limit: query.limit ?? 100,
-        offset: query.offset ?? 0,
-      });
+      const data = await getLybuntReport(
+        orgId,
+        query.year,
+        { limit: query.limit ?? 100, offset: query.offset ?? 0 },
+        userId,
+      );
       return { data };
     },
   );
@@ -72,15 +75,18 @@ export async function reportsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
       if (!orgId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
       const query = request.query as { year?: number; limit?: number; offset?: number };
-      const data = await getSybuntReport(orgId, query.year, {
-        limit: query.limit ?? 100,
-        offset: query.offset ?? 0,
-      });
+      const data = await getSybuntReport(
+        orgId,
+        query.year,
+        { limit: query.limit ?? 100, offset: query.offset ?? 0 },
+        userId,
+      );
       return { data };
     },
   );

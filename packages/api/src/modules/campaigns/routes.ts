@@ -1,6 +1,6 @@
 /** Campaign routes — full CRUD, stats, ROI, and document generation */
 
-import { CAMPAIGN_TYPE_VALUES } from "@givernance/shared/schema";
+import { CAMPAIGN_STATUS_VALUES, CAMPAIGN_TYPE_VALUES } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
@@ -28,6 +28,9 @@ import {
 
 /** Shared campaign type TypeBox union built from the canonical CAMPAIGN_TYPE_VALUES */
 const CampaignTypeSchema = Type.Union(CAMPAIGN_TYPE_VALUES.map((v) => Type.Literal(v)));
+
+/** Shared campaign status TypeBox union built from the canonical CAMPAIGN_STATUS_VALUES */
+const CampaignStatusSchema = Type.Union(CAMPAIGN_STATUS_VALUES.map((v) => Type.Literal(v)));
 
 /** Idempotency-Key header schema — accepted on POST routes for future dedup enforcement */
 const IdempotencyKeyHeader = Type.Object({
@@ -68,8 +71,8 @@ const CampaignResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
   name: Type.String(),
-  type: Type.String(),
-  status: Type.String(),
+  type: CampaignTypeSchema,
+  status: CampaignStatusSchema,
   parentId: Type.Union([UuidSchema, Type.Null()]),
   costCents: Type.Union([Type.Integer(), Type.Null()]),
   createdAt: Type.String(),

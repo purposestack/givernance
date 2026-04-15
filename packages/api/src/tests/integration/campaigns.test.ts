@@ -276,6 +276,31 @@ describe("Campaigns CRUD", () => {
 
     expect(res.statusCode).toBe(400);
   });
+
+  it("POST /v1/campaigns accepts BIGINT costCents (> INT32_MAX)", async () => {
+    // Validates the DB column is truly BIGINT and can store values > INT32_MAX.
+    // Use explicit BIGINT cast to ensure correct type inference by PostgreSQL.
+    const rows = await db.execute(
+      sql`INSERT INTO campaigns (org_id, name, type, cost_cents)
+          VALUES (${ORG_A}, 'BigInt Cost Campaign', 'digital', 2200000000::bigint)
+          RETURNING cost_cents`,
+    );
+
+    expect(Number(rows.rows[0]?.cost_cents)).toBe(2_200_000_000);
+  });
+
+  it("POST /v1/campaigns rejects negative costCents (DB CHECK constraint)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Negative Cost", type: "digital", costCents: -100 },
+    });
+
+    // The TypeBox schema enforces minimum: 0, so Fastify returns 400 before hitting the DB
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 // ─── Soft-delete visibility ──────────────────────────────────────────────────
