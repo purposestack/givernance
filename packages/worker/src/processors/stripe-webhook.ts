@@ -13,6 +13,16 @@ import { eq, sql } from "drizzle-orm";
 import { db, withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
 
+/** Look up the tenant associated with a Stripe connected account ID */
+async function findTenantByStripeAccount(stripeAccountId: string) {
+  const [tenant] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.stripeAccountId, stripeAccountId));
+
+  return tenant ?? null;
+}
+
 /**
  * Process a Stripe webhook event.
  * Currently handles: payment_intent.succeeded
@@ -73,11 +83,7 @@ async function handlePaymentIntentSucceeded(
   }
 
   // Resolve the tenant from the Stripe connected account
-  const [tenant] = await db
-    .select({ id: tenants.id })
-    .from(tenants)
-    .where(eq(tenants.stripeAccountId, accountId));
-
+  const tenant = await findTenantByStripeAccount(accountId);
   if (!tenant) {
     throw new Error(`No tenant found for Stripe account ${accountId}`);
   }
@@ -119,7 +125,7 @@ async function handlePaymentIntentSucceeded(
           .returning({ id: constituents.id });
         // biome-ignore lint/style/noNonNullAssertion: insert returning always returns
         constituentId = created!.id;
-        log.info({ constituentId, email: constituentEmail }, "Created new constituent from Stripe");
+        log.info({ constituentId }, "Created new constituent from Stripe");
       }
     } else {
       // No email provided — create anonymous constituent
@@ -136,7 +142,7 @@ async function handlePaymentIntentSucceeded(
       constituentId = created!.id;
     }
 
-    // Create the donation record
+    // Create the donation record — ON CONFLICT guards against BullMQ retry duplicates
     const [donation] = await tx
       .insert(donations)
       .values({
@@ -150,10 +156,15 @@ async function handlePaymentIntentSucceeded(
         donatedAt: new Date(),
         fiscalYear: new Date().getFullYear(),
       })
+      .onConflictDoNothing()
       .returning();
 
-    // biome-ignore lint/style/noNonNullAssertion: insert returning always returns
-    const donationId = donation!.id;
+    if (!donation) {
+      log.info({ paymentRef: paymentIntentId }, "Donation already exists (retry), skipping");
+      return;
+    }
+
+    const donationId = donation.id;
 
     // Emit DonationCreated domain event atomically
     await tx.insert(outboxEvents).values({

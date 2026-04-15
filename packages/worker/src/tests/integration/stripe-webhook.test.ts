@@ -5,7 +5,9 @@ import { db } from "../../lib/db.js";
 import { processStripeWebhook } from "../../processors/stripe-webhook.js";
 
 const ORG_ID = "00000000-0000-0000-0000-00000000000b";
+const ORG_ID_OTHER = "00000000-0000-0000-0000-00000000000c";
 const STRIPE_ACCOUNT_ID = "acct_test_worker";
+const STRIPE_ACCOUNT_ID_OTHER = "acct_test_other";
 
 function makeMockJob(data: Record<string, unknown>) {
   return {
@@ -16,11 +18,16 @@ function makeMockJob(data: Record<string, unknown>) {
 }
 
 beforeAll(async () => {
-  // Ensure test tenant with stripe_account_id
+  // Ensure test tenants with stripe_account_id
   await db.execute(
     sql`INSERT INTO tenants (id, name, slug, stripe_account_id)
         VALUES (${ORG_ID}, 'Stripe Worker Test Org', 'stripe-worker-test', ${STRIPE_ACCOUNT_ID})
         ON CONFLICT (id) DO UPDATE SET stripe_account_id = ${STRIPE_ACCOUNT_ID}`,
+  );
+  await db.execute(
+    sql`INSERT INTO tenants (id, name, slug, stripe_account_id)
+        VALUES (${ORG_ID_OTHER}, 'Other Org', 'stripe-worker-other', ${STRIPE_ACCOUNT_ID_OTHER})
+        ON CONFLICT (id) DO UPDATE SET stripe_account_id = ${STRIPE_ACCOUNT_ID_OTHER}`,
   );
 
   // Insert a webhook_events row for the processor to update
@@ -37,10 +44,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Cleanup in reverse dependency order
-  await db.execute(sql`DELETE FROM outbox_events WHERE tenant_id = ${ORG_ID}`);
-  await db.execute(sql`DELETE FROM donations WHERE org_id = ${ORG_ID}`);
-  await db.execute(sql`DELETE FROM constituents WHERE org_id = ${ORG_ID}`);
-  await db.execute(sql`DELETE FROM webhook_events WHERE stripe_event_id = 'evt_test_pi_succeeded'`);
+  await db.execute(sql`DELETE FROM outbox_events WHERE tenant_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
+  await db.execute(sql`DELETE FROM donations WHERE org_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
+  await db.execute(sql`DELETE FROM constituents WHERE org_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
+  await db.execute(sql`DELETE FROM webhook_events WHERE stripe_event_id LIKE 'evt_test_%'`);
 });
 
 describe("processStripeWebhook", () => {
@@ -129,10 +136,86 @@ describe("processStripeWebhook", () => {
     });
 
     await expect(processStripeWebhook(job)).rejects.toThrow("No tenant found");
+  });
 
-    // Cleanup
-    await db.execute(
-      sql`DELETE FROM webhook_events WHERE stripe_event_id = 'evt_test_unknown_account'`,
-    );
+  it("cross-tenant guard: webhook for Tenant A does not write to Tenant B", async () => {
+    // Insert webhook event targeting Tenant A's Stripe account
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000e3",
+      stripeEventId: "evt_test_cross_tenant",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+      livemode: false,
+    });
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000e3",
+      stripeEventId: "evt_test_cross_tenant",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: "pi_test_cross_tenant",
+        amount: 3000,
+        currency: "eur",
+        metadata: { constituent_email: "cross-tenant@example.org" },
+      },
+    });
+
+    await processStripeWebhook(job);
+
+    // Donation should exist for ORG_ID (Tenant A)
+    const [donationA] = await db
+      .select()
+      .from(donations)
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, "pi_test_cross_tenant")));
+    expect(donationA).toBeTruthy();
+
+    // Donation must NOT exist for ORG_ID_OTHER (Tenant B)
+    const [donationB] = await db
+      .select()
+      .from(donations)
+      .where(
+        and(eq(donations.orgId, ORG_ID_OTHER), eq(donations.paymentRef, "pi_test_cross_tenant")),
+      );
+    expect(donationB).toBeUndefined();
+  });
+
+  it("idempotency: duplicate payment_ref does not create a second donation", async () => {
+    // Insert webhook event for retry test
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000e4",
+      stripeEventId: "evt_test_retry_dup",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+      livemode: false,
+    });
+
+    const jobData = {
+      webhookEventId: "00000000-0000-0000-0000-0000000000e4",
+      stripeEventId: "evt_test_retry_dup",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: "pi_test_worker_123", // Same payment_ref as the first test
+        amount: 2500,
+        currency: "eur",
+        metadata: {
+          constituent_email: "stripe-donor@example.org",
+        },
+      },
+    };
+
+    await processStripeWebhook(makeMockJob(jobData));
+
+    // Should still only have one donation with that payment_ref
+    const dupes = await db
+      .select()
+      .from(donations)
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, "pi_test_worker_123")));
+    expect(dupes).toHaveLength(1);
   });
 });
