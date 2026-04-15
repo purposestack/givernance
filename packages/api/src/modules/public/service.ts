@@ -75,9 +75,9 @@ export async function createDonationIntent(
     metadata: {
       campaign_id: campaignId,
       org_id: campaign.orgId,
-      email: body.email,
-      first_name: body.firstName,
-      last_name: body.lastName,
+      constituent_email: body.email,
+      constituent_first_name: body.firstName,
+      constituent_last_name: body.lastName,
     },
   };
 

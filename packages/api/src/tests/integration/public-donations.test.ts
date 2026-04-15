@@ -250,9 +250,9 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
         application_fee_amount: expect.any(Number),
         metadata: expect.objectContaining({
           campaign_id: campaign.id,
-          email: "donor@example.org",
-          first_name: "Jane",
-          last_name: "Doe",
+          constituent_email: "donor@example.org",
+          constituent_first_name: "Jane",
+          constituent_last_name: "Doe",
         }),
       }),
       expect.objectContaining({
