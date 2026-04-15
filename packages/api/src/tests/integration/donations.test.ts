@@ -68,7 +68,7 @@ describe("Donations CRUD", () => {
         amountCents: 10000,
         currency: "EUR",
         paymentMethod: "check",
-        paymentRef: "CHK-001",
+        paymentRef: `CHK-${Date.now()}-${Math.random()}`,
       },
     });
 
