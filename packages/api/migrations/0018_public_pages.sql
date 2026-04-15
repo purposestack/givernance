@@ -37,3 +37,4 @@ CREATE POLICY tenant_isolation ON campaign_public_pages
 -- ─── Grant permissions to app role ────────────────────────────────────────
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON campaign_public_pages TO givernance_app;
+CREATE POLICY public_read ON campaign_public_pages FOR SELECT USING (status = 'published');

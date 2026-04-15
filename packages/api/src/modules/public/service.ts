@@ -72,12 +72,10 @@ export async function createDonationIntent(
     amount: body.amountCents,
     currency: body.currency.toLowerCase(),
     application_fee_amount: applicationFeeAmount,
+    receipt_email: body.email,
     metadata: {
       campaign_id: campaignId,
       org_id: campaign.orgId,
-      constituent_email: body.email,
-      constituent_first_name: body.firstName,
-      constituent_last_name: body.lastName,
     },
   };
 

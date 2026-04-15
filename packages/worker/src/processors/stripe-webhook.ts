@@ -93,7 +93,7 @@ async function handlePaymentIntentSucceeded(
   const currency = ((payload.currency as string) ?? "eur").toUpperCase();
   const paymentIntentId = payload.id as string;
   const metadata = (payload.metadata as Record<string, string>) ?? {};
-  const constituentEmail = metadata.constituent_email;
+  const constituentEmail = payload.receipt_email || metadata.constituent_email;
   const constituentFirstName = metadata.constituent_first_name ?? "Anonymous";
   const constituentLastName = metadata.constituent_last_name ?? "Donor";
   const campaignId = metadata.campaign_id || null;
