@@ -66,8 +66,9 @@ export async function createDonationIntent(
     throw new Error("Organization has not completed Stripe onboarding");
   }
 
-
-  const stripeAccountDetails = await stripe.accounts.retrieve({ stripeAccount: tenant.stripeAccountId });
+  const stripeAccountDetails = await stripe.accounts.retrieve({
+    stripeAccount: tenant.stripeAccountId,
+  });
   if (!stripeAccountDetails.charges_enabled) {
     throw new Error("Organization Stripe account is not fully onboarded");
   }
