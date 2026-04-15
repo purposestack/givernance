@@ -121,10 +121,10 @@ describe("Campaigns CRUD", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("PUT /v1/campaigns/:id updates a campaign", async () => {
+  it("PATCH /v1/campaigns/:id updates a campaign", async () => {
     const token = signToken(app);
     const res = await app.inject({
-      method: "PUT",
+      method: "PATCH",
       url: `/v1/campaigns/${campaignId}`,
       headers: authHeader(token),
       payload: { name: "Spring Appeal 2026 Updated", costCents: 25000 },
@@ -136,10 +136,10 @@ describe("Campaigns CRUD", () => {
     expect(body.data.costCents).toBe(25000);
   });
 
-  it("PUT /v1/campaigns/:id returns 404 for non-existent campaign", async () => {
+  it("PATCH /v1/campaigns/:id returns 404 for non-existent campaign", async () => {
     const token = signToken(app);
     const res = await app.inject({
-      method: "PUT",
+      method: "PATCH",
       url: "/v1/campaigns/00000000-0000-0000-0000-ffffffffffff",
       headers: authHeader(token),
       payload: { name: "Nope" },
@@ -148,7 +148,21 @@ describe("Campaigns CRUD", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("DELETE /v1/campaigns/:id closes a campaign", async () => {
+  it("PATCH /v1/campaigns/:id rejects self-parent", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${campaignId}`,
+      headers: authHeader(token),
+      payload: { parentId: campaignId },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ detail: string }>();
+    expect(body.detail).toContain("its own parent");
+  });
+
+  it("POST /v1/campaigns/:id/close closes a campaign", async () => {
     // Create a campaign to close
     const token = signToken(app);
     const createRes = await app.inject({
@@ -160,8 +174,8 @@ describe("Campaigns CRUD", () => {
     const toCloseId = createRes.json<{ data: { id: string } }>().data.id;
 
     const res = await app.inject({
-      method: "DELETE",
-      url: `/v1/campaigns/${toCloseId}`,
+      method: "POST",
+      url: `/v1/campaigns/${toCloseId}/close`,
       headers: authHeader(token),
     });
 
@@ -170,11 +184,11 @@ describe("Campaigns CRUD", () => {
     expect(body.data.status).toBe("closed");
   });
 
-  it("DELETE /v1/campaigns/:id returns 404 for non-existent campaign", async () => {
+  it("POST /v1/campaigns/:id/close returns 404 for non-existent campaign", async () => {
     const token = signToken(app);
     const res = await app.inject({
-      method: "DELETE",
-      url: "/v1/campaigns/00000000-0000-0000-0000-ffffffffffff",
+      method: "POST",
+      url: "/v1/campaigns/00000000-0000-0000-0000-ffffffffffff/close",
       headers: authHeader(token),
     });
 
@@ -360,6 +374,32 @@ describe("Campaign Stats & ROI", () => {
     const body = res.json<{ data: { roi: number | null } }>();
     expect(body.data.roi).toBeNull();
   });
+
+  it("GET /v1/campaigns/:id/roi returns negative ROI when cost exceeds raised", async () => {
+    const token = signToken(app);
+
+    // Create campaign with high cost, no donations
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Negative ROI Campaign", type: "digital", costCents: 100000 },
+    });
+    const highCostId = createRes.json<{ data: { id: string } }>().data.id;
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${highCostId}/roi`,
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { roi: number; costCents: number; totalRaisedCents: number } }>();
+    expect(body.data.costCents).toBe(100000);
+    expect(body.data.totalRaisedCents).toBe(0);
+    // ROI = (0 - 100000) / 100000 = -1.0
+    expect(body.data.roi).toBe(-1.0);
+  });
 });
 
 // ─── Campaigns RLS Tenant Isolation (QA #4) ─────────────────────────────────
@@ -403,10 +443,10 @@ describe("Campaigns RLS tenant isolation", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("Tenant B cannot PUT Tenant A campaign", async () => {
+  it("Tenant B cannot PATCH Tenant A campaign", async () => {
     const tokenB = signTokenB(app);
     const res = await app.inject({
-      method: "PUT",
+      method: "PATCH",
       url: `/v1/campaigns/${campaignInA}`,
       headers: authHeader(tokenB),
       payload: { name: "Hacked" },
@@ -415,11 +455,11 @@ describe("Campaigns RLS tenant isolation", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("Tenant B cannot DELETE Tenant A campaign", async () => {
+  it("Tenant B cannot close Tenant A campaign", async () => {
     const tokenB = signTokenB(app);
     const res = await app.inject({
-      method: "DELETE",
-      url: `/v1/campaigns/${campaignInA}`,
+      method: "POST",
+      url: `/v1/campaigns/${campaignInA}/close`,
       headers: authHeader(tokenB),
     });
 
@@ -433,6 +473,28 @@ describe("Campaigns RLS tenant isolation", () => {
       url: `/v1/campaigns/${campaignInA}/documents`,
       headers: authHeader(tokenB),
       payload: { constituentIds: [] },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("Tenant B cannot access Tenant A campaign stats", async () => {
+    const tokenB = signTokenB(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaignInA}/stats`,
+      headers: authHeader(tokenB),
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("Tenant B cannot access Tenant A campaign ROI", async () => {
+    const tokenB = signTokenB(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaignInA}/roi`,
+      headers: authHeader(tokenB),
     });
 
     expect(res.statusCode).toBe(404);
@@ -456,20 +518,56 @@ describe("Campaigns unauthenticated access", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("PUT /v1/campaigns/:id without token returns 401", async () => {
+  it("PATCH /v1/campaigns/:id without token returns 401", async () => {
     const res = await app.inject({
-      method: "PUT",
+      method: "PATCH",
       url: "/v1/campaigns/00000000-0000-0000-0000-000000000001",
       payload: { name: "Test" },
     });
     expect(res.statusCode).toBe(401);
   });
 
-  it("DELETE /v1/campaigns/:id without token returns 401", async () => {
+  it("POST /v1/campaigns/:id/close without token returns 401", async () => {
     const res = await app.inject({
-      method: "DELETE",
-      url: "/v1/campaigns/00000000-0000-0000-0000-000000000001",
+      method: "POST",
+      url: "/v1/campaigns/00000000-0000-0000-0000-000000000001/close",
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+// ─── Campaigns RBAC (wrong role) ─────────────────────────────────────────────
+
+describe("Campaigns RBAC — non-admin forbidden", () => {
+  it("PATCH /v1/campaigns/:id with viewer role returns 403", async () => {
+    const token = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/campaigns/00000000-0000-0000-0000-000000000001",
+      headers: authHeader(token),
+      payload: { name: "Test" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("POST /v1/campaigns/:id/close with viewer role returns 403", async () => {
+    const token = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns/00000000-0000-0000-0000-000000000001/close",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("POST /v1/campaigns/:id/documents with user role returns 403", async () => {
+    const token = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns/00000000-0000-0000-0000-000000000001/documents",
+      headers: authHeader(token),
+      payload: { constituentIds: [] },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });

@@ -12,13 +12,28 @@ export interface LifecycleConstituent {
   totalDonatedCents: number;
 }
 
+export interface ReportPagination {
+  limit: number;
+  offset: number;
+}
+
 /**
  * LYBUNT — Last Year But Unfortunately Not This.
  * Returns constituents who donated in the previous calendar year but not in the current year.
  */
-export async function getLybuntReport(orgId: string, referenceYear?: number) {
+export async function getLybuntReport(
+  orgId: string,
+  referenceYear?: number,
+  pagination?: ReportPagination,
+) {
   const thisYear = referenceYear ?? new Date().getFullYear();
   const lastYear = thisYear - 1;
+  const lastYearStart = `${lastYear}-01-01`;
+  const lastYearEnd = `${lastYear + 1}-01-01`;
+  const thisYearStart = `${thisYear}-01-01`;
+  const thisYearEnd = `${thisYear + 1}-01-01`;
+  const limit = pagination?.limit ?? 100;
+  const offset = pagination?.offset ?? 0;
 
   return withTenantContext(orgId, async (tx) => {
     const rows = await tx.execute(sql`
@@ -33,15 +48,19 @@ export async function getLybuntReport(orgId: string, referenceYear?: number) {
       INNER JOIN donations d ON d.constituent_id = c.id AND d.org_id = c.org_id
       WHERE c.org_id = ${orgId}
         AND c.deleted_at IS NULL
-        AND EXTRACT(YEAR FROM d.donated_at) = ${lastYear}
-        AND c.id NOT IN (
-          SELECT d2.constituent_id
+        AND d.donated_at >= ${lastYearStart}::timestamptz
+        AND d.donated_at < ${lastYearEnd}::timestamptz
+        AND NOT EXISTS (
+          SELECT 1
           FROM donations d2
-          WHERE d2.org_id = ${orgId}
-            AND EXTRACT(YEAR FROM d2.donated_at) = ${thisYear}
+          WHERE d2.constituent_id = c.id
+            AND d2.org_id = ${orgId}
+            AND d2.donated_at >= ${thisYearStart}::timestamptz
+            AND d2.donated_at < ${thisYearEnd}::timestamptz
         )
       GROUP BY c.id, c.first_name, c.last_name, c.email
       ORDER BY "totalDonatedCents" DESC
+      LIMIT ${limit} OFFSET ${offset}
     `);
 
     return rows.rows as unknown as LifecycleConstituent[];
@@ -52,8 +71,16 @@ export async function getLybuntReport(orgId: string, referenceYear?: number) {
  * SYBUNT — Some Year But Unfortunately Not This.
  * Returns constituents who donated in any past year but not in the current year.
  */
-export async function getSybuntReport(orgId: string, referenceYear?: number) {
+export async function getSybuntReport(
+  orgId: string,
+  referenceYear?: number,
+  pagination?: ReportPagination,
+) {
   const thisYear = referenceYear ?? new Date().getFullYear();
+  const thisYearStart = `${thisYear}-01-01`;
+  const thisYearEnd = `${thisYear + 1}-01-01`;
+  const limit = pagination?.limit ?? 100;
+  const offset = pagination?.offset ?? 0;
 
   return withTenantContext(orgId, async (tx) => {
     const rows = await tx.execute(sql`
@@ -68,15 +95,18 @@ export async function getSybuntReport(orgId: string, referenceYear?: number) {
       INNER JOIN donations d ON d.constituent_id = c.id AND d.org_id = c.org_id
       WHERE c.org_id = ${orgId}
         AND c.deleted_at IS NULL
-        AND EXTRACT(YEAR FROM d.donated_at) < ${thisYear}
-        AND c.id NOT IN (
-          SELECT d2.constituent_id
+        AND d.donated_at < ${thisYearStart}::timestamptz
+        AND NOT EXISTS (
+          SELECT 1
           FROM donations d2
-          WHERE d2.org_id = ${orgId}
-            AND EXTRACT(YEAR FROM d2.donated_at) = ${thisYear}
+          WHERE d2.constituent_id = c.id
+            AND d2.org_id = ${orgId}
+            AND d2.donated_at >= ${thisYearStart}::timestamptz
+            AND d2.donated_at < ${thisYearEnd}::timestamptz
         )
       GROUP BY c.id, c.first_name, c.last_name, c.email
       ORDER BY "totalDonatedCents" DESC
+      LIMIT ${limit} OFFSET ${offset}
     `);
 
     return rows.rows as unknown as LifecycleConstituent[];

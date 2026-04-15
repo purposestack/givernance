@@ -2,7 +2,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../lib/guards.js";
+import { requireOrgAdmin } from "../../lib/guards.js";
 import {
   DataArrayResponseNoPagination,
   ErrorResponses,
@@ -22,6 +22,8 @@ const LifecycleConstituentResponse = Type.Object({
 
 const ReportQuery = Type.Object({
   year: Type.Optional(Type.Integer({ minimum: 2000, maximum: 2100 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500, default: 100 })),
+  offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
 });
 
 export async function reportsRoutes(app: FastifyInstance) {
@@ -29,7 +31,7 @@ export async function reportsRoutes(app: FastifyInstance) {
   app.get(
     "/reports/lybunt",
     {
-      preHandler: requireAuth,
+      preHandler: requireOrgAdmin,
       schema: {
         tags: ["Reports"],
         querystring: ReportQuery,
@@ -45,8 +47,11 @@ export async function reportsRoutes(app: FastifyInstance) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
-      const query = request.query as { year?: number };
-      const data = await getLybuntReport(orgId, query.year);
+      const query = request.query as { year?: number; limit?: number; offset?: number };
+      const data = await getLybuntReport(orgId, query.year, {
+        limit: query.limit ?? 100,
+        offset: query.offset ?? 0,
+      });
       return { data };
     },
   );
@@ -55,7 +60,7 @@ export async function reportsRoutes(app: FastifyInstance) {
   app.get(
     "/reports/sybunt",
     {
-      preHandler: requireAuth,
+      preHandler: requireOrgAdmin,
       schema: {
         tags: ["Reports"],
         querystring: ReportQuery,
@@ -71,8 +76,11 @@ export async function reportsRoutes(app: FastifyInstance) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
-      const query = request.query as { year?: number };
-      const data = await getSybuntReport(orgId, query.year);
+      const query = request.query as { year?: number; limit?: number; offset?: number };
+      const data = await getSybuntReport(orgId, query.year, {
+        limit: query.limit ?? 100,
+        offset: query.offset ?? 0,
+      });
       return { data };
     },
   );
