@@ -21,13 +21,13 @@ const { mockGetStripe, mockPaymentIntentsCreate, mockQueueAdd } = vi.hoisted(() 
   };
 });
 
-vi.mock("../../modules/payments/service.js", () => ({
-  startStripeOnboarding: vi.fn(),
-  verifyStripeWebhook: vi.fn(),
-  findWebhookEvent: vi.fn(),
-  createWebhookEvent: vi.fn(),
-  getStripe: mockGetStripe,
-}));
+vi.mock("../../modules/payments/service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../modules/payments/service.js")>();
+  return {
+    ...actual,
+    getStripe: mockGetStripe,
+  };
+});
 
 vi.mock("bullmq", () => ({
   Queue: vi.fn().mockImplementation(() => ({
@@ -73,12 +73,12 @@ async function createTestCampaign(name: string) {
   return res.json<{ data: { id: string } }>().data;
 }
 
-// ─── POST /v1/campaigns/:id/public-page (admin) ──────────────────────────
+// ─── PUT /v1/campaigns/:id/public-page (admin) ──────────────────────────
 
-describe("POST /v1/campaigns/:id/public-page", () => {
+describe("PUT /v1/campaigns/:id/public-page", () => {
   it("returns 401 without auth", async () => {
     const res = await app.inject({
-      method: "POST",
+      method: "PUT",
       url: "/v1/campaigns/00000000-0000-0000-0000-000000000001/public-page",
       payload: { title: "Test Page" },
     });
@@ -90,7 +90,7 @@ describe("POST /v1/campaigns/:id/public-page", () => {
     const token = signToken(app);
 
     const res = await app.inject({
-      method: "POST",
+      method: "PUT",
       url: `/v1/campaigns/${campaign.id}/public-page`,
       headers: authHeader(token),
       payload: {
@@ -115,7 +115,7 @@ describe("POST /v1/campaigns/:id/public-page", () => {
 
     // Create first
     await app.inject({
-      method: "POST",
+      method: "PUT",
       url: `/v1/campaigns/${campaign.id}/public-page`,
       headers: authHeader(token),
       payload: { title: "Original Title", status: "draft" },
@@ -123,7 +123,7 @@ describe("POST /v1/campaigns/:id/public-page", () => {
 
     // Update
     const res = await app.inject({
-      method: "POST",
+      method: "PUT",
       url: `/v1/campaigns/${campaign.id}/public-page`,
       headers: authHeader(token),
       payload: { title: "Updated Title", status: "published" },
@@ -138,7 +138,7 @@ describe("POST /v1/campaigns/:id/public-page", () => {
   it("returns 404 for non-existent campaign", async () => {
     const token = signToken(app);
     const res = await app.inject({
-      method: "POST",
+      method: "PUT",
       url: "/v1/campaigns/00000000-0000-0000-0000-ffffffffffff/public-page",
       headers: authHeader(token),
       payload: { title: "Test Page" },
@@ -156,7 +156,7 @@ describe("GET /v1/public/campaigns/:id/page", () => {
 
     // Create a published page
     await app.inject({
-      method: "POST",
+      method: "PUT",
       url: `/v1/campaigns/${campaign.id}/public-page`,
       headers: authHeader(token),
       payload: {
@@ -189,7 +189,7 @@ describe("GET /v1/public/campaigns/:id/page", () => {
 
     // Create a draft page
     await app.inject({
-      method: "POST",
+      method: "PUT",
       url: `/v1/campaigns/${campaign.id}/public-page`,
       headers: authHeader(token),
       payload: { title: "Draft Campaign", status: "draft" },
@@ -221,7 +221,7 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
 
     // Publish the page
     await app.inject({
-      method: "POST",
+      method: "PUT",
       url: `/v1/campaigns/${campaign.id}/public-page`,
       headers: authHeader(token),
       payload: { title: "Donate Page", status: "published" },
@@ -248,7 +248,7 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
       expect.objectContaining({
         amount: 5000,
         currency: "eur",
-        application_fee_amount: expect.any(Number),
+        application_fee_amount: 105, // (5000 * 0.015) + 30
         metadata: expect.objectContaining({
           campaign_id: campaign.id,
         }),
@@ -264,7 +264,7 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
     const token = signToken(app);
 
     await app.inject({
-      method: "POST",
+      method: "PUT",
       url: `/v1/campaigns/${campaign.id}/public-page`,
       headers: authHeader(token),
       payload: { title: "Donate Page", status: "published" },

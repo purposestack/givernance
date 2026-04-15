@@ -141,8 +141,8 @@ export async function publicDonationRoutes(app: FastifyInstance) {
     },
   );
 
-  /** POST /v1/campaigns/:id/public-page — create or update public page config (admin) */
-  app.post(
+  /** PUT /v1/campaigns/:id/public-page — create or update public page config (admin) */
+  app.put(
     "/campaigns/:id/public-page",
     {
       preHandler: requireAuth,
