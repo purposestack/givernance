@@ -1,5 +1,6 @@
 /** Payment routes — Stripe Connect onboarding and webhook handler */
 
+import rateLimit from "@fastify/rate-limit";
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
 import { Type } from "@sinclair/typebox";
 import { Queue } from "bullmq";
@@ -7,12 +8,7 @@ import type { FastifyInstance } from "fastify";
 import { requireOrgAdmin } from "../../lib/guards.js";
 import { redis } from "../../lib/redis.js";
 import { DataResponse, ErrorResponses, problemDetail } from "../../lib/schemas.js";
-import {
-  createWebhookEvent,
-  findWebhookEvent,
-  startStripeOnboarding,
-  verifyStripeWebhook,
-} from "./service.js";
+import { createWebhookEvent, startStripeOnboarding, verifyStripeWebhook } from "./service.js";
 
 const webhooksQueue = new Queue(QUEUE_NAMES.WEBHOOKS, { connection: redis });
 
@@ -52,8 +48,15 @@ export async function paymentRoutes(app: FastifyInstance) {
         returnUrl: string;
       };
 
-      const result = await startStripeOnboarding(orgId, refreshUrl, returnUrl);
-      return { data: result };
+      try {
+        const result = await startStripeOnboarding(orgId, refreshUrl, returnUrl);
+        return { data: result };
+      } catch (err) {
+        request.log.error({ err }, "Stripe Connect onboarding failed");
+        return reply
+          .status(502)
+          .send(problemDetail(502, "Bad Gateway", "Payment provider error, please try again"));
+      }
     },
   );
 }
@@ -63,6 +66,13 @@ export async function paymentRoutes(app: FastifyInstance) {
  * raw-body content-type parser doesn't affect other JSON routes.
  */
 export async function stripeWebhookRoute(app: FastifyInstance) {
+  // Per-IP rate limit for the public webhook endpoint
+  await app.register(rateLimit, {
+    max: 50,
+    timeWindow: "1 minute",
+    redis,
+  });
+
   // Override JSON parser to return raw Buffer for signature verification
   app.addContentTypeParser("application/json", { parseAs: "buffer" }, (_req, body, done) => {
     done(null, body);
@@ -89,27 +99,25 @@ export async function stripeWebhookRoute(app: FastifyInstance) {
       let event: ReturnType<typeof verifyStripeWebhook>;
       try {
         event = verifyStripeWebhook(rawBody, signature);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Signature verification failed";
-        request.log.warn({ err: message }, "Stripe webhook signature verification failed");
-        return reply.status(400).send(problemDetail(400, "Bad Request", message));
+      } catch {
+        request.log.warn("Stripe webhook signature verification failed");
+        return reply
+          .status(400)
+          .send(problemDetail(400, "Bad Request", "Signature verification failed"));
       }
 
-      // Idempotency check
-      const existing = await findWebhookEvent(event.id);
-      if (existing) {
+      // Atomic insert with ON CONFLICT — handles both first-seen and duplicate events
+      const record = await createWebhookEvent(event);
+      if (!record) {
         request.log.info({ stripeEventId: event.id }, "Duplicate webhook event, skipping");
         return reply.status(200).send({ received: true });
       }
-
-      // Persist event as pending
-      const record = await createWebhookEvent(event);
 
       // Enqueue for async processing
       await webhooksQueue.add(
         "process-stripe-webhook",
         {
-          webhookEventId: record?.id,
+          webhookEventId: record.id,
           stripeEventId: event.id,
           eventType: event.type,
           accountId: event.account ?? null,

@@ -39,10 +39,13 @@ export async function startStripeOnboarding(
   let accountId = tenant.stripeAccountId;
 
   if (!accountId) {
-    const account = await stripe.accounts.create({
-      type: "express",
-      metadata: { givernance_org_id: orgId },
-    });
+    const account = await stripe.accounts.create(
+      {
+        type: "express",
+        metadata: { givernance_org_id: orgId },
+      },
+      { idempotencyKey: `acct-create-${orgId}` },
+    );
     accountId = account.id;
 
     await db
@@ -51,32 +54,24 @@ export async function startStripeOnboarding(
       .where(eq(tenants.id, orgId));
   }
 
-  const accountLink = await stripe.accountLinks.create({
-    account: accountId,
-    refresh_url: refreshUrl,
-    return_url: returnUrl,
-    type: "account_onboarding",
-  });
+  const accountLink = await stripe.accountLinks.create(
+    {
+      account: accountId,
+      refresh_url: refreshUrl,
+      return_url: returnUrl,
+      type: "account_onboarding",
+    },
+    { idempotencyKey: `acct-link-${orgId}-${Date.now()}` },
+  );
 
   return { url: accountLink.url, accountId };
 }
 
 /**
- * Check if a Stripe event has already been processed (idempotency).
- * Returns the existing webhook event record if found, null otherwise.
- */
-export async function findWebhookEvent(stripeEventId: string) {
-  const [existing] = await db
-    .select()
-    .from(webhookEvents)
-    .where(eq(webhookEvents.stripeEventId, stripeEventId));
-
-  return existing ?? null;
-}
-
-/**
  * Persist a webhook event with status 'pending' for async processing.
- * Returns the created webhook event record.
+ * Stores only event.data.object (not the full Stripe envelope) to avoid
+ * persisting unnecessary PII. Uses ON CONFLICT to handle race conditions.
+ * Returns the created record, or null if a duplicate was detected.
  */
 export async function createWebhookEvent(event: Stripe.Event) {
   const [record] = await db
@@ -85,13 +80,14 @@ export async function createWebhookEvent(event: Stripe.Event) {
       stripeEventId: event.id,
       eventType: event.type,
       accountId: event.account ?? null,
-      payload: event as unknown as Record<string, unknown>,
+      payload: event.data.object as unknown as Record<string, unknown>,
       status: "pending",
       livemode: event.livemode,
     })
+    .onConflictDoNothing({ target: webhookEvents.stripeEventId })
     .returning();
 
-  return record;
+  return record ?? null;
 }
 
 /**
