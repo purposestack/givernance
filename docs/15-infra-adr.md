@@ -408,7 +408,7 @@ Evaluated Convex.dev and Supabase as potential all-in-one backend platforms. Sup
 
 ### Context
 
-Givernance's frontend is a Next.js 15 App Router application (React 19, TypeScript) consuming a Fastify 5 REST API (ADR-002). The backend already enforces a clear modular monolith structure (ADR-001) with TypeBox schemas, Drizzle ORM, and PostgreSQL RLS. The frontend needs an equivalent architectural pattern that:
+Givernance's frontend is a Next.js 16 App Router application (React 19, TypeScript) consuming a Fastify 5 REST API (ADR-002). The backend already enforces a clear modular monolith structure (ADR-001) with TypeBox schemas, Drizzle ORM, and PostgreSQL RLS. The frontend needs an equivalent architectural pattern that:
 
 1. Provides clean separation of concerns between API communication, data shaping, domain logic orchestration, and rendering
 2. Works naturally with React Server Components (RSC) and the App Router's file-based routing
@@ -542,7 +542,7 @@ MVC was designed for server-rendered applications where the controller receives 
 
 ### Context
 
-Givernance's frontend (Next.js 15, React 19, Tailwind CSS v4) must render 84+ screens across 17 domain modules — from dense financial data tables and multi-step grant wizards to inline AI suggestion cards. The existing design system is mature: 366-line `tokens.css` (CSS custom properties for colors, typography, spacing, shadows, motion), 2,000+ line `base.css` component styles, and 97 interactive HTML mockups defining the Material You Warm visual language.
+Givernance's frontend (Next.js 16, React 19, Tailwind CSS v4) must render 84+ screens across 17 domain modules — from dense financial data tables and multi-step grant wizards to inline AI suggestion cards. The existing design system is mature: 366-line `tokens.css` (CSS custom properties for colors, typography, spacing, shadows, motion), 2,000+ line `base.css` component styles, and 97 interactive HTML mockups defining the Material You Warm visual language.
 
 Key constraints driving this decision:
 
@@ -713,7 +713,7 @@ Givernance is a full-stack TypeScript monorepo (ADR-002) where `@givernance/shar
 | `@givernance/shared/events` | Domain event type definitions (CloudEvents envelope, outbox types) | Type-only (no runtime import), but exposes internal system topology |
 | `@givernance/shared/jobs` | Background job payload definitions | Type-only (no runtime import), but exposes worker capabilities and queue structure |
 
-The frontend (`packages/web`, Next.js 15) communicates with the backend exclusively through REST API calls — it never connects to PostgreSQL directly. However, without explicit import restrictions, a developer could import Drizzle schema types into frontend code, creating type-safety illusions and security surface expansion.
+The frontend (`packages/web`, Next.js 16) communicates with the backend exclusively through REST API calls — it never connects to PostgreSQL directly. However, without explicit import restrictions, a developer could import Drizzle schema types into frontend code, creating type-safety illusions and security surface expansion.
 
 Drizzle's `InferSelectModel<typeof constituents>` produces TypeScript types where:
 - Date columns are typed as `Date` objects — but JSON serialization returns ISO 8601 strings
