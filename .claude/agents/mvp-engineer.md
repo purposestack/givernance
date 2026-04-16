@@ -75,7 +75,7 @@ packages/shared/src/
 | RLS context | `SET LOCAL app.current_org_id = $1` before every query in a request handler |
 | RLS context | `SET LOCAL app.current_user_id = $1` alongside org |
 | Outbox pattern | Every mutation that needs async processing inserts a row in `domain_events` within the same DB transaction — BullMQ worker picks it up |
-| Error codes | RFC 7807 Problem Details — return `{ type, title, status, detail, instance }` |
+| Error codes | RFC 9457 Problem Details — return `{ type, title, status, detail, instance }` |
 | Pagination | Cursor-based only: `?cursor=<opaque base64>&limit=50` — no offset pagination |
 | Audit logs | Every write operation triggers `audit_log` insert (via DB trigger or service layer) |
 
@@ -169,7 +169,7 @@ export function createDonationReceiptWorker(connection: Redis) {
 - **New module**: produce `routes.ts`, `service.ts`, and the integration test file together
 - **New job**: produce the processor file + the job type definition in `@givernance/shared/jobs/`
 - **Schema change**: produce the Drizzle migration file + updated type exports in `@givernance/shared`
-- **Always include**: TypeScript types, Zod validators for external inputs, error handling with RFC 7807
+- **Always include**: TypeScript types, Zod validators for external inputs, error handling with RFC 9457
 - **Code style**: functional, no classes except where Fastify plugin patterns require it
 - **Comments**: explain _why_, not _what_ — the code explains what
 

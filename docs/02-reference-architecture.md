@@ -60,7 +60,7 @@ See: /diagrams/container.mmd
 - Fastify 5 router + plugin stack (auth, audit, rate limit, tracing); `@sinclair/typebox` for OpenAPI schema validation, JSON serialization, and type-safe routes (Zod was abandoned — see ADR-002 note)
 - Drizzle ORM for type-safe PostgreSQL queries; connects via PgBouncer (transaction mode) or directly to Scaleway Managed PostgreSQL in SaaS deployment
 - **TypeBox** for runtime input validation with inferred TypeScript types (replaces Zod for better Fastify JSON serialization performance and native Swagger/OpenAPI integration)
-- All API error responses conform to **RFC 7807** (`application/problem+json`) with strict `schema.response` on all routes to prevent PII leakage
+- All API error responses conform to **RFC 9457** (`application/problem+json`) with strict `schema.response` on all routes to prevent PII leakage
 - Connects to PostgreSQL via `DATABASE_URL_APP` using the `givernance_app` role (NOBYPASSRLS) — see §6 Tenancy model
 - Publishes domain events via transactional outbox (`outbox_events` table) → `packages/relay` poller → BullMQ job queue (NATS JetStream deferred to Phase 4+)
 - Serves REST API on `:8080`; admin API on `:8081` (internal only)
@@ -218,7 +218,7 @@ packages/
 - **Auth**: Bearer token (JWT issued by Keycloak); token introspection cached in Redis
 - **Format**: JSON everywhere; `Content-Type: application/json`
 - **Pagination**: Cursor-based (`?cursor=<opaque>&limit=50`); never offset-based
-- **Errors**: RFC 7807 Problem Details (`type`, `title`, `status`, `detail`, `instance`)
+- **Errors**: RFC 9457 Problem Details (`type`, `title`, `status`, `detail`, `instance`)
 - **Timestamps**: ISO 8601 with timezone (`2024-03-15T14:30:00Z`)
 - **IDs**: UUID v7 (string format in JSON)
 - **Envelopes**: Collections return `{data: [...], meta: {total, cursor_next, cursor_prev}}`

@@ -381,7 +381,7 @@ The following rules should be added to existing agents to enforce logging standa
 | Rule | Description |
 |------|-------------|
 | `X-Request-Id` header in all API responses | Document in OpenAPI spec |
-| Error responses include `correlationId` | RFC 7807 `instance` field = correlation ID |
+| Error responses include `correlationId` | RFC 9457 `instance` field = correlation ID |
 | No PII in error detail messages | Error messages are logged — PII would leak |
 
 ### Data Architect
