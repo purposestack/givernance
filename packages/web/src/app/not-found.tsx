@@ -2,7 +2,7 @@ import Link from "next/link";
 
 /**
  * 404 Not Found page — matches GLO-002 mockup (docs/design/global/404.html).
- * Features a CSS compass illustration, error label, and dual actions.
+ * Features an animated CSS compass with erratic needle and floating question marks.
  */
 export default function NotFound() {
   return (
@@ -16,7 +16,7 @@ export default function NotFound() {
           <span className="font-heading text-2xl text-text">Givernance</span>
         </div>
 
-        {/* Compass illustration */}
+        {/* Compass illustration with animations */}
         <div className="relative mx-auto mb-8 h-[150px] w-[150px]">
           {/* Outer ring */}
           <div className="absolute inset-0 rounded-full border-3 border-neutral-200 bg-white shadow-card" />
@@ -35,21 +35,64 @@ export default function NotFound() {
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-neutral-400">
             W
           </span>
-          {/* Needle */}
-          <div className="absolute left-1/2 top-1/2 h-[52px] w-1 origin-center -translate-x-1/2 -translate-y-1/2 rotate-[35deg]">
+
+          {/* Erratic needle — disturbed by magnetic fields */}
+          <div
+            className="absolute left-1/2 top-1/2 h-[52px] w-1 origin-center"
+            style={{ animation: "needle-lost 6s cubic-bezier(0.4, 0, 0.2, 1) infinite" }}
+          >
             <div className="absolute left-1/2 top-0 -translate-x-1/2 border-x-[6px] border-b-[24px] border-x-transparent border-b-primary" />
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 border-x-[5px] border-t-[22px] border-x-transparent border-t-neutral-300" />
           </div>
-          {/* Center pivot */}
-          <div className="absolute left-1/2 top-1/2 z-[2] h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber shadow-[0_0_0_3px_var(--color-white)]" />
+
+          {/* Center pivot with pulse */}
+          <div
+            className="absolute left-1/2 top-1/2 z-[2] h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber"
+            style={{ animation: "pivot-pulse 2s ease-in-out infinite" }}
+          />
+
+          {/* Floating question marks — curved paths from center outward */}
+          <span
+            className="pointer-events-none absolute left-1/2 top-1/2 font-heading text-lg italic text-amber"
+            style={{ animation: "q-float-1 3.2s ease-out infinite", animationDelay: "0s" }}
+          >
+            ?
+          </span>
+          <span
+            className="pointer-events-none absolute left-1/2 top-1/2 font-heading text-sm italic text-primary-light"
+            style={{ animation: "q-float-2 3.8s ease-out infinite", animationDelay: "0.6s" }}
+          >
+            ?
+          </span>
+          <span
+            className="pointer-events-none absolute left-1/2 top-1/2 font-heading text-xl italic text-amber/60"
+            style={{ animation: "q-float-3 4.1s ease-out infinite", animationDelay: "1.2s" }}
+          >
+            ?
+          </span>
+          <span
+            className="pointer-events-none absolute left-1/2 top-1/2 font-heading text-base italic text-primary/40"
+            style={{ animation: "q-float-4 3.5s ease-out infinite", animationDelay: "2.0s" }}
+          >
+            ?
+          </span>
+          <span
+            className="pointer-events-none absolute left-1/2 top-1/2 font-heading text-lg italic text-amber/70"
+            style={{ animation: "q-float-5 4.4s ease-out infinite", animationDelay: "0.9s" }}
+          >
+            ?
+          </span>
+          <span
+            className="pointer-events-none absolute left-1/2 top-1/2 font-heading text-xs italic text-primary-light/50"
+            style={{ animation: "q-float-6 3.0s ease-out infinite", animationDelay: "1.8s" }}
+          >
+            ?
+          </span>
+
           {/* Wandering path */}
           <div className="absolute -bottom-2 -right-5 h-10 w-[60px] rounded-br-[30px] border-2 border-l-0 border-t-0 border-dashed border-primary-light opacity-70">
             <div className="absolute -bottom-[3px] -right-[3px] h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_0_3px_var(--color-primary-50)]" />
           </div>
-          {/* Question mark */}
-          <span className="absolute -right-3.5 -top-2.5 font-heading text-xl italic text-amber opacity-80">
-            ?
-          </span>
         </div>
 
         {/* Error label */}
