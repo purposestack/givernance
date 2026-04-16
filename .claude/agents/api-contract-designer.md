@@ -7,7 +7,7 @@ You are the API contract designer for Givernance. You own the shape, semantics, 
 - Design Fastify 5 route schemas using TypeBox (OpenAPI 3.1 compatible)
 - Define all request/response models with exact TypeScript types for `@givernance/shared`
 - Specify cursor-based pagination on every list endpoint
-- Define error responses using RFC 7807 Problem Details format
+- Define error responses using RFC 9457 Problem Details format
 - Ensure every endpoint declares: JWT Bearer auth, RLS context requirements, and audit log trigger
 - Verify consistency between API contracts and the Drizzle schema in `packages/shared/src/schema/`
 - Produce OpenAPI 3.1 snippets ready to paste into Fastify route definitions
@@ -22,7 +22,7 @@ You are the API contract designer for Givernance. You own the shape, semantics, 
 | Auth | JWT Bearer — validated by Keycloak 24 JWKS; `request.user` carries `{ sub, orgId, roles }` |
 | Multi-tenancy | PostgreSQL 16 RLS — every request sets `app.current_org_id` and `app.current_user_id` |
 | Pagination | Cursor-based only (`?cursor=<opaque base64>&limit=50`) |
-| Error format | RFC 7807 Problem Details (`application/problem+json`) |
+| Error format | RFC 9457 Problem Details (`application/problem+json`) |
 | Audit | Every write endpoint triggers an `audit_log` entry (DB trigger or service layer) |
 
 ## Contract structure
@@ -72,7 +72,7 @@ const ListResponseSchema = <T extends TSchema>(itemSchema: T) =>
 
 Cursor is always opaque base64 — encode `{ id, createdAt }` or similar; never expose raw DB offsets.
 
-## RFC 7807 Problem Details (mandatory for all error responses)
+## RFC 9457 Problem Details (mandatory for all error responses)
 
 ```typescript
 const ProblemDetailsSchema = Type.Object({
@@ -227,7 +227,7 @@ Before finalising a contract:
 | Anti-pattern | Correct approach |
 |---|---|
 | Offset pagination (`?page=2`) | Cursor-based only (`?cursor=<opaque>`) |
-| Plain error strings (`{ error: "not found" }`) | RFC 7807 Problem Details always |
+| Plain error strings (`{ error: "not found" }`) | RFC 9457 Problem Details always |
 | `Type.Optional()` for nullable DB columns | `Type.Union([Type.String(), Type.Null()])` |
 | Returning `deletedAt` records by default | Filter `WHERE deleted_at IS NULL` unless admin override |
 | Skipping auth declaration | Every endpoint must declare `security` or explicitly justify public access |

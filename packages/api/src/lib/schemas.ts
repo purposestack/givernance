@@ -17,7 +17,7 @@ export const PaginationQuery = Type.Object({
   perPage: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 20 })),
 });
 
-/** RFC 7807 Problem Details response schema (all members optional per spec) */
+/** RFC 9457 Problem Details response schema (all members optional per spec) */
 export const ProblemDetailSchema = Type.Object(
   {
     type: Type.Optional(Type.String()),
@@ -74,7 +74,7 @@ export const ErrorResponses = {
   404: ProblemDetailSchema,
 };
 
-/** Helper to create an RFC 7807 problem detail object */
+/** Helper to create an RFC 9457 problem detail object */
 export function problemDetail(status: number, title: string, detail: string) {
   return {
     type: `https://httpproblems.com/http-status/${status}`,
@@ -84,5 +84,5 @@ export function problemDetail(status: number, title: string, detail: string) {
   };
 }
 
-/** Content-Type for RFC 7807 responses */
+/** Content-Type for RFC 9457 responses */
 export const PROBLEM_JSON = "application/problem+json";

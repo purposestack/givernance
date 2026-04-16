@@ -15,7 +15,7 @@ export interface ApiResponse<T> {
   meta?: Record<string, unknown>;
 }
 
-/** Standard API error response (RFC 7807 Problem Details) */
+/** Standard API error response (RFC 9457 Problem Details) */
 export interface ApiError {
   type: string;
   title: string;
