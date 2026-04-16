@@ -28,8 +28,9 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Read the double-submit CSRF cookie (non-httpOnly) and emit it as a meta tag
-  // so the browser API client can attach it on mutating requests (ADR-011).
+  // cookies() opts the entire app out of static rendering — intentional for an
+  // auth-gated SPA where every page needs session context (see ADR-011).
+  // Do not remove without discussion: it provides CSRF and auth cookie access.
   const cookieStore = await cookies();
   const csrfToken = cookieStore.get("csrf-token")?.value;
 

@@ -12,20 +12,22 @@ function getCsrfToken(): string | undefined {
 /** Methods that require CSRF protection (state-changing per ADR-011). */
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/** Key for globalThis singleton — survives Next.js Fast Refresh in dev. */
+const GLOBAL_KEY = Symbol.for("givernance.browserApiClient");
+
 /**
  * Create an ApiClient for use in Client Components (browser-side).
  *
  * - Uses `credentials: 'include'` so the browser sends httpOnly cookies
  * - Uses the public API URL (external, goes through the reverse proxy)
  * - CSRF token read fresh from meta tag on every mutating request (ADR-011)
- * - Singleton — reused across the browser session
+ * - Singleton via globalThis — survives Fast Refresh without stale closures
  */
-let browserClient: ApiClient | null = null;
-
 export function createClientApiClient(): ApiClient {
-  if (browserClient) return browserClient;
+  const cached = (globalThis as Record<symbol, unknown>)[GLOBAL_KEY] as ApiClient | undefined;
+  if (cached) return cached;
 
-  browserClient = new ApiClient({
+  const client = new ApiClient({
     baseUrl: process.env.NEXT_PUBLIC_API_URL ?? "/api",
     fetchFn: (input, init) => {
       const headers = new Headers(init?.headers);
@@ -47,5 +49,6 @@ export function createClientApiClient(): ApiClient {
     },
   });
 
-  return browserClient;
+  (globalThis as Record<symbol, unknown>)[GLOBAL_KEY] = client;
+  return client;
 }
