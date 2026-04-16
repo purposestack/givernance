@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Newsreader, Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
 
 const newsreader = Newsreader({
@@ -29,7 +29,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${newsreader.variable} ${inter.variable} ${jetbrainsMono.variable} antialiased`}>
+      <body
+        className={`${newsreader.variable} ${inter.variable} ${jetbrainsMono.variable} antialiased`}
+      >
         {children}
       </body>
     </html>
