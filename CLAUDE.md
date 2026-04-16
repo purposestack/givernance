@@ -106,6 +106,21 @@ Checklist for every frontend implementation:
 3. Implement to match the mockup — structure, visual hierarchy, and component choices
 4. Verify in the browser that the rendered page matches the mockup
 
+### 🛑 ADR-First Rule (CRITICAL FOR ALL IMPLEMENTATION)
+
+**Before implementing any feature, you MUST read the relevant Architecture Decision Records in `docs/15-infra-adr.md`.** GitHub issues reference ADRs in their "Architecture References" table. ADRs define non-obvious constraints (env var names, security patterns, color semantics, import boundaries) that cannot be guessed from context.
+
+Checklist for every implementation:
+1. Read the issue's "Architecture References" table to identify which ADRs apply
+2. `Read` the full ADR sections in `docs/15-infra-adr.md` — pay attention to env var names, security patterns, rejected alternatives, and consequences
+3. When briefing subagents, include the specific ADR constraints in the prompt (subagents cannot read CLAUDE.md)
+4. If any ADR constraint conflicts with another source of truth (e.g., tokens.css vs ADR text), flag it explicitly rather than silently picking one
+
+Key ADRs for frontend work:
+- **ADR-011**: 4-layer architecture, `API_URL` (server) vs `NEXT_PUBLIC_API_URL` (browser), CSRF double-submit pattern, JWT cookie handling
+- **ADR-012**: shadcn/ui + TanStack ecosystem, component hierarchy, design token integration, accessibility requirements
+- **ADR-013**: Frontend type boundary, Biome `noRestrictedImports`, no source maps in production
+
 ## Conventions
 
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
