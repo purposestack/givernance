@@ -442,7 +442,7 @@ Use a **4-layer service architecture** for the Next.js frontend:
 │  src/lib/api/ (typed fetch wrapper)              │
 │  ── JWT from httpOnly cookies (server) ──        │
 │  ── credentials: 'include' (client) ──           │
-│  ── RFC 7807 error parsing ──                    │
+│  ── RFC 9457 error parsing ──                    │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -461,13 +461,13 @@ Two factory functions produce a typed fetch wrapper:
 - `createServerApiClient()` — used in Server Components and route handlers; reads JWT from `cookies()` (Next.js `next/headers`)
 - `createClientApiClient()` — used in Client Components; sends `credentials: 'include'` for browser-managed httpOnly cookies
 
-Both factories share the same interface: typed `get<T>()`, `post<T>()`, `put<T>()`, `patch<T>()`, `delete<T>()` methods with automatic RFC 7807 error parsing into a structured `ApiError` type. Base URL is configured via `NEXT_PUBLIC_API_URL` (client, must point to public gateway/reverse proxy — never an internal service address) and `API_URL` (server, internal network — e.g., `http://api:8080`).
+Both factories share the same interface: typed `get<T>()`, `post<T>()`, `put<T>()`, `patch<T>()`, `delete<T>()` methods with automatic RFC 9457 error parsing into a structured `ApiError` type. Base URL is configured via `NEXT_PUBLIC_API_URL` (client, must point to public gateway/reverse proxy — never an internal service address) and `API_URL` (server, internal network — e.g., `http://api:8080`).
 
 **Security requirements for the API Client layer:**
 
 - **JWT cookie attributes**: Authentication tokens are stored in `httpOnly` + `Secure` + `SameSite=Strict` cookies. `SameSite=Strict` (not `Lax`) is required because `GET`-based state reads could leak data via cross-origin navigation.
 - **CSRF protection**: The client API client attaches a CSRF token (double-submit cookie pattern) as an `X-CSRF-Token` header on all state-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`). The server validates the token matches the value in the CSRF cookie.
-- **PII in error responses**: RFC 7807 error details parsed by the API Client must not be logged to browser console or forwarded to error tracking services if they contain PII. Error display uses only the `title` and `detail` fields through sanitized UI components.
+- **PII in error responses**: RFC 9457 error details parsed by the API Client must not be logged to browser console or forwarded to error tracking services if they contain PII. Error display uses only the `title` and `detail` fields through sanitized UI components.
 - **TanStack Query cache hygiene**: The in-memory query cache may hold PII (donor names, emails, financial data). `gcTime` must be configured to minimize PII retention, and the cache must be explicitly cleared on logout via `queryClient.clear()`.
 
 **2. Domain Models (`src/models/`)**
@@ -517,7 +517,7 @@ MVC was designed for server-rendered applications where the controller receives 
 | **MVC (Model-View-Controller)** | Familiar pattern, well-documented | Controller redundant with App Router routing, View redundant with React components, Model has no ORM to wrap — all three layers collapse into what the framework already provides | Rejected |
 | **MVVM (Model-View-ViewModel)** | Clean data binding, good for complex forms | ViewModel pattern assumes two-way binding (Knockout, Angular) — React's unidirectional data flow makes ViewModels unnecessary; TanStack Query already manages the "ViewModel" concern (cached server state + loading/error states) | Rejected |
 | **Feature-sliced architecture** (co-located per feature) | Strong co-location, scales to large teams | Premature for a 1–3 person team; fragments shared services and models across feature directories; harder to enforce consistent API client usage; revisit at Phase 4 if team exceeds 5 engineers | Rejected — revisit at scale |
-| **No layering** (pages call `fetch()` directly) | Minimal abstraction, fast to start | JWT forwarding logic duplicated in every page/component, no RFC 7807 error handling consistency, no type safety on API responses, impossible to test business logic without rendering components | Rejected |
+| **No layering** (pages call `fetch()` directly) | Minimal abstraction, fast to start | JWT forwarding logic duplicated in every page/component, no RFC 9457 error handling consistency, no type safety on API responses, impossible to test business logic without rendering components | Rejected |
 | **Layered service architecture** | Clean separation matching actual concerns (transport, shape, orchestration, rendering); works with both RSC and Client Components; testable services via DI; no redundant layers | Requires discipline to avoid services becoming "god classes"; slightly more boilerplate than direct fetch | **Selected** |
 
 ### Consequences
@@ -606,7 +606,7 @@ Form state management using React Hook Form with TypeBox schema validation, enab
 
 Configuration:
 - Validation mode: `onBlur` — validates each field when the user leaves it, never on keystroke (reduces noise) and never only on submit (too late)
-- Server error mapping: RFC 7807 `fieldErrors` from API responses are mapped to form fields via `setError()`, providing inline server-side validation feedback
+- Server error mapping: RFC 9457 `fieldErrors` from API responses are mapped to form fields via `setError()`, providing inline server-side validation feedback
 - Multi-step forms (grant wizard, constituent create): each step validates its own TypeBox sub-schema independently before allowing progression
 
 #### 4. lucide-react (Icons)
@@ -653,7 +653,7 @@ Tree-shakeable icon library providing named SVG imports. Only icons actually use
 | **Performance** | Uncontrolled inputs — minimal re-renders | Controlled inputs — re-renders entire form on every change | Depends on implementation |
 | **Schema reuse** | `@hookform/resolvers/typebox` — validates with the same TypeBox schemas used by Fastify routes | Yup/Zod schemas — separate from TypeBox API schemas, duplication risk | Manual validation — full duplication |
 | **Bundle size** | ~9 KB (RHF) + ~2 KB (resolver) | ~13 KB | 0 KB |
-| **Server error integration** | `setError()` API maps RFC 7807 `fieldErrors` directly to fields | `setFieldError()` — similar capability | Manual state management |
+| **Server error integration** | `setError()` API maps RFC 9457 `fieldErrors` directly to fields | `setFieldError()` — similar capability | Manual state management |
 | **Multi-step forms** | Built-in — each step is a separate `useForm()` or sub-schema validation | Possible but verbose | Manual orchestration |
 | **TypeScript DX** | Excellent — form values inferred from TypeBox schema type | Good with Yup, weaker with plain objects | Manual typing |
 | **Verdict** | **Selected** | Rejected — heavier, controlled re-renders, separate schema system | Rejected — no schema reuse, no built-in validation lifecycle |
@@ -763,7 +763,7 @@ Frontend-specific API response models live in `packages/web/src/models/` as plai
 
 - ✅ **Runtime correctness**: Frontend types match actual JSON wire format — dates are `string`, numbers are `number`, no `bigint` surprises
 - ✅ **Bundle safety**: `drizzle-orm` and `drizzle-orm/pg-core` never enter the Next.js client bundle — no Node.js polyfill failures, smaller bundle
-- ✅ **GDPR enforcement boundary preserved**: The REST API remains the single point of GDPR control — RLS tenant isolation via `withTenantContext()`, RBAC permission matrix (`06-security-compliance.md`), PII redaction (Pino `redact` + RFC 7807 strict response schemas), and immutable audit logging. Frontend developers cannot accidentally circumvent data protection by importing database-level types that suggest direct field access
+- ✅ **GDPR enforcement boundary preserved**: The REST API remains the single point of GDPR control — RLS tenant isolation via `withTenantContext()`, RBAC permission matrix (`06-security-compliance.md`), PII redaction (Pino `redact` + RFC 9457 strict response schemas), and immutable audit logging. Frontend developers cannot accidentally circumvent data protection by importing database-level types that suggest direct field access
 - ✅ **Security posture**: Internal system architecture (event topology, job queue structure, outbox design) is not exposed to frontend code — reduces information available to an attacker who gains access to client-side source maps or bundled JavaScript
 - ✅ **Lint-enforced in CI**: Violations are caught by Biome before merge — not dependent on code review alone
 - ✅ **Consistent with ADR-011**: The Domain Models layer in `packages/web/src/models/` is the designated home for frontend-specific API response types, reinforcing the layered service architecture
