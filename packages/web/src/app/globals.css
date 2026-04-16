@@ -367,3 +367,84 @@ h4 {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── 404 Compass: erratic needle (magnetic disturbance) ── */
+@keyframes needle-lost {
+  0% { transform: translate(-50%, -50%) rotate(35deg); }
+  4% { transform: translate(-50%, -50%) rotate(-20deg); }
+  8% { transform: translate(-50%, -50%) rotate(-15deg); }
+  14% { transform: translate(-50%, -50%) rotate(120deg); }
+  18% { transform: translate(-50%, -50%) rotate(95deg); }
+  22% { transform: translate(-50%, -50%) rotate(100deg); }
+  28% { transform: translate(-50%, -50%) rotate(-70deg); }
+  33% { transform: translate(-50%, -50%) rotate(-45deg); }
+  38% { transform: translate(-50%, -50%) rotate(200deg); }
+  42% { transform: translate(-50%, -50%) rotate(175deg); }
+  48% { transform: translate(-50%, -50%) rotate(180deg); }
+  52% { transform: translate(-50%, -50%) rotate(10deg); }
+  58% { transform: translate(-50%, -50%) rotate(-130deg); }
+  62% { transform: translate(-50%, -50%) rotate(-100deg); }
+  68% { transform: translate(-50%, -50%) rotate(250deg); }
+  72% { transform: translate(-50%, -50%) rotate(230deg); }
+  78% { transform: translate(-50%, -50%) rotate(60deg); }
+  82% { transform: translate(-50%, -50%) rotate(55deg); }
+  88% { transform: translate(-50%, -50%) rotate(-160deg); }
+  92% { transform: translate(-50%, -50%) rotate(-140deg); }
+  96% { transform: translate(-50%, -50%) rotate(35deg); }
+  100% { transform: translate(-50%, -50%) rotate(35deg); }
+}
+
+/* ── 404 Compass: pivot jitter ── */
+@keyframes pivot-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--color-white); }
+  50% { box-shadow: 0 0 0 3px var(--color-white), 0 0 8px 2px var(--color-amber); }
+}
+
+/* ── 404 Question marks: curved float from center outward ── */
+@keyframes q-float-1 {
+  0% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  10% { opacity: 0.9; }
+  30% { transform: translate(20px, -30px) scale(0.7); }
+  60% { transform: translate(-10px, -55px) scale(0.9); }
+  100% { transform: translate(35px, -80px) scale(0.5); opacity: 0; }
+}
+
+@keyframes q-float-2 {
+  0% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  10% { opacity: 0.8; }
+  30% { transform: translate(-25px, -20px) scale(0.6); }
+  60% { transform: translate(-40px, -50px) scale(0.8); }
+  100% { transform: translate(-60px, -75px) scale(0.4); opacity: 0; }
+}
+
+@keyframes q-float-3 {
+  0% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  10% { opacity: 0.7; }
+  30% { transform: translate(30px, 10px) scale(0.8); }
+  60% { transform: translate(50px, -20px) scale(0.9); }
+  100% { transform: translate(70px, -60px) scale(0.3); opacity: 0; }
+}
+
+@keyframes q-float-4 {
+  0% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  10% { opacity: 0.85; }
+  30% { transform: translate(-15px, 15px) scale(0.6); }
+  60% { transform: translate(10px, -35px) scale(0.7); }
+  100% { transform: translate(-45px, -85px) scale(0.35); opacity: 0; }
+}
+
+@keyframes q-float-5 {
+  0% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  10% { opacity: 0.75; }
+  30% { transform: translate(15px, 20px) scale(0.5); }
+  60% { transform: translate(40px, -10px) scale(0.8); }
+  100% { transform: translate(20px, -70px) scale(0.4); opacity: 0; }
+}
+
+@keyframes q-float-6 {
+  0% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  10% { opacity: 0.8; }
+  30% { transform: translate(-30px, -10px) scale(0.7); }
+  60% { transform: translate(-55px, 15px) scale(0.6); }
+  100% { transform: translate(-75px, -50px) scale(0.3); opacity: 0; }
+}
