@@ -96,6 +96,16 @@ Next: Phase 1 — Skeleton (TypeScript monorepo scaffolding with pnpm workspaces
 
 HTML mockups are in `docs/design/`. Open `docs/design/index.html` locally or view on GitHub Pages: https://onigam.github.io/givernance/design/
 
+### 🛑 Mockup-First Rule (CRITICAL FOR FRONTEND)
+
+**Before implementing any UI component or page, you MUST read the corresponding HTML mockup in `docs/design/`.** GitHub issues reference mockups in their "Mockup References" table — use those paths to find the source file. The mockup is the visual spec: match its layout, illustrations, typography, spacing, copy structure, and interactions. Do NOT improvise placeholder UI when a mockup exists.
+
+Checklist for every frontend implementation:
+1. Read the issue's "Mockup References" table to identify which mockup files apply
+2. `Read` each mockup HTML file to understand the exact layout, CSS art, copy, and interactions
+3. Implement to match the mockup — structure, visual hierarchy, and component choices
+4. Verify in the browser that the rendered page matches the mockup
+
 ## Conventions
 
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
