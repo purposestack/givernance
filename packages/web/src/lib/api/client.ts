@@ -104,13 +104,12 @@ export class ApiClient {
     path: string,
     params?: Record<string, string | number | boolean | undefined>,
   ): string {
-    // Support both absolute URLs (server-side) and relative paths (browser-side)
+    // Server-side always receives an absolute URL (API_URL). Browser-side may
+    // receive a relative path (/api) — resolve it against the current origin.
     const base =
       this.baseUrl.startsWith("http://") || this.baseUrl.startsWith("https://")
         ? this.baseUrl
-        : typeof window !== "undefined"
-          ? `${window.location.origin}${this.baseUrl}`
-          : `http://localhost:3000${this.baseUrl}`;
+        : `${window.location.origin}${this.baseUrl}`;
 
     const url = new URL(path, `${base}/`);
     if (params) {
