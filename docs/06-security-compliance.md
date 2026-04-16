@@ -9,7 +9,7 @@
 - RBAC + permission scopes by capability
 - Immutable audit log for privileged actions
 - Secrets in vault; no plaintext secrets in DB
-- All API error responses use **RFC 7807** (`application/problem+json`) with strict `schema.response` on all routes to prevent PII leakage
+- All API error responses use **RFC 9457** (`application/problem+json`) with strict `schema.response` on all routes to prevent PII leakage
 - Structured logging via **Pino** with built-in PII redaction (defense in depth)
 
 ## Database role model (3-role pattern)
@@ -32,7 +32,7 @@ Three layers prevent PII from appearing in logs or error responses:
 
 1. **Pino `redact` option**: All service loggers (API, relay, worker) strip known PII paths: `authorization`, `cookie`, `password`, `token`, `iban`, `cardNumber`, `cvv`, `pan`
 2. **Custom serializers**: Domain objects are logged with safe projections only (`{ id, type }`, never `{ email, name }`)
-3. **RFC 7807 strict response schemas**: All routes define explicit `schema.response` — only declared fields are serialized. Undeclared PII fields on internal objects are never exposed to clients.
+3. **RFC 9457 strict response schemas**: All routes define explicit `schema.response` — only declared fields are serialized. Undeclared PII fields on internal objects are never exposed to clients.
 
 ## GDPR-by-design
 - Lawful basis per contact/communication

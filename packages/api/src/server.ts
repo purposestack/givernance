@@ -72,7 +72,7 @@ export async function createServer() {
     routePrefix: "/docs",
   });
 
-  // --- Global error handler (RFC 7807 application/problem+json) ---
+  // --- Global error handler (RFC 9457 application/problem+json) ---
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     const status = error.statusCode ?? 500;
     const body = problemDetail(
