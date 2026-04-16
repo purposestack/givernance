@@ -41,6 +41,27 @@
       "arrowParentheses": "always"
     }
   },
+  "overrides": [
+    {
+      "includes": ["packages/web/src/**/*.ts", "packages/web/src/**/*.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@givernance/shared/schema": "Importing Drizzle schema in packages/web is forbidden (ADR-013). Use @/models/ for API response types.",
+                  "@givernance/shared/events": "Importing domain events in packages/web is forbidden (ADR-013). Events are backend-only.",
+                  "@givernance/shared/jobs": "Importing job definitions in packages/web is forbidden (ADR-013). Jobs are backend-only."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "files": {
     "includes": ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
     "ignoreUnknown": true
