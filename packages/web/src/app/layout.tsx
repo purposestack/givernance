@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
+import { cookies } from "next/headers";
 import "./globals.css";
 
 const inter = Inter({
@@ -26,12 +27,18 @@ export const metadata: Metadata = {
   description: "Purpose-built CRM for European nonprofits",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Read the double-submit CSRF cookie (non-httpOnly) and emit it as a meta tag
+  // so the browser API client can attach it on mutating requests (ADR-011).
+  const cookieStore = await cookies();
+  const csrfToken = cookieStore.get("csrf-token")?.value;
+
   return (
     <html
       lang="en"
       className={`${inter.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
     >
+      <head>{csrfToken && <meta name="csrf-token" content={csrfToken} />}</head>
       <body>
         <a
           href="#main-content"
