@@ -62,10 +62,6 @@ export async function createDonationIntent(
     .from(tenants)
     .where(eq(tenants.id, campaign.orgId));
 
-  if ((tenant as any).paymentGateway === "mollie") {
-    throw new Error("Mollie payment gateway is not implemented yet (Sprint 4)");
-  }
-
   if (!tenant?.stripeAccountId) {
     throw new Error("Organization has not completed Stripe onboarding");
   }
