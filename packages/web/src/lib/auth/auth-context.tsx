@@ -107,7 +107,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
-    window.location.href = "/api/auth/logout";
+    // POST to prevent CSRF session disruption via GET requests
+    fetch("/api/auth/logout", { method: "POST", credentials: "include" }).then((res) => {
+      // Follow the redirect to Keycloak end-session endpoint
+      if (res.redirected) {
+        window.location.href = res.url;
+      } else {
+        window.location.href = "/login";
+      }
+    });
   }, []);
 
   const value = useMemo<AuthContextValue>(

@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowLeft, Mail } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { AuthCard } from "@/components/auth/auth-card";
@@ -21,8 +22,8 @@ export default function ForgotPasswordPage() {
         <AuthLogo />
         <div className="py-6 text-center">
           {/* Success icon — circular primary-50 bg with mail symbol */}
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary-50 text-2xl text-primary">
-            &#9993;
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary-50 text-primary">
+            <Mail className="h-7 w-7" />
           </div>
           <h2 className="mb-2 font-heading text-lg text-text">Email sent</h2>
           <p className="mx-auto mb-6 max-w-[320px] text-sm leading-relaxed text-text-secondary">
@@ -104,7 +105,7 @@ export default function ForgotPasswordPage() {
           href="/login"
           className="text-sm font-medium text-primary no-underline transition-colors hover:text-primary-dark hover:underline"
         >
-          &larr; Back to sign in
+          <ArrowLeft className="inline h-3.5 w-3.5" /> Back to sign in
         </Link>
       </div>
     </AuthCard>

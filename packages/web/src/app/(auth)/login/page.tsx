@@ -1,5 +1,6 @@
 "use client";
 
+import { Eye, EyeOff, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
@@ -37,6 +38,10 @@ function getErrorMessage(error: string): string {
       return "Authentication failed. Please try again.";
     case "callback_failed":
       return "Something went wrong during sign-in. Please try again.";
+    case "invalid_state":
+      return "Session expired. Please try signing in again.";
+    case "missing_verifier":
+      return "Authentication session was interrupted. Please try again.";
     default:
       return "Invalid credentials. Check your email and password.";
   }
@@ -56,6 +61,14 @@ function LoginForm() {
     <AuthCard>
       <AuthLogo />
 
+      {/* Organization badge — .auth-org from mockup (subdomain-detected org) */}
+      <div className="mx-auto mb-6 flex w-fit items-center justify-center gap-2 rounded-pill bg-neutral-100 px-4 py-1.5">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+        <span className="max-w-[280px] truncate text-xs font-medium text-text-secondary">
+          Your organization
+        </span>
+      </div>
+
       {/* Title & subtitle — auth-title / auth-subtitle from mockup */}
       <h1 className="mb-2 text-center font-heading text-xl text-text">Sign in</h1>
       <p className="mb-6 text-center text-sm text-text-secondary">
@@ -68,17 +81,15 @@ function LoginForm() {
           className="mb-5 flex items-start gap-3 rounded-lg border border-[rgba(186,26,26,0.12)] bg-error-container p-3 text-sm text-on-error-container"
           role="alert"
         >
-          <span className="shrink-0 text-md" aria-hidden="true">
-            &#9888;
-          </span>
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span className="flex-1">{getErrorMessage(errorParam)}</span>
           <button
             type="button"
             aria-label="Close"
             onClick={() => setAlertVisible(false)}
-            className="shrink-0 border-none bg-transparent p-0 text-md leading-none text-inherit opacity-70 transition-opacity duration-normal ease-out hover:opacity-100"
+            className="shrink-0 border-none bg-transparent p-0 leading-none text-inherit opacity-70 transition-opacity duration-normal ease-out hover:opacity-100"
           >
-            &#10005;
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -120,9 +131,9 @@ function LoginForm() {
               type="button"
               aria-label={showPassword ? "Hide password" : "Show password"}
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 text-sm leading-none text-text-muted transition-colors duration-normal ease-out hover:text-text-secondary"
+              className="absolute right-3 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 leading-none text-text-muted transition-colors duration-normal ease-out hover:text-text-secondary"
             >
-              {showPassword ? "Hide" : "Show"}
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
         </div>
@@ -181,7 +192,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<span role="status">Loading...</span>}>
       <LoginForm />
     </Suspense>
   );

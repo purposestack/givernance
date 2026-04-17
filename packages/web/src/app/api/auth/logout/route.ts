@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 import { APP_URL, JWT_COOKIE_NAME, KEYCLOAK_CLIENT_ID, LOGOUT_ENDPOINT } from "@/lib/auth/keycloak";
 
 /**
- * GET /api/auth/logout
+ * POST /api/auth/logout
  *
  * Clears the JWT cookie and redirects to Keycloak's end-session endpoint
  * which invalidates the Keycloak session and redirects back to /login.
+ *
+ * POST-only to prevent CSRF session disruption via GET (e.g. <img src="/api/auth/logout">).
  */
-export async function GET() {
+export async function POST() {
   const jar = await cookies();
   jar.delete(JWT_COOKIE_NAME);
 

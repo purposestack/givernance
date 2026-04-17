@@ -5,52 +5,100 @@ import {
   JWT_COOKIE_NAME,
   jwtCookieOptions,
   KEYCLOAK_CLIENT_ID,
-  KEYCLOAK_CLIENT_SECRET,
+  OIDC_NONCE_COOKIE,
+  OIDC_STATE_COOKIE,
+  OIDC_VERIFIER_COOKIE,
+  requireClientSecret,
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
+
+/** Map Keycloak errors to safe, fixed error codes — never reflect upstream error text. */
+function sanitizeError(error: string): string {
+  switch (error) {
+    case "access_denied":
+      return "access_denied";
+    case "login_required":
+      return "login_required";
+    default:
+      return "auth_error";
+  }
+}
 
 /**
  * GET /api/auth/callback
  *
  * Keycloak redirects here after the user authenticates.
- * Exchanges the authorization code for tokens, then sets an httpOnly cookie
- * with the access token (JWT) and redirects to the dashboard.
  *
- * Security: httpOnly + Secure + SameSite=Strict per ADR-011.
+ * Security:
+ * - Validates `state` parameter against cookie to prevent CSRF login attacks
+ * - Sends PKCE `code_verifier` in token exchange to prevent code interception
+ * - Cleans up OIDC flow cookies after use
+ * - Never reflects upstream error descriptions (XSS prevention)
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const code = searchParams.get("code");
+  const state = searchParams.get("state");
   const error = searchParams.get("error");
-  const errorDescription = searchParams.get("error_description");
 
-  // Keycloak returned an error (user cancelled, IdP failure, etc.)
+  const jar = await cookies();
+
+  // Clean up OIDC flow cookies regardless of outcome
+  const cleanup = () => {
+    jar.delete(OIDC_STATE_COOKIE);
+    jar.delete(OIDC_VERIFIER_COOKIE);
+    jar.delete(OIDC_NONCE_COOKIE);
+  };
+
+  // Keycloak returned an error — map to safe error code, never reflect raw text
   if (error) {
+    cleanup();
     const loginUrl = new URL("/login", APP_URL);
-    loginUrl.searchParams.set("error", errorDescription ?? error);
+    loginUrl.searchParams.set("error", sanitizeError(error));
+    return NextResponse.redirect(loginUrl.toString());
+  }
+
+  // Validate state parameter — prevents CSRF login attacks
+  const storedState = jar.get(OIDC_STATE_COOKIE)?.value;
+  if (!state || !storedState || state !== storedState) {
+    cleanup();
+    const loginUrl = new URL("/login", APP_URL);
+    loginUrl.searchParams.set("error", "invalid_state");
     return NextResponse.redirect(loginUrl.toString());
   }
 
   // No authorization code — something went wrong
   if (!code) {
+    cleanup();
     return NextResponse.redirect(new URL("/login", APP_URL).toString());
   }
 
+  // Retrieve PKCE code_verifier for token exchange
+  const codeVerifier = jar.get(OIDC_VERIFIER_COOKIE)?.value;
+  if (!codeVerifier) {
+    cleanup();
+    const loginUrl = new URL("/login", APP_URL);
+    loginUrl.searchParams.set("error", "missing_verifier");
+    return NextResponse.redirect(loginUrl.toString());
+  }
+
   try {
-    // Exchange the authorization code for tokens at the Keycloak token endpoint
+    // Exchange the authorization code for tokens with PKCE code_verifier
     const tokenRes = await fetch(TOKEN_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: KEYCLOAK_CLIENT_ID,
-        client_secret: KEYCLOAK_CLIENT_SECRET,
+        client_secret: requireClientSecret(),
         code,
         redirect_uri: `${APP_URL}/api/auth/callback`,
+        code_verifier: codeVerifier,
       }),
     });
 
     if (!tokenRes.ok) {
+      cleanup();
       const loginUrl = new URL("/login", APP_URL);
       loginUrl.searchParams.set("error", "token_exchange_failed");
       return NextResponse.redirect(loginUrl.toString());
@@ -62,12 +110,13 @@ export async function GET(request: NextRequest) {
       expires_in?: number;
     };
 
-    // Set httpOnly cookie with the JWT (ADR-011: httpOnly + Secure + SameSite=Strict)
-    const jar = await cookies();
+    // Clean up OIDC flow cookies and set the JWT cookie
+    cleanup();
     jar.set(JWT_COOKIE_NAME, tokens.access_token, jwtCookieOptions(tokens.expires_in));
 
     return NextResponse.redirect(new URL("/dashboard", APP_URL).toString());
   } catch {
+    cleanup();
     const loginUrl = new URL("/login", APP_URL);
     loginUrl.searchParams.set("error", "callback_failed");
     return NextResponse.redirect(loginUrl.toString());
