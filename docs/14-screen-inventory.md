@@ -1,8 +1,10 @@
 # 14 — Screen Inventory
 
 > **Givernance NPO Platform** — Inventaire complet de tous les écrans (v1)
-> Last updated: 2026-03-17
+> Last updated: 2026-04-17
 > Owner: Design Architect agent
+>
+> **2026-04-17 update (Spike [#80](https://github.com/purposestack/givernance/issues/80))**: AUTH-005 through AUTH-009 (self-service onboarding wizard) are deprecated. Tenant provisioning is now an admin-led back-office action and user accounts are created Just-In-Time on first SSO login. See `docs/21-authentication-sso.md` §2.
 
 ---
 
@@ -35,16 +37,11 @@ flowchart TD
     ROOT["/"] --> AUTH["/auth"]
     ROOT --> APP["/(app)"]
 
-    AUTH --> LOGIN["/auth/login"]
+    AUTH --> LOGIN["/auth/login (SSO only)"]
     AUTH --> SSO["/auth/sso"]
-    AUTH --> FORGOT["/auth/forgot-password"]
-    AUTH --> RESET["/auth/reset-password"]
-    AUTH --> ONBOARD["/auth/onboarding"]
-    ONBOARD --> OB1["/auth/onboarding/1 — Org"]
-    ONBOARD --> OB2["/auth/onboarding/2 — Équipe"]
-    ONBOARD --> OB3["/auth/onboarding/3 — Données"]
-    ONBOARD --> OB4["/auth/onboarding/4 — RGPD"]
-    ONBOARD --> OB5["/auth/onboarding/5 — Terminé"]
+    %% AUTH-005..AUTH-009 (/auth/onboarding/1..5) removed — tenants are now provisioned
+    %% by a Givernance Super Admin; user accounts are created Just-In-Time on first SSO login.
+    %% See docs/21-authentication-sso.md §2 and Spike #80.
 
     APP --> DASH["/dashboard"]
 
@@ -163,6 +160,13 @@ flowchart TD
 
 ## Module AUTH {#module-auth}
 
+> **Architecture note (Spike [#80](https://github.com/purposestack/givernance/issues/80), 2026-04)**: Givernance is now a **100% Keycloak OIDC** platform. Tenant creation and per-tenant Identity Provider configuration are performed by a **Givernance Super Admin** in the back-office, *before* any NPO user can log in. User accounts are provisioned Just-In-Time (JIT) on first SSO login from the Keycloak JWT claims (`sub`, `email`, `org_id`, `role`). Data residency is governed centrally by ADR-009 (Scaleway Managed PostgreSQL EU, RLS) and is no longer a per-tenant selection.
+>
+> Consequences for this inventory:
+> - **AUTH-005 through AUTH-009** (the 5-step self-service onboarding wizard at `/auth/onboarding/1..5`) are **DEPRECATED** and retained below for historical context only. They must not be implemented.
+> - The corresponding HTML mockups (`docs/design/auth/onboarding-1..5.html`) are orphaned and pending removal.
+> - AUTH-001/003/004 (email+password login, forgot-password, reset-password) describe a pre-Spike-#80 state; the `/login` page has been rewritten as SSO-only (see `docs/21-authentication-sso.md` §3 and `docs/design/auth/login.html`). Those entries are scheduled for revision in a follow-up doc pass.
+
 ### AUTH-001 — Page de connexion
 
 | Champ | Valeur |
@@ -239,7 +243,9 @@ flowchart TD
 
 ---
 
-### AUTH-005 — Onboarding Wizard — Étape 1 : Organisation
+### AUTH-005 — ~~Onboarding Wizard — Étape 1 : Organisation~~ (DEPRECATED — Spike #80)
+
+> **DEPRECATED** — replaced by back-office `POST /v1/admin/tenants` (Super Admin). See `docs/21-authentication-sso.md` §2.3. Retained for historical context only.
 
 | Champ | Valeur |
 |---|---|
@@ -258,7 +264,9 @@ flowchart TD
 
 ---
 
-### AUTH-006 — Onboarding Wizard — Étape 2 : Équipe
+### AUTH-006 — ~~Onboarding Wizard — Étape 2 : Équipe~~ (DEPRECATED — Spike #80)
+
+> **DEPRECATED** — team members are no longer invited via a signup wizard. NPO users sign in via SSO and their `users` row is created Just-In-Time from JWT claims; role mapping happens through Keycloak groups / IdP role mappers configured by the Super Admin at tenant provisioning time. See `docs/21-authentication-sso.md` §2.4.
 
 | Champ | Valeur |
 |---|---|
@@ -277,7 +285,9 @@ flowchart TD
 
 ---
 
-### AUTH-007 — Onboarding Wizard — Étape 3 : Données initiales
+### AUTH-007 — ~~Onboarding Wizard — Étape 3 : Données initiales~~ (DEPRECATED — Spike #80)
+
+> **DEPRECATED** — Salesforce / CSV import is no longer a signup step. It is handled post-login in the **Migration epic** (`docs/05-integration-migration.md`) and can be triggered at any time from `Settings > Import`.
 
 | Champ | Valeur |
 |---|---|
@@ -296,7 +306,9 @@ flowchart TD
 
 ---
 
-### AUTH-008 — Onboarding Wizard — Étape 4 : RGPD
+### AUTH-008 — ~~Onboarding Wizard — Étape 4 : RGPD~~ (DEPRECATED — Spike #80)
+
+> **DEPRECATED** — data residency is no longer a per-tenant selection. All SaaS tenants share Scaleway Managed PostgreSQL EU (ADR-009, which supersedes ADR-006). GDPR retention and consent parameters live in `Settings > RGPD` post-login, not at signup.
 
 | Champ | Valeur |
 |---|---|
@@ -315,7 +327,9 @@ flowchart TD
 
 ---
 
-### AUTH-009 — Onboarding Wizard — Étape 5 : Terminé
+### AUTH-009 — ~~Onboarding Wizard — Étape 5 : Terminé~~ (DEPRECATED — Spike #80)
+
+> **DEPRECATED** — there is no signup "completion" page. After SSO login and JIT provisioning, the user lands directly on `/dashboard`; the setup checklist formerly surfaced here now lives on the dashboard itself (see DASH-001).
 
 | Champ | Valeur |
 |---|---|
@@ -1611,11 +1625,11 @@ flowchart TD
 | AUTH-002 | Auth | Connexion SSO | `/auth/sso` | SHOULD |
 | AUTH-003 | Auth | Mot de passe oublié | `/auth/forgot-password` | MUST |
 | AUTH-004 | Auth | Réinitialisation mot de passe | `/auth/reset-password` | MUST |
-| AUTH-005 | Auth | Onboarding — Étape 1 : Organisation | `/auth/onboarding/1` | MUST |
-| AUTH-006 | Auth | Onboarding — Étape 2 : Équipe | `/auth/onboarding/2` | MUST |
-| AUTH-007 | Auth | Onboarding — Étape 3 : Données | `/auth/onboarding/3` | MUST |
-| AUTH-008 | Auth | Onboarding — Étape 4 : RGPD | `/auth/onboarding/4` | MUST |
-| AUTH-009 | Auth | Onboarding — Étape 5 : Terminé | `/auth/onboarding/5` | MUST |
+| ~~AUTH-005~~ | Auth | ~~Onboarding — Étape 1 : Organisation~~ | ~~`/auth/onboarding/1`~~ | **DEPRECATED** (Spike #80 — admin-led provisioning) |
+| ~~AUTH-006~~ | Auth | ~~Onboarding — Étape 2 : Équipe~~ | ~~`/auth/onboarding/2`~~ | **DEPRECATED** (Spike #80 — JIT user provisioning) |
+| ~~AUTH-007~~ | Auth | ~~Onboarding — Étape 3 : Données~~ | ~~`/auth/onboarding/3`~~ | **DEPRECATED** (Spike #80 — deferred to Migration epic) |
+| ~~AUTH-008~~ | Auth | ~~Onboarding — Étape 4 : RGPD~~ | ~~`/auth/onboarding/4`~~ | **DEPRECATED** (Spike #80 — residency centralised by ADR-009) |
+| ~~AUTH-009~~ | Auth | ~~Onboarding — Étape 5 : Terminé~~ | ~~`/auth/onboarding/5`~~ | **DEPRECATED** (Spike #80 — lands directly on `/dashboard`) |
 | DASH-001 | Dashboard | Tableau de bord principal | `/dashboard` | MUST |
 | DASH-002 | Dashboard | Configuration des widgets | `/dashboard/customize` | SHOULD |
 | CON-001 | Constituants | Liste individus | `/constituents` | MUST |

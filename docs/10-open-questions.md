@@ -70,7 +70,7 @@
 
 **Hypothesis**: A 5-person charity with no IT staff might want more automation (Autopilot default) while a 50-person NPO with dedicated data staff may prefer Manual or Assisted.
 
-**Decision needed**: Define default mode assignment logic in onboarding wizard.
+**Decision needed**: Define the default AI mode assignment logic. Since the self-service onboarding wizard is removed (Spike [#80](https://github.com/purposestack/givernance/issues/80)), the default must be set either (a) by the Givernance Super Admin at tenant provisioning time (`POST /v1/admin/tenants`) or (b) derived from tenant attributes (size tier, plan) on first login.
 
 ---
 

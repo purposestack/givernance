@@ -1,8 +1,10 @@
 # Design Audit Report — Givernance NPO Platform
 
-> **Audit date**: 2026-03-03
+> **Audit date**: 2026-03-03 (updated 2026-04-17 for Spike #80)
 > **Scope**: Cross-check of all HTML mockups against doc 14 (screen inventory), doc 11 (design identity), doc 13 (AI modes)
 > **Auditor**: Design Architect Agent (Agent 2)
+>
+> **2026-04-17 note (Spike [#80](https://github.com/purposestack/givernance/issues/80))**: AUTH-005..AUTH-009 mockups (`auth/onboarding-1..5.html`) are deprecated and retained only for historical reference. Tenant provisioning is now admin-led (back-office `POST /v1/admin/tenants`) and user accounts are created Just-In-Time on first SSO login. See `docs/21-authentication-sso.md` §2.
 
 ---
 
@@ -31,11 +33,11 @@
 | AUTH-002 | Connexion SSO | `auth/sso.html` | OK |
 | AUTH-003 | Mot de passe oublié | `auth/forgot-password.html` | OK |
 | AUTH-004 | Réinitialisation mdp | `auth/reset-password.html` | OK |
-| AUTH-005 | Onboarding — Étape 1 | `auth/onboarding-1.html` | OK |
-| AUTH-006 | Onboarding — Étape 2 | `auth/onboarding-2.html` | OK |
-| AUTH-007 | Onboarding — Étape 3 | `auth/onboarding-3.html` | OK |
-| AUTH-008 | Onboarding — Étape 4 | `auth/onboarding-4.html` | OK |
-| AUTH-009 | Onboarding — Étape 5 | `auth/onboarding-5.html` | OK |
+| ~~AUTH-005~~ | ~~Onboarding — Étape 1~~ | ~~`auth/onboarding-1.html`~~ | **DEPRECATED** — Spike #80 |
+| ~~AUTH-006~~ | ~~Onboarding — Étape 2~~ | ~~`auth/onboarding-2.html`~~ | **DEPRECATED** — Spike #80 |
+| ~~AUTH-007~~ | ~~Onboarding — Étape 3~~ | ~~`auth/onboarding-3.html`~~ | **DEPRECATED** — Spike #80 |
+| ~~AUTH-008~~ | ~~Onboarding — Étape 4~~ | ~~`auth/onboarding-4.html`~~ | **DEPRECATED** — Spike #80 |
+| ~~AUTH-009~~ | ~~Onboarding — Étape 5~~ | ~~`auth/onboarding-5.html`~~ | **DEPRECATED** — Spike #80 |
 | DASH-001 | Tableau de bord | `dashboard.html` | OK |
 | DASH-002 | Personnalisation dashboard | `dashboard-customize.html` | OK |
 | CON-001 | Liste constituants — Individus | `constituents/list.html` | OK |
@@ -148,7 +150,7 @@ The sitemap in doc 14 uses RESTful URL patterns that map cleanly to the HTML dir
 |---|---|---|
 | `/auth/login` | `auth/login.html` | OK |
 | `/auth/sso` | `auth/sso.html` | OK |
-| `/auth/onboarding/1–5` | `auth/onboarding-1..5.html` | OK |
+| ~~`/auth/onboarding/1–5`~~ | ~~`auth/onboarding-1..5.html`~~ | **DEPRECATED** — Spike #80 (admin-led provisioning + JIT user creation) |
 | `/constituents` | `constituents/list.html` | OK |
 | `/constituents/:id` | `constituents/detail.html` | OK |
 | `/constituents/organizations` | `constituents/organizations-list.html` | OK |
