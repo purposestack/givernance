@@ -19,24 +19,17 @@
     "login": {
       "orgBadge": "Your organisation",
       "title": "Sign in",
-      "subtitle": "Access your management workspace",
-      "emailLabel": "Email address",
-      "emailPlaceholder": "you@organisation.org",
-      "passwordLabel": "Password",
-      "passwordPlaceholder": "Your password",
-      "showPassword": "Show password",
-      "hidePassword": "Hide password",
+      "subtitle": "You will be redirected to your identity provider to authenticate securely.",
       "submit": "Sign in",
-      "forgotPassword": "Forgot password?",
-      "ssoButton": "SSO Login (Google Workspace)",
+      "redirecting": "Redirecting…",
+      "securityHint": "Secured via your organisation's identity provider",
       "noAccount": "Don't have an account? <link>Request access</link>",
       "close": "Close",
       "errors": {
         "authFailed": "Authentication failed. Please try again.",
         "generic": "Something went wrong during sign-in. Please try again.",
         "sessionExpired": "Session expired. Please try signing in again.",
-        "interrupted": "Authentication session was interrupted. Please try again.",
-        "invalidCredentials": "Invalid credentials. Check your email and password."
+        "interrupted": "Authentication session was interrupted. Please try again."
       }
     },
     "forgotPassword": {
