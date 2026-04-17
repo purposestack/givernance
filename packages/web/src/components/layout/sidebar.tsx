@@ -122,7 +122,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* Footer — org + user (matches dashboard.html mockup) */}
         <div className="p-6">
           <div className="mb-2 truncate text-sm font-medium text-on-surface-variant">
-            {t("orgPlaceholder")}
+            {user?.orgName ?? t("orgPlaceholder")}
           </div>
           <div className="flex items-center gap-3">
             <div

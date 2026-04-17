@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
+import { resolveTranslations } from "../../lib/i18n.js";
 import {
   DataArrayResponseNoPagination,
   DataResponse,
@@ -63,11 +64,12 @@ export async function userRoutes(app: FastifyInstance) {
       });
 
       if (!user) {
+        const t = resolveTranslations(request);
         return reply.status(404).send({
           type: "https://httpproblems.com/http-status/404",
           title: "Not Found",
           status: 404,
-          detail: "User profile not found",
+          detail: t("errors.notFound", { resource: t("resources.user") }),
         });
       }
 
@@ -167,11 +169,12 @@ export async function userRoutes(app: FastifyInstance) {
       });
 
       if (!updated) {
+        const t = resolveTranslations(request);
         return reply.status(404).send({
           type: "https://httpproblems.com/http-status/404",
           title: "Not Found",
           status: 404,
-          detail: "User not found",
+          detail: t("errors.notFound", { resource: t("resources.user") }),
         });
       }
 
@@ -203,11 +206,12 @@ export async function userRoutes(app: FastifyInstance) {
       });
 
       if (!deleted) {
+        const t = resolveTranslations(request);
         return reply.status(404).send({
           type: "https://httpproblems.com/http-status/404",
           title: "Not Found",
           status: 404,
-          detail: "User not found",
+          detail: t("errors.notFound", { resource: t("resources.user") }),
         });
       }
 

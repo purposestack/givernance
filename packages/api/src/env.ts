@@ -39,8 +39,8 @@ const EnvSchema = Type.Object({
   PORT: Type.Number({ default: 4000 }),
   /** HTTP bind address */
   HOST: Type.String({ minLength: 1, default: "0.0.0.0" }),
-  /** CORS origin */
-  CORS_ORIGIN: Type.String({ minLength: 1, default: "http://localhost:3000" }),
+  /** App URL — used as CORS origin and cookie domain */
+  APP_URL: Type.String({ minLength: 1, default: "http://localhost:3000" }),
   /** Log level */
   LOG_LEVEL: LogLevel,
   /** NATS WebSocket URL */

@@ -35,6 +35,26 @@ export async function requireOrgAdmin(request: FastifyRequest, reply: FastifyRep
   }
 }
 
+/** Guard: require super_admin realm role (Keycloak) */
+export async function requireSuperAdmin(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.auth?.userId) {
+    return reply.status(401).send({
+      type: "https://httpproblems.com/http-status/401",
+      title: "Unauthorized",
+      status: 401,
+      detail: "Authentication required",
+    });
+  }
+  if (!request.auth.roles.includes("super_admin")) {
+    return reply.status(403).send({
+      type: "https://httpproblems.com/http-status/403",
+      title: "Forbidden",
+      status: 403,
+      detail: "super_admin role required",
+    });
+  }
+}
+
 /** Guard: require x-admin-secret header matching ADMIN_SECRET env var (timing-safe) */
 export async function requireAdminSecret(request: FastifyRequest, reply: FastifyReply) {
   const secret = request.headers["x-admin-secret"] as string | undefined;

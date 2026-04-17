@@ -13,6 +13,7 @@
     "constituent": "Constituant",
     "campaign": "Campagne",
     "grant": "Subvention",
-    "receipt": "Reçu fiscal"
+    "receipt": "Reçu fiscal",
+    "impersonationSession": "Session d'usurpation"
   }
 }

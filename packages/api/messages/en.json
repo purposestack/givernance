@@ -13,6 +13,7 @@
     "constituent": "Constituent",
     "campaign": "Campaign",
     "grant": "Grant",
-    "receipt": "Tax receipt"
+    "receipt": "Tax receipt",
+    "impersonationSession": "Impersonation session"
   }
 }

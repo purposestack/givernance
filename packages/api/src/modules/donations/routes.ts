@@ -3,6 +3,7 @@
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../../lib/guards.js";
+import { resolveTranslations } from "../../lib/i18n.js";
 import { getReceiptPresignedUrl } from "../../lib/s3.js";
 import {
   CurrencySchema,
@@ -126,7 +127,8 @@ export async function donationRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       if (!orgId) {
-        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+        const t = resolveTranslations(request);
+        return reply.status(401).send(problemDetail(401, "Unauthorized", t("errors.unauthorized")));
       }
 
       const query = request.query as {
@@ -167,16 +169,25 @@ export async function donationRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
+      const t = resolveTranslations(request);
       const orgId = request.auth?.orgId;
       if (!orgId) {
-        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+        return reply.status(401).send(problemDetail(401, "Unauthorized", t("errors.unauthorized")));
       }
 
       const { id } = request.params as { id: string };
       const donation = await getDonation(orgId, id);
 
       if (!donation) {
-        return reply.status(404).send(problemDetail(404, "Not Found", "Donation not found"));
+        return reply
+          .status(404)
+          .send(
+            problemDetail(
+              404,
+              "Not Found",
+              t("errors.notFound", { resource: t("resources.donation") }),
+            ),
+          );
       }
 
       return { data: donation };
@@ -196,10 +207,11 @@ export async function donationRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
+      const t = resolveTranslations(request);
       const orgId = request.auth?.orgId;
       const userId = request.auth?.userId;
       if (!orgId || !userId) {
-        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+        return reply.status(401).send(problemDetail(401, "Unauthorized", t("errors.unauthorized")));
       }
 
       const body = request.body as {
@@ -222,7 +234,7 @@ export async function donationRoutes(app: FastifyInstance) {
             type: "https://httpproblems.com/http-status/404",
             title: "Not Found",
             status: 404,
-            detail: "Constituent not found",
+            detail: t("errors.notFound", { resource: t("resources.constituent") }),
           });
         }
 
@@ -253,9 +265,10 @@ export async function donationRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
+      const t = resolveTranslations(request);
       const orgId = request.auth?.orgId;
       if (!orgId) {
-        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+        return reply.status(401).send(problemDetail(401, "Unauthorized", t("errors.unauthorized")));
       }
 
       const { id } = request.params as { id: string };
@@ -263,12 +276,15 @@ export async function donationRoutes(app: FastifyInstance) {
       // Verify donation belongs to this org before exposing receipt
       const donation = await getDonation(orgId, id);
       if (!donation) {
-        return reply.status(404).send({
-          type: "https://httpproblems.com/http-status/404",
-          title: "Not Found",
-          status: 404,
-          detail: "Donation not found",
-        });
+        return reply
+          .status(404)
+          .send(
+            problemDetail(
+              404,
+              "Not Found",
+              t("errors.notFound", { resource: t("resources.donation") }),
+            ),
+          );
       }
 
       const receipt = await getReceiptByDonation(orgId, id);
@@ -276,7 +292,13 @@ export async function donationRoutes(app: FastifyInstance) {
       if (!receipt) {
         return reply
           .status(404)
-          .send(problemDetail(404, "Not Found", "Receipt not found for this donation"));
+          .send(
+            problemDetail(
+              404,
+              "Not Found",
+              t("errors.notFound", { resource: t("resources.receipt") }),
+            ),
+          );
       }
 
       const url = await getReceiptPresignedUrl(receipt.s3Path);
