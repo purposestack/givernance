@@ -19,24 +19,17 @@
     "login": {
       "orgBadge": "Votre organisation",
       "title": "Se connecter",
-      "subtitle": "Accédez à votre espace de gestion",
-      "emailLabel": "Adresse e-mail",
-      "emailPlaceholder": "vous@organisation.org",
-      "passwordLabel": "Mot de passe",
-      "passwordPlaceholder": "Votre mot de passe",
-      "showPassword": "Afficher le mot de passe",
-      "hidePassword": "Masquer le mot de passe",
+      "subtitle": "Vous serez redirigé vers votre fournisseur d'identité pour vous authentifier en toute sécurité.",
       "submit": "Se connecter",
-      "forgotPassword": "Mot de passe oublié ?",
-      "ssoButton": "Connexion SSO (Google Workspace)",
+      "redirecting": "Redirection…",
+      "securityHint": "Sécurisé via le fournisseur d'identité de votre organisation",
       "noAccount": "Pas encore de compte ? <link>Demander un accès</link>",
       "close": "Fermer",
       "errors": {
         "authFailed": "Échec de l'authentification. Veuillez réessayer.",
         "generic": "Une erreur est survenue lors de la connexion. Veuillez réessayer.",
         "sessionExpired": "Session expirée. Veuillez vous reconnecter.",
-        "interrupted": "La session d'authentification a été interrompue. Veuillez réessayer.",
-        "invalidCredentials": "Identifiants invalides. Vérifiez votre e-mail et mot de passe."
+        "interrupted": "La session d'authentification a été interrompue. Veuillez réessayer."
       }
     },
     "forgotPassword": {
