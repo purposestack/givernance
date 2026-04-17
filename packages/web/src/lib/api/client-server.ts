@@ -12,7 +12,7 @@ import { ApiClient } from "./client";
  */
 export async function createServerApiClient(): Promise<ApiClient> {
   const cookieStore = await cookies();
-  const token = cookieStore.get("session")?.value;
+  const token = cookieStore.get("givernance_jwt")?.value;
 
   return new ApiClient({
     baseUrl: process.env.API_URL ?? "http://localhost:3001",
