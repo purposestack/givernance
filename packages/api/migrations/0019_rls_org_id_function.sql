@@ -75,3 +75,7 @@ CREATE POLICY tenant_isolation ON campaign_documents
 DROP POLICY tenant_isolation ON campaign_qr_codes;
 CREATE POLICY tenant_isolation ON campaign_qr_codes
   USING (org_id = app_current_organization_id());
+
+DROP POLICY tenant_isolation ON campaign_public_pages;
+CREATE POLICY tenant_isolation ON campaign_public_pages
+  USING (org_id = app_current_organization_id());
