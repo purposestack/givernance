@@ -1,3 +1,5 @@
+import { getTranslations } from "next-intl/server";
+
 import { requireAuth } from "@/lib/auth/guards";
 
 /**
@@ -7,23 +9,19 @@ import { requireAuth } from "@/lib/auth/guards";
  */
 export default async function DashboardPage() {
   const auth = await requireAuth();
+  const t = await getTranslations("dashboard");
 
   return (
     <>
       <div className="mb-8">
         <h1 className="font-heading text-5xl font-normal leading-tight tracking-tight text-on-surface">
-          Bonjour{auth.firstName ? `, ${auth.firstName}` : ""}
+          {t("greeting", { name: auth.firstName ?? "empty" })}
         </h1>
-        <p className="mt-2 text-lg text-on-surface-variant">
-          Voici l&apos;activité de votre organisation aujourd&apos;hui.
-        </p>
+        <p className="mt-2 text-lg text-on-surface-variant">{t("subtitle")}</p>
       </div>
 
-      {/* Placeholder — KPI widgets and dashboard content will be built in PR-C1 */}
       <div className="rounded-2xl bg-surface-container-lowest p-8 shadow-card">
-        <p className="text-sm text-text-secondary">
-          Dashboard content under construction (Sprint 4, PR-C1).
-        </p>
+        <p className="text-sm text-text-secondary">{t("placeholder")}</p>
       </div>
     </>
   );

@@ -4,6 +4,7 @@ import { LayoutDashboard, Settings } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import type { ComponentType, SVGProps } from "react";
 import { useEffect } from "react";
 
@@ -12,10 +13,10 @@ import { useAuth } from "@/lib/auth";
 /** Tailwind `md` breakpoint in pixels. */
 const MD_BREAKPOINT = 768;
 
-/** Navigation item definition. */
+/** Navigation item definition — labelKey references appShell.sidebar.{key}. */
 interface NavItem {
   href: string;
-  label: string;
+  labelKey: "dashboard" | "settings";
   icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 }
 
@@ -24,8 +25,8 @@ interface NavItem {
  * Add new entries here as pages are built (issues #41, #42, etc.).
  */
 const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/settings", label: "Paramètres", icon: Settings },
+  { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
+  { href: "/settings", labelKey: "settings", icon: Settings },
 ];
 
 interface SidebarProps {
@@ -40,6 +41,7 @@ interface SidebarProps {
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const t = useTranslations("appShell.sidebar");
 
   const initials = user
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
@@ -72,7 +74,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         className={`fixed top-0 left-0 z-[var(--z-modal)] flex h-screen w-[var(--sidebar-width)] flex-col overflow-y-auto overflow-x-hidden bg-surface-container-high transition-transform duration-slow ease-out md:z-[var(--z-sticky)] md:translate-x-0 ${
           open ? "translate-x-0 shadow-2xl" : "-translate-x-full"
         }`}
-        aria-label="Navigation principale"
+        aria-label={t("mainNav")}
       >
         {/* Brand */}
         <div className="flex items-center gap-3 p-8">
@@ -89,7 +91,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-3" aria-label="Menu principal">
+        <nav className="flex-1 px-3 py-3" aria-label={t("menuLabel")}>
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
@@ -99,7 +101,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 key={item.href}
                 href={item.href}
                 onClick={() => {
-                  // Close mobile sidebar on navigation
                   if (window.innerWidth < MD_BREAKPOINT) {
                     setTimeout(onClose, 100);
                   }
@@ -112,7 +113,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 aria-current={isActive ? "page" : undefined}
               >
                 <Icon size={20} aria-hidden="true" />
-                <span>{item.label}</span>
+                <span>{t(item.labelKey)}</span>
               </Link>
             );
           })}
@@ -121,8 +122,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* Footer — org + user (matches dashboard.html mockup) */}
         <div className="p-6">
           <div className="mb-2 truncate text-sm font-medium text-on-surface-variant">
-            {/* Org name — placeholder until org context is available */}
-            Association
+            {t("orgPlaceholder")}
           </div>
           <div className="flex items-center gap-3">
             <div

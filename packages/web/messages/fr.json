@@ -1,0 +1,133 @@
+{
+  "common": {
+    "appName": "Givernance",
+    "appDescription": "CRM conçu pour les associations européennes",
+    "skipToContent": "Aller au contenu",
+    "actions": {
+      "tryAgain": "Réessayer",
+      "contactSupport": "Contacter le support",
+      "backToDashboard": "Retour au tableau de bord",
+      "search": "Rechercher",
+      "or": "ou"
+    },
+    "footer": {
+      "platform": "Givernance NPO Platform",
+      "tagline": "Powered by purpose"
+    }
+  },
+  "auth": {
+    "login": {
+      "orgBadge": "Votre organisation",
+      "title": "Se connecter",
+      "subtitle": "Accédez à votre espace de gestion",
+      "emailLabel": "Adresse e-mail",
+      "emailPlaceholder": "vous@organisation.org",
+      "passwordLabel": "Mot de passe",
+      "passwordPlaceholder": "Votre mot de passe",
+      "showPassword": "Afficher le mot de passe",
+      "hidePassword": "Masquer le mot de passe",
+      "submit": "Se connecter",
+      "forgotPassword": "Mot de passe oublié ?",
+      "ssoButton": "Connexion SSO (Google Workspace)",
+      "noAccount": "Pas encore de compte ? <link>Demander un accès</link>",
+      "close": "Fermer",
+      "errors": {
+        "authFailed": "Échec de l'authentification. Veuillez réessayer.",
+        "generic": "Une erreur est survenue lors de la connexion. Veuillez réessayer.",
+        "sessionExpired": "Session expirée. Veuillez vous reconnecter.",
+        "interrupted": "La session d'authentification a été interrompue. Veuillez réessayer.",
+        "invalidCredentials": "Identifiants invalides. Vérifiez votre e-mail et mot de passe."
+      }
+    },
+    "forgotPassword": {
+      "title": "Mot de passe oublié",
+      "subtitle": "Entrez votre adresse e-mail pour recevoir un lien de réinitialisation.",
+      "emailLabel": "Adresse e-mail",
+      "emailPlaceholder": "vous@organisation.org",
+      "submit": "Envoyer le lien",
+      "helpText": "Un e-mail sera envoyé avec un lien de réinitialisation valide 1 heure.",
+      "backToLogin": "Retour à la connexion",
+      "successTitle": "E-mail envoyé",
+      "successMessage": "Si un compte est associé à cette adresse, vous recevrez un lien de réinitialisation. Vérifiez vos spams."
+    },
+    "resetPassword": {
+      "title": "Nouveau mot de passe",
+      "subtitle": "Choisissez un mot de passe sécurisé pour votre compte.",
+      "passwordLabel": "Nouveau mot de passe",
+      "passwordPlaceholder": "Votre nouveau mot de passe",
+      "confirmLabel": "Confirmer le mot de passe",
+      "confirmPlaceholder": "Confirmez votre mot de passe",
+      "showPassword": "Afficher le mot de passe",
+      "hidePassword": "Masquer le mot de passe",
+      "submit": "Réinitialiser le mot de passe",
+      "backToLogin": "Retour à la connexion",
+      "securityTitle": "Exigences de sécurité",
+      "requirements": {
+        "minLength": "Au moins 8 caractères",
+        "uppercase": "Au moins une majuscule",
+        "number": "Au moins un chiffre",
+        "special": "Au moins un caractère spécial (!@#$%&*)"
+      },
+      "strength": {
+        "weak": "Faible",
+        "medium": "Moyen",
+        "strong": "Fort",
+        "veryStrong": "Très fort"
+      },
+      "expiredTitle": "Lien expiré",
+      "expiredMessage": "Ce lien de réinitialisation n'est plus valide ou a expiré.",
+      "expiredAlert": "Le lien a expiré après 1 heure. Veuillez en demander un nouveau.",
+      "requestNewLink": "Demander un nouveau lien"
+    }
+  },
+  "errors": {
+    "notFound": {
+      "label": "Erreur 404",
+      "title": "Page introuvable",
+      "description": "La page que vous cherchez n'existe pas ou a été déplacée. Pas d'inquiétude, nous allons vous remettre sur le bon chemin.",
+      "searchPlaceholder": "Rechercher dans Givernance…",
+      "searchLabel": "Rechercher dans Givernance",
+      "persistsMessage": "Si le problème persiste, contactez notre <link>support</link>."
+    },
+    "server": {
+      "title": "Une erreur inattendue",
+      "description": "Un problème est survenu de notre côté. Notre équipe a été notifiée et travaille à résoudre le problème.",
+      "errorId": "ID erreur : {digest}",
+      "dashboardLink": "Vous pouvez aussi retourner au <link>tableau de bord</link>."
+    }
+  },
+  "appShell": {
+    "sidebar": {
+      "mainNav": "Navigation principale",
+      "menuLabel": "Menu principal",
+      "dashboard": "Dashboard",
+      "settings": "Paramètres",
+      "orgPlaceholder": "Association"
+    },
+    "topbar": {
+      "openMenu": "Ouvrir le menu",
+      "closeMenu": "Fermer le menu",
+      "breadcrumbDefault": "Tableau de bord",
+      "searchPlaceholder": "Rechercher...",
+      "searchLabel": "Rechercher",
+      "notifications": "Notifications",
+      "profileOf": "Profil de {name}"
+    },
+    "impersonation": {
+      "browsingAs": "Vous naviguez en tant que {name}",
+      "endSession": "Terminer",
+      "expired": "expirée",
+      "lessThanMinute": "< 1m",
+      "fallbackUser": "utilisateur"
+    }
+  },
+  "dashboard": {
+    "greeting": "Bonjour{name, select, empty {} other {, {name}}}",
+    "subtitle": "Voici l'activité de votre organisation aujourd'hui.",
+    "placeholder": "Contenu du tableau de bord en construction (Sprint 4, PR-C1)."
+  },
+  "home": {
+    "title": "Givernance",
+    "subtitle": "CRM conçu pour les associations européennes"
+  }
+}

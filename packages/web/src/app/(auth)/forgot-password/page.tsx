@@ -2,6 +2,7 @@
 
 import { ArrowLeft, Mail } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
@@ -14,6 +15,7 @@ import { AuthLogo } from "@/components/auth/auth-logo";
  * The form UI is kept for when a custom password reset flow is implemented.
  */
 export default function ForgotPasswordPage() {
+  const t = useTranslations("auth.forgotPassword");
   const [submitted, setSubmitted] = useState(false);
 
   if (submitted) {
@@ -25,16 +27,15 @@ export default function ForgotPasswordPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary-50 text-primary">
             <Mail className="h-7 w-7" />
           </div>
-          <h2 className="mb-2 font-heading text-lg text-text">Email sent</h2>
+          <h2 className="mb-2 font-heading text-lg text-text">{t("successTitle")}</h2>
           <p className="mx-auto mb-6 max-w-[320px] text-sm leading-relaxed text-text-secondary">
-            If an account is associated with this address, you will receive a reset link shortly.
-            Check your spam folder.
+            {t("successMessage")}
           </p>
           <Link
             href="/login"
             className="inline-flex h-[var(--btn-height-lg)] w-full items-center justify-center rounded-button bg-primary px-8 text-base font-medium text-on-primary no-underline transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            Back to sign in
+            {t("backToLogin")}
           </Link>
         </div>
       </AuthCard>
@@ -45,10 +46,8 @@ export default function ForgotPasswordPage() {
     <AuthCard>
       <AuthLogo />
 
-      <h1 className="mb-2 text-center font-heading text-xl text-text">Forgot password</h1>
-      <p className="mb-6 text-center text-sm text-text-secondary">
-        Enter your email address to receive a reset link.
-      </p>
+      <h1 className="mb-2 text-center font-heading text-xl text-text">{t("title")}</h1>
+      <p className="mb-6 text-center text-sm text-text-secondary">{t("subtitle")}</p>
 
       <form
         onSubmit={(e) => {
@@ -74,14 +73,14 @@ export default function ForgotPasswordPage() {
       >
         <div className="mb-6">
           <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-text">
-            Email address
+            {t("emailLabel")}
           </label>
           <input
             className="h-[var(--input-height)] w-full rounded-input border border-outline-variant bg-surface-container-lowest px-3 font-body text-base text-text placeholder:text-text-muted focus:border-primary focus:shadow-ring focus:outline-none"
             type="email"
             id="email"
             name="email"
-            placeholder="you@organisation.org"
+            placeholder={t("emailPlaceholder")}
             autoComplete="email"
             required
           />
@@ -91,12 +90,12 @@ export default function ForgotPasswordPage() {
           type="submit"
           className="inline-flex h-[var(--btn-height-lg)] w-full items-center justify-center rounded-button bg-primary px-8 text-base font-medium text-on-primary transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          Send reset link
+          {t("submit")}
         </button>
       </form>
 
       <p className="mt-4 text-center text-xs leading-relaxed text-text-secondary">
-        An email will be sent with a reset link valid for 1 hour.
+        {t("helpText")}
       </p>
 
       {/* Back to login */}
@@ -105,7 +104,7 @@ export default function ForgotPasswordPage() {
           href="/login"
           className="text-sm font-medium text-primary no-underline transition-colors hover:text-primary-dark hover:underline"
         >
-          <ArrowLeft className="inline h-3.5 w-3.5" /> Back to sign in
+          <ArrowLeft className="inline h-3.5 w-3.5" /> {t("backToLogin")}
         </Link>
       </div>
     </AuthCard>
