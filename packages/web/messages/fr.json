@@ -119,9 +119,5 @@
     "greeting": "Bonjour{name, select, empty {} other {, {name}}}",
     "subtitle": "Voici l'activité de votre organisation aujourd'hui.",
     "placeholder": "Contenu du tableau de bord en construction (Sprint 4, PR-C1)."
-  },
-  "home": {
-    "title": "Givernance",
-    "subtitle": "CRM conçu pour les associations européennes"
   }
 }

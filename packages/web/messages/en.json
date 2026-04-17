@@ -119,9 +119,5 @@
     "greeting": "Hello{name, select, empty {} other {, {name}}}",
     "subtitle": "Here is your organisation's activity today.",
     "placeholder": "Dashboard content under construction (Sprint 4, PR-C1)."
-  },
-  "home": {
-    "title": "Givernance",
-    "subtitle": "Purpose-built CRM for European nonprofits"
   }
 }
