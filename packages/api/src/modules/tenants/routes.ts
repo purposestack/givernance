@@ -139,7 +139,13 @@ async function resolveCallerOrgId(request: FastifyRequest): Promise<string | nul
   return row?.orgId ?? null;
 }
 
-/** Derive a URL-safe slug from an organisation name, with a short random suffix to avoid collisions. */
+/**
+ * Derive a URL-safe slug from an organisation name.
+ *
+ * 8-byte (64-bit) hex suffix — collision probability stays negligible at
+ * realistic tenant scale (birthday bound ~4B inserts to hit 1%). Caller must
+ * still handle the unique-violation retry in case of an adversarial collision.
+ */
 function deriveSlug(name: string): string {
   const base = name
     .normalize("NFKD")
@@ -148,7 +154,7 @@ function deriveSlug(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
-  const suffix = randomBytes(4).toString("hex");
+  const suffix = randomBytes(8).toString("hex");
   return base ? `${base}-${suffix}` : `org-${suffix}`;
 }
 
@@ -291,18 +297,34 @@ export async function tenantRoutes(app: FastifyInstance) {
       const existingOrgId = await resolveCallerOrgId(request);
 
       if (existingOrgId) {
-        const [updated] = await db
-          .update(tenants)
-          .set({
-            name: body.name,
-            country: body.country,
-            legalType: body.legalType,
-            currency: body.currency,
-            registrationNumber: body.registrationNumber ?? null,
-            updatedAt: new Date(),
-          })
-          .where(eq(tenants.id, existingOrgId))
-          .returning();
+        // Run the tenant UPDATE and the outbox event in the same RLS-scoped
+        // transaction. Tenants has no tenant_isolation policy today, but the
+        // outbox does, and future-proofing against an RLS rollout on tenants
+        // keeps this path atomic.
+        const updated = await withTenantContext(existingOrgId, async (tx) => {
+          const [row] = await tx
+            .update(tenants)
+            .set({
+              name: body.name,
+              country: body.country,
+              legalType: body.legalType,
+              currency: body.currency,
+              registrationNumber: body.registrationNumber ?? null,
+              updatedAt: new Date(),
+            })
+            .where(eq(tenants.id, existingOrgId))
+            .returning();
+
+          if (!row) return null;
+
+          await tx.insert(outboxEvents).values({
+            tenantId: existingOrgId,
+            type: "tenant.onboarding_updated",
+            payload: { tenantId: existingOrgId, name: row.name },
+          });
+
+          return row;
+        });
 
         if (!updated) {
           const t = resolveTranslations(request);
@@ -313,14 +335,6 @@ export async function tenantRoutes(app: FastifyInstance) {
             detail: t("errors.notFound", { resource: t("resources.tenant") }),
           });
         }
-
-        await withTenantContext(existingOrgId, async (tx) => {
-          await tx.insert(outboxEvents).values({
-            tenantId: existingOrgId,
-            type: "tenant.onboarding_updated",
-            payload: { tenantId: existingOrgId, name: updated.name },
-          });
-        });
 
         return reply.status(200).send({ data: updated });
       }
@@ -341,42 +355,57 @@ export async function tenantRoutes(app: FastifyInstance) {
       const firstName = email.split("@")[0] || "User";
       const lastName = "";
 
-      const bootstrapped = await db.transaction(async (tx) => {
-        const [tenant] = await tx
-          .insert(tenants)
-          .values({
-            name: body.name,
-            slug: deriveSlug(body.name),
-            country: body.country,
-            legalType: body.legalType,
-            currency: body.currency,
-            registrationNumber: body.registrationNumber ?? null,
-          })
-          .returning();
-        // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row
-        const t = tenant!;
+      try {
+        const bootstrapped = await db.transaction(async (tx) => {
+          const [tenant] = await tx
+            .insert(tenants)
+            .values({
+              name: body.name,
+              slug: deriveSlug(body.name),
+              country: body.country,
+              legalType: body.legalType,
+              currency: body.currency,
+              registrationNumber: body.registrationNumber ?? null,
+            })
+            .returning();
+          // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row
+          const t = tenant!;
 
-        await tx.execute(sql`SELECT set_config('app.current_organization_id', ${t.id}, true)`);
+          await tx.execute(sql`SELECT set_config('app.current_organization_id', ${t.id}, true)`);
 
-        await tx.insert(users).values({
-          orgId: t.id,
-          email,
-          firstName,
-          lastName,
-          role: "org_admin",
-          keycloakId: userId,
+          await tx.insert(users).values({
+            orgId: t.id,
+            email,
+            firstName,
+            lastName,
+            role: "org_admin",
+            keycloakId: userId,
+          });
+
+          await tx.insert(outboxEvents).values({
+            tenantId: t.id,
+            type: "tenant.created",
+            payload: { tenantId: t.id, name: t.name, slug: t.slug, bootstrappedBy: userId },
+          });
+
+          return t;
         });
 
-        await tx.insert(outboxEvents).values({
-          tenantId: t.id,
-          type: "tenant.created",
-          payload: { tenantId: t.id, name: t.name, slug: t.slug, bootstrappedBy: userId },
-        });
-
-        return t;
-      });
-
-      return reply.status(201).send({ data: bootstrapped });
+        return reply.status(201).send({ data: bootstrapped });
+      } catch (err) {
+        // PostgreSQL unique-violation (SQLSTATE 23505): a concurrent bootstrap
+        // already created a tenant for this user. Collapse to the update path
+        // rather than 500.
+        if ((err as { code?: string } | null)?.code === "23505") {
+          request.log.warn({ userId }, "onboarding bootstrap collided with concurrent request");
+          const raceOrgId = await resolveCallerOrgId(request);
+          if (raceOrgId) {
+            const [tenant] = await db.select().from(tenants).where(eq(tenants.id, raceOrgId));
+            if (tenant) return reply.status(200).send({ data: tenant });
+          }
+        }
+        throw err;
+      }
     },
   );
 
@@ -437,18 +466,20 @@ export async function tenantRoutes(app: FastifyInstance) {
       }
 
       const now = new Date();
-      const [updated] = await db
-        .update(tenants)
-        .set({ onboardingCompletedAt: now, updatedAt: now })
-        .where(eq(tenants.id, orgId))
-        .returning();
+      const updated = await withTenantContext(orgId, async (tx) => {
+        const [row] = await tx
+          .update(tenants)
+          .set({ onboardingCompletedAt: now, updatedAt: now })
+          .where(eq(tenants.id, orgId))
+          .returning();
 
-      await withTenantContext(orgId, async (tx) => {
         await tx.insert(outboxEvents).values({
           tenantId: orgId,
           type: "tenant.onboarding_completed",
           payload: { tenantId: orgId, completedAt: now.toISOString() },
         });
+
+        return row;
       });
 
       return reply.status(200).send({ data: updated });

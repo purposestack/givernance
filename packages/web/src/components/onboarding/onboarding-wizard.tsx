@@ -1,7 +1,7 @@
 "use client";
 
-import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
+import { AuthLogo } from "@/components/auth/auth-logo";
 import type { Tenant } from "@/models/tenant";
 import { StepConfirmation } from "./step-confirmation";
 import { StepOrganisation } from "./step-organisation";
@@ -27,8 +27,6 @@ type Step = 1 | 2 | 3 | 4 | 5;
  * on Step 5 so the user can immediately confirm; otherwise start on Step 1.
  */
 export function OnboardingWizard({ initialTenant, serverErrorKey }: OnboardingWizardProps) {
-  const t = useTranslations("onboarding");
-
   const hasStep1 = Boolean(
     initialTenant?.name &&
       initialTenant.country &&
@@ -52,15 +50,7 @@ export function OnboardingWizard({ initialTenant, serverErrorKey }: OnboardingWi
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-center gap-3">
-        <span
-          aria-hidden="true"
-          className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-50 text-primary"
-        >
-          <span className="text-xl font-bold">G</span>
-        </span>
-        <span className="font-heading text-2xl text-text">{t("brand")}</span>
-      </div>
+      <AuthLogo />
 
       <WizardProgress currentStep={step} />
 

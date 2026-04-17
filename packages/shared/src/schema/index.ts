@@ -112,6 +112,10 @@ export const users = pgTable(
     index("users_org_id_idx").on(table.orgId),
     index("users_email_idx").on(table.email),
     unique("users_org_id_email_uniq").on(table.orgId, table.email),
+    // Partial UNIQUE (where keycloak_id IS NOT NULL) enforced by migration 0020.
+    // Not expressed in Drizzle because pg-core lacks native partial-index syntax;
+    // the index is live in the DB and prevents concurrent onboarding bootstrap
+    // from creating two users for the same Keycloak subject.
   ],
 );
 

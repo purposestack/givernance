@@ -66,12 +66,17 @@ export function StepOrganisation({ initialTenant, onSaved }: StepOrganisationPro
       {state.errorKey === "saveFailed" && (
         <div
           role="alert"
-          className="mb-4 flex items-start gap-3 rounded-md border border-[rgba(186,26,26,0.12)] bg-error-container p-3 text-sm text-on-error-container"
+          className="mb-4 flex items-start gap-3 rounded-md border border-error-border bg-error-container p-3 text-sm text-on-error-container"
         >
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{t("errors.saveFailed")}</span>
         </div>
       )}
+
+      {/*
+       * Logo upload and AI suggestion card are deferred to #78 (Phase 2).
+       * Mockup: docs/design/auth/onboarding-1.html — .form-upload-area and .ai-card.
+       */}
 
       <div className="rounded-card bg-surface-container-lowest p-8 shadow-card">
         <div className="mb-5">
@@ -215,11 +220,18 @@ export function StepOrganisation({ initialTenant, onSaved }: StepOrganisationPro
         </div>
       </div>
 
+      {/*
+       * The mockup also shows a secondary "Sauvegarder et reprendre plus tard"
+       * button. Not needed for PR-A4: Continue itself saves to the backend, so
+       * closing the browser before reaching Step 5 preserves Step 1 progress
+       * (the wizard rehydrates on the next visit via hasStep1). Revisit in #78
+       * once Step 2/3/4 add data that should be partial-saveable.
+       */}
       <div className="mt-8 flex items-center justify-end gap-4">
         <button
           type="submit"
           disabled={isPending}
-          className="inline-flex h-[var(--btn-height-lg)] items-center gap-2 rounded-button bg-primary px-6 font-body text-base font-medium text-on-primary transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-[var(--btn-height-md)] items-center gap-2 rounded-button bg-primary px-6 font-body text-sm font-medium text-on-primary transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? tActions("saving") : tActions("continue")}
           <ArrowRight className="h-4 w-4" aria-hidden="true" />

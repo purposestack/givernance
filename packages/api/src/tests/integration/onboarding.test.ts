@@ -14,8 +14,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { users } from "@givernance/shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { outboxEvents, tenants, users } from "@givernance/shared/schema";
+import { and, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
@@ -45,6 +45,17 @@ beforeEach(async () => {
       onboarding_completed_at = NULL
     WHERE id = ${ORG_A}
   `);
+  // Clear prior onboarding outbox events so each test asserts on its own
+  // emission. Scoped to onboarding event types so we don't interfere with
+  // donations/campaigns tests running in parallel against the same tenant.
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${ORG_A}, true)`);
+    await tx.execute(sql`
+      DELETE FROM outbox_events
+      WHERE tenant_id = ${ORG_A}
+        AND type IN ('tenant.onboarding_updated', 'tenant.onboarding_completed', 'tenant.created')
+    `);
+  });
 });
 
 describe("Onboarding endpoints — auth gate", () => {
@@ -185,6 +196,58 @@ describe("POST /v1/tenants/me/onboarding — update path", () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it("rejects invalid legalType with 400", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/tenants/me/onboarding",
+      headers: authHeader(signToken(app)),
+      payload: {
+        name: "Bad",
+        country: "FR",
+        legalType: "not_a_real_type",
+        currency: "EUR",
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects invalid currency with 400", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/tenants/me/onboarding",
+      headers: authHeader(signToken(app)),
+      payload: {
+        name: "Bad",
+        country: "FR",
+        legalType: "asso1901",
+        currency: "XYZ",
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("emits a tenant.onboarding_updated outbox event", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/tenants/me/onboarding",
+      headers: authHeader(signToken(app)),
+      payload: {
+        name: "Event Test Org",
+        country: "DE",
+        legalType: "ong",
+        currency: "EUR",
+      },
+    });
+    const events = await db
+      .select()
+      .from(outboxEvents)
+      .where(
+        and(eq(outboxEvents.tenantId, ORG_A), eq(outboxEvents.type, "tenant.onboarding_updated")),
+      );
+    expect(events).toHaveLength(1);
+    expect((events[0]?.payload as { name?: string } | undefined)?.name).toBe("Event Test Org");
+  });
 });
 
 describe("POST /v1/tenants/me/onboarding — bootstrap path", () => {
@@ -259,6 +322,21 @@ describe("POST /v1/tenants/me/onboarding/complete", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { onboardingCompletedAt: string | null } }>();
     expect(body.data.onboardingCompletedAt).not.toBeNull();
+
+    // DB state assertion — the response shape is correct AND the row was
+    // actually updated.
+    const [row] = await db.select().from(tenants).where(eq(tenants.id, ORG_A));
+    expect(row?.onboardingCompletedAt).not.toBeNull();
+    expect(row?.onboardingCompletedAt?.toISOString()).toBe(body.data.onboardingCompletedAt);
+
+    // Outbox event emitted.
+    const events = await db
+      .select()
+      .from(outboxEvents)
+      .where(
+        and(eq(outboxEvents.tenantId, ORG_A), eq(outboxEvents.type, "tenant.onboarding_completed")),
+      );
+    expect(events).toHaveLength(1);
 
     // idempotent — a second call returns 200 and does not move the timestamp back
     const firstStamp = body.data.onboardingCompletedAt;

@@ -256,6 +256,24 @@
       "cta": "Accéder au tableau de bord",
       "errors": {
         "complete_failed": "La finalisation a échoué. Vérifiez votre connexion puis réessayez."
+      },
+      "help": {
+        "title": "Ressources pour bien démarrer",
+        "docs": {
+          "title": "Documentation",
+          "description": "Guides complets pour toutes les fonctionnalités de Givernance",
+          "meta": "docs.givernance.org"
+        },
+        "video": {
+          "title": "Vidéo de démarrage",
+          "description": "Découvrez les bases de Givernance en quelques minutes",
+          "meta": "3 min"
+        },
+        "support": {
+          "title": "Support",
+          "description": "Notre équipe est disponible pour vous accompagner",
+          "meta": "support@givernance.org"
+        }
       }
     }
   }

@@ -1,6 +1,14 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CheckCircle, TriangleAlert } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  CheckCircle,
+  MessageCircle,
+  Play,
+  TriangleAlert,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useTransition } from "react";
 import { completeOnboardingAction } from "@/app/onboarding/actions";
@@ -16,6 +24,11 @@ export interface StepConfirmationProps {
  * Step 5 — Prêt (confirmation).
  * Summarises the Step 1 data and transitions the user to /dashboard via a
  * server action that marks `onboarding_completed_at`.
+ *
+ * The help-resources block (docs / video / support) is static and ships now;
+ * the pending-next-steps checklist from the mockup (import constituants,
+ * create first campaign) is deferred to #78 once the Step 3 CSV import and
+ * Campaign creation screens exist.
  */
 export function StepConfirmation({ tenant, onBack, serverErrorKey }: StepConfirmationProps) {
   const t = useTranslations("onboarding.step5");
@@ -38,7 +51,7 @@ export function StepConfirmation({ tenant, onBack, serverErrorKey }: StepConfirm
   return (
     <section aria-labelledby="onboarding-complete-title">
       <div className="mb-8 text-center">
-        <span className="mx-auto mb-4 flex h-[72px] w-[72px] items-center justify-center rounded-full bg-primary-50 text-primary">
+        <span className="mx-auto mb-4 flex h-18 w-18 items-center justify-center rounded-full bg-primary-50 text-primary">
           <CheckCircle className="h-9 w-9" aria-hidden="true" />
         </span>
         <h1 id="onboarding-complete-title" className="mb-2 font-heading text-3xl text-text">
@@ -52,7 +65,7 @@ export function StepConfirmation({ tenant, onBack, serverErrorKey }: StepConfirm
       {serverErrorKey === "complete_failed" && (
         <div
           role="alert"
-          className="mb-4 flex items-start gap-3 rounded-md border border-[rgba(186,26,26,0.12)] bg-error-container p-3 text-sm text-on-error-container"
+          className="mb-4 flex items-start gap-3 rounded-md border border-error-border bg-error-container p-3 text-sm text-on-error-container"
         >
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{t("errors.complete_failed")}</span>
@@ -60,7 +73,7 @@ export function StepConfirmation({ tenant, onBack, serverErrorKey }: StepConfirm
       )}
 
       <div className="rounded-card bg-surface-container-lowest p-8 shadow-card">
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-text-secondary">
           {t("summaryTitle")}
         </h2>
         <dl className="space-y-3 text-sm">
@@ -89,11 +102,13 @@ export function StepConfirmation({ tenant, onBack, serverErrorKey }: StepConfirm
         </dl>
       </div>
 
+      <HelpResources />
+
       <div className="mt-8 flex items-center justify-between gap-4">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex h-[var(--btn-height-lg)] items-center gap-2 rounded-button border border-border bg-surface-container-lowest px-6 font-body text-base font-medium text-text transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className="inline-flex h-[var(--btn-height-md)] items-center gap-2 rounded-button border border-border bg-surface-container-lowest px-6 font-body text-sm font-medium text-text transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           {tActions("back")}
@@ -102,12 +117,68 @@ export function StepConfirmation({ tenant, onBack, serverErrorKey }: StepConfirm
           type="button"
           onClick={submit}
           disabled={disabled}
-          className="inline-flex h-[52px] items-center gap-2 rounded-md bg-primary px-8 font-body text-md font-semibold text-on-primary transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-[52px] items-center gap-2 rounded-button bg-primary px-8 font-body text-md font-semibold text-on-primary transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? tActions("completing") : t("cta")}
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
     </section>
+  );
+}
+
+/**
+ * Static "ressources pour bien démarrer" card — matches the help-resources-grid
+ * block in `docs/design/auth/onboarding-5.html`. Links are external placeholders
+ * and remain in sync across both locales via the i18n bundle.
+ */
+function HelpResources() {
+  const t = useTranslations("onboarding.step5.help");
+
+  return (
+    <div className="mt-6 rounded-card border border-border bg-neutral-50 p-6">
+      <h2 className="mb-4 font-heading text-lg text-text">{t("title")}</h2>
+      <div className="grid gap-4 md:grid-cols-3">
+        <a
+          href="https://docs.givernance.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface-container-lowest p-5 text-center no-underline transition-all duration-normal ease-out hover:border-primary hover:shadow-card"
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-md bg-sky-50 text-sky">
+            <BookOpen className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <span className="text-sm font-semibold text-text">{t("docs.title")}</span>
+          <span className="text-xs text-text-secondary">{t("docs.description")}</span>
+          <span className="text-xs text-text-muted">{t("docs.meta")}</span>
+        </a>
+
+        <a
+          href="https://docs.givernance.org/getting-started"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface-container-lowest p-5 text-center no-underline transition-all duration-normal ease-out hover:border-primary hover:shadow-card"
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-md bg-amber-light text-amber-text">
+            <Play className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <span className="text-sm font-semibold text-text">{t("video.title")}</span>
+          <span className="text-xs text-text-secondary">{t("video.description")}</span>
+          <span className="text-xs text-text-muted">{t("video.meta")}</span>
+        </a>
+
+        <a
+          href="mailto:support@givernance.org"
+          className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface-container-lowest p-5 text-center no-underline transition-all duration-normal ease-out hover:border-primary hover:shadow-card"
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-md bg-primary-50 text-primary">
+            <MessageCircle className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <span className="text-sm font-semibold text-text">{t("support.title")}</span>
+          <span className="text-xs text-text-secondary">{t("support.description")}</span>
+          <span className="text-xs text-text-muted">{t("support.meta")}</span>
+        </a>
+      </div>
+    </div>
   );
 }

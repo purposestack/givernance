@@ -105,6 +105,8 @@
   --color-red-dark: var(--color-on-error-container);
   --color-red-border: #ffc2bd;
   --color-red-text: var(--color-error);
+  /* Subtle error outline used on inline alerts — matches the mockup's 12%-alpha red */
+  --color-error-border: rgba(186, 26, 26, 0.12);
 
   /* ── Status: amber ── */
   --color-amber: var(--color-tertiary);

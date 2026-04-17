@@ -256,6 +256,24 @@
       "cta": "Go to dashboard",
       "errors": {
         "complete_failed": "Finalising failed. Check your connection and try again."
+      },
+      "help": {
+        "title": "Resources to get you started",
+        "docs": {
+          "title": "Documentation",
+          "description": "Complete guides for every Givernance feature",
+          "meta": "docs.givernance.org"
+        },
+        "video": {
+          "title": "Getting started video",
+          "description": "Discover the basics of Givernance in a few minutes",
+          "meta": "3 min"
+        },
+        "support": {
+          "title": "Support",
+          "description": "Our team is here to help you along the way",
+          "meta": "support@givernance.org"
+        }
       }
     }
   }

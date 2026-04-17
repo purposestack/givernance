@@ -75,7 +75,11 @@ export async function saveOrganisationAction(
     const saved = await saveOnboardingStep1(input);
     revalidatePath("/onboarding");
     return { ok: true, data: saved };
-  } catch (_err) {
+  } catch (err) {
+    console.warn(
+      "[onboarding] saveOnboardingStep1 failed:",
+      err instanceof Error ? err.message : String(err),
+    );
     return { ok: false, errorKey: "saveFailed" };
   }
 }
@@ -86,10 +90,13 @@ export async function completeOnboardingAction(): Promise<void> {
 
   try {
     await completeOnboarding();
-  } catch (_err) {
-    // On failure the caller will see the error surfaced on the next /onboarding
-    // render — fall through to /dashboard instead of throwing so the user isn't
-    // stuck in the wizard with a cryptic error.
+  } catch (err) {
+    console.warn(
+      "[onboarding] completeOnboarding failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+    // Surface the failure on the next /onboarding render rather than throwing
+    // so the user isn't stuck in the wizard with a cryptic error.
     redirect("/onboarding?error=complete_failed");
   }
 
