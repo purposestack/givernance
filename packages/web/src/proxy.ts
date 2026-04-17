@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * JWT cookie name — must match the value in lib/auth/keycloak.ts.
- * Duplicated here because middleware runs in the Edge runtime and cannot
+ * Duplicated here because proxy runs in the Edge runtime and cannot
  * import from "server-only" modules.
  */
 const JWT_COOKIE_NAME = "givernance_jwt";
@@ -29,7 +29,7 @@ function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const jwt = request.cookies.get(JWT_COOKIE_NAME)?.value;
 
