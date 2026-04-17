@@ -11,7 +11,7 @@ const JWT_COOKIE_NAME = "givernance_jwt";
  * Route prefixes that require authentication.
  * Only includes implemented features — add new entries as pages are built.
  */
-const PROTECTED_PREFIXES = ["/dashboard", "/settings"];
+const PROTECTED_PREFIXES = ["/dashboard", "/settings", "/onboarding"];
 
 /** Route prefixes that are always public (auth pages, API callbacks, static assets). */
 const PUBLIC_PREFIXES = [

@@ -4,7 +4,8 @@
     "conflict": "{resource} already exists",
     "unprocessableEntity": "Unable to process the request",
     "unauthorized": "Authentication required",
-    "forbidden": "Access denied"
+    "forbidden": "Access denied",
+    "onboardingIncomplete": "Onboarding cannot be completed until required organisation fields are set"
   },
   "resources": {
     "user": "User",

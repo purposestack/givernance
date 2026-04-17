@@ -119,5 +119,144 @@
     "greeting": "Hello{name, select, empty {} other {, {name}}}",
     "subtitle": "Here is your organisation's activity today.",
     "placeholder": "Dashboard content under construction (Sprint 4, PR-C1)."
+  },
+  "onboarding": {
+    "brand": "Givernance",
+    "steps": {
+      "progressLabel": "Onboarding progress",
+      "organisation": "Organisation",
+      "team": "Team",
+      "data": "Data",
+      "gdpr": "GDPR",
+      "ready": "Ready!",
+      "srLabel": "Step {step} of {total}: {name} — {state}",
+      "state": {
+        "completed": "completed",
+        "active": "in progress",
+        "upcoming": "upcoming"
+      }
+    },
+    "actions": {
+      "continue": "Continue",
+      "back": "Back",
+      "saving": "Saving…",
+      "completing": "Finalising…"
+    },
+    "step1": {
+      "title": "Your organisation",
+      "subtitle": "Start by telling us about your structure. This helps us personalise your experience.",
+      "nameLabel": "Organisation name",
+      "namePlaceholder": "Official name of your organisation",
+      "countryLabel": "Country",
+      "countryPlaceholder": "Select a country",
+      "legalTypeLabel": "Legal type",
+      "legalTypePlaceholder": "Select a type",
+      "currencyLabel": "Primary currency",
+      "registrationNumberLabel": "Registration number",
+      "registrationNumberPlaceholder": "E.g. W061234567",
+      "registrationNumberHint": "RNA, SIREN or equivalent number for your country.",
+      "errors": {
+        "saveFailed": "Saving failed. Please try again in a moment.",
+        "name": {
+          "required": "Organisation name is required.",
+          "tooLong": "Name cannot exceed 255 characters."
+        },
+        "country": {
+          "required": "Please select a country."
+        },
+        "legalType": {
+          "required": "Please select a legal type."
+        },
+        "currency": {
+          "required": "Please select a currency."
+        },
+        "registrationNumber": {
+          "tooLong": "Registration number cannot exceed 100 characters."
+        }
+      },
+      "countries": {
+        "AT": "Austria",
+        "BE": "Belgium",
+        "BG": "Bulgaria",
+        "HR": "Croatia",
+        "CY": "Cyprus",
+        "CZ": "Czech Republic",
+        "DK": "Denmark",
+        "EE": "Estonia",
+        "FI": "Finland",
+        "FR": "France",
+        "DE": "Germany",
+        "GR": "Greece",
+        "HU": "Hungary",
+        "IE": "Ireland",
+        "IT": "Italy",
+        "LV": "Latvia",
+        "LT": "Lithuania",
+        "LU": "Luxembourg",
+        "MT": "Malta",
+        "NL": "Netherlands",
+        "PL": "Poland",
+        "PT": "Portugal",
+        "RO": "Romania",
+        "SK": "Slovakia",
+        "SI": "Slovenia",
+        "ES": "Spain",
+        "SE": "Sweden",
+        "GB": "United Kingdom",
+        "CH": "Switzerland",
+        "NO": "Norway",
+        "IS": "Iceland",
+        "LI": "Liechtenstein"
+      },
+      "legalTypes": {
+        "asso1901": "French Association (1901)",
+        "fondation": "Foundation",
+        "frup": "Public-utility foundation",
+        "asbl": "ASBL (Belgium)",
+        "ong": "International NGO",
+        "cooperative": "Social cooperative",
+        "autre": "Other"
+      },
+      "currencies": {
+        "EUR": "EUR — Euro",
+        "GBP": "GBP — Pound sterling",
+        "CHF": "CHF — Swiss franc",
+        "NOK": "NOK — Norwegian krone",
+        "SEK": "SEK — Swedish krona",
+        "DKK": "DKK — Danish krone",
+        "PLN": "PLN — Polish złoty",
+        "CZK": "CZK — Czech koruna",
+        "HUF": "HUF — Hungarian forint",
+        "RON": "RON — Romanian leu",
+        "BGN": "BGN — Bulgarian lev"
+      }
+    },
+    "placeholder": {
+      "badge": "Phase 2",
+      "body": "This onboarding step will be available in an upcoming release. You can continue for now and return to it later.",
+      "issueLink": "Track progress on GitHub (issue #78)",
+      "team": {
+        "title": "Invite your team",
+        "subtitle": "Add colleagues who will work with you. This step becomes active in Phase 2."
+      },
+      "data": {
+        "title": "Import your data",
+        "subtitle": "Import existing donors from a file or Salesforce. Available in Phase 2."
+      },
+      "gdpr": {
+        "title": "GDPR settings",
+        "subtitle": "Configure data residency and retention policy. Available in Phase 2."
+      }
+    },
+    "step5": {
+      "title": "All set!",
+      "subtitle": "Your organisation is configured. Here are your next steps.",
+      "subtitleWithName": "Your organisation {name} is configured. Here are your next steps.",
+      "summaryTitle": "Configuration summary",
+      "cta": "Go to dashboard",
+      "errors": {
+        "complete_failed": "Finalising failed. Check your connection and try again."
+      }
+    }
   }
 }

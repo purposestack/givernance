@@ -119,5 +119,144 @@
     "greeting": "Bonjour{name, select, empty {} other {, {name}}}",
     "subtitle": "Voici l'activité de votre organisation aujourd'hui.",
     "placeholder": "Contenu du tableau de bord en construction (Sprint 4, PR-C1)."
+  },
+  "onboarding": {
+    "brand": "Givernance",
+    "steps": {
+      "progressLabel": "Progression de l'intégration",
+      "organisation": "Organisation",
+      "team": "Équipe",
+      "data": "Données",
+      "gdpr": "RGPD",
+      "ready": "Prêt !",
+      "srLabel": "Étape {step} sur {total} : {name} — {state}",
+      "state": {
+        "completed": "terminée",
+        "active": "en cours",
+        "upcoming": "à venir"
+      }
+    },
+    "actions": {
+      "continue": "Continuer",
+      "back": "Retour",
+      "saving": "Enregistrement…",
+      "completing": "Finalisation…"
+    },
+    "step1": {
+      "title": "Votre organisation",
+      "subtitle": "Commencez par nous parler de votre structure. Ces informations nous aident à personnaliser votre expérience.",
+      "nameLabel": "Nom de l'organisation",
+      "namePlaceholder": "Nom officiel de votre organisation",
+      "countryLabel": "Pays",
+      "countryPlaceholder": "Sélectionner un pays",
+      "legalTypeLabel": "Type juridique",
+      "legalTypePlaceholder": "Sélectionner un type",
+      "currencyLabel": "Devise principale",
+      "registrationNumberLabel": "Numéro d'enregistrement",
+      "registrationNumberPlaceholder": "Ex : W061234567",
+      "registrationNumberHint": "Numéro RNA, SIREN ou équivalent dans votre pays.",
+      "errors": {
+        "saveFailed": "L'enregistrement a échoué. Réessayez dans quelques instants.",
+        "name": {
+          "required": "Le nom de l'organisation est obligatoire.",
+          "tooLong": "Le nom ne peut pas dépasser 255 caractères."
+        },
+        "country": {
+          "required": "Sélectionnez un pays."
+        },
+        "legalType": {
+          "required": "Sélectionnez un type juridique."
+        },
+        "currency": {
+          "required": "Sélectionnez une devise."
+        },
+        "registrationNumber": {
+          "tooLong": "Le numéro d'enregistrement ne peut pas dépasser 100 caractères."
+        }
+      },
+      "countries": {
+        "AT": "Autriche",
+        "BE": "Belgique",
+        "BG": "Bulgarie",
+        "HR": "Croatie",
+        "CY": "Chypre",
+        "CZ": "République tchèque",
+        "DK": "Danemark",
+        "EE": "Estonie",
+        "FI": "Finlande",
+        "FR": "France",
+        "DE": "Allemagne",
+        "GR": "Grèce",
+        "HU": "Hongrie",
+        "IE": "Irlande",
+        "IT": "Italie",
+        "LV": "Lettonie",
+        "LT": "Lituanie",
+        "LU": "Luxembourg",
+        "MT": "Malte",
+        "NL": "Pays-Bas",
+        "PL": "Pologne",
+        "PT": "Portugal",
+        "RO": "Roumanie",
+        "SK": "Slovaquie",
+        "SI": "Slovénie",
+        "ES": "Espagne",
+        "SE": "Suède",
+        "GB": "Royaume-Uni",
+        "CH": "Suisse",
+        "NO": "Norvège",
+        "IS": "Islande",
+        "LI": "Liechtenstein"
+      },
+      "legalTypes": {
+        "asso1901": "Association loi 1901",
+        "fondation": "Fondation",
+        "frup": "Fondation reconnue d'utilité publique",
+        "asbl": "ASBL (Belgique)",
+        "ong": "ONG internationale",
+        "cooperative": "Coopérative sociale",
+        "autre": "Autre"
+      },
+      "currencies": {
+        "EUR": "EUR — Euro",
+        "GBP": "GBP — Livre sterling",
+        "CHF": "CHF — Franc suisse",
+        "NOK": "NOK — Couronne norvégienne",
+        "SEK": "SEK — Couronne suédoise",
+        "DKK": "DKK — Couronne danoise",
+        "PLN": "PLN — Złoty polonais",
+        "CZK": "CZK — Couronne tchèque",
+        "HUF": "HUF — Forint hongrois",
+        "RON": "RON — Leu roumain",
+        "BGN": "BGN — Lev bulgare"
+      }
+    },
+    "placeholder": {
+      "badge": "Phase 2",
+      "body": "Cette étape de l'intégration sera disponible dans une prochaine version. Vous pouvez continuer dès maintenant et la reprendre plus tard.",
+      "issueLink": "Suivre la progression sur GitHub (issue #78)",
+      "team": {
+        "title": "Invitez votre équipe",
+        "subtitle": "Ajoutez les collègues qui travailleront avec vous. Cette étape sera activée en Phase 2."
+      },
+      "data": {
+        "title": "Importez vos données",
+        "subtitle": "Importez vos donateurs existants depuis un fichier ou Salesforce. Disponible en Phase 2."
+      },
+      "gdpr": {
+        "title": "Paramètres RGPD",
+        "subtitle": "Configurez la résidence des données et la politique de rétention. Disponible en Phase 2."
+      }
+    },
+    "step5": {
+      "title": "Tout est prêt !",
+      "subtitle": "Votre organisation est configurée. Voici vos prochaines étapes.",
+      "subtitleWithName": "Votre organisation {name} est configurée. Voici vos prochaines étapes.",
+      "summaryTitle": "Récapitulatif de configuration",
+      "cta": "Accéder au tableau de bord",
+      "errors": {
+        "complete_failed": "La finalisation a échoué. Vérifiez votre connexion puis réessayez."
+      }
+    }
   }
 }

@@ -4,7 +4,8 @@
     "conflict": "{resource} existe déjà",
     "unprocessableEntity": "Impossible de traiter la requête",
     "unauthorized": "Authentification requise",
-    "forbidden": "Accès refusé"
+    "forbidden": "Accès refusé",
+    "onboardingIncomplete": "L'intégration ne peut pas être finalisée tant que les informations obligatoires de l'organisation ne sont pas renseignées"
   },
   "resources": {
     "user": "Utilisateur",
