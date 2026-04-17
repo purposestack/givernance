@@ -2,20 +2,29 @@ import { requireAuth } from "@/lib/auth/guards";
 
 /**
  * Dashboard page — protected, requires authentication.
- * Placeholder for Sprint 4 PR-B1+ implementation.
+ * The app shell (sidebar, topbar) is provided by the (app) layout.
+ * Placeholder for Sprint 4 PR-C1 implementation.
  */
 export default async function DashboardPage() {
   const auth = await requireAuth();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-8">
-      <div className="text-center">
-        <h1 className="font-heading text-2xl text-text">Dashboard</h1>
-        <p className="mt-2 text-sm text-text-secondary">
-          Welcome{auth.firstName ? `, ${auth.firstName}` : ""}. Dashboard under construction (Sprint
-          4).
+    <>
+      <div className="mb-8">
+        <h1 className="font-heading text-5xl leading-tight tracking-tight text-on-surface">
+          Bonjour{auth.firstName ? `, ${auth.firstName}` : ""}
+        </h1>
+        <p className="mt-2 text-lg text-on-surface-variant">
+          Voici l&apos;activité de votre organisation aujourd&apos;hui.
         </p>
       </div>
-    </div>
+
+      {/* Placeholder — KPI widgets and dashboard content will be built in PR-C1 */}
+      <div className="rounded-2xl bg-surface-container-lowest p-8 shadow-card">
+        <p className="text-sm text-text-secondary">
+          Dashboard content under construction (Sprint 4, PR-C1).
+        </p>
+      </div>
+    </>
   );
 }
