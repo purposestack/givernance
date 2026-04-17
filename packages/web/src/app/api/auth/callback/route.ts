@@ -98,6 +98,8 @@ export async function GET(request: NextRequest) {
     });
 
     if (!tokenRes.ok) {
+      const text = await tokenRes.text();
+      console.error("Token Exchange Failed:", tokenRes.status, text);
       cleanup();
       const loginUrl = new URL("/login", APP_URL);
       loginUrl.searchParams.set("error", "token_exchange_failed");
@@ -115,7 +117,8 @@ export async function GET(request: NextRequest) {
     jar.set(JWT_COOKIE_NAME, tokens.access_token, jwtCookieOptions(tokens.expires_in));
 
     return NextResponse.redirect(new URL("/dashboard", APP_URL).toString());
-  } catch {
+  } catch (err) {
+    console.error("OIDC Callback Error:", err);
     cleanup();
     const loginUrl = new URL("/login", APP_URL);
     loginUrl.searchParams.set("error", "callback_failed");
