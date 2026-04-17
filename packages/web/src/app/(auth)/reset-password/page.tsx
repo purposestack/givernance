@@ -3,6 +3,7 @@
 import { ArrowLeft, Check, Circle, Eye, EyeOff, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Suspense, useMemo, useState } from "react";
 import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
@@ -14,19 +15,6 @@ interface StrengthResult {
   level: StrengthLevel;
   label: string;
   segments: number;
-}
-
-function evaluateStrength(password: string): StrengthResult {
-  let score = 0;
-  if (password.length >= 8) score++;
-  if (/[A-Z]/.test(password)) score++;
-  if (/\d/.test(password)) score++;
-  if (/[!@#$%&*]/.test(password)) score++;
-
-  if (score <= 1) return { level: "weak", label: "Weak", segments: 1 };
-  if (score === 2) return { level: "medium", label: "Medium", segments: 2 };
-  if (score === 3) return { level: "strong", label: "Strong", segments: 3 };
-  return { level: "very-strong", label: "Very strong", segments: 4 };
 }
 
 /** Segment color classes keyed by strength level (matching mockup token usage). */
@@ -45,6 +33,7 @@ const LABEL_COLORS: Record<StrengthLevel, string> = {
 };
 
 function ResetPasswordForm() {
+  const t = useTranslations("auth.resetPassword");
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const expired = searchParams.get("expired");
@@ -53,16 +42,27 @@ function ResetPasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const strength = useMemo(() => evaluateStrength(password), [password]);
+  const strength = useMemo((): StrengthResult => {
+    let score = 0;
+    if (password.length >= 8) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/\d/.test(password)) score++;
+    if (/[!@#$%&*]/.test(password)) score++;
+
+    if (score <= 1) return { level: "weak", label: t("strength.weak"), segments: 1 };
+    if (score === 2) return { level: "medium", label: t("strength.medium"), segments: 2 };
+    if (score === 3) return { level: "strong", label: t("strength.strong"), segments: 3 };
+    return { level: "very-strong", label: t("strength.veryStrong"), segments: 4 };
+  }, [password, t]);
 
   const rules = useMemo(
     () => [
-      { label: "At least 8 characters", valid: password.length >= 8 },
-      { label: "At least one uppercase letter", valid: /[A-Z]/.test(password) },
-      { label: "At least one number", valid: /\d/.test(password) },
-      { label: "At least one special character (!@#$%&*)", valid: /[!@#$%&*]/.test(password) },
+      { label: t("requirements.minLength"), valid: password.length >= 8 },
+      { label: t("requirements.uppercase"), valid: /[A-Z]/.test(password) },
+      { label: t("requirements.number"), valid: /\d/.test(password) },
+      { label: t("requirements.special"), valid: /[!@#$%&*]/.test(password) },
     ],
-    [password],
+    [password, t],
   );
 
   // Token expired state — alternate view from mockup
@@ -70,26 +70,22 @@ function ResetPasswordForm() {
     return (
       <AuthCard>
         <AuthLogo />
-        <h1 className="mb-2 text-center font-heading text-xl text-text">Link expired</h1>
-        <p className="mb-6 text-center text-sm text-text-secondary">
-          This reset link is no longer valid or has expired.
-        </p>
+        <h1 className="mb-2 text-center font-heading text-xl text-text">{t("expiredTitle")}</h1>
+        <p className="mb-6 text-center text-sm text-text-secondary">{t("expiredMessage")}</p>
 
         <div
           className="mb-5 flex items-start gap-3 rounded-lg border border-[rgba(186,26,26,0.12)] bg-error-container p-3 text-sm text-on-error-container"
           role="alert"
         >
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span className="flex-1">
-            The reset link expired after 1 hour. Please request a new one.
-          </span>
+          <span className="flex-1">{t("expiredAlert")}</span>
         </div>
 
         <Link
           href="/forgot-password"
           className="inline-flex h-[var(--btn-height-lg)] w-full items-center justify-center rounded-button bg-primary px-8 text-base font-medium text-on-primary no-underline transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          Request a new link
+          {t("requestNewLink")}
         </Link>
 
         <div className="mt-5 text-center">
@@ -97,7 +93,7 @@ function ResetPasswordForm() {
             href="/login"
             className="text-sm font-medium text-primary no-underline transition-colors hover:text-primary-dark hover:underline"
           >
-            <ArrowLeft className="inline h-3.5 w-3.5" /> Back to sign in
+            <ArrowLeft className="inline h-3.5 w-3.5" /> {t("backToLogin")}
           </Link>
         </div>
       </AuthCard>
@@ -108,10 +104,8 @@ function ResetPasswordForm() {
     <AuthCard>
       <AuthLogo />
 
-      <h1 className="mb-2 text-center font-heading text-xl text-text">New password</h1>
-      <p className="mb-6 text-center text-sm text-text-secondary">
-        Choose a secure password for your account.
-      </p>
+      <h1 className="mb-2 text-center font-heading text-xl text-text">{t("title")}</h1>
+      <p className="mb-6 text-center text-sm text-text-secondary">{t("subtitle")}</p>
 
       <form
         onSubmit={(e) => {
@@ -143,7 +137,7 @@ function ResetPasswordForm() {
         {/* New password */}
         <div className="mb-5">
           <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-text">
-            New password
+            {t("passwordLabel")}
           </label>
           <div className="relative">
             <input
@@ -151,7 +145,7 @@ function ResetPasswordForm() {
               type={showPassword ? "text" : "password"}
               id="password"
               name="password"
-              placeholder="Your new password"
+              placeholder={t("passwordPlaceholder")}
               autoComplete="new-password"
               required
               value={password}
@@ -159,7 +153,7 @@ function ResetPasswordForm() {
             />
             <button
               type="button"
-              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-label={showPassword ? t("hidePassword") : t("showPassword")}
               onClick={() => setShowPassword((v) => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 leading-none text-text-muted transition-colors hover:text-text-secondary"
             >
@@ -192,7 +186,7 @@ function ResetPasswordForm() {
         {/* Confirm password */}
         <div className="mb-5">
           <label htmlFor="password-confirm" className="mb-1.5 block text-sm font-medium text-text">
-            Confirm password
+            {t("confirmLabel")}
           </label>
           <div className="relative">
             <input
@@ -200,13 +194,13 @@ function ResetPasswordForm() {
               type={showConfirm ? "text" : "password"}
               id="password-confirm"
               name="password_confirm"
-              placeholder="Confirm your password"
+              placeholder={t("confirmPlaceholder")}
               autoComplete="new-password"
               required
             />
             <button
               type="button"
-              aria-label={showConfirm ? "Hide password" : "Show password"}
+              aria-label={showConfirm ? t("hidePassword") : t("showPassword")}
               onClick={() => setShowConfirm((v) => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 leading-none text-text-muted transition-colors hover:text-text-secondary"
             >
@@ -218,7 +212,7 @@ function ResetPasswordForm() {
         {/* Password rules checklist */}
         <div className="rounded-md bg-neutral-100 px-4 py-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-            Security requirements
+            {t("securityTitle")}
           </div>
           {rules.map((rule) => (
             <div
@@ -241,7 +235,7 @@ function ResetPasswordForm() {
             type="submit"
             className="inline-flex h-[var(--btn-height-lg)] w-full items-center justify-center rounded-button bg-primary px-8 text-base font-medium text-on-primary transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            Reset password
+            {t("submit")}
           </button>
         </div>
       </form>
@@ -252,7 +246,7 @@ function ResetPasswordForm() {
           href="/login"
           className="text-sm font-medium text-primary no-underline transition-colors hover:text-primary-dark hover:underline"
         >
-          &larr; Back to sign in
+          &larr; {t("backToLogin")}
         </Link>
       </div>
     </AuthCard>

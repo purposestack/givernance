@@ -773,4 +773,147 @@ Frontend-specific API response models live in `packages/web/src/models/` as plai
 
 ---
 
+## ADR-015: Internationalization & Translation Strategy
+
+- **Status**: Accepted
+- **Date**: 2026-04-17
+- **Deciders**: Magino (founder/architect) + Claude agents (architecture review)
+
+### Context
+
+Givernance targets European NPOs across FR, BE, NL, DE, and CH markets. The five user personas speak French (all), English (3/5), German (1/5), and Arabic (1/5 — conversational). The organization settings screen (ADM-001) includes a locale selector. Yet after Sprint 4 frontend implementation, ~110 user-facing strings are hardcoded across 15 files — a mix of French (app shell, dashboard) and English (auth pages, error pages). Without a formal i18n strategy, hardcoded strings will compound as Sprint 5+ builds 84+ screens.
+
+### Decision
+
+#### Library: next-intl (non-prefixed routing)
+
+Adopt **next-intl** for frontend i18n with **cookie-based locale detection** (no URL prefix routing). A CRM is not a public SEO-dependent site — locale-prefixed URLs (`/fr/dashboard`, `/en/dashboard`) add complexity without benefit. The locale is determined by:
+
+1. `NEXT_LOCALE` cookie (set via org settings or user preference)
+2. `Accept-Language` header fallback
+3. Default: `fr` (primary market)
+
+#### Supported Locales
+
+| Phase | Locales | Rationale |
+|-------|---------|-----------|
+| Phase 2 (now) | `fr`, `en` | Primary markets (FR, BE francophone, UK/international NPOs) |
+| Phase 3 | + `de`, `nl` | DE/CH/NL expansion |
+| Phase 4+ | + `ar` (RTL) | Persona Karim — requires RTL CSS preparation |
+
+Default locale: **`fr`** — all mockups are in French, primary market is French NPOs.
+
+#### Key Structure: Module Namespaces
+
+Translation keys use **dot-separated module namespaces** in a single file per locale:
+
+```
+messages/
+├── fr.json    ← { "common": {...}, "auth": {...}, "appShell": {...}, "dashboard": {...} }
+└── en.json
+```
+
+Naming convention: `{module}.{component}.{element}` — e.g., `auth.login.title`, `appShell.sidebar.dashboard`, `common.actions.cancel`.
+
+Single file per locale (not split per module) because:
+- The CRM has ~110 keys today, projected ~500 at full build — well within a single file
+- Simplifies CI key-parity check and avoids import complexity
+- next-intl loads only the requested namespace at runtime regardless of file structure
+
+#### Frontend i18n Pattern
+
+**Server Components** (pages, layouts):
+```typescript
+import { getTranslations } from "next-intl/server";
+const t = await getTranslations("dashboard");
+// t("greeting", { name: auth.firstName })
+```
+
+**Client Components** (interactive UI):
+```typescript
+import { useTranslations } from "next-intl";
+const t = useTranslations("appShell");
+// t("sidebar.dashboard")
+```
+
+**Configuration**: `src/i18n/request.ts` provides the locale and messages to next-intl's server context. The root layout wraps children in `<NextIntlClientProvider>` for client component access.
+
+#### Backend i18n
+
+| Concern | Approach |
+|---------|----------|
+| API error messages (RFC 9457 `detail`) | Accept `Accept-Language` header; Fastify plugin resolves locale; error `detail` field translated via `i18next` with JSON message files in `packages/api/messages/` |
+| Email templates (BullMQ) | Deferred to Phase 3 — no email templates exist yet. BullMQ job payload will carry `locale` field; worker resolves templates per locale |
+| PDF generation (fiscal receipts) | Deferred to Phase 3 — PDF engine will accept locale parameter for number/date formatting and legal text |
+
+#### Database Content
+
+Translatable fields (e.g., campaign public page title, custom form labels) use a **JSON column** pattern:
+
+```sql
+title_i18n JSONB NOT NULL DEFAULT '{}' -- {"fr": "Appel aux dons", "en": "Fundraising appeal"}
+```
+
+With a helper: `getLocalized(row.title_i18n, locale, 'fr')` — falls back to French if translation missing. This avoids a separate translation table while keeping the schema simple for Phase 2.
+
+#### Pluralization & Formatting
+
+- **Plurals**: ICU MessageFormat via next-intl — `{count, plural, one {# don} other {# dons}}`
+- **Currency**: `Intl.NumberFormat` with locale + currency from org settings (EUR/CHF)
+- **Dates**: `Intl.DateTimeFormat` with locale from org settings
+- **Centralized**: Formatting utilities in `src/lib/format.ts` wrapping `Intl` APIs, driven by org locale
+
+#### RTL Preparation
+
+Phase 4+ (Arabic). Architecture must not block it:
+- CSS logical properties (`margin-inline-start` not `margin-left`) — enforced via Biome lint rule when Arabic is added
+- `dir="rtl"` attribute on `<html>` driven by locale
+- Tailwind v4 RTL utilities (`rtl:` variant) available when needed
+- No hardcoded `left`/`right` positioning in layout components (use `start`/`end`)
+
+#### Type Safety
+
+next-intl's TypeScript integration with a global type declaration:
+
+```typescript
+// src/types/next-intl.d.ts
+import type messages from "../../messages/fr.json";
+type Messages = typeof messages;
+declare module "next-intl" {
+  interface AppConfig { Messages: Messages; }
+}
+```
+
+This provides compile-time checks that all translation keys exist. Missing keys cause TypeScript errors.
+
+#### Translation Workflow
+
+1. Developer writes French strings first (source language)
+2. Developer provides English translation in the same PR
+3. Translation Specialist agent reviews both languages during PR review
+4. Future: Tolgee (self-hostable, GDPR-friendly) for professional translator access — evaluated but not procured in Phase 2
+
+### Rejected Alternatives
+
+| Option | Pros | Cons | Verdict |
+|---|---|---|---|
+| **react-intl (FormatJS)** | Mature, ICU MessageFormat, good DX | No native App Router/RSC support; requires wrapping every Server Component; heavier bundle than next-intl | Rejected |
+| **i18next + react-i18next** | Massive ecosystem, namespace support, backend support | Complex setup for Next.js App Router; `next-i18next` wrapper abandoned; no native RSC integration | Rejected |
+| **next-intl** | Native App Router/RSC support, ICU MessageFormat, TypeScript type safety, lightweight, active maintenance | Smaller ecosystem than i18next | **Selected** |
+| **URL-prefix routing** (`/fr/dashboard`) | SEO-friendly, locale in URL | CRM is auth-gated (no SEO need), doubles route complexity, breaks existing route structure | Rejected for CRM (appropriate for marketing site) |
+| **Per-module JSON files** | Clean separation | Overhead for ~500 keys; complicates CI check; next-intl namespace loading handles this already | Rejected |
+
+### Consequences
+
+- ✅ All user-facing strings are translatable — no hardcoded text in JSX
+- ✅ Type-safe keys prevent typos and missing translations at compile time
+- ✅ French-first approach matches mockup language and primary market
+- ✅ Cookie-based locale keeps CRM URLs clean (no /fr/ /en/ prefixes)
+- ✅ Same library (next-intl) can be used if a marketing site is added later
+- ⚠️ Single JSON file per locale will need splitting if key count exceeds ~1000 (Phase 4+)
+- ⚠️ Backend i18n (i18next for Fastify) is a separate library from frontend (next-intl) — term glossary ensures consistency
+- ⚠️ Arabic RTL support requires CSS audit before Phase 4 — logical properties must be enforced retroactively
+
+---
+
 *This document is curated to show only active architectural decisions. Superseded decisions are removed for clarity.*

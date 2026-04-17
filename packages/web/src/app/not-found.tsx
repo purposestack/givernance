@@ -1,10 +1,14 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 
 /**
  * 404 Not Found page — matches GLO-002 mockup (docs/design/global/404.html).
  * Features an animated CSS compass with erratic needle and floating question marks.
  */
-export default function NotFound() {
+export default async function NotFound() {
+  const t = await getTranslations("errors");
+  const tCommon = await getTranslations("common");
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6">
       <div className="w-full max-w-[500px] text-center">
@@ -13,7 +17,7 @@ export default function NotFound() {
           <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-xl font-bold text-on-primary">
             G
           </div>
-          <span className="font-heading text-2xl text-text">Givernance</span>
+          <span className="font-heading text-2xl text-text">{tCommon("appName")}</span>
         </div>
 
         {/* Compass illustration with animations */}
@@ -97,18 +101,17 @@ export default function NotFound() {
 
         {/* Error label */}
         <div className="mb-3 font-mono text-sm font-semibold uppercase tracking-wider text-primary">
-          Error 404
+          {t("notFound.label")}
         </div>
 
         {/* Title */}
         <h1 className="mb-4 font-heading text-3xl font-normal leading-tight text-text">
-          Page not found
+          {t("notFound.title")}
         </h1>
 
         {/* Message */}
         <p className="mx-auto mb-8 max-w-[380px] text-sm leading-relaxed text-text-secondary">
-          The page you are looking for does not exist or has been moved. Don&apos;t worry,
-          we&apos;ll get you back on the right path.
+          {t("notFound.description")}
         </p>
 
         {/* Primary CTA */}
@@ -117,14 +120,14 @@ export default function NotFound() {
             href="/"
             className="inline-flex h-[var(--btn-height-lg)] items-center rounded-button bg-primary px-6 text-sm font-medium text-on-primary shadow-button transition-[background-color] hover:bg-primary-hover focus-visible:shadow-ring"
           >
-            Back to dashboard
+            {tCommon("actions.backToDashboard")}
           </Link>
         </div>
 
         {/* Divider */}
         <div className="mb-5 flex items-center gap-3 text-xs text-text-muted">
           <span className="h-px flex-1 bg-neutral-200" />
-          or
+          {tCommon("actions.or")}
           <span className="h-px flex-1 bg-neutral-200" />
         </div>
 
@@ -132,8 +135,8 @@ export default function NotFound() {
         <div className="mx-auto mb-8 max-w-[320px]">
           <input
             type="search"
-            placeholder="Search in Givernance…"
-            aria-label="Search in Givernance"
+            placeholder={t("notFound.searchPlaceholder")}
+            aria-label={t("notFound.searchLabel")}
             readOnly
             className="h-[var(--input-height)] w-full rounded-input border border-border bg-white px-4 text-center text-sm text-text placeholder:text-text-muted focus-visible:shadow-ring"
           />
@@ -141,14 +144,16 @@ export default function NotFound() {
 
         {/* Footer */}
         <footer className="text-xs text-text-muted">
-          If the problem persists, contact our{" "}
-          <a
-            href="mailto:support@givernance.org"
-            className="font-medium text-primary hover:text-primary-dark hover:underline"
-          >
-            support
-          </a>
-          .
+          {t.rich("notFound.persistsMessage", {
+            link: (chunks) => (
+              <a
+                href="mailto:support@givernance.org"
+                className="font-medium text-primary hover:text-primary-dark hover:underline"
+              >
+                {chunks}
+              </a>
+            ),
+          })}
         </footer>
       </div>
     </div>

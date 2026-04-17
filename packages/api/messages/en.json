@@ -1,0 +1,18 @@
+{
+  "errors": {
+    "notFound": "{resource} not found",
+    "conflict": "{resource} already exists",
+    "unprocessableEntity": "Unable to process the request",
+    "unauthorized": "Authentication required",
+    "forbidden": "Access denied"
+  },
+  "resources": {
+    "user": "User",
+    "tenant": "Tenant",
+    "donation": "Donation",
+    "constituent": "Constituent",
+    "campaign": "Campaign",
+    "grant": "Grant",
+    "receipt": "Tax receipt"
+  }
+}

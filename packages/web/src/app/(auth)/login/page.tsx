@@ -3,6 +3,7 @@
 import { Eye, EyeOff, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Suspense, useCallback, useState } from "react";
 import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
@@ -31,27 +32,29 @@ function GoogleIcon() {
   );
 }
 
-/** Map error query params to user-friendly messages. */
-function getErrorMessage(error: string): string {
-  switch (error) {
-    case "token_exchange_failed":
-      return "Authentication failed. Please try again.";
-    case "callback_failed":
-      return "Something went wrong during sign-in. Please try again.";
-    case "invalid_state":
-      return "Session expired. Please try signing in again.";
-    case "missing_verifier":
-      return "Authentication session was interrupted. Please try again.";
-    default:
-      return "Invalid credentials. Check your email and password.";
-  }
-}
-
 function LoginForm() {
+  const t = useTranslations("auth.login");
+  const tActions = useTranslations("common.actions");
   const searchParams = useSearchParams();
   const errorParam = searchParams.get("error");
   const [showPassword, setShowPassword] = useState(false);
   const [alertVisible, setAlertVisible] = useState(!!errorParam);
+
+  /** Map error query params to user-friendly messages. */
+  function getErrorMessage(error: string): string {
+    switch (error) {
+      case "token_exchange_failed":
+        return t("errors.authFailed");
+      case "callback_failed":
+        return t("errors.generic");
+      case "invalid_state":
+        return t("errors.sessionExpired");
+      case "missing_verifier":
+        return t("errors.interrupted");
+      default:
+        return t("errors.invalidCredentials");
+    }
+  }
 
   const handleSSOLogin = useCallback(() => {
     window.location.href = "/api/auth/login";
@@ -65,15 +68,13 @@ function LoginForm() {
       <div className="mx-auto mb-6 flex w-fit items-center justify-center gap-2 rounded-pill bg-neutral-100 px-4 py-1.5">
         <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
         <span className="max-w-[280px] truncate text-xs font-medium text-text-secondary">
-          Your organization
+          {t("orgBadge")}
         </span>
       </div>
 
       {/* Title & subtitle — auth-title / auth-subtitle from mockup */}
-      <h1 className="mb-2 text-center font-heading text-xl text-text">Sign in</h1>
-      <p className="mb-6 text-center text-sm text-text-secondary">
-        Access your management workspace
-      </p>
+      <h1 className="mb-2 text-center font-heading text-xl text-text">{t("title")}</h1>
+      <p className="mb-6 text-center text-sm text-text-secondary">{t("subtitle")}</p>
 
       {/* Error alert — alert alert-error from base.css */}
       {alertVisible && errorParam && (
@@ -85,7 +86,7 @@ function LoginForm() {
           <span className="flex-1">{getErrorMessage(errorParam)}</span>
           <button
             type="button"
-            aria-label="Close"
+            aria-label={t("close")}
             onClick={() => setAlertVisible(false)}
             className="shrink-0 border-none bg-transparent p-0 leading-none text-inherit opacity-70 transition-opacity duration-normal ease-out hover:opacity-100"
           >
@@ -99,14 +100,14 @@ function LoginForm() {
         {/* Email */}
         <div className="mb-5">
           <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-text">
-            Email address
+            {t("emailLabel")}
           </label>
           <input
             className="h-[var(--input-height)] w-full rounded-input border border-outline-variant bg-surface-container-lowest px-3 font-body text-base text-text placeholder:text-text-muted focus:border-primary focus:shadow-ring focus:outline-none"
             type="email"
             id="email"
             name="email"
-            placeholder="you@organisation.org"
+            placeholder={t("emailPlaceholder")}
             autoComplete="email"
             required
           />
@@ -115,7 +116,7 @@ function LoginForm() {
         {/* Password */}
         <div className="mb-6">
           <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-text">
-            Password
+            {t("passwordLabel")}
           </label>
           <div className="relative">
             <input
@@ -123,13 +124,13 @@ function LoginForm() {
               type={showPassword ? "text" : "password"}
               id="password"
               name="password"
-              placeholder="Your password"
+              placeholder={t("passwordPlaceholder")}
               autoComplete="current-password"
               required
             />
             <button
               type="button"
-              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-label={showPassword ? t("hidePassword") : t("showPassword")}
               onClick={() => setShowPassword((v) => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 leading-none text-text-muted transition-colors duration-normal ease-out hover:text-text-secondary"
             >
@@ -143,7 +144,7 @@ function LoginForm() {
           type="submit"
           className="inline-flex h-[var(--btn-height-lg)] w-full items-center justify-center gap-2 rounded-button border-none bg-primary px-8 font-body text-base font-medium text-on-primary transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          Sign in
+          {t("submit")}
         </button>
       </form>
 
@@ -153,14 +154,14 @@ function LoginForm() {
           href="/forgot-password"
           className="text-sm font-medium text-primary no-underline transition-colors duration-normal ease-out hover:text-primary-dark hover:underline"
         >
-          Forgot password?
+          {t("forgotPassword")}
         </Link>
       </div>
 
       {/* Divider */}
       <div className="my-6 flex items-center gap-4">
         <div className="h-px flex-1 bg-border" />
-        <span className="text-xs font-medium lowercase text-text-muted">or</span>
+        <span className="text-xs font-medium lowercase text-text-muted">{tActions("or")}</span>
         <div className="h-px flex-1 bg-border" />
       </div>
 
@@ -171,19 +172,22 @@ function LoginForm() {
         className="inline-flex h-[var(--btn-height-lg)] w-full items-center justify-center gap-2 rounded-button bg-surface-container-highest px-8 font-body text-base font-medium text-on-surface transition-colors duration-normal ease-out hover:bg-surface-dim focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <GoogleIcon />
-        SSO Login (Google Workspace)
+        {t("ssoButton")}
       </button>
 
       {/* Request access */}
       <div className="mt-6 border-t border-neutral-100 pt-6 text-center">
         <p className="text-sm text-text-secondary">
-          Don&apos;t have an account?{" "}
-          <Link
-            href="/request-access"
-            className="font-medium text-primary no-underline transition-colors duration-normal ease-out hover:text-primary-dark hover:underline"
-          >
-            Request access
-          </Link>
+          {t.rich("noAccount", {
+            link: (chunks) => (
+              <Link
+                href="/request-access"
+                className="font-medium text-primary no-underline transition-colors duration-normal ease-out hover:text-primary-dark hover:underline"
+              >
+                {chunks}
+              </Link>
+            ),
+          })}
         </p>
       </div>
     </AuthCard>

@@ -1,0 +1,18 @@
+{
+  "errors": {
+    "notFound": "{resource} introuvable",
+    "conflict": "{resource} existe déjà",
+    "unprocessableEntity": "Impossible de traiter la requête",
+    "unauthorized": "Authentification requise",
+    "forbidden": "Accès refusé"
+  },
+  "resources": {
+    "user": "Utilisateur",
+    "tenant": "Organisation",
+    "donation": "Don",
+    "constituent": "Constituant",
+    "campaign": "Campagne",
+    "grant": "Subvention",
+    "receipt": "Reçu fiscal"
+  }
+}

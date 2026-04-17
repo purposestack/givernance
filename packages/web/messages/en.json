@@ -1,0 +1,133 @@
+{
+  "common": {
+    "appName": "Givernance",
+    "appDescription": "Purpose-built CRM for European nonprofits",
+    "skipToContent": "Skip to content",
+    "actions": {
+      "tryAgain": "Try again",
+      "contactSupport": "Contact support",
+      "backToDashboard": "Back to dashboard",
+      "search": "Search",
+      "or": "or"
+    },
+    "footer": {
+      "platform": "Givernance NPO Platform",
+      "tagline": "Powered by purpose"
+    }
+  },
+  "auth": {
+    "login": {
+      "orgBadge": "Your organisation",
+      "title": "Sign in",
+      "subtitle": "Access your management workspace",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "you@organisation.org",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Your password",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "submit": "Sign in",
+      "forgotPassword": "Forgot password?",
+      "ssoButton": "SSO Login (Google Workspace)",
+      "noAccount": "Don't have an account? <link>Request access</link>",
+      "close": "Close",
+      "errors": {
+        "authFailed": "Authentication failed. Please try again.",
+        "generic": "Something went wrong during sign-in. Please try again.",
+        "sessionExpired": "Session expired. Please try signing in again.",
+        "interrupted": "Authentication session was interrupted. Please try again.",
+        "invalidCredentials": "Invalid credentials. Check your email and password."
+      }
+    },
+    "forgotPassword": {
+      "title": "Forgot password",
+      "subtitle": "Enter your email address to receive a reset link.",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "you@organisation.org",
+      "submit": "Send reset link",
+      "helpText": "An email will be sent with a reset link valid for 1 hour.",
+      "backToLogin": "Back to sign in",
+      "successTitle": "Email sent",
+      "successMessage": "If an account is associated with this address, you will receive a reset link shortly. Check your spam folder."
+    },
+    "resetPassword": {
+      "title": "New password",
+      "subtitle": "Choose a secure password for your account.",
+      "passwordLabel": "New password",
+      "passwordPlaceholder": "Your new password",
+      "confirmLabel": "Confirm password",
+      "confirmPlaceholder": "Confirm your password",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "submit": "Reset password",
+      "backToLogin": "Back to sign in",
+      "securityTitle": "Security requirements",
+      "requirements": {
+        "minLength": "At least 8 characters",
+        "uppercase": "At least one uppercase letter",
+        "number": "At least one number",
+        "special": "At least one special character (!@#$%&*)"
+      },
+      "strength": {
+        "weak": "Weak",
+        "medium": "Medium",
+        "strong": "Strong",
+        "veryStrong": "Very strong"
+      },
+      "expiredTitle": "Link expired",
+      "expiredMessage": "This reset link is no longer valid or has expired.",
+      "expiredAlert": "The reset link expired after 1 hour. Please request a new one.",
+      "requestNewLink": "Request a new link"
+    }
+  },
+  "errors": {
+    "notFound": {
+      "label": "Error 404",
+      "title": "Page not found",
+      "description": "The page you are looking for does not exist or has been moved. Don't worry, we'll get you back on the right path.",
+      "searchPlaceholder": "Search in Givernance…",
+      "searchLabel": "Search in Givernance",
+      "persistsMessage": "If the problem persists, contact our <link>support</link>."
+    },
+    "server": {
+      "title": "An unexpected error",
+      "description": "Something went wrong on our end. Our team has been notified and is working to resolve the issue.",
+      "errorId": "Error ID: {digest}",
+      "dashboardLink": "You can also go back to the <link>dashboard</link>."
+    }
+  },
+  "appShell": {
+    "sidebar": {
+      "mainNav": "Main navigation",
+      "menuLabel": "Main menu",
+      "dashboard": "Dashboard",
+      "settings": "Settings",
+      "orgPlaceholder": "Organisation"
+    },
+    "topbar": {
+      "openMenu": "Open menu",
+      "closeMenu": "Close menu",
+      "breadcrumbDefault": "Dashboard",
+      "searchPlaceholder": "Search...",
+      "searchLabel": "Search",
+      "notifications": "Notifications",
+      "profileOf": "Profile of {name}"
+    },
+    "impersonation": {
+      "browsingAs": "You are browsing as {name}",
+      "endSession": "End session",
+      "expired": "expired",
+      "lessThanMinute": "< 1m",
+      "fallbackUser": "user"
+    }
+  },
+  "dashboard": {
+    "greeting": "Hello{name, select, empty {} other {, {name}}}",
+    "subtitle": "Here is your organisation's activity today.",
+    "placeholder": "Dashboard content under construction (Sprint 4, PR-C1)."
+  },
+  "home": {
+    "title": "Givernance",
+    "subtitle": "Purpose-built CRM for European nonprofits"
+  }
+}
