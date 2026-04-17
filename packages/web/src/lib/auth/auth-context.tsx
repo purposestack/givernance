@@ -136,21 +136,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.user?.impSessionId, getCsrfToken]);
 
   const logout = useCallback(() => {
-    const csrfToken = getCsrfToken();
-    // POST with CSRF token to prevent cross-site session disruption (ADR-011)
-    fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "include",
-      headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
-    }).then((res) => {
-      // Follow the redirect to Keycloak end-session endpoint
-      if (res.redirected) {
-        window.location.href = res.url;
-      } else {
-        window.location.href = "/login";
-      }
-    });
-  }, [getCsrfToken]);
+    // Submit a form POST rather than fetch() so the browser can natively
+    // follow the cross-origin redirect to Keycloak's end-session endpoint.
+    // fetch() rejects here with "Failed to fetch" because the redirect
+    // target (localhost:8080) doesn't return CORS headers for an XHR.
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/api/auth/logout";
+    document.body.appendChild(form);
+    form.submit();
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
