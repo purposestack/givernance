@@ -1,17 +1,6 @@
 "use client";
 
-import {
-  BarChart3,
-  FileBarChart,
-  Hand,
-  Heart,
-  Landmark,
-  Layers,
-  LayoutDashboard,
-  MessageSquare,
-  Settings,
-  Users,
-} from "lucide-react";
+import { LayoutDashboard, Settings } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -30,16 +19,12 @@ interface NavItem {
   icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 }
 
+/**
+ * Navigation items — only features with implemented pages.
+ * Add new entries here as pages are built (issues #41, #42, etc.).
+ */
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/constituents", label: "Constituants", icon: Users },
-  { href: "/donations", label: "Dons & Campagnes", icon: Heart },
-  { href: "/grants", label: "Subventions", icon: Landmark },
-  { href: "/programs", label: "Programmes", icon: Layers },
-  { href: "/volunteers", label: "Bénévoles", icon: Hand },
-  { href: "/impact", label: "Impact", icon: BarChart3 },
-  { href: "/communications", label: "Communications", icon: MessageSquare },
-  { href: "/reports", label: "Rapports", icon: FileBarChart },
   { href: "/settings", label: "Paramètres", icon: Settings },
 ];
 
