@@ -45,8 +45,7 @@ export function AppShell({ children }: AppShellProps) {
 
         <main
           id="main-content"
-          className="flex-1 p-[var(--content-padding)]"
-          style={{ maxWidth: "var(--content-max)", width: "100%" }}
+          className="w-full max-w-[var(--content-max)] flex-1 p-[var(--content-padding)]"
         >
           {children}
         </main>

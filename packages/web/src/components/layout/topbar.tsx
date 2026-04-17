@@ -38,7 +38,7 @@ export function Topbar({ title, onMenuToggle }: TopbarProps) {
       {/* Hamburger — visible on mobile only */}
       <button
         type="button"
-        className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-text transition-colors duration-normal ease-out hover:bg-surface-container-low md:hidden"
+        className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-text transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary md:hidden"
         onClick={onMenuToggle}
         aria-label="Ouvrir le menu"
       >
@@ -47,7 +47,7 @@ export function Topbar({ title, onMenuToggle }: TopbarProps) {
 
       {/* Breadcrumb */}
       <div className="flex min-w-0 items-center gap-2 text-sm text-text-secondary">
-        <span className="truncate font-medium text-text">{title ?? "Dashboard"}</span>
+        <span className="truncate font-medium text-text">{title ?? "Tableau de bord"}</span>
       </div>
 
       {/* Search bar — hidden on mobile */}
@@ -60,13 +60,13 @@ export function Topbar({ title, onMenuToggle }: TopbarProps) {
         <input
           type="text"
           className="h-10 w-full rounded-pill border-0 bg-surface-container-lowest pl-10 pr-14 text-sm text-text placeholder:text-text-muted focus:ring-2 focus:ring-primary focus:outline-none"
-          placeholder="Rechercher..."
           style={{
-            boxShadow: "0 0 0 1px rgba(190, 201, 193, 0.2)",
+            boxShadow: "0 0 0 1px var(--color-border-light)",
           }}
+          placeholder="Rechercher..."
           aria-label="Rechercher"
         />
-        <kbd className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 rounded-sm border border-border bg-neutral-100 px-1.5 py-px font-mono text-xs text-text-muted">
+        <kbd className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 rounded-sm border border-border bg-surface-container-low px-1.5 py-px font-mono text-xs text-text-muted">
           ⌘K
         </kbd>
       </div>
@@ -76,7 +76,7 @@ export function Topbar({ title, onMenuToggle }: TopbarProps) {
         {/* Notifications bell */}
         <button
           type="button"
-          className="relative flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-text"
+          className="relative flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-text focus-visible:ring-2 focus-visible:ring-primary"
           aria-label="Notifications"
         >
           <Bell size={18} aria-hidden="true" />
@@ -93,7 +93,7 @@ export function Topbar({ title, onMenuToggle }: TopbarProps) {
         {/* User avatar */}
         <Link
           href="/settings"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           title={displayName}
           aria-label={`Profil de ${displayName}`}
         >
