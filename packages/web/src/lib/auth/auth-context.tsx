@@ -22,6 +22,10 @@ export interface UserProfile {
   role?: "org_admin" | "user" | "viewer";
   /** RFC 8693 actor claim — present when an admin is impersonating this user. */
   act?: { sub: string };
+  /** Impersonation session ID — for ending the session via DELETE. */
+  impSessionId?: string;
+  /** Mandatory reason for impersonation (e.g. "Support ticket #1234"). */
+  impReason?: string;
 }
 
 interface AuthState {
@@ -37,6 +41,8 @@ interface AuthContextValue extends AuthState {
   hasAppRole: (role: "org_admin" | "user" | "viewer") => boolean;
   /** Whether the current session is an impersonation session. */
   isImpersonating: boolean;
+  /** End impersonation session — calls DELETE /admin/impersonation/:sessionId. */
+  endImpersonation: () => void;
   /** Sign out — clears cookie via API route and redirects. */
   logout: () => void;
   /** Re-fetch the user profile. */
@@ -106,6 +112,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [state.user],
   );
 
+  const endImpersonation = useCallback(() => {
+    const sessionId = state.user?.impSessionId;
+    if (!sessionId) return;
+
+    // DELETE per doc/19-impersonation.md § 4 — ends the session, revokes token
+    fetch(`${API_URL}/admin/impersonation/${sessionId}`, {
+      method: "DELETE",
+      credentials: "include",
+    }).then(() => {
+      // Redirect to admin dashboard after ending impersonation
+      window.location.href = "/dashboard";
+    });
+  }, [state.user?.impSessionId]);
+
   const logout = useCallback(() => {
     // POST to prevent CSRF session disruption via GET requests
     fetch("/api/auth/logout", { method: "POST", credentials: "include" }).then((res) => {
@@ -124,10 +144,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasRole,
       hasAppRole,
       isImpersonating: !!state.user?.act,
+      endImpersonation,
       logout,
       refresh: loadUser,
     }),
-    [state, hasRole, hasAppRole, logout, loadUser],
+    [state, hasRole, hasAppRole, endImpersonation, logout, loadUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

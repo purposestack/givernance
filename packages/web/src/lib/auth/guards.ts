@@ -13,8 +13,12 @@ interface JwtPayload {
   realm_access?: { roles: string[] };
   resource_access?: Record<string, { roles: string[] }>;
   org_id?: string;
-  /** RFC 8693 actor claim — present during impersonation. */
+  /** RFC 8693 actor claim — present during delegation/impersonation. */
   act?: { sub: string };
+  /** Givernance-specific: impersonation session ID (UUIDv7). */
+  imp_session_id?: string;
+  /** Givernance-specific: mandatory reason for impersonation. */
+  imp_reason?: string;
   exp?: number;
 }
 
@@ -41,6 +45,18 @@ function decodeJwtPayload(token: string): JwtPayload | null {
   }
 }
 
+/** Impersonation metadata extracted from JWT claims (doc/19-impersonation.md). */
+export interface ImpersonationInfo {
+  /** Admin UUID (from act.sub). */
+  adminId: string;
+  /** Server-assigned session ID for audit & revocation. */
+  sessionId: string | undefined;
+  /** Mandatory reason (e.g. "Support ticket #1234"). */
+  reason: string | undefined;
+  /** Token expiry as epoch seconds — used for countdown timer. */
+  expiresAt: number | undefined;
+}
+
 /** Auth context returned by guard functions for use in Server Components. */
 export interface ServerAuthContext {
   userId: string;
@@ -51,6 +67,8 @@ export interface ServerAuthContext {
   roles: string[];
   /** RFC 8693 actor claim. */
   act: { sub: string } | undefined;
+  /** Impersonation metadata — present when act claim exists. */
+  impersonation: ImpersonationInfo | undefined;
 }
 
 /**
@@ -78,6 +96,14 @@ export async function requireAuth(): Promise<ServerAuthContext> {
     orgId: payload.org_id,
     roles: payload.realm_access?.roles ?? [],
     act: payload.act,
+    impersonation: payload.act
+      ? {
+          adminId: payload.act.sub,
+          sessionId: payload.imp_session_id,
+          reason: payload.imp_reason,
+          expiresAt: payload.exp,
+        }
+      : undefined,
   };
 }
 
