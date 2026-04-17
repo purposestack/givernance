@@ -2,6 +2,7 @@
 
 import { Bell, Menu, Search } from "lucide-react";
 import Link from "next/link";
+import type { RefObject } from "react";
 
 import { useAuth } from "@/lib/auth";
 
@@ -10,13 +11,17 @@ interface TopbarProps {
   title?: string;
   /** Called when the hamburger menu button is pressed (mobile). */
   onMenuToggle: () => void;
+  /** Whether the mobile sidebar is currently open. */
+  sidebarOpen: boolean;
+  /** Ref to the hamburger button for focus management. */
+  hamburgerRef: RefObject<HTMLButtonElement | null>;
 }
 
 /**
  * Top bar — 80px sticky, glass effect.
  * Matches dashboard.html mockup: breadcrumb left, search center, actions right.
  */
-export function Topbar({ title, onMenuToggle }: TopbarProps) {
+export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: TopbarProps) {
   const { user } = useAuth();
 
   const initials = user
@@ -37,10 +42,13 @@ export function Topbar({ title, onMenuToggle }: TopbarProps) {
     >
       {/* Hamburger — visible on mobile only */}
       <button
+        ref={hamburgerRef}
         type="button"
         className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-text transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary md:hidden"
         onClick={onMenuToggle}
-        aria-label="Ouvrir le menu"
+        aria-label={sidebarOpen ? "Fermer le menu" : "Ouvrir le menu"}
+        aria-expanded={sidebarOpen}
+        aria-controls="sidebar-nav"
       >
         <Menu size={20} aria-hidden="true" />
       </button>

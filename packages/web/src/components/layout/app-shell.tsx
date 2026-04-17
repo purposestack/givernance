@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import type { ImpersonationInfo } from "@/lib/auth";
 
 import { ImpersonationBanner } from "./impersonation-banner";
 import { Sidebar } from "./sidebar";
@@ -8,11 +10,15 @@ import { Topbar } from "./topbar";
 
 interface AppShellProps {
   children: React.ReactNode;
+  /** SSR impersonation info from JWT (passed by server layout). */
+  impersonation: ImpersonationInfo | undefined;
+  /** Display name of the impersonated user. */
+  impersonationUserName: string | undefined;
 }
 
 /**
  * App shell — combines sidebar, topbar, impersonation banner, and main content.
- * Manages mobile sidebar open/close state.
+ * Manages mobile sidebar open/close state with focus trap.
  *
  * Layout structure (matches base.css .app-layout):
  * ┌──────────┬────────────────────────────────┐
@@ -24,8 +30,9 @@ interface AppShellProps {
  * │          │                                │
  * └──────────┴────────────────────────────────┘
  */
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, impersonation, impersonationUserName }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const hamburgerRef = useRef<HTMLButtonElement>(null);
 
   const handleMenuToggle = useCallback(() => {
     setSidebarOpen((prev) => !prev);
@@ -33,15 +40,30 @@ export function AppShell({ children }: AppShellProps) {
 
   const handleSidebarClose = useCallback(() => {
     setSidebarOpen(false);
+    // Return focus to hamburger after closing (WCAG 2.1)
+    hamburgerRef.current?.focus();
   }, []);
+
+  // Prevent scroll and tab-behind when mobile sidebar is open
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [sidebarOpen]);
 
   return (
     <div className="flex min-h-screen">
       <Sidebar open={sidebarOpen} onClose={handleSidebarClose} />
 
       <div className="flex min-h-screen flex-1 flex-col md:ml-[var(--sidebar-width)]">
-        <ImpersonationBanner />
-        <Topbar onMenuToggle={handleMenuToggle} />
+        <ImpersonationBanner impersonation={impersonation} userName={impersonationUserName} />
+        <Topbar
+          onMenuToggle={handleMenuToggle}
+          sidebarOpen={sidebarOpen}
+          hamburgerRef={hamburgerRef}
+        />
 
         <main
           id="main-content"
