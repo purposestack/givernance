@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import {
   APP_URL,
+  ID_TOKEN_COOKIE_NAME,
   JWT_COOKIE_NAME,
   jwtCookieOptions,
   KEYCLOAK_CLIENT_ID,
@@ -108,13 +109,17 @@ export async function GET(request: NextRequest) {
 
     const tokens = (await tokenRes.json()) as {
       access_token: string;
+      id_token?: string;
       refresh_token?: string;
       expires_in?: number;
     };
 
-    // Clean up OIDC flow cookies and set the JWT cookie
+    // Clean up OIDC flow cookies and set the JWT + ID token cookies
     cleanup();
     jar.set(JWT_COOKIE_NAME, tokens.access_token, jwtCookieOptions(tokens.expires_in));
+    if (tokens.id_token) {
+      jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(tokens.expires_in));
+    }
 
     return NextResponse.redirect(new URL("/dashboard", APP_URL).toString());
   } catch (err) {

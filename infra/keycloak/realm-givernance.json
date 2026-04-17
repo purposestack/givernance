@@ -48,6 +48,9 @@
         "http://localhost:3000/*",
         "http://localhost:3001/*"
       ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:3001/*"
+      },
       "webOrigins": [
         "+"
       ],
