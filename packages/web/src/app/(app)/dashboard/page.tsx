@@ -11,7 +11,7 @@ export default async function DashboardPage() {
   return (
     <>
       <div className="mb-8">
-        <h1 className="font-heading text-5xl leading-tight tracking-tight text-on-surface">
+        <h1 className="font-heading text-5xl font-normal leading-tight tracking-tight text-on-surface">
           Bonjour{auth.firstName ? `, ${auth.firstName}` : ""}
         </h1>
         <p className="mt-2 text-lg text-on-surface-variant">

@@ -21,7 +21,7 @@ export function ImpersonationBanner() {
     <div
       className="flex items-center justify-center gap-3 px-4 py-2 text-sm font-medium"
       style={{
-        background: "rgba(134, 71, 0, 0.1)",
+        background: "color-mix(in srgb, var(--color-tertiary) 10%, transparent)",
         color: "var(--color-on-tertiary-fixed-variant)",
         borderBottom: "1px solid var(--color-tertiary-fixed-dim)",
       }}
@@ -35,7 +35,7 @@ export function ImpersonationBanner() {
       <button
         type="button"
         onClick={logout}
-        className="ml-2 rounded-md px-3 py-1 text-xs font-semibold transition-colors duration-normal ease-out"
+        className="ml-2 rounded-md px-3 py-1 text-xs font-semibold transition-colors duration-normal ease-out focus-visible:ring-2 focus-visible:ring-offset-2"
         style={{
           background: "var(--color-tertiary)",
           color: "var(--color-on-tertiary)",
