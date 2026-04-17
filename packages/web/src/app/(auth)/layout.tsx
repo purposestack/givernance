@@ -4,7 +4,10 @@
  */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6">
+    <main
+      id="main-content"
+      className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6"
+    >
       {children}
 
       {/* Footer — shared across all auth pages */}
@@ -13,6 +16,6 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <span className="mx-1 text-neutral-300">&mdash;</span>
         <span>Powered by purpose</span>
       </footer>
-    </div>
+    </main>
   );
 }
