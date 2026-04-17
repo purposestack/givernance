@@ -10,7 +10,10 @@ import { createHash, randomBytes } from "node:crypto";
 export const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? "http://localhost:8080";
 export const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM ?? "givernance";
 export const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID ?? "givernance-web";
-export const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET || process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_SECRET || "ci-test-secret-do-not-use-in-production";
+export const KEYCLOAK_CLIENT_SECRET =
+  process.env.KEYCLOAK_CLIENT_SECRET ||
+  process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_SECRET ||
+  "ci-test-secret-do-not-use-in-production";
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 /**
