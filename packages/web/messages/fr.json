@@ -95,7 +95,8 @@
       "menuLabel": "Menu principal",
       "dashboard": "Dashboard",
       "settings": "Paramètres",
-      "orgPlaceholder": "Association"
+      "orgPlaceholder": "Association",
+      "signOut": "Se déconnecter"
     },
     "topbar": {
       "openMenu": "Ouvrir le menu",

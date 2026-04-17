@@ -95,7 +95,8 @@
       "menuLabel": "Main menu",
       "dashboard": "Dashboard",
       "settings": "Settings",
-      "orgPlaceholder": "Organisation"
+      "orgPlaceholder": "Organisation",
+      "signOut": "Sign out"
     },
     "topbar": {
       "openMenu": "Open menu",

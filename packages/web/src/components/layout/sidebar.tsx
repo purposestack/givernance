@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, Settings } from "lucide-react";
+import { LayoutDashboard, LogOut, Settings } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -40,7 +40,7 @@ interface SidebarProps {
  */
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const t = useTranslations("appShell.sidebar");
 
   const initials = user
@@ -137,6 +137,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </div>
               <div className="truncate text-xs text-on-surface-variant">{user?.email}</div>
             </div>
+            <button
+              type="button"
+              onClick={logout}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-on-surface-variant transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-on-surface focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              aria-label={t("signOut")}
+              title={t("signOut")}
+            >
+              <LogOut size={16} aria-hidden="true" />
+            </button>
           </div>
         </div>
       </aside>
