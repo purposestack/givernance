@@ -8,6 +8,7 @@ import Fastify, { type FastifyError } from "fastify";
 import { env } from "./env.js";
 import { redis } from "./lib/redis.js";
 import { PROBLEM_JSON, problemDetail } from "./lib/schemas.js";
+import { impersonationRoutes } from "./modules/admin/impersonation-routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { campaignRoutes } from "./modules/campaigns/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
@@ -46,8 +47,9 @@ export async function createServer() {
 
   // --- Core plugins ---
   await app.register(cors, {
-    origin: env.CORS_ORIGIN,
+    origin: env.APP_URL,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
 
   await app.register(rateLimit, {
@@ -103,6 +105,7 @@ export async function createServer() {
   await app.register(stripeWebhookRoute, { prefix: "/v1" });
   await app.register(publicDonationRoutes, { prefix: "/v1" });
   await app.register(reportsRoutes, { prefix: "/v1" });
+  await app.register(impersonationRoutes, { prefix: "/v1" });
 
   return app;
 }

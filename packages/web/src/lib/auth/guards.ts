@@ -1,8 +1,10 @@
 import "server-only";
 
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { JWT_COOKIE_NAME } from "./keycloak";
+
+import { JWT_COOKIE_NAME, KEYCLOAK_REALM, KEYCLOAK_URL } from "./keycloak";
 
 /** Minimal JWT payload shape for Keycloak access tokens. */
 interface JwtPayload {
@@ -23,23 +25,23 @@ interface JwtPayload {
 }
 
 /**
- * Decode a JWT payload without verification.
- *
- * In Phase 1, signature verification is handled by the API server — the
- * frontend trusts the httpOnly cookie set by the callback route. Full JWT
- * verification (JWKS fetching) will be added when the auth middleware moves
- * to Edge-compatible jose library in Phase 2.
+ * JWKS remote key set — cached by jose for the JWK Set TTL.
+ * Uses Keycloak's standard OIDC certs endpoint.
  */
-function decodeJwtPayload(token: string): JwtPayload | null {
+const JWKS_URL = new URL(`${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/certs`);
+const jwks = createRemoteJWKSet(JWKS_URL);
+
+/**
+ * Verify and decode a JWT using Keycloak's JWKS.
+ * Returns the typed payload on success, null on any failure
+ * (expired, invalid signature, malformed).
+ */
+async function verifyJwt(token: string): Promise<JwtPayload | null> {
   try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const base64 = parts[1];
-    if (!base64) return null;
-    const payload = JSON.parse(atob(base64)) as JwtPayload;
-    // Check expiration
-    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
-    return payload;
+    const { payload } = await jwtVerify(token, jwks, {
+      issuer: `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}`,
+    });
+    return payload as unknown as JwtPayload;
   } catch {
     return null;
   }
@@ -73,6 +75,7 @@ export interface ServerAuthContext {
 
 /**
  * Require authentication in a Server Component or Route Handler.
+ * Verifies the JWT signature against Keycloak's JWKS before trusting claims.
  * Redirects to /login if no valid JWT cookie is found.
  */
 export async function requireAuth(): Promise<ServerAuthContext> {
@@ -83,7 +86,7 @@ export async function requireAuth(): Promise<ServerAuthContext> {
     redirect("/login");
   }
 
-  const payload = decodeJwtPayload(token);
+  const payload = await verifyJwt(token);
   if (!payload) {
     redirect("/login");
   }

@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../../lib/db.js";
 import { requireAdminSecret } from "../../lib/guards.js";
+import { resolveTranslations } from "../../lib/i18n.js";
 import {
   DataArrayResponseNoPagination,
   DataResponse,
@@ -105,11 +106,12 @@ export async function tenantRoutes(app: FastifyInstance) {
       const [tenant] = await db.select().from(tenants).where(eq(tenants.id, id));
 
       if (!tenant) {
+        const t = resolveTranslations(request);
         return reply.status(404).send({
           type: "https://httpproblems.com/http-status/404",
           title: "Not Found",
           status: 404,
-          detail: "Tenant not found",
+          detail: t("errors.notFound", { resource: t("resources.tenant") }),
         });
       }
 
@@ -133,11 +135,12 @@ export async function tenantRoutes(app: FastifyInstance) {
       const [deleted] = await db.delete(tenants).where(eq(tenants.id, id)).returning();
 
       if (!deleted) {
+        const t = resolveTranslations(request);
         return reply.status(404).send({
           type: "https://httpproblems.com/http-status/404",
           title: "Not Found",
           status: 404,
-          detail: "Tenant not found",
+          detail: t("errors.notFound", { resource: t("resources.tenant") }),
         });
       }
 

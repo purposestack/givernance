@@ -22,6 +22,8 @@ export interface UserProfile {
   role?: "org_admin" | "user" | "viewer";
   /** RFC 8693 actor claim — present when an admin is impersonating this user. */
   act?: { sub: string };
+  /** Organisation name for display (from GET /v1/users/me response). */
+  orgName?: string;
   /** Impersonation session ID — for ending the session via DELETE. */
   impSessionId?: string;
   /** Mandatory reason for impersonation (e.g. "Support ticket #1234"). */
@@ -112,23 +114,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [state.user],
   );
 
+  /** Read CSRF token from <meta name="csrf-token"> set by root layout (ADR-011). */
+  const getCsrfToken = useCallback((): string | undefined => {
+    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content;
+  }, []);
+
   const endImpersonation = useCallback(() => {
     const sessionId = state.user?.impSessionId;
     if (!sessionId) return;
 
+    const csrfToken = getCsrfToken();
     // DELETE per doc/19-impersonation.md § 4 — ends the session, revokes token
     fetch(`${API_URL}/admin/impersonation/${sessionId}`, {
       method: "DELETE",
       credentials: "include",
+      headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
     }).then(() => {
       // Redirect to admin dashboard after ending impersonation
       window.location.href = "/dashboard";
     });
-  }, [state.user?.impSessionId]);
+  }, [state.user?.impSessionId, getCsrfToken]);
 
   const logout = useCallback(() => {
-    // POST to prevent CSRF session disruption via GET requests
-    fetch("/api/auth/logout", { method: "POST", credentials: "include" }).then((res) => {
+    const csrfToken = getCsrfToken();
+    // POST with CSRF token to prevent cross-site session disruption (ADR-011)
+    fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
+    }).then((res) => {
       // Follow the redirect to Keycloak end-session endpoint
       if (res.redirected) {
         window.location.href = res.url;
@@ -136,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.location.href = "/login";
       }
     });
-  }, []);
+  }, [getCsrfToken]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
