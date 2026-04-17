@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowLeft, Check, Circle, Eye, EyeOff, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
@@ -78,9 +79,7 @@ function ResetPasswordForm() {
           className="mb-5 flex items-start gap-3 rounded-lg border border-[rgba(186,26,26,0.12)] bg-error-container p-3 text-sm text-on-error-container"
           role="alert"
         >
-          <span className="shrink-0 text-md" aria-hidden="true">
-            &#9888;
-          </span>
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span className="flex-1">
             The reset link expired after 1 hour. Please request a new one.
           </span>
@@ -98,7 +97,7 @@ function ResetPasswordForm() {
             href="/login"
             className="text-sm font-medium text-primary no-underline transition-colors hover:text-primary-dark hover:underline"
           >
-            &larr; Back to sign in
+            <ArrowLeft className="inline h-3.5 w-3.5" /> Back to sign in
           </Link>
         </div>
       </AuthCard>
@@ -162,9 +161,9 @@ function ResetPasswordForm() {
               type="button"
               aria-label={showPassword ? "Hide password" : "Show password"}
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 text-sm leading-none text-text-muted transition-colors hover:text-text-secondary"
+              className="absolute right-3 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 leading-none text-text-muted transition-colors hover:text-text-secondary"
             >
-              {showPassword ? "Hide" : "Show"}
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
 
@@ -209,15 +208,15 @@ function ResetPasswordForm() {
               type="button"
               aria-label={showConfirm ? "Hide password" : "Show password"}
               onClick={() => setShowConfirm((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 text-sm leading-none text-text-muted transition-colors hover:text-text-secondary"
+              className="absolute right-3 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 leading-none text-text-muted transition-colors hover:text-text-secondary"
             >
-              {showConfirm ? "Hide" : "Show"}
+              {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
         </div>
 
         {/* Password rules checklist */}
-        <div className="rounded-md bg-neutral-100 p-3">
+        <div className="rounded-md bg-neutral-100 px-4 py-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
             Security requirements
           </div>
@@ -228,10 +227,8 @@ function ResetPasswordForm() {
                 rule.valid ? "text-primary-dark" : "text-text-secondary"
               }`}
             >
-              <span
-                className={`w-4 shrink-0 text-center text-[10px] ${rule.valid ? "text-primary" : ""}`}
-              >
-                {rule.valid ? "\u2713" : "\u25CB"}
+              <span className={`w-4 shrink-0 text-center ${rule.valid ? "text-primary" : ""}`}>
+                {rule.valid ? <Check className="h-3 w-3" /> : <Circle className="h-2.5 w-2.5" />}
               </span>
               <span>{rule.label}</span>
             </div>
@@ -264,7 +261,7 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<span role="status">Loading...</span>}>
       <ResetPasswordForm />
     </Suspense>
   );
