@@ -42,7 +42,9 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-givernance}
       KC_DB_USERNAME: ${POSTGRES_USER:-givernance}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-givernance_dev}
-    command: start-dev
+    command: start-dev --import-realm
+    volumes:
+      - ./infra/keycloak/realm-givernance.json:/opt/keycloak/data/import/realm-givernance.json:ro
     depends_on:
       postgres:
         condition: service_healthy
