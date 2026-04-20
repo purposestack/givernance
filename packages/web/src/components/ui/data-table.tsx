@@ -25,6 +25,8 @@ export interface DataTablePagination {
 }
 
 export interface DataTableProps<TData> {
+  /** Optional callback fired when a row is clicked */
+  onRowClick?: (row: import("@tanstack/react-table").Row<TData>) => void;
   columns: ColumnDef<TData, unknown>[];
   data: TData[];
   pagination: DataTablePagination;
@@ -90,6 +92,7 @@ function HeaderCell<TData>({ header, padding }: HeaderCellProps<TData>) {
 }
 
 export function DataTable<TData>({
+  onRowClick,
   columns,
   data,
   pagination,
@@ -201,7 +204,11 @@ export function DataTable<TData>({
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-t border-outline-variant transition-colors duration-normal ease-out hover:bg-surface-container-low"
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  className={cn(
+                    "border-t border-outline-variant transition-colors duration-normal ease-out hover:bg-surface-container-low",
+                    onRowClick && "cursor-pointer",
+                  )}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className={cn("px-5 text-sm text-on-surface", rowPadding)}>
