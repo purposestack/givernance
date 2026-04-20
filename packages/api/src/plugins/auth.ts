@@ -23,10 +23,10 @@ async function auth(app: FastifyInstance) {
     secret: jwtSecret,
     cookie: {
       cookieName: "givernance_jwt",
-      signed: false
-    }
+      signed: false,
+    },
   });
-  await app.register(require("@fastify/cookie"));
+  await app.register((await import("@fastify/cookie")).default);
 
   /** Extract auth context from verified JWT claims */
   app.decorateRequest("auth", null);
