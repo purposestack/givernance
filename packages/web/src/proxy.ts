@@ -41,7 +41,11 @@ export function proxy(request: NextRequest) {
     if (pathname.startsWith("/login") && jwt) {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
-    return NextResponse.next();
+    const requestHeaders = new Headers(request.headers);
+    if (jwt) {
+      requestHeaders.set("Authorization", `Bearer ${jwt}`);
+    }
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   // Protect authenticated routes — redirect to login with return URL
@@ -51,7 +55,11 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  if (jwt) {
+    requestHeaders.set("Authorization", `Bearer ${jwt}`);
+  }
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {
