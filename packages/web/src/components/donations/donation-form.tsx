@@ -581,10 +581,30 @@ function parseAmount(raw: string): number | null {
   return Math.round(parsed * 100);
 }
 
+function parseDateString(val: string): string | undefined {
+  if (!val) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return new Date(`${val}T00:00:00Z`).toISOString();
+
+  // Try parsing DD/MM/YYYY
+  const parts = val.split("/");
+  if (parts.length === 3) {
+    // assume DD/MM/YYYY
+    const [d, m, y] = parts;
+    const yStr = y.length === 2 ? `20${y}` : y;
+    const iso = `${yStr}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T00:00:00Z`;
+    const dt = new Date(iso);
+    if (!Number.isNaN(dt.getTime())) return dt.toISOString();
+  }
+
+  // Fallback to normal Date parsing
+  const dt = new Date(val);
+  if (!Number.isNaN(dt.getTime())) return dt.toISOString();
+
+  return undefined;
+}
+
 function toApiPayload(values: DonationFormValues): DonationCreateInput {
-  const donatedAt = values.donatedAt
-    ? new Date(`${values.donatedAt}T00:00:00Z`).toISOString()
-    : undefined;
+  const donatedAt = parseDateString(values.donatedAt);
   const allocations = values.allocations
     .map((a) => ({ fundId: a.fundId.trim(), amountCents: a.amountCents ?? 0 }))
     .filter((a) => a.fundId !== "" && a.amountCents > 0);
@@ -629,7 +649,8 @@ function buildResolver(): Resolver<DonationFormValues> {
       cleaned.paymentRef = values.paymentRef.trim();
     }
     if (values.donatedAt) {
-      cleaned.donatedAt = new Date(`${values.donatedAt}T00:00:00Z`).toISOString();
+      const parsed = parseDateString(values.donatedAt);
+      if (parsed) cleaned.donatedAt = parsed;
     }
     const allocations = values.allocations
       .filter((a) => a.fundId.trim() !== "" && a.amountCents !== null && a.amountCents > 0)
