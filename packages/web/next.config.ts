@@ -1,10 +1,9 @@
-import { loadEnvConfig } from "@next/env";
-import { join } from "path";
-// Load environment variables from the monorepo root (.env)
-loadEnvConfig(join(process.cwd(), "../../"));
-
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+
+// Env vars are loaded from the monorepo root .env by dotenv-cli in the dev
+// script (see packages/web/package.json). For `next build` in CI, env vars
+// come from the CI runner directly.
 
 const nextConfig: NextConfig = {
   /** Consume shared workspace packages via TypeScript source. */
