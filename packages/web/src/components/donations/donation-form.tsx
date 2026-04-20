@@ -605,7 +605,7 @@ function parseDateString(val: string): string | undefined {
 
 function toApiPayload(values: DonationFormValues): DonationCreateInput {
   const donatedAt = parseDateString(values.donatedAt);
-  const allocations = values.allocations
+  const allocations = (values.allocations || [])
     .map((a) => ({ fundId: a.fundId.trim(), amountCents: a.amountCents ?? 0 }))
     .filter((a) => a.fundId !== "" && a.amountCents > 0);
 
@@ -652,7 +652,7 @@ function buildResolver(): Resolver<DonationFormValues> {
       const parsed = parseDateString(values.donatedAt);
       if (parsed) cleaned.donatedAt = parsed;
     }
-    const allocations = values.allocations
+    const allocations = (values.allocations || [])
       .filter((a) => a.fundId.trim() !== "" && a.amountCents !== null && a.amountCents > 0)
       .map((a) => ({ fundId: a.fundId.trim(), amountCents: a.amountCents as number }));
     if (allocations.length > 0) {
