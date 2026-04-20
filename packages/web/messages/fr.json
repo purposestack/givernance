@@ -152,6 +152,108 @@
     },
     "actions": {
       "new": "Nouveau don"
+    },
+    "form": {
+      "createTitle": "Enregistrer un don",
+      "createSubtitle": "Ajoutez manuellement un don — chèque, virement, espèces ou carte.",
+      "breadcrumbNew": "Nouveau don",
+      "sections": {
+        "donor": {
+          "title": "Donateur",
+          "description": "Qui a effectué ce don ?"
+        },
+        "donation": {
+          "title": "Informations du don",
+          "description": "Montant, moyen de paiement et référence."
+        },
+        "attribution": {
+          "title": "Attribution",
+          "description": "Campagne et répartition des fonds (optionnel)."
+        }
+      },
+      "fields": {
+        "constituent": "Constituant",
+        "constituentPlaceholder": "Rechercher un donateur…",
+        "constituentEmpty": "Aucun constituant ne correspond à votre recherche.",
+        "constituentLoading": "Chargement…",
+        "amount": "Montant",
+        "amountPlaceholder": "0,00",
+        "currency": "Devise",
+        "donatedAt": "Date du don",
+        "paymentMethod": "Moyen de paiement",
+        "paymentMethodPlaceholder": "Choisissez un moyen de paiement",
+        "paymentRef": "Référence externe",
+        "paymentRefPlaceholder": "Ex. : VIR-2026-0342",
+        "paymentRefHint": "Référence bancaire, numéro de chèque, etc.",
+        "campaignId": "Campagne",
+        "campaignIdPlaceholder": "Aucune campagne",
+        "allocations": "Répartition des fonds",
+        "allocationFund": "Fonds (UUID)",
+        "allocationFundPlaceholder": "UUID du fonds",
+        "allocationAmount": "Montant",
+        "allocationRemove": "Supprimer la ligne",
+        "allocationAdd": "Ajouter une ligne",
+        "allocationsHint": "Les répartitions doivent totaliser le montant du don. Laissez vide pour un don non-alloué."
+      },
+      "paymentMethods": {
+        "wire": "Virement bancaire",
+        "cheque": "Chèque",
+        "card": "Carte bancaire",
+        "sepa": "Prélèvement SEPA",
+        "cash": "Espèces",
+        "other": "Autre"
+      },
+      "actions": {
+        "cancel": "Annuler",
+        "submitCreate": "Enregistrer le don",
+        "submitting": "Enregistrement…"
+      },
+      "errors": {
+        "validation": "Corrigez les champs en surbrillance.",
+        "generic": "Une erreur est survenue lors de l'enregistrement. Réessayez.",
+        "allocationSumMismatch": "La somme des répartitions doit égaler le montant total.",
+        "constituentRequired": "Sélectionnez un constituant pour ce don.",
+        "amountInvalid": "Le montant doit être supérieur à zéro."
+      },
+      "success": {
+        "created": "Don enregistré."
+      }
+    },
+    "detail": {
+      "breadcrumbRoot": "Tableau de bord",
+      "breadcrumbDonations": "Dons",
+      "title": "Don",
+      "anonymousDonor": "Donateur anonyme",
+      "notRecorded": "—",
+      "infoSection": "Informations du don",
+      "allocationsSection": "Allocation aux fonds",
+      "fields": {
+        "donor": "Donateur",
+        "date": "Date",
+        "amount": "Montant",
+        "paymentMethod": "Moyen de paiement",
+        "paymentRef": "Référence",
+        "campaign": "Campagne",
+        "fiscalYear": "Année fiscale",
+        "recordedAt": "Enregistré"
+      },
+      "allocations": {
+        "columnFund": "Fonds",
+        "columnAmount": "Montant",
+        "columnPercent": "%",
+        "total": "Total",
+        "empty": "Aucune répartition enregistrée pour ce don."
+      },
+      "actions": {
+        "back": "Retour aux dons",
+        "previewReceipt": "Aperçu du reçu",
+        "generatingReceipt": "Génération du reçu…"
+      },
+      "receipt": {
+        "pending": "Le reçu est encore en cours de génération.",
+        "error": "Impossible d'ouvrir le reçu. Réessayez.",
+        "missing": "Aucun reçu disponible pour l'instant."
+      }
     }
   },
   "constituents": {

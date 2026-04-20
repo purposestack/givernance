@@ -25,6 +25,12 @@ export const ConstituentCreateSchema = Type.Object({
 /** Schema for updating a constituent (all fields optional) */
 export const ConstituentUpdateSchema = Type.Partial(ConstituentCreateSchema);
 
+/** Schema for a fund allocation within a donation */
+export const DonationAllocationSchema = Type.Object({
+  fundId: Type.String({ format: "uuid" }),
+  amountCents: Type.Integer({ exclusiveMinimum: 0 }),
+});
+
 /** Schema for creating a new donation */
 export const DonationCreateSchema = Type.Object({
   constituentId: Type.String({ format: "uuid" }),
@@ -47,6 +53,7 @@ export const DonationCreateSchema = Type.Object({
   paymentRef: Type.Optional(Type.String({ maxLength: 255 })),
   donatedAt: Type.Optional(Type.String({ format: "date-time" })),
   fiscalYear: Type.Optional(Type.Integer()),
+  allocations: Type.Optional(Type.Array(DonationAllocationSchema)),
 });
 
 /** Schema for list query parameters */
@@ -61,6 +68,7 @@ export const PaginationQuerySchema = Type.Object({
 export type ConstituentCreate = Static<typeof ConstituentCreateSchema>;
 export type ConstituentUpdate = Static<typeof ConstituentUpdateSchema>;
 export type DonationCreate = Static<typeof DonationCreateSchema>;
+export type DonationAllocation = Static<typeof DonationAllocationSchema>;
 export type PaginationQuery = Static<typeof PaginationQuerySchema>;
 
 /** Validate, coerce, and apply defaults — throws on failure */

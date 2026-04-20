@@ -46,8 +46,53 @@ export interface DonationListQuery {
   amountMax?: number;
 }
 
+export interface DonationAllocation {
+  id: string;
+  fundId: string;
+  amountCents: number;
+}
+
+export interface DonationAllocationInput {
+  fundId: string;
+  amountCents: number;
+}
+
+export interface DonationDetail extends Donation {
+  constituent: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string | null;
+  };
+  allocations: DonationAllocation[];
+}
+
+export interface DonationDetailResponse {
+  data: DonationDetail;
+}
+
+export interface DonationCreateInput {
+  constituentId: string;
+  amountCents: number;
+  currency?: string;
+  campaignId?: string;
+  paymentMethod?: string;
+  paymentRef?: string;
+  donatedAt?: string;
+  fiscalYear?: number;
+  allocations?: DonationAllocationInput[];
+}
+
+export interface DonationReceiptUrl {
+  url: string;
+}
+
 export function donationDonorName(row: DonationListRow): string | null {
   if (!row.constituent) return null;
   const name = `${row.constituent.firstName} ${row.constituent.lastName}`.trim();
   return name.length > 0 ? name : null;
+}
+
+export function donationDetailDonorName(detail: DonationDetail): string {
+  return `${detail.constituent.firstName} ${detail.constituent.lastName}`.trim();
 }
