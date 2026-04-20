@@ -2,6 +2,28 @@
 
 import { FormatRegistry } from "@sinclair/typebox";
 
+if (!FormatRegistry.Has("email")) {
+  FormatRegistry.Set("email", (value: string) =>
+    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value),
+  );
+}
+
+("use client");
+
+// We must implement the email regex format manually for TypeBox in the browser if we don"t import the full formats plugin.
+if (!FormatRegistry.Has("email")) {
+  FormatRegistry.Set("email", (value: string) =>
+    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value),
+  );
+}
+
+// We must implement the email regex format manually for TypeBox in the browser if we don"t import the full formats plugin.
+if (!FormatRegistry.Has("email")) {
+  FormatRegistry.Set("email", (value: string) =>
+    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value),
+  );
+}
+
 // We must implement the email regex format manually for TypeBox in the browser if we don"t import the full formats plugin.
 if (!FormatRegistry.Has("email")) {
   FormatRegistry.Set("email", (value: string) =>
