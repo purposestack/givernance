@@ -120,7 +120,49 @@
   "dashboard": {
     "greeting": "Bonjour{name, select, empty {} other {, {name}}}",
     "subtitle": "Voici l'activité de votre organisation aujourd'hui.",
-    "placeholder": "Contenu du tableau de bord en construction (Sprint 4, PR-C1)."
+    "viewAll": "Tout voir",
+    "stats": {
+      "ariaLabel": "Indicateurs clés de l'organisation",
+      "totalRaised": "Total collecté",
+      "totalRaisedHint": "Basé sur les derniers dons enregistrés.",
+      "activeCampaigns": "Campagnes actives",
+      "activeCampaignsHint": "Campagnes actuellement marquées comme actives.",
+      "donors": "Donateurs",
+      "newDonorsThisMonth": "{count, plural, =0 {Aucun nouveau donateur ce mois-ci} one {# nouveau donateur ce mois-ci} other {# nouveaux donateurs ce mois-ci}}",
+      "grantDeadlines": "Échéances de subventions",
+      "noGrantDeadlinesValue": "0",
+      "noGrantDeadlinesHint": "Le suivi des subventions arrivera dans un sprint ultérieur."
+    },
+    "recentDonations": {
+      "title": "Dons récents",
+      "empty": "Aucun don enregistré pour l'instant.",
+      "anonymous": "Donateur anonyme"
+    },
+    "campaigns": {
+      "title": "Campagnes actives",
+      "empty": "Aucune campagne active pour l'instant.",
+      "activeSince": "Active depuis le {date}",
+      "progressWithGoal": "{progress}% de {goal}",
+      "progressWithoutGoal": "{donations, plural, =0 {Aucun don pour l'instant} one {# don enregistré} other {# dons enregistrés}}"
+    },
+    "quickActions": {
+      "title": "Actions rapides",
+      "description": "Créez le prochain enregistrement sans quitter le tableau de bord.",
+      "newDonation": "Nouveau don",
+      "newConstituent": "Nouveau constituant",
+      "newCampaign": "Nouvelle campagne"
+    },
+    "aiSuggestion": {
+      "title": "Suggestion IA",
+      "body": "Passez en revue les donateurs qui ont donné au printemps dernier mais pas cette année. Un court message personnel peut relancer l'élan avant la prochaine campagne."
+    },
+    "onboarding": {
+      "title": "Checklist d'intégration",
+      "description": "Configurez les bases d'un espace de collecte opérationnel.",
+      "addConstituents": "Ajouter vos premiers constituants",
+      "recordDonation": "Enregistrer votre premier don",
+      "launchCampaign": "Lancer une campagne active"
+    }
   },
   "donations": {
     "title": "Dons",

@@ -118,9 +118,51 @@
     }
   },
   "dashboard": {
-    "greeting": "Hello{name, select, empty {} other {, {name}}}",
+    "greeting": "Good Morning{name, select, empty {} other {, {name}}}",
     "subtitle": "Here is your organisation's activity today.",
-    "placeholder": "Dashboard content under construction (Sprint 4, PR-C1)."
+    "viewAll": "View all",
+    "stats": {
+      "ariaLabel": "Organisation key performance indicators",
+      "totalRaised": "Total raised",
+      "totalRaisedHint": "Based on the latest recorded donations.",
+      "activeCampaigns": "Active campaigns",
+      "activeCampaignsHint": "Campaigns currently marked active.",
+      "donors": "Donors",
+      "newDonorsThisMonth": "{count, plural, =0 {No new donors this month} one {# new donor this month} other {# new donors this month}}",
+      "grantDeadlines": "Grant deadlines",
+      "noGrantDeadlinesValue": "0",
+      "noGrantDeadlinesHint": "Grant tracking is coming in a later sprint."
+    },
+    "recentDonations": {
+      "title": "Recent donations",
+      "empty": "No donations recorded yet.",
+      "anonymous": "Anonymous donor"
+    },
+    "campaigns": {
+      "title": "Active campaigns",
+      "empty": "No active campaigns yet.",
+      "activeSince": "Active since {date}",
+      "progressWithGoal": "{progress}% of {goal}",
+      "progressWithoutGoal": "{donations, plural, =0 {No donations yet} one {# donation recorded} other {# donations recorded}}"
+    },
+    "quickActions": {
+      "title": "Quick actions",
+      "description": "Create the next record without leaving the dashboard.",
+      "newDonation": "New Donation",
+      "newConstituent": "New Constituent",
+      "newCampaign": "New Campaign"
+    },
+    "aiSuggestion": {
+      "title": "AI suggestion",
+      "body": "Review donors who gave last spring but have not contributed this year. A short personal note could recover momentum before the next campaign."
+    },
+    "onboarding": {
+      "title": "Onboarding checklist",
+      "description": "Set up the basics for a working fundraising workspace.",
+      "addConstituents": "Add your first constituents",
+      "recordDonation": "Record your first donation",
+      "launchCampaign": "Launch an active campaign"
+    }
   },
   "donations": {
     "title": "Donations",
