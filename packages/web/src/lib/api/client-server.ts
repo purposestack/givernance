@@ -15,7 +15,7 @@ export async function createServerApiClient(): Promise<ApiClient> {
   const token = cookieStore.get("givernance_jwt")?.value;
 
   return new ApiClient({
-    baseUrl: process.env.API_URL ?? "http://localhost:3001",
+    baseUrl: process.env.API_URL ?? "http://127.0.0.1:4000",
     defaultHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 }
