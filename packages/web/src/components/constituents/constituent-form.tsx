@@ -1,4 +1,13 @@
-"use client";
+import { FormatRegistry } from "@sinclair/typebox/custom";
+
+// We must implement the email regex format manually for TypeBox in the browser if we don"t import the full formats plugin.
+if (!FormatRegistry.Has("email")) {
+  FormatRegistry.Set("email", (value) =>
+    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value),
+  );
+}
+
+("use client");
 
 import { ConstituentCreateSchema, ConstituentUpdateSchema } from "@givernance/shared/validators";
 import { typeboxResolver } from "@hookform/resolvers/typebox";
