@@ -433,24 +433,24 @@ Volunteers > Mon planning (vue mobile prioritaire)
 
 ---
 
-### 4.2 User Journey — Onboarding complet d'une nouvelle organisation + gestion quotidienne
+### 4.2 User Journey — Provisioning par Givernance puis configuration admin + gestion quotidienne
+
+> **Note d'architecture (Spike #80 — 2026-04)**: l'ancien "wizard d'onboarding" en 5 étapes auto-servi est **supprimé**. La création du tenant et la configuration OIDC (Entra ID, Okta, Google Workspace) sont désormais effectuées par un **Givernance Super Admin** dans le back-office *avant* que Marc ne reçoive son accès. Marc ne crée donc plus l'organisation ; il se connecte via SSO, son compte `users` est créé Just-In-Time (JIT) à partir des claims du JWT Keycloak (`sub`, `email`, `org_id`, `role`), puis il poursuit la configuration fonctionnelle (fonds, codes GL, rôles, invitations). La résidence des données n'est plus un choix utilisateur : elle est centralisée par ADR-009 (Scaleway Managed PostgreSQL EU, isolation RLS). Voir `21-authentication-sso.md` §2 pour les détails.
 
 ```mermaid
 flowchart TD
-    A([🆕 Jour 1 — Onboarding\nNouvelle organisation]) --> B[Settings > Organisation\nWizard de configuration]
-    B --> C[Import CSV\nconstituants depuis SF]
-    C --> D{Doublons détectés ?}
-    D -->|Oui| E[Interface de fusion\nsemi-automatique]
-    D -->|Non| F[Import validé\nX constituants migrés]
-    E --> F
-    F --> G[Configuration\nfunds & comptes GL]
-    G --> H[Configuration\nnominal codes → comptable]
-    H --> I[Gestion des rôles\net permissions]
+    A0([🏢 J-1 — Provisioning\nGivernance Super Admin\nconfigure le tenant + IdP Entra ID]) --> A
+    A([🆕 J1 9h00 — Marc se connecte\nvia SSO Entra ID]) --> A1[JIT provisioning\ncompte `users` créé\ndepuis le JWT]
+    A1 --> G[Settings > Finance > Fonds\n(configuration fonctionnelle)]
+    G --> H[Settings > Finance > Codes GL\nnominal codes → comptable]
+    H --> I[Settings > Utilisateurs > Rôles\n& permissions]
     I --> J{Sofia a besoin\nd'un accès Grants ?}
     J -->|Non| K[Rôle : Fundraising Manager\npas accès Programs]
     J -->|Oui| L[Rôle custom\nFundraising + Grants]
-    K --> M([📅 Semaine 1 — Quotidien])
-    L --> M
+    K --> K1[Confirmer la liste des utilisateurs\nauprès du Super Admin]
+    L --> K1
+    K1 --> K2[Les utilisateurs SSO\nsont ajoutés au groupe\nKeycloak du tenant]
+    K2 --> M([📅 Semaine 1 — Quotidien])
     M --> N{Demande RGPD\nreçue par email ?}
     N -->|Accès| O[RGPD > Accès >\nExporter dossier]
     N -->|Effacement| P[RGPD > Effacement >\nWizard anonymisation]
@@ -462,17 +462,18 @@ flowchart TD
     U --> V([✅ Organisation opérationnelle])
 ```
 
+> **Migration Salesforce / CSV**: l'import des constituants depuis Salesforce ou un CSV n'est **plus une étape d'onboarding**. Il est géré séparément dans l'epic Migration (voir `05-integration-migration.md`) et peut être déclenché à tout moment après la connexion SSO, via `Settings > Import > Depuis Salesforce`.
+
 #### Tableau du journey étape par étape — Onboarding J1 à J5
 
 | # | Moment | Écran Givernance | Action | Émotion | Friction potentielle | Moment de joie |
 |---|---|---|---|---|---|---|
-| 1 | **J1 9h00** — Démarrage de l'onboarding | `Settings > Organisation > Wizard` | Marc suit le wizard 5 étapes : infos org, RGPD, fonds, GL, utilisateurs | 😊 Confiant | Si le wizard est trop long ou demande des infos comptables qu'il n'a pas | ✨ Wizard resumable — il peut s'arrêter, revenir plus tard sans perdre sa progression |
-| 2 | **J1 10h00** — Import des constituants | `Settings > Import > Depuis Salesforce` | Upload du CSV exporté de Salesforce — Givernance mappe automatiquement les colonnes | 😐 Prudent | Colonnes SF non standard, mapping échoue | ✨ Mapping visuel avec aperçu ligne par ligne — il corrige 3 colonnes en 2 minutes |
-| 3 | **J1 11h00** — Résolution des doublons | `Settings > Import > Doublons (47 trouvés)` | Interface de fusion : côte à côte, 2 fiches, cases à cocher, ficher à conserver | 😐 Laborieux mais nécessaire | 47 doublons = 47 décisions manuelles ? | ✨ "Fusionner les 12 doublons évidents automatiquement" — les 35 ambigus sont présentés un par un |
+| 0 | **J-1 — Provisioning côté Givernance** | Back-office Givernance `POST /v1/admin/tenants` | Un Super Admin Givernance crée le tenant "Aide & Action Suisse" et configure la fédération OIDC vers Entra ID de Marc | 😌 Zéro friction côté Marc | Délai si le domaine email n'est pas bien routé (`kc_idp_hint`) | ✨ Marc reçoit simplement un email "Votre espace Givernance est prêt, connectez-vous avec votre compte Entra ID" |
+| 1 | **J1 9h00** — Première connexion SSO | `https://aide-action.givernance.app/login` → Keycloak → Entra ID | Marc clique "Se connecter avec SSO", s'authentifie via Entra ID, est redirigé vers `/dashboard`. Son compte `users` est créé automatiquement (JIT) à partir du JWT | 😊 Très confiant | Si le mapping du rôle `org_admin` n'a pas été poussé côté Keycloak, Marc atterrit avec un rôle réduit | ✨ Aucun mot de passe à créer, aucun formulaire de compte : Marc est opérationnel en un clic |
 | 4 | **J1 14h00** — Configuration des fonds | `Settings > Finance > Fonds` | Crée les fonds restreints et non restreints correspondant aux subventions actives | 😊 Organisé | Si la logique fonds / codes GL n'est pas expliquée | ✨ Tooltip contextuel : "Un fonds restreint est lié à une subvention spécifique — les dépenses sont suivies séparément." |
 | 5 | **J1 15h00** — Mapping codes GL | `Settings > Finance > Codes GL` | Mappe les fonds Givernance aux codes nominaux de la comptabilité (Sage 50, Swiss Chart of Accounts) | 😐 Technique | Si Givernance ne connaît pas le plan comptable suisse | ✨ Givernance propose un plan comptable suisse standard (PME/Asso) pré-chargé — Marc ajuste 3 lignes |
 | 6 | **J1 16h30** — Gestion des rôles | `Settings > Utilisateurs > Rôles` | Crée les rôles : Fundraising Manager, Program Coordinator, Volunteer Coordinator, Grants Officer, Admin | 😊 En contrôle | Si la granularité des permissions est insuffisante | ✨ Rôles pré-définis correspondant aux personas Givernance — Marc active/désactive des modules par rôle |
-| 7 | **J2 9h00** — Invitations utilisateurs | `Settings > Utilisateurs > Inviter` | Envoie les invitations par email aux 12 utilisateurs — ils configurent leur propre mot de passe | 😊 Délégué | Si les utilisateurs ont du mal à s'activer (lien expiré, etc.) | ✨ Lien d'invitation valable 7 jours, avec renouvellement facile depuis l'admin |
+| 7 | **J2 9h00** — Accès des coéquipiers | `Settings > Utilisateurs` | Marc vérifie la liste des utilisateurs : chaque nouveau collègue se connecte via Entra ID et son compte apparaît automatiquement (JIT) ; Marc lui attribue un rôle applicatif Givernance | 😊 Délégué | Si un collègue n'est pas encore dans le bon groupe Entra ID mappé vers le rôle `org_admin` / `fundraising_manager` | ✨ Aucun lien d'invitation à envoyer, aucun mot de passe à gérer — le SSO fait foi |
 | 8 | **Semaine 1 — Demande RGPD** | `RGPD > Demandes > Nouvelle demande` | Un donateur demande accès à ses données (article 15 RGPD) — Marc reçoit l'email | 😐 Attentif | Si le dossier complet doit être compilé manuellement | ✨ "Générer le dossier RGPD complet de M. Fernandez" → PDF en 3 minutes : dons, consentements, notes, communications |
 | 9 | **Semaine 1 — Demande effacement** | `RGPD > Effacement > Wizard` | Un ancien bénévole demande l'effacement de ses données — article 17 RGPD | 😐 Prudent | Si l'effacement casse des relations (dons liés, etc.) | ✨ Wizard d'anonymisation : "Ces données seront anonymisées. Les dons resteront pour la comptabilité mais sans lien nominatif." |
 | 10 | **Mensuel — Audit sécurité** | `Settings > Logs d'accès` | Marc consulte les logs d'accès du mois : qui a accédé à quoi, quand | 😊 Rassuré | Si les logs sont trop verbeux pour être exploitables | ✨ Logs filtrables : par utilisateur, par action, par type de données — export CSV pour le RSSI |
@@ -484,18 +485,25 @@ flowchart TD
 ### 4.3 Écrans traversés dans ce parcours
 
 ```
-Settings > Organisation > Wizard (onboarding 5 étapes)
-├── Settings > Import > Depuis CSV / Salesforce
-├── Settings > Import > Résolution doublons
+(Back-office Givernance — hors périmètre Marc)
+└── POST /v1/admin/tenants (Super Admin : tenant + IdP Entra ID)
+
+Auth (Keycloak, SSO only — pas d'écrans Givernance)
+├── /login → Keycloak → Entra ID → callback
+└── JIT provisioning du compte `users` au premier GET /v1/users/me
+
+Settings > Utilisateurs > Rôles & Permissions (Marc gère les rôles applicatifs)
 ├── Settings > Finance > Fonds & Codes GL
-├── Settings > Utilisateurs > Rôles & Permissions
-├── Settings > Utilisateurs > Invitations
+├── Settings > Import > Depuis Salesforce / CSV (post-login, epic Migration)
+├── Settings > Import > Résolution doublons
 ├── RGPD > Demandes (accès, effacement, portabilité)
 ├── RGPD > Registre des traitements (Art. 30)
 ├── Settings > Logs d'accès & Audit trail
 ├── Settings > Intégrations (Xero, Stripe, Mollie)
-└── Settings > Sécurité (2FA, SSO optionnel)
+└── Settings > Sécurité (MFA côté Keycloak, rôles / SoD côté Givernance)
 ```
+
+> Les anciens écrans AUTH-005 à AUTH-009 (`/auth/onboarding/1..5`) sont **dépréciés** ; voir `14-screen-inventory.md` §Module AUTH.
 
 ---
 
@@ -503,8 +511,10 @@ Settings > Organisation > Wizard (onboarding 5 étapes)
 
 | Friction | Probabilité | Impact | Mitigation recommandée |
 |---|---|---|---|
-| Import CSV Salesforce avec colonnes non standard | Haute | Haut | Mapper automatiquement les noms de colonnes SF connus + interface de correction visuelle |
-| 47 doublons = 47 décisions manuelles | Haute | Haut | Fusion automatique des doublons "évidents" (même email, même nom exact) ; humain seulement pour les ambigus |
+| IdP mal mappé : Marc se connecte mais arrive avec un rôle réduit | Moyenne | Haut | Le Super Admin valide un compte de test SSO avant de livrer le tenant ; Givernance affiche un bandeau explicite "Contactez votre administrateur Givernance" si le rôle `org_admin` est absent |
+| Domaine email non routé vers l'IdP du tenant | Moyenne | Haut | Ajouter `kc_idp_hint` / alias de domaine dans Keycloak au moment du provisioning (§2.3 doc 21) |
+| Import CSV Salesforce avec colonnes non standard (post-login, epic Migration) | Haute | Haut | Mapper automatiquement les noms de colonnes SF connus + interface de correction visuelle |
+| Doublons de constituants lors de la migration | Haute | Haut | Fusion automatique des doublons "évidents" (même email, même nom exact) ; humain seulement pour les ambigus |
 | Plan comptable suisse non disponible par défaut | Moyenne | Haut | Livrer plans comptables FR (PCG), CH (KMU), BE, NL pré-configurés |
 | Granularité permissions insuffisante | Moyenne | Moyen | Matrice de permissions par module (lecture/écriture/export/admin) |
 | Wizard d'effacement RGPD trop brutal | Faible | Critique | Différencier anonymisation (données conservées sans identité) vs. suppression totale — avec conséquences affichées |
@@ -514,9 +524,9 @@ Settings > Organisation > Wizard (onboarding 5 étapes)
 
 ### 4.5 Moments de joie
 
-1. **J1 10h30** : Le mapping automatique des colonnes Salesforce reconnaît 90 % des champs — Marc n'a que 3 corrections à faire.
-2. **J1 11h30** : La fusion automatique des 12 doublons évidents lui économise 30 minutes de clics.
-3. **J1 15h00** : Le plan comptable suisse est pré-chargé — Marc ajuste 3 lignes au lieu de saisir 80.
+1. **J1 9h00** : Marc se connecte au premier essai via son Entra ID existant — aucun mot de passe à créer, aucun formulaire de compte à remplir. JIT provisioning instantané.
+2. **J1 15h00** : Le plan comptable suisse est pré-chargé — Marc ajuste 3 lignes au lieu de saisir 80.
+3. **J2** : Ses 12 collègues se connectent chacun via Entra ID ; leur compte Givernance apparaît automatiquement dans `Settings > Utilisateurs` — Marc n'a envoyé aucun lien d'invitation.
 4. **Semaine 1** : Le dossier RGPD d'un donateur est généré en 3 minutes — Marc répond dans les 30 jours légaux sans effort.
 5. **Fin mois 1** : Marc n'a reçu que 2 demandes de support (contre 15/mois avec Salesforce). Les utilisateurs se débrouillent.
 
@@ -769,7 +779,7 @@ Sur la base des journeys documentés, voici l'ordre de priorité pour les sessio
 1. **Recruter 2-3 participants par persona** dans le réseau des ONG françaises et suisses pour des tests utilisateurs
 2. **Prototyper en priorité** : reçus fiscaux, vue mobile bénévoles, pipeline grants (Figma mid-fidelity)
 3. **Valider le format des reçus fiscaux** avec un expert-comptable spécialisé associations (France + Suisse)
-4. **Créer un prototype du wizard d'onboarding** Marc et le tester avec 2 admins IT d'ONG réelles
+4. **Prototyper le back-office Super Admin** (`POST /v1/admin/tenants` + configuration OIDC par tenant) et tester le parcours SSO / JIT avec 2 admins IT d'ONG réelles — voir Spike [#80](https://github.com/purposestack/givernance/issues/80)
 5. **Définir les templates de rapport** pour les 5 principaux bailleurs français et suisses (Fondation de France, FONJEP, Canton GE, Ville de Paris, Région IDF)
 
 ---

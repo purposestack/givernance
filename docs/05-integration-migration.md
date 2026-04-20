@@ -453,7 +453,7 @@ La migration depuis Salesforce NPSP est une fonctionnalité **différenciante ma
 
 ### 11.2 Migration Assistant — Interface produit (UX)
 
-Le **Migration Assistant** est un wizard step-by-step intégré dans l'onboarding Givernance. Il remplace le besoin de consulter un intégrateur externe pour 80% des migrations standards.
+Le **Migration Assistant** est un wizard step-by-step post-login, accessible depuis `Settings > Import > Depuis Salesforce`. Il peut être lancé à tout moment après que le Givernance Super Admin a provisionné le tenant et que l'admin NPO s'est connecté via SSO (voir Spike [#80](https://github.com/purposestack/givernance/issues/80) et `docs/21-authentication-sso.md` §2 — l'import n'est **plus** une étape du signup). Il remplace le besoin de consulter un intégrateur externe pour 80% des migrations standards.
 
 #### Étapes du wizard
 
