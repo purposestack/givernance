@@ -8,8 +8,6 @@ if (!FormatRegistry.Has("email")) {
   );
 }
 
-("use client");
-
 // We must implement the email regex format manually for TypeBox in the browser if we don"t import the full formats plugin.
 if (!FormatRegistry.Has("email")) {
   FormatRegistry.Set("email", (value: string) =>
