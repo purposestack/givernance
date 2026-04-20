@@ -143,6 +143,61 @@
       "member": "Membre",
       "beneficiary": "Bénéficiaire",
       "partner": "Partenaire"
+    },
+    "actions": {
+      "new": "Nouveau constituant"
+    }
+  },
+  "constituentForm": {
+    "createTitle": "Nouveau constituant",
+    "createSubtitle": "Ajoutez un nouveau constituant à votre organisation.",
+    "editTitle": "Modifier le constituant",
+    "editSubtitle": "Mettez à jour les coordonnées ou la classification.",
+    "breadcrumbNew": "Nouveau",
+    "breadcrumbEdit": "Modifier",
+    "sections": {
+      "identity": {
+        "title": "Identité",
+        "description": "Type et nom du constituant."
+      },
+      "contact": {
+        "title": "Coordonnées",
+        "description": "Email et téléphone utilisés pour les communications."
+      }
+    },
+    "fields": {
+      "type": "Type",
+      "typeHint": "Choisissez le lien entre cette personne et votre organisation.",
+      "firstName": "Prénom",
+      "firstNamePlaceholder": "Marie",
+      "lastName": "Nom",
+      "lastNamePlaceholder": "Dupont",
+      "email": "Email",
+      "emailPlaceholder": "marie.dupont@exemple.org",
+      "phone": "Téléphone",
+      "phonePlaceholder": "+33 1 23 45 67 89"
+    },
+    "actions": {
+      "cancel": "Annuler",
+      "submitCreate": "Créer le constituant",
+      "submitEdit": "Enregistrer les modifications",
+      "submitting": "Enregistrement…"
+    },
+    "duplicate": {
+      "title": "Doublon potentiel détecté",
+      "body": "Un constituant aux informations similaires existe déjà. Vérifiez la correspondance avant de continuer.",
+      "viewExisting": "Voir la fiche existante",
+      "createAnyway": "Créer quand même",
+      "cancel": "Annuler",
+      "unnamed": "Constituant sans nom"
+    },
+    "errors": {
+      "generic": "Une erreur est survenue lors de l'enregistrement. Réessayez.",
+      "validation": "Corrigez les champs en surbrillance."
+    },
+    "success": {
+      "created": "Constituant créé.",
+      "updated": "Modifications enregistrées."
     }
   },
   "constituentDetail": {

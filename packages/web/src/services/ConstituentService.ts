@@ -13,6 +13,18 @@ import type {
  * frontend Constituent model. Keeps transport concerns (URLs, query
  * param serialization) out of pages and components.
  */
+
+export interface ConstituentCreateInput {
+  firstName: string;
+  lastName: string;
+  email?: string | null;
+  phone?: string | null;
+  type?: string;
+  tags?: string[];
+}
+
+export type ConstituentUpdateInput = Partial<ConstituentCreateInput>;
+
 export const ConstituentService = {
   /**
    * Fetch a paginated list of constituents for the current organization.
@@ -48,6 +60,41 @@ export const ConstituentService = {
     );
     return mapConstituent(response.data);
   },
+
+  /**
+   * Create a new constituent. The API returns 409 with a `duplicates`
+   * extension when a potential duplicate is detected; pass `force=true`
+   * to bypass the duplicate check.
+   */
+  async createConstituent(
+    client: ApiClient,
+    input: ConstituentCreateInput,
+    options: { force?: boolean } = {},
+  ): Promise<Constituent> {
+    const body = toRequestBody(input);
+    const params = options.force ? { force: true } : undefined;
+    const response = await client.post<ConstituentDetailResponse>("/v1/constituents", body, {
+      params,
+    });
+    return mapConstituent(response.data);
+  },
+
+  /**
+   * Update an existing constituent. Only non-empty fields are sent so
+   * partial updates don't clobber stored values with empty strings.
+   */
+  async updateConstituent(
+    client: ApiClient,
+    id: string,
+    input: ConstituentUpdateInput,
+  ): Promise<Constituent> {
+    const body = toRequestBody(input);
+    const response = await client.put<ConstituentDetailResponse>(
+      `/v1/constituents/${encodeURIComponent(id)}`,
+      body,
+    );
+    return mapConstituent(response.data);
+  },
 };
 
 function mapConstituent(raw: Constituent): Constituent {
@@ -64,4 +111,23 @@ function mapConstituent(raw: Constituent): Constituent {
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
+}
+
+/**
+ * Normalize a form payload for the API: drop empty strings so optional
+ * fields don't fail the API's `minLength`/`format` constraints.
+ */
+function toRequestBody(input: ConstituentUpdateInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (input.firstName !== undefined) body.firstName = input.firstName;
+  if (input.lastName !== undefined) body.lastName = input.lastName;
+  if (input.email !== undefined && input.email !== null && input.email !== "") {
+    body.email = input.email;
+  }
+  if (input.phone !== undefined && input.phone !== null && input.phone !== "") {
+    body.phone = input.phone;
+  }
+  if (input.type !== undefined) body.type = input.type;
+  if (input.tags !== undefined) body.tags = input.tags;
+  return body;
 }

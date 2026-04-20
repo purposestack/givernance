@@ -1,8 +1,10 @@
-import { Users } from "lucide-react";
+import { Plus, Users } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
@@ -64,6 +66,14 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
           hasAny ? t("subtitleWithCount", { count: result.pagination.total }) : t("subtitleEmpty")
         }
         breadcrumbs={[{ label: t("breadcrumbRoot"), href: "/dashboard" }, { label: t("title") }]}
+        actions={
+          <Button asChild variant="primary" size="sm">
+            <Link href="/constituents/new">
+              <Plus size={16} aria-hidden="true" />
+              {t("actions.new")}
+            </Link>
+          </Button>
+        }
       />
 
       {hasAny ? (
