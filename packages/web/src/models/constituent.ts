@@ -34,6 +34,10 @@ export interface ConstituentListResponse {
   pagination: Pagination;
 }
 
+export interface ConstituentDetailResponse {
+  data: Constituent;
+}
+
 export interface ConstituentListQuery {
   page?: number;
   perPage?: number;

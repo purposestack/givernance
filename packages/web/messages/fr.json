@@ -145,6 +145,65 @@
       "partner": "Partenaire"
     }
   },
+  "constituentDetail": {
+    "breadcrumbRoot": "Tableau de bord",
+    "breadcrumbConstituents": "Constituants",
+    "profile": {
+      "ariaLabel": "Profil du constituant",
+      "email": "Email",
+      "phone": "Téléphone",
+      "memberSince": "Membre depuis {date}"
+    },
+    "actions": {
+      "edit": "Modifier",
+      "merge": "Fusionner",
+      "exportGdpr": "Export RGPD",
+      "delete": "Supprimer"
+    },
+    "tabs": {
+      "overview": "Vue d'ensemble",
+      "donations": "Dons",
+      "timeline": "Activité"
+    },
+    "overview": {
+      "ariaLabel": "Vue d'ensemble",
+      "title": "Chiffres clés",
+      "noActivity": "—",
+      "stats": {
+        "totalDonated": "Total des dons",
+        "pledgeCount": "Nombre de dons",
+        "lastActivity": "Dernière activité"
+      }
+    },
+    "donationsTab": {
+      "columns": {
+        "date": "Date",
+        "amount": "Montant",
+        "paymentMethod": "Moyen de paiement",
+        "fiscalYear": "Année fiscale"
+      },
+      "empty": {
+        "title": "Aucun don pour l'instant",
+        "description": "Les dons enregistrés pour ce constituant apparaîtront ici."
+      }
+    },
+    "timeline": {
+      "ariaLabel": "Fil d'activité",
+      "title": "Activité récente",
+      "stubHint": "Un fil d'activité plus riche arrive dans un prochain sprint.",
+      "items": {
+        "lastDonation": "Don de {amount} reçu",
+        "profileCreated": "Profil créé"
+      }
+    },
+    "aiSuggestion": {
+      "ariaLabel": "Suggestion IA",
+      "label": "Suggestion IA",
+      "body": "Ce donateur n'a pas donné depuis 14 mois — envisagez un email de réactivation.",
+      "apply": "Appliquer",
+      "ignore": "Ignorer"
+    }
+  },
   "dataTable": {
     "rangeSummary": "Affichage {start}–{end} sur {total}",
     "emptySummary": "Aucun résultat",

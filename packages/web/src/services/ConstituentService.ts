@@ -1,6 +1,7 @@
 import type { ApiClient } from "@/lib/api";
 import type {
   Constituent,
+  ConstituentDetailResponse,
   ConstituentListQuery,
   ConstituentListResponse,
 } from "@/models/constituent";
@@ -35,6 +36,17 @@ export const ConstituentService = {
       data: response.data.map(mapConstituent),
       pagination: response.pagination,
     };
+  },
+
+  /**
+   * Fetch a single constituent by ID. The API resolves the orgId from the
+   * JWT and returns 404 when the constituent belongs to another tenant.
+   */
+  async getConstituent(client: ApiClient, id: string): Promise<Constituent> {
+    const response = await client.get<ConstituentDetailResponse>(
+      `/v1/constituents/${encodeURIComponent(id)}`,
+    );
+    return mapConstituent(response.data);
   },
 };
 
