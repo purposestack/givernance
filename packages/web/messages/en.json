@@ -152,6 +152,108 @@
     },
     "actions": {
       "new": "New donation"
+    },
+    "form": {
+      "createTitle": "Record a donation",
+      "createSubtitle": "Log a new donation manually — by cheque, wire, cash, or card.",
+      "breadcrumbNew": "New donation",
+      "sections": {
+        "donor": {
+          "title": "Donor",
+          "description": "Who made this donation?"
+        },
+        "donation": {
+          "title": "Donation details",
+          "description": "Amount, payment method, and reference."
+        },
+        "attribution": {
+          "title": "Attribution",
+          "description": "Campaign and fund allocation (optional)."
+        }
+      },
+      "fields": {
+        "constituent": "Constituent",
+        "constituentPlaceholder": "Search for a donor…",
+        "constituentEmpty": "No constituents match your search.",
+        "constituentLoading": "Loading…",
+        "amount": "Amount",
+        "amountPlaceholder": "0.00",
+        "currency": "Currency",
+        "donatedAt": "Donation date",
+        "paymentMethod": "Payment method",
+        "paymentMethodPlaceholder": "Select a payment method",
+        "paymentRef": "External reference",
+        "paymentRefPlaceholder": "e.g. WIRE-2026-0342",
+        "paymentRefHint": "Bank transfer reference, cheque number, etc.",
+        "campaignId": "Campaign",
+        "campaignIdPlaceholder": "No campaign",
+        "allocations": "Fund allocations",
+        "allocationFund": "Fund ID (UUID)",
+        "allocationFundPlaceholder": "Fund UUID",
+        "allocationAmount": "Amount",
+        "allocationRemove": "Remove allocation",
+        "allocationAdd": "Add allocation",
+        "allocationsHint": "Allocations must sum to the total amount. Leave empty for unallocated."
+      },
+      "paymentMethods": {
+        "wire": "Bank transfer",
+        "cheque": "Cheque",
+        "card": "Card",
+        "sepa": "SEPA direct debit",
+        "cash": "Cash",
+        "other": "Other"
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "submitCreate": "Save donation",
+        "submitting": "Saving…"
+      },
+      "errors": {
+        "validation": "Please correct the highlighted fields.",
+        "generic": "Something went wrong while saving. Please try again.",
+        "allocationSumMismatch": "Allocation amounts must sum to the donation total.",
+        "constituentRequired": "Choose a constituent for this donation.",
+        "amountInvalid": "Amount must be greater than zero."
+      },
+      "success": {
+        "created": "Donation recorded."
+      }
+    },
+    "detail": {
+      "breadcrumbRoot": "Dashboard",
+      "breadcrumbDonations": "Donations",
+      "title": "Donation",
+      "anonymousDonor": "Anonymous donor",
+      "notRecorded": "—",
+      "infoSection": "Donation information",
+      "allocationsSection": "Fund allocations",
+      "fields": {
+        "donor": "Donor",
+        "date": "Date",
+        "amount": "Amount",
+        "paymentMethod": "Payment method",
+        "paymentRef": "Reference",
+        "campaign": "Campaign",
+        "fiscalYear": "Fiscal year",
+        "recordedAt": "Recorded"
+      },
+      "allocations": {
+        "columnFund": "Fund",
+        "columnAmount": "Amount",
+        "columnPercent": "%",
+        "total": "Total",
+        "empty": "No allocations recorded for this donation."
+      },
+      "actions": {
+        "back": "Back to donations",
+        "previewReceipt": "Receipt preview",
+        "generatingReceipt": "Generating receipt…"
+      },
+      "receipt": {
+        "pending": "Receipt is still being generated.",
+        "error": "Could not open the receipt. Please try again.",
+        "missing": "No receipt available yet."
+      }
     }
   },
   "constituents": {
