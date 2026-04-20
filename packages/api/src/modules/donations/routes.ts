@@ -80,6 +80,32 @@ const DonationResponse = Type.Object({
   updatedAt: Type.String(),
 });
 
+/** Donation list row — enriched with constituent name and latest receipt status for list views */
+const DonationListRow = Type.Object({
+  id: UuidSchema,
+  orgId: UuidSchema,
+  constituentId: UuidSchema,
+  amountCents: Type.Integer(),
+  currency: CurrencySchema,
+  campaignId: Type.Union([UuidSchema, Type.Null()]),
+  paymentMethod: Type.Union([Type.String(), Type.Null()]),
+  paymentRef: Type.Union([Type.String(), Type.Null()]),
+  donatedAt: Type.String(),
+  fiscalYear: Type.Integer(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  constituent: Type.Union([
+    Type.Object({ firstName: Type.String(), lastName: Type.String() }),
+    Type.Null(),
+  ]),
+  receiptStatus: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("generated"),
+    Type.Literal("failed"),
+    Type.Null(),
+  ]),
+});
+
 const DonationDetailResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
@@ -121,7 +147,7 @@ export async function donationRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Donations"],
         querystring: ListQuery,
-        response: { 200: DataArrayResponse(DonationResponse), ...ErrorResponses },
+        response: { 200: DataArrayResponse(DonationListRow), ...ErrorResponses },
       },
     },
     async (request, reply) => {
