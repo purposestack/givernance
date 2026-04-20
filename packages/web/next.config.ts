@@ -1,11 +1,7 @@
 import { loadEnvConfig } from "@next/env";
 import { join } from "path";
-import { fileURLToPath } from "url";
-import { dirname } from "path";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 // Load environment variables from the monorepo root (.env)
-loadEnvConfig(join(__dirname, "../../"));
+loadEnvConfig(join(process.cwd(), "../../"));
 
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
