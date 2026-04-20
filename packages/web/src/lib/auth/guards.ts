@@ -1,10 +1,10 @@
 import "server-only";
 
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { JWT_COOKIE_NAME, KEYCLOAK_REALM, KEYCLOAK_URL } from "./keycloak";
+import { JWT_COOKIE_NAME } from "./keycloak";
 
 /** Minimal JWT payload shape for Keycloak access tokens. */
 interface JwtPayload {
@@ -25,21 +25,18 @@ interface JwtPayload {
 }
 
 /**
- * JWKS remote key set — cached by jose for the JWK Set TTL.
- * Uses Keycloak's standard OIDC certs endpoint.
- */
-const JWKS_URL = new URL(`${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/certs`);
-const jwks = createRemoteJWKSet(JWKS_URL);
-
-/**
- * Verify and decode a JWT using Keycloak's JWKS.
- * Returns the typed payload on success, null on any failure
- * (expired, invalid signature, malformed).
+ * Verify and decode the internal session JWT minted by /api/auth/callback.
+ *
+ * TODO(#84): swap back to Keycloak JWKS (RS256) verification once the API
+ * verifies Keycloak tokens directly and the realm has an `org_id` mapper.
+ * Today we verify the HS256 JWT we mint ourselves, signed with JWT_SECRET.
  */
 async function verifyJwt(token: string): Promise<JwtPayload | null> {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) return null;
   try {
-    const { payload } = await jwtVerify(token, jwks, {
-      issuer: `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}`,
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(jwtSecret), {
+      algorithms: ["HS256"],
     });
     return payload as unknown as JwtPayload;
   } catch {
