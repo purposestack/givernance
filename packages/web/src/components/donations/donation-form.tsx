@@ -613,9 +613,9 @@ function toApiPayload(values: DonationFormValues): DonationCreateInput {
     constituentId: values.constituentId,
     amountCents: values.amountCents ?? 0,
     currency: values.currency,
-    campaignId: values.campaignId.trim() || undefined,
+    campaignId: (values.campaignId || "").trim() || undefined,
     paymentMethod: values.paymentMethod || undefined,
-    paymentRef: values.paymentRef.trim() || undefined,
+    paymentRef: (values.paymentRef || "").trim() || undefined,
     donatedAt,
     allocations: allocations.length > 0 ? allocations : undefined,
   };
@@ -639,14 +639,14 @@ function buildResolver(): Resolver<DonationFormValues> {
       amountCents: values.amountCents ?? 0,
       currency: values.currency,
     };
-    if (values.campaignId && values.campaignId.trim() !== "") {
-      cleaned.campaignId = values.campaignId.trim();
+    if (values.campaignId && (values.campaignId || "").trim() !== "") {
+      cleaned.campaignId = (values.campaignId || "").trim();
     }
     if (values.paymentMethod) {
       cleaned.paymentMethod = values.paymentMethod;
     }
-    if (values.paymentRef && values.paymentRef.trim() !== "") {
-      cleaned.paymentRef = values.paymentRef.trim();
+    if (values.paymentRef && (values.paymentRef || "").trim() !== "") {
+      cleaned.paymentRef = (values.paymentRef || "").trim();
     }
     if (values.donatedAt) {
       const parsed = parseDateString(values.donatedAt);
