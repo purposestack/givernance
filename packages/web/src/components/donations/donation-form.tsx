@@ -1,5 +1,16 @@
 "use client";
 
+import { FormatRegistry } from "@sinclair/typebox";
+
+if (!FormatRegistry.Has("uuid")) {
+  FormatRegistry.Set("uuid", (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value),
+  );
+}
+if (!FormatRegistry.Has("date-time")) {
+  FormatRegistry.Set("date-time", (value: string) => !Number.isNaN(Date.parse(value)));
+}
+
 import { DonationCreateSchema } from "@givernance/shared/validators";
 import { typeboxResolver } from "@hookform/resolvers/typebox";
 import { Check, ChevronsUpDown, Plus, Trash2 } from "lucide-react";
