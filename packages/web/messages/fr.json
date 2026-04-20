@@ -94,6 +94,7 @@
       "mainNav": "Navigation principale",
       "menuLabel": "Menu principal",
       "dashboard": "Dashboard",
+      "constituents": "Constituants",
       "settings": "Paramètres",
       "orgPlaceholder": "Association",
       "signOut": "Se déconnecter"
@@ -119,5 +120,39 @@
     "greeting": "Bonjour{name, select, empty {} other {, {name}}}",
     "subtitle": "Voici l'activité de votre organisation aujourd'hui.",
     "placeholder": "Contenu du tableau de bord en construction (Sprint 4, PR-C1)."
+  },
+  "constituents": {
+    "title": "Constituants",
+    "breadcrumbRoot": "Tableau de bord",
+    "subtitleWithCount": "{count, plural, =0 {Aucun constituant} one {# constituant} other {# constituants}}",
+    "subtitleEmpty": "Aucun constituant pour l'instant.",
+    "empty": {
+      "title": "Aucun constituant à afficher",
+      "description": "Ajustez les filtres ou ajoutez votre premier constituant.",
+      "seedHint": "Lancez pnpm --filter @givernance/api run db:seed pour initialiser des données de développement."
+    },
+    "columns": {
+      "name": "Nom",
+      "type": "Type",
+      "email": "Email",
+      "lastDonation": "Dernier don"
+    },
+    "types": {
+      "donor": "Donateur",
+      "volunteer": "Bénévole",
+      "member": "Membre",
+      "beneficiary": "Bénéficiaire",
+      "partner": "Partenaire"
+    }
+  },
+  "dataTable": {
+    "rangeSummary": "Affichage {start}–{end} sur {total}",
+    "emptySummary": "Aucun résultat",
+    "pageOf": "Page {page} sur {totalPages}",
+    "previousPage": "Page précédente",
+    "nextPage": "Page suivante",
+    "densityLabel": "Densité des lignes",
+    "densityComfortable": "Lignes confortables",
+    "densityCompact": "Lignes compactes"
   }
 }
