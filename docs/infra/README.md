@@ -72,6 +72,55 @@ SMTP_PORT=1025
 
 ---
 
+## Running the Application Locally
+
+Once the infra stack is up (`./scripts/dev-up.sh` or `docker compose up -d`):
+
+```bash
+# 1. Install dependencies
+pnpm install
+
+# 2. Run database migrations
+pnpm db:migrate
+
+# 3. Seed a demo tenant with 50 constituents / 5 campaigns / 100 donations
+pnpm --filter @givernance/api run db:seed
+# → creates tenant "givernance" with fixed UUID 00000000-0000-0000-0000-0000000000a1
+
+# 4. Start all workspace dev servers in parallel
+pnpm dev
+```
+
+You should see the web on `http://localhost:3000`, the API on `http://localhost:4000`, plus worker and outbox relay processes.
+
+### Logging in
+
+1. Navigate to `http://localhost:3000` → redirects to Keycloak
+2. Credentials (pre-seeded in `infra/keycloak/realm-givernance.json`):
+   - **Email**: `admin@givernance.org`
+   - **Password**: `admin`
+3. You land on `/dashboard`; `/constituents` shows the seeded donors
+
+### Dev SSO shim (temporary)
+
+Until Phase 1 Multi-Tenant SSO lands (issue #84), the web's `/api/auth/callback` mints an internal HS256 JWT signed with `JWT_SECRET` instead of forwarding the raw Keycloak access token. This is because:
+- the API verifies tokens with a static `JWT_SECRET` (HS256), not Keycloak's JWKS (RS256)
+- the realm has no `org_id` protocol mapper
+
+The shim injects `org_id` from the `DEV_DEFAULT_ORG_ID` env var (default matches the seed tenant UUID). If you log in but `/constituents` shows the empty state, clear the `givernance_jwt` and `givernance_id_token` cookies and log in again.
+
+### Troubleshooting
+
+| Symptom | Cause & fix |
+|---------|-------------|
+| `GET /v1/constituents` → `ECONNREFUSED` from the web | Node's fetch races `::1` (IPv6) against `127.0.0.1` for `localhost`; the API binds IPv4-only. `.env` already pins `API_URL=http://127.0.0.1:4000` — don't change it back to `localhost`. |
+| `ERR_TOO_MANY_REDIRECTS` on `/dashboard` after login | Stale cookie from before the SSO shim. Delete `givernance_jwt` / `givernance_id_token` in DevTools → Application → Cookies. |
+| `JWT_SECRET environment variable is required` in `/api/auth/callback` | Web dev server didn't load the root `.env`. The `dev` script uses `dotenv-cli` — restart `pnpm dev` after pulling changes. |
+| Web starts on port 4000 instead of 3000 (`EADDRINUSE`) | `.env` sets `PORT=4000` for the API; `dotenv-cli` forwards it. The web `dev` script already passes `-p 3000` to override. |
+| `/constituents` shows empty state despite seed running | The JWT's `org_id` doesn't match the seeded tenant. Either re-run the seed (fixed UUID) or set `DEV_DEFAULT_ORG_ID` to the existing tenant's id. |
+
+---
+
 ## SaaS Architecture (Scaleway EU)
 
 The managed SaaS offering runs entirely on **Scaleway**, a French cloud provider with datacenters in Paris (PAR) and Amsterdam (AMS). All infrastructure is under a **single Scaleway GDPR Data Processing Agreement (DPA)** — 100% EU data residency.

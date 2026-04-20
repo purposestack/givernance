@@ -16,11 +16,28 @@ git clone git@github.com:Onigam/givernance.git
 cd givernance
 
 # Node.js 22 LTS + pnpm 9 required
-pnpm install          # install all workspace dependencies (when packages/ exist)
+pnpm install
 
-# Open the HTML mockups locally
+# Copy env file and start infra (PostgreSQL, Redis, Keycloak, MinIO, Mailpit)
+cp .env.example .env
+./scripts/dev-up.sh
+
+# Migrate + seed the demo tenant (50 constituents, 5 campaigns, 100 donations)
+pnpm db:migrate
+pnpm --filter @givernance/api run db:seed
+
+# Start all dev servers (web :3000, api :4000, worker, relay)
+pnpm dev
+```
+
+Then browse to `http://localhost:3000`, log in with `admin@givernance.org` / `admin`.
+
+**Full local dev guide**: [docs/infra/README.md](docs/infra/README.md) — includes SSO shim notes, troubleshooting, and tooling recommendations.
+
+### Browse the mockups
+
+```bash
 open docs/design/index.html
-# or browse to docs/design/ in your browser
 ```
 
 ### Tech Stack
