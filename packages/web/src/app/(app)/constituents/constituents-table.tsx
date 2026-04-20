@@ -4,12 +4,11 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Users } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useMemo, useTransition } from "react";
+import { useCallback, useMemo } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
-import { cn } from "@/lib/utils";
 import { type Constituent, fullName, initials } from "@/models/constituent";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
@@ -43,7 +42,6 @@ export function ConstituentsTable({ constituents, pagination }: ConstituentsTabl
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
   const t = useTranslations("constituents");
   const tType = useTranslations("constituents.types");
 
@@ -56,9 +54,7 @@ export function ConstituentsTable({ constituents, pagination }: ConstituentsTabl
         params.set("page", String(page));
       }
       const query = params.toString();
-      startTransition(() => {
-        router.push(query ? `${pathname}?${query}` : pathname);
-      });
+      router.push(query ? `${pathname}?${query}` : pathname);
     },
     [pathname, router, searchParams],
   );
@@ -117,10 +113,7 @@ export function ConstituentsTable({ constituents, pagination }: ConstituentsTabl
   );
 
   return (
-    <div
-      className={cn("transition-opacity duration-normal", isPending ? "opacity-60" : "opacity-100")}
-      aria-busy={isPending || undefined}
-    >
+    <div className="transition-opacity duration-normal">
       <DataTable
         columns={columns}
         data={constituents}
