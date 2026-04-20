@@ -145,6 +145,65 @@
       "partner": "Partner"
     }
   },
+  "constituentDetail": {
+    "breadcrumbRoot": "Dashboard",
+    "breadcrumbConstituents": "Constituents",
+    "profile": {
+      "ariaLabel": "Constituent profile",
+      "email": "Email",
+      "phone": "Phone",
+      "memberSince": "Member since {date}"
+    },
+    "actions": {
+      "edit": "Edit",
+      "merge": "Merge",
+      "exportGdpr": "GDPR export",
+      "delete": "Delete"
+    },
+    "tabs": {
+      "overview": "Overview",
+      "donations": "Donations",
+      "timeline": "Timeline"
+    },
+    "overview": {
+      "ariaLabel": "Overview",
+      "title": "Key figures",
+      "noActivity": "—",
+      "stats": {
+        "totalDonated": "Total donated",
+        "pledgeCount": "Pledge count",
+        "lastActivity": "Last activity"
+      }
+    },
+    "donationsTab": {
+      "columns": {
+        "date": "Date",
+        "amount": "Amount",
+        "paymentMethod": "Payment method",
+        "fiscalYear": "Fiscal year"
+      },
+      "empty": {
+        "title": "No donations yet",
+        "description": "Recorded donations for this constituent will appear here."
+      }
+    },
+    "timeline": {
+      "ariaLabel": "Activity timeline",
+      "title": "Recent activity",
+      "stubHint": "Richer activity feed coming in a later sprint.",
+      "items": {
+        "lastDonation": "Donation of {amount} received",
+        "profileCreated": "Profile created"
+      }
+    },
+    "aiSuggestion": {
+      "ariaLabel": "AI suggestion",
+      "label": "AI suggestion",
+      "body": "This donor hasn't given in 14 months — consider sending a re-engagement email.",
+      "apply": "Apply",
+      "ignore": "Ignore"
+    }
+  },
   "dataTable": {
     "rangeSummary": "Showing {start}–{end} of {total}",
     "emptySummary": "No results",
