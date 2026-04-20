@@ -13,7 +13,7 @@ Givernance uses **OpenID Connect (OIDC)** via **Keycloak** as the sole authentic
 |---|---|---|
 | Tenant creation | Anonymous visitor fills a 5-step signup wizard | **Givernance Super Admin** creates the tenant from the back-office |
 | Identity Provider configuration | Implicit (local password) | Super Admin configures the per-tenant OIDC/SAML connection (Entra ID, Okta, Google Workspace, …) in the shared Keycloak realm |
-| User account creation | Manual invite → user sets password | Email is validated by Keycloak or the external IdP, then **Just-In-Time (JIT) provisioning** runs on first SSO login from Keycloak JWT claims (`sub`, `email`, `org_id`, `role`) |
+| User account creation | Manual invite → user sets password | **Just-In-Time (JIT) provisioning** runs on first SSO login from Keycloak JWT claims (`sub`, `email`, `org_id`, `role`). Email validation is deferred to Phase 2. |
 | Data residency choice | Per-org selector in the wizard | **No longer a user choice** — governed centrally by ADR-009 (Scaleway Managed PostgreSQL EU, RLS-based isolation; supersedes ADR-006) |
 | Salesforce / CSV import at signup | Step 3 of the wizard | Deferred to the **Migration epic**, post-login |
 | Tenant URL routing | Generic app URL | Tenant is addressed by subdomain (`https://<tenant>.givernance.app`, or `.org` where appropriate); local development simulates this with `?namespace=<tenant>` |
@@ -72,7 +72,7 @@ sequenceDiagram
 
 ### 2.4 User creation — Just-In-Time (JIT) on first SSO login
 
-Once the tenant is provisioned, NPO users never go through a Givernance signup wizard. They must still pass an **email validation** gate before the account is usable: for enterprise SSO, the upstream IdP is authoritative for verified email; for Keycloak-local smoke tests or MVP-created users, Keycloak must require email verification before issuing a tenant-bearing token. Their PostgreSQL `users` row is then created **Just-In-Time** on the first successful SSO login, using the trusted claims in the Keycloak-issued JWT:
+Once the tenant is provisioned, NPO users never go through a Givernance signup wizard. Their PostgreSQL `users` row is created **Just-In-Time** on the first successful SSO login, using the trusted claims in the Keycloak-issued JWT:
 
 ```mermaid
 sequenceDiagram

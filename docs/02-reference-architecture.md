@@ -28,7 +28,7 @@ See: /diagrams/context.mmd
 ```
 
 Actors:
-- **NPO Staff** (fundraising manager, program manager, volunteer coordinator, data entry) — authenticate via SSO only after email validation; their `users` record is created Just-In-Time on first login (see doc 21 §2.4)
+- **NPO Staff** (fundraising manager, program manager, volunteer coordinator, data entry) — authenticate via SSO only; their `users` record is created Just-In-Time on first login (email validation deferred to Phase 2) (see doc 21 §2.4)
 - **NPO Administrator** (configures fund accounting, GL mapping, roles, GDPR actions) — authenticates via SSO; does **not** create the tenant (that is a Givernance Super Admin action)
 - **Beneficiaries** (optional self-service portal for case access)
 - **Volunteers** (self-service portal for shift booking and hour logging)
