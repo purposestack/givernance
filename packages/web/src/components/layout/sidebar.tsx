@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, LogOut, Settings, Users } from "lucide-react";
+import { Gift, LayoutDashboard, LogOut, Settings, Users } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -16,7 +16,7 @@ const MD_BREAKPOINT = 768;
 /** Navigation item definition — labelKey references appShell.sidebar.{key}. */
 interface NavItem {
   href: string;
-  labelKey: "dashboard" | "constituents" | "settings";
+  labelKey: "dashboard" | "constituents" | "donations" | "settings";
   icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 }
 
@@ -27,6 +27,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/constituents", labelKey: "constituents", icon: Users },
+  { href: "/donations", labelKey: "donations", icon: Gift },
   { href: "/settings", labelKey: "settings", icon: Settings },
 ];
 

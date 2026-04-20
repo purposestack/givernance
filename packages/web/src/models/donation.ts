@@ -8,6 +8,8 @@
 
 import type { Pagination } from "@/models/constituent";
 
+export type ReceiptStatus = "pending" | "generated" | "failed";
+
 export interface Donation {
   id: string;
   orgId: string;
@@ -23,8 +25,13 @@ export interface Donation {
   updatedAt: string;
 }
 
+export interface DonationListRow extends Donation {
+  constituent: { firstName: string; lastName: string } | null;
+  receiptStatus: ReceiptStatus | null;
+}
+
 export interface DonationListResponse {
-  data: Donation[];
+  data: DonationListRow[];
   pagination: Pagination;
 }
 
@@ -37,4 +44,10 @@ export interface DonationListQuery {
   dateTo?: string;
   amountMin?: number;
   amountMax?: number;
+}
+
+export function donationDonorName(row: DonationListRow): string | null {
+  if (!row.constituent) return null;
+  const name = `${row.constituent.firstName} ${row.constituent.lastName}`.trim();
+  return name.length > 0 ? name : null;
 }

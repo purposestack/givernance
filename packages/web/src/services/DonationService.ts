@@ -1,5 +1,5 @@
 import type { ApiClient } from "@/lib/api";
-import type { Donation, DonationListQuery, DonationListResponse } from "@/models/donation";
+import type { DonationListQuery, DonationListResponse, DonationListRow } from "@/models/donation";
 
 /**
  * DonationService — ADR-011 Layer 2 (services).
@@ -27,13 +27,13 @@ export const DonationService = {
     const response = await client.get<DonationListResponse>("/v1/donations", { params });
 
     return {
-      data: response.data.map(mapDonation),
+      data: response.data.map(mapDonationRow),
       pagination: response.pagination,
     };
   },
 };
 
-function mapDonation(raw: Donation): Donation {
+function mapDonationRow(raw: DonationListRow): DonationListRow {
   return {
     id: raw.id,
     orgId: raw.orgId,
@@ -47,5 +47,9 @@ function mapDonation(raw: Donation): Donation {
     fiscalYear: raw.fiscalYear,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    constituent: raw.constituent
+      ? { firstName: raw.constituent.firstName, lastName: raw.constituent.lastName }
+      : null,
+    receiptStatus: raw.receiptStatus,
   };
 }

@@ -8,7 +8,7 @@ import {
   receipts,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
 /** Thrown when allocation amounts don't sum to the donation total */
@@ -45,36 +45,70 @@ export interface DonationInput {
   allocations?: { fundId: string; amountCents: number }[];
 }
 
+/** Build the SQL conditions for a list-donations query */
+function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
+  const { dateFrom, dateTo, amountMin, amountMax, constituentId, campaignId } = query;
+  const conditions = [eq(donations.orgId, orgId)];
+
+  if (dateFrom) conditions.push(gte(donations.donatedAt, new Date(dateFrom)));
+  if (dateTo) conditions.push(lte(donations.donatedAt, new Date(dateTo)));
+  if (amountMin !== undefined) conditions.push(gte(donations.amountCents, amountMin));
+  if (amountMax !== undefined) conditions.push(lte(donations.amountCents, amountMax));
+  if (constituentId) conditions.push(eq(donations.constituentId, constituentId));
+  if (campaignId) conditions.push(eq(donations.campaignId, campaignId));
+
+  return and(...conditions);
+}
+
+/** Enrich donation rows with constituent names and latest receipt status for list views */
+async function enrichDonationRows<T extends { id: string; constituentId: string }>(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  rows: T[],
+) {
+  const constituentIds = Array.from(new Set(rows.map((d) => d.constituentId)));
+  const donationIds = rows.map((d) => d.id);
+
+  const [constituentRows, receiptRows] = await Promise.all([
+    tx
+      .select({
+        id: constituents.id,
+        firstName: constituents.firstName,
+        lastName: constituents.lastName,
+      })
+      .from(constituents)
+      .where(inArray(constituents.id, constituentIds)),
+    tx
+      .select({ donationId: receipts.donationId, status: receipts.status })
+      .from(receipts)
+      .where(inArray(receipts.donationId, donationIds))
+      .orderBy(desc(receipts.createdAt)),
+  ]);
+
+  const constituentById = new Map(constituentRows.map((c) => [c.id, c]));
+  const receiptByDonationId = new Map<string, (typeof receiptRows)[number]["status"]>();
+  for (const r of receiptRows) {
+    if (!receiptByDonationId.has(r.donationId)) {
+      receiptByDonationId.set(r.donationId, r.status);
+    }
+  }
+
+  return rows.map((d) => {
+    const c = constituentById.get(d.constituentId) ?? null;
+    return {
+      ...d,
+      constituent: c ? { firstName: c.firstName, lastName: c.lastName } : null,
+      receiptStatus: receiptByDonationId.get(d.id) ?? null,
+    };
+  });
+}
+
 /** List donations for an organization with pagination and filtering */
 export async function listDonations(orgId: string, query: ListDonationsQuery) {
-  const { page, perPage, dateFrom, dateTo, amountMin, amountMax, constituentId, campaignId } =
-    query;
+  const { page, perPage } = query;
   const offset = (page - 1) * perPage;
+  const where = listDonationsConditions(orgId, query);
 
   return withTenantContext(orgId, async (tx) => {
-    const conditions = [eq(donations.orgId, orgId)];
-
-    if (dateFrom) {
-      conditions.push(gte(donations.donatedAt, new Date(dateFrom)));
-    }
-    if (dateTo) {
-      conditions.push(lte(donations.donatedAt, new Date(dateTo)));
-    }
-    if (amountMin !== undefined) {
-      conditions.push(gte(donations.amountCents, amountMin));
-    }
-    if (amountMax !== undefined) {
-      conditions.push(lte(donations.amountCents, amountMax));
-    }
-    if (constituentId) {
-      conditions.push(eq(donations.constituentId, constituentId));
-    }
-    if (campaignId) {
-      conditions.push(eq(donations.campaignId, campaignId));
-    }
-
-    const where = and(...conditions);
-
     const [data, countResult] = await Promise.all([
       tx
         .select()
@@ -94,7 +128,12 @@ export async function listDonations(orgId: string, query: ListDonationsQuery) {
       totalPages: Math.ceil(total / perPage),
     };
 
-    return { data, pagination };
+    if (data.length === 0) {
+      return { data: [], pagination };
+    }
+
+    const enriched = await enrichDonationRows(tx, data);
+    return { data: enriched, pagination };
   });
 }
 
