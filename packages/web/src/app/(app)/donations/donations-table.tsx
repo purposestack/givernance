@@ -5,13 +5,12 @@ import { Gift } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useMemo, useTransition } from "react";
+import { useCallback, useMemo } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { type DonationListRow, donationDonorName, type ReceiptStatus } from "@/models/donation";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
@@ -31,7 +30,6 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
   const locale = useLocale();
   const t = useTranslations("donations");
 
@@ -44,9 +42,7 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
         params.set("page", String(page));
       }
       const query = params.toString();
-      startTransition(() => {
-        router.push(query ? `${pathname}?${query}` : pathname);
-      });
+      router.push(query ? `${pathname}?${query}` : pathname);
     },
     [pathname, router, searchParams],
   );
@@ -123,10 +119,7 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
   );
 
   return (
-    <div
-      className={cn("transition-opacity duration-normal", isPending ? "opacity-60" : "opacity-100")}
-      aria-busy={isPending || undefined}
-    >
+    <div className="transition-opacity duration-normal">
       <DataTable
         columns={columns}
         data={donations}

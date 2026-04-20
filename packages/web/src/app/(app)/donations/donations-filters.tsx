@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ChangeEvent, useTransition } from "react";
+import type { ChangeEvent } from "react";
 
 import { FilterBar } from "@/components/shared/filter-bar";
 
@@ -15,7 +15,6 @@ export function DonationsFilters({ dateFrom, dateTo }: DonationsFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
   const t = useTranslations("donations.filters");
 
   function setParam(key: string, value: string) {
@@ -27,15 +26,11 @@ export function DonationsFilters({ dateFrom, dateTo }: DonationsFiltersProps) {
     }
     params.delete("page");
     const query = params.toString();
-    startTransition(() => {
-      router.push(query ? `${pathname}?${query}` : pathname);
-    });
+    router.push(query ? `${pathname}?${query}` : pathname);
   }
 
   return (
     <FilterBar
-      className={isPending ? "opacity-70" : undefined}
-      aria-busy={isPending || undefined}
       filters={
         <>
           <DateField

@@ -22,7 +22,8 @@ interface ConstituentsPageProps {
 
 function parsePositiveInt(value: string | string[] | undefined, fallback: number, max?: number) {
   const raw = Array.isArray(value) ? value[0] : value;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  const val = Array.isArray(raw) ? raw[0] : raw;
+  const parsed = val ? Number.parseInt(val, 10) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 1) return fallback;
   return max ? Math.min(parsed, max) : parsed;
 }
