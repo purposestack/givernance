@@ -127,6 +127,7 @@ export function ConstituentsTable({ constituents, pagination }: ConstituentsTabl
         pagination={pagination}
         onPageChange={navigateToPage}
         onRowClick={(row) => router.push(`/constituents/${row.original.id}`)}
+        onRowClick={(row) => router.push(`/constituents/${row.original.id}`)}
         emptyState={
           <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />
         }
