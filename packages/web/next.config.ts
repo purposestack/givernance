@@ -6,6 +6,14 @@ import createNextIntlPlugin from "next-intl/plugin";
 // come from the CI runner directly.
 
 const nextConfig: NextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${process.env.API_URL}/v1/:path*`,
+      },
+    ];
+  },
   /** Consume shared workspace packages via TypeScript source. */
   transpilePackages: ["@givernance/shared"],
 
