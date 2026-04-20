@@ -17,6 +17,11 @@ import { db, withTenantContext } from "../src/lib/db.js";
 
 const TENANT_SLUG = "givernance";
 const TENANT_NAME = "Givernance Demo NPO";
+/**
+ * Fixed UUID so the web layer can target this tenant as DEV_DEFAULT_ORG_ID
+ * without having to look it up. Dev-only convenience — see issue #84.
+ */
+const TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
 const CONSTITUENT_COUNT = 50;
 const CAMPAIGN_COUNT = 5;
 const DONATION_COUNT = 100;
@@ -165,6 +170,7 @@ async function findOrCreateTenant(): Promise<string> {
   const [created] = await db
     .insert(tenants)
     .values({
+      id: TENANT_ID,
       name: TENANT_NAME,
       slug: TENANT_SLUG,
       plan: "starter",

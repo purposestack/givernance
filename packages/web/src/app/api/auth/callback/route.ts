@@ -12,6 +12,7 @@ import {
   requireClientSecret,
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
+import { mintSessionJwt } from "@/lib/auth/mint-session-jwt";
 
 /** Map Keycloak errors to safe, fixed error codes — never reflect upstream error text. */
 function sanitizeError(error: string): string {
@@ -114,11 +115,17 @@ export async function GET(request: NextRequest) {
       expires_in?: number;
     };
 
+    // TODO(#84): once the API verifies Keycloak RS256 tokens via JWKS and the
+    // realm has an `org_id` protocol mapper, drop mintSessionJwt and store
+    // tokens.access_token directly. Dev-only shim until Phase 1 SSO lands.
+    const sessionMaxAge = tokens.expires_in ?? 8 * 60 * 60;
+    const sessionJwt = await mintSessionJwt(tokens.access_token, sessionMaxAge);
+
     // Clean up OIDC flow cookies and set the JWT + ID token cookies
     cleanup();
-    jar.set(JWT_COOKIE_NAME, tokens.access_token, jwtCookieOptions(tokens.expires_in));
+    jar.set(JWT_COOKIE_NAME, sessionJwt, jwtCookieOptions(sessionMaxAge));
     if (tokens.id_token) {
-      jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(tokens.expires_in));
+      jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(sessionMaxAge));
     }
 
     return NextResponse.redirect(new URL("/dashboard", APP_URL).toString());
