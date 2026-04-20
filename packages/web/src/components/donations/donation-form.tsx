@@ -590,6 +590,7 @@ function parseDateString(val: string): string | undefined {
   if (parts.length === 3) {
     // assume DD/MM/YYYY
     const [d, m, y] = parts;
+    if (!d || !m || !y) return undefined;
     const yStr = y.length === 2 ? `20${y}` : y;
     const iso = `${yStr}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T00:00:00Z`;
     const dt = new Date(iso);
