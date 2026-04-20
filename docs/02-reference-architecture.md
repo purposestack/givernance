@@ -28,7 +28,7 @@ See: /diagrams/context.mmd
 ```
 
 Actors:
-- **NPO Staff** (fundraising manager, program manager, volunteer coordinator, data entry) — authenticate via SSO only; their `users` record is created Just-In-Time on first login (see doc 21 §2.4)
+- **NPO Staff** (fundraising manager, program manager, volunteer coordinator, data entry) — authenticate via SSO only after email validation; their `users` record is created Just-In-Time on first login (see doc 21 §2.4)
 - **NPO Administrator** (configures fund accounting, GL mapping, roles, GDPR actions) — authenticates via SSO; does **not** create the tenant (that is a Givernance Super Admin action)
 - **Beneficiaries** (optional self-service portal for case access)
 - **Volunteers** (self-service portal for shift booking and hour logging)
@@ -71,6 +71,7 @@ See: /diagrams/container.mmd
 - Client components for interactive forms and dashboards
 - Connects to `givernance-api` only (no direct DB)
 - Auth: OIDC flow through Keycloak; JWT stored in httpOnly cookie
+- Tenant routing: production uses tenant subdomains such as `https://redcross.givernance.app` or `https://redcross.givernance.org`; local development simulates the same routing context with `?namespace=redcross`
 - Static assets served from CDN (CloudFront / Cloudflare)
 
 #### `givernance-relay` (TypeScript, standalone)
@@ -122,10 +123,10 @@ See: /diagrams/container.mmd
 
 #### `keycloak` (Keycloak 24)
 - OIDC provider; issues JWTs consumed by `givernance-api`
-- Realms: **one shared realm per deployment** (`givernance` for SaaS). Tenant isolation is carried in the JWT via `org_id` / `org_slug` / `role` claims and enforced at the application layer (PostgreSQL RLS — see §6)
+- Realms: **Option A / MVP choice is one shared realm per deployment** (`givernance` for SaaS, admin, tests, and the MVP). Tenant isolation is carried in the JWT via `org_id` / `org_slug` / `role` claims and enforced at the application layer (PostgreSQL RLS — see §6)
 - Multi-tenancy inside the shared realm: one Keycloak **group** per tenant (`/tenants/<slug>`) + per-tenant **Identity Provider federation** (Entra ID, Okta, Google Workspace, …). Domain routing uses `kc_idp_hint` or email-domain alias. See `21-authentication-sso.md` §2 for the full onboarding architecture (Spike [#80](https://github.com/purposestack/givernance/issues/80))
 - **No self-service signup**: tenant rows and Keycloak groups/IdPs are provisioned by a Givernance Super Admin via `POST /v1/admin/tenants`; NPO users are then created Just-In-Time on first SSO login from the JWT claims
-- Dedicated-realm-per-tenant mode is reserved as an enterprise escape hatch for self-hosted customers with hard IdP isolation requirements
+- **Option B / future evolution** is one dedicated Keycloak realm per tenant. It is reserved as an enterprise escape hatch for self-hosted customers with hard IdP isolation requirements, not the MVP SaaS path
 - Flows: standard OIDC (PKCE), SAML 2.0 bridge, magic link for volunteers
 - Brute-force protection, MFA enforcement by role
 - Retained in all deployment modes — no managed alternative covers the full feature set (SAML 2.0, magic-link, MFA by role). See [ADR-007](./15-infra-adr.md#adr-007-reject-convexdev-and-supabase-as-all-in-one-backend-replacements).

@@ -13,13 +13,14 @@ Givernance uses **OpenID Connect (OIDC)** via **Keycloak** as the sole authentic
 |---|---|---|
 | Tenant creation | Anonymous visitor fills a 5-step signup wizard | **Givernance Super Admin** creates the tenant from the back-office |
 | Identity Provider configuration | Implicit (local password) | Super Admin configures the per-tenant OIDC/SAML connection (Entra ID, Okta, Google Workspace, …) in the shared Keycloak realm |
-| User account creation | Manual invite → user sets password | **Just-In-Time (JIT) provisioning** on first SSO login, driven by Keycloak JWT claims (`sub`, `email`, `org_id`, `role`) |
+| User account creation | Manual invite → user sets password | Email is validated by Keycloak or the external IdP, then **Just-In-Time (JIT) provisioning** runs on first SSO login from Keycloak JWT claims (`sub`, `email`, `org_id`, `role`) |
 | Data residency choice | Per-org selector in the wizard | **No longer a user choice** — governed centrally by ADR-009 (Scaleway Managed PostgreSQL EU, RLS-based isolation; supersedes ADR-006) |
 | Salesforce / CSV import at signup | Step 3 of the wizard | Deferred to the **Migration epic**, post-login |
+| Tenant URL routing | Generic app URL | Tenant is addressed by subdomain (`https://<tenant>.givernance.app`, or `.org` where appropriate); local development simulates this with `?namespace=<tenant>` |
 
 ## 2. Tenant Onboarding Architecture (Spike #80)
 
-### 2.1 Shared realm with per-tenant IdPs (baseline)
+### 2.1 Option A — shared realm with groups/attributes (MVP choice)
 
 Givernance operates **one shared Keycloak realm per deployment** (`givernance` for SaaS; see `02-reference-architecture.md` §3.2). Tenant membership is represented through:
 
@@ -29,7 +30,7 @@ Givernance operates **one shared Keycloak realm per deployment** (`givernance` f
 
 Because the realm is shared, thousands of small European NPOs can be onboarded without multiplying realms, clients, redirect URI configuration, or admin overhead. Tenant isolation is enforced at the application layer (`org_id` claim → PostgreSQL RLS, see `02-reference-architecture.md` §6).
 
-### 2.2 Dedicated-realm escape hatch (enterprise)
+### 2.2 Option B — dedicated realm per tenant (future evolution)
 
 For self-hosted enterprise tenants with strict IdP isolation requirements (dedicated realm-level policies, branding, MFA config), Givernance offers a **dedicated-realm deployment mode** as an opt-in escape hatch. This is operationally heavy and reserved for large NPOs or public-sector customers; it is not offered on the shared SaaS plane.
 
@@ -71,7 +72,7 @@ sequenceDiagram
 
 ### 2.4 User creation — Just-In-Time (JIT) on first SSO login
 
-Once the tenant is provisioned, NPO users never go through a signup form. Their PostgreSQL `users` row is created **Just-In-Time** on the first successful SSO login, using the trusted claims in the Keycloak-issued JWT:
+Once the tenant is provisioned, NPO users never go through a Givernance signup wizard. They must still pass an **email validation** gate before the account is usable: for enterprise SSO, the upstream IdP is authoritative for verified email; for Keycloak-local smoke tests or MVP-created users, Keycloak must require email verification before issuing a tenant-bearing token. Their PostgreSQL `users` row is then created **Just-In-Time** on the first successful SSO login, using the trusted claims in the Keycloak-issued JWT:
 
 ```mermaid
 sequenceDiagram
@@ -141,7 +142,7 @@ Data residency is **not a per-tenant choice** in the onboarding flow. All SaaS t
 
 ## 3. Authentication Flow (Next.js & Fastify)
 
-1. **Login Trigger**: The user visits `https://<tenant>.givernance.app/login` and clicks the "SSO Login" button.
+1. **Login Trigger**: The user visits `https://<tenant>.givernance.app/login` (or `https://<tenant>.givernance.org/login`) and clicks the "SSO Login" button. In local development, the same tenant context is simulated with `http://localhost:3000/login?namespace=<tenant>`.
 2. **Redirect to Keycloak**: The Next.js API route `GET /api/auth/login` generates:
    - `state` (Anti-CSRF)
    - `nonce` (OIDC replay protection)
@@ -150,10 +151,10 @@ Data residency is **not a per-tenant choice** in the onboarding flow. All SaaS t
 3. **Keycloak Auth**: The user authenticates (via Google Workspace, Microsoft Entra, or Keycloak local DB).
 4. **Callback**: Keycloak redirects to `GET /api/auth/callback` with an authorization `code`.
 5. **Token Exchange**: Next.js exchanges the `code` + `code_verifier` for an Access Token (JWT) via backend server-to-server call.
-6. **Session Establishment**: 
+6. **Session Establishment**:
    - The JWT is saved in the `givernance_jwt` cookie (`httpOnly`, `Secure`, `SameSite=Strict`).
    - A secondary `csrf-token` cookie (non-httpOnly) is set for the browser to read.
-   - The user is redirected to `/dashboard`.
+   - The web app resolves the tenant from the signed JWT claims and redirects the browser to `https://<org_slug>.givernance.app/dashboard` (or `.org` where appropriate). If the user started locally with `?namespace=<tenant>`, the local redirect remains on `localhost` and preserves the namespace for routing only.
 
 ## 4. Sign-Out Flow
 
