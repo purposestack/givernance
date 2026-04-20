@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/layout";
+import { Toaster } from "@/components/ui/toast";
 import { AuthProvider } from "@/lib/auth";
 import { requireAuth } from "@/lib/auth/guards";
 
@@ -27,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       >
         {children}
       </AppShell>
+      <Toaster />
     </AuthProvider>
   );
 }

@@ -143,6 +143,61 @@
       "member": "Member",
       "beneficiary": "Beneficiary",
       "partner": "Partner"
+    },
+    "actions": {
+      "new": "New constituent"
+    }
+  },
+  "constituentForm": {
+    "createTitle": "New constituent",
+    "createSubtitle": "Add a new constituent to your organisation.",
+    "editTitle": "Edit constituent",
+    "editSubtitle": "Update contact details or classification.",
+    "breadcrumbNew": "New",
+    "breadcrumbEdit": "Edit",
+    "sections": {
+      "identity": {
+        "title": "Identity",
+        "description": "Type and name of the constituent."
+      },
+      "contact": {
+        "title": "Contact",
+        "description": "Email and phone used for outreach."
+      }
+    },
+    "fields": {
+      "type": "Type",
+      "typeHint": "Choose how this person relates to your organisation.",
+      "firstName": "First name",
+      "firstNamePlaceholder": "Jane",
+      "lastName": "Last name",
+      "lastNamePlaceholder": "Doe",
+      "email": "Email",
+      "emailPlaceholder": "jane.doe@example.org",
+      "phone": "Phone",
+      "phonePlaceholder": "+33 1 23 45 67 89"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "submitCreate": "Create constituent",
+      "submitEdit": "Save changes",
+      "submitting": "Saving…"
+    },
+    "duplicate": {
+      "title": "Potential duplicate detected",
+      "body": "A constituent with similar details already exists. Review the match below before continuing.",
+      "viewExisting": "View existing",
+      "createAnyway": "Create anyway",
+      "cancel": "Cancel",
+      "unnamed": "Unnamed constituent"
+    },
+    "errors": {
+      "generic": "Something went wrong while saving. Please try again.",
+      "validation": "Please correct the highlighted fields."
+    },
+    "success": {
+      "created": "Constituent created.",
+      "updated": "Changes saved."
     }
   },
   "constituentDetail": {
