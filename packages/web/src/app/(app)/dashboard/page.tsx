@@ -39,7 +39,9 @@ export default async function DashboardPage() {
     getSafeData(() =>
       DonationService.listDonations(client, { page: 1, perPage: RECENT_DONATIONS_LIMIT }),
     ),
-    getSafeData(() => DonationService.listDonations(client, { page: 1, perPage: KPI_SAMPLE_LIMIT })),
+    getSafeData(() =>
+      DonationService.listDonations(client, { page: 1, perPage: KPI_SAMPLE_LIMIT }),
+    ),
     getSafeData(() =>
       ConstituentService.listConstituents(client, {
         page: 1,
@@ -156,7 +158,10 @@ export default async function DashboardPage() {
           </section>
 
           <section className="rounded-md bg-surface-container-lowest p-6 shadow-card">
-            <SectionHeader title={t("onboarding.title")} description={t("onboarding.description")} />
+            <SectionHeader
+              title={t("onboarding.title")}
+              description={t("onboarding.description")}
+            />
             <ul className="mt-4 space-y-3">
               <ChecklistItem
                 complete={Boolean(donorResult?.pagination.total)}
@@ -166,7 +171,10 @@ export default async function DashboardPage() {
                 complete={Boolean(recentDonations?.pagination.total)}
                 label={t("onboarding.recordDonation")}
               />
-              <ChecklistItem complete={Boolean(activeCampaignCount)} label={t("onboarding.launchCampaign")} />
+              <ChecklistItem
+                complete={Boolean(activeCampaignCount)}
+                label={t("onboarding.launchCampaign")}
+              />
             </ul>
           </section>
         </div>
@@ -216,9 +224,7 @@ function SectionHeader({
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h2 className="font-heading text-xl leading-tight text-on-surface">{title}</h2>
-        {description ? (
-          <p className="mt-1 text-sm text-on-surface-variant">{description}</p>
-        ) : null}
+        {description ? <p className="mt-1 text-sm text-on-surface-variant">{description}</p> : null}
       </div>
       {actionHref && actionLabel ? (
         <Button asChild variant="ghost" size="sm">
