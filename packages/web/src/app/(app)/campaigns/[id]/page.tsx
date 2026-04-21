@@ -12,13 +12,25 @@ import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import type { Campaign, CampaignStats } from "@/models/campaign";
-import type { DonationListRow } from "@/models/donation";
-import { donationDonorName } from "@/models/donation";
+import type { DonationListResponse } from "@/models/donation";
 import { CampaignService } from "@/services/CampaignService";
 import { DonationService } from "@/services/DonationService";
 
+import { DonationsTable } from "./donations-table";
+
+const DEFAULT_DONATIONS_PER_PAGE = 25;
+const MAX_DONATIONS_PER_PAGE = 100;
+
 interface CampaignDetailPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+function parsePositiveInt(value: string | string[] | undefined, fallback: number, max?: number) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return max ? Math.min(parsed, max) : parsed;
 }
 
 async function fetchCampaignOrNotFound(id: string): Promise<Campaign> {
@@ -33,15 +45,49 @@ async function fetchCampaignOrNotFound(id: string): Promise<Campaign> {
   }
 }
 
-export default async function CampaignDetailPage({ params }: CampaignDetailPageProps) {
+async function fetchDonationsOrEmpty(
+  id: string,
+  page: number,
+  perPage: number,
+): Promise<DonationListResponse> {
+  const client = await createServerApiClient();
+  try {
+    return await DonationService.listDonations(client, {
+      campaignId: id,
+      page,
+      perPage,
+    });
+  } catch (err) {
+    if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
+      return {
+        data: [],
+        pagination: { page, perPage, total: 0, totalPages: 0 },
+      };
+    }
+    throw err;
+  }
+}
+
+export default async function CampaignDetailPage({
+  params,
+  searchParams,
+}: CampaignDetailPageProps) {
   await requireAuth();
   const { id } = await params;
+  const sp = await searchParams;
+  const donationsPage = parsePositiveInt(sp.page, 1);
+  const donationsPerPage = parsePositiveInt(
+    sp.perPage,
+    DEFAULT_DONATIONS_PER_PAGE,
+    MAX_DONATIONS_PER_PAGE,
+  );
+
   const client = await createServerApiClient();
   const campaign = await fetchCampaignOrNotFound(id);
 
-  const [stats, donations, t, tCampaigns, tDonations, locale] = await Promise.all([
+  const [stats, donationsResult, t, tCampaigns, tDonations, locale] = await Promise.all([
     CampaignService.getCampaignStats(client, id),
-    DonationService.listDonations(client, { campaignId: id, perPage: 100 }),
+    fetchDonationsOrEmpty(id, donationsPage, donationsPerPage),
     getTranslations("campaigns.detail"),
     getTranslations("campaigns"),
     getTranslations("donations"),
@@ -88,8 +134,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
         </aside>
         <DonationBreakdownCard
           campaign={campaign}
-          donations={donations.data}
-          locale={locale}
+          donationsResult={donationsResult}
           donationsLabel={tDonations("title")}
         />
       </div>
@@ -151,16 +196,15 @@ async function StatusCard({ campaign }: { campaign: Campaign }) {
 
 async function DonationBreakdownCard({
   campaign,
-  donations,
-  locale,
+  donationsResult,
   donationsLabel,
 }: {
   campaign: Campaign;
-  donations: DonationListRow[];
-  locale: string;
+  donationsResult: DonationListResponse;
   donationsLabel: string;
 }) {
   const t = await getTranslations("campaigns.detail");
+  const { data: donations, pagination } = donationsResult;
 
   return (
     <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
@@ -168,7 +212,7 @@ async function DonationBreakdownCard({
         <div>
           <h2 className="font-heading text-xl text-on-surface">{t("donations.title")}</h2>
           <p className="text-sm text-on-surface-variant">
-            {t("donations.subtitle", { count: donations.length })}
+            {t("donations.subtitle", { count: pagination.total })}
           </p>
         </div>
         <Button asChild variant="ghost" size="sm">
@@ -181,47 +225,7 @@ async function DonationBreakdownCard({
       {donations.length === 0 ? (
         <p className="text-sm text-on-surface-variant">{t("donations.empty")}</p>
       ) : (
-        <table className="w-full border-separate border-spacing-0 text-sm">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-on-surface-variant">
-              <th className="border-b border-outline-variant py-2 text-left font-medium">
-                {t("donations.columns.date")}
-              </th>
-              <th className="border-b border-outline-variant py-2 text-left font-medium">
-                {t("donations.columns.donor")}
-              </th>
-              <th className="border-b border-outline-variant py-2 text-left font-medium">
-                {t("donations.columns.reference")}
-              </th>
-              <th className="border-b border-outline-variant py-2 text-right font-medium">
-                {t("donations.columns.amount")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {donations.map((donation) => (
-              <tr key={donation.id}>
-                <td className="border-b border-outline-variant/50 py-3 text-on-surface-variant">
-                  {formatDate(donation.donatedAt, locale, "medium")}
-                </td>
-                <td className="border-b border-outline-variant/50 py-3">
-                  <Link
-                    href={`/donations/${donation.id}`}
-                    className="font-medium text-on-surface hover:text-primary hover:underline"
-                  >
-                    {donationDonorName(donation) ?? t("donations.anonymousDonor")}
-                  </Link>
-                </td>
-                <td className="border-b border-outline-variant/50 py-3 text-on-surface-variant">
-                  {donation.paymentRef ?? t("donations.noReference")}
-                </td>
-                <td className="border-b border-outline-variant/50 py-3 text-right font-mono tabular-nums text-on-surface">
-                  {formatCurrency(donation.amountCents, locale, donation.currency)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DonationsTable donations={donations} pagination={pagination} />
       )}
     </section>
   );

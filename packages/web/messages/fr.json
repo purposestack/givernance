@@ -345,7 +345,6 @@
     "status": {
       "draft": "Brouillon",
       "active": "Active",
-      "paused": "En pause",
       "closed": "Clôturée"
     },
     "types": {
@@ -420,14 +419,14 @@
         "edit": "Modifier",
         "activate": "Activer",
         "activating": "Activation…",
-        "pause": "Mettre en pause",
-        "pausing": "Mise en pause…",
+        "backToDraft": "Revenir au brouillon",
+        "returningToDraft": "Retour au brouillon…",
         "close": "Clôturer",
         "closing": "Clôture…",
         "error": "Impossible de mettre à jour le statut de la campagne. Réessayez.",
         "success": {
           "activate": "Campagne activée.",
-          "pause": "Campagne mise en pause.",
+          "backToDraft": "Campagne repassée en brouillon.",
           "close": "Campagne clôturée."
         }
       },
