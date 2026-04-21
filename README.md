@@ -115,7 +115,7 @@ See [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) for
 
 ## Specialized Agents
 
-8 Claude agents for domain-specific tasks (see `.claude/agents/`):
+16 Claude agents for domain-specific tasks (see `.claude/agents/`):
 
 - `.claude/agents/domain-analyst.md` — Business domain analysis and bounded contexts
 - `.claude/agents/data-architect.md` — Data model design and database architecture
@@ -125,3 +125,11 @@ See [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) for
 - `.claude/agents/pricing-strategist.md` — Pricing model and packaging strategy
 - `.claude/agents/ux-researcher.md` — User research, personas, and usability validation
 - `.claude/agents/design-architect.md` — Visual identity, design system, and UI/UX principles
+- `.claude/agents/mvp-engineer.md` — Full-stack implementation (Fastify routes, Drizzle ORM, BullMQ jobs)
+- `.claude/agents/api-contract-designer.md` — REST API contracts, TypeBox schemas, OpenAPI 3.1, RFC 9457 errors
+- `.claude/agents/qa-engineer.md` — Integration tests, RLS isolation, GDPR compliance, Stripe webhooks
+- `.claude/agents/log-analyst.md` — Structured logging, distributed tracing, audit trail, performance diagnostics
+- `.claude/agents/feature-flag-engineer.md` — Feature flag schema, evaluation, lifecycle, plan-gating
+- `.claude/agents/impersonation-engineer.md` — Impersonation token design, session lifecycle, double-attribution audit
+- `.claude/agents/payment-engineer.md` — Stripe Connect, Mollie, SEPA DD, webhooks, PCI DSS SAQ A, reconciliation
+- `.claude/agents/translation-specialist.md` — Translation completeness, terminology consistency, locale QA
