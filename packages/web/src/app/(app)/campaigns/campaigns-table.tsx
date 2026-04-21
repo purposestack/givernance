@@ -14,17 +14,15 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import type { Campaign, CampaignStats, CampaignStatus, CampaignType } from "@/models/campaign";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
-type CampaignListStatus = CampaignStatus | "paused";
 
 interface CampaignWithStats {
   campaign: Campaign;
   stats: CampaignStats | null;
 }
 
-const STATUS_VARIANTS: Record<CampaignListStatus, BadgeVariant> = {
+const STATUS_VARIANTS: Record<CampaignStatus, BadgeVariant> = {
   draft: "neutral",
   active: "success",
-  paused: "warning",
   closed: "info",
 };
 
@@ -35,7 +33,7 @@ const TYPE_VARIANTS: Record<CampaignType, BadgeVariant> = {
 };
 
 const CAMPAIGN_TYPES = new Set<CampaignType>(["nominative_postal", "door_drop", "digital"]);
-const CAMPAIGN_STATUSES = new Set<CampaignListStatus>(["draft", "active", "paused", "closed"]);
+const CAMPAIGN_STATUSES = new Set<CampaignStatus>(["draft", "active", "closed"]);
 
 interface CampaignsTableProps {
   campaigns: CampaignWithStats[];
@@ -46,8 +44,8 @@ function isCampaignType(value: string): value is CampaignType {
   return CAMPAIGN_TYPES.has(value as CampaignType);
 }
 
-function isCampaignStatus(value: string): value is CampaignListStatus {
-  return CAMPAIGN_STATUSES.has(value as CampaignListStatus);
+function isCampaignStatus(value: string): value is CampaignStatus {
+  return CAMPAIGN_STATUSES.has(value as CampaignStatus);
 }
 
 export function CampaignsTable({ campaigns, pagination }: CampaignsTableProps) {

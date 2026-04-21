@@ -345,7 +345,6 @@
     "status": {
       "draft": "Draft",
       "active": "Active",
-      "paused": "Paused",
       "closed": "Closed"
     },
     "types": {
@@ -420,14 +419,14 @@
         "edit": "Edit",
         "activate": "Activate",
         "activating": "Activating…",
-        "pause": "Pause",
-        "pausing": "Pausing…",
+        "backToDraft": "Back to draft",
+        "returningToDraft": "Returning to draft…",
         "close": "Close",
         "closing": "Closing…",
         "error": "Could not update campaign status. Please try again.",
         "success": {
           "activate": "Campaign activated.",
-          "pause": "Campaign paused.",
+          "backToDraft": "Campaign moved back to draft.",
           "close": "Campaign closed."
         }
       },

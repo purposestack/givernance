@@ -1,6 +1,6 @@
 "use client";
 
-import { Pause, Play, XCircle } from "lucide-react";
+import { Play, RotateCcw, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -20,9 +20,11 @@ interface CampaignStatusActionsProps {
 export function CampaignStatusActions({ campaignId, status }: CampaignStatusActionsProps) {
   const router = useRouter();
   const t = useTranslations("campaigns.detail.actions");
-  const [pendingAction, setPendingAction] = useState<"activate" | "pause" | "close" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"activate" | "backToDraft" | "close" | null>(
+    null,
+  );
 
-  async function runAction(action: "activate" | "pause" | "close") {
+  async function runAction(action: "activate" | "backToDraft" | "close") {
     setPendingAction(action);
     try {
       const client = createClientApiClient();
@@ -54,11 +56,11 @@ export function CampaignStatusActions({ campaignId, status }: CampaignStatusActi
       </Button>
       <Button
         variant="secondary"
-        onClick={() => void runAction("pause")}
+        onClick={() => void runAction("backToDraft")}
         disabled={busy || status === "draft" || status === "closed"}
       >
-        <Pause size={16} aria-hidden="true" />
-        {pendingAction === "pause" ? t("pausing") : t("pause")}
+        <RotateCcw size={16} aria-hidden="true" />
+        {pendingAction === "backToDraft" ? t("returningToDraft") : t("backToDraft")}
       </Button>
       <Button
         variant="destructive"
