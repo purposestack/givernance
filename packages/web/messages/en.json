@@ -325,6 +325,40 @@
       "new": "New constituent"
     }
   },
+  "campaigns": {
+    "title": "Campaigns",
+    "breadcrumbRoot": "Dashboard",
+    "subtitleWithCount": "{count, plural, =0 {No campaigns yet} one {# campaign} other {# campaigns}}",
+    "subtitleEmpty": "No campaigns yet.",
+    "empty": {
+      "title": "No campaigns to show",
+      "description": "Create a campaign to track outreach and donations.",
+      "seedHint": "Create a campaign to track outreach and donations."
+    },
+    "columns": {
+      "name": "Name",
+      "type": "Type",
+      "status": "Status",
+      "progress": "Progress",
+      "date": "Date"
+    },
+    "status": {
+      "draft": "Draft",
+      "active": "Active",
+      "paused": "Paused",
+      "closed": "Closed"
+    },
+    "types": {
+      "nominative_postal": "Nominative postal",
+      "door_drop": "Door drop",
+      "digital": "Digital"
+    },
+    "actions": {
+      "new": "New Campaign"
+    },
+    "noGoal": "No goal",
+    "progressAria": "{raised} raised of {goal}"
+  },
   "constituentForm": {
     "createTitle": "New constituent",
     "createSubtitle": "Add a new constituent to your organisation.",

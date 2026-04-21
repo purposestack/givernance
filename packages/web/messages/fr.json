@@ -325,6 +325,40 @@
       "new": "Nouveau constituant"
     }
   },
+  "campaigns": {
+    "title": "Campagnes",
+    "breadcrumbRoot": "Tableau de bord",
+    "subtitleWithCount": "{count, plural, =0 {Aucune campagne} one {# campagne} other {# campagnes}}",
+    "subtitleEmpty": "Aucune campagne pour l'instant.",
+    "empty": {
+      "title": "Aucune campagne à afficher",
+      "description": "Créez une campagne pour suivre les communications et les dons.",
+      "seedHint": "Créez une campagne pour suivre les communications et les dons."
+    },
+    "columns": {
+      "name": "Nom",
+      "type": "Type",
+      "status": "Statut",
+      "progress": "Progression",
+      "date": "Date"
+    },
+    "status": {
+      "draft": "Brouillon",
+      "active": "Active",
+      "paused": "En pause",
+      "closed": "Clôturée"
+    },
+    "types": {
+      "nominative_postal": "Postal nominatif",
+      "door_drop": "Boîtage",
+      "digital": "Digital"
+    },
+    "actions": {
+      "new": "Nouvelle campagne"
+    },
+    "noGoal": "Aucun objectif",
+    "progressAria": "{raised} collectés sur {goal}"
+  },
   "constituentForm": {
     "createTitle": "Nouveau constituant",
     "createSubtitle": "Ajoutez un nouveau constituant à votre organisation.",
