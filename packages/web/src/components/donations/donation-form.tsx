@@ -50,7 +50,7 @@ import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { cn } from "@/lib/utils";
 import { type Constituent, fullName } from "@/models/constituent";
-import type { DonationCreateInput } from "@/models/donation";
+import type { DonationAllocationInput, DonationCreateInput } from "@/models/donation";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
 
@@ -635,30 +635,7 @@ function buildResolver(): Resolver<DonationFormValues> {
   ) as unknown as Resolver<Record<string, unknown>>;
 
   const adapted: Resolver<DonationFormValues> = async (values, context, options) => {
-    const cleaned: Record<string, unknown> = {
-      constituentId: values.constituentId,
-      amountCents: values.amountCents ?? 0,
-      currency: values.currency,
-    };
-    if (values.campaignId && (values.campaignId || "").trim() !== "") {
-      cleaned.campaignId = (values.campaignId || "").trim();
-    }
-    if (values.paymentMethod) {
-      cleaned.paymentMethod = values.paymentMethod;
-    }
-    if (values.paymentRef && (values.paymentRef || "").trim() !== "") {
-      cleaned.paymentRef = (values.paymentRef || "").trim();
-    }
-    if (values.donatedAt) {
-      const parsed = parseDateString(values.donatedAt);
-      if (parsed) cleaned.donatedAt = parsed;
-    }
-    const allocations = (values.allocations || [])
-      .filter((a) => a.fundId.trim() !== "" && a.amountCents !== null && a.amountCents > 0)
-      .map((a) => ({ fundId: a.fundId.trim(), amountCents: a.amountCents as number }));
-    if (allocations.length > 0) {
-      cleaned.allocations = allocations;
-    }
+    const cleaned = normalizeResolverValues(values);
     const result = await innerResolver(
       cleaned,
       context,
@@ -668,6 +645,52 @@ function buildResolver(): Resolver<DonationFormValues> {
   };
 
   return adapted;
+}
+
+function normalizeResolverValues(values: DonationFormValues): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {
+    constituentId: values.constituentId,
+    amountCents: values.amountCents ?? 0,
+    currency: values.currency,
+  };
+
+  const campaignId = values.campaignId.trim();
+  if (campaignId !== "") {
+    cleaned.campaignId = campaignId;
+  }
+
+  if (values.paymentMethod) {
+    cleaned.paymentMethod = values.paymentMethod;
+  }
+
+  const paymentRef = values.paymentRef.trim();
+  if (paymentRef !== "") {
+    cleaned.paymentRef = paymentRef;
+  }
+
+  const donatedAt = parseDateString(values.donatedAt);
+  if (donatedAt) {
+    cleaned.donatedAt = donatedAt;
+  }
+
+  const allocations = normalizeAllocations(values.allocations);
+  if (allocations.length > 0) {
+    cleaned.allocations = allocations;
+  }
+
+  return cleaned;
+}
+
+function normalizeAllocations(allocations: AllocationFormValue[]): DonationAllocationInput[] {
+  return allocations
+    .filter((allocation) => {
+      const fundId = allocation.fundId.trim();
+      return fundId !== "" && allocation.amountCents !== null && allocation.amountCents > 0;
+    })
+    .map((allocation) => ({
+      fundId: allocation.fundId.trim(),
+      amountCents: allocation.amountCents as number,
+    }));
 }
 
 interface ErrorMessages {

@@ -56,6 +56,21 @@ export const DonationCreateSchema = Type.Object({
   allocations: Type.Optional(Type.Array(DonationAllocationSchema)),
 });
 
+/** Schema for creating a new campaign */
+export const CampaignCreateSchema = Type.Object({
+  name: Type.String({ minLength: 1, maxLength: 255 }),
+  type: Type.Union([
+    Type.Literal("nominative_postal"),
+    Type.Literal("door_drop"),
+    Type.Literal("digital"),
+  ]),
+  parentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  costCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
+});
+
+/** Schema for updating a campaign (all fields optional) */
+export const CampaignUpdateSchema = Type.Partial(CampaignCreateSchema);
+
 /** Schema for list query parameters */
 export const PaginationQuerySchema = Type.Object({
   page: Type.Number({ minimum: 1, default: 1 }),
@@ -69,6 +84,8 @@ export type ConstituentCreate = Static<typeof ConstituentCreateSchema>;
 export type ConstituentUpdate = Static<typeof ConstituentUpdateSchema>;
 export type DonationCreate = Static<typeof DonationCreateSchema>;
 export type DonationAllocation = Static<typeof DonationAllocationSchema>;
+export type CampaignCreate = Static<typeof CampaignCreateSchema>;
+export type CampaignUpdate = Static<typeof CampaignUpdateSchema>;
 export type PaginationQuery = Static<typeof PaginationQuerySchema>;
 
 /** Validate, coerce, and apply defaults — throws on failure */
