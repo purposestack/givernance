@@ -402,20 +402,33 @@
       }
     },
     "detail": {
-      "stats": {
-        "title": "Campaign stats",
-        "raised": "Raised",
-        "donors": "Donors",
-        "created": "Created",
-        "noGoal": "No goal",
-        "goalHint": "Goal: {goal}",
-        "donationsHint": "{count, plural, =0 {No donations yet} one {# donation recorded} other {# donations recorded}}",
-        "updatedHint": "Updated {date}"
-      },
-      "actions": {
-        "title": "Status actions",
-        "description": "Move this campaign between draft, active, and closed states.",
-        "back": "Back to campaigns",
+    "stats": {
+      "title": "Campaign stats",
+      "raised": "Raised",
+      "donors": "Donors",
+      "created": "Created",
+      "noGoal": "No goal",
+      "goalHint": "Goal: {goal}",
+      "donationsHint": "{count, plural, =0 {No donations yet} one {# donation recorded} other {# donations recorded}}",
+      "updatedHint": "Updated {date}"
+    },
+    "roi": {
+      "title": "Campaign ROI",
+      "subtitle": "Compare campaign cost against funds raised.",
+      "cost": "Cost",
+      "raised": "Raised",
+      "roi": "ROI",
+      "metric": "Metric",
+      "amount": "Amount",
+      "unavailable": "N/A",
+      "tableCaption": "Campaign ROI data",
+      "chartSummary": "Raised {raised} against a cost of {cost}. ROI: {roi}.",
+      "chartSummaryUnavailable": "Raised {raised} against a cost of {cost}. ROI unavailable."
+    },
+    "actions": {
+      "title": "Status actions",
+      "description": "Move this campaign between draft, active, and closed states.",
+      "back": "Back to campaigns",
         "edit": "Edit",
         "activate": "Activate",
         "activating": "Activating…",
