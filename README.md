@@ -8,6 +8,8 @@ Givernance — purpose-built CRM for European nonprofits. Modular monolith, GDPR
 
 **Givernance** is a purpose-built CRM for European nonprofits (2-200 staff), replacing Salesforce NPSP with GDPR-native compliance, affordable pricing, and an AI-augmented dual-mode interface.
 
+**Marketing website**: [givernance.org](https://givernance.org)
+
 ## Getting Started
 
 ```bash
@@ -68,21 +70,21 @@ The design system reference is at `docs/design/design-system.html`. All 86 inter
 
 ## Design Mockups
 
-86 interactive HTML mockups across 17 modules, viewable on GitHub Pages :
+86 interactive HTML mockups across 17 modules, viewable on GitHub Pages:
 
-**[Voir les mockups](https://onigam.github.io/givernance/design/)**
+**[View the mockups](https://onigam.github.io/givernance/design/)**
 
-- **75 ecrans GUI classique** : Auth, Dashboard, Constituants, Dons, Campagnes, Subventions, Programmes, Benevoles, Impact, Communications, Finance, RGPD, Admin, Rapports, Migration, Global
-- **11 ecrans Mode Conversationnel** (vision 2026-2028) : hub IA, orchestration d'actions, vue hybride, mobile, dashboard evolue — [voir les mockups conversationnels](https://onigam.github.io/givernance/design/conversational-mode/index.html)
+- **75 classic GUI screens**: Auth, Dashboard, Constituents, Donations, Campaigns, Grants, Programs, Volunteers, Impact, Communications, Finance, GDPR, Admin, Reports, Migration, Global
+- **11 Conversational Mode screens** (vision 2026-2028): AI hub, action orchestration, hybrid view, mobile, enhanced dashboard — [view the conversational mockups](https://onigam.github.io/givernance/design/conversational-mode/index.html)
 
-### Vision dual-mode
+### Dual-mode vision
 
-Givernance propose deux paradigmes d'interaction complementaires :
+Givernance offers two complementary interaction paradigms:
 
-1. **GUI IA-augmente** — Interface classique enrichie par des suggestions IA inline (3 modes : Manuel, Assiste, Autopilote)
-2. **Mode conversationnel** (vision) — Agent IA en langage naturel, orchestration d'actions, composants invocables
+1. **AI-augmented GUI** — Classic interface enriched with inline AI suggestions (3 modes: Manual, Assisted, Autopilot)
+2. **Conversational mode** (vision) — Natural-language AI agent, action orchestration, invocable components
 
-Voir [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) pour l'architecture detaillee.
+See [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) for the detailed architecture.
 
 ## Documentation
 
@@ -99,11 +101,11 @@ Voir [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) po
 - [docs/10-open-questions.md](docs/10-open-questions.md)
 
 ### Design & UX
-- [docs/11-design-identity.md](docs/11-design-identity.md) — Identite visuelle, tokens, composants, accessibilite
-- [docs/12-user-journeys.md](docs/12-user-journeys.md) — Parcours utilisateurs (5 personas)
-- [docs/13-ai-modes.md](docs/13-ai-modes.md) — Trois modes d'interaction IA (Manuel, Assiste, Autopilote)
-- [docs/14-screen-inventory.md](docs/14-screen-inventory.md) — Inventaire complet des 86 ecrans
-- [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) — Vision mode conversationnel 2026-2028
+- [docs/11-design-identity.md](docs/11-design-identity.md) — Visual identity, tokens, components, accessibility
+- [docs/12-user-journeys.md](docs/12-user-journeys.md) — User journeys (5 personas)
+- [docs/13-ai-modes.md](docs/13-ai-modes.md) — Three AI interaction modes (Manual, Assisted, Autopilot)
+- [docs/14-screen-inventory.md](docs/14-screen-inventory.md) — Complete inventory of the 86 screens
+- [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) — Conversational mode vision 2026-2028
 
 ## Diagrams
 - diagrams/context.mmd
