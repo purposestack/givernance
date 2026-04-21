@@ -85,7 +85,8 @@ export const CampaignService = {
 
   async closeCampaign(client: ApiClient, id: string): Promise<Campaign> {
     const response = await client.post<CampaignDetailResponse>(
-      `/v1/campaigns/${encodeURIComponent(id)}/close`, {},
+      `/v1/campaigns/${encodeURIComponent(id)}/close`,
+      {},
     );
     return mapCampaign(response.data);
   },
