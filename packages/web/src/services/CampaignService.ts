@@ -1,10 +1,13 @@
 import type { ApiClient } from "@/lib/api";
 import type {
   Campaign,
+  CampaignCreateInput,
+  CampaignDetailResponse,
   CampaignListQuery,
   CampaignListResponse,
   CampaignStats,
   CampaignStatsResponse,
+  CampaignUpdateInput,
 } from "@/models/campaign";
 
 /**
@@ -52,6 +55,40 @@ export const CampaignService = {
     );
     return response.data;
   },
+
+  async getCampaign(client: ApiClient, id: string): Promise<Campaign> {
+    const response = await client.get<CampaignDetailResponse>(
+      `/v1/campaigns/${encodeURIComponent(id)}`,
+    );
+    return mapCampaign(response.data);
+  },
+
+  async createCampaign(client: ApiClient, input: CampaignCreateInput): Promise<Campaign> {
+    const response = await client.post<CampaignDetailResponse>(
+      "/v1/campaigns",
+      toRequestBody(input),
+    );
+    return mapCampaign(response.data);
+  },
+
+  async updateCampaign(
+    client: ApiClient,
+    id: string,
+    input: CampaignUpdateInput,
+  ): Promise<Campaign> {
+    const response = await client.patch<CampaignDetailResponse>(
+      `/v1/campaigns/${encodeURIComponent(id)}`,
+      toRequestBody(input),
+    );
+    return mapCampaign(response.data);
+  },
+
+  async closeCampaign(client: ApiClient, id: string): Promise<Campaign> {
+    const response = await client.post<CampaignDetailResponse>(
+      `/v1/campaigns/${encodeURIComponent(id)}/close`,
+    );
+    return mapCampaign(response.data);
+  },
 };
 
 function mapCampaign(raw: Campaign): Campaign {
@@ -66,4 +103,17 @@ function mapCampaign(raw: Campaign): Campaign {
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
+}
+
+function toRequestBody(input: CampaignCreateInput | CampaignUpdateInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  const maybeStatus = input as CampaignUpdateInput;
+
+  if (input.name !== undefined) body.name = input.name;
+  if (input.type !== undefined) body.type = input.type;
+  if (maybeStatus.status !== undefined) body.status = maybeStatus.status;
+  if (input.parentId !== undefined) body.parentId = input.parentId;
+  if (input.costCents !== undefined) body.costCents = input.costCents;
+
+  return body;
 }

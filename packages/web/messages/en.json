@@ -357,7 +357,94 @@
       "new": "New Campaign"
     },
     "noGoal": "No goal",
-    "progressAria": "{raised} raised of {goal}"
+    "progressAria": "{raised} raised of {goal}",
+    "form": {
+      "createTitle": "New campaign",
+      "createSubtitle": "Set up a campaign with its type, parent relationship, and fundraising goal.",
+      "editTitle": "Edit campaign",
+      "editSubtitle": "Update the campaign name, structure, or target amount.",
+      "breadcrumbNew": "New",
+      "breadcrumbEdit": "Edit",
+      "sections": {
+        "identity": {
+          "title": "Identity",
+          "description": "Core details used to identify and classify this campaign."
+        },
+        "structure": {
+          "title": "Structure",
+          "description": "Parent campaign and target amount used for rollup and reporting."
+        }
+      },
+      "fields": {
+        "name": "Campaign name",
+        "namePlaceholder": "Spring appeal 2026",
+        "type": "Campaign type",
+        "parent": "Parent campaign",
+        "parentPlaceholder": "No parent campaign",
+        "parentHint": "Use a parent campaign to group related outreach.",
+        "parentLoading": "Loading available campaigns…",
+        "goal": "Goal amount",
+        "goalPlaceholder": "0.00",
+        "goalHint": "Shown as the fundraising target on the detail page."
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "submitCreate": "Create campaign",
+        "submitEdit": "Save changes",
+        "submitting": "Saving…"
+      },
+      "errors": {
+        "validation": "Please correct the highlighted fields.",
+        "generic": "Something went wrong while saving. Please try again."
+      },
+      "success": {
+        "created": "Campaign created.",
+        "updated": "Changes saved."
+      }
+    },
+    "detail": {
+      "stats": {
+        "title": "Campaign stats",
+        "raised": "Raised",
+        "donors": "Donors",
+        "created": "Created",
+        "noGoal": "No goal",
+        "goalHint": "Goal: {goal}",
+        "donationsHint": "{count, plural, =0 {No donations yet} one {# donation recorded} other {# donations recorded}}",
+        "updatedHint": "Updated {date}"
+      },
+      "actions": {
+        "title": "Status actions",
+        "description": "Move this campaign between draft, active, and closed states.",
+        "back": "Back to campaigns",
+        "edit": "Edit",
+        "activate": "Activate",
+        "activating": "Activating…",
+        "pause": "Pause",
+        "pausing": "Pausing…",
+        "close": "Close",
+        "closing": "Closing…",
+        "error": "Could not update campaign status. Please try again.",
+        "success": {
+          "activate": "Campaign activated.",
+          "pause": "Campaign paused.",
+          "close": "Campaign closed."
+        }
+      },
+      "donations": {
+        "title": "Donation breakdown",
+        "subtitle": "{count, plural, =0 {No donations linked yet} one {# donation linked} other {# donations linked}}",
+        "empty": "No donations are linked to this campaign yet.",
+        "anonymousDonor": "Anonymous donor",
+        "noReference": "—",
+        "columns": {
+          "date": "Date",
+          "donor": "Donor",
+          "reference": "Reference",
+          "amount": "Amount"
+        }
+      }
+    }
   },
   "constituentForm": {
     "createTitle": "New constituent",

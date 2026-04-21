@@ -36,3 +36,18 @@ export interface CampaignStats {
 export interface CampaignStatsResponse {
   data: CampaignStats;
 }
+
+export interface CampaignDetailResponse {
+  data: Campaign;
+}
+
+export interface CampaignCreateInput {
+  name: string;
+  type: CampaignType;
+  parentId?: string | null;
+  costCents?: number | null;
+}
+
+export type CampaignUpdateInput = Partial<CampaignCreateInput> & {
+  status?: CampaignStatus;
+};
