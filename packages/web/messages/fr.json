@@ -420,7 +420,7 @@
       "roi": "ROI",
       "metric": "Indicateur",
       "amount": "Montant",
-      "unavailable": "N/A",
+      "unavailable": "Indisponible",
       "tableCaption": "Données du ROI de la campagne",
       "chartSummary": "Montant collecté : {raised}, pour un coût de {cost}. ROI : {roi}.",
       "chartSummaryUnavailable": "Montant collecté : {raised}, pour un coût de {cost}. ROI indisponible."

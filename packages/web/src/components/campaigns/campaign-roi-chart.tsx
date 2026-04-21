@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import { formatCurrency, formatPercent } from "@/lib/format";
 
 interface CampaignRoiChartLabels {
@@ -17,6 +19,7 @@ interface CampaignRoiChartLabels {
 interface CampaignRoiChartProps {
   costCents: number | null;
   totalRaisedCents: number;
+  roi: number | null;
   locale: string;
   labels: CampaignRoiChartLabels;
 }
@@ -32,11 +35,14 @@ interface SeriesItem {
 export function CampaignRoiChart({
   costCents,
   totalRaisedCents,
+  roi,
   locale,
   labels,
 }: CampaignRoiChartProps) {
-  const roi =
-    costCents && costCents > 0 ? ((totalRaisedCents - costCents) / costCents) * 100 : null;
+  const id = useId();
+  const figureCaptionId = `${id}-summary`;
+  const tableId = `${id}-table`;
+  const tableCaptionId = `${id}-table-caption`;
   const chartMax = Math.max(costCents ?? 0, totalRaisedCents, 1);
   const costDisplayValue =
     costCents !== null ? formatCurrency(costCents, locale) : labels.unavailable;
@@ -90,7 +96,7 @@ export function CampaignRoiChart({
         </div>
       </div>
 
-      <div className="mt-6 space-y-4" aria-describedby="campaign-roi-summary">
+      <figure className="mt-6 space-y-4" aria-describedby={figureCaptionId} aria-details={tableId}>
         {series.map((item) => {
           const width = Math.max((item.value / chartMax) * 100, item.value > 0 ? 6 : 0);
           return (
@@ -113,14 +119,17 @@ export function CampaignRoiChart({
             </div>
           );
         })}
-      </div>
+        <figcaption id={figureCaptionId} className="sr-only">
+          {summary}
+        </figcaption>
+      </figure>
 
-      <p id="campaign-roi-summary" className="sr-only">
-        {summary}
-      </p>
-
-      <table className="sr-only">
-        <caption>{labels.tableCaption}</caption>
+      <table
+        id={tableId}
+        aria-labelledby={`${figureCaptionId} ${tableCaptionId}`}
+        className="sr-only"
+      >
+        <caption id={tableCaptionId}>{labels.tableCaption}</caption>
         <thead>
           <tr>
             <th scope="col">{labels.metric}</th>
