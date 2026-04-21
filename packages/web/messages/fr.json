@@ -402,20 +402,33 @@
       }
     },
     "detail": {
-      "stats": {
-        "title": "Statistiques de campagne",
-        "raised": "Collecté",
-        "donors": "Donateurs",
-        "created": "Créée",
-        "noGoal": "Aucun objectif",
-        "goalHint": "Objectif : {goal}",
-        "donationsHint": "{count, plural, =0 {Aucun don pour l'instant} one {# don enregistré} other {# dons enregistrés}}",
-        "updatedHint": "Mise à jour {date}"
-      },
-      "actions": {
-        "title": "Actions de statut",
-        "description": "Faites passer cette campagne entre les états brouillon, active et clôturée.",
-        "back": "Retour aux campagnes",
+    "stats": {
+      "title": "Statistiques de campagne",
+      "raised": "Collecté",
+      "donors": "Donateurs",
+      "created": "Créée",
+      "noGoal": "Aucun objectif",
+      "goalHint": "Objectif : {goal}",
+      "donationsHint": "{count, plural, =0 {Aucun don pour l'instant} one {# don enregistré} other {# dons enregistrés}}",
+      "updatedHint": "Mise à jour {date}"
+    },
+    "roi": {
+      "title": "ROI de la campagne",
+      "subtitle": "Comparez le coût de la campagne aux fonds collectés.",
+      "cost": "Coût",
+      "raised": "Collecté",
+      "roi": "ROI",
+      "metric": "Indicateur",
+      "amount": "Montant",
+      "unavailable": "N/A",
+      "tableCaption": "Données du ROI de la campagne",
+      "chartSummary": "Montant collecté : {raised}, pour un coût de {cost}. ROI : {roi}.",
+      "chartSummaryUnavailable": "Montant collecté : {raised}, pour un coût de {cost}. ROI indisponible."
+    },
+    "actions": {
+      "title": "Actions de statut",
+      "description": "Faites passer cette campagne entre les états brouillon, active et clôturée.",
+      "back": "Retour aux campagnes",
         "edit": "Modifier",
         "activate": "Activer",
         "activating": "Activation…",

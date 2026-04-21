@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { CampaignRoiChart } from "@/components/campaigns/campaign-roi-chart";
 import { CampaignStatusActions } from "@/components/campaigns/campaign-status-actions";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -132,11 +133,31 @@ export default async function CampaignDetailPage({
           <StatsCard campaign={campaign} stats={stats} locale={locale} />
           <StatusCard campaign={campaign} />
         </aside>
-        <DonationBreakdownCard
-          campaign={campaign}
-          donationsResult={donationsResult}
-          donationsLabel={tDonations("title")}
-        />
+        <div className="space-y-6">
+          <CampaignRoiChart
+            costCents={campaign.costCents}
+            totalRaisedCents={stats.totalRaisedCents}
+            locale={locale}
+            labels={{
+              title: t("roi.title"),
+              subtitle: t("roi.subtitle"),
+              cost: t("roi.cost"),
+              raised: t("roi.raised"),
+              roi: t("roi.roi"),
+              metric: t("roi.metric"),
+              amount: t("roi.amount"),
+              unavailable: t("roi.unavailable"),
+              tableCaption: t("roi.tableCaption"),
+              chartSummary: t("roi.chartSummary"),
+              chartSummaryUnavailable: t("roi.chartSummaryUnavailable"),
+            }}
+          />
+          <DonationBreakdownCard
+            campaign={campaign}
+            donationsResult={donationsResult}
+            donationsLabel={tDonations("title")}
+          />
+        </div>
       </div>
     </>
   );
