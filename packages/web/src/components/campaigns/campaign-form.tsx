@@ -127,6 +127,7 @@ export function CampaignForm(props: CampaignFormProps) {
         router.refresh();
       }
     } catch (err) {
+      console.error("FORM SUBMIT ERROR:", err);
       handleApiError(err, form, {
         validation: t("errors.validation"),
         generic: t("errors.generic"),
@@ -329,9 +330,9 @@ function parseAmount(raw: string): number | null {
 
 function toApiPayload(values: CampaignFormValues) {
   return {
-    name: values.name.trim(),
+    name: values.name?.trim() ?? "",
     type: values.type,
-    parentId: values.parentId.trim() || null,
+    parentId: values.parentId?.trim() || null,
     costCents: values.costCents,
   };
 }
@@ -345,12 +346,12 @@ function buildResolver(): Resolver<CampaignFormValues> {
 
   const adapted: Resolver<CampaignFormValues> = async (values, context, options) => {
     const cleaned: Record<string, unknown> = {
-      name: values.name.trim(),
+      name: values.name?.trim() ?? "",
       type: values.type,
     };
 
-    if (values.parentId.trim() !== "") {
-      cleaned.parentId = values.parentId.trim();
+    if (values.parentId?.trim() !== "") {
+      cleaned.parentId = values.parentId?.trim();
     }
     if (values.costCents !== null) {
       cleaned.costCents = values.costCents;
