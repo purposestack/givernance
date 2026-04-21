@@ -49,8 +49,10 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { cn } from "@/lib/utils";
+import type { Campaign } from "@/models/campaign";
 import { type Constituent, fullName } from "@/models/constituent";
 import type { DonationAllocationInput, DonationCreateInput } from "@/models/donation";
+import { CampaignService } from "@/services/CampaignService";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
 
@@ -108,6 +110,34 @@ export function DonationForm() {
   });
 
   const [selectedConstituent, setSelectedConstituent] = useState<Constituent | null>(null);
+
+  const [campaignOptions, setCampaignOptions] = useState<Campaign[]>([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    async function loadCampaigns() {
+      try {
+        const client = createClientApiClient();
+        const result = await CampaignService.listCampaigns(client, {
+          page: 1,
+          perPage: 100,
+          status: "active",
+        });
+        if (active) {
+          setCampaignOptions(result.data);
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (active) setCampaignsLoading(false);
+      }
+    }
+    loadCampaigns();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function onSubmit(values: DonationFormValues) {
     form.clearErrors("root");
@@ -293,11 +323,25 @@ export function DonationForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t("fields.campaignId")}</FormLabel>
-                <Input
-                  {...field}
-                  placeholder={t("fields.campaignIdPlaceholder")}
-                  aria-invalid={Boolean(form.formState.errors.campaignId)}
-                />
+                <Select
+                  value={field.value || "__none__"}
+                  onValueChange={(value) => field.onChange(value === "__none__" ? "" : value)}
+                >
+                  <SelectTrigger aria-invalid={Boolean(form.formState.errors.campaignId)}>
+                    <SelectValue placeholder={t("fields.campaignIdPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">{t("fields.campaignIdPlaceholder")}</SelectItem>
+                    {campaignOptions.map((campaign) => (
+                      <SelectItem key={campaign.id} value={campaign.id}>
+                        {campaign.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {campaignsLoading ? (
+                  <p className="text-xs text-on-surface-variant">Chargement des campagnes...</p>
+                ) : null}
                 <FormMessage />
               </FormItem>
             )}
