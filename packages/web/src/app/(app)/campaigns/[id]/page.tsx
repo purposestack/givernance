@@ -94,6 +94,7 @@ export default async function CampaignDetailPage({
     getTranslations("donations"),
     getLocale(),
   ]);
+  const roi = CampaignService.calculateRoi(campaign.costCents, stats.totalRaisedCents);
 
   return (
     <>
@@ -137,6 +138,7 @@ export default async function CampaignDetailPage({
           <CampaignRoiChart
             costCents={campaign.costCents}
             totalRaisedCents={stats.totalRaisedCents}
+            roi={roi}
             locale={locale}
             labels={{
               title: t("roi.title"),

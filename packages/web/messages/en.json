@@ -420,7 +420,7 @@
       "roi": "ROI",
       "metric": "Metric",
       "amount": "Amount",
-      "unavailable": "N/A",
+      "unavailable": "Not available",
       "tableCaption": "Campaign ROI data",
       "chartSummary": "Raised {raised} against a cost of {cost}. ROI: {roi}.",
       "chartSummaryUnavailable": "Raised {raised} against a cost of {cost}. ROI unavailable."

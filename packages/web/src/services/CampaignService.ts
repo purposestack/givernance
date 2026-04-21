@@ -18,6 +18,14 @@ import type {
  * grows that filter.
  */
 export const CampaignService = {
+  calculateRoi(costCents: number | null, raisedCents: number): number | null {
+    if (costCents === null || costCents <= 0) {
+      return null;
+    }
+
+    return ((raisedCents - costCents) / costCents) * 100;
+  },
+
   async listCampaigns(
     client: ApiClient,
     query: CampaignListQuery = {},
