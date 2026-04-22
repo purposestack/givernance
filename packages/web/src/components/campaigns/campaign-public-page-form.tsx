@@ -522,8 +522,8 @@ function getReadableTextColor(hex: string): "#FFFFFF" | "#111827" {
 
 function toApiPayload(values: CampaignPublicPageFormValues) {
   return {
-    title: values.title.trim(),
-    description: values.description.trim() || null,
+    title: values.title?.trim() ?? "",
+    description: values.description?.trim() || null,
     colorPrimary: values.colorPrimary,
     goalAmountCents: sanitizeGoalAmount(values.goalAmountCents),
     status: values.status,
@@ -571,12 +571,14 @@ function buildResolver(messages: ResolverMessages): Resolver<CampaignPublicPageF
     }
 
     const cleaned: Record<string, unknown> = {
-      title: values.title.trim(),
+      title: values.title?.trim() ?? "",
       colorPrimary: normalizedColor,
       status: values.status,
     };
 
-    if (values.description.trim() !== "") cleaned.description = values.description.trim();
+    if (values.description && values.description.trim() !== "") {
+      cleaned.description = values.description.trim();
+    }
     if (sanitizedGoalAmount !== null) {
       cleaned.goalAmountCents = sanitizedGoalAmount;
     }
