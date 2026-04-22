@@ -16,7 +16,7 @@ import { typeboxResolver } from "@hookform/resolvers/typebox";
 import { Check, ChevronsUpDown, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type DefaultValues,
   type Resolver,
@@ -25,7 +25,15 @@ import {
   useForm,
 } from "react-hook-form";
 
-import { Form, FormField, FormItem, FormLabel, FormMessage } from "@/components/shared/form-field";
+import { AmountInput } from "@/components/shared/amount-input";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
 import {
@@ -174,7 +182,7 @@ export function DonationForm() {
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className="rounded-2xl bg-surface-container-lowest px-6 shadow-card"
+        className="rounded-2xl bg-surface-container-lowest px-5 shadow-card sm:px-6"
         noValidate
       >
         <FormSection
@@ -187,16 +195,18 @@ export function DonationForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel required>{t("fields.constituent")}</FormLabel>
-                <ConstituentPicker
-                  value={field.value}
-                  selected={selectedConstituent}
-                  onSelect={(constituent) => {
-                    setSelectedConstituent(constituent);
-                    field.onChange(constituent?.id ?? "");
-                    if (constituent?.id) form.clearErrors("constituentId");
-                  }}
-                  invalid={Boolean(form.formState.errors.constituentId)}
-                />
+                <FormControl>
+                  <ConstituentPicker
+                    value={field.value}
+                    selected={selectedConstituent}
+                    onSelect={(constituent) => {
+                      setSelectedConstituent(constituent);
+                      field.onChange(constituent?.id ?? "");
+                      if (constituent?.id) form.clearErrors("constituentId");
+                    }}
+                    invalid={Boolean(form.formState.errors.constituentId)}
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -214,15 +224,18 @@ export function DonationForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel required>{t("fields.amount")}</FormLabel>
-                  <AmountInput
-                    value={field.value}
-                    onChange={(v) => {
-                      field.onChange(v);
-                      if (v && v > 0) form.clearErrors("amountCents");
-                    }}
-                    invalid={Boolean(form.formState.errors.amountCents)}
-                    placeholder={t("fields.amountPlaceholder")}
-                  />
+                  <FormControl>
+                    <AmountInput
+                      value={field.value}
+                      onChange={(nextValue, meta) => {
+                        field.onChange(nextValue);
+                        if (meta.isValid && nextValue && nextValue > 0) {
+                          form.clearErrors("amountCents");
+                        }
+                      }}
+                      placeholder={t("fields.amountPlaceholder")}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -234,9 +247,11 @@ export function DonationForm() {
                 <FormItem>
                   <FormLabel>{t("fields.currency")}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger aria-invalid={Boolean(form.formState.errors.currency)}>
-                      <SelectValue />
-                    </SelectTrigger>
+                    <FormControl>
+                      <SelectTrigger aria-invalid={Boolean(form.formState.errors.currency)}>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
                     <SelectContent>
                       {CURRENCIES.map((c) => (
                         <SelectItem key={c} value={c}>
@@ -258,12 +273,14 @@ export function DonationForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t("fields.donatedAt")}</FormLabel>
-                  <Input
-                    type="date"
-                    value={field.value}
-                    onChange={(e) => field.onChange(e.target.value)}
-                    aria-invalid={Boolean(form.formState.errors.donatedAt)}
-                  />
+                  <FormControl>
+                    <Input
+                      type="date"
+                      value={field.value}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      aria-invalid={Boolean(form.formState.errors.donatedAt)}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -278,9 +295,11 @@ export function DonationForm() {
                     value={field.value}
                     onValueChange={(value) => field.onChange(value === "" ? "" : value)}
                   >
-                    <SelectTrigger aria-invalid={Boolean(form.formState.errors.paymentMethod)}>
-                      <SelectValue placeholder={t("fields.paymentMethodPlaceholder")} />
-                    </SelectTrigger>
+                    <FormControl>
+                      <SelectTrigger aria-invalid={Boolean(form.formState.errors.paymentMethod)}>
+                        <SelectValue placeholder={t("fields.paymentMethodPlaceholder")} />
+                      </SelectTrigger>
+                    </FormControl>
                     <SelectContent>
                       {PAYMENT_METHODS.map((method) => (
                         <SelectItem key={method} value={method}>
@@ -301,11 +320,13 @@ export function DonationForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t("fields.paymentRef")}</FormLabel>
-                <Input
-                  {...field}
-                  placeholder={t("fields.paymentRefPlaceholder")}
-                  aria-invalid={Boolean(form.formState.errors.paymentRef)}
-                />
+                <FormControl>
+                  <Input
+                    {...field}
+                    placeholder={t("fields.paymentRefPlaceholder")}
+                    aria-invalid={Boolean(form.formState.errors.paymentRef)}
+                  />
+                </FormControl>
                 <p className="text-xs text-on-surface-variant">{t("fields.paymentRefHint")}</p>
                 <FormMessage />
               </FormItem>
@@ -354,7 +375,10 @@ export function DonationForm() {
             {allocationFields.length > 0 ? (
               <ul className="space-y-3">
                 {allocationFields.map((fieldItem, index) => (
-                  <li key={fieldItem.id} className="grid gap-3 md:grid-cols-[1fr_200px_auto]">
+                  <li
+                    key={fieldItem.id}
+                    className="grid gap-3 md:grid-cols-[minmax(0,1fr)_200px_auto]"
+                  >
                     <FormField
                       control={form.control}
                       name={`allocations.${index}.fundId`}
@@ -378,14 +402,13 @@ export function DonationForm() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>{t("fields.allocationAmount")}</FormLabel>
-                          <AmountInput
-                            value={field.value}
-                            onChange={field.onChange}
-                            invalid={Boolean(
-                              form.formState.errors.allocations?.[index]?.amountCents,
-                            )}
-                            placeholder={t("fields.amountPlaceholder")}
-                          />
+                          <FormControl>
+                            <AmountInput
+                              value={field.value}
+                              onChange={(nextValue) => field.onChange(nextValue)}
+                              placeholder={t("fields.amountPlaceholder")}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -563,66 +586,6 @@ function ConstituentPicker({ value, selected, onSelect, invalid }: ConstituentPi
       </PopoverContent>
     </Popover>
   );
-}
-
-interface AmountInputProps {
-  value: number | null | undefined;
-  onChange: (value: number | null) => void;
-  invalid: boolean;
-  placeholder?: string;
-}
-
-function AmountInput({ value, onChange, invalid, placeholder }: AmountInputProps) {
-  const [raw, setRaw] = useState<string>(() => centsToDisplay(value));
-  const lastValueRef = useRef<number | null | undefined>(value);
-
-  useEffect(() => {
-    if (value !== lastValueRef.current) {
-      lastValueRef.current = value;
-      setRaw(centsToDisplay(value));
-    }
-  }, [value]);
-
-  return (
-    <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant">
-        €
-      </span>
-      <Input
-        type="text"
-        inputMode="decimal"
-        value={raw}
-        placeholder={placeholder}
-        aria-invalid={invalid}
-        className="pl-7 font-mono tabular-nums"
-        onChange={(e) => {
-          const next = e.target.value;
-          setRaw(next);
-          const parsed = parseAmount(next);
-          lastValueRef.current = parsed;
-          onChange(parsed);
-        }}
-        onBlur={() => {
-          const parsed = parseAmount(raw);
-          lastValueRef.current = parsed;
-          setRaw(centsToDisplay(parsed));
-        }}
-      />
-    </div>
-  );
-}
-
-function centsToDisplay(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "";
-  return (value / 100).toFixed(2);
-}
-
-function parseAmount(raw: string): number | null {
-  const trimmed = raw.trim().replace(/\s/g, "").replace(",", ".");
-  if (trimmed === "") return null;
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Math.round(parsed * 100);
 }
 
 function parseDateString(val: string): string | undefined {
