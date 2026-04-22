@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, type HTMLAttributes, type ReactNode, useContext, useId } from "react";
+import { Slot } from "@radix-ui/react-slot";
+import {
+  type ComponentProps,
+  createContext,
+  type HTMLAttributes,
+  type ReactNode,
+  useContext,
+  useId,
+} from "react";
 import {
   Controller,
   type ControllerProps,
@@ -55,6 +63,7 @@ export function useFormField() {
 
   const fieldState = getFieldState(fieldContext.name, formState);
   const { id } = itemContext;
+  const { error } = fieldState;
 
   return {
     id,
@@ -62,6 +71,7 @@ export function useFormField() {
     formItemId: `${id}-item`,
     formDescriptionId: `${id}-description`,
     formMessageId: `${id}-message`,
+    ariaDescribedBy: error ? `${id}-description ${id}-message` : `${id}-description`,
     ...fieldState,
   };
 }
@@ -102,6 +112,19 @@ export function FormDescription({ className, ...props }: HTMLAttributes<HTMLPara
     <p
       id={formDescriptionId}
       className={cn("text-xs text-on-surface-variant", className)}
+      {...props}
+    />
+  );
+}
+
+export function FormControl(props: ComponentProps<typeof Slot>) {
+  const { formItemId, formDescriptionId, formMessageId, ariaDescribedBy, error } = useFormField();
+
+  return (
+    <Slot
+      id={formItemId}
+      aria-describedby={error ? `${formDescriptionId} ${formMessageId}` : ariaDescribedBy}
+      aria-invalid={Boolean(error)}
       {...props}
     />
   );

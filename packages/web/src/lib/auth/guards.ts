@@ -147,3 +147,8 @@ export async function requirePermission(
 
   return auth;
 }
+
+/** Require org_admin access in a Server Component. */
+export async function requireOrgAdmin(): Promise<ServerAuthContext> {
+  return requirePermission("admin");
+}

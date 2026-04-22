@@ -428,9 +428,14 @@
         "status": "Page status",
         "statusHint": "Only published pages can accept donations through the public flow.",
         "color": "Primary accent color",
-        "colorHint": "Choose a color with strong contrast against white backgrounds.",
-        "colorPicker": "Choose a primary color",
-        "colorPreset": "Use preset color {color}"
+        "colorHint": "Select a theme color that has already been validated for contrast on light backgrounds.",
+        "colorOptions": {
+          "primary": "Forest",
+          "secondary": "Emerald",
+          "tertiary": "Amber",
+          "emerald": "Pine",
+          "slate": "Slate"
+        }
       },
       "status": {
         "draft": "Draft",
@@ -443,6 +448,8 @@
       },
       "errors": {
         "validation": "Please correct the highlighted fields.",
+        "goalAmountInvalid": "Enter a valid amount with no more than two decimal places.",
+        "colorInvalid": "Select one of the approved theme colors.",
         "generic": "Something went wrong while saving the public page. Please try again."
       },
       "success": {

@@ -5,6 +5,10 @@ import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
 
+const PRIMARY_THEME_COLOR = "#096447";
+const SECONDARY_THEME_COLOR = "#006C48";
+const TERTIARY_THEME_COLOR = "#864700";
+
 // vi.hoisted runs before vi.mock hoisting
 const { mockGetStripe, mockPaymentIntentsCreate, mockQueueAdd } = vi.hoisted(() => {
   const mockPaymentIntentsCreate = vi.fn().mockResolvedValue({
@@ -87,7 +91,7 @@ describe("GET /v1/campaigns/:id/public-page", () => {
       payload: {
         title: "Admin Page",
         description: "Draft copy",
-        colorPrimary: "#0055AA",
+        colorPrimary: PRIMARY_THEME_COLOR,
         goalAmountCents: 250000,
         status: "draft",
       },
@@ -118,6 +122,19 @@ describe("GET /v1/campaigns/:id/public-page", () => {
 
     expect(res.statusCode).toBe(404);
   });
+
+  it("returns 403 for a non-admin user", async () => {
+    const campaign = await createTestCampaign("Public Page Test Forbidden Admin GET");
+    const token = signToken(app, { role: "user" });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
 });
 
 describe("PUT /v1/campaigns/:id/public-page", () => {
@@ -141,7 +158,7 @@ describe("PUT /v1/campaigns/:id/public-page", () => {
       payload: {
         title: "Help Us Build Schools",
         description: "Every euro counts",
-        colorPrimary: "#FF5733",
+        colorPrimary: SECONDARY_THEME_COLOR,
         goalAmountCents: 500000,
         status: "published",
       },
@@ -190,6 +207,20 @@ describe("PUT /v1/campaigns/:id/public-page", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it("returns 403 for a non-admin user", async () => {
+    const campaign = await createTestCampaign("Public Page Test Forbidden Admin PUT");
+    const token = signToken(app, { role: "user" });
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Forbidden Page", colorPrimary: TERTIARY_THEME_COLOR },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
 });
 
 // ─── GET /v1/public/campaigns/:id/page (unauthenticated) ─────────────────
@@ -207,7 +238,7 @@ describe("GET /v1/public/campaigns/:id/page", () => {
       payload: {
         title: "Public Campaign",
         description: "Donate now",
-        colorPrimary: "#00FF00",
+        colorPrimary: PRIMARY_THEME_COLOR,
         goalAmountCents: 100000,
         status: "published",
       },

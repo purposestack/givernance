@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { requireOrgAdmin } from "@/lib/auth/guards";
 import type { Campaign } from "@/models/campaign";
 import type { CampaignPublicPage } from "@/models/public-page";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
@@ -45,7 +45,7 @@ async function fetchPublicPageOrNull(id: string): Promise<CampaignPublicPage | n
 export default async function CampaignPublicPageEditorPage({
   params,
 }: CampaignPublicPageEditorPageProps) {
-  await requireAuth();
+  await requireOrgAdmin();
   const { id } = await params;
 
   const [campaign, initialPage, t, tCampaigns] = await Promise.all([

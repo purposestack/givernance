@@ -1,6 +1,9 @@
 "use client";
 
-import { CampaignPublicPageSchema } from "@givernance/shared/validators";
+import {
+  CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES,
+  CampaignPublicPageSchema,
+} from "@givernance/shared/validators";
 import { typeboxResolver } from "@hookform/resolvers/typebox";
 import { Eye, Globe, Palette, Save } from "lucide-react";
 import Link from "next/link";
@@ -17,6 +20,7 @@ import {
 
 import {
   Form,
+  FormControl,
   FormDescription,
   FormField,
   FormItem,
@@ -51,12 +55,23 @@ interface CampaignPublicPageFormProps {
 interface CampaignPublicPageFormValues {
   title: string;
   description: string;
-  colorPrimary: string;
+  colorPrimary: ThemeColorValue;
   goalAmountCents: number | null;
   status: PublicPageStatus;
 }
 
-const PRESET_COLORS = ["#0F766E", "#1D4ED8", "#B45309", "#BE123C", "#374151"] as const;
+type ThemeColorValue = (typeof CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES)[number];
+type ThemeColorLabelKey = "primary" | "secondary" | "tertiary" | "emerald" | "slate";
+
+const DEFAULT_THEME_COLOR = CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES[0];
+
+const THEME_COLORS: Array<{ value: ThemeColorValue; labelKey: ThemeColorLabelKey }> = [
+  { value: "#096447", labelKey: "primary" },
+  { value: "#006C48", labelKey: "secondary" },
+  { value: "#864700", labelKey: "tertiary" },
+  { value: "#005138", labelKey: "emerald" },
+  { value: "#3F4943", labelKey: "slate" },
+];
 
 export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublicPageFormProps) {
   const router = useRouter();
@@ -67,14 +82,17 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
   const defaultValues: DefaultValues<CampaignPublicPageFormValues> = {
     title: initialPage?.title ?? campaign.name,
     description: initialPage?.description ?? "",
-    colorPrimary: initialPage?.colorPrimary ?? "#0F766E",
+    colorPrimary: normalizeThemeColor(initialPage?.colorPrimary),
     goalAmountCents: initialPage?.goalAmountCents ?? campaign.costCents ?? null,
     status: initialPage?.status ?? "draft",
   };
 
   const form = useForm<CampaignPublicPageFormValues>({
     mode: "onBlur",
-    resolver: buildResolver(),
+    resolver: buildResolver({
+      goalAmountInvalid: t("errors.goalAmountInvalid"),
+      colorInvalid: t("errors.colorInvalid"),
+    }),
     defaultValues,
   });
 
@@ -121,12 +139,13 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel required>{t("fields.title")}</FormLabel>
-                    <Input
-                      {...field}
-                      placeholder={t("fields.titlePlaceholder")}
-                      maxLength={255}
-                      aria-invalid={Boolean(form.formState.errors.title)}
-                    />
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder={t("fields.titlePlaceholder")}
+                        maxLength={255}
+                      />
+                    </FormControl>
                     <FormDescription>{t("fields.titleHint")}</FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -139,13 +158,14 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t("fields.description")}</FormLabel>
-                    <Textarea
-                      {...field}
-                      rows={6}
-                      placeholder={t("fields.descriptionPlaceholder")}
-                      maxLength={5000}
-                      aria-invalid={Boolean(form.formState.errors.description)}
-                    />
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        rows={6}
+                        placeholder={t("fields.descriptionPlaceholder")}
+                        maxLength={5000}
+                      />
+                    </FormControl>
                     <FormDescription>{t("fields.descriptionHint")}</FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -165,12 +185,13 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t("fields.goal")}</FormLabel>
-                    <AmountInput
-                      value={field.value}
-                      onChange={field.onChange}
-                      invalid={Boolean(form.formState.errors.goalAmountCents)}
-                      placeholder={t("fields.goalPlaceholder")}
-                    />
+                    <FormControl>
+                      <AmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder={t("fields.goalPlaceholder")}
+                      />
+                    </FormControl>
                     <FormDescription>{t("fields.goalHint")}</FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -184,9 +205,11 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
                   <FormItem>
                     <FormLabel required>{t("fields.status")}</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger aria-invalid={Boolean(form.formState.errors.status)}>
-                        <SelectValue />
-                      </SelectTrigger>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
                       <SelectContent>
                         <SelectItem value="draft">{t("status.draft")}</SelectItem>
                         <SelectItem value="published">{t("status.published")}</SelectItem>
@@ -205,49 +228,30 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t("fields.color")}</FormLabel>
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <label
-                        className="inline-flex h-11 w-14 cursor-pointer items-center justify-center overflow-hidden rounded-[var(--radius-input)] border border-outline-variant bg-surface-container-low"
-                        style={{ backgroundColor: field.value || "#0F766E" }}
-                      >
-                        <span className="sr-only">{t("fields.colorPicker")}</span>
-                        <input
-                          type="color"
-                          value={field.value || "#0F766E"}
-                          onChange={(event) => field.onChange(event.target.value.toUpperCase())}
-                          className="h-full w-full cursor-pointer opacity-0"
-                          aria-label={t("fields.colorPicker")}
-                        />
-                      </label>
-                      <Input
-                        {...field}
-                        placeholder="#0F766E"
-                        className="max-w-40 font-mono uppercase"
-                        maxLength={7}
-                        aria-invalid={Boolean(form.formState.errors.colorPrimary)}
-                        onChange={(event) => field.onChange(event.target.value.toUpperCase())}
-                      />
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {PRESET_COLORS.map((color) => (
-                        <button
-                          key={color}
-                          type="button"
-                          className="h-9 w-9 rounded-full border-2 border-surface-container-lowest shadow-card focus-visible:outline-none focus-visible:shadow-ring"
-                          style={{ backgroundColor: color }}
-                          onClick={() =>
-                            form.setValue("colorPrimary", color, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            })
-                          }
-                          aria-label={t("fields.colorPreset", { color })}
-                          aria-pressed={field.value === color}
-                        />
+                  <Select
+                    value={normalizeThemeColor(field.value)}
+                    onValueChange={(value) => field.onChange(value as ThemeColorValue)}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {THEME_COLORS.map((color) => (
+                        <SelectItem key={color.value} value={color.value}>
+                          <span className="flex items-center gap-3">
+                            <span
+                              className="h-3.5 w-3.5 rounded-full border border-outline-variant"
+                              style={{ backgroundColor: color.value }}
+                              aria-hidden="true"
+                            />
+                            <span>{getThemeColorLabel(t, color.labelKey)}</span>
+                          </span>
+                        </SelectItem>
                       ))}
-                    </div>
-                  </div>
+                    </SelectContent>
+                  </Select>
                   <FormDescription>{t("fields.colorHint")}</FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -276,8 +280,8 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
         status={previewValues.status ?? "draft"}
         title={(previewValues.title || campaign.name).trim()}
         description={previewValues.description?.trim() || ""}
-        colorPrimary={previewValues.colorPrimary || "#0F766E"}
-        goalAmountCents={previewValues.goalAmountCents ?? null}
+        colorPrimary={normalizeThemeColor(previewValues.colorPrimary)}
+        goalAmountCents={normalizeGoalAmount(previewValues.goalAmountCents)}
         fallbackGoalAmountCents={campaign.costCents}
         fallbackTypeLabel={tCampaigns(`types.${campaign.type}`)}
       />
@@ -310,7 +314,7 @@ function CampaignPublicPagePreview({
 }: CampaignPublicPagePreviewProps) {
   const t = useTranslations("campaigns.publicPage.preview");
   const effectiveGoal = goalAmountCents ?? fallbackGoalAmountCents;
-  const safeColor = /^#[0-9A-F]{6}$/i.test(colorPrimary) ? colorPrimary : "#0F766E";
+  const safeColor = normalizeThemeColor(colorPrimary);
   const onColor = getReadableTextColor(safeColor);
 
   return (
@@ -326,10 +330,7 @@ function CampaignPublicPagePreview({
           </Badge>
         </div>
 
-        <div
-          className="overflow-hidden rounded-[28px] border border-outline-variant bg-surface shadow-card"
-          aria-live="polite"
-        >
+        <div className="overflow-hidden rounded-[28px] border border-outline-variant bg-surface shadow-card">
           <div
             className="px-6 py-5"
             style={{
@@ -421,16 +422,25 @@ function PreviewMetric({ label, value, icon }: { label: string; value: string; i
 interface AmountInputProps {
   value: number | null | undefined;
   onChange: (value: number | null) => void;
-  invalid: boolean;
   placeholder?: string;
+  id?: string;
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
 }
 
-function AmountInput({ value, onChange, invalid, placeholder }: AmountInputProps) {
+function AmountInput({
+  value,
+  onChange,
+  placeholder,
+  id,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
+}: AmountInputProps) {
   const [raw, setRaw] = useState<string>(() => centsToDisplay(value));
   const lastValueRef = useRef<number | null | undefined>(value);
 
   useEffect(() => {
-    if (value !== lastValueRef.current) {
+    if (!Object.is(value, lastValueRef.current)) {
       lastValueRef.current = value;
       setRaw(centsToDisplay(value));
     }
@@ -442,24 +452,33 @@ function AmountInput({ value, onChange, invalid, placeholder }: AmountInputProps
         €
       </span>
       <Input
+        id={id}
         type="text"
         inputMode="decimal"
         value={raw}
         placeholder={placeholder}
-        aria-invalid={invalid}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         className="pl-7 font-mono tabular-nums"
         onChange={(event) => {
           const next = event.target.value;
           setRaw(next);
           const parsed = parseAmount(next);
-          lastValueRef.current = parsed;
-          onChange(parsed);
+          const nextValue = parsed.isValid ? parsed.value : Number.NaN;
+          lastValueRef.current = nextValue;
+          onChange(nextValue);
         }}
         onBlur={() => {
           const parsed = parseAmount(raw);
-          lastValueRef.current = parsed;
-          onChange(parsed);
-          setRaw(centsToDisplay(parsed));
+          if (!parsed.isValid) {
+            lastValueRef.current = Number.NaN;
+            onChange(Number.NaN);
+            return;
+          }
+
+          lastValueRef.current = parsed.value;
+          onChange(parsed.value);
+          setRaw(centsToDisplay(parsed.value));
         }}
       />
     </div>
@@ -471,12 +490,19 @@ function centsToDisplay(value: number | null | undefined): string {
   return (value / 100).toFixed(2);
 }
 
-function parseAmount(raw: string): number | null {
+function parseAmount(raw: string): { value: number | null; isValid: boolean } {
   const trimmed = raw.trim().replace(/\s/g, "").replace(",", ".");
-  if (trimmed === "") return null;
+  if (trimmed === "") return { value: null, isValid: true };
+  if (!/^\d+(\.\d{0,2})?$/.test(trimmed)) {
+    return { value: null, isValid: false };
+  }
+
   const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Math.round(parsed * 100);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { value: null, isValid: false };
+  }
+
+  return { value: Math.round(parsed * 100), isValid: true };
 }
 
 function getReadableTextColor(hex: string): "#FFFFFF" | "#111827" {
@@ -492,7 +518,7 @@ function toApiPayload(values: CampaignPublicPageFormValues) {
   return {
     title: values.title.trim(),
     description: values.description.trim() || null,
-    colorPrimary: values.colorPrimary.trim().toUpperCase() || null,
+    colorPrimary: values.colorPrimary,
     goalAmountCents: values.goalAmountCents,
     status: values.status,
   };
@@ -500,20 +526,53 @@ function toApiPayload(values: CampaignPublicPageFormValues) {
 
 type TypeboxSchema = Parameters<typeof typeboxResolver>[0];
 
-function buildResolver(): Resolver<CampaignPublicPageFormValues> {
+interface ResolverMessages {
+  goalAmountInvalid: string;
+  colorInvalid: string;
+}
+
+function buildResolver(messages: ResolverMessages): Resolver<CampaignPublicPageFormValues> {
   const innerResolver = typeboxResolver(
     CampaignPublicPageSchema as TypeboxSchema,
   ) as unknown as Resolver<Record<string, unknown>>;
 
   const adapted: Resolver<CampaignPublicPageFormValues> = async (values, context, options) => {
+    const normalizedColor = normalizeThemeColor(values.colorPrimary);
+
+    if (values.goalAmountCents !== null && Number.isNaN(values.goalAmountCents)) {
+      return {
+        values: {},
+        errors: {
+          goalAmountCents: {
+            type: "validate",
+            message: messages.goalAmountInvalid,
+          },
+        },
+      };
+    }
+
+    if (normalizedColor !== values.colorPrimary) {
+      return {
+        values: {},
+        errors: {
+          colorPrimary: {
+            type: "validate",
+            message: messages.colorInvalid,
+          },
+        },
+      };
+    }
+
     const cleaned: Record<string, unknown> = {
       title: values.title.trim(),
+      colorPrimary: normalizedColor,
       status: values.status,
     };
 
     if (values.description.trim() !== "") cleaned.description = values.description.trim();
-    if (values.colorPrimary.trim() !== "") cleaned.colorPrimary = values.colorPrimary.trim();
-    if (values.goalAmountCents !== null) cleaned.goalAmountCents = values.goalAmountCents;
+    if (values.goalAmountCents !== null && Number.isFinite(values.goalAmountCents)) {
+      cleaned.goalAmountCents = values.goalAmountCents;
+    }
 
     const result = await innerResolver(
       cleaned,
@@ -524,6 +583,36 @@ function buildResolver(): Resolver<CampaignPublicPageFormValues> {
   };
 
   return adapted;
+}
+
+function normalizeThemeColor(value: string | null | undefined): ThemeColorValue {
+  if (value && CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES.includes(value as ThemeColorValue)) {
+    return value as ThemeColorValue;
+  }
+
+  return DEFAULT_THEME_COLOR;
+}
+
+function normalizeGoalAmount(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getThemeColorLabel(
+  t: ReturnType<typeof useTranslations<"campaigns.publicPage">>,
+  labelKey: ThemeColorLabelKey,
+): string {
+  switch (labelKey) {
+    case "primary":
+      return t("fields.colorOptions.primary");
+    case "secondary":
+      return t("fields.colorOptions.secondary");
+    case "tertiary":
+      return t("fields.colorOptions.tertiary");
+    case "emerald":
+      return t("fields.colorOptions.emerald");
+    case "slate":
+      return t("fields.colorOptions.slate");
+  }
 }
 
 interface ErrorMessages {

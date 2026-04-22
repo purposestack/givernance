@@ -3,7 +3,7 @@
 import { CampaignPublicPageSchema } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../lib/guards.js";
+import { requireOrgAdmin } from "../../lib/guards.js";
 import { DataResponse, ErrorResponses, problemDetail, UuidSchema } from "../../lib/schemas.js";
 import {
   createDonationIntent,
@@ -59,7 +59,7 @@ export async function publicDonationRoutes(app: FastifyInstance) {
   app.get(
     "/campaigns/:id/public-page",
     {
-      preHandler: requireAuth,
+      preHandler: requireOrgAdmin,
       schema: {
         tags: ["Campaigns"],
         params: CampaignIdParams,
@@ -177,7 +177,7 @@ export async function publicDonationRoutes(app: FastifyInstance) {
   app.put(
     "/campaigns/:id/public-page",
     {
-      preHandler: requireAuth,
+      preHandler: requireOrgAdmin,
       schema: {
         tags: ["Campaigns"],
         params: CampaignIdParams,

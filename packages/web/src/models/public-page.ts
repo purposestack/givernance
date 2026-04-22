@@ -1,3 +1,5 @@
+import type { CampaignPublicPageColor } from "@givernance/shared/validators";
+
 export type PublicPageStatus = "draft" | "published";
 
 export interface CampaignPublicPage {
@@ -7,7 +9,7 @@ export interface CampaignPublicPage {
   status: PublicPageStatus;
   title: string;
   description: string | null;
-  colorPrimary: string | null;
+  colorPrimary: CampaignPublicPageColor | null;
   goalAmountCents: number | null;
   createdAt: string;
   updatedAt: string;
@@ -20,7 +22,7 @@ export interface CampaignPublicPageResponse {
 export interface CampaignPublicPageInput {
   title: string;
   description?: string | null;
-  colorPrimary?: string | null;
+  colorPrimary?: CampaignPublicPageColor | null;
   goalAmountCents?: number | null;
   status?: PublicPageStatus;
 }

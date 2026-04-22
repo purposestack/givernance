@@ -428,9 +428,14 @@
         "status": "Statut de la page",
         "statusHint": "Seules les pages publiées peuvent accepter des dons via le parcours public.",
         "color": "Couleur principale",
-        "colorHint": "Choisissez une couleur avec un contraste suffisant sur fond clair.",
-        "colorPicker": "Choisir une couleur principale",
-        "colorPreset": "Utiliser la couleur prédéfinie {color}"
+        "colorHint": "Sélectionnez une couleur de thème validée pour le contraste sur fond clair.",
+        "colorOptions": {
+          "primary": "Forêt",
+          "secondary": "Émeraude",
+          "tertiary": "Ambre",
+          "emerald": "Sapin",
+          "slate": "Ardoise"
+        }
       },
       "status": {
         "draft": "Brouillon",
@@ -443,6 +448,8 @@
       },
       "errors": {
         "validation": "Corrigez les champs en surbrillance.",
+        "goalAmountInvalid": "Saisissez un montant valide avec au plus deux décimales.",
+        "colorInvalid": "Sélectionnez une couleur proposée par le thème.",
         "generic": "Une erreur est survenue lors de l'enregistrement de la page publique. Réessayez."
       },
       "success": {

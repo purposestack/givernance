@@ -73,7 +73,7 @@ export default async function CampaignDetailPage({
   params,
   searchParams,
 }: CampaignDetailPageProps) {
-  await requireAuth();
+  const auth = await requireAuth();
   const { id } = await params;
   const sp = await searchParams;
   const donationsPage = parsePositiveInt(sp.page, 1);
@@ -125,12 +125,14 @@ export default async function CampaignDetailPage({
                 {t("actions.edit")}
               </Link>
             </Button>
-            <Button asChild variant="secondary" size="sm">
-              <Link href={`/campaigns/${campaign.id}/public-page`}>
-                <Globe size={16} aria-hidden="true" />
-                {t("actions.publicPage")}
-              </Link>
-            </Button>
+            {auth.roles.includes("org_admin") ? (
+              <Button asChild variant="secondary" size="sm">
+                <Link href={`/campaigns/${campaign.id}/public-page`}>
+                  <Globe size={16} aria-hidden="true" />
+                  {t("actions.publicPage")}
+                </Link>
+              </Button>
+            ) : null}
           </>
         }
       />

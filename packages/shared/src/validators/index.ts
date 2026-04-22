@@ -71,12 +71,25 @@ export const CampaignCreateSchema = Type.Object({
 /** Schema for updating a campaign (all fields optional) */
 export const CampaignUpdateSchema = Type.Partial(CampaignCreateSchema);
 
+export const CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES = [
+  "#096447",
+  "#006C48",
+  "#864700",
+  "#005138",
+  "#3F4943",
+] as const;
+
+export type CampaignPublicPageColor = (typeof CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES)[number];
+
 /** Schema for creating or updating a campaign public page */
 export const CampaignPublicPageSchema = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 255 }),
   description: Type.Optional(Type.Union([Type.String({ maxLength: 5000 }), Type.Null()])),
   colorPrimary: Type.Optional(
-    Type.Union([Type.String({ pattern: "^#[0-9a-fA-F]{6}$" }), Type.Null()]),
+    Type.Union([
+      Type.Union(CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES.map((value) => Type.Literal(value))),
+      Type.Null(),
+    ]),
   ),
   goalAmountCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
   status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("published")])),
