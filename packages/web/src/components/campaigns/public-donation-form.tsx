@@ -267,14 +267,14 @@ function Field({
   input: ReactNode;
 }) {
   return (
-    <label className="block space-y-2">
+    <div className="block space-y-2">
       <span className="text-sm font-medium text-on-surface">
         {label}
         {required ? <span className="ml-1 text-error">*</span> : null}
       </span>
       {input}
       {error ? <span className="block text-sm text-error">{error}</span> : null}
-    </label>
+    </div>
   );
 }
 
