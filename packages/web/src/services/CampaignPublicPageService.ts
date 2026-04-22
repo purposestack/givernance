@@ -2,7 +2,7 @@ import type { CampaignPublicPageSchema } from "@givernance/shared/validators";
 import type { Static } from "@sinclair/typebox";
 
 import type { ApiClient } from "@/lib/api";
-import { isUuid } from "@/lib/uuid";
+import { isUuid } from "@/lib/utils";
 import type {
   CampaignPublicPage,
   CampaignPublicPageInput,

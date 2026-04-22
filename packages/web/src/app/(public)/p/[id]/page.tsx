@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { formatCurrency } from "@/lib/format";
-import { isUuid } from "@/lib/uuid";
+import { isUuid } from "@/lib/utils";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 
 interface PublicCampaignPageProps {
