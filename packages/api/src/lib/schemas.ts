@@ -8,6 +8,10 @@ const UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 /** Reusable UUID string schema */
 export const UuidSchema = Type.String({ pattern: UUID_PATTERN });
 
+export function isUuid(value: string): boolean {
+  return new RegExp(UUID_PATTERN, "i").test(value);
+}
+
 /** Standard :id route parameter */
 export const IdParams = Type.Object({ id: UuidSchema });
 

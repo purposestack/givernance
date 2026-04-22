@@ -3,7 +3,7 @@
 import { campaignPublicPages, campaigns, tenants } from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
-import { isUuid } from "../../lib/uuid.js";
+import { isUuid } from "../../lib/schemas.js";
 import { getStripe } from "../payments/service.js";
 
 /** Fetch a published public page by campaign ID (unauthenticated) */
