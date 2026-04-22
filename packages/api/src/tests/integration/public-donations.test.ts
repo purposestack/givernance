@@ -221,6 +221,29 @@ describe("PUT /v1/campaigns/:id/public-page", () => {
 
     expect(res.statusCode).toBe(403);
   });
+
+  it("returns fieldErrors for invalid public page payloads", async () => {
+    const campaign = await createTestCampaign("Public Page Test Validation");
+    const token = signToken(app);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: {
+        title: "Valid title",
+        colorPrimary: "#123456",
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{
+      detail: string;
+      fieldErrors?: Record<string, string>;
+    }>();
+    expect(body.detail).toContain("Validation failed");
+    expect(body.fieldErrors?.colorPrimary).toBeDefined();
+  });
 });
 
 // ─── GET /v1/public/campaigns/:id/page (unauthenticated) ─────────────────

@@ -110,6 +110,11 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
       toast.success(values.status === "published" ? t("success.published") : t("success.saved"));
       router.refresh();
     } catch (err) {
+      if (err instanceof ApiProblem) {
+        console.error("API SUBMIT ERROR", err, err.detail, err.status);
+      } else {
+        console.error("API SUBMIT ERROR", err);
+      }
       handleApiError(err, form, {
         validation: t("errors.validation"),
         generic: t("errors.generic"),
@@ -626,6 +631,23 @@ interface ErrorMessages {
   generic: string;
 }
 
+const API_FIELD_NAMES = ["title", "description", "colorPrimary", "goalAmountCents", "status"] as const;
+
+function applyFieldErrors(form: UseFormReturn<CampaignPublicPageFormValues>, raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+
+  let applied = false;
+  for (const name of API_FIELD_NAMES) {
+    const value = (raw as Record<string, unknown>)[name];
+    const message = typeof value === "string" ? value : Array.isArray(value) ? value[0] : null;
+    if (typeof message !== "string") continue;
+    form.setError(name, { type: "server", message });
+    applied = true;
+  }
+
+  return applied;
+}
+
 function handleApiError(
   err: unknown,
   form: UseFormReturn<CampaignPublicPageFormValues>,
@@ -633,7 +655,11 @@ function handleApiError(
 ) {
   if (err instanceof ApiProblem) {
     if (err.status === 422 || err.status === 400) {
-      form.setError("root", { type: "server", message: err.detail ?? messages.validation });
+      const applied = applyFieldErrors(form, err.extensions.fieldErrors);
+      form.setError("root", {
+        type: "server",
+        message: applied ? messages.validation : err.detail ?? messages.validation,
+      });
       return;
     }
     form.setError("root", {
