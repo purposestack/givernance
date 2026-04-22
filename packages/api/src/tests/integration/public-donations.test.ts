@@ -309,6 +309,21 @@ describe("GET /v1/public/campaigns/:id/page", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it("returns 400 for an invalid campaign id", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/public/campaigns//page",
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{
+      detail: string;
+      fieldErrors?: Record<string, string>;
+    }>();
+    expect(body.detail).toContain("Validation failed");
+    expect(body.fieldErrors?.id).toBeDefined();
+  });
 });
 
 // ─── POST /v1/public/campaigns/:id/donate (unauthenticated) ──────────────

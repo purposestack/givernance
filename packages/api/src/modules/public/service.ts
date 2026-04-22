@@ -3,10 +3,15 @@
 import { campaignPublicPages, campaigns, tenants } from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
+import { isUuid } from "../../lib/uuid.js";
 import { getStripe } from "../payments/service.js";
 
 /** Fetch a published public page by campaign ID (unauthenticated) */
 export async function getPublicPage(campaignId: string) {
+  if (!isUuid(campaignId)) {
+    return null;
+  }
+
   // Direct query without RLS — public pages are public by definition.
   // We filter on status = 'published' to avoid exposing draft pages.
   const [page] = await db
@@ -31,6 +36,10 @@ export async function getPublicPage(campaignId: string) {
 
 /** Fetch the current public page configuration by campaign ID (admin) */
 export async function getAdminPublicPage(orgId: string, campaignId: string) {
+  if (!isUuid(campaignId)) {
+    return null;
+  }
+
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
       .select({ id: campaigns.id })
@@ -65,6 +74,10 @@ export async function createDonationIntent(
   },
   idempotencyKey?: string,
 ) {
+  if (!isUuid(campaignId)) {
+    return null;
+  }
+
   const stripe = getStripe();
 
   // Look up the campaign to find the org
@@ -129,6 +142,10 @@ export async function upsertPublicPage(
     status?: "draft" | "published";
   },
 ) {
+  if (!isUuid(campaignId)) {
+    return null;
+  }
+
   return withTenantContext(orgId, async (tx) => {
     // Verify campaign belongs to this org
     const [campaign] = await tx

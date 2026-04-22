@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { formatCurrency } from "@/lib/format";
+import { isUuid } from "@/lib/uuid";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 
 interface PublicCampaignPageProps {
@@ -19,6 +20,10 @@ const DEFAULT_THEME_COLOR = "#096447";
 
 export default async function PublicCampaignPage({ params }: PublicCampaignPageProps) {
   const { id } = await params;
+  if (!isUuid(id)) {
+    notFound();
+  }
+
   const client = await createServerApiClient();
   const locale = await getLocale();
   const t = await getTranslations("publicDonationPage");
