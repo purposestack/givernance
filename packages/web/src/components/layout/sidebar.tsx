@@ -81,7 +81,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* Brand */}
         <div className="flex items-center gap-3 p-8">
           <Image
-            src="/logo-pheonix-vert.png"
+            src="/logo-pheonix-vert.svg"
             alt="Givernance"
             width={40}
             height={40}
