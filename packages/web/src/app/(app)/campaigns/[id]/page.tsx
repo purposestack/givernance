@@ -95,6 +95,10 @@ export default async function CampaignDetailPage({
     getLocale(),
   ]);
   const roi = CampaignService.calculateRoi(campaign.costCents, stats.totalRaisedCents);
+  const costDisplayValue =
+    campaign.costCents !== null ? formatCurrency(campaign.costCents, locale) : t("roi.unavailable");
+  const raisedDisplayValue = formatCurrency(stats.totalRaisedCents, locale);
+  const roiDisplayValue = roi !== null ? formatPercent(roi, locale, 1) : t("roi.unavailable");
 
   return (
     <>
@@ -158,8 +162,15 @@ export default async function CampaignDetailPage({
               amount: t("roi.amount"),
               unavailable: t("roi.unavailable"),
               tableCaption: t("roi.tableCaption"),
-              chartSummary: t("roi.chartSummary"),
-              chartSummaryUnavailable: t("roi.chartSummaryUnavailable"),
+              chartSummary: t("roi.chartSummary", {
+                raised: raisedDisplayValue,
+                cost: costDisplayValue,
+                roi: roiDisplayValue,
+              }),
+              chartSummaryUnavailable: t("roi.chartSummaryUnavailable", {
+                raised: raisedDisplayValue,
+                cost: costDisplayValue,
+              }),
             }}
           />
           <DonationBreakdownCard
