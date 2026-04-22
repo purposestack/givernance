@@ -109,12 +109,12 @@ export function PublicDonationForm({
 
       <p className="mt-3 text-sm leading-6 text-on-surface-variant">{t("description")}</p>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
         {SUGGESTED_AMOUNTS.map((amount) => (
           <button
             key={amount}
             type="button"
-            className="rounded-2xl border border-outline-variant bg-surface px-4 py-5 text-center transition-colors hover:border-primary"
+            className="rounded-2xl border border-outline-variant bg-surface px-4 py-4 text-center transition-colors hover:border-primary sm:py-5"
             style={{
               backgroundColor: values.amount === String(amount) ? colorPrimary : undefined,
               color:
@@ -125,7 +125,7 @@ export function PublicDonationForm({
               setErrors((current) => ({ ...current, amount: undefined }));
             }}
           >
-            <span className="block text-center text-xl font-semibold">
+            <span className="block text-center text-lg font-semibold sm:text-xl">
               {new Intl.NumberFormat(locale, {
                 style: "currency",
                 currency: "EUR",
@@ -145,11 +145,13 @@ export function PublicDonationForm({
       <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
+            inputId="public-donation-first-name"
             label={t("fields.firstName")}
             error={errors.firstName}
             required
             input={
               <Input
+                id="public-donation-first-name"
                 value={values.firstName}
                 onChange={(event) => {
                   setValues((current) => ({ ...current, firstName: event.target.value }));
@@ -162,11 +164,13 @@ export function PublicDonationForm({
             }
           />
           <Field
+            inputId="public-donation-last-name"
             label={t("fields.lastName")}
             error={errors.lastName}
             required
             input={
               <Input
+                id="public-donation-last-name"
                 value={values.lastName}
                 onChange={(event) => {
                   setValues((current) => ({ ...current, lastName: event.target.value }));
@@ -181,11 +185,13 @@ export function PublicDonationForm({
         </div>
 
         <Field
+          inputId="public-donation-email"
           label={t("fields.email")}
           error={errors.email}
           required
           input={
             <Input
+              id="public-donation-email"
               type="email"
               value={values.email}
               onChange={(event) => {
@@ -200,6 +206,7 @@ export function PublicDonationForm({
         />
 
         <Field
+          inputId="public-donation-amount"
           label={t("fields.amount")}
           error={errors.amount}
           required
@@ -209,6 +216,7 @@ export function PublicDonationForm({
                 €
               </span>
               <Input
+                id="public-donation-amount"
                 type="number"
                 min="1"
                 step="1"
@@ -249,18 +257,22 @@ export function PublicDonationForm({
           )}
         </Button>
 
-        <p className="text-xs leading-5 text-on-surface-variant">{t("footnote")}</p>
+        <p className="text-center text-xs leading-5 text-on-surface-variant sm:text-left">
+          {t("footnote")}
+        </p>
       </form>
     </section>
   );
 }
 
 function Field({
+  inputId,
   label,
   error,
   required,
   input,
 }: {
+  inputId?: string;
   label: string;
   error?: string;
   required?: boolean;
@@ -268,10 +280,10 @@ function Field({
 }) {
   return (
     <div className="block space-y-2">
-      <span className="text-sm font-medium text-on-surface">
+      <label htmlFor={inputId} className="text-sm font-medium text-on-surface">
         {label}
         {required ? <span className="ml-1 text-error">*</span> : null}
-      </span>
+      </label>
       {input}
       {error ? <span className="block text-sm text-error">{error}</span> : null}
     </div>

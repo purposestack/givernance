@@ -8,27 +8,6 @@ if (!FormatRegistry.Has("email")) {
   );
 }
 
-// We must implement the email regex format manually for TypeBox in the browser if we don"t import the full formats plugin.
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set("email", (value: string) =>
-    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value),
-  );
-}
-
-// We must implement the email regex format manually for TypeBox in the browser if we don"t import the full formats plugin.
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set("email", (value: string) =>
-    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value),
-  );
-}
-
-// We must implement the email regex format manually for TypeBox in the browser if we don"t import the full formats plugin.
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set("email", (value: string) =>
-    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value),
-  );
-}
-
 import { ConstituentCreateSchema, ConstituentUpdateSchema } from "@givernance/shared/validators";
 import { typeboxResolver } from "@hookform/resolvers/typebox";
 import { AlertTriangle } from "lucide-react";
@@ -36,7 +15,14 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { type DefaultValues, type Resolver, type UseFormReturn, useForm } from "react-hook-form";
-import { Form, FormField, FormItem, FormLabel, FormMessage } from "@/components/shared/form-field";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
 import {
@@ -191,9 +177,11 @@ export function ConstituentForm(props: ConstituentFormProps) {
                 <FormItem>
                   <FormLabel required>{t("fields.type")}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger aria-invalid={Boolean(form.formState.errors.type)}>
-                      <SelectValue />
-                    </SelectTrigger>
+                    <FormControl>
+                      <SelectTrigger aria-invalid={Boolean(form.formState.errors.type)}>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
                     <SelectContent>
                       {CONSTITUENT_TYPES.map((type) => (
                         <SelectItem key={type} value={type}>
@@ -214,12 +202,14 @@ export function ConstituentForm(props: ConstituentFormProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel required>{t("fields.firstName")}</FormLabel>
-                    <Input
-                      {...field}
-                      autoComplete="given-name"
-                      placeholder={t("fields.firstNamePlaceholder")}
-                      aria-invalid={Boolean(form.formState.errors.firstName)}
-                    />
+                    <FormControl>
+                      <Input
+                        {...field}
+                        autoComplete="given-name"
+                        placeholder={t("fields.firstNamePlaceholder")}
+                        aria-invalid={Boolean(form.formState.errors.firstName)}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -230,12 +220,14 @@ export function ConstituentForm(props: ConstituentFormProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel required>{t("fields.lastName")}</FormLabel>
-                    <Input
-                      {...field}
-                      autoComplete="family-name"
-                      placeholder={t("fields.lastNamePlaceholder")}
-                      aria-invalid={Boolean(form.formState.errors.lastName)}
-                    />
+                    <FormControl>
+                      <Input
+                        {...field}
+                        autoComplete="family-name"
+                        placeholder={t("fields.lastNamePlaceholder")}
+                        aria-invalid={Boolean(form.formState.errors.lastName)}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -254,13 +246,15 @@ export function ConstituentForm(props: ConstituentFormProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t("fields.email")}</FormLabel>
-                    <Input
-                      {...field}
-                      type="email"
-                      autoComplete="email"
-                      placeholder={t("fields.emailPlaceholder")}
-                      aria-invalid={Boolean(form.formState.errors.email)}
-                    />
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="email"
+                        autoComplete="email"
+                        placeholder={t("fields.emailPlaceholder")}
+                        aria-invalid={Boolean(form.formState.errors.email)}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -271,13 +265,15 @@ export function ConstituentForm(props: ConstituentFormProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t("fields.phone")}</FormLabel>
-                    <Input
-                      {...field}
-                      type="tel"
-                      autoComplete="tel"
-                      placeholder={t("fields.phonePlaceholder")}
-                      aria-invalid={Boolean(form.formState.errors.phone)}
-                    />
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder={t("fields.phonePlaceholder")}
+                        aria-invalid={Boolean(form.formState.errors.phone)}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -422,11 +418,17 @@ function buildResolver(schema: TypeboxSchema): Resolver<ConstituentFormValues> {
   const innerResolver = typeboxResolver(schema) as unknown as Resolver<ConstituentFormValues>;
   return async (values, context, options) => {
     const cleaned = { ...values } as Record<string, unknown>;
-    for (const key of ["email", "phone"] as const) {
+    for (const key of ["firstName", "lastName", "email", "phone"] as const) {
       const v = cleaned[key];
-      if (typeof v === "string" && v.trim() === "") {
-        cleaned[key] = undefined;
+      if (typeof v !== "string") continue;
+
+      const trimmed = v.trim();
+      if (trimmed === "") {
+        cleaned[key] = key === "firstName" || key === "lastName" ? "" : undefined;
+        continue;
       }
+
+      cleaned[key] = trimmed;
     }
     return innerResolver(cleaned as unknown as ConstituentFormValues, context, options);
   };
