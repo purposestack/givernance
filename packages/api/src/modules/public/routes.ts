@@ -1,10 +1,16 @@
 /** Public donation routes — unauthenticated endpoints for embeddable donation pages */
 
+import { CampaignPublicPageSchema } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../../lib/guards.js";
 import { DataResponse, ErrorResponses, problemDetail, UuidSchema } from "../../lib/schemas.js";
-import { createDonationIntent, getPublicPage, upsertPublicPage } from "./service.js";
+import {
+  createDonationIntent,
+  getAdminPublicPage,
+  getPublicPage,
+  upsertPublicPage,
+} from "./service.js";
 
 const CampaignIdParams = Type.Object({ id: UuidSchema });
 
@@ -33,15 +39,7 @@ const DonateResponse = Type.Object({
   clientSecret: Type.String(),
 });
 
-const PublicPageCreateBody = Type.Object({
-  title: Type.String({ minLength: 1, maxLength: 255 }),
-  description: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  colorPrimary: Type.Optional(
-    Type.Union([Type.String({ pattern: "^#[0-9a-fA-F]{6}$" }), Type.Null()]),
-  ),
-  goalAmountCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
-  status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("published")])),
-});
+const PublicPageCreateBody = CampaignPublicPageSchema;
 
 const PublicPageAdminResponse = Type.Object({
   id: UuidSchema,
@@ -57,6 +55,40 @@ const PublicPageAdminResponse = Type.Object({
 });
 
 export async function publicDonationRoutes(app: FastifyInstance) {
+  /** GET /v1/campaigns/:id/public-page — fetch current page config (admin) */
+  app.get(
+    "/campaigns/:id/public-page",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["Campaigns"],
+        params: CampaignIdParams,
+        response: {
+          200: DataResponse(PublicPageAdminResponse),
+          400: Type.Any(),
+          429: Type.Any(),
+          502: Type.Any(),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+
+      const { id } = request.params as { id: string };
+      const page = await getAdminPublicPage(orgId, id);
+
+      if (!page) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Public page not found"));
+      }
+
+      return { data: page };
+    },
+  );
+
   /** GET /v1/public/campaigns/:id/page — fetch published page config (unauthenticated) */
   app.get(
     "/public/campaigns/:id/page",

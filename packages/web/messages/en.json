@@ -401,6 +401,69 @@
         "updated": "Changes saved."
       }
     },
+    "publicPage": {
+      "title": "Public donation page",
+      "subtitle": "Configure the campaign page donors will see before donating.",
+      "breadcrumb": "Public page",
+      "sections": {
+        "content": {
+          "title": "Content",
+          "description": "Headline and supporting copy visible on the donor-facing page."
+        },
+        "presentation": {
+          "title": "Presentation",
+          "description": "Publishing state, highlighted goal, and brand accent color."
+        }
+      },
+      "fields": {
+        "title": "Public page title",
+        "titlePlaceholder": "Help fund our spring campaign",
+        "titleHint": "Use a concise, action-oriented title for donors.",
+        "description": "Supporting description",
+        "descriptionPlaceholder": "Explain what this campaign funds and why now.",
+        "descriptionHint": "Keep paragraphs short for readability on mobile.",
+        "goal": "Displayed goal amount",
+        "goalPlaceholder": "0.00",
+        "goalHint": "Leave empty to fall back to the campaign target when available.",
+        "status": "Page status",
+        "statusHint": "Only published pages can accept donations through the public flow.",
+        "color": "Primary accent color",
+        "colorHint": "Choose a color with strong contrast against white backgrounds.",
+        "colorPicker": "Choose a primary color",
+        "colorPreset": "Use preset color {color}"
+      },
+      "status": {
+        "draft": "Draft",
+        "published": "Published"
+      },
+      "actions": {
+        "back": "Back to campaign",
+        "save": "Save public page",
+        "submitting": "Saving…"
+      },
+      "errors": {
+        "validation": "Please correct the highlighted fields.",
+        "generic": "Something went wrong while saving the public page. Please try again."
+      },
+      "success": {
+        "saved": "Draft saved.",
+        "published": "Public page published."
+      },
+      "preview": {
+        "title": "Preview",
+        "description": "A live mock-up of the page your donors will see.",
+        "draft": "Draft",
+        "published": "Published",
+        "live": "Preview",
+        "descriptionFallback": "Your campaign summary will appear here once you add a short explanation for donors.",
+        "campaign": "Campaign",
+        "goal": "Displayed goal",
+        "goalFallback": "No goal shown",
+        "donationCardLabel": "Donation card",
+        "donationCardBody": "Suggested giving amounts and the call to action remain visible above the fold.",
+        "cta": "Donate now"
+      }
+    },
     "detail": {
     "stats": {
       "title": "Campaign stats",
@@ -430,6 +493,7 @@
       "description": "Move this campaign between draft, active, and closed states.",
       "back": "Back to campaigns",
         "edit": "Edit",
+        "publicPage": "Public page",
         "activate": "Activate",
         "activating": "Activating…",
         "backToDraft": "Back to draft",

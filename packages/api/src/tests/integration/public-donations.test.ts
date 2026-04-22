@@ -75,6 +75,51 @@ async function createTestCampaign(name: string) {
 
 // ─── PUT /v1/campaigns/:id/public-page (admin) ──────────────────────────
 
+describe("GET /v1/campaigns/:id/public-page", () => {
+  it("returns the current config for an authenticated admin", async () => {
+    const campaign = await createTestCampaign("Public Page Test Admin GET");
+    const token = signToken(app);
+
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: {
+        title: "Admin Page",
+        description: "Draft copy",
+        colorPrimary: "#0055AA",
+        goalAmountCents: 250000,
+        status: "draft",
+      },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { title: string; status: string; description: string } }>();
+    expect(body.data.title).toBe("Admin Page");
+    expect(body.data.status).toBe("draft");
+    expect(body.data.description).toBe("Draft copy");
+  });
+
+  it("returns 404 when no config exists yet", async () => {
+    const campaign = await createTestCampaign("Public Page Test Missing Admin GET");
+    const token = signToken(app);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+});
+
 describe("PUT /v1/campaigns/:id/public-page", () => {
   it("returns 401 without auth", async () => {
     const res = await app.inject({

@@ -1,4 +1,4 @@
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, Globe, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -123,6 +123,12 @@ export default async function CampaignDetailPage({
               <Link href={`/campaigns/${campaign.id}/edit`}>
                 <Pencil size={16} aria-hidden="true" />
                 {t("actions.edit")}
+              </Link>
+            </Button>
+            <Button asChild variant="secondary" size="sm">
+              <Link href={`/campaigns/${campaign.id}/public-page`}>
+                <Globe size={16} aria-hidden="true" />
+                {t("actions.publicPage")}
               </Link>
             </Button>
           </>

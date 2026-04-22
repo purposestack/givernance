@@ -1,0 +1,552 @@
+"use client";
+
+import { CampaignPublicPageSchema } from "@givernance/shared/validators";
+import { typeboxResolver } from "@hookform/resolvers/typebox";
+import { Eye, Globe, Palette, Save } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type DefaultValues,
+  type Resolver,
+  type UseFormReturn,
+  useForm,
+  useWatch,
+} from "react-hook-form";
+
+import {
+  Form,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/shared/form-field";
+import { FormSection } from "@/components/shared/form-section";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/components/ui/toast";
+import { ApiProblem } from "@/lib/api";
+import { createClientApiClient } from "@/lib/api/client-browser";
+import { formatCurrency } from "@/lib/format";
+import type { Campaign } from "@/models/campaign";
+import type { CampaignPublicPage, PublicPageStatus } from "@/models/public-page";
+import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
+
+interface CampaignPublicPageFormProps {
+  campaign: Campaign;
+  initialPage: CampaignPublicPage | null;
+}
+
+interface CampaignPublicPageFormValues {
+  title: string;
+  description: string;
+  colorPrimary: string;
+  goalAmountCents: number | null;
+  status: PublicPageStatus;
+}
+
+const PRESET_COLORS = ["#0F766E", "#1D4ED8", "#B45309", "#BE123C", "#374151"] as const;
+
+export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublicPageFormProps) {
+  const router = useRouter();
+  const locale = useLocale();
+  const t = useTranslations("campaigns.publicPage");
+  const tCampaigns = useTranslations("campaigns");
+
+  const defaultValues: DefaultValues<CampaignPublicPageFormValues> = {
+    title: initialPage?.title ?? campaign.name,
+    description: initialPage?.description ?? "",
+    colorPrimary: initialPage?.colorPrimary ?? "#0F766E",
+    goalAmountCents: initialPage?.goalAmountCents ?? campaign.costCents ?? null,
+    status: initialPage?.status ?? "draft",
+  };
+
+  const form = useForm<CampaignPublicPageFormValues>({
+    mode: "onBlur",
+    resolver: buildResolver(),
+    defaultValues,
+  });
+
+  const previewValues = useWatch({ control: form.control }) as CampaignPublicPageFormValues;
+
+  async function onSubmit(values: CampaignPublicPageFormValues) {
+    form.clearErrors("root");
+
+    try {
+      await CampaignPublicPageService.upsertCampaignPublicPage(
+        createClientApiClient(),
+        campaign.id,
+        toApiPayload(values),
+      );
+      toast.success(values.status === "published" ? t("success.published") : t("success.saved"));
+      router.refresh();
+    } catch (err) {
+      handleApiError(err, form, {
+        validation: t("errors.validation"),
+        generic: t("errors.generic"),
+      });
+    }
+  }
+
+  const rootError = form.formState.errors.root?.message;
+  const isSubmitting = form.formState.isSubmitting;
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="rounded-2xl bg-surface-container-lowest px-6 shadow-card"
+          noValidate
+        >
+          <FormSection
+            title={t("sections.content.title")}
+            description={t("sections.content.description")}
+          >
+            <div className="grid gap-5">
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel required>{t("fields.title")}</FormLabel>
+                    <Input
+                      {...field}
+                      placeholder={t("fields.titlePlaceholder")}
+                      maxLength={255}
+                      aria-invalid={Boolean(form.formState.errors.title)}
+                    />
+                    <FormDescription>{t("fields.titleHint")}</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("fields.description")}</FormLabel>
+                    <Textarea
+                      {...field}
+                      rows={6}
+                      placeholder={t("fields.descriptionPlaceholder")}
+                      maxLength={5000}
+                      aria-invalid={Boolean(form.formState.errors.description)}
+                    />
+                    <FormDescription>{t("fields.descriptionHint")}</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </FormSection>
+
+          <FormSection
+            title={t("sections.presentation.title")}
+            description={t("sections.presentation.description")}
+          >
+            <div className="grid gap-5 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="goalAmountCents"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("fields.goal")}</FormLabel>
+                    <AmountInput
+                      value={field.value}
+                      onChange={field.onChange}
+                      invalid={Boolean(form.formState.errors.goalAmountCents)}
+                      placeholder={t("fields.goalPlaceholder")}
+                    />
+                    <FormDescription>{t("fields.goalHint")}</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel required>{t("fields.status")}</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger aria-invalid={Boolean(form.formState.errors.status)}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">{t("status.draft")}</SelectItem>
+                        <SelectItem value="published">{t("status.published")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>{t("fields.statusHint")}</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="colorPrimary"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("fields.color")}</FormLabel>
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label
+                        className="inline-flex h-11 w-14 cursor-pointer items-center justify-center overflow-hidden rounded-[var(--radius-input)] border border-outline-variant bg-surface-container-low"
+                        style={{ backgroundColor: field.value || "#0F766E" }}
+                      >
+                        <span className="sr-only">{t("fields.colorPicker")}</span>
+                        <input
+                          type="color"
+                          value={field.value || "#0F766E"}
+                          onChange={(event) => field.onChange(event.target.value.toUpperCase())}
+                          className="h-full w-full cursor-pointer opacity-0"
+                          aria-label={t("fields.colorPicker")}
+                        />
+                      </label>
+                      <Input
+                        {...field}
+                        placeholder="#0F766E"
+                        className="max-w-40 font-mono uppercase"
+                        maxLength={7}
+                        aria-invalid={Boolean(form.formState.errors.colorPrimary)}
+                        onChange={(event) => field.onChange(event.target.value.toUpperCase())}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {PRESET_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          className="h-9 w-9 rounded-full border-2 border-surface-container-lowest shadow-card focus-visible:outline-none focus-visible:shadow-ring"
+                          style={{ backgroundColor: color }}
+                          onClick={() =>
+                            form.setValue("colorPrimary", color, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            })
+                          }
+                          aria-label={t("fields.colorPreset", { color })}
+                          aria-pressed={field.value === color}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <FormDescription>{t("fields.colorHint")}</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </FormSection>
+
+          <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-h-5 text-sm text-error">{rootError}</div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button asChild variant="ghost">
+                <Link href={`/campaigns/${campaign.id}`}>{t("actions.back")}</Link>
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                <Save size={16} aria-hidden="true" />
+                {isSubmitting ? t("actions.submitting") : t("actions.save")}
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Form>
+
+      <CampaignPublicPagePreview
+        campaign={campaign}
+        locale={locale}
+        status={previewValues.status ?? "draft"}
+        title={(previewValues.title || campaign.name).trim()}
+        description={previewValues.description?.trim() || ""}
+        colorPrimary={previewValues.colorPrimary || "#0F766E"}
+        goalAmountCents={previewValues.goalAmountCents ?? null}
+        fallbackGoalAmountCents={campaign.costCents}
+        fallbackTypeLabel={tCampaigns(`types.${campaign.type}`)}
+      />
+    </div>
+  );
+}
+
+interface CampaignPublicPagePreviewProps {
+  campaign: Campaign;
+  locale: string;
+  status: PublicPageStatus;
+  title: string;
+  description: string;
+  colorPrimary: string;
+  goalAmountCents: number | null;
+  fallbackGoalAmountCents: number | null;
+  fallbackTypeLabel: string;
+}
+
+function CampaignPublicPagePreview({
+  campaign,
+  locale,
+  status,
+  title,
+  description,
+  colorPrimary,
+  goalAmountCents,
+  fallbackGoalAmountCents,
+  fallbackTypeLabel,
+}: CampaignPublicPagePreviewProps) {
+  const t = useTranslations("campaigns.publicPage.preview");
+  const effectiveGoal = goalAmountCents ?? fallbackGoalAmountCents;
+  const safeColor = /^#[0-9A-F]{6}$/i.test(colorPrimary) ? colorPrimary : "#0F766E";
+  const onColor = getReadableTextColor(safeColor);
+
+  return (
+    <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+      <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-heading text-xl text-on-surface">{t("title")}</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">{t("description")}</p>
+          </div>
+          <Badge variant={status === "published" ? "success" : "neutral"}>
+            {status === "published" ? t("published") : t("draft")}
+          </Badge>
+        </div>
+
+        <div
+          className="overflow-hidden rounded-[28px] border border-outline-variant bg-surface shadow-card"
+          aria-live="polite"
+        >
+          <div
+            className="px-6 py-5"
+            style={{
+              background: `linear-gradient(135deg, ${safeColor}, color-mix(in srgb, ${safeColor} 55%, #0B1220))`,
+              color: onColor,
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <Badge
+                className="border border-white/15 bg-white/15"
+                shape="square"
+                style={{ color: onColor }}
+              >
+                <Globe size={12} aria-hidden="true" />
+                {t("live")}
+              </Badge>
+              <span className="text-xs font-medium uppercase tracking-[0.16em] opacity-80">
+                {fallbackTypeLabel}
+              </span>
+            </div>
+            <h3 className="mt-5 font-heading text-3xl leading-tight">{title}</h3>
+            <p className="mt-3 max-w-[28rem] text-sm leading-6 opacity-90">
+              {description || t("descriptionFallback")}
+            </p>
+          </div>
+
+          <div className="space-y-5 p-6">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <PreviewMetric
+                label={t("campaign")}
+                value={campaign.name}
+                icon={<Palette size={14} aria-hidden="true" />}
+              />
+              <PreviewMetric
+                label={t("goal")}
+                value={
+                  effectiveGoal === null ? t("goalFallback") : formatCurrency(effectiveGoal, locale)
+                }
+                icon={<Eye size={14} aria-hidden="true" />}
+              />
+            </div>
+
+            <div className="rounded-2xl border border-outline-variant bg-surface-container-low p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-on-surface-variant">
+                {t("donationCardLabel")}
+              </p>
+              <p className="mt-2 text-sm text-on-surface-variant">{t("donationCardBody")}</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {[25, 50, 100].map((amount) => (
+                  <button
+                    key={amount}
+                    type="button"
+                    className="rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-3 text-left font-medium text-on-surface"
+                  >
+                    {new Intl.NumberFormat(locale, {
+                      style: "currency",
+                      currency: "EUR",
+                      maximumFractionDigits: 0,
+                    }).format(amount)}
+                  </button>
+                ))}
+              </div>
+              <Button
+                className="mt-4 w-full"
+                style={{ backgroundColor: safeColor, color: onColor }}
+              >
+                {t("cta")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  );
+}
+
+function PreviewMetric({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-outline-variant bg-surface-container-low p-4">
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-on-surface-variant">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <p className="mt-3 text-sm font-medium text-on-surface">{value}</p>
+    </div>
+  );
+}
+
+interface AmountInputProps {
+  value: number | null | undefined;
+  onChange: (value: number | null) => void;
+  invalid: boolean;
+  placeholder?: string;
+}
+
+function AmountInput({ value, onChange, invalid, placeholder }: AmountInputProps) {
+  const [raw, setRaw] = useState<string>(() => centsToDisplay(value));
+  const lastValueRef = useRef<number | null | undefined>(value);
+
+  useEffect(() => {
+    if (value !== lastValueRef.current) {
+      lastValueRef.current = value;
+      setRaw(centsToDisplay(value));
+    }
+  }, [value]);
+
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant">
+        €
+      </span>
+      <Input
+        type="text"
+        inputMode="decimal"
+        value={raw}
+        placeholder={placeholder}
+        aria-invalid={invalid}
+        className="pl-7 font-mono tabular-nums"
+        onChange={(event) => {
+          const next = event.target.value;
+          setRaw(next);
+          const parsed = parseAmount(next);
+          lastValueRef.current = parsed;
+          onChange(parsed);
+        }}
+        onBlur={() => {
+          const parsed = parseAmount(raw);
+          lastValueRef.current = parsed;
+          onChange(parsed);
+          setRaw(centsToDisplay(parsed));
+        }}
+      />
+    </div>
+  );
+}
+
+function centsToDisplay(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "";
+  return (value / 100).toFixed(2);
+}
+
+function parseAmount(raw: string): number | null {
+  const trimmed = raw.trim().replace(/\s/g, "").replace(",", ".");
+  if (trimmed === "") return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.round(parsed * 100);
+}
+
+function getReadableTextColor(hex: string): "#FFFFFF" | "#111827" {
+  const normalized = hex.replace("#", "");
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.6 ? "#111827" : "#FFFFFF";
+}
+
+function toApiPayload(values: CampaignPublicPageFormValues) {
+  return {
+    title: values.title.trim(),
+    description: values.description.trim() || null,
+    colorPrimary: values.colorPrimary.trim().toUpperCase() || null,
+    goalAmountCents: values.goalAmountCents,
+    status: values.status,
+  };
+}
+
+type TypeboxSchema = Parameters<typeof typeboxResolver>[0];
+
+function buildResolver(): Resolver<CampaignPublicPageFormValues> {
+  const innerResolver = typeboxResolver(
+    CampaignPublicPageSchema as TypeboxSchema,
+  ) as unknown as Resolver<Record<string, unknown>>;
+
+  const adapted: Resolver<CampaignPublicPageFormValues> = async (values, context, options) => {
+    const cleaned: Record<string, unknown> = {
+      title: values.title.trim(),
+      status: values.status,
+    };
+
+    if (values.description.trim() !== "") cleaned.description = values.description.trim();
+    if (values.colorPrimary.trim() !== "") cleaned.colorPrimary = values.colorPrimary.trim();
+    if (values.goalAmountCents !== null) cleaned.goalAmountCents = values.goalAmountCents;
+
+    const result = await innerResolver(
+      cleaned,
+      context,
+      options as unknown as Parameters<typeof innerResolver>[2],
+    );
+    return result as unknown as Awaited<ReturnType<Resolver<CampaignPublicPageFormValues>>>;
+  };
+
+  return adapted;
+}
+
+interface ErrorMessages {
+  validation: string;
+  generic: string;
+}
+
+function handleApiError(
+  err: unknown,
+  form: UseFormReturn<CampaignPublicPageFormValues>,
+  messages: ErrorMessages,
+) {
+  if (err instanceof ApiProblem) {
+    if (err.status === 422 || err.status === 400) {
+      form.setError("root", { type: "server", message: err.detail ?? messages.validation });
+      return;
+    }
+    form.setError("root", {
+      type: "server",
+      message: err.detail ?? err.title ?? messages.generic,
+    });
+    return;
+  }
+
+  form.setError("root", { type: "server", message: messages.generic });
+}

@@ -29,6 +29,25 @@ export async function getPublicPage(campaignId: string) {
   return page ?? null;
 }
 
+/** Fetch the current public page configuration by campaign ID (admin) */
+export async function getAdminPublicPage(orgId: string, campaignId: string) {
+  return withTenantContext(orgId, async (tx) => {
+    const [campaign] = await tx
+      .select({ id: campaigns.id })
+      .from(campaigns)
+      .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+
+    if (!campaign) return null;
+
+    const [page] = await tx
+      .select()
+      .from(campaignPublicPages)
+      .where(eq(campaignPublicPages.campaignId, campaignId));
+
+    return page ?? null;
+  });
+}
+
 /** Platform fee: 1.5% + 30 cents */
 function calculatePlatformFee(amountCents: number): number {
   return Math.round(amountCents * 0.015 + 30);
