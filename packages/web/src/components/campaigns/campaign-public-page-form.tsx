@@ -464,7 +464,7 @@ function AmountInput({
           const next = event.target.value;
           setRaw(next);
           const parsed = parseAmount(next);
-          const nextValue = parsed.isValid ? parsed.value : Number.NaN;
+          const nextValue = parsed.isValid ? sanitizeGoalAmount(parsed.value) : Number.NaN;
           lastValueRef.current = nextValue;
           onChange(nextValue);
         }}
@@ -476,9 +476,10 @@ function AmountInput({
             return;
           }
 
-          lastValueRef.current = parsed.value;
-          onChange(parsed.value);
-          setRaw(centsToDisplay(parsed.value));
+          const nextValue = sanitizeGoalAmount(parsed.value);
+          lastValueRef.current = nextValue;
+          onChange(nextValue);
+          setRaw(centsToDisplay(nextValue));
         }}
       />
     </div>
@@ -519,7 +520,7 @@ function toApiPayload(values: CampaignPublicPageFormValues) {
     title: values.title.trim(),
     description: values.description.trim() || null,
     colorPrimary: values.colorPrimary,
-    goalAmountCents: values.goalAmountCents,
+    goalAmountCents: sanitizeGoalAmount(values.goalAmountCents),
     status: values.status,
   };
 }
@@ -538,6 +539,7 @@ function buildResolver(messages: ResolverMessages): Resolver<CampaignPublicPageF
 
   const adapted: Resolver<CampaignPublicPageFormValues> = async (values, context, options) => {
     const normalizedColor = normalizeThemeColor(values.colorPrimary);
+    const sanitizedGoalAmount = sanitizeGoalAmount(values.goalAmountCents);
 
     if (values.goalAmountCents !== null && Number.isNaN(values.goalAmountCents)) {
       return {
@@ -570,8 +572,8 @@ function buildResolver(messages: ResolverMessages): Resolver<CampaignPublicPageF
     };
 
     if (values.description.trim() !== "") cleaned.description = values.description.trim();
-    if (values.goalAmountCents !== null && Number.isFinite(values.goalAmountCents)) {
-      cleaned.goalAmountCents = values.goalAmountCents;
+    if (sanitizedGoalAmount !== null) {
+      cleaned.goalAmountCents = sanitizedGoalAmount;
     }
 
     const result = await innerResolver(
@@ -594,6 +596,10 @@ function normalizeThemeColor(value: string | null | undefined): ThemeColorValue 
 }
 
 function normalizeGoalAmount(value: number | null | undefined): number | null {
+  return sanitizeGoalAmount(value);
+}
+
+function sanitizeGoalAmount(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
