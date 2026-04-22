@@ -267,7 +267,10 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
           <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-h-5 text-sm text-error">{rootError}</div>
             <div className="flex flex-wrap items-center gap-3">
-              <PublicPageShareActions campaignId={campaign.id} />
+              <PublicPageShareActions
+                campaignId={campaign.id}
+                status={previewValues.status ?? initialPage?.status ?? "draft"}
+              />
               <Button asChild variant="ghost">
                 <Link href={`/campaigns/${campaign.id}`}>{t("actions.back")}</Link>
               </Button>
@@ -425,9 +428,17 @@ function PreviewMetric({ label, value, icon }: { label: string; value: string; i
   );
 }
 
-function PublicPageShareActions({ campaignId }: { campaignId: string }) {
+function PublicPageShareActions({
+  campaignId,
+  status,
+}: {
+  campaignId: string;
+  status: PublicPageStatus;
+}) {
   const t = useTranslations("campaigns.publicPage");
   const publicPath = `/p/${campaignId}`;
+
+  if (status !== "published") return null;
 
   async function copyPublicLink() {
     try {
