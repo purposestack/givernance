@@ -2,6 +2,7 @@ import { CalendarClock, CheckCircle2, Circle, Lightbulb, Plus } from "lucide-rea
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
@@ -18,7 +19,8 @@ import { DonationService } from "@/services/DonationService";
 const RECENT_DONATIONS_LIMIT = 5;
 const KPI_SAMPLE_LIMIT = 100;
 
-type DashboardT = Awaited<ReturnType<typeof getTranslations>>;
+type DashboardT = (key: string, values?: Record<string, unknown>) => string;
+type DashboardTranslate = (key: string, values?: Record<string, string | number>) => string;
 
 interface CampaignWithStats {
   campaign: Campaign;
@@ -31,7 +33,7 @@ interface CampaignWithStats {
  */
 export default async function DashboardPage() {
   const auth = await requireAuth();
-  const t = await getTranslations("dashboard");
+  const t = (await getTranslations("dashboard")) as unknown as DashboardT;
   const locale = await getLocale();
   const client = await createServerApiClient();
 
@@ -64,12 +66,14 @@ export default async function DashboardPage() {
   const activeCampaignCount = activeCampaigns?.pagination.total ?? 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <div>
-        <h1 className="font-heading text-5xl font-normal leading-tight text-on-surface">
+        <h1 className="font-heading text-4xl font-normal leading-tight text-on-surface sm:text-5xl">
           {t("greeting", { name: auth.firstName ?? "" })}
         </h1>
-        <p className="mt-2 text-lg text-on-surface-variant">{t("subtitle")}</p>
+        <p className="mt-2 max-w-3xl text-base text-on-surface-variant sm:text-lg">
+          {t("subtitle")}
+        </p>
       </div>
 
       <section
@@ -100,7 +104,7 @@ export default async function DashboardPage() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <section className="rounded-md bg-surface-container-lowest p-6 shadow-card">
+        <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
           <SectionHeader
             title={t("recentDonations.title")}
             actionHref="/donations"
@@ -112,17 +116,22 @@ export default async function DashboardPage() {
                 <DonationFeedItem key={donation.id} donation={donation} t={t} locale={locale} />
               ))
             ) : (
-              <p className="py-6 text-sm text-on-surface-variant">{t("recentDonations.empty")}</p>
+              <EmptyState
+                icon={CalendarClock}
+                title={t("recentDonations.title")}
+                description={t("recentDonations.empty")}
+                className="px-0 py-8"
+              />
             )}
           </div>
         </section>
 
-        <section className="rounded-md bg-surface-container-lowest p-6 shadow-card">
+        <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
           <SectionHeader
             title={t("quickActions.title")}
             description={t("quickActions.description")}
           />
-          <div className="mt-4 grid gap-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
             <QuickAction href="/donations/new" label={t("quickActions.newDonation")} />
             <QuickAction href="/constituents/new" label={t("quickActions.newConstituent")} />
             <QuickAction href="/campaigns/new" label={t("quickActions.newCampaign")} />
@@ -131,7 +140,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <section className="rounded-md bg-surface-container-lowest p-6 shadow-card">
+        <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
           <SectionHeader
             title={t("campaigns.title")}
             actionHref="/campaigns"
@@ -143,13 +152,18 @@ export default async function DashboardPage() {
                 <CampaignProgressItem key={item.campaign.id} item={item} t={t} locale={locale} />
               ))
             ) : (
-              <p className="text-sm text-on-surface-variant">{t("campaigns.empty")}</p>
+              <EmptyState
+                icon={Circle}
+                title={t("campaigns.title")}
+                description={t("campaigns.empty")}
+                className="px-0 py-8"
+              />
             )}
           </div>
         </section>
 
         <div className="space-y-6">
-          <section className="rounded-md border border-primary/20 bg-ai-bg p-6 shadow-card">
+          <section className="rounded-2xl border border-primary/20 bg-ai-bg p-5 shadow-card sm:p-6">
             <div className="flex items-center gap-2 text-ai-text">
               <Lightbulb size={18} aria-hidden="true" />
               <h2 className="font-heading text-xl leading-tight">{t("aiSuggestion.title")}</h2>
@@ -157,7 +171,7 @@ export default async function DashboardPage() {
             <p className="mt-3 text-sm leading-relaxed text-on-surface">{t("aiSuggestion.body")}</p>
           </section>
 
-          <section className="rounded-md bg-surface-container-lowest p-6 shadow-card">
+          <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
             <SectionHeader
               title={t("onboarding.title")}
               description={t("onboarding.description")}
@@ -247,7 +261,7 @@ function StatCard({
   valueClassName?: string;
 }) {
   return (
-    <article className="min-h-36 rounded-md bg-surface-container-lowest p-5 shadow-card">
+    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card">
       <p className="text-sm font-medium text-on-surface-variant">{label}</p>
       <p
         className={`mt-3 font-heading text-4xl font-normal leading-tight text-on-surface ${valueClassName ?? ""}`.trim()}
@@ -312,9 +326,10 @@ function CampaignProgressItem({
   const raisedCents = stats?.totalRaisedCents ?? 0;
   const goalCents = campaign.costCents ?? 0;
   const progress = goalCents > 0 ? Math.min(Math.round((raisedCents / goalCents) * 100), 100) : 0;
+  const translate = t as unknown as DashboardTranslate;
 
   return (
-    <article className="rounded-md border border-outline-variant/60 p-4">
+    <article className="rounded-2xl border border-outline-variant/60 p-4 sm:p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-on-surface">{campaign.name}</h3>
@@ -332,11 +347,11 @@ function CampaignProgressItem({
       </div>
       <p className="mt-2 text-xs text-on-surface-variant">
         {goalCents > 0
-          ? t("campaigns.progressWithGoal", {
+          ? translate("campaigns.progressWithGoal", {
               progress,
               goal: formatCurrency(goalCents, locale),
             })
-          : t("campaigns.progressWithoutGoal", {
+          : translate("campaigns.progressWithoutGoal", {
               donations: stats?.donationCount ?? 0,
             })}
       </p>

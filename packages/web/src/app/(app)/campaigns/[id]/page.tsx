@@ -1,10 +1,11 @@
-import { ArrowLeft, Globe, Pencil } from "lucide-react";
+import { ArrowLeft, Gift, Globe, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { CampaignRoiChart } from "@/components/campaigns/campaign-roi-chart";
 import { CampaignStatusActions } from "@/components/campaigns/campaign-status-actions";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -141,7 +142,7 @@ export default async function CampaignDetailPage({
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
         <aside className="space-y-6">
           <StatsCard campaign={campaign} stats={stats} locale={locale} />
           <StatusCard campaign={campaign} />
@@ -196,7 +197,7 @@ async function StatsCard({
   const t = await getTranslations("campaigns.detail");
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
       <h2 className="mb-4 font-heading text-xl text-on-surface">{t("stats.title")}</h2>
       <dl className="space-y-4">
         <StatRow
@@ -228,7 +229,7 @@ async function StatusCard({ campaign }: { campaign: Campaign }) {
   const t = await getTranslations("campaigns.detail");
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
       <h2 className="mb-4 font-heading text-xl text-on-surface">{t("actions.title")}</h2>
       <p className="mb-4 text-sm text-on-surface-variant">{t("actions.description")}</p>
       <CampaignStatusActions campaignId={campaign.id} status={campaign.status} />
@@ -249,7 +250,7 @@ async function DonationBreakdownCard({
   const { data: donations, pagination } = donationsResult;
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="font-heading text-xl text-on-surface">{t("donations.title")}</h2>
@@ -265,7 +266,12 @@ async function DonationBreakdownCard({
       </div>
 
       {donations.length === 0 ? (
-        <p className="text-sm text-on-surface-variant">{t("donations.empty")}</p>
+        <EmptyState
+          icon={Gift}
+          title={t("donations.title")}
+          description={t("donations.empty")}
+          className="px-0 py-8"
+        />
       ) : (
         <DonationsTable donations={donations} pagination={pagination} />
       )}

@@ -35,8 +35,8 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
 
     return (
       <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(9,100,71,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
-        <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-6 sm:px-8 lg:px-10 lg:py-10">
-          <div className="flex items-center justify-between gap-4">
+        <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-8 sm:py-6 lg:px-10 lg:py-10">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Button asChild variant="ghost" size="sm">
               <Link href="/">
                 <ArrowLeft size={16} aria-hidden="true" />
@@ -49,10 +49,10 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
             </Badge>
           </div>
 
-          <div className="mt-8 grid flex-1 gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,420px)] lg:items-start">
+          <div className="mt-6 grid flex-1 gap-6 lg:mt-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,420px)] lg:items-start">
             <section className="overflow-hidden rounded-[32px] border border-outline-variant bg-surface-container-lowest shadow-card">
               <div
-                className="px-6 py-10 sm:px-10 sm:py-12"
+                className="px-5 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12"
                 style={{
                   background: `linear-gradient(135deg, ${colorPrimary}, color-mix(in srgb, ${colorPrimary} 60%, #0B1220))`,
                   color: onPrimary,
@@ -69,7 +69,7 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
                 </p>
               </div>
 
-              <div className="grid gap-4 border-t border-outline-variant px-6 py-6 sm:grid-cols-2 sm:px-10 sm:py-8">
+              <div className="grid gap-4 border-t border-outline-variant px-5 py-5 sm:grid-cols-2 sm:px-8 sm:py-6 lg:px-10 lg:py-8">
                 <Metric
                   label={t("metrics.goal")}
                   value={
@@ -106,7 +106,7 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-xs font-medium uppercase tracking-[0.14em] text-on-surface-variant">
         {label}
       </p>
-      <p className="mt-2 text-lg font-semibold text-on-surface">{value}</p>
+      <p className="mt-2 text-base font-semibold text-on-surface sm:text-lg">{value}</p>
     </div>
   );
 }
