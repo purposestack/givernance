@@ -73,6 +73,22 @@ From packages/shared/src/schema/:
 - `GET /v1/campaigns/:id/public-page` — public donation page (unauthenticated, embeddable)
 - `POST /v1/donations/stripe-webhook` — Stripe payment webhook (creates donation + constituent if new)
 
+## Public donor flow
+
+Current public entrypoint: `/p/[campaignId]`
+
+1. A donor receives a campaign link from email, QR code, social media, or a website CTA and lands on the public campaign page without logging in.
+2. The page loads the published campaign copy from `GET /v1/public/campaigns/:id/page` and shows the public title, supporting description, campaign goal, brand color, and donation form.
+3. The donor sees the campaign objective immediately, can pick a suggested amount or enter a custom amount, then fills in first name, last name, and email.
+4. On submit, the web app creates a public donation intent through `POST /v1/public/campaigns/:id/donate`. This is the handoff point to Stripe.
+5. In the next increment, the donor will continue directly into the Stripe payment step, complete card entry or wallet payment, and return to a confirmation screen.
+6. After Stripe confirms payment, the webhook will create the donation record, create or match the donor constituent, update campaign totals, and make the gift visible to staff in the CRM.
+
+Notes:
+- The donor does not need a Givernance account at any point in this flow.
+- Draft campaign pages stay inaccessible publicly; only published pages resolve successfully.
+- The current MVP page already captures donor identity data and prepares the payment intent, but it stops before rendering the final Stripe checkout UI.
+
 ### Reports (Sprint 3)
 - `GET /v1/reports/lybunt` — LYBUNT donor list
 - `GET /v1/reports/sybunt` — SYBUNT donor list

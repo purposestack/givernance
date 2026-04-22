@@ -1,4 +1,4 @@
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, Globe, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
-import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
+import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
 import type { Campaign, CampaignStats } from "@/models/campaign";
 import type { DonationListResponse } from "@/models/donation";
 import { CampaignService } from "@/services/CampaignService";
@@ -73,7 +73,7 @@ export default async function CampaignDetailPage({
   params,
   searchParams,
 }: CampaignDetailPageProps) {
-  await requireAuth();
+  const auth = await requireAuth();
   const { id } = await params;
   const sp = await searchParams;
   const donationsPage = parsePositiveInt(sp.page, 1);
@@ -95,6 +95,10 @@ export default async function CampaignDetailPage({
     getLocale(),
   ]);
   const roi = CampaignService.calculateRoi(campaign.costCents, stats.totalRaisedCents);
+  const costDisplayValue =
+    campaign.costCents !== null ? formatCurrency(campaign.costCents, locale) : t("roi.unavailable");
+  const raisedDisplayValue = formatCurrency(stats.totalRaisedCents, locale);
+  const roiDisplayValue = roi !== null ? formatPercent(roi, locale, 1) : t("roi.unavailable");
 
   return (
     <>
@@ -125,6 +129,14 @@ export default async function CampaignDetailPage({
                 {t("actions.edit")}
               </Link>
             </Button>
+            {auth.roles.includes("org_admin") ? (
+              <Button asChild variant="secondary" size="sm">
+                <Link href={`/campaigns/${campaign.id}/public-page`}>
+                  <Globe size={16} aria-hidden="true" />
+                  {t("actions.publicPage")}
+                </Link>
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -150,8 +162,15 @@ export default async function CampaignDetailPage({
               amount: t("roi.amount"),
               unavailable: t("roi.unavailable"),
               tableCaption: t("roi.tableCaption"),
-              chartSummary: t("roi.chartSummary"),
-              chartSummaryUnavailable: t("roi.chartSummaryUnavailable"),
+              chartSummary: t("roi.chartSummary", {
+                raised: raisedDisplayValue,
+                cost: costDisplayValue,
+                roi: roiDisplayValue,
+              }),
+              chartSummaryUnavailable: t("roi.chartSummaryUnavailable", {
+                raised: raisedDisplayValue,
+                cost: costDisplayValue,
+              }),
             }}
           />
           <DonationBreakdownCard

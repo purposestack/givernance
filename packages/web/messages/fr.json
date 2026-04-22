@@ -401,6 +401,80 @@
         "updated": "Modifications enregistrées."
       }
     },
+    "publicPage": {
+      "title": "Page publique de don",
+      "subtitle": "Configurez la page de campagne visible par les donateurs avant le paiement.",
+      "breadcrumb": "Page publique",
+      "sections": {
+        "content": {
+          "title": "Contenu",
+          "description": "Titre et texte d'accompagnement visibles sur la page côté donateur."
+        },
+        "presentation": {
+          "title": "Présentation",
+          "description": "État de publication, objectif mis en avant et couleur d'accent."
+        }
+      },
+      "fields": {
+        "title": "Titre public",
+        "titlePlaceholder": "Soutenez notre campagne de printemps",
+        "titleHint": "Utilisez un titre court et orienté action.",
+        "description": "Description",
+        "descriptionPlaceholder": "Expliquez ce que finance cette campagne et pourquoi maintenant.",
+        "descriptionHint": "Privilégiez des paragraphes courts, surtout sur mobile.",
+        "goal": "Objectif affiché",
+        "goalPlaceholder": "0,00",
+        "goalHint": "Laissez vide pour reprendre l'objectif de la campagne si disponible.",
+        "status": "Statut de la page",
+        "statusHint": "Seules les pages publiées peuvent accepter des dons via le parcours public.",
+        "color": "Couleur principale",
+        "colorHint": "Sélectionnez une couleur de thème validée pour le contraste sur fond clair.",
+        "colorOptions": {
+          "primary": "Forêt",
+          "secondary": "Émeraude",
+          "tertiary": "Ambre",
+          "emerald": "Sapin",
+          "slate": "Ardoise"
+        }
+      },
+      "status": {
+        "draft": "Brouillon",
+        "published": "Publiée"
+      },
+      "actions": {
+        "back": "Retour à la campagne",
+        "viewLive": "Voir la page publique",
+        "copyLink": "Copier le lien",
+        "save": "Enregistrer la page",
+        "submitting": "Enregistrement…"
+      },
+      "errors": {
+        "validation": "Corrigez les champs en surbrillance.",
+        "goalAmountInvalid": "Saisissez un montant valide avec au plus deux décimales.",
+        "colorInvalid": "Sélectionnez une couleur proposée par le thème.",
+        "copyLink": "Impossible de copier le lien public. Réessayez.",
+        "generic": "Une erreur est survenue lors de l'enregistrement de la page publique. Réessayez."
+      },
+      "success": {
+        "saved": "Brouillon enregistré.",
+        "published": "Page publique publiée.",
+        "linkCopied": "Lien public copié."
+      },
+      "preview": {
+        "title": "Aperçu",
+        "description": "Maquette en direct de la page visible par les donateurs.",
+        "draft": "Brouillon",
+        "published": "Publiée",
+        "live": "Aperçu",
+        "descriptionFallback": "Le résumé de campagne apparaîtra ici dès que vous ajouterez un court texte pour les donateurs.",
+        "campaign": "Campagne",
+        "goal": "Objectif affiché",
+        "goalFallback": "Aucun objectif affiché",
+        "donationCardLabel": "Bloc de don",
+        "donationCardBody": "Les montants suggérés et l'appel à l'action restent visibles dès l'arrivée sur la page.",
+        "cta": "Faire un don"
+      }
+    },
     "detail": {
     "stats": {
       "title": "Statistiques de campagne",
@@ -430,6 +504,7 @@
       "description": "Faites passer cette campagne entre les états brouillon, active et clôturée.",
       "back": "Retour aux campagnes",
         "edit": "Modifier",
+        "publicPage": "Page publique",
         "activate": "Activer",
         "activating": "Activation…",
         "backToDraft": "Revenir au brouillon",
@@ -456,6 +531,54 @@
           "amount": "Montant"
         }
       }
+    }
+  },
+  "publicDonationPage": {
+    "backHome": "Accueil Givernance",
+    "badge": "Collecte publique",
+    "eyebrow": "Soutenez notre action",
+    "descriptionFallback": "Votre don aide directement à financer cette campagne et ses prochaines étapes sur le terrain.",
+    "metrics": {
+      "goal": "Objectif de collecte",
+      "goalFallback": "Objectif bientôt précisé",
+      "trust": "Paiement",
+      "trustValue": "Flux Stripe à venir"
+    },
+    "form": {
+      "eyebrow": "Don en ligne",
+      "title": "Faire un don",
+      "description": "Renseignez vos informations pour préparer votre don. L'étape de paiement Stripe sera branchée juste après cet écran.",
+      "suggestedAmount": "Suggestion",
+      "goal": "Objectif affiché : {amount}",
+      "fields": {
+        "firstName": "Prénom",
+        "firstNamePlaceholder": "Marie",
+        "lastName": "Nom",
+        "lastNamePlaceholder": "Dupont",
+        "email": "Email",
+        "emailPlaceholder": "marie.dupont@exemple.org",
+        "amount": "Montant",
+        "amountPlaceholder": "50"
+      },
+      "actions": {
+        "submit": "Continuer vers le paiement",
+        "submitting": "Préparation…"
+      },
+      "errors": {
+        "firstNameRequired": "Saisissez votre prénom.",
+        "lastNameRequired": "Saisissez votre nom.",
+        "emailRequired": "Saisissez votre adresse e-mail.",
+        "emailInvalid": "Saisissez une adresse e-mail valide.",
+        "amountRequired": "Saisissez un montant de don.",
+        "amountInvalid": "Le montant doit être d'au moins 1 €.",
+        "generic": "Une erreur est survenue lors de la préparation du paiement. Réessayez."
+      },
+      "success": {
+        "intentCreated": "Votre don est prêt. L'étape de paiement Stripe est la prochaine intégration.",
+        "nextStepTitle": "Étape suivante",
+        "nextStepBody": "Un intent de paiement a bien été créé côté API. La redirection ou le formulaire Stripe sera branché dans le prochain incrément."
+      },
+      "footnote": "En soumettant ce formulaire, vous préparez un paiement sécurisé. Le débit ne se fait pas encore sur cette version de la page."
     }
   },
   "constituentForm": {

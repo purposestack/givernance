@@ -48,15 +48,7 @@ export function CampaignRoiChart({
     costCents !== null ? formatCurrency(costCents, locale) : labels.unavailable;
   const raisedDisplayValue = formatCurrency(totalRaisedCents, locale);
   const roiDisplayValue = roi !== null ? formatPercent(roi, locale, 1) : labels.unavailable;
-  const summary =
-    roi !== null
-      ? labels.chartSummary
-          .replace("{raised}", raisedDisplayValue)
-          .replace("{cost}", costDisplayValue)
-          .replace("{roi}", roiDisplayValue)
-      : labels.chartSummaryUnavailable
-          .replace("{raised}", raisedDisplayValue)
-          .replace("{cost}", costDisplayValue);
+  const summary = roi !== null ? labels.chartSummary : labels.chartSummaryUnavailable;
 
   const series: SeriesItem[] = [
     {

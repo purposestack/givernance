@@ -12,6 +12,7 @@ interface JwtPayload {
   email?: string;
   given_name?: string;
   family_name?: string;
+  role?: string;
   realm_access?: { roles: string[] };
   resource_access?: Record<string, { roles: string[] }>;
   org_id?: string;
@@ -94,7 +95,7 @@ export async function requireAuth(): Promise<ServerAuthContext> {
     firstName: payload.given_name,
     lastName: payload.family_name,
     orgId: payload.org_id,
-    roles: payload.realm_access?.roles ?? [],
+    roles: [...(payload.realm_access?.roles ?? []), ...(payload.role ? [payload.role] : [])],
     act: payload.act,
     impersonation: payload.act
       ? {
@@ -146,4 +147,9 @@ export async function requirePermission(
   }
 
   return auth;
+}
+
+/** Require org_admin access in a Server Component. */
+export async function requireOrgAdmin(): Promise<ServerAuthContext> {
+  return requirePermission("admin");
 }

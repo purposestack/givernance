@@ -77,13 +77,16 @@ export async function createServer() {
   // --- Global error handler (RFC 9457 application/problem+json) ---
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     const status = error.statusCode ?? 500;
-    const body = problemDetail(
-      status,
-      error.message || "Internal Server Error",
-      error.validation
-        ? `Validation failed: ${error.validation.map((v) => v.message).join("; ")}`
-        : error.message || "An unexpected error occurred",
-    );
+    const body = {
+      ...problemDetail(
+        status,
+        error.message || "Internal Server Error",
+        error.validation
+          ? `Validation failed: ${error.validation.map((v) => v.message).join("; ")}`
+          : error.message || "An unexpected error occurred",
+      ),
+      ...(error.validation ? { fieldErrors: buildFieldErrors(error.validation) } : {}),
+    };
     return reply.status(status).header("content-type", PROBLEM_JSON).send(body);
   });
 
@@ -108,4 +111,34 @@ export async function createServer() {
   await app.register(impersonationRoutes, { prefix: "/v1" });
 
   return app;
+}
+
+interface ValidationIssue {
+  instancePath?: string;
+  message?: string;
+  params?: {
+    missingProperty?: string;
+  };
+}
+
+function buildFieldErrors(validation: FastifyError["validation"]): Record<string, string> {
+  if (!validation) return {};
+
+  const fieldErrors: Record<string, string> = {};
+  for (const issue of validation as ValidationIssue[]) {
+    const fieldName = extractFieldName(issue);
+    if (!fieldName || fieldErrors[fieldName]) continue;
+    fieldErrors[fieldName] = issue.message ?? "Invalid value";
+  }
+  return fieldErrors;
+}
+
+function extractFieldName(issue: ValidationIssue): string | null {
+  if (issue.params?.missingProperty) return issue.params.missingProperty;
+
+  const path = issue.instancePath ?? "";
+  const segments = path.split("/").filter(Boolean);
+  if (segments[0] === "body") segments.shift();
+  const candidate = segments.at(-1);
+  return candidate && /^[A-Za-z0-9_]+$/.test(candidate) ? candidate : null;
 }

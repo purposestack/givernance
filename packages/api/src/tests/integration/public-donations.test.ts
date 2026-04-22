@@ -5,6 +5,10 @@ import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
 
+const PRIMARY_THEME_COLOR = "#096447";
+const SECONDARY_THEME_COLOR = "#006C48";
+const TERTIARY_THEME_COLOR = "#864700";
+
 // vi.hoisted runs before vi.mock hoisting
 const { mockGetStripe, mockPaymentIntentsCreate, mockQueueAdd } = vi.hoisted(() => {
   const mockPaymentIntentsCreate = vi.fn().mockResolvedValue({
@@ -75,6 +79,64 @@ async function createTestCampaign(name: string) {
 
 // ─── PUT /v1/campaigns/:id/public-page (admin) ──────────────────────────
 
+describe("GET /v1/campaigns/:id/public-page", () => {
+  it("returns the current config for an authenticated admin", async () => {
+    const campaign = await createTestCampaign("Public Page Test Admin GET");
+    const token = signToken(app);
+
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: {
+        title: "Admin Page",
+        description: "Draft copy",
+        colorPrimary: PRIMARY_THEME_COLOR,
+        goalAmountCents: 250000,
+        status: "draft",
+      },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { title: string; status: string; description: string } }>();
+    expect(body.data.title).toBe("Admin Page");
+    expect(body.data.status).toBe("draft");
+    expect(body.data.description).toBe("Draft copy");
+  });
+
+  it("returns 404 when no config exists yet", async () => {
+    const campaign = await createTestCampaign("Public Page Test Missing Admin GET");
+    const token = signToken(app);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("returns 403 for a non-admin user", async () => {
+    const campaign = await createTestCampaign("Public Page Test Forbidden Admin GET");
+    const token = signToken(app, { role: "user" });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+});
+
 describe("PUT /v1/campaigns/:id/public-page", () => {
   it("returns 401 without auth", async () => {
     const res = await app.inject({
@@ -96,7 +158,7 @@ describe("PUT /v1/campaigns/:id/public-page", () => {
       payload: {
         title: "Help Us Build Schools",
         description: "Every euro counts",
-        colorPrimary: "#FF5733",
+        colorPrimary: SECONDARY_THEME_COLOR,
         goalAmountCents: 500000,
         status: "published",
       },
@@ -145,6 +207,43 @@ describe("PUT /v1/campaigns/:id/public-page", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it("returns 403 for a non-admin user", async () => {
+    const campaign = await createTestCampaign("Public Page Test Forbidden Admin PUT");
+    const token = signToken(app, { role: "user" });
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Forbidden Page", colorPrimary: TERTIARY_THEME_COLOR },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("returns fieldErrors for invalid public page payloads", async () => {
+    const campaign = await createTestCampaign("Public Page Test Validation");
+    const token = signToken(app);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: {
+        title: "Valid title",
+        colorPrimary: "#123456",
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{
+      detail: string;
+      fieldErrors?: Record<string, string>;
+    }>();
+    expect(body.detail).toContain("Validation failed");
+    expect(body.fieldErrors?.colorPrimary).toBeDefined();
+  });
 });
 
 // ─── GET /v1/public/campaigns/:id/page (unauthenticated) ─────────────────
@@ -162,7 +261,7 @@ describe("GET /v1/public/campaigns/:id/page", () => {
       payload: {
         title: "Public Campaign",
         description: "Donate now",
-        colorPrimary: "#00FF00",
+        colorPrimary: PRIMARY_THEME_COLOR,
         goalAmountCents: 100000,
         status: "published",
       },
@@ -209,6 +308,21 @@ describe("GET /v1/public/campaigns/:id/page", () => {
       url: "/v1/public/campaigns/00000000-0000-0000-0000-ffffffffffff/page",
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("returns 400 for an invalid campaign id", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/public/campaigns//page",
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{
+      detail: string;
+      fieldErrors?: Record<string, string>;
+    }>();
+    expect(body.detail).toContain("Validation failed");
+    expect(body.fieldErrors?.id).toBeDefined();
   });
 });
 

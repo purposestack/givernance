@@ -3,10 +3,15 @@
 import { campaignPublicPages, campaigns, tenants } from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
+import { isUuid } from "../../lib/schemas.js";
 import { getStripe } from "../payments/service.js";
 
 /** Fetch a published public page by campaign ID (unauthenticated) */
 export async function getPublicPage(campaignId: string) {
+  if (!isUuid(campaignId)) {
+    return null;
+  }
+
   // Direct query without RLS — public pages are public by definition.
   // We filter on status = 'published' to avoid exposing draft pages.
   const [page] = await db
@@ -29,6 +34,29 @@ export async function getPublicPage(campaignId: string) {
   return page ?? null;
 }
 
+/** Fetch the current public page configuration by campaign ID (admin) */
+export async function getAdminPublicPage(orgId: string, campaignId: string) {
+  if (!isUuid(campaignId)) {
+    return null;
+  }
+
+  return withTenantContext(orgId, async (tx) => {
+    const [campaign] = await tx
+      .select({ id: campaigns.id })
+      .from(campaigns)
+      .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+
+    if (!campaign) return null;
+
+    const [page] = await tx
+      .select()
+      .from(campaignPublicPages)
+      .where(eq(campaignPublicPages.campaignId, campaignId));
+
+    return page ?? null;
+  });
+}
+
 /** Platform fee: 1.5% + 30 cents */
 function calculatePlatformFee(amountCents: number): number {
   return Math.round(amountCents * 0.015 + 30);
@@ -46,6 +74,10 @@ export async function createDonationIntent(
   },
   idempotencyKey?: string,
 ) {
+  if (!isUuid(campaignId)) {
+    return null;
+  }
+
   const stripe = getStripe();
 
   // Look up the campaign to find the org
@@ -110,6 +142,10 @@ export async function upsertPublicPage(
     status?: "draft" | "published";
   },
 ) {
+  if (!isUuid(campaignId)) {
+    return null;
+  }
+
   return withTenantContext(orgId, async (tx) => {
     // Verify campaign belongs to this org
     const [campaign] = await tx
