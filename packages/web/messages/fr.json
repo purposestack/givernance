@@ -443,6 +443,8 @@
       },
       "actions": {
         "back": "Retour à la campagne",
+        "viewLive": "Voir la page publique",
+        "copyLink": "Copier le lien",
         "save": "Enregistrer la page",
         "submitting": "Enregistrement…"
       },
@@ -450,11 +452,13 @@
         "validation": "Corrigez les champs en surbrillance.",
         "goalAmountInvalid": "Saisissez un montant valide avec au plus deux décimales.",
         "colorInvalid": "Sélectionnez une couleur proposée par le thème.",
+        "copyLink": "Impossible de copier le lien public. Réessayez.",
         "generic": "Une erreur est survenue lors de l'enregistrement de la page publique. Réessayez."
       },
       "success": {
         "saved": "Brouillon enregistré.",
-        "published": "Page publique publiée."
+        "published": "Page publique publiée.",
+        "linkCopied": "Lien public copié."
       },
       "preview": {
         "title": "Aperçu",
@@ -527,6 +531,54 @@
           "amount": "Montant"
         }
       }
+    }
+  },
+  "publicDonationPage": {
+    "backHome": "Accueil Givernance",
+    "badge": "Collecte publique",
+    "eyebrow": "Soutenez notre action",
+    "descriptionFallback": "Votre don aide directement à financer cette campagne et ses prochaines étapes sur le terrain.",
+    "metrics": {
+      "goal": "Objectif de collecte",
+      "goalFallback": "Objectif bientôt précisé",
+      "trust": "Paiement",
+      "trustValue": "Flux Stripe à venir"
+    },
+    "form": {
+      "eyebrow": "Don en ligne",
+      "title": "Faire un don",
+      "description": "Renseignez vos informations pour préparer votre don. L'étape de paiement Stripe sera branchée juste après cet écran.",
+      "suggestedAmount": "Suggestion",
+      "goal": "Objectif affiché : {amount}",
+      "fields": {
+        "firstName": "Prénom",
+        "firstNamePlaceholder": "Marie",
+        "lastName": "Nom",
+        "lastNamePlaceholder": "Dupont",
+        "email": "Email",
+        "emailPlaceholder": "marie.dupont@exemple.org",
+        "amount": "Montant",
+        "amountPlaceholder": "50"
+      },
+      "actions": {
+        "submit": "Continuer vers le paiement",
+        "submitting": "Préparation…"
+      },
+      "errors": {
+        "firstNameRequired": "Saisissez votre prénom.",
+        "lastNameRequired": "Saisissez votre nom.",
+        "emailRequired": "Saisissez votre adresse e-mail.",
+        "emailInvalid": "Saisissez une adresse e-mail valide.",
+        "amountRequired": "Saisissez un montant de don.",
+        "amountInvalid": "Le montant doit être d'au moins 1 €.",
+        "generic": "Une erreur est survenue lors de la préparation du paiement. Réessayez."
+      },
+      "success": {
+        "intentCreated": "Votre don est prêt. L'étape de paiement Stripe est la prochaine intégration.",
+        "nextStepTitle": "Étape suivante",
+        "nextStepBody": "Un intent de paiement a bien été créé côté API. La redirection ou le formulaire Stripe sera branché dans le prochain incrément."
+      },
+      "footnote": "En soumettant ce formulaire, vous préparez un paiement sécurisé. Le débit ne se fait pas encore sur cette version de la page."
     }
   },
   "constituentForm": {

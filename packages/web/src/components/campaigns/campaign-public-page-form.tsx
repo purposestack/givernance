@@ -5,7 +5,7 @@ import {
   CampaignPublicPageSchema,
 } from "@givernance/shared/validators";
 import { typeboxResolver } from "@hookform/resolvers/typebox";
-import { Eye, Globe, Palette, Save } from "lucide-react";
+import { Copy, ExternalLink, Eye, Globe, Palette, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -267,6 +267,7 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
           <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-h-5 text-sm text-error">{rootError}</div>
             <div className="flex flex-wrap items-center gap-3">
+              <PublicPageShareActions campaignId={campaign.id} />
               <Button asChild variant="ghost">
                 <Link href={`/campaigns/${campaign.id}`}>{t("actions.back")}</Link>
               </Button>
@@ -421,6 +422,35 @@ function PreviewMetric({ label, value, icon }: { label: string; value: string; i
       </div>
       <p className="mt-3 text-sm font-medium text-on-surface">{value}</p>
     </div>
+  );
+}
+
+function PublicPageShareActions({ campaignId }: { campaignId: string }) {
+  const t = useTranslations("campaigns.publicPage");
+  const publicPath = `/p/${campaignId}`;
+
+  async function copyPublicLink() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${publicPath}`);
+      toast.success(t("success.linkCopied"));
+    } catch {
+      toast.error(t("errors.copyLink"));
+    }
+  }
+
+  return (
+    <>
+      <Button asChild variant="secondary">
+        <Link href={publicPath} target="_blank" rel="noreferrer">
+          <ExternalLink size={16} aria-hidden="true" />
+          {t("actions.viewLive")}
+        </Link>
+      </Button>
+      <Button type="button" variant="ghost" onClick={copyPublicLink}>
+        <Copy size={16} aria-hidden="true" />
+        {t("actions.copyLink")}
+      </Button>
+    </>
   );
 }
 
@@ -633,9 +663,18 @@ interface ErrorMessages {
   generic: string;
 }
 
-const API_FIELD_NAMES = ["title", "description", "colorPrimary", "goalAmountCents", "status"] as const;
+const API_FIELD_NAMES = [
+  "title",
+  "description",
+  "colorPrimary",
+  "goalAmountCents",
+  "status",
+] as const;
 
-function applyFieldErrors(form: UseFormReturn<CampaignPublicPageFormValues>, raw: unknown): boolean {
+function applyFieldErrors(
+  form: UseFormReturn<CampaignPublicPageFormValues>,
+  raw: unknown,
+): boolean {
   if (!raw || typeof raw !== "object") return false;
 
   let applied = false;
@@ -660,7 +699,7 @@ function handleApiError(
       const applied = applyFieldErrors(form, err.extensions.fieldErrors);
       form.setError("root", {
         type: "server",
-        message: applied ? messages.validation : err.detail ?? messages.validation,
+        message: applied ? messages.validation : (err.detail ?? messages.validation),
       });
       return;
     }

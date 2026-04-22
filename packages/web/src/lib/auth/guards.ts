@@ -95,10 +95,7 @@ export async function requireAuth(): Promise<ServerAuthContext> {
     firstName: payload.given_name,
     lastName: payload.family_name,
     orgId: payload.org_id,
-    roles: [
-      ...(payload.realm_access?.roles ?? []),
-      ...(payload.role ? [payload.role] : []),
-    ],
+    roles: [...(payload.realm_access?.roles ?? []), ...(payload.role ? [payload.role] : [])],
     act: payload.act,
     impersonation: payload.act
       ? {

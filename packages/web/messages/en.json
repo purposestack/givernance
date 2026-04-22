@@ -443,6 +443,8 @@
       },
       "actions": {
         "back": "Back to campaign",
+        "viewLive": "View public page",
+        "copyLink": "Copy link",
         "save": "Save public page",
         "submitting": "Saving…"
       },
@@ -450,11 +452,13 @@
         "validation": "Please correct the highlighted fields.",
         "goalAmountInvalid": "Enter a valid amount with no more than two decimal places.",
         "colorInvalid": "Select one of the approved theme colors.",
+        "copyLink": "Could not copy the public link. Please try again.",
         "generic": "Something went wrong while saving the public page. Please try again."
       },
       "success": {
         "saved": "Draft saved.",
-        "published": "Public page published."
+        "published": "Public page published.",
+        "linkCopied": "Public link copied."
       },
       "preview": {
         "title": "Preview",
@@ -527,6 +531,54 @@
           "amount": "Amount"
         }
       }
+    }
+  },
+  "publicDonationPage": {
+    "backHome": "Givernance home",
+    "badge": "Public fundraising",
+    "eyebrow": "Support this work",
+    "descriptionFallback": "Your donation directly helps fund this campaign and the next steps it unlocks in the field.",
+    "metrics": {
+      "goal": "Fundraising goal",
+      "goalFallback": "Goal coming soon",
+      "trust": "Payment",
+      "trustValue": "Stripe flow coming next"
+    },
+    "form": {
+      "eyebrow": "Online donation",
+      "title": "Make a donation",
+      "description": "Fill in your details to prepare the donation. The Stripe payment step will be connected right after this screen.",
+      "suggestedAmount": "Suggested",
+      "goal": "Displayed goal: {amount}",
+      "fields": {
+        "firstName": "First name",
+        "firstNamePlaceholder": "Jane",
+        "lastName": "Last name",
+        "lastNamePlaceholder": "Doe",
+        "email": "Email",
+        "emailPlaceholder": "jane.doe@example.org",
+        "amount": "Amount",
+        "amountPlaceholder": "50"
+      },
+      "actions": {
+        "submit": "Continue to payment",
+        "submitting": "Preparing…"
+      },
+      "errors": {
+        "firstNameRequired": "Enter your first name.",
+        "lastNameRequired": "Enter your last name.",
+        "emailRequired": "Enter your email address.",
+        "emailInvalid": "Enter a valid email address.",
+        "amountRequired": "Enter a donation amount.",
+        "amountInvalid": "Amount must be at least €1.",
+        "generic": "Something went wrong while preparing payment. Please try again."
+      },
+      "success": {
+        "intentCreated": "Your donation is ready. The Stripe payment step is the next integration.",
+        "nextStepTitle": "Next step",
+        "nextStepBody": "A payment intent has been created successfully through the API. Redirecting to Stripe or rendering Elements will be added in the next increment."
+      },
+      "footnote": "Submitting this form prepares a secure payment. This version of the page does not charge the card yet."
     }
   },
   "constituentForm": {
