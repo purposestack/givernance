@@ -1,13 +1,13 @@
 "use client";
 
 import { Gift, LayoutDashboard, LogOut, Settings, Users } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { ComponentType, SVGProps } from "react";
 import { useEffect } from "react";
 
+import { Logo } from "@/components/shared/logo";
 import { useAuth } from "@/lib/auth";
 
 /** Tailwind `md` breakpoint in pixels. */
@@ -80,13 +80,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       >
         {/* Brand */}
         <div className="flex items-center gap-3 p-8">
-          <Image
-            src="/logo-pheonix-vert.svg"
-            alt="Givernance"
-            width={40}
-            height={40}
-            className="shrink-0 object-contain"
-          />
+          <Logo className="h-10 w-10 shrink-0" />
           <span className="font-heading text-2xl font-medium tracking-tight text-on-surface">
             Givernance
           </span>
