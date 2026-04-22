@@ -9,7 +9,7 @@ import { Copy, ExternalLink, Eye, Globe, Palette, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   type DefaultValues,
   type Resolver,
@@ -18,6 +18,7 @@ import {
   useWatch,
 } from "react-hook-form";
 
+import { AmountInput } from "@/components/shared/amount-input";
 import {
   Form,
   FormControl,
@@ -130,7 +131,7 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="rounded-2xl bg-surface-container-lowest px-6 shadow-card"
+          className="rounded-2xl bg-surface-container-lowest px-5 shadow-card sm:px-6"
           noValidate
         >
           <FormSection
@@ -193,7 +194,9 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
                     <FormControl>
                       <AmountInput
                         value={field.value}
-                        onChange={field.onChange}
+                        onChange={(nextValue, meta) =>
+                          field.onChange(meta.isValid ? nextValue : (Number.NaN as number))
+                        }
                         placeholder={t("fields.goalPlaceholder")}
                       />
                     </FormControl>
@@ -328,7 +331,7 @@ function CampaignPublicPagePreview({
 
   return (
     <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-      <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+      <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 className="font-heading text-xl text-on-surface">{t("title")}</h2>
@@ -341,7 +344,7 @@ function CampaignPublicPagePreview({
 
         <div className="overflow-hidden rounded-[28px] border border-outline-variant bg-surface shadow-card">
           <div
-            className="px-6 py-5"
+            className="px-5 py-5 sm:px-6"
             style={{
               background: `linear-gradient(135deg, ${safeColor}, color-mix(in srgb, ${safeColor} 55%, #0B1220))`,
               color: onColor,
@@ -365,7 +368,7 @@ function CampaignPublicPagePreview({
             </p>
           </div>
 
-          <div className="space-y-5 p-6">
+          <div className="space-y-5 p-5 sm:p-6">
             <div className="grid gap-3 sm:grid-cols-2">
               <PreviewMetric
                 label={t("campaign")}
@@ -462,93 +465,6 @@ function PublicPageShareActions({
       </Button>
     </>
   );
-}
-
-interface AmountInputProps {
-  value: number | null | undefined;
-  onChange: (value: number | null) => void;
-  placeholder?: string;
-  id?: string;
-  "aria-describedby"?: string;
-  "aria-invalid"?: boolean;
-}
-
-function AmountInput({
-  value,
-  onChange,
-  placeholder,
-  id,
-  "aria-describedby": ariaDescribedBy,
-  "aria-invalid": ariaInvalid,
-}: AmountInputProps) {
-  const [raw, setRaw] = useState<string>(() => centsToDisplay(value));
-  const lastValueRef = useRef<number | null | undefined>(value);
-
-  useEffect(() => {
-    if (!Object.is(value, lastValueRef.current)) {
-      lastValueRef.current = value;
-      setRaw(centsToDisplay(value));
-    }
-  }, [value]);
-
-  return (
-    <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant">
-        €
-      </span>
-      <Input
-        id={id}
-        type="text"
-        inputMode="decimal"
-        value={raw}
-        placeholder={placeholder}
-        aria-describedby={ariaDescribedBy}
-        aria-invalid={ariaInvalid}
-        className="pl-7 font-mono tabular-nums"
-        onChange={(event) => {
-          const next = event.target.value;
-          setRaw(next);
-          const parsed = parseAmount(next);
-          const nextValue = parsed.isValid ? sanitizeGoalAmount(parsed.value) : Number.NaN;
-          lastValueRef.current = nextValue;
-          onChange(nextValue);
-        }}
-        onBlur={() => {
-          const parsed = parseAmount(raw);
-          if (!parsed.isValid) {
-            lastValueRef.current = Number.NaN;
-            onChange(Number.NaN);
-            return;
-          }
-
-          const nextValue = sanitizeGoalAmount(parsed.value);
-          lastValueRef.current = nextValue;
-          onChange(nextValue);
-          setRaw(centsToDisplay(nextValue));
-        }}
-      />
-    </div>
-  );
-}
-
-function centsToDisplay(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "";
-  return (value / 100).toFixed(2);
-}
-
-function parseAmount(raw: string): { value: number | null; isValid: boolean } {
-  const trimmed = raw.trim().replace(/\s/g, "").replace(",", ".");
-  if (trimmed === "") return { value: null, isValid: true };
-  if (!/^\d+(\.\d{0,2})?$/.test(trimmed)) {
-    return { value: null, isValid: false };
-  }
-
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return { value: null, isValid: false };
-  }
-
-  return { value: Math.round(parsed * 100), isValid: true };
 }
 
 function getReadableTextColor(hex: string): "#FFFFFF" | "#111827" {

@@ -13,10 +13,18 @@ import { typeboxResolver } from "@hookform/resolvers/typebox";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { type DefaultValues, type Resolver, type UseFormReturn, useForm } from "react-hook-form";
 
-import { Form, FormField, FormItem, FormLabel, FormMessage } from "@/components/shared/form-field";
+import { AmountInput } from "@/components/shared/amount-input";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,7 +150,7 @@ export function CampaignForm(props: CampaignFormProps) {
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className="rounded-2xl bg-surface-container-lowest px-6 shadow-card"
+        className="rounded-2xl bg-surface-container-lowest px-5 shadow-card sm:px-6"
         noValidate
       >
         <FormSection
@@ -156,12 +164,14 @@ export function CampaignForm(props: CampaignFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel required>{t("fields.name")}</FormLabel>
-                  <Input
-                    {...field}
-                    placeholder={t("fields.namePlaceholder")}
-                    maxLength={255}
-                    aria-invalid={Boolean(form.formState.errors.name)}
-                  />
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder={t("fields.namePlaceholder")}
+                      maxLength={255}
+                      aria-invalid={Boolean(form.formState.errors.name)}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -173,9 +183,11 @@ export function CampaignForm(props: CampaignFormProps) {
                 <FormItem>
                   <FormLabel required>{t("fields.type")}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger aria-invalid={Boolean(form.formState.errors.type)}>
-                      <SelectValue />
-                    </SelectTrigger>
+                    <FormControl>
+                      <SelectTrigger aria-invalid={Boolean(form.formState.errors.type)}>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
                     <SelectContent>
                       {CAMPAIGN_TYPES.map((type) => (
                         <SelectItem key={type} value={type}>
@@ -206,9 +218,11 @@ export function CampaignForm(props: CampaignFormProps) {
                     value={field.value || EMPTY_PARENT}
                     onValueChange={(value) => field.onChange(value === EMPTY_PARENT ? "" : value)}
                   >
-                    <SelectTrigger aria-invalid={Boolean(form.formState.errors.parentId)}>
-                      <SelectValue placeholder={t("fields.parentPlaceholder")} />
-                    </SelectTrigger>
+                    <FormControl>
+                      <SelectTrigger aria-invalid={Boolean(form.formState.errors.parentId)}>
+                        <SelectValue placeholder={t("fields.parentPlaceholder")} />
+                      </SelectTrigger>
+                    </FormControl>
                     <SelectContent>
                       <SelectItem value={EMPTY_PARENT}>{t("fields.parentPlaceholder")}</SelectItem>
                       {parentOptions.map((campaign) => (
@@ -231,12 +245,13 @@ export function CampaignForm(props: CampaignFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t("fields.goal")}</FormLabel>
-                  <AmountInput
-                    value={field.value}
-                    onChange={field.onChange}
-                    invalid={Boolean(form.formState.errors.costCents)}
-                    placeholder={t("fields.goalPlaceholder")}
-                  />
+                  <FormControl>
+                    <AmountInput
+                      value={field.value}
+                      onChange={(nextValue) => field.onChange(nextValue)}
+                      placeholder={t("fields.goalPlaceholder")}
+                    />
+                  </FormControl>
                   <p className="text-xs text-on-surface-variant">{t("fields.goalHint")}</p>
                   <FormMessage />
                 </FormItem>
@@ -265,67 +280,6 @@ export function CampaignForm(props: CampaignFormProps) {
       </form>
     </Form>
   );
-}
-
-interface AmountInputProps {
-  value: number | null | undefined;
-  onChange: (value: number | null) => void;
-  invalid: boolean;
-  placeholder?: string;
-}
-
-function AmountInput({ value, onChange, invalid, placeholder }: AmountInputProps) {
-  const [raw, setRaw] = useState<string>(() => centsToDisplay(value));
-  const lastValueRef = useRef<number | null | undefined>(value);
-
-  useEffect(() => {
-    if (value !== lastValueRef.current) {
-      lastValueRef.current = value;
-      setRaw(centsToDisplay(value));
-    }
-  }, [value]);
-
-  return (
-    <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant">
-        €
-      </span>
-      <Input
-        type="text"
-        inputMode="decimal"
-        value={raw}
-        placeholder={placeholder}
-        aria-invalid={invalid}
-        className="pl-7 font-mono tabular-nums"
-        onChange={(event) => {
-          const next = event.target.value;
-          setRaw(next);
-          const parsed = parseAmount(next);
-          lastValueRef.current = parsed;
-          onChange(parsed);
-        }}
-        onBlur={() => {
-          const parsed = parseAmount(raw);
-          lastValueRef.current = parsed;
-          onChange(parsed);
-          setRaw(centsToDisplay(parsed));
-        }}
-      />
-    </div>
-  );
-}
-
-function centsToDisplay(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "";
-  return (value / 100).toFixed(2);
-}
-
-function parseAmount(raw: string): number | null {
-  const trimmed = raw.trim().replace(/\s/g, "").replace(",", ".");
-  if (trimmed === "") return null;
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Math.round(parsed * 100);
 }
 
 function toApiPayload(values: CampaignFormValues) {
