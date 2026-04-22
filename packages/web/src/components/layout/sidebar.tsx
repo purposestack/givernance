@@ -85,7 +85,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             alt="Givernance"
             width={40}
             height={40}
-            className="shrink-0 object-cover"
+            className="shrink-0 object-contain"
           />
           <span className="font-heading text-2xl font-medium tracking-tight text-on-surface">
             Givernance
