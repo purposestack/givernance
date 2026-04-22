@@ -348,14 +348,13 @@ function CampaignPublicPagePreview({
             }}
           >
             <div className="flex items-center justify-between gap-3">
-              <Badge
-                className="border border-white/15 bg-white/15"
-                shape="square"
+              <div
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded-[var(--radius-sm)] border border-white/15 bg-white/15 px-2 py-[2px] font-mono text-xs font-bold leading-[1.4]"
                 style={{ color: onColor }}
               >
                 <Globe size={12} aria-hidden="true" />
                 {t("live")}
-              </Badge>
+              </div>
               <span className="text-xs font-medium uppercase tracking-[0.16em] opacity-80">
                 {fallbackTypeLabel}
               </span>
@@ -392,7 +391,7 @@ function CampaignPublicPagePreview({
                   <button
                     key={amount}
                     type="button"
-                    className="rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-3 text-left font-medium text-on-surface"
+                    className="rounded-2xl border border-outline-variant bg-surface px-4 py-5 text-center text-xl font-semibold text-on-surface"
                   >
                     {new Intl.NumberFormat(locale, {
                       style: "currency",

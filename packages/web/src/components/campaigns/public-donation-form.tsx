@@ -114,7 +114,7 @@ export function PublicDonationForm({
           <button
             key={amount}
             type="button"
-            className="rounded-2xl border border-outline-variant bg-surface px-4 py-3 text-left transition-colors hover:border-transparent hover:text-on-primary"
+            className="rounded-2xl border border-outline-variant bg-surface px-4 py-5 text-center transition-colors hover:border-primary"
             style={{
               backgroundColor: values.amount === String(amount) ? colorPrimary : undefined,
               color:
@@ -125,10 +125,7 @@ export function PublicDonationForm({
               setErrors((current) => ({ ...current, amount: undefined }));
             }}
           >
-            <span className="block text-xs uppercase tracking-[0.12em] opacity-70">
-              {t("suggestedAmount")}
-            </span>
-            <span className="mt-1 block text-lg font-semibold">
+            <span className="block text-center text-xl font-semibold">
               {new Intl.NumberFormat(locale, {
                 style: "currency",
                 currency: "EUR",
