@@ -111,7 +111,12 @@ export class ApiClient {
         ? this.baseUrl
         : `${window.location.origin}${this.baseUrl}`;
 
-    const url = new URL(path, `${base}/`);
+    // Strip a leading slash from `path` so the URL constructor resolves it
+    // relative to `base` (which may include a base path like `/api`).
+    // `new URL("/v1/…", "http://host/api/")` otherwise drops `/api` because
+    // an absolute path resolves against the origin, not the base URL's path.
+    const relativePath = path.startsWith("/") ? path.slice(1) : path;
+    const url = new URL(relativePath, `${base}/`);
     if (params) {
       for (const [key, value] of Object.entries(params)) {
         if (value !== undefined) {
