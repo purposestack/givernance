@@ -3,10 +3,12 @@ import { createBrowserFetch } from "./client-browser";
 
 describe("createBrowserFetch", () => {
   afterEach(() => {
+    // biome-ignore lint/suspicious/noDocumentCookie: testing mock
     document.cookie = "csrf-token=; Max-Age=0; path=/";
   });
 
   it("adds the CSRF header from the double-submit cookie on mutating requests", async () => {
+    // biome-ignore lint/suspicious/noDocumentCookie: testing mock
     document.cookie = "csrf-token=csrf-test-token; path=/";
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
@@ -24,6 +26,7 @@ describe("createBrowserFetch", () => {
   });
 
   it("does not add the CSRF header on safe requests", async () => {
+    // biome-ignore lint/suspicious/noDocumentCookie: testing mock
     document.cookie = "csrf-token=csrf-test-token; path=/";
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {

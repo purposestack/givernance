@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getCsrfCookieName } from "@/lib/auth/csrf";
 import {
   APP_URL,
   ID_TOKEN_COOKIE_NAME,
@@ -7,7 +8,6 @@ import {
   KEYCLOAK_CLIENT_ID,
   LOGOUT_ENDPOINT,
 } from "@/lib/auth/keycloak";
-import { getCsrfCookieName } from "@/lib/auth/csrf";
 
 /**
  * POST /api/auth/logout

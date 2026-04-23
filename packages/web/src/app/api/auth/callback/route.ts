@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
+import { buildCsrfCookieOptions, getCsrfCookieName } from "@/lib/auth/csrf";
 import {
   APP_URL,
   ID_TOKEN_COOKIE_NAME,
@@ -12,7 +13,6 @@ import {
   requireClientSecret,
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
-import { buildCsrfCookieOptions, getCsrfCookieName } from "@/lib/auth/csrf";
 import { mintSessionJwt } from "@/lib/auth/mint-session-jwt";
 
 /** Map Keycloak errors to safe, fixed error codes — never reflect upstream error text. */

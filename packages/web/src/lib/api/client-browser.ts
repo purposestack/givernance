@@ -1,5 +1,5 @@
-import { ApiClient } from "./client";
 import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
+import { ApiClient } from "./client";
 
 /** Methods that require CSRF protection (state-changing per ADR-011). */
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
