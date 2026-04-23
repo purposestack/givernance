@@ -81,6 +81,21 @@
       "captchaLabel": "Security check",
       "emailHasTenant": "Your organisation may already be on Givernance. Contact your administrator to be invited.",
       "haveAccount": "Already have an account? <link>Sign in</link>",
+      "sections": {
+        "workspace": {
+          "title": "Your workspace",
+          "description": "Define your organisation name and public workspace URL."
+        },
+        "contact": {
+          "title": "Your details",
+          "description": "Enter the contact information for the first administrator."
+        },
+        "security": {
+          "title": "Validation and compliance",
+          "description": "Confirm the terms before creating the workspace.",
+          "consentLabel": "Required agreement"
+        }
+      },
       "fields": {
         "orgName": "Organisation name",
         "slug": "Workspace URL",
@@ -157,8 +172,16 @@
       "title": "Which workspace would you like to enter?",
       "subtitle": "Your account belongs to multiple organisations.",
       "continue": "Continue",
+      "submitting": "Opening…",
+      "currentSelection": "Selected workspace: {name}",
       "provisional": "Provisional admin",
       "lastVisited": "Last visited {date}",
+      "sections": {
+        "workspace": {
+          "title": "Workspace selection",
+          "description": "Choose which organisation to open for this session."
+        }
+      },
       "errors": {
         "forbidden": "You cannot switch to this workspace.",
         "generic": "Could not switch workspaces. Please try again."
@@ -192,6 +215,7 @@
       "orgPlaceholder": "Organisation",
       "userPlaceholder": "User",
       "workspaceSwitcher": "Open workspace switcher",
+      "changeOrganization": "Change organisation",
       "workspaceSettings": "Organisation settings",
       "profile": "My profile",
       "signOut": "Sign out"

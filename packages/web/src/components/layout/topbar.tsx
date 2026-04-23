@@ -6,28 +6,19 @@ import { useTranslations } from "next-intl";
 import type { RefObject } from "react";
 
 import { useAuth } from "@/lib/auth";
-import { OrgSwitcher } from "./org-switcher";
 
 interface TopbarProps {
   title?: string;
   onMenuToggle: () => void;
   sidebarOpen: boolean;
   hamburgerRef: RefObject<HTMLButtonElement | null>;
-  /** SSR membership count — skips the switcher entirely for solo-tenant users. */
-  membershipCount?: number;
 }
 
 /**
  * Top bar — 80px sticky, glass effect.
  * Matches dashboard.html mockup: breadcrumb left, search center, actions right.
  */
-export function Topbar({
-  title,
-  onMenuToggle,
-  sidebarOpen,
-  hamburgerRef,
-  membershipCount,
-}: TopbarProps) {
+export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: TopbarProps) {
   const { user } = useAuth();
   const t = useTranslations("appShell.topbar");
 
@@ -82,8 +73,6 @@ export function Topbar({
       </div>
 
       <div className="flex items-center gap-3">
-        <OrgSwitcher currentOrgId={user?.orgId} membershipCountHint={membershipCount} />
-
         <button
           type="button"
           className="relative flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-text focus-visible:ring-2 focus-visible:ring-primary"

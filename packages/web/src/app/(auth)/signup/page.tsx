@@ -22,7 +22,7 @@ export default async function SignupPage() {
   const captchaSiteKey = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY;
 
   return (
-    <AuthCard>
+    <AuthCard className="max-w-3xl">
       <AuthLogo />
       <h1 className="mb-2 text-center font-heading text-xl text-text">{t("title")}</h1>
       <p className="mb-8 text-center text-sm text-text-secondary">{t("subtitle")}</p>

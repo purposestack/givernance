@@ -60,7 +60,7 @@ export default async function SelectOrganizationPage() {
       id="main-content"
       className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6"
     >
-      <AuthCard>
+      <AuthCard className="max-w-3xl">
         <AuthLogo />
         <h1 className="mb-2 text-center font-heading text-xl text-text">{t("title")}</h1>
         <p className="mb-8 text-center text-sm text-text-secondary">{t("subtitle")}</p>
