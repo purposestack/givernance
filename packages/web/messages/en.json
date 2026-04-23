@@ -216,6 +216,7 @@
     "orgSwitcher": {
       "placeholder": "Switch workspace",
       "ariaLabel": "Workspace switcher",
+      "loading": "Loading…",
       "errors": {
         "generic": "Could not switch workspaces."
       }

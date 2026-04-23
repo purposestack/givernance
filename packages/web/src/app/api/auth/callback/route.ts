@@ -142,25 +142,12 @@ export async function GET(request: NextRequest) {
       jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(sessionMaxAge));
     }
 
-    // Multi-tenant membership → org picker before the dashboard (doc 22 §6.3).
-    // Best-effort — on failure we fall through to /dashboard so the picker is
-    // never a hard dependency on the auth callback succeeding.
-    try {
-      const apiUrl = process.env.API_URL ?? "http://127.0.0.1:4000";
-      const membershipsRes = await fetch(`${apiUrl}/v1/users/me/organizations`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      });
-      if (membershipsRes.ok) {
-        const payload = (await membershipsRes.json()) as { data?: Array<unknown> };
-        if (Array.isArray(payload.data) && payload.data.length > 1) {
-          return NextResponse.redirect(new URL("/select-organization", APP_URL).toString());
-        }
-      }
-    } catch {
-      // swallow — fall through to /dashboard
-    }
-
-    return NextResponse.redirect(new URL("/dashboard", APP_URL).toString());
+    // FE-2: send every newly-authenticated user through `/select-organization`.
+    // That page server-renders the membership fetch and will 302 to
+    // `/dashboard` immediately if the user belongs to <=1 tenant — so solo-
+    // tenant users pay one extra redirect (cheap) and multi-tenant users get
+    // the picker without the callback blocking on a sequential fetch.
+    return NextResponse.redirect(new URL("/select-organization", APP_URL).toString());
   } catch (err) {
     console.error("OIDC Callback Error:", err);
     cleanup();

@@ -56,8 +56,6 @@ type LegalType = (typeof LEGAL_TYPES)[number]["value"];
 
 type SlugState =
   | { kind: "idle" }
-  | { kind: "checking" }
-  | { kind: "available" }
   | { kind: "taken" }
   | { kind: "invalid"; reason: "syntax" | "reserved" | "punycode" };
 
@@ -87,24 +85,47 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
   const [country, setCountry] = useState(defaultCountry);
   const [legalType, setLegalType] = useState<LegalType>("association");
   const [consent, setConsent] = useState(false);
-  // biome-ignore lint/correctness/noUnusedVariables: setter wired by the hCaptcha script via a globalThis callback at hydration time; see infra PR.
   const [captchaToken, setCaptchaToken] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [slugState, setSlugState] = useState<SlugState>({ kind: "idle" });
+  // UX-1 fix: render-triggered focus so the ref is actually attached.
+  const [focusErrorSummary, setFocusErrorSummary] = useState(0);
 
   const formRef = useRef<HTMLFormElement>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
+
+  // FE-5: expose the captcha-token setter on a known global so the external
+  // hCaptcha script can call us on `onVerify`. Script-injection lands with
+  // the infra PR — this side is ready.
+  useEffect(() => {
+    if (!captchaSiteKey) return;
+    interface GlobalWithCaptcha {
+      __gvCaptchaOnVerify?: (token: string) => void;
+    }
+    (globalThis as unknown as GlobalWithCaptcha).__gvCaptchaOnVerify = setCaptchaToken;
+    return () => {
+      (globalThis as unknown as GlobalWithCaptcha).__gvCaptchaOnVerify = undefined;
+    };
+  }, [captchaSiteKey]);
+
+  // UX-1: after state updates that surface a new error, move focus to the
+  // summary box (can't do it in the callback — the ref isn't attached yet).
+  useEffect(() => {
+    if (focusErrorSummary > 0) summaryRef.current?.focus();
+  }, [focusErrorSummary]);
 
   // Auto-derive the slug from the org name until the user manually edits it.
   useEffect(() => {
     if (!slugDirty) setSlug(slugify(orgName));
   }, [orgName, slugDirty]);
 
-  // Debounced slug lookup via GET /v1/public/tenants/lookup — we piggy-back
-  // on the email lookup endpoint because a dedicated slug endpoint does not
-  // exist yet; this is a best-effort hint only, the server is the authority.
+  // FE-9 (PR #118 review): a real slug-availability endpoint ships with the
+  // back-office (#111). Until then we do local syntax + reserved-slug checks
+  // only and explicitly mark the state `idle` on a syntactically valid slug
+  // — we never lie to the user with a green "available" tick we cannot back
+  // up. The 409 fallback on submit still catches actual collisions.
   useEffect(() => {
     if (slug.length < 2) {
       setSlugState({ kind: "idle" });
@@ -119,14 +140,7 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
       setSlugState({ kind: "invalid", reason: "reserved" });
       return;
     }
-    setSlugState({ kind: "checking" });
-    const handle = setTimeout(async () => {
-      // The public endpoint checks by email; we substitute an email shaped
-      // like `slug@<slug>.test` to elicit a collision answer. This is a soft
-      // heuristic — a real slug endpoint ships with the back-office.
-      setSlugState({ kind: "available" });
-    }, 300);
-    return () => clearTimeout(handle);
+    setSlugState({ kind: "idle" });
   }, [slug]);
 
   // Debounced email lookup — nudge users toward their existing org.
@@ -184,13 +198,13 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
 
       if (Object.keys(clientSideErrors).length > 0) {
         setFieldErrors(clientSideErrors);
-        summaryRef.current?.focus();
+        setFocusErrorSummary((n) => n + 1);
         return;
       }
 
       if (captchaSiteKey && !captchaToken) {
         setSubmitError(t("errors.captchaRequired"));
-        summaryRef.current?.focus();
+        setFocusErrorSummary((n) => n + 1);
         return;
       }
 
@@ -234,7 +248,7 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
           default:
             setSubmitError(t("errors.generic"));
         }
-        summaryRef.current?.focus();
+        setFocusErrorSummary((n) => n + 1);
       } finally {
         setSubmitting(false);
       }
@@ -271,7 +285,7 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
           tabIndex={-1}
           role="alert"
           aria-live="polite"
-          className="flex items-start gap-3 rounded-lg border border-[rgba(186,26,26,0.12)] bg-error-container p-3 text-sm text-on-error-container"
+          className="flex items-start gap-3 rounded-lg border border-error-border bg-error-container p-3 text-sm text-on-error-container"
         >
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <div className="flex-1 space-y-1">
@@ -331,8 +345,6 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
           />
         </div>
         <p id={`${ids.slug}-help`} className="mt-1 text-xs text-text-muted">
-          {slugState.kind === "checking" && t("slug.checking")}
-          {slugState.kind === "available" && t("slug.available")}
           {slugState.kind === "taken" && <span className="text-error">{t("slug.taken")}</span>}
           {slugState.kind === "invalid" && (
             <span className="text-error">
@@ -365,8 +377,14 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
             aria-invalid={fieldErrors.firstName ? "true" : undefined}
+            aria-describedby={fieldErrors.firstName ? `${ids.firstName}-err` : undefined}
             maxLength={255}
           />
+          {fieldErrors.firstName && (
+            <p id={`${ids.firstName}-err`} className="mt-1 text-xs text-error">
+              {fieldErrors.firstName}
+            </p>
+          )}
         </div>
         <div>
           <Label htmlFor={ids.lastName} required>
@@ -380,8 +398,14 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
             aria-invalid={fieldErrors.lastName ? "true" : undefined}
+            aria-describedby={fieldErrors.lastName ? `${ids.lastName}-err` : undefined}
             maxLength={255}
           />
+          {fieldErrors.lastName && (
+            <p id={`${ids.lastName}-err`} className="mt-1 text-xs text-error">
+              {fieldErrors.lastName}
+            </p>
+          )}
         </div>
       </div>
 
@@ -398,10 +422,26 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           aria-invalid={fieldErrors.email ? "true" : undefined}
+          aria-describedby={
+            [
+              emailHint ? `${ids.email}-hint` : undefined,
+              fieldErrors.email ? `${ids.email}-err` : undefined,
+            ]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
           maxLength={255}
         />
-        {emailHint && <p className="mt-1 text-xs text-text-secondary">{emailHint}</p>}
-        {fieldErrors.email && <p className="mt-1 text-xs text-error">{fieldErrors.email}</p>}
+        {emailHint && (
+          <p id={`${ids.email}-hint`} className="mt-1 text-xs text-text-secondary">
+            {emailHint}
+          </p>
+        )}
+        {fieldErrors.email && (
+          <p id={`${ids.email}-err`} className="mt-1 text-xs text-error">
+            {fieldErrors.email}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -434,31 +474,39 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
         </div>
       </div>
 
-      <div className="flex items-start gap-3">
-        <input
-          id={ids.consent}
-          name="consent"
-          type="checkbox"
-          checked={consent}
-          onChange={(e) => setConsent(e.target.checked)}
-          aria-invalid={fieldErrors.consent ? "true" : undefined}
-          className="mt-0.5 h-4 w-4 rounded border-outline-variant"
-          required
-        />
-        <label htmlFor={ids.consent} className="text-xs text-text-secondary">
-          {t.rich("consent", {
-            privacy: (chunks) => (
-              <Link href="/legal/privacy" className="text-primary underline">
-                {chunks}
-              </Link>
-            ),
-            terms: (chunks) => (
-              <Link href="/legal/terms" className="text-primary underline">
-                {chunks}
-              </Link>
-            ),
-          })}
-        </label>
+      <div>
+        <div className="flex items-start gap-3">
+          <input
+            id={ids.consent}
+            name="consent"
+            type="checkbox"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+            aria-invalid={fieldErrors.consent ? "true" : undefined}
+            aria-describedby={fieldErrors.consent ? `${ids.consent}-err` : undefined}
+            className="mt-0.5 h-4 w-4 rounded border-outline-variant"
+            required
+          />
+          <label htmlFor={ids.consent} className="text-xs text-text-secondary">
+            {t.rich("consent", {
+              privacy: (chunks) => (
+                <Link href="/legal/privacy" className="text-primary underline">
+                  {chunks}
+                </Link>
+              ),
+              terms: (chunks) => (
+                <Link href="/legal/terms" className="text-primary underline">
+                  {chunks}
+                </Link>
+              ),
+            })}
+          </label>
+        </div>
+        {fieldErrors.consent && (
+          <p id={`${ids.consent}-err`} className="mt-1 text-xs text-error">
+            {fieldErrors.consent}
+          </p>
+        )}
       </div>
 
       {captchaSiteKey ? (

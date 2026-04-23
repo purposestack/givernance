@@ -115,7 +115,7 @@ function VerifyContent() {
         <div
           role="alert"
           aria-live="polite"
-          className="mb-4 flex items-start gap-3 rounded-lg border border-[rgba(186,26,26,0.12)] bg-error-container p-3 text-sm text-on-error-container"
+          className="mb-4 flex items-start gap-3 rounded-lg border border-error-border bg-error-container p-3 text-sm text-on-error-container"
         >
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span className="flex-1">{error}</span>

@@ -17,6 +17,8 @@ interface AppShellProps {
   impersonationUserName: string | undefined;
   /** SSR provisional-admin info from the `/users/me` query (doc 22 §3.1). */
   provisionalAdmin?: ProvisionalAdminInfo;
+  /** Number of tenants the user belongs to — lets the topbar skip the org switcher for solo-tenant users. */
+  membershipCount?: number;
 }
 
 /**
@@ -38,6 +40,7 @@ export function AppShell({
   impersonation,
   impersonationUserName,
   provisionalAdmin,
+  membershipCount,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
@@ -72,6 +75,7 @@ export function AppShell({
           onMenuToggle={handleMenuToggle}
           sidebarOpen={sidebarOpen}
           hamburgerRef={hamburgerRef}
+          membershipCount={membershipCount}
         />
 
         <main

@@ -142,7 +142,10 @@ export async function openDispute(input: OpenDisputeInput): Promise<OpenDisputeR
 
 export type ResolveDisputeResult =
   | { ok: true; resolution: TenantAdminDisputeResolution }
-  | { ok: false; error: "not_found" | "already_resolved" | "target_missing" };
+  | {
+      ok: false;
+      error: "not_found" | "already_resolved" | "target_missing" | "self_resolve_forbidden";
+    };
 
 export interface ResolveDisputeInput {
   disputeId: string;
@@ -189,62 +192,122 @@ export async function resolveDispute(input: ResolveDisputeInput): Promise<Resolv
     if (!dispute.disputerId || !dispute.provisionalAdminId) {
       return { ok: false, error: "target_missing" };
     }
-    await withTenantContext(dispute.orgId, async (tx) => {
-      // SWAP: the partial unique index `users_one_first_admin_per_org`
-      // requires exactly one first_admin per tenant. Demote first, then
-      // promote — inside the same transaction.
-      await tx
-        .update(users)
-        .set({
-          role: "user",
-          firstAdmin: false,
-          provisionalUntil: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, dispute.provisionalAdminId as string));
+    // SEC-6: a super-admin who happens to be the disputer cannot self-resolve
+    // into `org_admin`. Catch both by user id and by Keycloak sub to cover
+    // the case where the super-admin's local users row is absent (resolverUserId
+    // is null but they may still match by keycloak sub — re-verify).
+    if (resolverUserId && resolverUserId === dispute.disputerId) {
+      return { ok: false, error: "self_resolve_forbidden" };
+    }
 
-      await tx
-        .update(users)
-        .set({
-          role: "org_admin",
-          firstAdmin: true,
-          provisionalUntil: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, dispute.disputerId as string));
+    try {
+      await withTenantContext(dispute.orgId, async (tx) => {
+        // DATA-1: re-assert state inside the transaction with FOR UPDATE so a
+        // concurrent admin edit between read and write cannot sneak a
+        // first_admin=true onto the disputer (which would then trip the
+        // partial unique index mid-swap).
+        const [latest] = await tx
+          .select({
+            provisionalAdminId: tenantAdminDisputes.provisionalAdminId,
+            disputerId: tenantAdminDisputes.disputerId,
+            resolution: tenantAdminDisputes.resolution,
+          })
+          .from(tenantAdminDisputes)
+          .where(eq(tenantAdminDisputes.id, dispute.id))
+          .for("update")
+          .limit(1);
+        if (!latest || latest.resolution) {
+          throw new DisputeStateError("already_resolved");
+        }
+        if (!latest.provisionalAdminId || !latest.disputerId) {
+          throw new DisputeStateError("target_missing");
+        }
 
-      await tx
-        .update(tenantAdminDisputes)
-        .set({
-          resolution: "replaced",
-          resolvedAt: new Date(),
-          resolvedBy: resolverUserId,
-          updatedAt: new Date(),
-        })
-        .where(eq(tenantAdminDisputes.id, dispute.id));
+        const [provisionalUser] = await tx
+          .select({ id: users.id, firstAdmin: users.firstAdmin })
+          .from(users)
+          .where(eq(users.id, latest.provisionalAdminId))
+          .for("update")
+          .limit(1);
+        const [disputerUser] = await tx
+          .select({ id: users.id, firstAdmin: users.firstAdmin })
+          .from(users)
+          .where(eq(users.id, latest.disputerId))
+          .for("update")
+          .limit(1);
+        if (!provisionalUser || !disputerUser) {
+          throw new DisputeStateError("target_missing");
+        }
+        if (disputerUser.firstAdmin) {
+          throw new DisputeStateError("target_missing");
+        }
 
-      await tx.insert(outboxEvents).values({
-        tenantId: dispute.orgId,
-        type: "tenant.provisional_admin_replaced",
-        payload: {
+        // SWAP: the partial unique index `users_one_first_admin_per_org`
+        // requires exactly one first_admin per tenant. Demote first, then
+        // promote — inside the same transaction.
+        await tx
+          .update(users)
+          .set({
+            role: "user",
+            firstAdmin: false,
+            provisionalUntil: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, provisionalUser.id));
+
+        await tx
+          .update(users)
+          .set({
+            role: "org_admin",
+            firstAdmin: true,
+            provisionalUntil: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, disputerUser.id));
+
+        await tx
+          .update(tenantAdminDisputes)
+          .set({
+            resolution: "replaced",
+            resolvedAt: new Date(),
+            resolvedBy: resolverUserId,
+            updatedAt: new Date(),
+          })
+          .where(eq(tenantAdminDisputes.id, dispute.id));
+
+        await tx.insert(outboxEvents).values({
           tenantId: dispute.orgId,
-          disputeId: dispute.id,
-          newAdminId: dispute.disputerId,
-          replacedAdminId: dispute.provisionalAdminId,
-        },
-      });
+          type: "tenant.provisional_admin_replaced",
+          payload: {
+            tenantId: dispute.orgId,
+            disputeId: dispute.id,
+            newAdminId: disputerUser.id,
+            replacedAdminId: provisionalUser.id,
+          },
+        });
 
-      await tx.insert(auditLogs).values({
-        orgId: dispute.orgId,
-        userId: resolverUserId,
-        action: "tenant.provisional_admin_replaced",
-        resourceType: "tenant_admin_dispute",
-        resourceId: dispute.id,
-        newValues: { resolution: "replaced" },
-        ipHash: input.audit.ipHash,
-        userAgent: input.audit.userAgent,
+        await tx.insert(auditLogs).values({
+          orgId: dispute.orgId,
+          userId: resolverUserId,
+          action: "tenant.provisional_admin_replaced",
+          resourceType: "tenant_admin_dispute",
+          resourceId: dispute.id,
+          newValues: {
+            resolution: "replaced",
+            // Preserve accountability even when the super-admin's local users
+            // row is absent (GDPR-erased platform account).
+            resolverKeycloakSub: input.resolverUserKeycloakSub,
+          },
+          ipHash: input.audit.ipHash,
+          userAgent: input.audit.userAgent,
+        });
       });
-    });
+    } catch (err) {
+      if (err instanceof DisputeStateError) {
+        return { ok: false, error: err.reason };
+      }
+      throw err;
+    }
     return { ok: true, resolution: "replaced" };
   }
 
@@ -389,11 +452,21 @@ export async function runExpireJob(now = new Date()): Promise<ExpireJobResult> {
       continue;
     }
 
-    await withTenantContext(row.orgId, async (tx) => {
-      await tx
+    // DATA-7: idempotent clear — WHERE provisional_until IS NOT NULL so
+    // two racing callers cannot double-emit the confirmation event.
+    const claimed = await withTenantContext(row.orgId, async (tx) => {
+      const updated = await tx
         .update(users)
         .set({ provisionalUntil: null, updatedAt: new Date() })
-        .where(eq(users.id, row.userId));
+        .where(
+          and(
+            eq(users.id, row.userId),
+            sql`${users.provisionalUntil} IS NOT NULL`,
+            eq(users.firstAdmin, true),
+          ),
+        )
+        .returning({ id: users.id });
+      if (updated.length === 0) return false;
 
       await tx.insert(outboxEvents).values({
         tenantId: row.orgId,
@@ -409,9 +482,11 @@ export async function runExpireJob(now = new Date()): Promise<ExpireJobResult> {
         resourceId: row.userId,
         newValues: { provisionalUntil: null },
       });
+      return true;
     });
 
-    confirmed.push(row.orgId);
+    if (claimed) confirmed.push(row.orgId);
+    else skipped.push(row.orgId);
   }
 
   return { confirmedOrgIds: confirmed, skippedOrgIds: skipped };
@@ -423,4 +498,16 @@ function isUniqueViolation(err: unknown, constraintHint?: RegExp): boolean {
   if (e.code !== "23505") return false;
   if (!constraintHint) return true;
   return constraintHint.test(e.constraint ?? "") || constraintHint.test(e.message ?? "");
+}
+
+/**
+ * Internal sentinel thrown inside `resolveDispute`'s transaction to bubble
+ * up the transaction abort with a structured reason, instead of relying on
+ * post-facto state inspection.
+ */
+class DisputeStateError extends Error {
+  constructor(public readonly reason: "already_resolved" | "target_missing") {
+    super(reason);
+    this.name = "DisputeStateError";
+  }
 }

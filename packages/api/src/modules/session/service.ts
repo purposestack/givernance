@@ -17,8 +17,12 @@
 
 import { auditLogs, outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
+import pino from "pino";
+import { env } from "../../env.js";
 import { db, withTenantContext } from "../../lib/db.js";
 import { redis } from "../../lib/redis.js";
+
+const logger = pino({ name: "session", level: env.LOG_LEVEL });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -176,8 +180,20 @@ export function sessionBlocklistKey(jti: string): string {
   return `session:blocklist:${jti}`;
 }
 
+/**
+ * DATA-5 (PR #118 review): on Redis outage we **fail closed** — a 500-level
+ * blip in Redis would otherwise silently accept a revoked token. Returning
+ * `true` here means the caller gets a 401 "session revoked" until Redis is
+ * back; that surfaces the dependency clearly on the observability stack
+ * rather than degrading auth silently.
+ */
 export async function isSessionBlocklisted(jti: string | undefined): Promise<boolean> {
   if (!jti) return false;
-  const hit = await redis.get(sessionBlocklistKey(jti));
-  return hit !== null;
+  try {
+    const hit = await redis.get(sessionBlocklistKey(jti));
+    return hit !== null;
+  } catch (err) {
+    logger.error({ err, jti }, "session blocklist lookup failed — failing closed");
+    return true;
+  }
 }

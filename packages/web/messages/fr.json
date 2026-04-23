@@ -216,6 +216,7 @@
     "orgSwitcher": {
       "placeholder": "Changer d'espace",
       "ariaLabel": "Sélecteur d'espace",
+      "loading": "Chargement…",
       "errors": {
         "generic": "Impossible de changer d'espace."
       }

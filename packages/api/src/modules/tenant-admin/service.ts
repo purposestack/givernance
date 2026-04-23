@@ -30,6 +30,7 @@ import {
 } from "../../lib/dns.js";
 import type { KeycloakAdminClient } from "../../lib/keycloak-admin.js";
 import { keycloakAdmin } from "../../lib/keycloak-admin.js";
+import { assertSafeUpstreamUrl } from "../../lib/url-safety.js";
 
 // ─── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -301,9 +302,16 @@ export async function verifyDomain(
   // Bind to Keycloak Organization IF the tenant has one (enterprise track).
   // Self-serve tenants without a KC org are still allowed to verify for the
   // Home IdP Discovery feature once #114 lands.
+  //
+  // DATA-3: tolerate KC 409 ("already attached") so a retry after a DB-commit
+  // failure on the prior attempt doesn't leave the claim stuck in `pending_dns`.
   if (tenant.keycloakOrgId) {
     const kc = deps.kc ?? keycloakAdmin();
-    await kc.addOrgDomain(tenant.keycloakOrgId, domain, { verified: true });
+    try {
+      await kc.addOrgDomain(tenant.keycloakOrgId, domain, { verified: true });
+    } catch (err) {
+      if (!isKeycloakConflict(err)) throw err;
+    }
   }
 
   await withTenantContext(input.orgId, async (tx) => {
@@ -347,9 +355,11 @@ export async function revokeDomain(input: DomainVerifyInput): Promise<DomainRevo
   const domain = input.domain.trim().toLowerCase();
 
   const result = await withTenantContext(input.orgId, async (tx) => {
-    const [row] = await tx
-      .update(tenantDomains)
-      .set({ state: "revoked" })
+    // SEC-10: capture the pre-revoke state explicitly — `.returning()` yields
+    // post-update values, so we'd otherwise audit `oldValues: { state: 'revoked' }`.
+    const [prior] = await tx
+      .select({ id: tenantDomains.id, state: tenantDomains.state })
+      .from(tenantDomains)
       .where(
         and(
           eq(tenantDomains.orgId, input.orgId),
@@ -357,8 +367,11 @@ export async function revokeDomain(input: DomainVerifyInput): Promise<DomainRevo
           sql`${tenantDomains.state} <> 'revoked'`,
         ),
       )
-      .returning({ id: tenantDomains.id, prevState: tenantDomains.state });
-    if (!row) return null;
+      .for("update")
+      .limit(1);
+    if (!prior) return null;
+
+    await tx.update(tenantDomains).set({ state: "revoked" }).where(eq(tenantDomains.id, prior.id));
 
     // Clear the tenants.primary_domain pointer if it matched this claim.
     await tx
@@ -377,14 +390,14 @@ export async function revokeDomain(input: DomainVerifyInput): Promise<DomainRevo
       userId: input.audit.actorUserId,
       action: "tenant.domain_revoked",
       resourceType: "tenant_domain",
-      resourceId: row.id,
-      oldValues: { state: row.prevState },
+      resourceId: prior.id,
+      oldValues: { state: prior.state },
       newValues: { state: "revoked" },
       ipHash: input.audit.ipHash,
       userAgent: input.audit.userAgent,
     });
 
-    return row;
+    return prior;
   });
 
   if (!result) return { ok: false, error: "not_found" };
@@ -434,26 +447,55 @@ export interface ProvisionIdpInput {
   audit: AuditContext;
 }
 
-function buildKcIdpConfig(config: IdpConfig): Record<string, string> {
+/**
+ * Translate our validated IdP config into Keycloak's shape. Caller-supplied
+ * URLs are filtered through `assertSafeUpstreamUrl` first (SEC-1, see
+ * `lib/url-safety.ts`) so we never ask Keycloak to deref a loopback / private
+ * / metadata host from inside our trust boundary.
+ */
+function buildKcIdpConfig(
+  config: IdpConfig,
+): { ok: true; kc: Record<string, string> } | { ok: false } {
+  const requireHttps = process.env.NODE_ENV === "production";
+  const safe = (u: string | undefined): string | undefined | null => {
+    if (!u) return undefined;
+    const r = assertSafeUpstreamUrl(u, { requireHttps });
+    return r.ok ? r.url : null;
+  };
+
   if (config.type === "oidc") {
-    if (!config.clientId || !config.clientSecret) return {};
+    if (!config.clientId || !config.clientSecret) return { ok: false };
     const kc: Record<string, string> = {
       clientId: config.clientId,
       clientSecret: config.clientSecret,
     };
-    if (config.discoveryUrl) kc.discoveryEndpoint = config.discoveryUrl;
-    if (config.issuer) kc.issuer = config.issuer;
-    if (config.authorizationUrl) kc.authorizationUrl = config.authorizationUrl;
-    if (config.tokenUrl) kc.tokenUrl = config.tokenUrl;
-    if (config.userInfoUrl) kc.userInfoUrl = config.userInfoUrl;
-    return kc;
+    const pairs: Array<[string, string | undefined]> = [
+      ["discoveryEndpoint", config.discoveryUrl],
+      ["issuer", config.issuer],
+      ["authorizationUrl", config.authorizationUrl],
+      ["tokenUrl", config.tokenUrl],
+      ["userInfoUrl", config.userInfoUrl],
+    ];
+    for (const [kcKey, raw] of pairs) {
+      const v = safe(raw);
+      if (v === null) return { ok: false };
+      if (v !== undefined) kc[kcKey] = v;
+    }
+    return { ok: true, kc };
   }
+
+  // SAML
+  const ssoSafe = safe(config.singleSignOnServiceUrl);
+  if (ssoSafe === null || !ssoSafe) return { ok: false };
   return {
-    entityId: config.entityId,
-    singleSignOnServiceUrl: config.singleSignOnServiceUrl,
-    signingCertificate: config.x509Certificate,
-    nameIDPolicyFormat:
-      config.nameIdPolicyFormat ?? "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+    ok: true,
+    kc: {
+      entityId: config.entityId,
+      singleSignOnServiceUrl: ssoSafe,
+      signingCertificate: config.x509Certificate,
+      nameIDPolicyFormat:
+        config.nameIdPolicyFormat ?? "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+    },
   };
 }
 
@@ -471,8 +513,8 @@ export async function provisionIdp(
   if (!tenant.keycloakOrgId) return { ok: false, error: "tenant_has_no_org" };
 
   const alias = `tenant-${tenant.slug}`;
-  const kcConfig = buildKcIdpConfig(input.config);
-  if (Object.keys(kcConfig).length === 0) return { ok: false, error: "invalid_config" };
+  const built = buildKcIdpConfig(input.config);
+  if (!built.ok) return { ok: false, error: "invalid_config" };
 
   const kc = deps.kc ?? keycloakAdmin();
 
@@ -481,7 +523,7 @@ export async function provisionIdp(
       alias,
       providerId: input.config.type,
       enabled: true,
-      config: kcConfig,
+      config: built.kc,
     });
     await kc.bindIdpToOrganization(tenant.keycloakOrgId, { alias });
   } catch (err) {

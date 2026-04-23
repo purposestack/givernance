@@ -217,7 +217,13 @@ export async function disputeRoutes(app: FastifyInstance) {
 
       if (!res.ok) {
         const status =
-          res.error === "not_found" ? 404 : res.error === "already_resolved" ? 409 : 422;
+          res.error === "not_found"
+            ? 404
+            : res.error === "already_resolved"
+              ? 409
+              : res.error === "self_resolve_forbidden"
+                ? 403
+                : 422;
         return reply
           .status(status)
           .send(
@@ -227,12 +233,16 @@ export async function disputeRoutes(app: FastifyInstance) {
                 ? "Not Found"
                 : res.error === "already_resolved"
                   ? "Already resolved"
-                  : "Cannot resolve",
+                  : res.error === "self_resolve_forbidden"
+                    ? "Forbidden"
+                    : "Cannot resolve",
               res.error === "not_found"
                 ? "Dispute not found."
                 : res.error === "already_resolved"
                   ? "This dispute has already been resolved."
-                  : "Dispute record is missing one of the users required for this resolution.",
+                  : res.error === "self_resolve_forbidden"
+                    ? "A super-admin who is also the disputer cannot resolve the dispute themselves."
+                    : "Dispute record is missing one of the users required for this resolution.",
             ),
           );
       }

@@ -49,11 +49,23 @@ export async function processTenantLifecycle(job: Job): Promise<void> {
     }
 
     try {
-      await withWorkerContext(row.orgId, async (tx) => {
-        await tx
+      // DATA-7: make the clear+emit idempotent against overlapping workers.
+      // `UPDATE ... WHERE provisional_until IS NOT NULL RETURNING id` means
+      // only one of two racing workers will see a RETURNING row; the other
+      // no-ops and skips the outbox emit.
+      const claimed = await withWorkerContext(row.orgId, async (tx) => {
+        const updated = await tx
           .update(users)
           .set({ provisionalUntil: null, updatedAt: new Date() })
-          .where(eq(users.id, row.userId));
+          .where(
+            and(
+              eq(users.id, row.userId),
+              sql`${users.provisionalUntil} IS NOT NULL`,
+              eq(users.firstAdmin, true),
+            ),
+          )
+          .returning({ id: users.id });
+        if (updated.length === 0) return false;
 
         await tx.insert(outboxEvents).values({
           tenantId: row.orgId,
@@ -69,8 +81,10 @@ export async function processTenantLifecycle(job: Job): Promise<void> {
           resourceId: row.userId,
           newValues: { provisionalUntil: null },
         });
+        return true;
       });
-      confirmed += 1;
+      if (claimed) confirmed += 1;
+      else skipped += 1;
     } catch (err) {
       log.error({ err, orgId: row.orgId }, "Failed to confirm provisional admin");
     }

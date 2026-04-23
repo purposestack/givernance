@@ -2,52 +2,88 @@
 
 import { Building2, Check, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listMyOrganizations, type OrgMembership, switchOrg } from "@/services/OrgPickerService";
 
 interface Props {
   /** Current JWT `org_id` — the entry highlighted as the active tenant. */
   currentOrgId: string | undefined;
+  /**
+   * FE-3: parent passes in the membership count (from the server-side
+   * `users/me/organizations` fetch) so single-tenant users never pay the
+   * extra round-trip on topbar mount.
+   */
+  membershipCountHint?: number;
 }
 
 /**
  * Topbar org switcher dropdown (issue #112 / doc 22 §6.3).
  *
- * Rendered only when the user belongs to >1 tenant. The list is fetched on
- * first open to keep the common (single-tenant) case cheap; subsequent opens
- * reuse the result until the user navigates away.
+ * Rendered only when the user belongs to >1 tenant. The list is fetched
+ * on first open of the dropdown (lazy) — single-tenant users never hit
+ * the API at all.
  */
-export function OrgSwitcher({ currentOrgId }: Props) {
+export function OrgSwitcher({ currentOrgId, membershipCountHint }: Props) {
   const t = useTranslations("appShell.orgSwitcher");
   const [open, setOpen] = useState(false);
   const [memberships, setMemberships] = useState<OrgMembership[] | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
 
+  // FE-3: if the hint tells us the user is solo-tenant, render nothing and
+  // never touch the network. The hint is populated server-side so it is
+  // guaranteed-correct at mount time. The early-return is placed AFTER the
+  // hooks above to respect React's rules-of-hooks; hooks below still run but
+  // never mount any side-effects because `open` stays false.
+  const hideSwitcher = typeof membershipCountHint === "number" && membershipCountHint < 2;
+
+  const loadMemberships = useCallback(async () => {
+    if (memberships !== null) return;
+    try {
+      const list = await listMyOrganizations();
+      setMemberships(list);
+    } catch {
+      setMemberships([]);
+    }
+  }, [memberships]);
+
+  const handleToggle = useCallback(() => {
+    setOpen((prev) => {
+      const next = !prev;
+      if (next) void loadMemberships();
+      return next;
+    });
+  }, [loadMemberships]);
+
+  // UX-4: Escape closes; outside-click closes; both return focus to toggle.
   useEffect(() => {
-    // Pre-fetch once so we can render <nothing> vs the dropdown without a
-    // layout shift when the user clicks.
-    let cancelled = false;
-    setLoading(true);
-    listMyOrganizations()
-      .then((list) => {
-        if (!cancelled) setMemberships(list);
-      })
-      .catch(() => {
-        if (!cancelled) setMemberships([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    if (!open) return;
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpen(false);
+        toggleRef.current?.focus();
+      }
+    }
+
+    function onClick(e: MouseEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
     return () => {
-      cancelled = true;
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
     };
-  }, []);
+  }, [open]);
 
-  if (loading || !memberships) return null;
-  if (memberships.length < 2) return null;
+  if (hideSwitcher) return null;
 
-  const current = memberships.find((m) => m.orgId === currentOrgId);
+  const current = memberships?.find((m) => m.orgId === currentOrgId);
 
   async function handleSelect(orgId: string) {
     if (orgId === currentOrgId) {
@@ -66,10 +102,11 @@ export function OrgSwitcher({ currentOrgId }: Props) {
   }
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
+        ref={toggleRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         aria-haspopup="listbox"
         aria-expanded={open}
         className="flex items-center gap-2 rounded-md border border-border bg-surface-container-lowest px-3 py-1.5 text-sm text-text transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary"
@@ -89,7 +126,12 @@ export function OrgSwitcher({ currentOrgId }: Props) {
               {error}
             </p>
           )}
-          {memberships.map((m) => (
+          {memberships === null && (
+            <p className="px-3 py-2 text-xs text-text-muted" role="status">
+              {t("loading")}
+            </p>
+          )}
+          {memberships?.map((m) => (
             <button
               key={m.orgId}
               role="option"

@@ -13,13 +13,21 @@ interface TopbarProps {
   onMenuToggle: () => void;
   sidebarOpen: boolean;
   hamburgerRef: RefObject<HTMLButtonElement | null>;
+  /** SSR membership count — skips the switcher entirely for solo-tenant users. */
+  membershipCount?: number;
 }
 
 /**
  * Top bar — 80px sticky, glass effect.
  * Matches dashboard.html mockup: breadcrumb left, search center, actions right.
  */
-export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: TopbarProps) {
+export function Topbar({
+  title,
+  onMenuToggle,
+  sidebarOpen,
+  hamburgerRef,
+  membershipCount,
+}: TopbarProps) {
   const { user } = useAuth();
   const t = useTranslations("appShell.topbar");
 
@@ -74,7 +82,7 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
       </div>
 
       <div className="flex items-center gap-3">
-        <OrgSwitcher currentOrgId={user?.orgId} />
+        <OrgSwitcher currentOrgId={user?.orgId} membershipCountHint={membershipCount} />
 
         <button
           type="button"
