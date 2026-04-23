@@ -114,14 +114,7 @@ export async function disputeRoutes(app: FastifyInstance) {
       });
 
       if (!res.ok) {
-        const status =
-          res.error === "tenant_not_found" || res.error === "not_a_member"
-            ? 404
-            : res.error === "window_closed"
-              ? 422
-              : res.error === "is_first_admin"
-                ? 403
-                : 409;
+        const status = openDisputeStatus(res.error);
         return reply
           .status(status)
           .send(
@@ -216,39 +209,68 @@ export async function disputeRoutes(app: FastifyInstance) {
       });
 
       if (!res.ok) {
-        const status =
-          res.error === "not_found"
-            ? 404
-            : res.error === "already_resolved"
-              ? 409
-              : res.error === "self_resolve_forbidden"
-                ? 403
-                : 422;
-        return reply
-          .status(status)
-          .send(
-            problemDetail(
-              status,
-              res.error === "not_found"
-                ? "Not Found"
-                : res.error === "already_resolved"
-                  ? "Already resolved"
-                  : res.error === "self_resolve_forbidden"
-                    ? "Forbidden"
-                    : "Cannot resolve",
-              res.error === "not_found"
-                ? "Dispute not found."
-                : res.error === "already_resolved"
-                  ? "This dispute has already been resolved."
-                  : res.error === "self_resolve_forbidden"
-                    ? "A super-admin who is also the disputer cannot resolve the dispute themselves."
-                    : "Dispute record is missing one of the users required for this resolution.",
-            ),
-          );
+        const { status, title, detail } = resolveDisputeErrorResponse(res.error);
+        return reply.status(status).send(problemDetail(status, title, detail));
       }
 
       return reply.send({ data: { resolution: res.resolution } });
     },
+  );
+}
+
+type OpenDisputeError =
+  | "tenant_not_found"
+  | "not_a_member"
+  | "window_closed"
+  | "is_first_admin"
+  | "already_disputed";
+
+function openDisputeStatus(error: string): number {
+  const map: Record<OpenDisputeError, number> = {
+    tenant_not_found: 404,
+    not_a_member: 404,
+    window_closed: 422,
+    is_first_admin: 403,
+    already_disputed: 409,
+  };
+  return map[error as OpenDisputeError] ?? 409;
+}
+
+type ResolveDisputeError =
+  | "not_found"
+  | "already_resolved"
+  | "self_resolve_forbidden"
+  | "missing_user";
+
+function resolveDisputeErrorResponse(error: string): {
+  status: number;
+  title: string;
+  detail: string;
+} {
+  const table: Record<ResolveDisputeError, { status: number; title: string; detail: string }> = {
+    not_found: { status: 404, title: "Not Found", detail: "Dispute not found." },
+    already_resolved: {
+      status: 409,
+      title: "Already resolved",
+      detail: "This dispute has already been resolved.",
+    },
+    self_resolve_forbidden: {
+      status: 403,
+      title: "Forbidden",
+      detail: "A super-admin who is also the disputer cannot resolve the dispute themselves.",
+    },
+    missing_user: {
+      status: 422,
+      title: "Cannot resolve",
+      detail: "Dispute record is missing one of the users required for this resolution.",
+    },
+  };
+  return (
+    table[error as ResolveDisputeError] ?? {
+      status: 422,
+      title: "Cannot resolve",
+      detail: "Dispute record is missing one of the users required for this resolution.",
+    }
   );
 }
 

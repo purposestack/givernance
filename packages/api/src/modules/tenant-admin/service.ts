@@ -275,6 +275,35 @@ export async function verifyDomain(
     .limit(1);
   if (!tenant) return { ok: false, error: "tenant_not_found" };
 
+  const claimLookup = await loadVerifiableClaim(input.orgId, domain);
+  if (!claimLookup.ok) return { ok: false, error: claimLookup.error };
+  const claim = claimLookup.claim;
+
+  const resolver = deps.resolver ?? createSystemTxtResolver();
+  const txt = await verifyTxtRecord(resolver, {
+    domain,
+    expectedValue: claim.dnsTxtValue,
+  });
+  if (!txt.ok) {
+    return { ok: false, error: txt.reason === "timeout" ? "dns_timeout" : "dns_mismatch" };
+  }
+
+  await bindDomainToKeycloak(tenant.keycloakOrgId, domain, deps.kc);
+  await commitDomainVerification(input, claim.id, domain);
+
+  return { ok: true, domain, state: "verified" };
+}
+
+async function loadVerifiableClaim(
+  orgId: string,
+  domain: string,
+): Promise<
+  | {
+      ok: true;
+      claim: { id: string; orgId: string; state: string; dnsTxtValue: string };
+    }
+  | { ok: false; error: "not_found" | "already_verified" }
+> {
   const [claim] = await db
     .select({
       id: tenantDomains.id,
@@ -283,42 +312,44 @@ export async function verifyDomain(
       dnsTxtValue: tenantDomains.dnsTxtValue,
     })
     .from(tenantDomains)
-    .where(and(eq(tenantDomains.orgId, input.orgId), eq(tenantDomains.domain, domain)))
+    .where(and(eq(tenantDomains.orgId, orgId), eq(tenantDomains.domain, domain)))
     .limit(1);
   if (!claim) return { ok: false, error: "not_found" };
   if (claim.state === "verified") return { ok: false, error: "already_verified" };
   if (claim.state === "revoked") return { ok: false, error: "not_found" };
+  return { ok: true, claim };
+}
 
-  const resolver = deps.resolver ?? createSystemTxtResolver();
-  const txt = await verifyTxtRecord(resolver, {
-    domain,
-    expectedValue: claim.dnsTxtValue,
-  });
-  if (!txt.ok) {
-    if (txt.reason === "timeout") return { ok: false, error: "dns_timeout" };
-    return { ok: false, error: "dns_mismatch" };
+// Bind to Keycloak Organization IF the tenant has one (enterprise track).
+// Self-serve tenants without a KC org are still allowed to verify for the
+// Home IdP Discovery feature once #114 lands.
+//
+// DATA-3: tolerate KC 409 ("already attached") so a retry after a DB-commit
+// failure on the prior attempt doesn't leave the claim stuck in `pending_dns`.
+async function bindDomainToKeycloak(
+  keycloakOrgId: string | null,
+  domain: string,
+  kcOverride: KeycloakAdminClient | undefined,
+): Promise<void> {
+  if (!keycloakOrgId) return;
+  const kc = kcOverride ?? keycloakAdmin();
+  try {
+    await kc.addOrgDomain(keycloakOrgId, domain, { verified: true });
+  } catch (err) {
+    if (!isKeycloakConflict(err)) throw err;
   }
+}
 
-  // Bind to Keycloak Organization IF the tenant has one (enterprise track).
-  // Self-serve tenants without a KC org are still allowed to verify for the
-  // Home IdP Discovery feature once #114 lands.
-  //
-  // DATA-3: tolerate KC 409 ("already attached") so a retry after a DB-commit
-  // failure on the prior attempt doesn't leave the claim stuck in `pending_dns`.
-  if (tenant.keycloakOrgId) {
-    const kc = deps.kc ?? keycloakAdmin();
-    try {
-      await kc.addOrgDomain(tenant.keycloakOrgId, domain, { verified: true });
-    } catch (err) {
-      if (!isKeycloakConflict(err)) throw err;
-    }
-  }
-
+async function commitDomainVerification(
+  input: DomainVerifyInput,
+  claimId: string,
+  domain: string,
+): Promise<void> {
   await withTenantContext(input.orgId, async (tx) => {
     await tx
       .update(tenantDomains)
       .set({ state: "verified", verifiedAt: new Date() })
-      .where(eq(tenantDomains.id, claim.id));
+      .where(eq(tenantDomains.id, claimId));
 
     // Denormalised pointer on tenants; first verified domain wins.
     await tx
@@ -337,15 +368,13 @@ export async function verifyDomain(
       userId: input.audit.actorUserId,
       action: "tenant.domain_verified",
       resourceType: "tenant_domain",
-      resourceId: claim.id,
+      resourceId: claimId,
       oldValues: { state: "pending_dns" },
       newValues: { state: "verified" },
       ipHash: input.audit.ipHash,
       userAgent: input.audit.userAgent,
     });
   });
-
-  return { ok: true, domain, state: "verified" };
 }
 
 export type DomainRevokeResult = { ok: true; domain: string } | { ok: false; error: "not_found" };

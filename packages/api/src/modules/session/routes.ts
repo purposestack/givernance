@@ -125,27 +125,8 @@ export async function sessionRoutes(app: FastifyInstance) {
       });
 
       if (!res.ok) {
-        const status =
-          res.error === "target_not_found"
-            ? 404
-            : res.error === "target_archived"
-              ? 404
-              : res.error === "target_suspended"
-                ? 409
-                : 403;
-        return reply
-          .status(status)
-          .send(
-            problemDetail(
-              status,
-              res.error === "target_suspended" ? "Tenant suspended" : "Not allowed",
-              res.error === "target_suspended"
-                ? "This tenant is suspended. Contact Givernance support."
-                : res.error === "not_a_member"
-                  ? "You are not a member of this tenant."
-                  : "Target tenant not found.",
-            ),
-          );
+        const { status, title, detail } = switchOrgErrorResponse(res.error);
+        return reply.status(status).send(problemDetail(status, title, detail));
       }
 
       return reply.send({
@@ -156,5 +137,35 @@ export async function sessionRoutes(app: FastifyInstance) {
         },
       });
     },
+  );
+}
+
+type SwitchOrgError = "target_not_found" | "target_archived" | "target_suspended" | "not_a_member";
+
+function switchOrgErrorResponse(error: string): {
+  status: number;
+  title: string;
+  detail: string;
+} {
+  const table: Record<SwitchOrgError, { status: number; title: string; detail: string }> = {
+    target_not_found: { status: 404, title: "Not allowed", detail: "Target tenant not found." },
+    target_archived: { status: 404, title: "Not allowed", detail: "Target tenant not found." },
+    target_suspended: {
+      status: 409,
+      title: "Tenant suspended",
+      detail: "This tenant is suspended. Contact Givernance support.",
+    },
+    not_a_member: {
+      status: 403,
+      title: "Not allowed",
+      detail: "You are not a member of this tenant.",
+    },
+  };
+  return (
+    table[error as SwitchOrgError] ?? {
+      status: 403,
+      title: "Not allowed",
+      detail: "You are not a member of this tenant.",
+    }
   );
 }

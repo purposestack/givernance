@@ -20,6 +20,13 @@ import { TenantService } from "@/services/TenantService";
 
 const TENANT_CURRENCIES: TenantCurrency[] = ["EUR", "GBP", "CHF"];
 
+function resolveApiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiProblem) {
+    return error.detail ?? error.title ?? fallback;
+  }
+  return fallback;
+}
+
 interface TenantSettingsFormProps {
   orgId?: string;
   canManageTenant: boolean;
@@ -52,11 +59,7 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
         setInitialCurrency(tenant.baseCurrency);
       } catch (error) {
         if (!active) return;
-        const message =
-          error instanceof ApiProblem
-            ? (error.detail ?? error.title ?? t("errors.load"))
-            : t("errors.load");
-        setErrorMessage(message);
+        setErrorMessage(resolveApiErrorMessage(error, t("errors.load")));
       } finally {
         if (active) setLoading(false);
       }
@@ -85,10 +88,7 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
       setInitialCurrency(tenant.baseCurrency);
       toast.success(t("success.updated"));
     } catch (error) {
-      const message =
-        error instanceof ApiProblem
-          ? (error.detail ?? error.title ?? t("errors.save"))
-          : t("errors.save");
+      const message = resolveApiErrorMessage(error, t("errors.save"));
       setErrorMessage(message);
       toast.error(message);
     } finally {

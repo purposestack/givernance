@@ -22,6 +22,7 @@ vi.mock("../../lib/db.js", () => {
   const makeInsertChain = () => ({
     values: vi.fn().mockImplementation(() => ({
       returning: vi.fn().mockResolvedValue([mockTenant]),
+      // biome-ignore lint/suspicious/noThenProperty: intentional — prevents the mock from being treated as a thenable when Drizzle's query builder is awaited
       then: undefined,
     })),
   });

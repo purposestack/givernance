@@ -79,7 +79,7 @@ export async function openDispute(input: OpenDisputeInput): Promise<OpenDisputeR
     .from(users)
     .where(and(eq(users.orgId, input.orgId), eq(users.firstAdmin, true)))
     .limit(1);
-  if (!provisional || !provisional.provisionalUntil) {
+  if (!provisional?.provisionalUntil) {
     // The grace window already closed (expire job cleared the flag) or the
     // tenant never had a provisional admin.
     return { ok: false, error: "window_closed" };
@@ -189,128 +189,151 @@ export async function resolveDispute(input: ResolveDisputeInput): Promise<Resolv
   const resolverUserId = resolverUser?.id ?? null;
 
   if (input.resolution === "replaced") {
-    if (!dispute.disputerId || !dispute.provisionalAdminId) {
-      return { ok: false, error: "target_missing" };
-    }
-    // SEC-6: a super-admin who happens to be the disputer cannot self-resolve
-    // into `org_admin`. Catch both by user id and by Keycloak sub to cover
-    // the case where the super-admin's local users row is absent (resolverUserId
-    // is null but they may still match by keycloak sub — re-verify).
-    if (resolverUserId && resolverUserId === dispute.disputerId) {
-      return { ok: false, error: "self_resolve_forbidden" };
-    }
-
-    try {
-      await withTenantContext(dispute.orgId, async (tx) => {
-        // DATA-1: re-assert state inside the transaction with FOR UPDATE so a
-        // concurrent admin edit between read and write cannot sneak a
-        // first_admin=true onto the disputer (which would then trip the
-        // partial unique index mid-swap).
-        const [latest] = await tx
-          .select({
-            provisionalAdminId: tenantAdminDisputes.provisionalAdminId,
-            disputerId: tenantAdminDisputes.disputerId,
-            resolution: tenantAdminDisputes.resolution,
-          })
-          .from(tenantAdminDisputes)
-          .where(eq(tenantAdminDisputes.id, dispute.id))
-          .for("update")
-          .limit(1);
-        if (!latest || latest.resolution) {
-          throw new DisputeStateError("already_resolved");
-        }
-        if (!latest.provisionalAdminId || !latest.disputerId) {
-          throw new DisputeStateError("target_missing");
-        }
-
-        const [provisionalUser] = await tx
-          .select({ id: users.id, firstAdmin: users.firstAdmin })
-          .from(users)
-          .where(eq(users.id, latest.provisionalAdminId))
-          .for("update")
-          .limit(1);
-        const [disputerUser] = await tx
-          .select({ id: users.id, firstAdmin: users.firstAdmin })
-          .from(users)
-          .where(eq(users.id, latest.disputerId))
-          .for("update")
-          .limit(1);
-        if (!provisionalUser || !disputerUser) {
-          throw new DisputeStateError("target_missing");
-        }
-        if (disputerUser.firstAdmin) {
-          throw new DisputeStateError("target_missing");
-        }
-
-        // SWAP: the partial unique index `users_one_first_admin_per_org`
-        // requires exactly one first_admin per tenant. Demote first, then
-        // promote — inside the same transaction.
-        await tx
-          .update(users)
-          .set({
-            role: "user",
-            firstAdmin: false,
-            provisionalUntil: null,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.id, provisionalUser.id));
-
-        await tx
-          .update(users)
-          .set({
-            role: "org_admin",
-            firstAdmin: true,
-            provisionalUntil: null,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.id, disputerUser.id));
-
-        await tx
-          .update(tenantAdminDisputes)
-          .set({
-            resolution: "replaced",
-            resolvedAt: new Date(),
-            resolvedBy: resolverUserId,
-            updatedAt: new Date(),
-          })
-          .where(eq(tenantAdminDisputes.id, dispute.id));
-
-        await tx.insert(outboxEvents).values({
-          tenantId: dispute.orgId,
-          type: "tenant.provisional_admin_replaced",
-          payload: {
-            tenantId: dispute.orgId,
-            disputeId: dispute.id,
-            newAdminId: disputerUser.id,
-            replacedAdminId: provisionalUser.id,
-          },
-        });
-
-        await tx.insert(auditLogs).values({
-          orgId: dispute.orgId,
-          userId: resolverUserId,
-          action: "tenant.provisional_admin_replaced",
-          resourceType: "tenant_admin_dispute",
-          resourceId: dispute.id,
-          newValues: {
-            resolution: "replaced",
-            // Preserve accountability even when the super-admin's local users
-            // row is absent (GDPR-erased platform account).
-            resolverKeycloakSub: input.resolverUserKeycloakSub,
-          },
-          ipHash: input.audit.ipHash,
-          userAgent: input.audit.userAgent,
-        });
-      });
-    } catch (err) {
-      if (err instanceof DisputeStateError) {
-        return { ok: false, error: err.reason };
-      }
-      throw err;
-    }
-    return { ok: true, resolution: "replaced" };
+    return applyReplacedResolution(dispute, input, resolverUserId);
   }
 
+  return applyKeptOrEscalatedResolution(dispute, input, resolverUserId);
+}
+
+type DisputeRecord = {
+  id: string;
+  orgId: string;
+  disputerId: string | null;
+  provisionalAdminId: string | null;
+};
+
+async function applyReplacedResolution(
+  dispute: DisputeRecord,
+  input: ResolveDisputeInput,
+  resolverUserId: string | null,
+): Promise<ResolveDisputeResult> {
+  if (!dispute.disputerId || !dispute.provisionalAdminId) {
+    return { ok: false, error: "target_missing" };
+  }
+  // SEC-6: a super-admin who happens to be the disputer cannot self-resolve
+  // into `org_admin`. Catch both by user id and by Keycloak sub to cover
+  // the case where the super-admin's local users row is absent (resolverUserId
+  // is null but they may still match by keycloak sub — re-verify).
+  if (resolverUserId && resolverUserId === dispute.disputerId) {
+    return { ok: false, error: "self_resolve_forbidden" };
+  }
+
+  try {
+    await withTenantContext(dispute.orgId, async (tx) => {
+      // DATA-1: re-assert state inside the transaction with FOR UPDATE so a
+      // concurrent admin edit between read and write cannot sneak a
+      // first_admin=true onto the disputer (which would then trip the
+      // partial unique index mid-swap).
+      const [latest] = await tx
+        .select({
+          provisionalAdminId: tenantAdminDisputes.provisionalAdminId,
+          disputerId: tenantAdminDisputes.disputerId,
+          resolution: tenantAdminDisputes.resolution,
+        })
+        .from(tenantAdminDisputes)
+        .where(eq(tenantAdminDisputes.id, dispute.id))
+        .for("update")
+        .limit(1);
+      if (!latest || latest.resolution) {
+        throw new DisputeStateError("already_resolved");
+      }
+      if (!latest.provisionalAdminId || !latest.disputerId) {
+        throw new DisputeStateError("target_missing");
+      }
+
+      const [provisionalUser] = await tx
+        .select({ id: users.id, firstAdmin: users.firstAdmin })
+        .from(users)
+        .where(eq(users.id, latest.provisionalAdminId))
+        .for("update")
+        .limit(1);
+      const [disputerUser] = await tx
+        .select({ id: users.id, firstAdmin: users.firstAdmin })
+        .from(users)
+        .where(eq(users.id, latest.disputerId))
+        .for("update")
+        .limit(1);
+      if (!provisionalUser || !disputerUser) {
+        throw new DisputeStateError("target_missing");
+      }
+      if (disputerUser.firstAdmin) {
+        throw new DisputeStateError("target_missing");
+      }
+
+      // SWAP: the partial unique index `users_one_first_admin_per_org`
+      // requires exactly one first_admin per tenant. Demote first, then
+      // promote — inside the same transaction.
+      await tx
+        .update(users)
+        .set({
+          role: "user",
+          firstAdmin: false,
+          provisionalUntil: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, provisionalUser.id));
+
+      await tx
+        .update(users)
+        .set({
+          role: "org_admin",
+          firstAdmin: true,
+          provisionalUntil: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, disputerUser.id));
+
+      await tx
+        .update(tenantAdminDisputes)
+        .set({
+          resolution: "replaced",
+          resolvedAt: new Date(),
+          resolvedBy: resolverUserId,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenantAdminDisputes.id, dispute.id));
+
+      await tx.insert(outboxEvents).values({
+        tenantId: dispute.orgId,
+        type: "tenant.provisional_admin_replaced",
+        payload: {
+          tenantId: dispute.orgId,
+          disputeId: dispute.id,
+          newAdminId: disputerUser.id,
+          replacedAdminId: provisionalUser.id,
+        },
+      });
+
+      await tx.insert(auditLogs).values({
+        orgId: dispute.orgId,
+        userId: resolverUserId,
+        action: "tenant.provisional_admin_replaced",
+        resourceType: "tenant_admin_dispute",
+        resourceId: dispute.id,
+        newValues: {
+          resolution: "replaced",
+          // Preserve accountability even when the super-admin's local users
+          // row is absent (GDPR-erased platform account).
+          resolverKeycloakSub: input.resolverUserKeycloakSub,
+        },
+        ipHash: input.audit.ipHash,
+        userAgent: input.audit.userAgent,
+      });
+    });
+  } catch (err) {
+    if (err instanceof DisputeStateError) {
+      return { ok: false, error: err.reason };
+    }
+    throw err;
+  }
+  return { ok: true, resolution: "replaced" };
+}
+
+async function applyKeptOrEscalatedResolution(
+  dispute: DisputeRecord,
+  input: ResolveDisputeInput,
+  resolverUserId: string | null,
+): Promise<ResolveDisputeResult> {
   // `kept` / `escalated_to_support`: confirm the provisional admin, clear
   // the grace window (provisional is over), mark the dispute closed.
   await withTenantContext(dispute.orgId, async (tx) => {

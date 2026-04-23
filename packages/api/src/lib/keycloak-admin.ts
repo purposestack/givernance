@@ -270,22 +270,22 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
    * `POST` is only retried on 429 or 401-one-shot. `GET`/`PUT`/`DELETE` are
    * retried on any transient error.
    */
+  const isRetryableAdminStatus = (status: number, method: string): boolean => {
+    if (status === 401) return true; // token rotated — retry once with fresh token
+    if (status === 429) return true;
+    if (status >= 500 && status < 600) {
+      return method !== "POST"; // don't retry non-idempotent writes on 5xx
+    }
+    return false;
+  };
+
   const isRetryable = (err: unknown, method: string): boolean => {
-    if (err instanceof SyntaxError) {
-      // Malformed JSON on a 200 — not transient.
-      return false;
-    }
-    if (err instanceof KeycloakAuthError) {
-      // Bad client secret — don't loop.
-      return false;
-    }
+    // Malformed JSON on a 200 — not transient.
+    if (err instanceof SyntaxError) return false;
+    // Bad client secret — don't loop.
+    if (err instanceof KeycloakAuthError) return false;
     if (err instanceof KeycloakAdminError) {
-      if (err.status === 401) return true; // token rotated — retry once with fresh token
-      if (err.status === 429) return true;
-      if (err.status >= 500 && err.status < 600) {
-        return method !== "POST"; // don't retry non-idempotent writes on 5xx
-      }
-      return false;
+      return isRetryableAdminStatus(err.status, method);
     }
     // Network / fetch abort / DNS — retry idempotent methods only.
     return method !== "POST";
@@ -298,11 +298,78 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
     return true; // network/DNS/abort count
   };
 
-  const adminRequest = async <T>(
+  type AttemptOutcome<U> = { result: { value: U | null } } | { err: unknown };
+
+  const interpretResponse = async <U>(
     method: string,
     path: string,
-    body?: unknown,
-  ): Promise<T | null> => {
+    res: Response,
+  ): Promise<AttemptOutcome<U>> => {
+    if (res.status === 401) {
+      cachedToken = null;
+      return { err: new KeycloakAdminError("Unauthorized (token rotated)", 401, path) };
+    }
+    if (res.status === 201) {
+      // Honor the Location header for POST-create recovery.
+      const location = res.headers.get("location");
+      if (location) {
+        return { result: { value: { __locationHeader: location } as unknown as U } };
+      }
+    }
+    if (!res.ok) {
+      return {
+        err: new KeycloakAdminError(
+          `Admin API ${method} ${path} → ${res.status}`,
+          res.status,
+          path,
+        ),
+      };
+    }
+    if (res.status === 204) {
+      return { result: { value: null } };
+    }
+    const text = await res.text();
+    return { result: { value: text ? (JSON.parse(text) as U) : null } };
+  };
+
+  const runAttempt = async <U>(
+    method: string,
+    url: string,
+    path: string,
+    body: unknown,
+    attempt: number,
+  ): Promise<AttemptOutcome<U>> => {
+    try {
+      // If the token endpoint rejects our credentials (bad secret), it
+      // throws KeycloakAuthError which is non-retryable — that's the
+      // "bad config" path. A 401 on the admin API, by contrast, means
+      // the token we just sent was rejected mid-session (rotation); we
+      // invalidate the cache and retry.
+      const token = await getToken();
+      const started = now();
+      const res = await fetchImpl(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+
+      const latencyMs = now() - started;
+      logger.debug({ method, path, status: res.status, latencyMs, attempt }, "kc-admin");
+
+      return await interpretResponse<U>(method, path, res);
+    } catch (thrown) {
+      if (thrown instanceof CircuitOpenError) {
+        halfOpenInFlight = false;
+        throw thrown;
+      }
+      return { err: thrown };
+    }
+  };
+
+  const guardCircuit = (): "open" | "half-open" | "closed" => {
     const state = circuitState();
     if (state === "open") {
       throw new CircuitOpenError();
@@ -311,87 +378,52 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
       if (halfOpenInFlight) throw new CircuitOpenError();
       halfOpenInFlight = true;
     }
+    return state;
+  };
 
+  const computeBackoffMs = (attempt: number): number => {
+    // Exponential backoff with equal jitter + hard cap.
+    const baseDelay = Math.min(initialBackoffMs * 2 ** (attempt - 1), maxBackoffMs);
+    const half = baseDelay / 2;
+    return Math.floor(half + random() * half);
+  };
+
+  const handleTerminalError = (err: unknown, state: "open" | "half-open" | "closed"): void => {
+    if (countsTowardBreaker(err)) {
+      recordBreakerFailure();
+    } else if (state === "half-open") {
+      // Non-breaker-counting 4xx during half-open probe: still release the
+      // slot but don't re-arm the timer. Leave the decision to the next caller.
+      halfOpenInFlight = false;
+    }
+  };
+
+  const adminRequest = async <T>(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<T | null> => {
+    const state = guardCircuit();
     const url = `${config.baseUrl}/admin/realms/${config.realm}${path}`;
     let attempt = 0;
     let lastErr: unknown;
 
     while (attempt < maxAttempts) {
       attempt += 1;
-      let err: unknown;
-      let result: { value: T | null } | null = null;
+      const outcome = await runAttempt<T>(method, url, path, body, attempt);
 
-      try {
-        // If the token endpoint rejects our credentials (bad secret), it
-        // throws KeycloakAuthError which is non-retryable — that's the
-        // "bad config" path. A 401 on the admin API, by contrast, means
-        // the token we just sent was rejected mid-session (rotation); we
-        // invalidate the cache and retry.
-        const token = await getToken();
-        const started = now();
-        const res = await fetchImpl(url, {
-          method,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-          },
-          body: body !== undefined ? JSON.stringify(body) : undefined,
-        });
-
-        const latencyMs = now() - started;
-        logger.debug({ method, path, status: res.status, latencyMs, attempt }, "kc-admin");
-
-        if (res.status === 401) {
-          cachedToken = null;
-          err = new KeycloakAdminError("Unauthorized (token rotated)", 401, path);
-        } else if (res.status === 201 && res.headers.get("location")) {
-          // Honor the Location header for POST-create recovery.
-          const location = res.headers.get("location") as string;
-          result = { value: { __locationHeader: location } as unknown as T };
-        } else if (!res.ok) {
-          err = new KeycloakAdminError(
-            `Admin API ${method} ${path} → ${res.status}`,
-            res.status,
-            path,
-          );
-        } else {
-          if (res.status === 204) {
-            result = { value: null };
-          } else {
-            const text = await res.text();
-            result = { value: text ? (JSON.parse(text) as T) : null };
-          }
-        }
-      } catch (thrown) {
-        if (thrown instanceof CircuitOpenError) {
-          halfOpenInFlight = false;
-          throw thrown;
-        }
-        err = thrown;
-      }
-
-      if (result) {
+      if ("result" in outcome) {
         recordSuccess();
-        return result.value;
+        return outcome.result.value;
       }
 
-      lastErr = err;
-      if (!isRetryable(err, method) || attempt >= maxAttempts) {
-        if (countsTowardBreaker(err)) {
-          recordBreakerFailure();
-        } else if (state === "half-open") {
-          // Non-breaker-counting 4xx during half-open probe: still release the
-          // slot but don't re-arm the timer. Leave the decision to the next caller.
-          halfOpenInFlight = false;
-        }
-        throw err;
+      lastErr = outcome.err;
+      if (!isRetryable(outcome.err, method) || attempt >= maxAttempts) {
+        handleTerminalError(outcome.err, state);
+        throw outcome.err;
       }
 
-      // Exponential backoff with equal jitter + hard cap.
-      const baseDelay = Math.min(initialBackoffMs * 2 ** (attempt - 1), maxBackoffMs);
-      const half = baseDelay / 2;
-      const jittered = Math.floor(half + random() * half);
-      await new Promise((r) => setTimeout(r, jittered));
+      await new Promise((r) => setTimeout(r, computeBackoffMs(attempt)));
     }
 
     if (countsTowardBreaker(lastErr)) {

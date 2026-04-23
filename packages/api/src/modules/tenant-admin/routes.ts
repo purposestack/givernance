@@ -344,23 +344,11 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
           audit: auditFromRequest(request),
         });
         if (!res.ok) {
-          const status =
-            res.error === "tenant_not_found"
-              ? 404
-              : res.error === "alias_taken"
-                ? 409
-                : res.error === "invalid_config"
-                  ? 422
-                  : 422;
+          const status = provisionIdpStatus(res.error);
+          const title = res.error === "alias_taken" ? "IdP already exists" : "Cannot provision IdP";
           return reply
             .status(status)
-            .send(
-              problemDetail(
-                status,
-                res.error === "alias_taken" ? "IdP already exists" : "Cannot provision IdP",
-                describeIdpError(res.error),
-              ),
-            );
+            .send(problemDetail(status, title, describeIdpError(res.error)));
         }
         return reply.status(201).send({ data: { alias: res.alias } });
       } catch (err) {
@@ -469,27 +457,15 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const body = request.body as { action: "suspend" | "archive" | "activate"; reason?: string };
-      const next: "suspended" | "archived" | "active" =
-        body.action === "suspend" ? "suspended" : body.action === "archive" ? "archived" : "active";
       const res = await transitionTenantStatus({
         orgId: id,
-        next,
+        next: lifecycleTargetStatus(body.action),
         reason: body.reason,
         audit: auditFromRequest(request),
       });
       if (!res.ok) {
-        const status = res.error === "tenant_not_found" ? 404 : 422;
-        return reply
-          .status(status)
-          .send(
-            problemDetail(
-              status,
-              res.error === "tenant_not_found" ? "Not Found" : "Invalid transition",
-              res.error === "tenant_not_found"
-                ? "Tenant not found."
-                : "This status transition is not allowed in the tenant's current state.",
-            ),
-          );
+        const { status, title, detail } = lifecycleErrorResponse(res.error);
+        return reply.status(status).send(problemDetail(status, title, detail));
       }
       return reply.send({ data: { status: res.status } });
     },
@@ -601,14 +577,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
           audit: auditFromRequest(request),
         });
         if (!res.ok) {
-          const status =
-            res.error === "not_found" || res.error === "tenant_not_found"
-              ? 404
-              : res.error === "already_verified"
-                ? 409
-                : res.error === "dns_timeout"
-                  ? 502
-                  : 422;
+          const status = verifyDomainStatus(res.error);
           return reply
             .status(status)
             .send(
@@ -655,6 +624,44 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
       return reply.status(204).send();
     },
   );
+}
+
+// ─── Error-to-status helpers ────────────────────────────────────────────────
+
+function provisionIdpStatus(error: string): number {
+  if (error === "tenant_not_found") return 404;
+  if (error === "alias_taken") return 409;
+  return 422;
+}
+
+function lifecycleTargetStatus(
+  action: "suspend" | "archive" | "activate",
+): "suspended" | "archived" | "active" {
+  if (action === "suspend") return "suspended";
+  if (action === "archive") return "archived";
+  return "active";
+}
+
+function lifecycleErrorResponse(error: string): {
+  status: number;
+  title: string;
+  detail: string;
+} {
+  if (error === "tenant_not_found") {
+    return { status: 404, title: "Not Found", detail: "Tenant not found." };
+  }
+  return {
+    status: 422,
+    title: "Invalid transition",
+    detail: "This status transition is not allowed in the tenant's current state.",
+  };
+}
+
+function verifyDomainStatus(error: string): number {
+  if (error === "not_found" || error === "tenant_not_found") return 404;
+  if (error === "already_verified") return 409;
+  if (error === "dns_timeout") return 502;
+  return 422;
 }
 
 // ─── Error-copy helpers ─────────────────────────────────────────────────────
