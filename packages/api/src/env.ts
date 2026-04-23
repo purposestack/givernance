@@ -65,6 +65,8 @@ const EnvSchema = Type.Object({
   STRIPE_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
   /** Stripe webhook endpoint secret (whsec_...) */
   STRIPE_WEBHOOK_SECRET: Type.Optional(Type.String({ minLength: 1 })),
+  /** ExchangeRate-API key used for currency conversion refreshes */
+  EXCHANGE_RATE_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
 });
 
 export type ApiEnv = Static<typeof EnvSchema>;

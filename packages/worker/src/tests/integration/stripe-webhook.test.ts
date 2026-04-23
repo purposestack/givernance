@@ -1,6 +1,13 @@
-import { constituents, donations, outboxEvents, webhookEvents } from "@givernance/shared/schema";
+import { clearExchangeRateApiCache } from "@givernance/shared";
+import {
+  constituents,
+  donations,
+  exchangeRates,
+  outboxEvents,
+  webhookEvents,
+} from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../lib/db.js";
 import { processStripeWebhook } from "../../processors/stripe-webhook.js";
 
@@ -8,6 +15,7 @@ const ORG_ID = "00000000-0000-0000-0000-00000000000b";
 const ORG_ID_OTHER = "00000000-0000-0000-0000-00000000000c";
 const STRIPE_ACCOUNT_ID = "acct_test_worker";
 const STRIPE_ACCOUNT_ID_OTHER = "acct_test_other";
+const TODAY = new Date().toISOString().slice(0, 10);
 
 function makeMockJob(data: Record<string, unknown>) {
   return {
@@ -42,12 +50,19 @@ beforeAll(async () => {
   });
 });
 
+beforeEach(() => {
+  clearExchangeRateApiCache();
+});
+
 afterAll(async () => {
   // Cleanup in reverse dependency order
   await db.execute(sql`DELETE FROM outbox_events WHERE tenant_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
   await db.execute(sql`DELETE FROM donations WHERE org_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
   await db.execute(sql`DELETE FROM constituents WHERE org_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
   await db.execute(sql`DELETE FROM webhook_events WHERE stripe_event_id LIKE 'evt_test_%'`);
+  await db.execute(
+    sql`DELETE FROM exchange_rates WHERE currency = 'EUR' AND base_currency = 'CHF' AND date = ${TODAY}`,
+  );
 });
 
 describe("processStripeWebhook", () => {
@@ -217,5 +232,59 @@ describe("processStripeWebhook", () => {
       .from(donations)
       .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, "pi_test_worker_123")));
     expect(dupes).toHaveLength(1);
+  });
+
+  it("computes amountBaseCents and exchangeRate from the organization base currency", async () => {
+    await db.execute(sql`UPDATE tenants SET base_currency = 'CHF' WHERE id = ${ORG_ID}`);
+    await db
+      .insert(exchangeRates)
+      .values({
+        currency: "EUR",
+        baseCurrency: "CHF",
+        rate: "0.90000000",
+        date: TODAY,
+      })
+      .onConflictDoUpdate({
+        target: [exchangeRates.currency, exchangeRates.baseCurrency, exchangeRates.date],
+        set: { rate: "0.90000000", updatedAt: new Date() },
+      });
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000e5",
+      stripeEventId: "evt_test_foreign_currency",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+      livemode: false,
+    });
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000e5",
+      stripeEventId: "evt_test_foreign_currency",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: "pi_test_foreign_currency",
+        amount: 2500,
+        currency: "eur",
+        metadata: {
+          constituent_email: "stripe-fx@example.org",
+        },
+      },
+    });
+
+    await processStripeWebhook(job);
+
+    const [donation] = await db
+      .select()
+      .from(donations)
+      .where(
+        and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, "pi_test_foreign_currency")),
+      );
+
+    expect(donation?.exchangeRate).toBe("0.90000000");
+    expect(donation?.amountBaseCents).toBe(2250);
+
+    await db.execute(sql`UPDATE tenants SET base_currency = 'EUR' WHERE id = ${ORG_ID}`);
   });
 });

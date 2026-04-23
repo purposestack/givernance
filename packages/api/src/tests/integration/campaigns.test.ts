@@ -6,8 +6,10 @@ import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
 
 let app: FastifyInstance;
+const CAMPAIGN_STATS_ORG = "00000000-0000-0000-0000-000000000127";
 
 let constituentIdA: string;
+let statsConstituentId: string;
 
 beforeAll(async () => {
   app = await createServer();
@@ -23,6 +25,21 @@ beforeAll(async () => {
     payload: { firstName: "Campaign", lastName: "Donor", type: "donor" },
   });
   constituentIdA = res.json<{ data: { id: string } }>().data.id;
+
+  await db.execute(
+    sql`INSERT INTO tenants (id, name, slug, base_currency)
+        VALUES (${CAMPAIGN_STATS_ORG}, 'Campaign Stats Org', 'campaign-stats-org', 'CHF')
+        ON CONFLICT (id) DO UPDATE SET base_currency = 'CHF'`,
+  );
+
+  const statsToken = signToken(app, { org_id: CAMPAIGN_STATS_ORG });
+  const statsConstituentRes = await app.inject({
+    method: "POST",
+    url: "/v1/constituents?force=true",
+    headers: authHeader(statsToken),
+    payload: { firstName: "Stats", lastName: "Donor", type: "donor" },
+  });
+  statsConstituentId = statsConstituentRes.json<{ data: { id: string } }>().data.id;
 });
 
 afterAll(async () => {
@@ -574,7 +591,7 @@ describe("Campaign Stats & ROI", () => {
   let statsCampaignId: string;
 
   beforeAll(async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: CAMPAIGN_STATS_ORG });
 
     // Create campaign with cost
     const campaignRes = await app.inject({
@@ -585,33 +602,25 @@ describe("Campaign Stats & ROI", () => {
     });
     statsCampaignId = campaignRes.json<{ data: { id: string } }>().data.id;
 
-    // Create donations linked to this campaign
-    await app.inject({
-      method: "POST",
-      url: "/v1/donations",
-      headers: authHeader(token),
-      payload: {
-        constituentId: constituentIdA,
-        amountCents: 5000,
-        currency: "EUR",
-        campaignId: statsCampaignId,
-      },
-    });
-    await app.inject({
-      method: "POST",
-      url: "/v1/donations",
-      headers: authHeader(token),
-      payload: {
-        constituentId: constituentIdA,
-        amountCents: 15000,
-        currency: "EUR",
-        campaignId: statsCampaignId,
-      },
-    });
+    await db.execute(sql`
+      INSERT INTO donations (
+        org_id,
+        constituent_id,
+        amount_cents,
+        currency,
+        exchange_rate,
+        amount_base_cents,
+        campaign_id,
+        donated_at
+      )
+      VALUES
+        (${CAMPAIGN_STATS_ORG}, ${statsConstituentId}, 5000, 'EUR', 0.95000000, 4750, ${statsCampaignId}, NOW()),
+        (${CAMPAIGN_STATS_ORG}, ${statsConstituentId}, 15000, 'EUR', 0.95000000, 14250, ${statsCampaignId}, NOW())
+    `);
   });
 
   it("GET /v1/campaigns/:id/stats returns campaign statistics", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: CAMPAIGN_STATS_ORG });
     const res = await app.inject({
       method: "GET",
       url: `/v1/campaigns/${statsCampaignId}/stats`,
@@ -628,13 +637,13 @@ describe("Campaign Stats & ROI", () => {
       };
     }>();
     expect(body.data.campaignId).toBe(statsCampaignId);
-    expect(body.data.totalRaisedCents).toBe(20000);
+    expect(body.data.totalRaisedCents).toBe(19000);
     expect(body.data.donationCount).toBe(2);
     expect(body.data.uniqueDonors).toBe(1);
   });
 
   it("GET /v1/campaigns/:id/stats returns 404 for non-existent campaign", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: CAMPAIGN_STATS_ORG });
     const res = await app.inject({
       method: "GET",
       url: "/v1/campaigns/00000000-0000-0000-0000-ffffffffffff/stats",
@@ -645,7 +654,7 @@ describe("Campaign Stats & ROI", () => {
   });
 
   it("GET /v1/campaigns/:id/roi returns campaign ROI", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: CAMPAIGN_STATS_ORG });
     const res = await app.inject({
       method: "GET",
       url: `/v1/campaigns/${statsCampaignId}/roi`,
@@ -657,10 +666,9 @@ describe("Campaign Stats & ROI", () => {
       data: { campaignId: string; totalRaisedCents: number; costCents: number; roi: number };
     }>();
     expect(body.data.campaignId).toBe(statsCampaignId);
-    expect(body.data.totalRaisedCents).toBe(20000);
+    expect(body.data.totalRaisedCents).toBe(19000);
     expect(body.data.costCents).toBe(10000);
-    // ROI = (20000 - 10000) / 10000 = 1.0
-    expect(body.data.roi).toBe(1.0);
+    expect(body.data.roi).toBe(0.9);
   });
 
   it("GET /v1/campaigns/:id/roi returns null ROI and null costCents when no cost set", async () => {

@@ -235,7 +235,7 @@ export async function getCampaignStats(orgId: string, campaignId: string) {
 
     const [stats] = await tx
       .select({
-        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountCents}), 0)`,
+        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountBaseCents}), 0)`,
         donationCount: sql<number>`COUNT(${donations.id})`,
         uniqueDonors: sql<number>`COUNT(DISTINCT ${donations.constituentId})`,
       })
@@ -263,7 +263,7 @@ export async function getCampaignRoi(orgId: string, campaignId: string) {
 
     const [stats] = await tx
       .select({
-        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountCents}), 0)`,
+        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountBaseCents}), 0)`,
       })
       .from(donations)
       .where(and(eq(donations.campaignId, campaignId), eq(donations.orgId, orgId)));
