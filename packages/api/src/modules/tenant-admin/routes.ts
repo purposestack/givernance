@@ -3,7 +3,7 @@
  *
  *  - `POST /v1/admin/tenants`                         — super-admin, create enterprise tenant.
  *  - `GET  /v1/admin/tenants`                         — super-admin, list + filter.
- *  - `GET  /v1/admin/tenants/:id`                     — super-admin, detail + tabs data.
+ *  - `GET  /v1/admin/tenants/:id/detail`              — super-admin, detail + tabs data.
  *  - `POST /v1/admin/tenants/:id/provision-idp`       — super-admin.
  *  - `PATCH /v1/admin/tenants/:id/idp`                — super-admin, rotate/patch config.
  *  - `DELETE /v1/admin/tenants/:id/idp`               — super-admin.
@@ -291,9 +291,15 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** GET /v1/admin/tenants/:id — tenant detail + tabs payload (super-admin). */
+  /**
+   * GET /v1/admin/tenants/:id/detail — tenant detail + tabs payload (super-admin).
+   *
+   * `/v1/admin/tenants/:orgId` is already used by the org-admin tenant settings
+   * endpoint. Keeping the super-admin detail route on a distinct suffix avoids a
+   * Fastify duplicate-route collision after merging the two feature lines.
+   */
   app.get(
-    "/admin/tenants/:id",
+    "/admin/tenants/:id/detail",
     {
       preHandler: requireSuperAdmin,
       schema: {

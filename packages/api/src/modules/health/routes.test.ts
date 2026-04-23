@@ -11,6 +11,7 @@ const mockTenant = {
   name: "Test Org",
   slug: "test-org",
   plan: "starter",
+  baseCurrency: "EUR",
   status: "active",
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
