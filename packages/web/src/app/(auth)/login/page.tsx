@@ -26,6 +26,8 @@ function LoginForm() {
         return t("errors.sessionExpired");
       case "missing_verifier":
         return t("errors.interrupted");
+      case "missing_org_id":
+        return t("errors.authFailed");
       default:
         return t("errors.generic");
     }

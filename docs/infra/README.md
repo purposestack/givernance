@@ -101,23 +101,21 @@ You should see the web on `http://localhost:3000`, the API on `http://localhost:
    - **Password**: `admin`
 3. You land on `/dashboard`; `/constituents` shows the seeded donors
 
-### Dev SSO shim (temporary)
+### Keycloak JWT verification
 
-Until Phase 1 Multi-Tenant SSO lands (issue #84), the web's `/api/auth/callback` mints an internal HS256 JWT signed with `JWT_SECRET` instead of forwarding the raw Keycloak access token. This is because:
-- the API verifies tokens with a static `JWT_SECRET` (HS256), not Keycloak's JWKS (RS256)
-- the realm has no `org_id` protocol mapper
+The web now stores the raw Keycloak access token in `givernance_jwt`. Both the Next.js server guards and the Fastify API verify that token against the realm JWKS (`KEYCLOAK_JWKS_URL`) and enforce the configured issuer (`KEYCLOAK_ISSUER`).
 
-The shim injects `org_id` from the `DEV_DEFAULT_ORG_ID` env var (default matches the seed tenant UUID). If you log in but `/constituents` shows the empty state, clear the `givernance_jwt` and `givernance_id_token` cookies and log in again.
+The seeded realm also ships an `org_id` protocol mapper on the `givernance-web` client. It reads the Keycloak user attribute `org_id` and injects it into access and ID tokens. Existing realms are not updated by `--import-realm`; if your local realm predates this change, recreate the Keycloak container or add the mapper manually in the admin console before logging in again.
 
 ### Troubleshooting
 
 | Symptom | Cause & fix |
 |---------|-------------|
 | `GET /v1/constituents` → `ECONNREFUSED` from the web | Node's fetch races `::1` (IPv6) against `127.0.0.1` for `localhost`; the API binds IPv4-only. `.env` already pins `API_URL=http://127.0.0.1:4000` — don't change it back to `localhost`. |
-| `ERR_TOO_MANY_REDIRECTS` on `/dashboard` after login | Stale cookie from before the SSO shim. Delete `givernance_jwt` / `givernance_id_token` in DevTools → Application → Cookies. |
-| `JWT_SECRET environment variable is required` in `/api/auth/callback` | Web dev server didn't load the root `.env`. The `dev` script uses `dotenv-cli` — restart `pnpm dev` after pulling changes. |
+| `ERR_TOO_MANY_REDIRECTS` on `/dashboard` after login | Stale or invalid auth cookies. Delete `givernance_jwt` / `givernance_id_token` in DevTools → Application → Cookies, then log in again. |
+| Login redirects back to `/login?error=missing_org_id` | The Keycloak access token was valid but did not contain `org_id`. Add the `org_id` protocol mapper on the client and ensure the user has an `org_id` attribute, then log in again. |
 | Web starts on port 4000 instead of 3000 (`EADDRINUSE`) | `.env` sets `PORT=4000` for the API; `dotenv-cli` forwards it. The web `dev` script already passes `-p 3000` to override. |
-| `/constituents` shows empty state despite seed running | The JWT's `org_id` doesn't match the seeded tenant. Either re-run the seed (fixed UUID) or set `DEV_DEFAULT_ORG_ID` to the existing tenant's id. |
+| `/constituents` shows empty state despite seed running | The Keycloak user's `org_id` attribute does not match the seeded tenant UUID. Set it to `00000000-0000-0000-0000-0000000000a1` or re-run the seed and re-login. |
 
 ---
 

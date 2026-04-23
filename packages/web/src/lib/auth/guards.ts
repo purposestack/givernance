@@ -1,49 +1,10 @@
 import "server-only";
 
-import { jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { JWT_COOKIE_NAME } from "./keycloak";
-
-/** Minimal JWT payload shape for Keycloak access tokens. */
-interface JwtPayload {
-  sub: string;
-  email?: string;
-  given_name?: string;
-  family_name?: string;
-  role?: string;
-  realm_access?: { roles: string[] };
-  resource_access?: Record<string, { roles: string[] }>;
-  org_id?: string;
-  /** RFC 8693 actor claim — present during delegation/impersonation. */
-  act?: { sub: string };
-  /** Givernance-specific: impersonation session ID (UUIDv7). */
-  imp_session_id?: string;
-  /** Givernance-specific: mandatory reason for impersonation. */
-  imp_reason?: string;
-  exp?: number;
-}
-
-/**
- * Verify and decode the internal session JWT minted by /api/auth/callback.
- *
- * TODO(#84): swap back to Keycloak JWKS (RS256) verification once the API
- * verifies Keycloak tokens directly and the realm has an `org_id` mapper.
- * Today we verify the HS256 JWT we mint ourselves, signed with JWT_SECRET.
- */
-async function verifyJwt(token: string): Promise<JwtPayload | null> {
-  const jwtSecret = process.env.JWT_SECRET;
-  if (!jwtSecret) return null;
-  try {
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(jwtSecret), {
-      algorithms: ["HS256"],
-    });
-    return payload as unknown as JwtPayload;
-  } catch {
-    return null;
-  }
-}
+import { verifyKeycloakJwt } from "./verify-keycloak-jwt";
 
 /** Impersonation metadata extracted from JWT claims (doc/19-impersonation.md). */
 export interface ImpersonationInfo {
@@ -106,6 +67,14 @@ export async function requireAuth(): Promise<ServerAuthContext> {
         }
       : undefined,
   };
+}
+
+async function verifyJwt(token: string) {
+  try {
+    return await verifyKeycloakJwt(token);
+  } catch {
+    return null;
+  }
 }
 
 /**

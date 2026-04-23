@@ -152,7 +152,8 @@ Data residency is **not a per-tenant choice** in the onboarding flow. All SaaS t
 4. **Callback**: Keycloak redirects to `GET /api/auth/callback` with an authorization `code`.
 5. **Token Exchange**: Next.js exchanges the `code` + `code_verifier` for an Access Token (JWT) via backend server-to-server call.
 6. **Session Establishment**:
-   - The JWT is saved in the `givernance_jwt` cookie (`httpOnly`, `Secure`, `SameSite=Strict`).
+   - Next.js verifies the Keycloak access token against the realm JWKS and ensures the `org_id` claim is present before trusting it.
+   - The raw Keycloak Access Token is saved in the `givernance_jwt` cookie (`httpOnly`, `Secure`, `SameSite=Strict`).
    - A secondary `csrf-token` cookie (non-httpOnly) is set for the browser to read.
    - The web app resolves the tenant from the signed JWT claims and redirects the browser to `https://<org_slug>.givernance.app/dashboard` (or `.org` where appropriate). If the user started locally with `?namespace=<tenant>`, the local redirect remains on `localhost` and preserves the namespace for routing only.
 
@@ -191,6 +192,8 @@ KEYCLOAK_URL=http://localhost:8080
 KEYCLOAK_REALM=givernance
 KEYCLOAK_CLIENT_ID=givernance-web
 KEYCLOAK_CLIENT_SECRET=ci-test-secret-do-not-use-in-production
+KEYCLOAK_ISSUER=http://localhost:8080/realms/givernance
+KEYCLOAK_JWKS_URL=http://localhost:8080/realms/givernance/protocol/openid-connect/certs
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_API_URL=http://localhost:4000
 API_URL=http://localhost:4000
@@ -203,8 +206,14 @@ API_URL=http://localhost:4000
 `docker compose up -d` starts Keycloak, which auto-imports `infra/keycloak/realm-givernance.json` on first startup. The seed provides:
 
 - Realm `givernance` with brute-force protection enabled
-- Client `givernance-web` with PKCE-compatible flow and the `post.logout.redirect.uris` attribute
-- A single pre-provisioned user: **`admin@givernance.org` / `admin`** with the `super_admin` realm role
+- Client `givernance-web` with PKCE-compatible flow, the `post.logout.redirect.uris` attribute, and an `org_id` protocol mapper
+- A single pre-provisioned user: **`admin@givernance.org` / `admin`** with the `super_admin` realm role and `org_id=00000000-0000-0000-0000-0000000000a1`
+
+### `org_id` mapper requirement
+
+The API treats `org_id` as the sole tenant-binding authority, so the access token must always contain that claim. For local dev, the seeded realm config adds a client protocol mapper (`oidc-usermodel-attribute-mapper`) that copies the user attribute `org_id` into both access and ID tokens.
+
+If your Keycloak realm already existed before this change, `--import-realm` will not patch it in place. Add the mapper manually on the `givernance-web` client and set `org_id` on each user, or recreate the local Keycloak container so the realm is imported fresh.
 
 ### Local login credentials
 - **App URL**: http://localhost:3000 → redirects to `/dashboard`, then to `/login` when signed out
@@ -219,5 +228,6 @@ API_URL=http://localhost:4000
 |---------|-------|-----|
 | `curl http://localhost:8080/realms/givernance` returns 404 | Keycloak running but realm not imported (realm JSON added after container started) | `docker compose up -d --force-recreate keycloak` |
 | `?error=token_exchange_failed` on callback | Wrong `KEYCLOAK_CLIENT_SECRET` or realm misconfigured | Check the API console — `console.error("Token Exchange Failed: ...")` logs the Keycloak response |
+| `?error=missing_org_id` on callback | The token validated but the `org_id` claim is missing | Add the `org_id` mapper to `givernance-web`, set the user attribute, then log in again |
 | Clicking logout leaves you signed in on Keycloak | Old session from before the `post.logout.redirect.uris` attribute was added | Push the attribute via admin API or clear cookies for `localhost:8080` |
 | Clicking login after logout auto-redirects without Keycloak prompt | Keycloak session cookie still alive | Expected once Keycloak session is ended via logout; if not, see row above |

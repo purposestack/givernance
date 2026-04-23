@@ -18,7 +18,6 @@
     "@aws-sdk/s3-request-presigner": "^3.1030.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^10.0.2",
-    "@fastify/jwt": "^9.0.2",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.4.2",
     "@fastify/swagger-ui": "^5.2.1",
@@ -29,6 +28,7 @@
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1",
     "ioredis": "^5.4.2",
+    "jose": "^6.2.2",
     "nats.ws": "^1.29.2",
     "pg": "^8.13.1",
     "stripe": "^22.0.1"
