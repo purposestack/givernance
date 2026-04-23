@@ -79,4 +79,20 @@ if (process.env.NODE_ENV === "production" && !value.DATABASE_URL_APP) {
   process.exit(1);
 }
 
+if (process.env.NODE_ENV === "production" && !value.KEYCLOAK_ADMIN_CLIENT_SECRET) {
+  console.error(
+    "[api] KEYCLOAK_ADMIN_CLIENT_SECRET is strictly required in production for tenant onboarding (ADR-016 / issue #107).",
+  );
+  process.exit(1);
+}
+
+const adminUrl = value.KEYCLOAK_ADMIN_URL ?? value.KEYCLOAK_URL;
+const isLocalHost = /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$|\/)/i.test(adminUrl);
+if (process.env.NODE_ENV === "production" && !adminUrl.startsWith("https://") && !isLocalHost) {
+  console.error(
+    `[api] Keycloak admin URL must be HTTPS in production (got '${adminUrl}') — client-credentials over cleartext leaks the admin secret.`,
+  );
+  process.exit(1);
+}
+
 export const env: ApiEnv = value;

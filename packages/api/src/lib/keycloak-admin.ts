@@ -1,26 +1,37 @@
 /**
  * Keycloak Admin API client — issue #107 / ADR-016.
  *
- * Thin, typed wrapper around the Keycloak Admin REST API for operations the
- * Givernance API needs to perform on behalf of the platform (tenant
- * onboarding flow):
+ * Thin, typed wrapper around the Keycloak Admin REST API for the operations
+ * the Givernance API needs to perform during tenant onboarding:
  *
  *  - Organizations (Keycloak 26+): create, get, delete, add domain.
  *  - Identity Providers: create, bind to Organization.
- *  - Users: lookup by sub, attach to Organization.
- *  - Invitations: send via Organization invite endpoint.
+ *  - Members: attach, invite.
  *
  * Cross-cutting behaviour:
- *  - `client_credentials` access-token caching with early-refresh margin.
- *  - Exponential-backoff retry on transient errors (network + 5xx + 429).
- *  - Circuit breaker: opens for 30s after 5 consecutive failures; while
- *    open, every call fails fast with `CircuitOpenError`.
- *  - Structured pino logging on every request with latency + status code.
+ *  - `client_credentials` access-token caching with early-refresh safety
+ *    margin, in-flight deduplication so parallel callers don't stampede.
+ *  - Conservative retry policy: 5xx / 429 / network errors retried on
+ *    idempotent methods (GET, PUT, DELETE). **POST is retried only on
+ *    429 or token rotation (401 once)**, never on 5xx, to avoid duplicate
+ *    side-effects (e.g. two invitation emails).
+ *  - Circuit breaker: opens for 30s after N consecutive 5xx / network
+ *    failures, re-arms on a failed half-open probe. Client 4xx errors
+ *    (400, 403, 404) do NOT count toward the breaker.
+ *  - Structured pino logging on every request with latency + status code;
+ *    `Authorization` and `client_secret` are redacted at the logger level.
  *
- * The client is intentionally minimal. Organization-specific endpoints are
- * Keycloak 26+ and will only reach real infrastructure once issue #114
- * upgrades the realm — until then they are exercised by the stubbed-fetch
- * unit tests in `keycloak-admin.test.ts`.
+ * Security notes:
+ *  - All path parameters are `encodeURIComponent`-encoded.
+ *  - `addOrgDomain` takes `verified: boolean` explicitly; callers MUST pass
+ *    `verified: true` only after out-of-band DNS TXT verification (ADR-016).
+ *  - `createOrganization` recovers from empty 201 bodies via the `Location`
+ *    header (not alias search) so concurrent create/race can't hand back
+ *    someone else's org.
+ *
+ * Organization-specific endpoints are Keycloak 26+; they are exercised by
+ * stubbed-fetch unit tests in `keycloak-admin.test.ts`. The real e2e smoke
+ * test ships with issue #114 once the realm is upgraded.
  */
 
 import pino from "pino";
@@ -28,7 +39,20 @@ import { env } from "../env.js";
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const logger = pino({ name: "keycloak-admin", level: env.LOG_LEVEL });
+const logger = pino({
+  name: "keycloak-admin",
+  level: env.LOG_LEVEL,
+  redact: {
+    paths: [
+      "*.headers.authorization",
+      "*.headers.Authorization",
+      "*.body.client_secret",
+      "accessToken",
+      "*.accessToken",
+    ],
+    censor: "[REDACTED]",
+  },
+});
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -47,7 +71,6 @@ export interface KeycloakIdentityProvider {
   config?: Record<string, string>;
 }
 
-/** One-of: either a new IdP config, or an existing alias to bind. */
 export interface BindIdpInput {
   alias: string;
 }
@@ -56,10 +79,19 @@ export class KeycloakAdminError extends Error {
   constructor(
     message: string,
     public readonly status: number,
-    public readonly url: string,
+    /** Path relative to the realm admin base (never the full URL with baseUrl). */
+    public readonly path: string,
   ) {
     super(message);
     this.name = "KeycloakAdminError";
+  }
+}
+
+/** Thrown on non-retryable errors at the token endpoint (bad secret, 403, etc.) */
+export class KeycloakAuthError extends KeycloakAdminError {
+  constructor(status: number, path: string) {
+    super(`Token endpoint returned ${status}`, status, path);
+    this.name = "KeycloakAuthError";
   }
 }
 
@@ -81,14 +113,18 @@ interface ClientConfig {
   fetchImpl?: typeof fetch;
   /** Current epoch milliseconds — injectable for deterministic tests. */
   nowMs?: () => number;
+  /** Injectable random for deterministic backoff in tests. Default: `Math.random`. */
+  randomImpl?: () => number;
   /** Failures required before the breaker opens (default 5). */
   circuitFailureThreshold?: number;
   /** Milliseconds the breaker stays open before entering half-open (default 30_000). */
   circuitOpenMs?: number;
   /** Max retry attempts on transient failures (default 3). */
   maxAttempts?: number;
-  /** Initial backoff in ms (default 200). Exponential: 200, 400, 800, … */
+  /** Initial backoff in ms (default 200). Exponential: 200, 400, 800, …, capped at `maxBackoffMs`. */
   initialBackoffMs?: number;
+  /** Hard cap on any single backoff window (default 10_000). */
+  maxBackoffMs?: number;
 }
 
 interface CachedToken {
@@ -106,7 +142,11 @@ export interface KeycloakAdminClient {
   }): Promise<KeycloakOrganization>;
   getOrganization(id: string): Promise<KeycloakOrganization | null>;
   deleteOrganization(id: string): Promise<void>;
-  addOrgDomain(orgId: string, domain: string): Promise<void>;
+  /**
+   * Add a domain to an Organization.
+   * @param verified   Only pass `true` after out-of-band DNS TXT verification (ADR-016 §DNS TXT).
+   */
+  addOrgDomain(orgId: string, domain: string, opts: { verified: boolean }): Promise<void>;
   attachUserToOrg(orgId: string, userId: string): Promise<void>;
   sendInvitation(orgId: string, email: string): Promise<void>;
   bindIdpToOrganization(orgId: string, input: BindIdpInput): Promise<void>;
@@ -117,24 +157,27 @@ export interface KeycloakAdminClient {
 
   // Test hooks
   _circuitState(): "closed" | "open" | "half-open";
-  _clearTokenCache(): void;
 }
 
 /**
  * Create a Keycloak Admin API client. Factory style (not a singleton) so tests
- * can instantiate isolated clients with injected fetch + clock.
+ * can instantiate isolated clients with injected fetch + clock + random.
  */
 export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminClient {
   const fetchImpl = config.fetchImpl ?? fetch;
   const now = config.nowMs ?? (() => Date.now());
+  const random = config.randomImpl ?? (() => Math.random());
   const failureThreshold = config.circuitFailureThreshold ?? 5;
   const openMs = config.circuitOpenMs ?? 30_000;
   const maxAttempts = config.maxAttempts ?? 3;
   const initialBackoffMs = config.initialBackoffMs ?? 200;
+  const maxBackoffMs = config.maxBackoffMs ?? 10_000;
 
   let cachedToken: CachedToken | null = null;
+  let inFlightToken: Promise<string> | null = null;
   let consecutiveFailures = 0;
   let circuitOpenedAtMs: number | null = null;
+  let halfOpenInFlight = false;
 
   // ─── Circuit breaker helpers ────────────────────────────────────────────
 
@@ -147,11 +190,25 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
   const recordSuccess = () => {
     consecutiveFailures = 0;
     circuitOpenedAtMs = null;
+    halfOpenInFlight = false;
   };
 
-  const recordFailure = () => {
+  /**
+   * Record a breaker-counting failure. Called only for 5xx / network failures,
+   * not for client 4xx errors. Transitions to "open" on threshold, and
+   * re-arms the timer on a failed half-open probe.
+   */
+  const recordBreakerFailure = () => {
+    const wasHalfOpen = circuitState() === "half-open";
     consecutiveFailures += 1;
-    if (consecutiveFailures >= failureThreshold) {
+    if (wasHalfOpen) {
+      // Failed probe — re-arm timer so we stay in `open`, not stuck `half-open`.
+      circuitOpenedAtMs = now();
+      halfOpenInFlight = false;
+      logger.warn({ consecutiveFailures }, "Keycloak admin half-open probe failed");
+      return;
+    }
+    if (consecutiveFailures >= failureThreshold && circuitOpenedAtMs === null) {
       circuitOpenedAtMs = now();
       logger.warn({ consecutiveFailures }, "Keycloak admin circuit opened");
     }
@@ -160,7 +217,8 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
   // ─── Token cache ────────────────────────────────────────────────────────
 
   const fetchToken = async (): Promise<string> => {
-    const url = `${config.baseUrl}/realms/${config.realm}/protocol/openid-connect/token`;
+    const path = `/realms/${config.realm}/protocol/openid-connect/token`;
+    const url = `${config.baseUrl}${path}`;
     const body = new URLSearchParams({
       grant_type: "client_credentials",
       client_id: config.clientId,
@@ -175,7 +233,8 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
     });
 
     if (!res.ok) {
-      throw new KeycloakAdminError(`Token endpoint returned ${res.status}`, res.status, url);
+      // 403 / 401 at the token endpoint = bad secret, not a rotation issue.
+      throw new KeycloakAuthError(res.status, path);
     }
 
     const tokenRes = (await res.json()) as { access_token: string; expires_in: number };
@@ -196,20 +255,47 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
     if (cachedToken && cachedToken.expiresAtMs > now()) {
       return cachedToken.accessToken;
     }
-    return fetchToken();
+    // In-flight dedup: parallel callers share a single `/token` request.
+    if (!inFlightToken) {
+      inFlightToken = fetchToken().finally(() => {
+        inFlightToken = null;
+      });
+    }
+    return inFlightToken;
   };
 
   // ─── Core request with retry + CB ──────────────────────────────────────
 
-  const isRetryable = (err: unknown): boolean => {
-    if (err instanceof KeycloakAdminError) {
-      // 401: token has probably rotated — retry once with a fresh token.
-      // 429: rate-limited.
-      // 5xx: transient upstream failure.
-      return err.status === 401 || err.status === 429 || (err.status >= 500 && err.status < 600);
+  /**
+   * `POST` is only retried on 429 or 401-one-shot. `GET`/`PUT`/`DELETE` are
+   * retried on any transient error.
+   */
+  const isRetryable = (err: unknown, method: string): boolean => {
+    if (err instanceof SyntaxError) {
+      // Malformed JSON on a 200 — not transient.
+      return false;
     }
-    // Network / fetch abort / DNS — assume retryable.
-    return true;
+    if (err instanceof KeycloakAuthError) {
+      // Bad client secret — don't loop.
+      return false;
+    }
+    if (err instanceof KeycloakAdminError) {
+      if (err.status === 401) return true; // token rotated — retry once with fresh token
+      if (err.status === 429) return true;
+      if (err.status >= 500 && err.status < 600) {
+        return method !== "POST"; // don't retry non-idempotent writes on 5xx
+      }
+      return false;
+    }
+    // Network / fetch abort / DNS — retry idempotent methods only.
+    return method !== "POST";
+  };
+
+  const countsTowardBreaker = (err: unknown): boolean => {
+    if (err instanceof KeycloakAdminError) {
+      return err.status >= 500 && err.status < 600;
+    }
+    return true; // network/DNS/abort count
   };
 
   const adminRequest = async <T>(
@@ -217,8 +303,13 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
     path: string,
     body?: unknown,
   ): Promise<T | null> => {
-    if (circuitState() === "open") {
+    const state = circuitState();
+    if (state === "open") {
       throw new CircuitOpenError();
+    }
+    if (state === "half-open") {
+      if (halfOpenInFlight) throw new CircuitOpenError();
+      halfOpenInFlight = true;
     }
 
     const url = `${config.baseUrl}/admin/realms/${config.realm}${path}`;
@@ -231,6 +322,11 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
       let result: { value: T | null } | null = null;
 
       try {
+        // If the token endpoint rejects our credentials (bad secret), it
+        // throws KeycloakAuthError which is non-retryable — that's the
+        // "bad config" path. A 401 on the admin API, by contrast, means
+        // the token we just sent was rejected mid-session (rotation); we
+        // invalidate the cache and retry.
         const token = await getToken();
         const started = now();
         const res = await fetchImpl(url, {
@@ -243,17 +339,20 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
         });
 
         const latencyMs = now() - started;
-        logger.debug({ method, url, status: res.status, latencyMs, attempt }, "kc-admin");
+        logger.debug({ method, path, status: res.status, latencyMs, attempt }, "kc-admin");
 
-        // Token probably expired — invalidate + retry once immediately.
         if (res.status === 401) {
           cachedToken = null;
-          err = new KeycloakAdminError("Unauthorized", 401, url);
+          err = new KeycloakAdminError("Unauthorized (token rotated)", 401, path);
+        } else if (res.status === 201 && res.headers.get("location")) {
+          // Honor the Location header for POST-create recovery.
+          const location = res.headers.get("location") as string;
+          result = { value: { __locationHeader: location } as unknown as T };
         } else if (!res.ok) {
           err = new KeycloakAdminError(
             `Admin API ${method} ${path} → ${res.status}`,
             res.status,
-            url,
+            path,
           );
         } else {
           if (res.status === 204) {
@@ -264,7 +363,10 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
           }
         }
       } catch (thrown) {
-        if (thrown instanceof CircuitOpenError) throw thrown;
+        if (thrown instanceof CircuitOpenError) {
+          halfOpenInFlight = false;
+          throw thrown;
+        }
         err = thrown;
       }
 
@@ -273,52 +375,78 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
         return result.value;
       }
 
-      // Error path — decide whether to retry or fail.
       lastErr = err;
-      if (!isRetryable(err) || attempt >= maxAttempts) {
-        recordFailure();
+      if (!isRetryable(err, method) || attempt >= maxAttempts) {
+        if (countsTowardBreaker(err)) {
+          recordBreakerFailure();
+        } else if (state === "half-open") {
+          // Non-breaker-counting 4xx during half-open probe: still release the
+          // slot but don't re-arm the timer. Leave the decision to the next caller.
+          halfOpenInFlight = false;
+        }
         throw err;
       }
 
-      // Exponential backoff with full jitter.
-      const delay = initialBackoffMs * 2 ** (attempt - 1);
-      const jittered = Math.floor(Math.random() * delay);
+      // Exponential backoff with equal jitter + hard cap.
+      const baseDelay = Math.min(initialBackoffMs * 2 ** (attempt - 1), maxBackoffMs);
+      const half = baseDelay / 2;
+      const jittered = Math.floor(half + random() * half);
       await new Promise((r) => setTimeout(r, jittered));
     }
 
-    recordFailure();
+    if (countsTowardBreaker(lastErr)) {
+      recordBreakerFailure();
+    }
     throw lastErr ?? new Error("unreachable");
   };
+
+  // ─── Helpers for path encoding ─────────────────────────────────────────
+
+  const e = encodeURIComponent;
 
   // ─── Public surface ────────────────────────────────────────────────────
 
   return {
     createOrganization: async ({ name, alias, attributes }) => {
-      const created = await adminRequest<KeycloakOrganization>("POST", `/organizations`, {
-        name,
-        alias,
-        attributes: attributes ?? {},
-      });
-      // Keycloak returns 201 + Location; fetch-by-alias to hydrate the id.
-      if (created) return created;
-      const listed = await adminRequest<KeycloakOrganization[]>(
-        "GET",
-        `/organizations?search=${encodeURIComponent(alias)}`,
+      const out = await adminRequest<KeycloakOrganization & { __locationHeader?: string }>(
+        "POST",
+        `/organizations`,
+        { name, alias, attributes: attributes ?? {} },
       );
-      const match = listed?.find((o) => o.alias === alias);
-      if (!match) {
+      if (!out) {
         throw new KeycloakAdminError(
-          `Organization '${alias}' not found after create`,
+          `Organization create returned no body and no Location header`,
           500,
-          "/organizations",
+          `/organizations`,
         );
       }
-      return match;
+      if (out.__locationHeader) {
+        // Extract the org id from the Location header and GET it by id — never search by alias.
+        const idMatch = out.__locationHeader.match(/\/organizations\/([^/]+)$/);
+        const id = idMatch?.[1];
+        if (!id) {
+          throw new KeycloakAdminError(
+            `Organization create Location header malformed: ${out.__locationHeader}`,
+            500,
+            `/organizations`,
+          );
+        }
+        const fetched = await adminRequest<KeycloakOrganization>("GET", `/organizations/${e(id)}`);
+        if (!fetched) {
+          throw new KeycloakAdminError(
+            `Organization ${id} missing after create`,
+            500,
+            `/organizations/${id}`,
+          );
+        }
+        return fetched;
+      }
+      return out;
     },
 
     getOrganization: async (id) => {
       try {
-        return await adminRequest<KeycloakOrganization>("GET", `/organizations/${id}`);
+        return await adminRequest<KeycloakOrganization>("GET", `/organizations/${e(id)}`);
       } catch (err) {
         if (err instanceof KeycloakAdminError && err.status === 404) return null;
         throw err;
@@ -326,30 +454,26 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
     },
 
     deleteOrganization: async (id) => {
-      await adminRequest<void>("DELETE", `/organizations/${id}`);
+      await adminRequest<void>("DELETE", `/organizations/${e(id)}`);
     },
 
-    addOrgDomain: async (orgId, domain) => {
-      await adminRequest<void>("POST", `/organizations/${orgId}/domains`, {
+    addOrgDomain: async (orgId, domain, { verified }) => {
+      await adminRequest<void>("POST", `/organizations/${e(orgId)}/domains`, {
         name: domain.toLowerCase(),
-        verified: true,
+        verified,
       });
     },
 
     attachUserToOrg: async (orgId, userId) => {
-      await adminRequest<void>("POST", `/organizations/${orgId}/members`, { id: userId });
+      await adminRequest<void>("POST", `/organizations/${e(orgId)}/members`, { id: userId });
     },
 
     sendInvitation: async (orgId, email) => {
-      await adminRequest<void>("POST", `/organizations/${orgId}/members/invite-user`, {
-        email,
-      });
+      await adminRequest<void>("POST", `/organizations/${e(orgId)}/members/invite-user`, { email });
     },
 
     bindIdpToOrganization: async (orgId, { alias }) => {
-      await adminRequest<void>("POST", `/organizations/${orgId}/identity-providers`, {
-        alias,
-      });
+      await adminRequest<void>("POST", `/organizations/${e(orgId)}/identity-providers`, { alias });
     },
 
     createIdentityProvider: async (idp) => {
@@ -362,13 +486,10 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
     },
 
     deleteIdentityProvider: async (alias) => {
-      await adminRequest<void>("DELETE", `/identity-provider/instances/${alias}`);
+      await adminRequest<void>("DELETE", `/identity-provider/instances/${e(alias)}`);
     },
 
     _circuitState: circuitState,
-    _clearTokenCache: () => {
-      cachedToken = null;
-    },
   };
 }
 
@@ -398,4 +519,9 @@ export function keycloakAdmin(): KeycloakAdminClient {
     clientSecret: env.KEYCLOAK_ADMIN_CLIENT_SECRET,
   });
   return singleton;
+}
+
+/** Test helper — resets the module-level singleton + token cache. */
+export function _resetKeycloakAdminSingleton(): void {
+  singleton = null;
 }
