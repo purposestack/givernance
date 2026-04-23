@@ -12,17 +12,19 @@ const mockTenant = {
   slug: "test-org",
   plan: "starter",
   status: "active",
+  baseCurrency: "EUR",
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
 
 // Mock DB module before importing the server — Vitest hoists vi.mock() calls.
 vi.mock("../../lib/db.js", () => {
-  const insertChain = {
-    values: vi.fn(() => ({
+  const makeInsertChain = () => ({
+    values: vi.fn().mockImplementation(() => ({
       returning: vi.fn().mockResolvedValue([mockTenant]),
+      then: undefined,
     })),
-  };
+  });
   const selectChain = {
     from: vi.fn(() => ({
       where: vi.fn().mockResolvedValue([]),
@@ -32,7 +34,7 @@ vi.mock("../../lib/db.js", () => {
   return {
     db: {
       execute: vi.fn().mockResolvedValue([]),
-      insert: vi.fn(() => insertChain),
+      insert: vi.fn(() => makeInsertChain()),
       select: vi.fn(() => selectChain),
       update: vi.fn(() => ({
         set: vi.fn(() => ({
@@ -48,7 +50,7 @@ vi.mock("../../lib/db.js", () => {
       transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
           execute: vi.fn().mockResolvedValue([]),
-          insert: vi.fn(() => insertChain),
+          insert: vi.fn(() => makeInsertChain()),
           select: vi.fn(() => selectChain),
         };
         return fn(tx);
