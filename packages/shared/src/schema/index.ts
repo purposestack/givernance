@@ -66,6 +66,24 @@ export const webhookEventStatusEnum = pgEnum("webhook_event_status", [
 
 export const userRoleEnum = pgEnum("user_role", ["org_admin", "user", "viewer"]);
 
+// ─── Tenant lifecycle / provenance (ADR-016) ─────────────────────────────────
+
+export const TENANT_STATUS_VALUES = ["provisional", "active", "suspended", "archived"] as const;
+export type TenantStatus = (typeof TENANT_STATUS_VALUES)[number];
+
+export const TENANT_CREATED_VIA_VALUES = ["self_serve", "enterprise", "invitation"] as const;
+export type TenantCreatedVia = (typeof TENANT_CREATED_VIA_VALUES)[number];
+
+export const TENANT_DOMAIN_STATE_VALUES = ["pending_dns", "verified", "revoked"] as const;
+export type TenantDomainState = (typeof TENANT_DOMAIN_STATE_VALUES)[number];
+
+export const TENANT_ADMIN_DISPUTE_RESOLUTION_VALUES = [
+  "kept",
+  "replaced",
+  "escalated_to_support",
+] as const;
+export type TenantAdminDisputeResolution = (typeof TENANT_ADMIN_DISPUTE_RESOLUTION_VALUES)[number];
+
 // ─── Tenants (organizations) ──────────────────────────────────────────────────
 
 /** Tenants — registered organizations using Givernance */
@@ -76,12 +94,27 @@ export const tenants = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     slug: varchar("slug", { length: 100 }).notNull().unique(),
     plan: varchar("plan", { length: 50 }).notNull().default("starter"),
-    status: varchar("status", { length: 50 }).notNull().default("active"),
+    status: varchar("status", { length: 50 }).notNull().default("active").$type<TenantStatus>(),
+    /** How this tenant was provisioned — drives UI affordances, not access. Migration 0021 (ADR-016). */
+    createdVia: varchar("created_via", { length: 32 })
+      .notNull()
+      .default("enterprise")
+      .$type<TenantCreatedVia>(),
+    /** Email verification timestamp for self-serve signup; NULL until the first admin verifies. */
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    /** Keycloak 26 Organization id bound to this tenant. NULL during migration + for rows awaiting Keycloak provisioning. */
+    keycloakOrgId: text("keycloak_org_id"),
+    /** Convenience pointer to the tenant's verified primary domain — denormalised; source of truth is `tenant_domains`. */
+    primaryDomain: varchar("primary_domain", { length: 255 }),
     stripeAccountId: varchar("stripe_account_id", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique("tenants_stripe_account_id_uniq").on(table.stripeAccountId)],
+  (table) => [
+    unique("tenants_stripe_account_id_uniq").on(table.stripeAccountId),
+    index("tenants_status_idx").on(table.status),
+    index("tenants_created_via_idx").on(table.createdVia),
+  ],
 );
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -99,6 +132,10 @@ export const users = pgTable(
     lastName: varchar("last_name", { length: 255 }).notNull(),
     role: userRoleEnum("role").notNull().default("user"),
     keycloakId: varchar("keycloak_id", { length: 255 }),
+    /** Marks the user who provisioned a self-serve tenant. Drives the dispute flow (ADR-016). */
+    firstAdmin: boolean("first_admin").notNull().default(false),
+    /** When set, this user is a *provisional* org_admin until this timestamp; other members can dispute. */
+    provisionalUntil: timestamp("provisional_until", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -131,6 +168,65 @@ export const invitations = pgTable(
     index("invitations_org_id_idx").on(table.orgId),
     index("invitations_token_idx").on(table.token),
   ],
+);
+
+// ─── Tenant Domains ──────────────────────────────────────────────────────────
+
+/**
+ * Tenant domains — DNS-verified custom domain claims used by Keycloak Home IdP Discovery
+ * and by the self-serve flow to detect "your org is already on Givernance". Personal-email
+ * domains (gmail, outlook, …) are blocked by the validator layer, not the DB. Migration 0021
+ * (ADR-016).
+ */
+export const tenantDomains = pgTable(
+  "tenant_domains",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    domain: varchar("domain", { length: 255 }).notNull(),
+    state: varchar("state", { length: 32 })
+      .notNull()
+      .default("pending_dns")
+      .$type<TenantDomainState>(),
+    dnsTxtValue: varchar("dns_txt_value", { length: 128 }).notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("tenant_domains_org_id_idx").on(table.orgId),
+    index("tenant_domains_state_idx").on(table.state),
+  ],
+);
+
+// ─── Tenant Admin Disputes ───────────────────────────────────────────────────
+
+/**
+ * Dispute log for the 7-day provisional-admin grace period on self-serve tenants.
+ * Only one open dispute per tenant; closed disputes are retained for audit.
+ * Migration 0021 (ADR-016).
+ */
+export const tenantAdminDisputes = pgTable(
+  "tenant_admin_disputes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    disputerId: uuid("disputer_id")
+      .notNull()
+      .references(() => users.id),
+    provisionalAdminId: uuid("provisional_admin_id")
+      .notNull()
+      .references(() => users.id),
+    reason: text("reason"),
+    resolution: varchar("resolution", { length: 32 }).$type<TenantAdminDisputeResolution>(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("tenant_admin_disputes_org_id_idx").on(table.orgId)],
 );
 
 // ─── Audit Logs ───────────────────────────────────────────────────────────────

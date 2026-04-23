@@ -64,17 +64,78 @@ CREATE TABLE orgs (
 #### `users`
 ```sql
 CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-    org_id          UUID NOT NULL REFERENCES orgs(id),
-    keycloak_sub    UUID UNIQUE NOT NULL,           -- KC subject claim
-    email           TEXT NOT NULL,
-    display_name    TEXT NOT NULL,
-    role            TEXT NOT NULL,                 -- see §5 RBAC
-    is_active       BOOLEAN NOT NULL DEFAULT true,
-    last_login_at   TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (org_id, email)
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    org_id            UUID NOT NULL REFERENCES orgs(id),
+    keycloak_sub      UUID UNIQUE NOT NULL,           -- KC subject claim
+    email             TEXT NOT NULL,
+    display_name      TEXT NOT NULL,
+    role              TEXT NOT NULL,                 -- see §5 RBAC
+    is_active         BOOLEAN NOT NULL DEFAULT true,
+    last_login_at     TIMESTAMPTZ,
+    -- Self-serve tenant provisioning (migration 0021 / ADR-016)
+    first_admin       BOOLEAN NOT NULL DEFAULT false, -- first admin of a self-serve tenant
+    provisional_until TIMESTAMPTZ,                    -- non-null => provisional org_admin; dispute window open
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (org_id, email),
+    CHECK (provisional_until IS NULL OR first_admin = true)
 );
+```
+
+#### `tenants` lifecycle columns (migration 0021 / ADR-016)
+
+On top of the legacy `orgs`/`tenants` columns, the hybrid onboarding model adds:
+
+```sql
+ALTER TABLE tenants
+    ADD COLUMN status          VARCHAR(50) NOT NULL DEFAULT 'active'
+        CHECK (status IN ('provisional','active','suspended','archived')),
+    ADD COLUMN created_via     VARCHAR(32) NOT NULL DEFAULT 'enterprise'
+        CHECK (created_via IN ('self_serve','enterprise','invitation')),
+    ADD COLUMN verified_at     TIMESTAMPTZ,
+    ADD COLUMN keycloak_org_id TEXT,             -- Keycloak 26 Organization id (bound 1:1)
+    ADD COLUMN primary_domain  VARCHAR(255);     -- convenience; source of truth = tenant_domains
+```
+
+See [`docs/22-tenant-onboarding.md`](./22-tenant-onboarding.md) §4 for the full spec and `docs/15-infra-adr.md` ADR-016 for the decision.
+
+#### `tenant_domains` (ADR-016)
+```sql
+CREATE TABLE tenant_domains (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    domain         VARCHAR(255) NOT NULL CHECK (domain = lower(domain)),
+    state          VARCHAR(32)  NOT NULL DEFAULT 'pending_dns'
+                   CHECK (state IN ('pending_dns','verified','revoked')),
+    dns_txt_value  VARCHAR(128) NOT NULL,
+    verified_at    TIMESTAMPTZ,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+-- Partial unique: a domain is globally unique while active; revoked rows free the slot.
+CREATE UNIQUE INDEX tenant_domains_active_domain_uniq
+    ON tenant_domains (domain) WHERE state <> 'revoked';
+```
+
+Personal/consumer email domains (gmail, outlook, proton, …) are rejected at the API validator layer via `@givernance/shared/constants/personal-email-domains`. Reserved tenant slugs (`admin`, `api`, `login`, …) live in `@givernance/shared/constants/reserved-slugs`.
+
+#### `tenant_admin_disputes` (ADR-016, provisional-admin grace period)
+```sql
+CREATE TABLE tenant_admin_disputes (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id               UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    disputer_id          UUID NOT NULL REFERENCES users(id),
+    provisional_admin_id UUID NOT NULL REFERENCES users(id),
+    reason               TEXT,
+    resolution           VARCHAR(32)
+                         CHECK (resolution IS NULL OR
+                                resolution IN ('kept','replaced','escalated_to_support')),
+    resolved_at          TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (disputer_id <> provisional_admin_id)
+);
+-- One open dispute per tenant at most; closed disputes (resolution set) don't block a new one.
+CREATE UNIQUE INDEX tenant_admin_disputes_one_open_per_tenant
+    ON tenant_admin_disputes (org_id) WHERE resolution IS NULL;
 ```
 
 #### `audit_log`

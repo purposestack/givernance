@@ -2,6 +2,38 @@
 
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { isReservedSlug } from "../constants/reserved-slugs";
+
+/**
+ * Tenant slug: 2–50 chars, lowercase alnum + single internal dashes, no leading/
+ * trailing dash. The regex requires ≥2 characters (minLength is also set on the
+ * schema, but encoding the minimum in the pattern itself guarantees strictness
+ * regardless of JSON-schema dialect). The column is VARCHAR(100); we cap at 50
+ * here to leave headroom for reserved prefixes and subdomain-era migrations.
+ */
+export const TENANT_SLUG_PATTERN = "^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$";
+
+export const TenantSlugSchema = Type.String({
+  minLength: 2,
+  maxLength: 50,
+  pattern: TENANT_SLUG_PATTERN,
+  description:
+    "Lowercase alphanumeric + dashes; 2–50 chars; no leading/trailing dash. Rejected if it matches a reserved platform slug.",
+});
+
+/** Validate a slug's syntax AND its non-reservation. Returns a machine-readable reason on failure. */
+export function validateTenantSlug(
+  slug: string,
+): { ok: true } | { ok: false; reason: "syntax" | "reserved" } {
+  const normalised = slug.trim().toLowerCase();
+  if (!Value.Check(TenantSlugSchema, normalised)) {
+    return { ok: false, reason: "syntax" };
+  }
+  if (isReservedSlug(normalised)) {
+    return { ok: false, reason: "reserved" };
+  }
+  return { ok: true };
+}
 
 /** Schema for creating a new constituent */
 export const ConstituentCreateSchema = Type.Object({
