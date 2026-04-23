@@ -44,15 +44,15 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  // Clear any rate-limiter state from Redis so signup/resend limits don't
-  // poison successive tests. `@fastify/rate-limit` stores counters under keys
-  // prefixed with the raw route + IP.
+  // Clear any rate-limiter + per-email signup counters from Redis so the
+  // 5/hour limits don't poison successive tests. Scoped deletes only — a
+  // full `flushdb` would destroy unrelated test fixtures (ENG-3).
   const keys = await redis.keys("*rate-limit*");
-  if (keys.length > 0) {
-    await redis.del(...keys);
+  const resendKeys = await redis.keys("signup:resend:*");
+  const all = [...keys, ...resendKeys];
+  if (all.length > 0) {
+    await redis.del(...all);
   }
-  // Also flush the db of previous test's runs' residue.
-  await redis.flushdb();
 });
 
 afterAll(async () => {
@@ -105,8 +105,8 @@ describe("POST /v1/public/signup", () => {
     });
 
     expect(res.statusCode).toBe(201);
-    const body = res.json<{ data: { tenantId: string; email: string; checkEmail: true } }>();
-    expect(body.data.checkEmail).toBe(true);
+    const body = res.json<{ data: { tenantId: string; email: string } }>();
+    expect(body.data.email).toBe(email);
 
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, body.data.tenantId));
     expect(tenant?.status).toBe("provisional");
@@ -146,7 +146,7 @@ describe("POST /v1/public/signup", () => {
     expect(res.statusCode).toBe(422);
   });
 
-  it("rejects a duplicate slug with 422", async () => {
+  it("rejects a duplicate slug with 409", async () => {
     const slugD = registerSlug("dup");
     const base = {
       orgName: "Dup NGO",
@@ -169,10 +169,10 @@ describe("POST /v1/public/signup", () => {
       headers: { "x-captcha-token": "test-token" },
       payload: { ...base, email: `other+${slugD}@example.org` },
     });
-    expect(second.statusCode).toBe(422);
+    expect(second.statusCode).toBe(409);
   });
 
-  it("rejects when the signup email's domain is already claimed by a verified tenant (422)", async () => {
+  it("rejects when the signup email's domain is already claimed by a verified tenant (409)", async () => {
     // Seed an existing "big NGO" tenant with a verified domain.
     const existingSlug = registerSlug("existing");
     const [existingTenant] = await db
@@ -205,7 +205,7 @@ describe("POST /v1/public/signup", () => {
         email: `alice@${domain}`,
       },
     });
-    expect(res.statusCode).toBe(422);
+    expect(res.statusCode).toBe(409);
   });
 
   it("allows a personal-email (gmail) signup since personal domains cannot claim tenant identity", async () => {
@@ -329,7 +329,7 @@ describe("POST /v1/public/signup/verify", () => {
     expect(inv?.acceptedAt).not.toBeNull();
   });
 
-  it("returns 422 when the same token is used twice", async () => {
+  it("returns 410 when the same token is used twice", async () => {
     const { token } = await createSignup("verify-twice");
     const first = await app.inject({
       method: "POST",
@@ -342,7 +342,8 @@ describe("POST /v1/public/signup/verify", () => {
       url: "/v1/public/signup/verify",
       payload: { token, firstName: "A", lastName: "B" },
     });
-    expect(second.statusCode).toBe(422);
+    // SEC-6: collapsed to a single 410 for every failure mode.
+    expect(second.statusCode).toBe(410);
   });
 
   it("returns 410 when the token is unknown", async () => {
@@ -386,11 +387,12 @@ describe("GET /v1/public/tenants/lookup", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json<{
-      data: { hasExistingTenant: boolean; hint: string; orgSlug?: string };
+      data: { hasExistingTenant: boolean; hint: string };
     }>();
     expect(body.data.hasExistingTenant).toBe(true);
     expect(body.data.hint).toBe("contact_admin");
-    expect(body.data.orgSlug).toBe(existingSlug);
+    // SEC-9: we do NOT leak the orgSlug publicly.
+    expect((body.data as Record<string, unknown>).orgSlug).toBeUndefined();
   });
 
   it("returns create_new for a personal-email domain even if someone has a gmail.com claim", async () => {
@@ -423,6 +425,7 @@ describe("cleanupUnverifiedTenants", () => {
       email: `expired+${s}@example.org`,
       role: "org_admin",
       token: randomUUID(),
+      purpose: "signup_verification",
       expiresAt: expired,
     });
     // Back-date the tenant's createdAt so the cutoff filter picks it up.

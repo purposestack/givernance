@@ -148,7 +148,17 @@ export const users = pgTable(
 
 // ─── Invitations ──────────────────────────────────────────────────────────────
 
-/** Invitations — pending email invitations for new users (email sending in Phase 2) */
+/** Purpose discriminator for invitation rows — team invite vs self-serve signup verification (migration 0022). */
+export const INVITATION_PURPOSE_VALUES = ["team_invite", "signup_verification"] as const;
+export type InvitationPurpose = (typeof INVITATION_PURPOSE_VALUES)[number];
+
+/**
+ * Invitations — pending email invitations for new users (team_invite) and
+ * self-serve signup verification tokens (signup_verification). The `purpose`
+ * discriminator (migration 0022) prevents cross-contamination: the
+ * `/v1/invitations/:token/accept` endpoint filters to `team_invite` and the
+ * `/v1/public/signup/verify` endpoint filters to `signup_verification`.
+ */
 export const invitations = pgTable(
   "invitations",
   {
@@ -160,6 +170,10 @@ export const invitations = pgTable(
     role: userRoleEnum("role").notNull().default("user"),
     token: uuid("token").notNull().defaultRandom().unique(),
     invitedById: uuid("invited_by_id").references(() => users.id, { onDelete: "set null" }),
+    purpose: varchar("purpose", { length: 32 })
+      .notNull()
+      .default("team_invite")
+      .$type<InvitationPurpose>(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -167,6 +181,7 @@ export const invitations = pgTable(
   (table) => [
     index("invitations_org_id_idx").on(table.orgId),
     index("invitations_token_idx").on(table.token),
+    index("invitations_purpose_idx").on(table.purpose),
   ],
 );
 
