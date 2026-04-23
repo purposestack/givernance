@@ -1,12 +1,17 @@
-/** Campaign routes — full CRUD, stats, ROI, and document generation */
+/** Campaign routes — full CRUD, stats, ROI, document generation, and eligible funds */
 
-import { CAMPAIGN_STATUS_VALUES, CAMPAIGN_TYPE_VALUES } from "@givernance/shared/schema";
+import {
+  CAMPAIGN_STATUS_VALUES,
+  CAMPAIGN_TYPE_VALUES,
+  FUND_TYPE_VALUES,
+} from "@givernance/shared/schema";
 import { MULTI_CURRENCY_VALUES } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 import {
   DataArrayResponse,
+  DataArrayResponseNoPagination,
   DataResponse,
   ErrorResponses,
   IdParams,
@@ -22,6 +27,7 @@ import {
   getCampaign,
   getCampaignRoi,
   getCampaignStats,
+  listCampaignFunds,
   listCampaigns,
   requestCampaignDocuments,
   updateCampaign,
@@ -53,6 +59,7 @@ const CampaignCreateBody = Type.Object({
   defaultCurrency: Type.Optional(CampaignDefaultCurrencySchema),
   parentId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
   operationalCostCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
+  fundIds: Type.Optional(Type.Array(UuidSchema)),
 });
 
 const CampaignUpdateBody = Type.Object(
@@ -65,6 +72,7 @@ const CampaignUpdateBody = Type.Object(
     ),
     parentId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
     operationalCostCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
+    fundIds: Type.Optional(Type.Array(UuidSchema)),
   },
   { minProperties: 1 },
 );
@@ -84,6 +92,18 @@ const CampaignResponse = Type.Object({
   operationalCostCents: Type.Union([Type.Integer(), Type.Null()]),
   platformFeesCents: Type.Integer(),
   goalAmountCents: Type.Union([Type.Integer(), Type.Null()]),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+
+const FundTypeSchema = Type.Union(FUND_TYPE_VALUES.map((value) => Type.Literal(value)));
+
+const CampaignFundResponse = Type.Object({
+  id: UuidSchema,
+  orgId: UuidSchema,
+  name: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  type: FundTypeSchema,
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -167,6 +187,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         defaultCurrency?: "EUR" | "GBP" | "CHF";
         parentId?: string | null;
         operationalCostCents?: number | null;
+        fundIds?: string[];
       };
       try {
         const campaign = await createCampaign(orgId, body, userId);
@@ -239,6 +260,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         status?: "draft" | "active" | "closed";
         parentId?: string | null;
         operationalCostCents?: number | null;
+        fundIds?: string[];
       };
 
       try {
@@ -255,6 +277,34 @@ export async function campaignRoutes(app: FastifyInstance) {
         }
         throw err;
       }
+    },
+  );
+
+  /** List funds eligible for a campaign */
+  app.get(
+    "/campaigns/:id/funds",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["Campaigns"],
+        params: IdParams,
+        response: { 200: DataArrayResponseNoPagination(CampaignFundResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+
+      const { id } = request.params as { id: string };
+      const funds = await listCampaignFunds(orgId, id);
+
+      if (!funds) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+      }
+
+      return { data: funds };
     },
   );
 

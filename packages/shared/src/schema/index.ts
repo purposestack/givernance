@@ -46,7 +46,10 @@ export const campaignDocumentStatusEnum = pgEnum("campaign_document_status", [
 
 // ─── Donation-related Enums ──────────────────────────────────────────────────
 
-export const fundTypeEnum = pgEnum("fund_type", ["restricted", "unrestricted"]);
+export const FUND_TYPE_VALUES = ["restricted", "unrestricted"] as const;
+export type FundType = (typeof FUND_TYPE_VALUES)[number];
+
+export const fundTypeEnum = pgEnum("fund_type", [...FUND_TYPE_VALUES]);
 
 export const donationStatusEnum = pgEnum("donation_status", [
   "pending",
@@ -310,7 +313,7 @@ export const exchangeRates = pgTable(
 
 // ─── Constituents ─────────────────────────────────────────────────────────────
 
-export { outboxEvents } from "./outbox.js";
+export { outboxEvents } from "./outbox";
 
 /** Constituents — donors, volunteers, members, beneficiaries */
 export const constituents = pgTable("constituents", {
@@ -533,6 +536,32 @@ export const campaigns = pgTable(
   (table) => [
     index("campaigns_org_id_idx").on(table.orgId),
     index("campaigns_org_parent_id_idx").on(table.orgId, table.parentId),
+  ],
+);
+
+// ─── Campaign Funds ──────────────────────────────────────────────────────────
+
+/** Campaign Funds — eligible funds that can be designated for a campaign */
+export const campaignFunds = pgTable(
+  "campaign_funds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    fundId: uuid("fund_id")
+      .notNull()
+      .references(() => funds.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("campaign_funds_org_id_idx").on(table.orgId),
+    index("campaign_funds_campaign_id_idx").on(table.campaignId),
+    index("campaign_funds_fund_id_idx").on(table.fundId),
+    unique("campaign_funds_org_campaign_fund_uniq").on(table.orgId, table.campaignId, table.fundId),
   ],
 );
 
