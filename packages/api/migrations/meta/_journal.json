@@ -176,6 +176,13 @@
       "when": 1776960000000,
       "tag": "0024_campaign_roi_read_model",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1776978756727,
+      "tag": "0025_blue_lenny_balinger",
+      "breakpoints": true
     }
   ]
 }
