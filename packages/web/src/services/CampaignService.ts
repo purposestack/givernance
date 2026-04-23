@@ -107,6 +107,7 @@ function mapCampaign(raw: Campaign): Campaign {
     name: raw.name,
     type: raw.type,
     status: raw.status,
+    defaultCurrency: raw.defaultCurrency,
     parentId: raw.parentId,
     costCents: raw.costCents,
     createdAt: raw.createdAt,
@@ -120,6 +121,7 @@ function toRequestBody(input: CampaignCreateInput | CampaignUpdateInput): Record
 
   if (input.name !== undefined) body.name = input.name;
   if (input.type !== undefined) body.type = input.type;
+  if (input.defaultCurrency !== undefined) body.defaultCurrency = input.defaultCurrency;
   if (maybeStatus.status !== undefined) body.status = maybeStatus.status;
   if (input.parentId !== undefined) body.parentId = input.parentId;
   if (input.costCents !== undefined) body.costCents = input.costCents;

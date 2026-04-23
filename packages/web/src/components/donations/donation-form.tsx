@@ -57,14 +57,14 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { cn } from "@/lib/utils";
-import type { Campaign } from "@/models/campaign";
+import type { Campaign, CampaignCurrency } from "@/models/campaign";
 import { type Constituent, fullName } from "@/models/constituent";
 import type { DonationAllocationInput, DonationCreateInput } from "@/models/donation";
 import { CampaignService } from "@/services/CampaignService";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
 
-const CURRENCIES = ["EUR", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK"] as const;
+const CURRENCIES: readonly CampaignCurrency[] = ["EUR", "GBP", "CHF"] as const;
 const PAYMENT_METHODS = ["wire", "cheque", "card", "sepa", "cash", "other"] as const;
 
 interface AllocationFormValue {
@@ -75,7 +75,7 @@ interface AllocationFormValue {
 interface DonationFormValues {
   constituentId: string;
   amountCents: number | null;
-  currency: (typeof CURRENCIES)[number];
+  currency: CampaignCurrency;
   campaignId: string;
   paymentMethod: (typeof PAYMENT_METHODS)[number] | "";
   paymentRef: string;
@@ -146,6 +146,24 @@ export function DonationForm() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const subscription = form.watch((values, info) => {
+      if (info.name !== "campaignId") return;
+
+      const selectedCampaign = campaignOptions.find(
+        (campaign) => campaign.id === values.campaignId,
+      );
+      if (!selectedCampaign) return;
+
+      form.setValue("currency", selectedCampaign.defaultCurrency, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    });
+
+    return () => subscription.unsubscribe();
+  }, [campaignOptions, form]);
 
   async function onSubmit(values: DonationFormValues) {
     form.clearErrors("root");
