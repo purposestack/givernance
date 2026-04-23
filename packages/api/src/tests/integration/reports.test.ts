@@ -3,9 +3,10 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
-import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
+import { authHeader, ensureTestTenants, signToken, signTokenB } from "../helpers/auth.js";
 
 let app: FastifyInstance;
+const REPORTS_ORG = "00000000-0000-0000-0000-000000000124";
 
 const thisYear = new Date().getFullYear();
 const lastYear = thisYear - 1;
@@ -16,8 +17,13 @@ beforeAll(async () => {
   app = await createServer();
   await app.ready();
   await ensureTestTenants();
+  await db.execute(
+    sql`INSERT INTO tenants (id, name, slug)
+        VALUES (${REPORTS_ORG}, 'Reports Org', 'reports-org')
+        ON CONFLICT (id) DO NOTHING`,
+  );
 
-  const tokenA = signToken(app);
+  const tokenA = signToken(app, { org_id: REPORTS_ORG });
 
   // Create constituents for lifecycle tests
   const lybuntRes = await app.inject({
@@ -67,18 +73,18 @@ beforeAll(async () => {
     INSERT INTO donations (org_id, constituent_id, amount_cents, currency, donated_at)
     VALUES
       -- LYBUNT donor: donated last year only
-      (${ORG_A}, ${lybuntId}, 5000, 'EUR', ${`${lastYear}-06-15`}::timestamptz),
+      (${REPORTS_ORG}, ${lybuntId}, 5000, 'EUR', ${`${lastYear}-06-15`}::timestamptz),
       -- SYBUNT donor: donated two years ago only
-      (${ORG_A}, ${sybuntId}, 3000, 'EUR', ${`${twoYearsAgo}-03-10`}::timestamptz),
+      (${REPORTS_ORG}, ${sybuntId}, 3000, 'EUR', ${`${twoYearsAgo}-03-10`}::timestamptz),
       -- Active donor: donated this year (should NOT appear in either report)
-      (${ORG_A}, ${activeId}, 10000, 'EUR', ${`${thisYear}-01-20`}::timestamptz),
+      (${REPORTS_ORG}, ${activeId}, 10000, 'EUR', ${`${thisYear}-01-20`}::timestamptz),
       -- Active donor also donated last year
-      (${ORG_A}, ${activeId}, 8000, 'EUR', ${`${lastYear}-11-05`}::timestamptz),
+      (${REPORTS_ORG}, ${activeId}, 8000, 'EUR', ${`${lastYear}-11-05`}::timestamptz),
       -- MultiYear donor: donated last year + two years ago (LYBUNT, total = 12000)
-      (${ORG_A}, ${multiYearId}, 7000, 'EUR', ${`${lastYear}-04-01`}::timestamptz),
-      (${ORG_A}, ${multiYearId}, 5000, 'EUR', ${`${twoYearsAgo}-09-20`}::timestamptz),
+      (${REPORTS_ORG}, ${multiYearId}, 7000, 'EUR', ${`${lastYear}-04-01`}::timestamptz),
+      (${REPORTS_ORG}, ${multiYearId}, 5000, 'EUR', ${`${twoYearsAgo}-09-20`}::timestamptz),
       -- Ancient donor: donated 3 years ago only (SYBUNT boundary, total = 2500)
-      (${ORG_A}, ${ancientId}, 2500, 'EUR', ${`${threeYearsAgo}-12-01`}::timestamptz)
+      (${REPORTS_ORG}, ${ancientId}, 2500, 'EUR', ${`${threeYearsAgo}-12-01`}::timestamptz)
   `);
 });
 
@@ -90,7 +96,7 @@ afterAll(async () => {
 
 describe("LYBUNT Report", () => {
   it("GET /v1/reports/lybunt returns donors from last year who did not donate this year", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/lybunt",
@@ -106,7 +112,7 @@ describe("LYBUNT Report", () => {
   });
 
   it("includes multi-year donor with correct totalDonatedCents (last year donations only)", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/lybunt",
@@ -122,7 +128,7 @@ describe("LYBUNT Report", () => {
   });
 
   it("does not include ancient-only donor (no last year donations)", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/lybunt",
@@ -136,7 +142,7 @@ describe("LYBUNT Report", () => {
   });
 
   it("Lybunt donor totalDonatedCents is correct", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/lybunt",
@@ -150,7 +156,7 @@ describe("LYBUNT Report", () => {
   });
 
   it("GET /v1/reports/lybunt accepts year query parameter", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     const res = await app.inject({
       method: "GET",
       url: `/v1/reports/lybunt?year=${lastYear}`,
@@ -178,7 +184,7 @@ describe("LYBUNT Report", () => {
 
 describe("SYBUNT Report", () => {
   it("GET /v1/reports/sybunt returns donors from any past year who did not donate this year", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/sybunt",
@@ -194,7 +200,7 @@ describe("SYBUNT Report", () => {
   });
 
   it("includes ancient-only donor (SYBUNT boundary — 3+ years ago)", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/sybunt",
@@ -209,7 +215,7 @@ describe("SYBUNT Report", () => {
   });
 
   it("multi-year donor totalDonatedCents aggregates all past donations", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/sybunt",
@@ -225,7 +231,7 @@ describe("SYBUNT Report", () => {
   });
 
   it("Sybunt donor totalDonatedCents is correct", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/sybunt",
@@ -285,7 +291,7 @@ describe("Reports RLS tenant isolation", () => {
 
 describe("PII export audit trail", () => {
   it("reports.lybunt_exported outbox event is emitted on GET /v1/reports/lybunt", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     await app.inject({
       method: "GET",
       url: "/v1/reports/lybunt",
@@ -294,7 +300,7 @@ describe("PII export audit trail", () => {
 
     const rows = await db.execute(
       sql`SELECT type, payload FROM outbox_events
-          WHERE tenant_id = ${ORG_A} AND type = 'reports.lybunt_exported'
+          WHERE tenant_id = ${REPORTS_ORG} AND type = 'reports.lybunt_exported'
           ORDER BY created_at DESC LIMIT 1`,
     );
 
@@ -306,7 +312,7 @@ describe("PII export audit trail", () => {
   });
 
   it("reports.sybunt_exported outbox event is emitted on GET /v1/reports/sybunt", async () => {
-    const token = signToken(app);
+    const token = signToken(app, { org_id: REPORTS_ORG });
     await app.inject({
       method: "GET",
       url: "/v1/reports/sybunt",
@@ -315,7 +321,7 @@ describe("PII export audit trail", () => {
 
     const rows = await db.execute(
       sql`SELECT type, payload FROM outbox_events
-          WHERE tenant_id = ${ORG_A} AND type = 'reports.sybunt_exported'
+          WHERE tenant_id = ${REPORTS_ORG} AND type = 'reports.sybunt_exported'
           ORDER BY created_at DESC LIMIT 1`,
     );
 
@@ -331,7 +337,7 @@ describe("PII export audit trail", () => {
 
 describe("Reports RBAC — non-admin forbidden", () => {
   it("GET /v1/reports/lybunt with viewer role returns 403", async () => {
-    const token = signToken(app, { role: "viewer" });
+    const token = signToken(app, { org_id: REPORTS_ORG, role: "viewer" });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/lybunt",
@@ -342,7 +348,7 @@ describe("Reports RBAC — non-admin forbidden", () => {
   });
 
   it("GET /v1/reports/sybunt with user role returns 403", async () => {
-    const token = signToken(app, { role: "user" });
+    const token = signToken(app, { org_id: REPORTS_ORG, role: "user" });
     const res = await app.inject({
       method: "GET",
       url: "/v1/reports/sybunt",
