@@ -47,9 +47,10 @@
       "serviceAccountClientId": "givernance-admin",
       "clientRoles": {
         "realm-management": [
-          "manage-realm",
           "manage-users",
           "manage-identity-providers",
+          "query-users",
+          "query-clients",
           "view-clients"
         ]
       }
