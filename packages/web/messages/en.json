@@ -117,6 +117,24 @@
       "fallbackUser": "user"
     }
   },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Minimal organisation settings surface for the MVP demo.",
+    "breadcrumbRoot": "Dashboard",
+    "snapshot": {
+      "badge": "ADM-001 MVP",
+      "title": "Data export (GDPR / GL)",
+      "description": "Download a JSON snapshot of the organisation data for portability, archival, or general-ledger handoff needs.",
+      "help": "The exported file contains the tenant snapshot returned by the admin API.",
+      "exportCta": "Download organisation JSON export",
+      "exportLoading": "Generating export…",
+      "adminOnly": "Export is only available to organisation admins.",
+      "successToast": "Snapshot export downloaded.",
+      "errorGeneric": "Unable to download the export right now.",
+      "errorProblem": "Export failed (HTTP {status}).",
+      "lastDownloaded": "Last download: {value}"
+    }
+  },
   "dashboard": {
     "greeting": "Good Morning{name, select, empty {} other {, {name}}}",
     "subtitle": "Here is your organisation's activity today.",

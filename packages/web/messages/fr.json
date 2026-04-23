@@ -117,6 +117,24 @@
       "fallbackUser": "utilisateur"
     }
   },
+  "settings": {
+    "title": "Paramètres",
+    "subtitle": "Configuration minimale de l'organisation pour la démo MVP.",
+    "breadcrumbRoot": "Tableau de bord",
+    "snapshot": {
+      "badge": "ADM-001 MVP",
+      "title": "Export des données (RGPD / GL)",
+      "description": "Téléchargez un snapshot JSON des données de l'organisation pour les besoins de portabilité, d'archivage ou de handoff comptable.",
+      "help": "Le fichier exporté contient le snapshot renvoyé par l'API d'administration du tenant.",
+      "exportCta": "Télécharger l'export JSON de l'organisation",
+      "exportLoading": "Génération de l'export…",
+      "adminOnly": "Export réservé aux administrateurs de l'organisation.",
+      "successToast": "Export snapshot téléchargé.",
+      "errorGeneric": "Impossible de télécharger l'export pour le moment.",
+      "errorProblem": "L'export a échoué (HTTP {status}).",
+      "lastDownloaded": "Dernier téléchargement : {value}"
+    }
+  },
   "dashboard": {
     "greeting": "Bonjour{name, select, empty {} other {, {name}}}",
     "subtitle": "Voici l'activité de votre organisation aujourd'hui.",

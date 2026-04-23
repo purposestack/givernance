@@ -1,26 +1,25 @@
 import { getTranslations } from "next-intl/server";
-
+import { SettingsSnapshotPanel } from "@/components/settings/settings-snapshot-panel";
+import { PageHeader } from "@/components/shared/page-header";
 import { requireAuth } from "@/lib/auth/guards";
 
 /**
  * Settings page — protected, requires authentication.
- * Placeholder for Phase 2 implementation (ADM-001 org settings).
+ * Phase 1 exposes the minimum viable organisation settings surface
+ * needed for tenant snapshot export demo flows.
  */
 export default async function SettingsPage() {
-  await requireAuth();
-  const t = await getTranslations("appShell.sidebar");
+  const auth = await requireAuth();
+  const t = await getTranslations("settings");
 
   return (
-    <>
-      <div className="mb-8">
-        <h1 className="font-heading text-5xl font-normal leading-tight tracking-tight text-on-surface">
-          {t("settings")}
-        </h1>
-      </div>
-
-      <div className="rounded-2xl bg-surface-container-lowest p-8 shadow-card">
-        <p className="text-sm text-text-secondary">Settings page under construction.</p>
-      </div>
-    </>
+    <div className="space-y-8">
+      <PageHeader
+        title={t("title")}
+        description={t("subtitle")}
+        breadcrumbs={[{ label: t("breadcrumbRoot"), href: "/dashboard" }, { label: t("title") }]}
+      />
+      <SettingsSnapshotPanel orgId={auth.orgId} canExport={auth.roles.includes("org_admin")} />
+    </div>
   );
 }
