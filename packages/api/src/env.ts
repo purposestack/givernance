@@ -41,6 +41,12 @@ const EnvSchema = Type.Object({
   KEYCLOAK_ISSUER: Type.Optional(Type.String({ minLength: 1 })),
   /** Optional explicit JWKS URL override */
   KEYCLOAK_JWKS_URL: Type.Optional(Type.String({ minLength: 1 })),
+  /** Keycloak Admin API base URL (defaults to KEYCLOAK_URL). Used by the admin client (ADR-016). */
+  KEYCLOAK_ADMIN_URL: Type.Optional(Type.String({ minLength: 1 })),
+  /** Service-account client id used for Keycloak Admin API calls. */
+  KEYCLOAK_ADMIN_CLIENT_ID: Type.String({ minLength: 1, default: "givernance-admin" }),
+  /** Service-account client secret used for Keycloak Admin API calls. */
+  KEYCLOAK_ADMIN_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   /** HTTP port */
   PORT: Type.Number({ default: 4000 }),
   /** HTTP bind address */
