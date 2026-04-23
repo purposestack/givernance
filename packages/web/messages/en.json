@@ -414,6 +414,70 @@
   "title": "Settings",
   "subtitle": "Manage organisation-level defaults and export tools.",
   "breadcrumbRoot": "Dashboard",
+  "funds": {
+    "settings": "Settings",
+    "title": "Funds",
+    "subtitleEmpty": "Create restricted and unrestricted funds that can be attached to campaigns and donations.",
+    "subtitleWithCount": "{count, plural, one {# fund configured} other {# funds configured}}",
+    "readOnly": "Only organisation admins can create funds.",
+    "descriptionEmpty": "No description",
+    "types": {
+      "restricted": "Restricted",
+      "unrestricted": "Unrestricted"
+    },
+    "columns": {
+      "name": "Fund",
+      "type": "Type",
+      "description": "Description",
+      "createdAt": "Created"
+    },
+    "actions": {
+      "new": "New fund"
+    },
+    "empty": {
+      "title": "No funds yet",
+      "description": "Add your first fund to control which designations can be used in campaigns and donations."
+    },
+    "form": {
+      "createTitle": "Create fund",
+      "createSubtitle": "Add a restricted or unrestricted fund for campaign and donation allocation.",
+      "breadcrumbNew": "New fund",
+      "sections": {
+        "identity": {
+          "title": "Identity",
+          "description": "Core information used to label and classify the fund."
+        },
+        "description": {
+          "title": "Description",
+          "description": "Optional context to explain when this fund should be used."
+        }
+      },
+      "fields": {
+        "name": "Fund name",
+        "namePlaceholder": "Major donors restricted fund",
+        "nameHint": "Use a precise label that fundraising staff will recognize.",
+        "type": "Fund type",
+        "typeHint": "Restricted funds are for designated giving. Unrestricted funds can support general operations.",
+        "description": "Description",
+        "descriptionPlaceholder": "Explain the designation or internal use of this fund.",
+        "descriptionHint": "This is optional, but helpful when several funds sound similar."
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "submitCreate": "Create fund",
+        "submitting": "Saving…"
+      },
+      "errors": {
+        "nameRequired": "Fund name is required.",
+        "nameTooLong": "Fund name must be 255 characters or fewer.",
+        "descriptionTooLong": "Description must be 5000 characters or fewer.",
+        "generic": "Something went wrong while saving. Please try again."
+      },
+      "success": {
+        "created": "Fund created."
+      }
+    }
+  },
   "tenant": {
     "title": "Organisation settings",
     "description": "Choose the tenant base currency used for reporting and currency conversions.",
@@ -705,6 +769,10 @@
         "structure": {
           "title": "Structure",
           "description": "Parent campaign and operational cost used for rollup and ROI reporting."
+        },
+        "funds": {
+          "title": "Eligible funds",
+          "description": "Choose which fund designations can be associated with this campaign."
         }
       },
       "fields": {
@@ -719,7 +787,15 @@
         "parentLoading": "Loading available campaigns…",
         "operationalCost": "Operational cost",
         "operationalCostPlaceholder": "0.00",
-        "operationalCostHint": "Manual campaign spend. Platform fees are tracked separately from donations."
+        "operationalCostHint": "Manual campaign spend. Platform fees are tracked separately from donations.",
+        "funds": "Eligible funds",
+        "fundsHint": "Selected funds will be available when gifts are associated with this campaign.",
+        "fundsLoading": "Loading available funds…",
+        "fundsEmpty": "No funds are configured yet. Create one from settings first."
+      },
+      "fundTypeHint": {
+        "restricted": "Restricted fund",
+        "unrestricted": "Unrestricted fund"
       },
       "actions": {
         "cancel": "Cancel",

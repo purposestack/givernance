@@ -20,6 +20,7 @@ import { AmountInput } from "@/components/shared/amount-input";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -27,6 +28,7 @@ import {
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -39,7 +41,9 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import type { Campaign, CampaignCurrency, CampaignType } from "@/models/campaign";
+import type { Fund } from "@/models/fund";
 import { CampaignService } from "@/services/CampaignService";
+import { FundService } from "@/services/FundService";
 
 const CAMPAIGN_TYPES: readonly CampaignType[] = [
   "nominative_postal",
@@ -54,6 +58,7 @@ interface CampaignFormValues {
   defaultCurrency: CampaignCurrency;
   parentId: string;
   operationalCostCents: number | null;
+  fundIds: string[];
 }
 
 type CreateMode = { mode: "create"; campaign?: undefined };
@@ -62,6 +67,7 @@ type EditMode = { mode: "edit"; campaign: Campaign };
 export type CampaignFormProps = CreateMode | EditMode;
 
 const EMPTY_PARENT = "__none__";
+const CAMPAIGN_OPTION_PAGE_SIZE = 100;
 
 export function CampaignForm(props: CampaignFormProps) {
   const { mode } = props;
@@ -75,6 +81,7 @@ export function CampaignForm(props: CampaignFormProps) {
     defaultCurrency: props.campaign?.defaultCurrency ?? "EUR",
     parentId: props.campaign?.parentId ?? "",
     operationalCostCents: props.campaign?.operationalCostCents ?? null,
+    fundIds: [],
   };
 
   const form = useForm<CampaignFormValues>({
@@ -84,27 +91,36 @@ export function CampaignForm(props: CampaignFormProps) {
   });
 
   const [parentOptions, setParentOptions] = useState<Campaign[]>([]);
+  const [fundOptions, setFundOptions] = useState<Fund[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
+  const [fundsLoading, setFundsLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
 
     async function loadOptions() {
       try {
-        const result = await CampaignService.listCampaigns(createClientApiClient(), {
-          perPage: 100,
-        });
+        const { campaigns, funds, selectedFundIds } = await loadCampaignFormOptions(
+          mode,
+          props.campaign?.id,
+        );
         if (!active) return;
         setParentOptions(
-          result.data.filter((campaign) =>
+          campaigns.filter((campaign) =>
             mode === "edit" ? campaign.id !== props.campaign.id : true,
           ),
         );
+        setFundOptions(funds);
+        form.setValue("fundIds", selectedFundIds, { shouldDirty: false });
       } catch {
         if (!active) return;
         setParentOptions([]);
+        setFundOptions([]);
       } finally {
-        if (active) setOptionsLoading(false);
+        if (active) {
+          setOptionsLoading(false);
+          setFundsLoading(false);
+        }
       }
     }
 
@@ -113,7 +129,7 @@ export function CampaignForm(props: CampaignFormProps) {
     return () => {
       active = false;
     };
-  }, [mode, props.campaign?.id]);
+  }, [form, mode, props.campaign?.id]);
 
   async function onSubmit(values: CampaignFormValues) {
     form.clearErrors("root");
@@ -292,6 +308,70 @@ export function CampaignForm(props: CampaignFormProps) {
           </div>
         </FormSection>
 
+        <FormSection
+          title={t("sections.funds.title")}
+          description={t("sections.funds.description")}
+        >
+          <FormField
+            control={form.control}
+            name="fundIds"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t("fields.funds")}</FormLabel>
+                {fundsLoading ? (
+                  <FormDescription>{t("fields.fundsLoading")}</FormDescription>
+                ) : fundOptions.length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {fundOptions.map((fund) => {
+                      const checked = field.value.includes(fund.id);
+                      const checkboxId = `campaign-fund-${fund.id}`;
+                      const descriptionId = `${checkboxId}-description`;
+                      return (
+                        <div
+                          key={fund.id}
+                          className="flex items-start gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3"
+                        >
+                          <Checkbox
+                            id={checkboxId}
+                            checked={checked}
+                            onCheckedChange={(nextChecked) => {
+                              const current = field.value;
+                              if (nextChecked === true) {
+                                field.onChange([...current, fund.id]);
+                                return;
+                              }
+                              field.onChange(current.filter((value) => value !== fund.id));
+                            }}
+                            aria-describedby={descriptionId}
+                          />
+                          <div className="min-w-0">
+                            <label
+                              htmlFor={checkboxId}
+                              className="block font-medium text-on-surface"
+                            >
+                              {fund.name}
+                            </label>
+                            <span
+                              id={descriptionId}
+                              className="block text-xs text-on-surface-variant"
+                            >
+                              {t(`fundTypeHint.${fund.type}`)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <FormDescription>{t("fields.fundsEmpty")}</FormDescription>
+                )}
+                <FormDescription>{t("fields.fundsHint")}</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
+
         <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-h-5 text-sm text-error">{rootError}</div>
           <div className="flex flex-wrap items-center gap-3">
@@ -321,6 +401,7 @@ function toApiPayload(values: CampaignFormValues) {
     defaultCurrency: values.defaultCurrency,
     parentId: values.parentId?.trim() || null,
     operationalCostCents: values.operationalCostCents,
+    fundIds: values.fundIds.map((value) => value.trim()).filter((value) => value !== ""),
   };
 }
 
@@ -344,6 +425,7 @@ function buildResolver(): Resolver<CampaignFormValues> {
     if (values.operationalCostCents !== null) {
       cleaned.operationalCostCents = values.operationalCostCents;
     }
+    cleaned.fundIds = values.fundIds.map((value) => value.trim()).filter((value) => value !== "");
 
     const result = await innerResolver(
       cleaned,
@@ -379,4 +461,23 @@ function handleApiError(
   }
 
   form.setError("root", { type: "server", message: messages.generic });
+}
+
+async function loadCampaignFormOptions(mode: CampaignFormProps["mode"], campaignId?: string) {
+  const client = createClientApiClient();
+  const [campaignsResult, fundsResult, selectedFunds] = await Promise.all([
+    CampaignService.listCampaigns(client, {
+      perPage: CAMPAIGN_OPTION_PAGE_SIZE,
+    }),
+    FundService.listFunds(client, { perPage: CAMPAIGN_OPTION_PAGE_SIZE }),
+    mode === "edit" && campaignId
+      ? FundService.listCampaignFunds(client, campaignId)
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    campaigns: campaignsResult.data,
+    funds: fundsResult.data,
+    selectedFundIds: selectedFunds.map((fund) => fund.id),
+  };
 }

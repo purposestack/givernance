@@ -130,6 +130,7 @@ function toRequestBody(input: CampaignCreateInput | CampaignUpdateInput): Record
   if (input.operationalCostCents !== undefined) {
     body.operationalCostCents = input.operationalCostCents;
   }
+  if (input.fundIds !== undefined) body.fundIds = input.fundIds;
 
   return body;
 }

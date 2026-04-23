@@ -65,6 +65,7 @@ export interface CampaignCreateInput {
   defaultCurrency?: CampaignCurrency;
   parentId?: string | null;
   operationalCostCents?: number | null;
+  fundIds?: string[];
 }
 
 export type CampaignUpdateInput = Partial<CampaignCreateInput> & {

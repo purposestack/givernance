@@ -2,6 +2,7 @@ import { CampaignForm } from "@/components/campaigns/campaign-form";
 import { ApiProblem } from "@/lib/api";
 import type { Campaign } from "@/models/campaign";
 import { CampaignService } from "@/services/CampaignService";
+import { FundService } from "@/services/FundService";
 import { mockRouter, mockToast, render, screen, userEvent, waitFor } from "../../tests/test-utils";
 
 const parentCampaign: Campaign = {
@@ -25,6 +26,21 @@ describe("CampaignForm", () => {
       data: [parentCampaign],
       pagination: { page: 1, perPage: 100, total: 1, totalPages: 1 },
     });
+    vi.spyOn(FundService, "listFunds").mockResolvedValue({
+      data: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          orgId: parentCampaign.orgId,
+          name: "Restricted Fund",
+          description: "Restricted",
+          type: "restricted",
+          createdAt: parentCampaign.createdAt,
+          updatedAt: parentCampaign.updatedAt,
+        },
+      ],
+      pagination: { page: 1, perPage: 100, total: 1, totalPages: 1 },
+    });
+    vi.spyOn(FundService, "listCampaignFunds").mockResolvedValue([]);
   });
 
   it("submits trimmed values in create mode", async () => {
@@ -40,9 +56,11 @@ describe("CampaignForm", () => {
     render(<CampaignForm mode="create" />);
 
     await waitFor(() => expect(CampaignService.listCampaigns).toHaveBeenCalled());
+    await waitFor(() => expect(FundService.listFunds).toHaveBeenCalled());
 
     await user.type(screen.getByPlaceholderText("Spring appeal 2026"), "  Spring Appeal 2026  ");
     await user.type(screen.getByPlaceholderText("0.00"), "12.50");
+    await user.click(screen.getByRole("checkbox", { name: "Restricted Fund" }));
     await user.click(screen.getByRole("button", { name: "Create campaign" }));
 
     await waitFor(() =>
@@ -53,6 +71,7 @@ describe("CampaignForm", () => {
           type: "digital",
           parentId: null,
           operationalCostCents: 1250,
+          fundIds: ["33333333-3333-4333-8333-333333333333"],
         }),
       ),
     );
@@ -77,6 +96,7 @@ describe("CampaignForm", () => {
     render(<CampaignForm mode="create" />);
 
     await waitFor(() => expect(CampaignService.listCampaigns).toHaveBeenCalled());
+    await waitFor(() => expect(FundService.listFunds).toHaveBeenCalled());
 
     await user.type(screen.getByPlaceholderText("Spring appeal 2026"), "Existing campaign");
     await user.click(screen.getByRole("button", { name: "Create campaign" }));
