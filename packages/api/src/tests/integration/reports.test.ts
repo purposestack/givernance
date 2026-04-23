@@ -70,21 +70,29 @@ beforeAll(async () => {
 
   // Insert donations directly for precise date control
   await db.execute(sql`
-    INSERT INTO donations (org_id, constituent_id, amount_cents, currency, donated_at)
+    INSERT INTO donations (
+      org_id,
+      constituent_id,
+      amount_cents,
+      currency,
+      exchange_rate,
+      amount_base_cents,
+      donated_at
+    )
     VALUES
       -- LYBUNT donor: donated last year only
-      (${REPORTS_ORG}, ${lybuntId}, 5000, 'EUR', ${`${lastYear}-06-15`}::timestamptz),
+      (${REPORTS_ORG}, ${lybuntId}, 5000, 'EUR', 1, 5000, ${`${lastYear}-06-15`}::timestamptz),
       -- SYBUNT donor: donated two years ago only
-      (${REPORTS_ORG}, ${sybuntId}, 3000, 'EUR', ${`${twoYearsAgo}-03-10`}::timestamptz),
+      (${REPORTS_ORG}, ${sybuntId}, 3000, 'EUR', 1, 3000, ${`${twoYearsAgo}-03-10`}::timestamptz),
       -- Active donor: donated this year (should NOT appear in either report)
-      (${REPORTS_ORG}, ${activeId}, 10000, 'EUR', ${`${thisYear}-01-20`}::timestamptz),
+      (${REPORTS_ORG}, ${activeId}, 10000, 'EUR', 1, 10000, ${`${thisYear}-01-20`}::timestamptz),
       -- Active donor also donated last year
-      (${REPORTS_ORG}, ${activeId}, 8000, 'EUR', ${`${lastYear}-11-05`}::timestamptz),
+      (${REPORTS_ORG}, ${activeId}, 8000, 'EUR', 1, 8000, ${`${lastYear}-11-05`}::timestamptz),
       -- MultiYear donor: donated last year + two years ago (LYBUNT, total = 12000)
-      (${REPORTS_ORG}, ${multiYearId}, 7000, 'EUR', ${`${lastYear}-04-01`}::timestamptz),
-      (${REPORTS_ORG}, ${multiYearId}, 5000, 'EUR', ${`${twoYearsAgo}-09-20`}::timestamptz),
+      (${REPORTS_ORG}, ${multiYearId}, 7000, 'EUR', 1, 7000, ${`${lastYear}-04-01`}::timestamptz),
+      (${REPORTS_ORG}, ${multiYearId}, 5000, 'EUR', 1, 5000, ${`${twoYearsAgo}-09-20`}::timestamptz),
       -- Ancient donor: donated 3 years ago only (SYBUNT boundary, total = 2500)
-      (${REPORTS_ORG}, ${ancientId}, 2500, 'EUR', ${`${threeYearsAgo}-12-01`}::timestamptz)
+      (${REPORTS_ORG}, ${ancientId}, 2500, 'EUR', 1, 2500, ${`${threeYearsAgo}-12-01`}::timestamptz)
   `);
 });
 

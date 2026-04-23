@@ -202,6 +202,7 @@ export async function createDonation(orgId: string, userId: string, input: Donat
       .where(and(eq(constituents.id, input.constituentId), eq(constituents.orgId, orgId)));
 
     if (!constituent) return null;
+    const currency = input.currency ?? "EUR";
 
     const [donation] = await tx
       .insert(donations)
@@ -209,7 +210,9 @@ export async function createDonation(orgId: string, userId: string, input: Donat
         orgId,
         constituentId: input.constituentId,
         amountCents: input.amountCents,
-        currency: input.currency ?? "EUR",
+        currency,
+        exchangeRate: "1",
+        amountBaseCents: input.amountCents,
         campaignId: input.campaignId,
         paymentMethod: input.paymentMethod,
         paymentRef: input.paymentRef,
@@ -239,7 +242,7 @@ export async function createDonation(orgId: string, userId: string, input: Donat
         donationId,
         constituentId: input.constituentId,
         amountCents: input.amountCents,
-        currency: input.currency ?? "EUR",
+        currency,
         createdBy: userId,
       },
     });
