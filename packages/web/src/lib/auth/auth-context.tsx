@@ -9,6 +9,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
 
 /** User profile shape as returned by GET /v1/users/me. */
 export interface UserProfile {
@@ -114,9 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [state.user],
   );
 
-  /** Read CSRF token from <meta name="csrf-token"> set by root layout (ADR-011). */
+  /** Read CSRF token from the double-submit cookie on demand. */
   const getCsrfToken = useCallback((): string | undefined => {
-    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content;
+    return readCsrfTokenFromDocumentCookie();
   }, []);
 
   const endImpersonation = useCallback(() => {
@@ -128,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetch(`${API_URL}/admin/impersonation/${sessionId}`, {
       method: "DELETE",
       credentials: "include",
-      headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
+      headers: csrfToken ? { [getCsrfHeaderName()]: csrfToken } : {},
     }).then(() => {
       // Redirect to admin dashboard after ending impersonation
       window.location.href = "/dashboard";

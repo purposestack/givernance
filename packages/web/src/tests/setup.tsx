@@ -52,9 +52,13 @@ vi.mock("@/components/ui/toast", () => ({
   Toaster: () => null,
 }));
 
-vi.mock("@/lib/api/client-browser", () => ({
-  createClientApiClient: () => mockApiClient,
-}));
+vi.mock("@/lib/api/client-browser", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/client-browser")>();
+  return {
+    ...actual,
+    createClientApiClient: () => mockApiClient,
+  };
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

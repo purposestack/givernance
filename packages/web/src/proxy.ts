@@ -6,6 +6,8 @@ import { type NextRequest, NextResponse } from "next/server";
  * import from "server-only" modules.
  */
 const JWT_COOKIE_NAME = "givernance_jwt";
+const CSRF_COOKIE_NAME = "csrf-token";
+const CSRF_COOKIE_MAX_AGE_S = 8 * 60 * 60;
 
 /**
  * Route prefixes that require authentication.
@@ -33,6 +35,34 @@ function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+function mintCsrfToken(): string {
+  return crypto.randomUUID();
+}
+
+function buildRequestHeaders(request: NextRequest, jwt?: string) {
+  const requestHeaders = new Headers(request.headers);
+
+  if (jwt) {
+    requestHeaders.set("Authorization", `Bearer ${jwt}`);
+  }
+
+  return requestHeaders;
+}
+
+function ensureCsrfCookie(request: NextRequest, response: NextResponse, jwt?: string) {
+  if (!jwt || request.cookies.get(CSRF_COOKIE_NAME)?.value) {
+    return;
+  }
+
+  response.cookies.set(CSRF_COOKIE_NAME, mintCsrfToken(), {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: CSRF_COOKIE_MAX_AGE_S,
+  });
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const jwt = request.cookies.get(JWT_COOKIE_NAME)?.value;
@@ -42,11 +72,9 @@ export function proxy(request: NextRequest) {
     if (pathname.startsWith("/login") && jwt) {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
-    const requestHeaders = new Headers(request.headers);
-    if (jwt) {
-      requestHeaders.set("Authorization", `Bearer ${jwt}`);
-    }
-    return NextResponse.next({ request: { headers: requestHeaders } });
+    const response = NextResponse.next({ request: { headers: buildRequestHeaders(request, jwt) } });
+    ensureCsrfCookie(request, response, jwt);
+    return response;
   }
 
   // Protect authenticated routes — redirect to login with return URL
@@ -56,11 +84,9 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const requestHeaders = new Headers(request.headers);
-  if (jwt) {
-    requestHeaders.set("Authorization", `Bearer ${jwt}`);
-  }
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  const response = NextResponse.next({ request: { headers: buildRequestHeaders(request, jwt) } });
+  ensureCsrfCookie(request, response, jwt);
+  return response;
 }
 
 export const config = {

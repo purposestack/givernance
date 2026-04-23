@@ -12,6 +12,7 @@ import {
   requireClientSecret,
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
+import { buildCsrfCookieOptions, getCsrfCookieName } from "@/lib/auth/csrf";
 import { mintSessionJwt } from "@/lib/auth/mint-session-jwt";
 
 /** Map Keycloak errors to safe, fixed error codes — never reflect upstream error text. */
@@ -124,6 +125,7 @@ export async function GET(request: NextRequest) {
     // Clean up OIDC flow cookies and set the JWT + ID token cookies
     cleanup();
     jar.set(JWT_COOKIE_NAME, sessionJwt, jwtCookieOptions(sessionMaxAge));
+    jar.set(getCsrfCookieName(), crypto.randomUUID(), buildCsrfCookieOptions(sessionMaxAge));
     if (tokens.id_token) {
       jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(sessionMaxAge));
     }

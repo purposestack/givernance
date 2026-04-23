@@ -1,19 +1,32 @@
 import { ApiClient } from "./client";
-
-/**
- * Read the CSRF token from the meta tag. Called per-request so that
- * rotated tokens (after session refresh) are picked up immediately.
- */
-function getCsrfToken(): string | undefined {
-  if (typeof document === "undefined") return undefined;
-  return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content;
-}
+import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
 
 /** Methods that require CSRF protection (state-changing per ADR-011). */
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /** Key for globalThis singleton — survives Next.js Fast Refresh in dev. */
 const GLOBAL_KEY = Symbol.for("givernance.browserApiClient");
+
+export function createBrowserFetch(fetchImpl: typeof fetch = fetch): typeof fetch {
+  return (input, init) => {
+    const headers = new Headers(init?.headers);
+    const method = (init?.method ?? "GET").toUpperCase();
+
+    // Only attach CSRF token on state-changing requests (POST, PUT, PATCH, DELETE)
+    if (MUTATING_METHODS.has(method)) {
+      const csrfToken = readCsrfTokenFromDocumentCookie();
+      if (csrfToken) {
+        headers.set(getCsrfHeaderName(), csrfToken);
+      }
+    }
+
+    return fetchImpl(input, {
+      ...init,
+      headers,
+      credentials: "include",
+    });
+  };
+}
 
 /**
  * Create an ApiClient for use in Client Components (browser-side).
@@ -29,24 +42,7 @@ export function createClientApiClient(): ApiClient {
 
   const client = new ApiClient({
     baseUrl: process.env.NEXT_PUBLIC_API_URL ?? "/api",
-    fetchFn: (input, init) => {
-      const headers = new Headers(init?.headers);
-      const method = (init?.method ?? "GET").toUpperCase();
-
-      // Only attach CSRF token on state-changing requests (POST, PUT, PATCH, DELETE)
-      if (MUTATING_METHODS.has(method)) {
-        const csrfToken = getCsrfToken();
-        if (csrfToken) {
-          headers.set("X-CSRF-Token", csrfToken);
-        }
-      }
-
-      return fetch(input, {
-        ...init,
-        headers,
-        credentials: "include",
-      });
-    },
+    fetchFn: createBrowserFetch(),
   });
 
   (globalThis as Record<symbol, unknown>)[GLOBAL_KEY] = client;
