@@ -20,6 +20,19 @@ export function DisputeResolveForm({ disputeId }: { disputeId: string }) {
   const [choice, setChoice] = useState<DisputeResolution>("kept");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const options: Array<{
+    value: DisputeResolution;
+    label: "options.kept.label" | "options.replaced.label" | "options.escalated_to_support.label";
+    hint: "options.kept.hint" | "options.replaced.hint" | "options.escalated_to_support.hint";
+  }> = [
+    { value: "kept", label: "options.kept.label", hint: "options.kept.hint" },
+    { value: "replaced", label: "options.replaced.label", hint: "options.replaced.hint" },
+    {
+      value: "escalated_to_support",
+      label: "options.escalated_to_support.label",
+      hint: "options.escalated_to_support.hint",
+    },
+  ];
 
   const onSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
@@ -48,28 +61,28 @@ export function DisputeResolveForm({ disputeId }: { disputeId: string }) {
         <legend id={`${groupId}-label`} className="sr-only">
           {t("title")}
         </legend>
-        {(["kept", "replaced", "escalated_to_support"] as const).map((opt) => (
+        {options.map((opt) => (
           <label
-            key={opt}
-            htmlFor={`${groupId}-${opt}`}
+            key={opt.value}
+            htmlFor={`${groupId}-${opt.value}`}
             className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors duration-normal ease-out focus-within:ring-2 focus-within:ring-primary ${
-              choice === opt
+              choice === opt.value
                 ? "border-primary bg-primary-50"
                 : "border-outline-variant hover:border-primary"
             }`}
           >
             <input
-              id={`${groupId}-${opt}`}
+              id={`${groupId}-${opt.value}`}
               type="radio"
               name={groupId}
-              value={opt}
-              checked={choice === opt}
-              onChange={() => setChoice(opt)}
+              value={opt.value}
+              checked={choice === opt.value}
+              onChange={() => setChoice(opt.value)}
               className="sr-only"
             />
             <div>
-              <p className="font-medium text-text">{t(`options.${opt}.label`)}</p>
-              <p className="mt-0.5 text-xs text-text-muted">{t(`options.${opt}.hint`)}</p>
+              <p className="font-medium text-text">{t(opt.label)}</p>
+              <p className="mt-0.5 text-xs text-text-muted">{t(opt.hint)}</p>
             </div>
           </label>
         ))}

@@ -302,6 +302,112 @@
           }
         }
       }
+    },
+    "tenants": {
+      "list": {
+        "title": "Tenant management",
+        "subtitle": "Inspect every enterprise tenant and drill into lifecycle state, domains, users, and recent audit events.",
+        "columns": {
+          "name": "Tenant",
+          "status": "Status",
+          "plan": "Plan",
+          "primaryDomain": "Primary domain",
+          "createdVia": "Created via",
+          "updatedAt": "Last updated"
+        },
+        "statuses": {
+          "active": "Active",
+          "suspended": "Suspended",
+          "archived": "Archived"
+        },
+        "verification": {
+          "verified": "Verified",
+          "pending": "Pending"
+        },
+        "empty": {
+          "title": "No tenants found",
+          "description": "Tenant records created through the super-admin onboarding flow will appear here."
+        }
+      },
+      "detail": {
+        "backToList": "Back to tenants",
+        "statuses": {
+          "active": "Active",
+          "suspended": "Suspended",
+          "archived": "Archived"
+        },
+        "verification": {
+          "verified": "Verified",
+          "pending": "Pending"
+        },
+        "tabs": {
+          "overview": "Overview",
+          "domains": "Domains",
+          "users": "Users",
+          "audit": "Audit"
+        },
+        "overview": {
+          "fields": {
+            "slug": "Slug",
+            "plan": "Plan",
+            "createdVia": "Created via",
+            "primaryDomain": "Primary domain",
+            "keycloakOrgId": "Keycloak org ID",
+            "createdAt": "Created at",
+            "updatedAt": "Updated at",
+            "verifiedAt": "Verified at"
+          }
+        },
+        "domains": {
+          "columns": {
+            "domain": "Domain",
+            "state": "State",
+            "dnsTxtValue": "DNS TXT",
+            "verifiedAt": "Verified at"
+          },
+          "empty": "No managed domains are attached to this tenant yet."
+        },
+        "users": {
+          "columns": {
+            "name": "Name",
+            "email": "Email",
+            "role": "Role",
+            "flags": "Flags",
+            "lastVisitedAt": "Last visited"
+          },
+          "flags": {
+            "firstAdmin": "First admin",
+            "provisionalUntil": "Provisional until {date}"
+          },
+          "empty": "No tenant users have been provisioned yet."
+        },
+        "audit": {
+          "columns": {
+            "createdAt": "Created at",
+            "action": "Action",
+            "resource": "Resource",
+            "actor": "Actor",
+            "changes": "Changes"
+          },
+          "oldValues": "Old: {value}",
+          "newValues": "New: {value}",
+          "empty": "No recent audit events are available for this tenant."
+        },
+        "lifecycle": {
+          "title": "Lifecycle actions",
+          "description": "Suspend, archive, or reactivate the tenant from the super-admin back office.",
+          "reasonLabel": "Reason",
+          "reasonPlaceholder": "Optional note recorded alongside the lifecycle transition.",
+          "actions": {
+            "suspend": "Suspend",
+            "archive": "Archive",
+            "activate": "Reactivate"
+          },
+          "submitting": "Saving…",
+          "success": "Tenant lifecycle updated: {action}.",
+          "error": "Unable to update tenant lifecycle. Please retry."
+        }
+      }
     }
   },
   "settings": {

@@ -21,6 +21,12 @@ export default async function DisputeDetailPage({ params }: { params: Promise<{ 
   }
   if (!row) notFound();
 
+  function resolutionLabel(resolution: string | null): string {
+    if (resolution === "replaced") return t("resolutions.replaced");
+    if (resolution === "escalated_to_support") return t("resolutions.escalated_to_support");
+    return t("resolutions.kept");
+  }
+
   return (
     <div className="max-w-2xl space-y-6">
       <header>
@@ -58,12 +64,8 @@ export default async function DisputeDetailPage({ params }: { params: Promise<{ 
         <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
           <h2 className="text-sm font-semibold text-text-secondary">{t("resolvedLabel")}</h2>
           <p className="mt-2 text-sm text-text">
-            {row.resolution === "replaced"
-              ? t("resolutions.replaced")
-              : row.resolution === "escalated_to_support"
-                ? t("resolutions.escalated_to_support")
-                : t("resolutions.kept")}{" "}
-            — {row.resolvedAt ? new Date(row.resolvedAt).toLocaleString() : ""}
+            {resolutionLabel(row.resolution)} —{" "}
+            {row.resolvedAt ? new Date(row.resolvedAt).toLocaleString() : ""}
           </p>
         </section>
       ) : (

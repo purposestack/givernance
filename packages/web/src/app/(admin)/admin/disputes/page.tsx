@@ -27,6 +27,12 @@ export default async function DisputeListPage() {
   const open = rows.filter((r) => r.resolution === null);
   const closed = rows.filter((r) => r.resolution !== null);
 
+  function resolutionLabel(resolution: string | null): string {
+    if (resolution === "replaced") return t("resolutions.replaced");
+    if (resolution === "escalated_to_support") return t("resolutions.escalated_to_support");
+    return t("resolutions.kept");
+  }
+
   return (
     <div className="space-y-8">
       <header>
@@ -102,11 +108,7 @@ export default async function DisputeListPage() {
                       </p>
                     </div>
                     <span className="rounded-full bg-surface-container-low px-2 py-0.5 text-xs font-medium text-text-secondary">
-                      {row.resolution === "replaced"
-                        ? t("resolutions.replaced")
-                        : row.resolution === "escalated_to_support"
-                          ? t("resolutions.escalated_to_support")
-                          : t("resolutions.kept")}
+                      {resolutionLabel(row.resolution)}
                     </span>
                   </div>
                 </Link>
