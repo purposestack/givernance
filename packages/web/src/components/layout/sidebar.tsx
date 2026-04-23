@@ -1,6 +1,6 @@
 "use client";
 
-import { Gift, LayoutDashboard, LogOut, Settings, Users } from "lucide-react";
+import { ChevronsUpDown, Gift, LayoutDashboard, LogOut, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -8,6 +8,14 @@ import type { ComponentType, SVGProps } from "react";
 import { useEffect } from "react";
 
 import { Logo } from "@/components/shared/logo";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth";
 
 /** Tailwind `md` breakpoint in pixels. */
@@ -16,7 +24,7 @@ const MD_BREAKPOINT = 768;
 /** Navigation item definition — labelKey references appShell.sidebar.{key}. */
 interface NavItem {
   href: string;
-  labelKey: "dashboard" | "constituents" | "donations" | "settings";
+  labelKey: "dashboard" | "constituents" | "donations";
   icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 }
 
@@ -28,7 +36,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/constituents", labelKey: "constituents", icon: Users },
   { href: "/donations", labelKey: "donations", icon: Gift },
-  { href: "/settings", labelKey: "settings", icon: Settings },
 ];
 
 interface SidebarProps {
@@ -58,6 +65,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
+
+  function handleMobileClose() {
+    if (window.innerWidth < MD_BREAKPOINT) {
+      setTimeout(onClose, 100);
+    }
+  }
 
   return (
     <>
@@ -97,9 +110,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 key={item.href}
                 href={item.href}
                 onClick={() => {
-                  if (window.innerWidth < MD_BREAKPOINT) {
-                    setTimeout(onClose, 100);
-                  }
+                  handleMobileClose();
                 }}
                 className={`flex items-center gap-4 rounded-lg px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
                   isActive
@@ -115,34 +126,53 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           })}
         </nav>
 
-        {/* Footer — org + user (matches dashboard.html mockup) */}
+        {/* Footer — workspace switcher with org settings and user actions */}
         <div className="p-6">
-          <div className="mb-2 truncate text-sm font-medium text-on-surface-variant">
-            {user?.orgName ?? t("orgPlaceholder")}
-          </div>
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"
-              aria-hidden="true"
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              >
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"
+                  aria-hidden="true"
+                >
+                  {initials}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-on-surface">
+                    {user?.firstName} {user?.lastName}
+                  </div>
+                  <div className="truncate text-xs text-on-surface-variant">
+                    {user?.orgName ?? t("orgPlaceholder")}
+                  </div>
+                </div>
+                <ChevronsUpDown
+                  size={16}
+                  className="shrink-0 text-on-surface-variant"
+                  aria-hidden="true"
+                />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-[var(--sidebar-width)] max-w-[calc(100vw-2rem)]"
             >
-              {initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-on-surface">
-                {user?.firstName} {user?.lastName}
-              </div>
-              <div className="truncate text-xs text-on-surface-variant">{user?.email}</div>
-            </div>
-            <button
-              type="button"
-              onClick={logout}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-on-surface-variant transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-on-surface focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-              aria-label={t("signOut")}
-              title={t("signOut")}
-            >
-              <LogOut size={16} aria-hidden="true" />
-            </button>
-          </div>
+              <DropdownMenuLabel>{user?.orgName ?? t("orgPlaceholder")}</DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <Link href="/settings" onClick={handleMobileClose}>
+                  {t("workspaceSettings")}
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>{user?.email ?? t("userPlaceholder")}</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={logout}>
+                <LogOut size={16} aria-hidden="true" />
+                <span>{t("signOut")}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
     </>

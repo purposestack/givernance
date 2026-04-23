@@ -98,6 +98,10 @@
       "donations": "Donations",
       "settings": "Settings",
       "orgPlaceholder": "Organisation",
+      "userPlaceholder": "User",
+      "workspaceSwitcher": "Open workspace switcher",
+      "workspaceSettings": "Organisation settings",
+      "profile": "My profile",
       "signOut": "Sign out"
     },
     "topbar": {

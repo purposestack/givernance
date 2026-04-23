@@ -1,7 +1,7 @@
 # 14 — Screen Inventory
 
 > **Givernance NPO Platform** — Inventaire complet de tous les écrans (v1)
-> Last updated: 2026-04-17
+> Last updated: 2026-04-23
 > Owner: Design Architect agent
 >
 > **2026-04-17 update (Spike [#80](https://github.com/purposestack/givernance/issues/80))**: AUTH-005 through AUTH-009 (self-service onboarding wizard) are deprecated. Tenant provisioning is now an admin-led back-office action and user accounts are created Just-In-Time on first SSO login. See `docs/21-authentication-sso.md` §2.
@@ -1359,6 +1359,8 @@ flowchart TD
 | **Composants clés** | `Form`, `Input`, `Select`, `FileUpload` (logo), `TextArea`, `Button`, `FormSection` |
 | **Interactions IA** | Aucune |
 | **Priorité** | MUST |
+
+> **Navigation update (Issue [#120](https://github.com/purposestack/givernance/issues/120), 2026-04-23)**: l’accès à cet écran ne passe plus par une entrée `Settings` dédiée dans la sidebar. Les paramètres d’organisation sont désormais ouverts depuis le **Workspace Switcher** du footer de sidebar, via le dropdown affichant le contexte utilisateur et organisation.
 
 ---
 

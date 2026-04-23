@@ -98,6 +98,10 @@
       "donations": "Dons",
       "settings": "Paramètres",
       "orgPlaceholder": "Association",
+      "userPlaceholder": "Utilisateur",
+      "workspaceSwitcher": "Ouvrir le sélecteur d’espace de travail",
+      "workspaceSettings": "Paramètres de l’organisation",
+      "profile": "Mon profil",
       "signOut": "Se déconnecter"
     },
     "topbar": {
