@@ -59,6 +59,9 @@
   --color-on-error: #ffffff;
   --color-error-container: #ffdad6;
   --color-on-error-container: #93000a;
+  /* TOKEN-1 (PR #118 review): dedicated border token for error-styled
+     containers, replaces inlined `rgba(186,26,26,0.12)` in auth pages. */
+  --color-error-border: rgba(186, 26, 26, 0.12);
   --color-surface-tint: #176b4d;
 
   /* ── Semantic aliases ── */

@@ -13,11 +13,12 @@ const CSRF_COOKIE_MAX_AGE_S = 8 * 60 * 60;
  * Route prefixes that require authentication.
  * Only includes implemented features — add new entries as pages are built.
  */
-const PROTECTED_PREFIXES = ["/dashboard", "/settings"];
+const PROTECTED_PREFIXES = ["/dashboard", "/settings", "/select-organization", "/admin"];
 
 /** Route prefixes that are always public (auth pages, API callbacks, static assets). */
 const PUBLIC_PREFIXES = [
   "/login",
+  "/signup",
   "/forgot-password",
   "/reset-password",
   "/request-access",
@@ -27,12 +28,21 @@ const PUBLIC_PREFIXES = [
   "/favicon.ico",
 ];
 
+/**
+ * FE-7 (PR #118 review): strict prefix match — `/admin` must NOT match
+ * `/admin-something`. Either the entire path equals the prefix or the next
+ * character is a slash.
+ */
+function prefixMatches(prefix: string, pathname: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 function isPublic(pathname: string): boolean {
-  return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+  return PUBLIC_PREFIXES.some((p) => prefixMatches(p, pathname));
 }
 
 function isProtected(pathname: string): boolean {
-  return PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
+  return PROTECTED_PREFIXES.some((p) => prefixMatches(p, pathname));
 }
 
 function mintCsrfToken(): string {
@@ -67,9 +77,13 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const jwt = request.cookies.get(JWT_COOKIE_NAME)?.value;
 
-  // Allow public routes — but redirect logged-in users away from /login
+  // Allow public routes — but redirect logged-in users away from /login and /signup
   if (isPublic(pathname)) {
-    if (pathname.startsWith("/login") && jwt) {
+    if (jwt && (prefixMatches("/login", pathname) || pathname === "/signup")) {
+      // `/signup/verify?token=…` stays accessible to authenticated users — a
+      // user might verify a workspace in a browser where they're already
+      // signed in to another tenant. But the bare `/signup` form bounces
+      // them to /dashboard.
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
     const response = NextResponse.next({ request: { headers: buildRequestHeaders(request, jwt) } });

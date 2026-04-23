@@ -138,6 +138,8 @@ export const users = pgTable(
     firstAdmin: boolean("first_admin").notNull().default(false),
     /** When set, this user is a *provisional* org_admin until this timestamp; other members can dispute. */
     provisionalUntil: timestamp("provisional_until", { withTimezone: true }),
+    /** Last time this user picked this tenant in the org switcher — drives the picker default (ADR-016 / doc 22 §6.3). */
+    lastVisitedAt: timestamp("last_visited_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

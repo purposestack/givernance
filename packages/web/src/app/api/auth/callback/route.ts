@@ -142,7 +142,12 @@ export async function GET(request: NextRequest) {
       jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(sessionMaxAge));
     }
 
-    return NextResponse.redirect(new URL("/dashboard", APP_URL).toString());
+    // FE-2: send every newly-authenticated user through `/select-organization`.
+    // That page server-renders the membership fetch and will 302 to
+    // `/dashboard` immediately if the user belongs to <=1 tenant — so solo-
+    // tenant users pay one extra redirect (cheap) and multi-tenant users get
+    // the picker without the callback blocking on a sequential fetch.
+    return NextResponse.redirect(new URL("/select-organization", APP_URL).toString());
   } catch (err) {
     console.error("OIDC Callback Error:", err);
     cleanup();

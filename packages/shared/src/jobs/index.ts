@@ -85,4 +85,10 @@ export const QUEUE_NAMES = {
   CAMPAIGNS: "campaigns",
   EVENTS: "givernance_events",
   WEBHOOKS: "webhooks",
+  TENANT_LIFECYCLE: "tenant_lifecycle",
+} as const;
+
+/** Repeatable job names inside TENANT_LIFECYCLE queue. */
+export const TENANT_LIFECYCLE_JOBS = {
+  PROVISIONAL_ADMIN_EXPIRE: "tenant.provisional-admin-expire",
 } as const;

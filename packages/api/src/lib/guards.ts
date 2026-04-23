@@ -35,7 +35,16 @@ export async function requireOrgAdmin(request: FastifyRequest, reply: FastifyRep
   }
 }
 
-/** Guard: require super_admin realm role (Keycloak) */
+/**
+ * Guard: require super_admin realm role (Keycloak).
+ *
+ * SEC-5 (PR #118 review): for admin-namespaced JSON routes we want the same
+ * "404 don't disclose existence" behaviour the `(admin)` web layout already
+ * enforces via `notFound()`. Authenticated non-super-admins see 404 instead
+ * of 403 so the attack surface is not discoverable through role probing.
+ * Unauthenticated callers still get 401 — they could be legitimate users
+ * whose cookie expired.
+ */
 export async function requireSuperAdmin(request: FastifyRequest, reply: FastifyReply) {
   if (!request.auth?.userId) {
     return reply.status(401).send({
@@ -46,11 +55,11 @@ export async function requireSuperAdmin(request: FastifyRequest, reply: FastifyR
     });
   }
   if (!request.auth.roles.includes("super_admin")) {
-    return reply.status(403).send({
-      type: "https://httpproblems.com/http-status/403",
-      title: "Forbidden",
-      status: 403,
-      detail: "super_admin role required",
+    return reply.status(404).send({
+      type: "https://httpproblems.com/http-status/404",
+      title: "Not Found",
+      status: 404,
+      detail: "Not Found",
     });
   }
 }

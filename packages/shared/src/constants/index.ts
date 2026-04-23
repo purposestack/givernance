@@ -4,12 +4,8 @@
  * pulling the Drizzle schema (ADR-013 type boundary).
  */
 
-export {
-  isPersonalEmailDomain,
-  PERSONAL_EMAIL_DOMAINS,
-} from "./personal-email-domains.js";
+export { isPersonalEmailDomain, PERSONAL_EMAIL_DOMAINS } from "./personal-email-domains";
 
-export {
-  isReservedSlug,
-  RESERVED_SLUGS,
-} from "./reserved-slugs.js";
+export { isReservedSlug, RESERVED_SLUGS } from "./reserved-slugs";
+
+export { DOMAIN_PATTERN, validateTenantDomain } from "./tenant-domain";

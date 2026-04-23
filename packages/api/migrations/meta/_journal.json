@@ -159,6 +159,13 @@
     {
       "idx": 22,
       "version": "7",
+      "when": 1744502422000,
+      "tag": "0023_onboarding_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
       "when": 1776956400000,
       "tag": "0023_multi_currency_schema",
       "breakpoints": true

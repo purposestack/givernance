@@ -12,6 +12,7 @@ import { impersonationRoutes } from "./modules/admin/impersonation-routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { campaignRoutes } from "./modules/campaigns/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
+import { disputeRoutes } from "./modules/disputes/routes.js";
 import { donationRoutes } from "./modules/donations/routes.js";
 import { healthRoutes } from "./modules/health/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
@@ -19,7 +20,9 @@ import { paymentRoutes, stripeWebhookRoute } from "./modules/payments/routes.js"
 import { pledgeRoutes } from "./modules/pledges/routes.js";
 import { publicDonationRoutes } from "./modules/public/routes.js";
 import { reportsRoutes } from "./modules/reports/routes.js";
+import { sessionRoutes } from "./modules/session/routes.js";
 import { signupRoutes } from "./modules/signup/routes.js";
+import { tenantAdminRoutes } from "./modules/tenant-admin/routes.js";
 import { tenantRoutes } from "./modules/tenants/routes.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { auditPlugin } from "./plugins/audit.js";
@@ -117,6 +120,9 @@ export async function createServer() {
   await app.register(signupRoutes, { prefix: "/v1" });
   await app.register(reportsRoutes, { prefix: "/v1" });
   await app.register(impersonationRoutes, { prefix: "/v1" });
+  await app.register(tenantAdminRoutes, { prefix: "/v1" });
+  await app.register(sessionRoutes, { prefix: "/v1" });
+  await app.register(disputeRoutes, { prefix: "/v1" });
 
   return app;
 }

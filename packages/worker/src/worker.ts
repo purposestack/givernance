@@ -1,6 +1,6 @@
 /** BullMQ Worker entry point — registers all job processors */
 
-import { QUEUE_NAMES } from "@givernance/shared/jobs";
+import { QUEUE_NAMES, TENANT_LIFECYCLE_JOBS } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
@@ -11,6 +11,7 @@ import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import { processStripeWebhook } from "./processors/stripe-webhook.js";
+import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
 
 /** Create a fresh ioredis connection — BullMQ requires separate connections for Queue vs Worker */
 function createRedisConnection() {
@@ -24,6 +25,29 @@ function createRedisConnection() {
 const queueConnection = createRedisConnection();
 const receiptsQueue = new Queue(QUEUE_NAMES.RECEIPTS, { connection: queueConnection });
 const campaignsQueue = new Queue(QUEUE_NAMES.CAMPAIGNS, { connection: queueConnection });
+const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
+  connection: queueConnection,
+});
+
+/**
+ * Register the nightly provisional-admin expire job.
+ *
+ * Runs at 03:15 UTC daily — after the busy EU evening window, before the
+ * morning support shift. `jobId` is fixed so re-registering across worker
+ * restarts doesn't fan-out to duplicate repeatable schedules.
+ */
+async function scheduleRepeatableJobs() {
+  await tenantLifecycleQueue.add(
+    TENANT_LIFECYCLE_JOBS.PROVISIONAL_ADMIN_EXPIRE,
+    {},
+    {
+      jobId: "tenant-provisional-admin-expire-daily",
+      repeat: { pattern: "15 3 * * *", tz: "UTC" },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+}
 
 /**
  * Process a domain event from the transactional outbox relay.
@@ -125,6 +149,12 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
+  const tenantLifecycleWorker = new Worker(QUEUE_NAMES.TENANT_LIFECYCLE, processTenantLifecycle, {
+    connection: createRedisConnection(),
+    concurrency: 1,
+    ...defaultJobOpts,
+  });
+
   const workers = [
     receiptsWorker,
     emailsWorker,
@@ -132,6 +162,7 @@ function startWorkers() {
     campaignsWorker,
     eventsWorker,
     webhooksWorker,
+    tenantLifecycleWorker,
   ];
 
   for (const w of workers) {
@@ -147,3 +178,6 @@ function startWorkers() {
 }
 
 startWorkers();
+scheduleRepeatableJobs().catch((err) => {
+  logger.error({ err }, "Failed to schedule repeatable jobs");
+});
