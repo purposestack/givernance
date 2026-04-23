@@ -6,9 +6,15 @@
  * Run with:
  *   pnpm --filter @givernance/api run db:seed
  *
- * The script is idempotent at the tenant level (find-or-create `givernance`)
- * but inserts fresh constituents/campaigns/donations on every run. Intended
- * for local dev only — never run against production.
+ * Tenant invariant: the row with id = TENANT_ID is the authoritative
+ * "givernance" tenant. This matches the seeded Keycloak user's `org_id`
+ * attribute (see `infra/keycloak/realm-givernance.json`). If a pre-existing
+ * tenant holds the slug under a different id (e.g. created via the signup
+ * flow), its slug is renamed to free the fixture slot rather than reused —
+ * this prevents Keycloak/DB id drift that otherwise yields 404s on
+ * tenant-scoped admin routes. Constituents/campaigns/donations are
+ * inserted fresh on every run. Intended for local dev only — never run
+ * against production.
  */
 
 import { campaigns, constituents, donations, tenants } from "@givernance/shared/schema";
@@ -158,10 +164,25 @@ function emailFromName(first: string, last: string, suffix: number): string {
 }
 
 async function findOrCreateTenant(): Promise<string> {
-  const [existing] = await db.select().from(tenants).where(eq(tenants.slug, TENANT_SLUG));
-  if (existing) {
-    console.log(`[seed] Reusing tenant ${TENANT_SLUG} (${existing.id})`);
-    return existing.id;
+  // The seeded Keycloak user's `org_id` attribute points at TENANT_ID
+  // (see infra/keycloak/realm-givernance.json). Lookup must be by id, not
+  // by slug, so signup-created tenants sharing the slug don't win the lookup
+  // and leave the Keycloak user orphaned.
+  const [byId] = await db.select().from(tenants).where(eq(tenants.id, TENANT_ID));
+  if (byId) {
+    console.log(`[seed] Reusing tenant ${TENANT_SLUG} (${byId.id})`);
+    return byId.id;
+  }
+
+  // If the slug is already held under a different id, rename the orphan
+  // instead of reusing it — preserves its data but frees the fixture slot.
+  const [bySlug] = await db.select().from(tenants).where(eq(tenants.slug, TENANT_SLUG));
+  if (bySlug) {
+    const rescuedSlug = `${TENANT_SLUG}-orphan-${Date.now()}`;
+    await db.update(tenants).set({ slug: rescuedSlug }).where(eq(tenants.id, bySlug.id));
+    console.warn(
+      `[seed] Slug "${TENANT_SLUG}" was held by id=${bySlug.id}; renamed to "${rescuedSlug}" so the fixture id can claim it.`,
+    );
   }
 
   const [created] = await db
