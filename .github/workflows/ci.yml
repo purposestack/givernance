@@ -38,7 +38,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://givernance:givernance_dev@localhost:5432/givernance_test
       REDIS_URL: redis://localhost:6379
-      JWT_SECRET: ci-test-secret-do-not-use-in-production
       ADMIN_SECRET: ci-test-admin-secret
 
     steps:

@@ -1,12 +1,12 @@
-/** JWT validation plugin — verifies Keycloak-issued OIDC tokens (Phase 0: @fastify/jwt) */
+/** JWT validation plugin — verifies Keycloak-issued OIDC tokens against the realm JWKS. */
 
 import { timingSafeEqual } from "node:crypto";
 
 import cookie from "@fastify/cookie";
-import fjwt from "@fastify/jwt";
 import type { AuthContext, UserRole } from "@givernance/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
+import { verifyKeycloakJwt } from "../lib/keycloak-jwt.js";
 import { problemDetail } from "../lib/schemas.js";
 
 const JWT_COOKIE_NAME = "givernance_jwt";
@@ -21,21 +21,7 @@ declare module "fastify" {
 }
 
 async function auth(app: FastifyInstance) {
-  const jwtSecret = process.env["JWT_SECRET"];
-  if (!jwtSecret) {
-    throw new Error(
-      "JWT_SECRET environment variable is required. Refusing to start with no secret.",
-    );
-  }
-
   await app.register(cookie);
-  await app.register(fjwt, {
-    secret: jwtSecret,
-    cookie: {
-      cookieName: JWT_COOKIE_NAME,
-      signed: false,
-    },
-  });
 
   /** Extract auth context from verified JWT claims */
   app.decorateRequest("auth", null);
@@ -51,25 +37,19 @@ async function auth(app: FastifyInstance) {
     }
 
     try {
-      const decoded = await request.jwtVerify<{
-        sub: string;
-        org_id: string;
-        realm_access?: { roles: string[] };
-        email: string;
-        /** Application-level role claim */
-        role?: string;
-        /** RFC 8693 §4.1 actor claim — present on delegation/impersonation tokens */
-        act?: { sub: string };
-      }>();
+      const token = extractToken(request);
+      if (token) {
+        const decoded = await verifyKeycloakJwt(token);
 
-      request.auth = {
-        userId: decoded.sub,
-        orgId: decoded.org_id,
-        roles: decoded.realm_access?.roles ?? [],
-        email: decoded.email,
-        role: decoded.role as UserRole | undefined,
-        act: decoded.act,
-      };
+        request.auth = {
+          userId: decoded.sub,
+          orgId: decoded.org_id,
+          roles: decoded.realm_access?.roles ?? [],
+          email: decoded.email,
+          role: decoded.role as UserRole | undefined,
+          act: decoded.act,
+        };
+      }
     } catch {
       // Auth will be null for unauthenticated requests
     }
@@ -101,3 +81,12 @@ function tokensMatch(cookieValue: string, headerValue: string): boolean {
 }
 
 export const authPlugin = fp(auth, { name: "auth" });
+
+function extractToken(request: FastifyRequest): string | null {
+  const authorization = request.headers.authorization;
+  if (typeof authorization === "string" && authorization.startsWith("Bearer ")) {
+    return authorization.slice("Bearer ".length).trim();
+  }
+
+  return request.cookies[JWT_COOKIE_NAME] ?? null;
+}

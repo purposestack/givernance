@@ -33,8 +33,14 @@ const EnvSchema = Type.Object({
   S3_RECEIPTS_BUCKET: Type.String({ minLength: 1, default: "receipts" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
-  /** JWT secret for token verification */
-  JWT_SECRET: Type.String({ minLength: 1 }),
+  /** Keycloak base URL used to derive issuer and JWKS endpoint */
+  KEYCLOAK_URL: Type.String({ minLength: 1, default: "http://localhost:8080" }),
+  /** Keycloak realm used to derive issuer and JWKS endpoint */
+  KEYCLOAK_REALM: Type.String({ minLength: 1, default: "givernance" }),
+  /** Optional explicit issuer override */
+  KEYCLOAK_ISSUER: Type.Optional(Type.String({ minLength: 1 })),
+  /** Optional explicit JWKS URL override */
+  KEYCLOAK_JWKS_URL: Type.Optional(Type.String({ minLength: 1 })),
   /** HTTP port */
   PORT: Type.Number({ default: 4000 }),
   /** HTTP bind address */

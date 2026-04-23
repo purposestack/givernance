@@ -15,6 +15,9 @@
       "emailVerified": true,
       "firstName": "Super",
       "lastName": "Admin",
+      "attributes": {
+        "org_id": ["00000000-0000-0000-0000-0000000000a1"]
+      },
       "credentials": [
         {
           "type": "password",
@@ -57,7 +60,23 @@
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": true
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "org_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "org_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "org_id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
     }
   ]
 }

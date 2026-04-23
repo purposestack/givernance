@@ -13,7 +13,7 @@ import {
   requireClientSecret,
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
-import { mintSessionJwt } from "@/lib/auth/mint-session-jwt";
+import { verifyKeycloakJwt } from "@/lib/auth/verify-keycloak-jwt";
 
 /** Map Keycloak errors to safe, fixed error codes — never reflect upstream error text. */
 function sanitizeError(error: string): string {
@@ -22,6 +22,8 @@ function sanitizeError(error: string): string {
       return "access_denied";
     case "login_required":
       return "login_required";
+    case "missing_org_id":
+      return "missing_org_id";
     default:
       return "auth_error";
   }
@@ -116,15 +118,25 @@ export async function GET(request: NextRequest) {
       expires_in?: number;
     };
 
-    // TODO(#84): once the API verifies Keycloak RS256 tokens via JWKS and the
-    // realm has an `org_id` protocol mapper, drop mintSessionJwt and store
-    // tokens.access_token directly. Dev-only shim until Phase 1 SSO lands.
-    const sessionMaxAge = tokens.expires_in ?? 8 * 60 * 60;
-    const sessionJwt = await mintSessionJwt(tokens.access_token, sessionMaxAge);
+    try {
+      await verifyKeycloakJwt(tokens.access_token);
+    } catch (error) {
+      console.error("Keycloak access token validation failed:", error);
+      cleanup();
+      const loginUrl = new URL("/login", APP_URL);
+      const errorCode =
+        error instanceof Error && error.message.includes("`org_id`")
+          ? "missing_org_id"
+          : "callback_failed";
+      loginUrl.searchParams.set("error", errorCode);
+      return NextResponse.redirect(loginUrl.toString());
+    }
 
-    // Clean up OIDC flow cookies and set the JWT + ID token cookies
+    const sessionMaxAge = tokens.expires_in ?? 8 * 60 * 60;
+
+    // Clean up OIDC flow cookies and store the verified Keycloak access token directly.
     cleanup();
-    jar.set(JWT_COOKIE_NAME, sessionJwt, jwtCookieOptions(sessionMaxAge));
+    jar.set(JWT_COOKIE_NAME, tokens.access_token, jwtCookieOptions(sessionMaxAge));
     jar.set(getCsrfCookieName(), crypto.randomUUID(), buildCsrfCookieOptions(sessionMaxAge));
     if (tokens.id_token) {
       jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(sessionMaxAge));
