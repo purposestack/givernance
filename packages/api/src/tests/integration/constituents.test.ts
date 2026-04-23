@@ -510,6 +510,8 @@ describe("Constituents merge", () => {
           constituentId: duplicateId,
           amountCents: 5000,
           currency: "EUR",
+          exchangeRate: "1",
+          amountBaseCents: 5000,
         })
         .returning();
       // biome-ignore lint/style/noNonNullAssertion: test setup — insert always returns a row

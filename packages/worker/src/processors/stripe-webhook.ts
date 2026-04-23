@@ -151,6 +151,8 @@ async function handlePaymentIntentSucceeded(
         constituentId,
         amountCents,
         currency,
+        exchangeRate: "1",
+        amountBaseCents: amountCents,
         campaignId: campaignId || undefined,
         paymentMethod: "stripe",
         paymentRef: paymentIntentId,

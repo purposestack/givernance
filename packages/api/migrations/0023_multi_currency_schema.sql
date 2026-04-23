@@ -36,8 +36,7 @@ WHERE amount_base_cents IS NULL;
 
 UPDATE donations
 SET exchange_rate = 1
-WHERE exchange_rate IS NULL
-  AND currency = 'EUR';
+WHERE exchange_rate IS NULL;
 
 ALTER TABLE donations
   ALTER COLUMN amount_base_cents SET NOT NULL;
