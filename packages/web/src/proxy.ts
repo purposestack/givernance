@@ -13,11 +13,12 @@ const CSRF_COOKIE_MAX_AGE_S = 8 * 60 * 60;
  * Route prefixes that require authentication.
  * Only includes implemented features — add new entries as pages are built.
  */
-const PROTECTED_PREFIXES = ["/dashboard", "/settings"];
+const PROTECTED_PREFIXES = ["/dashboard", "/settings", "/select-organization", "/admin"];
 
 /** Route prefixes that are always public (auth pages, API callbacks, static assets). */
 const PUBLIC_PREFIXES = [
   "/login",
+  "/signup",
   "/forgot-password",
   "/reset-password",
   "/request-access",

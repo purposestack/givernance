@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout";
 import { Toaster } from "@/components/ui/toast";
+import { createServerApiClient } from "@/lib/api/client-server";
 import { AuthProvider } from "@/lib/auth";
 import { requireAuth } from "@/lib/auth/guards";
 
@@ -20,11 +21,39 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const userName = auth.firstName ? `${auth.firstName} ${auth.lastName ?? ""}`.trim() : auth.email;
 
+  // Best-effort fetch of the provisional-admin window. Any failure hides the
+  // banner — it's not a blocker for rendering the app shell.
+  let provisionalAdmin: { provisionalUntil: string; orgSlug: string } | undefined;
+  try {
+    const api = await createServerApiClient();
+    const res = await api.get<{
+      data: {
+        firstAdmin?: boolean;
+        provisionalUntil?: string | null;
+        orgSlug?: string;
+      };
+    }>("/v1/users/me");
+    if (
+      res.data.firstAdmin &&
+      res.data.provisionalUntil &&
+      res.data.orgSlug &&
+      new Date(res.data.provisionalUntil) > new Date()
+    ) {
+      provisionalAdmin = {
+        provisionalUntil: res.data.provisionalUntil,
+        orgSlug: res.data.orgSlug,
+      };
+    }
+  } catch {
+    // Banner is optional — swallow errors silently.
+  }
+
   return (
     <AuthProvider>
       <AppShell
         impersonation={auth.impersonation}
         impersonationUserName={auth.impersonation ? userName : undefined}
+        provisionalAdmin={provisionalAdmin}
       >
         {children}
       </AppShell>

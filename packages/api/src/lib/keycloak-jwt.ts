@@ -8,6 +8,10 @@ export interface KeycloakJwtClaims {
   realm_access?: { roles?: string[] };
   role?: string;
   act?: { sub: string };
+  /** JWT id — used by the session blocklist for `switch-org` revocations. */
+  jti?: string;
+  /** Expiry (seconds-epoch). */
+  exp?: number;
 }
 
 const KEYCLOAK_ISSUER = env.KEYCLOAK_ISSUER ?? `${env.KEYCLOAK_URL}/realms/${env.KEYCLOAK_REALM}`;

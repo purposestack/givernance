@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ImpersonationInfo } from "@/lib/auth";
 
 import { ImpersonationBanner } from "./impersonation-banner";
+import { ProvisionalAdminBanner, type ProvisionalAdminInfo } from "./provisional-admin-banner";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
@@ -14,6 +15,8 @@ interface AppShellProps {
   impersonation: ImpersonationInfo | undefined;
   /** Display name of the impersonated user. */
   impersonationUserName: string | undefined;
+  /** SSR provisional-admin info from the `/users/me` query (doc 22 §3.1). */
+  provisionalAdmin?: ProvisionalAdminInfo;
 }
 
 /**
@@ -30,7 +33,12 @@ interface AppShellProps {
  * │          │                                │
  * └──────────┴────────────────────────────────┘
  */
-export function AppShell({ children, impersonation, impersonationUserName }: AppShellProps) {
+export function AppShell({
+  children,
+  impersonation,
+  impersonationUserName,
+  provisionalAdmin,
+}: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
 
@@ -59,6 +67,7 @@ export function AppShell({ children, impersonation, impersonationUserName }: App
 
       <div className="flex min-h-screen flex-1 flex-col md:ml-[var(--sidebar-width)]">
         <ImpersonationBanner impersonation={impersonation} userName={impersonationUserName} />
+        <ProvisionalAdminBanner info={provisionalAdmin} />
         <Topbar
           onMenuToggle={handleMenuToggle}
           sidebarOpen={sidebarOpen}

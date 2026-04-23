@@ -8,7 +8,8 @@
       "contactSupport": "Contacter le support",
       "backToDashboard": "Retour au tableau de bord",
       "search": "Rechercher",
-      "or": "ou"
+      "or": "ou",
+      "submitting": "Enregistrement…"
     },
     "footer": {
       "platform": "Givernance NPO Platform",
@@ -71,6 +72,97 @@
       "expiredMessage": "Ce lien de réinitialisation n'est plus valide ou a expiré.",
       "expiredAlert": "Le lien a expiré après 1 heure. Veuillez en demander un nouveau.",
       "requestNewLink": "Demander un nouveau lien"
+    },
+    "signup": {
+      "title": "Créer votre espace Givernance",
+      "subtitle": "Sans carte bancaire. Votre espace est prêt en moins de cinq minutes.",
+      "submit": "Créer l'espace",
+      "securityHint": "Votre email sert uniquement à vérifier votre espace.",
+      "captchaLabel": "Contrôle de sécurité",
+      "emailHasTenant": "Votre association est peut-être déjà sur Givernance. Contactez votre administrateur pour être invité.",
+      "haveAccount": "Vous avez déjà un compte ? <link>Se connecter</link>",
+      "fields": {
+        "orgName": "Nom de l'association",
+        "slug": "URL de l'espace",
+        "firstName": "Prénom",
+        "lastName": "Nom",
+        "email": "Email professionnel",
+        "country": "Pays (ISO-2)",
+        "legalType": "Forme juridique"
+      },
+      "legalTypes": {
+        "association": "Association loi 1901",
+        "fondation": "Fondation",
+        "fondsDeDotation": "Fonds de dotation",
+        "cooperative": "Coopérative",
+        "other": "Autre"
+      },
+      "slug": {
+        "help": "Lettres, chiffres et tirets uniquement.",
+        "checking": "Vérification de la disponibilité…",
+        "available": "Disponible.",
+        "taken": "Cette URL est déjà prise."
+      },
+      "consent": "J'accepte les <terms>conditions d'utilisation</terms> et la <privacy>politique de confidentialité</privacy>.",
+      "errors": {
+        "orgNameRequired": "Le nom de l'association est requis.",
+        "firstNameRequired": "Le prénom est requis.",
+        "lastNameRequired": "Le nom est requis.",
+        "emailInvalid": "Entrez une adresse email valide.",
+        "emailInUse": "Cet email est déjà associé à un compte Givernance.",
+        "slugSyntax": "Utilisez des lettres minuscules, des chiffres et des tirets.",
+        "slugReserved": "Cette URL est réservée — choisissez-en une autre.",
+        "slugPunycode": "Les noms de domaine internationalisés ne sont pas encore pris en charge.",
+        "slugTaken": "Cette URL est déjà prise.",
+        "consentRequired": "Vous devez accepter les conditions pour continuer.",
+        "captchaRequired": "Complétez d'abord le contrôle de sécurité.",
+        "captchaInvalid": "Le contrôle de sécurité a échoué. Veuillez réessayer.",
+        "rateLimited": "Trop de tentatives. Veuillez réessayer plus tard.",
+        "generic": "L'inscription n'a pas pu aboutir. Si vous pensez qu'il s'agit d'une erreur, contactez le support."
+      }
+    },
+    "signupSuccess": {
+      "title": "Vérifiez votre boîte mail",
+      "subtitle": "Nous avons envoyé un lien de vérification à <email></email>. Cliquez sur le lien pour finaliser la création de votre espace.",
+      "subtitleNoEmail": "Nous vous avons envoyé un lien de vérification. Cliquez dessus pour finaliser la création de votre espace.",
+      "resend": "Renvoyer l'email de vérification",
+      "resending": "Envoi…",
+      "resendSent": "Nous avons renvoyé l'email. Patientez une minute.",
+      "resendTooMany": "Vous avez demandé trop d'emails. Patientez un instant avant de réessayer.",
+      "spamHint": "Si vous ne le voyez pas d'ici quelques minutes, vérifiez vos spams.",
+      "backToLogin": "Retour à la connexion"
+    },
+    "signupVerify": {
+      "title": "Finaliser votre inscription",
+      "subtitle": "Confirmez votre nom pour que nous puissions configurer votre espace.",
+      "submit": "Accéder à mon espace",
+      "successTitle": "Espace prêt",
+      "successBody": "Redirection vers votre tableau de bord…",
+      "errorTitle": "Vérification impossible",
+      "restartSignup": "Recommencer l'inscription",
+      "fields": {
+        "firstName": "Prénom",
+        "lastName": "Nom"
+      },
+      "errors": {
+        "invalid": "Ce lien de vérification est invalide.",
+        "expired": "Ce lien de vérification est invalide ou a déjà été utilisé. Veuillez recommencer l'inscription.",
+        "missingToken": "Aucun jeton de vérification fourni.",
+        "namesRequired": "Veuillez renseigner votre prénom et votre nom.",
+        "rateLimited": "Trop de tentatives. Veuillez réessayer dans quelques minutes.",
+        "generic": "Nous n'avons pas pu finaliser la vérification. Veuillez réessayer."
+      }
+    },
+    "selectOrganization": {
+      "title": "Quel espace souhaitez-vous ouvrir ?",
+      "subtitle": "Votre compte est associé à plusieurs associations.",
+      "continue": "Continuer",
+      "provisional": "Admin provisoire",
+      "lastVisited": "Dernière visite le {date}",
+      "errors": {
+        "forbidden": "Vous ne pouvez pas ouvrir cet espace.",
+        "generic": "Impossible de changer d'espace. Veuillez réessayer."
+      }
     }
   },
   "errors": {
@@ -115,6 +207,72 @@
       "expired": "expirée",
       "lessThanMinute": "< 1m",
       "fallbackUser": "utilisateur"
+    },
+    "provisionalAdmin": {
+      "body": "Vous êtes l'administrateur provisoire de cet espace jusqu'au {date}. Tout autre membre vérifié peut contester.",
+      "learnMore": "En savoir plus",
+      "dismiss": "Fermer"
+    },
+    "orgSwitcher": {
+      "placeholder": "Changer d'espace",
+      "ariaLabel": "Sélecteur d'espace",
+      "errors": {
+        "generic": "Impossible de changer d'espace."
+      }
+    }
+  },
+  "admin": {
+    "disputes": {
+      "list": {
+        "title": "Litiges d'admin provisoire",
+        "subtitle": "File de triage pour les espaces dont le premier admin est contesté.",
+        "openSectionTitle": "Litiges ouverts ({count})",
+        "closedSectionTitle": "Récemment clôturés ({count})",
+        "emptyOpen": "Aucun litige ouvert.",
+        "emptyClosed": "Aucun litige résolu.",
+        "pending": "En attente",
+        "resolutions": {
+          "kept": "Maintenu",
+          "replaced": "Remplacé",
+          "escalated_to_support": "Escaladé"
+        }
+      },
+      "detail": {
+        "title": "Litige — {name}",
+        "backToList": "Retour aux litiges",
+        "reasonLabel": "Motif fourni",
+        "noReason": "Aucun motif n'a été fourni.",
+        "partiesLabel": "Utilisateurs concernés",
+        "disputer": "Contestataire",
+        "provisionalAdmin": "Admin provisoire",
+        "resolvedLabel": "Résolution",
+        "resolutions": {
+          "kept": "L'admin provisoire a été maintenu.",
+          "replaced": "Le contestataire a remplacé l'admin provisoire.",
+          "escalated_to_support": "Escaladé au support pour triage manuel."
+        },
+        "resolve": {
+          "title": "Résoudre ce litige",
+          "submit": "Appliquer la résolution",
+          "options": {
+            "kept": {
+              "label": "Garder l'admin provisoire",
+              "hint": "L'admin d'origine conserve `org_admin` ; la fenêtre provisoire se ferme."
+            },
+            "replaced": {
+              "label": "Remplacer par le contestataire",
+              "hint": "Le contestataire devient `org_admin` ; l'ancien admin est rétrogradé à `user`."
+            },
+            "escalated_to_support": {
+              "label": "Escalader au support",
+              "hint": "Laisse l'espace tel quel ; le support assurera le suivi manuellement."
+            }
+          },
+          "errors": {
+            "generic": "Impossible d'appliquer la résolution. Veuillez réessayer."
+          }
+        }
+      }
     }
   },
   "settings": {

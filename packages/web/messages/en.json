@@ -8,7 +8,8 @@
       "contactSupport": "Contact support",
       "backToDashboard": "Back to dashboard",
       "search": "Search",
-      "or": "or"
+      "or": "or",
+      "submitting": "Saving…"
     },
     "footer": {
       "platform": "Givernance NPO Platform",
@@ -71,6 +72,97 @@
       "expiredMessage": "This reset link is no longer valid or has expired.",
       "expiredAlert": "The reset link expired after 1 hour. Please request a new one.",
       "requestNewLink": "Request a new link"
+    },
+    "signup": {
+      "title": "Create your Givernance workspace",
+      "subtitle": "No credit card. Your workspace is ready in under five minutes.",
+      "submit": "Create workspace",
+      "securityHint": "We only use your email to verify your workspace.",
+      "captchaLabel": "Security check",
+      "emailHasTenant": "Your organisation may already be on Givernance. Contact your administrator to be invited.",
+      "haveAccount": "Already have an account? <link>Sign in</link>",
+      "fields": {
+        "orgName": "Organisation name",
+        "slug": "Workspace URL",
+        "firstName": "First name",
+        "lastName": "Last name",
+        "email": "Professional email",
+        "country": "Country (ISO-2)",
+        "legalType": "Legal form"
+      },
+      "legalTypes": {
+        "association": "Association (loi 1901)",
+        "fondation": "Foundation",
+        "fondsDeDotation": "Endowment fund",
+        "cooperative": "Cooperative",
+        "other": "Other"
+      },
+      "slug": {
+        "help": "Letters, numbers and dashes only.",
+        "checking": "Checking availability…",
+        "available": "Available.",
+        "taken": "This URL is already taken."
+      },
+      "consent": "I accept the <terms>terms of service</terms> and the <privacy>privacy policy</privacy>.",
+      "errors": {
+        "orgNameRequired": "Organisation name is required.",
+        "firstNameRequired": "First name is required.",
+        "lastNameRequired": "Last name is required.",
+        "emailInvalid": "Enter a valid email address.",
+        "emailInUse": "This email is already associated with a Givernance account.",
+        "slugSyntax": "Use lowercase letters, numbers and dashes.",
+        "slugReserved": "This URL is reserved — choose another.",
+        "slugPunycode": "International domain names are not supported yet.",
+        "slugTaken": "This URL is already taken.",
+        "consentRequired": "You must accept the terms to continue.",
+        "captchaRequired": "Complete the security check first.",
+        "captchaInvalid": "Security check failed. Please try again.",
+        "rateLimited": "Too many attempts. Please try again later.",
+        "generic": "Signup could not be completed. If you believe this is an error, please contact support."
+      }
+    },
+    "signupSuccess": {
+      "title": "Check your inbox",
+      "subtitle": "We've sent a verification link to <email></email>. Click the link to finish creating your workspace.",
+      "subtitleNoEmail": "We've sent you a verification link. Click it to finish creating your workspace.",
+      "resend": "Resend verification email",
+      "resending": "Sending…",
+      "resendSent": "We've resent the email. Give it a minute.",
+      "resendTooMany": "You've requested too many emails. Please wait a bit before trying again.",
+      "spamHint": "If you don't see it within a few minutes, check your spam folder.",
+      "backToLogin": "Back to sign in"
+    },
+    "signupVerify": {
+      "title": "Finish signing up",
+      "subtitle": "Confirm your name so we can set up your workspace.",
+      "submit": "Enter my workspace",
+      "successTitle": "Workspace ready",
+      "successBody": "Redirecting you to your dashboard…",
+      "errorTitle": "Verification failed",
+      "restartSignup": "Start signup again",
+      "fields": {
+        "firstName": "First name",
+        "lastName": "Last name"
+      },
+      "errors": {
+        "invalid": "This verification link is invalid.",
+        "expired": "This verification link is invalid or has already been used. Please start signup again.",
+        "missingToken": "No verification token supplied.",
+        "namesRequired": "Please provide your first and last name.",
+        "rateLimited": "Too many attempts. Please try again in a few minutes.",
+        "generic": "We couldn't finish verifying your workspace. Please retry."
+      }
+    },
+    "selectOrganization": {
+      "title": "Which workspace would you like to enter?",
+      "subtitle": "Your account belongs to multiple organisations.",
+      "continue": "Continue",
+      "provisional": "Provisional admin",
+      "lastVisited": "Last visited {date}",
+      "errors": {
+        "forbidden": "You cannot switch to this workspace.",
+        "generic": "Could not switch workspaces. Please try again."
+      }
     }
   },
   "errors": {
@@ -115,6 +207,72 @@
       "expired": "expired",
       "lessThanMinute": "< 1m",
       "fallbackUser": "user"
+    },
+    "provisionalAdmin": {
+      "body": "You are the provisional administrator of this workspace until {date}. Any other verified member can dispute.",
+      "learnMore": "Learn more",
+      "dismiss": "Dismiss"
+    },
+    "orgSwitcher": {
+      "placeholder": "Switch workspace",
+      "ariaLabel": "Workspace switcher",
+      "errors": {
+        "generic": "Could not switch workspaces."
+      }
+    }
+  },
+  "admin": {
+    "disputes": {
+      "list": {
+        "title": "Provisional-admin disputes",
+        "subtitle": "Triage queue for workspaces whose first admin is being disputed.",
+        "openSectionTitle": "Open disputes ({count})",
+        "closedSectionTitle": "Recently closed ({count})",
+        "emptyOpen": "No open disputes.",
+        "emptyClosed": "No resolved disputes yet.",
+        "pending": "Pending",
+        "resolutions": {
+          "kept": "Kept",
+          "replaced": "Replaced",
+          "escalated_to_support": "Escalated"
+        }
+      },
+      "detail": {
+        "title": "Dispute — {name}",
+        "backToList": "Back to disputes",
+        "reasonLabel": "Reason provided",
+        "noReason": "No reason was provided.",
+        "partiesLabel": "Involved users",
+        "disputer": "Disputer",
+        "provisionalAdmin": "Provisional admin",
+        "resolvedLabel": "Resolution",
+        "resolutions": {
+          "kept": "The provisional admin was kept.",
+          "replaced": "The disputer replaced the provisional admin.",
+          "escalated_to_support": "Escalated to support for manual triage."
+        },
+        "resolve": {
+          "title": "Resolve this dispute",
+          "submit": "Apply resolution",
+          "options": {
+            "kept": {
+              "label": "Keep the provisional admin",
+              "hint": "The original admin keeps `org_admin`; provisional window closes."
+            },
+            "replaced": {
+              "label": "Replace with the disputer",
+              "hint": "Disputer becomes `org_admin`; former admin demoted to `user`."
+            },
+            "escalated_to_support": {
+              "label": "Escalate to support",
+              "hint": "Leaves the workspace as-is; support will follow up manually."
+            }
+          },
+          "errors": {
+            "generic": "Could not apply the resolution. Please retry."
+          }
+        }
+      }
     }
   },
   "settings": {

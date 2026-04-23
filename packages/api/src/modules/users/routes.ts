@@ -1,6 +1,6 @@
 /** User routes — user profile and org-admin user management */
 
-import { outboxEvents, users } from "@givernance/shared/schema";
+import { outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -40,6 +40,27 @@ const UserResponse = Type.Object({
   updatedAt: Type.String(),
 });
 
+/**
+ * Extended `/users/me` payload — includes onboarding-runtime fields
+ * (`firstAdmin`, `provisionalUntil`, `orgSlug`) so the app shell can render
+ * the provisional-admin banner without a second round-trip.
+ */
+const MeResponse = Type.Object({
+  id: UuidSchema,
+  orgId: UuidSchema,
+  keycloakId: Type.Union([Type.String(), Type.Null()]),
+  email: Type.String(),
+  firstName: Type.String(),
+  lastName: Type.String(),
+  role: Type.String(),
+  firstAdmin: Type.Boolean(),
+  provisionalUntil: Type.Union([Type.String(), Type.Null()]),
+  orgSlug: Type.String(),
+  orgName: Type.String(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+
 export async function userRoutes(app: FastifyInstance) {
   /** GET /v1/users/me — current user profile (requires JWT) */
   app.get(
@@ -48,22 +69,37 @@ export async function userRoutes(app: FastifyInstance) {
       preHandler: requireAuth,
       schema: {
         tags: ["Users"],
-        response: { 200: DataResponse(UserResponse), ...ErrorResponses },
+        response: { 200: DataResponse(MeResponse), ...ErrorResponses },
       },
     },
     async (request, reply) => {
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
 
-      const user = await withTenantContext(orgId, async (tx) => {
-        const [row] = await tx
-          .select()
+      const row = await withTenantContext(orgId, async (tx) => {
+        const [r] = await tx
+          .select({
+            id: users.id,
+            orgId: users.orgId,
+            keycloakId: users.keycloakId,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            role: users.role,
+            firstAdmin: users.firstAdmin,
+            provisionalUntil: users.provisionalUntil,
+            createdAt: users.createdAt,
+            updatedAt: users.updatedAt,
+            orgSlug: tenants.slug,
+            orgName: tenants.name,
+          })
           .from(users)
+          .innerJoin(tenants, eq(tenants.id, users.orgId))
           .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
-        return row;
+        return r;
       });
 
-      if (!user) {
+      if (!row) {
         const t = resolveTranslations(request);
         return reply.status(404).send({
           type: "https://httpproblems.com/http-status/404",
@@ -73,7 +109,14 @@ export async function userRoutes(app: FastifyInstance) {
         });
       }
 
-      return reply.send({ data: user });
+      return reply.send({
+        data: {
+          ...row,
+          provisionalUntil: row.provisionalUntil?.toISOString() ?? null,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+        },
+      });
     },
   );
 
