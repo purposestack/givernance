@@ -133,7 +133,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <button
                 type="button"
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                aria-label={t("workspaceSwitcher")}
               >
                 <div
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"
@@ -168,12 +167,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>{user?.email ?? t("userPlaceholder")}</DropdownMenuLabel>
-              <DropdownMenuItem asChild>
-                <Link href="/profile" onClick={handleMobileClose}>
-                  {t("profile")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={logout}>
                 <LogOut size={16} aria-hidden="true" />
                 <span>{t("signOut")}</span>
