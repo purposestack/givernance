@@ -2,6 +2,51 @@
 
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { isReservedSlug } from "../constants/reserved-slugs";
+
+/**
+ * Tenant slug: 2–50 chars, lowercase alnum + single internal dashes, no leading/
+ * trailing dash. The regex requires ≥2 characters (minLength is also set on the
+ * schema, but encoding the minimum in the pattern itself guarantees strictness
+ * regardless of JSON-schema dialect). The column is VARCHAR(100); we cap at 50
+ * here to leave headroom for reserved prefixes and subdomain-era migrations.
+ */
+export const TENANT_SLUG_PATTERN = "^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$";
+
+export const TenantSlugSchema = Type.String({
+  minLength: 2,
+  maxLength: 50,
+  pattern: TENANT_SLUG_PATTERN,
+  description:
+    "Lowercase alphanumeric + dashes; 2–50 chars; no leading/trailing dash. Rejected if it matches a reserved platform slug.",
+});
+
+/**
+ * Validate a slug. Returns the canonical (trimmed + lowercased) value on
+ * success so callers can write it straight to the DB without re-normalising,
+ * avoiding mixed-case drift between `slug` values stored across tenants.
+ *
+ * On failure, `reason` is one of:
+ * - `syntax`   — fails the regex / length constraints
+ * - `reserved` — matches a platform-reserved slug (see `reserved-slugs.ts`)
+ * - `punycode` — starts with the IDNA punycode prefix `xn--`; disallowed to
+ *   prevent homograph confusion in tenant URLs.
+ */
+export function validateTenantSlug(
+  slug: string,
+): { ok: true; slug: string } | { ok: false; reason: "syntax" | "reserved" | "punycode" } {
+  const normalised = slug.trim().toLowerCase();
+  if (!Value.Check(TenantSlugSchema, normalised)) {
+    return { ok: false, reason: "syntax" };
+  }
+  if (normalised.startsWith("xn--")) {
+    return { ok: false, reason: "punycode" };
+  }
+  if (isReservedSlug(normalised)) {
+    return { ok: false, reason: "reserved" };
+  }
+  return { ok: true, slug: normalised };
+}
 
 /** Schema for creating a new constituent */
 export const ConstituentCreateSchema = Type.Object({
