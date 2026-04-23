@@ -1,26 +1,32 @@
 # 21 — Authentication & Single Sign-On (SSO)
 
-> **Status**: Approved (Phase 1)
-> **Related**: `02-reference-architecture.md` §3.2 & §6, `06-security-compliance.md`, `15-infra-adr.md` (ADR-009), `19-impersonation.md`
-> **Context**: PR #73 (Sprint 4: Auth UI & App Shell); Spike [#80](https://github.com/purposestack/givernance/issues/80) — Multi-Tenant SSO Onboarding Architecture
+> **Status**: Approved (Phase 1); extended by ADR-016 / `docs/22-tenant-onboarding.md` (Phase 2 hybrid onboarding)
+> **Related**: `02-reference-architecture.md` §3.2 & §6, `06-security-compliance.md`, `15-infra-adr.md` (ADR-009, ADR-016), `19-impersonation.md`, `22-tenant-onboarding.md`
+> **Context**: PR #73 (Sprint 4: Auth UI & App Shell); Spike [#80](https://github.com/purposestack/givernance/issues/80) — Multi-Tenant SSO Onboarding Architecture; design session 2026-04-23 — hybrid self-serve + enterprise tracks
 
 ## 1. Overview
 Givernance uses **OpenID Connect (OIDC)** via **Keycloak** as the sole authentication mechanism. Local username/password forms and the former "self-service onboarding wizard" (organisation creation, team invite, data residency selection, GDPR parameters) have been intentionally discarded in favour of a 100% SSO-driven flow. This centralises identity management, simplifies GDPR compliance (no password storage), and enables enterprise-grade features (MFA, SAML federation) out of the box.
 
 ### 1.1 Onboarding model at a glance
 
-| Concern | Previous model (deprecated) | Current model (Spike #80) |
-|---|---|---|
-| Tenant creation | Anonymous visitor fills a 5-step signup wizard | **Givernance Super Admin** creates the tenant from the back-office |
-| Identity Provider configuration | Implicit (local password) | Super Admin configures the per-tenant OIDC/SAML connection (Entra ID, Okta, Google Workspace, …) in the shared Keycloak realm |
-| User account creation | Manual invite → user sets password | **Just-In-Time (JIT) provisioning** runs on first SSO login from Keycloak JWT claims (`sub`, `email`, `org_id`, `role`). Email validation is deferred to Phase 2. |
-| Data residency choice | Per-org selector in the wizard | **No longer a user choice** — governed centrally by ADR-009 (Scaleway Managed PostgreSQL EU, RLS-based isolation; supersedes ADR-006) |
-| Salesforce / CSV import at signup | Step 3 of the wizard | Deferred to the **Migration epic**, post-login |
-| Tenant URL routing | Generic app URL | Tenant is addressed by subdomain (`https://<tenant>.givernance.app`, or `.org` where appropriate); local development simulates this with `?namespace=<tenant>` |
+The tenant-provisioning model has evolved twice. Spike #80 moved from a legacy self-service wizard to super-admin-only provisioning. ADR-016 (2026-04-23) added a self-serve track alongside the enterprise one to serve the long tail of small NPOs without corporate email domains. The table below reflects the **current (Phase 2) hybrid model**; see [`docs/22-tenant-onboarding.md`](./22-tenant-onboarding.md) for the full specification.
 
-## 2. Tenant Onboarding Architecture (Spike #80)
+| Concern | Legacy wizard (pre-#80) | Enterprise track (ADR-016) | Self-serve track (ADR-016, new) |
+|---|---|---|---|
+| Tenant creation | Anonymous 5-step wizard | **Givernance super-admin** creates the tenant from the back-office | Anonymous visitor completes `/signup`; tenant row is `status='provisional'` until email verification |
+| Identity Provider | Implicit (local password) | Super-admin wires per-tenant OIDC/SAML (Entra, Okta, Google Workspace) via Keycloak Admin API + Home IdP Discovery | Keycloak realm local authenticator (magic link / OTP) — no federated IdP |
+| First-admin identity | Manual invite → user sets password | Domain-verified corporate email, JIT-provisioned from IdP claims | First verified user, granted **provisional `org_admin`** for a 7-day dispute window |
+| Data residency | Per-org selector | Centralised by ADR-009 (Scaleway Managed PostgreSQL EU, RLS-based) | Same — not a user choice |
+| Salesforce / CSV import | Wizard step 3 | Deferred to the Migration epic | Deferred to the Migration epic |
+| Tenant URL routing | Generic app URL | `app.givernance.app/<slug>/…` (URL-path scoping per ADR-016) | Same |
 
-### 2.1 Option A — shared realm with groups/attributes (MVP choice)
+Subdomain routing (`<tenant>.givernance.app`) is **deferred**; it is reserved for a future Enterprise tier over Cloudflare for SaaS.
+
+## 2. Tenant Onboarding Architecture
+
+> **Phase 2 update**: the groups-and-attributes approach below was Spike #80's MVP choice. ADR-016 supersedes that with **Keycloak Organizations** (Keycloak 26+) and adds a self-serve track. The sections below describe the *current implementation surface* (what PR #73 shipped) plus the *target state* from ADR-016. See [`docs/22-tenant-onboarding.md`](./22-tenant-onboarding.md) for the full Phase 2 spec including data model, API surface, and rollout plan.
+
+### 2.1 Option A — shared realm with groups/attributes (Phase 1 MVP, in-code today)
 
 Givernance operates **one shared Keycloak realm per deployment** (`givernance` for SaaS; see `02-reference-architecture.md` §3.2). Tenant membership is represented through:
 
@@ -29,6 +35,16 @@ Givernance operates **one shared Keycloak realm per deployment** (`givernance` f
 - **Per-tenant Identity Provider federation** (Entra ID, Okta, Google Workspace, or Keycloak local for smoke tests), routed via `kc_idp_hint` or email-domain alias on the login page.
 
 Because the realm is shared, thousands of small European NPOs can be onboarded without multiplying realms, clients, redirect URI configuration, or admin overhead. Tenant isolation is enforced at the application layer (`org_id` claim → PostgreSQL RLS, see `02-reference-architecture.md` §6).
+
+### 2.1.bis Target state — Keycloak Organizations (Phase 2, per ADR-016)
+
+Keycloak 26 introduced a first-class `Organization` primitive with built-in domain-based IdP routing (Home IdP Discovery), per-org IdP bindings, and invitation flows. ADR-016 adopts this primitive and migrates the dev realm seed away from the ad-hoc group/attribute plumbing. Concretely:
+
+- Each Givernance tenant maps 1:1 to a Keycloak Organization identified by `tenants.keycloak_org_id`.
+- Per-tenant IdP bindings are attached to the Organization rather than injected via a custom authenticator.
+- Domain-based routing uses Keycloak's Home IdP Discovery, removing the need for custom `kc_idp_hint` wiring in the app.
+- `org_id`, `role`, and `email` remain the trusted claims; the `givernance-web` client keeps its protocol mappers unchanged.
+- Migration is covered by PR #10 of the rollout in [`docs/22-tenant-onboarding.md`](./22-tenant-onboarding.md) §10 and depends on [issue #61](https://github.com/purposestack/givernance/issues/61) (Keycloak DB split).
 
 ### 2.2 Option B — dedicated realm per tenant (future evolution)
 
