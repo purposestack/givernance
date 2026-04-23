@@ -66,6 +66,16 @@ docker compose exec -T postgres psql \
   -c "UPDATE realm SET ssl_required='NONE' WHERE name='master';"
 docker compose restart keycloak > /dev/null
 
+echo "Waiting for Keycloak realm '${KEYCLOAK_REALM:-givernance}' to be reachable..."
+KC_URL="${KEYCLOAK_URL:-http://localhost:${KEYCLOAK_PORT:-8080}}"
+REALM_NAME="${KEYCLOAK_REALM:-givernance}"
+until curl -sf -o /dev/null "${KC_URL}/realms/${REALM_NAME}/.well-known/openid-configuration"; do
+  sleep 2
+done
+
+echo "Syncing Keycloak realm state (idempotent)..."
+KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-sync-realm.sh"
+
 echo ""
 echo "====================================="
 echo " Givernance — Local Dev Stack"

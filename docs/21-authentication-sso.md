@@ -211,9 +211,17 @@ API_URL=http://localhost:4000
 
 ### `org_id` mapper requirement
 
-The API treats `org_id` as the sole tenant-binding authority, so the access token must always contain that claim. For local dev, the seeded realm config adds a client protocol mapper (`oidc-usermodel-attribute-mapper`) that copies the user attribute `org_id` into both access and ID tokens.
+The API treats `org_id` as the sole tenant-binding authority, so the access token must always contain that claim. For local dev, the seeded realm config adds:
 
-If your Keycloak realm already existed before this change, `--import-realm` will not patch it in place. Add the mapper manually on the `givernance-web` client and set `org_id` on each user, or recreate the local Keycloak container so the realm is imported fresh.
+- A user profile definition with `unmanagedAttributePolicy=ENABLED` so the custom `org_id` attribute is accepted (Keycloak 24's declarative user profile rejects undeclared attributes by default).
+- A client protocol mapper (`oidc-usermodel-attribute-mapper`) on `givernance-web` that copies the user attribute `org_id` into access and ID tokens.
+- An `org_id` attribute on the seeded `admin@givernance.org` user.
+
+Keycloak's `--import-realm` uses `IGNORE_EXISTING`, so a container started before this config was added will not pick up these settings on restart. `scripts/dev-up.sh` runs `scripts/keycloak-sync-realm.sh` after Keycloak boots to reconcile the state idempotently. If you bypass `dev-up.sh`, run the sync script manually:
+
+```bash
+./scripts/keycloak-sync-realm.sh
+```
 
 ### Local login credentials
 - **App URL**: http://localhost:3000 → redirects to `/dashboard`, then to `/login` when signed out
@@ -228,6 +236,6 @@ If your Keycloak realm already existed before this change, `--import-realm` will
 |---------|-------|-----|
 | `curl http://localhost:8080/realms/givernance` returns 404 | Keycloak running but realm not imported (realm JSON added after container started) | `docker compose up -d --force-recreate keycloak` |
 | `?error=token_exchange_failed` on callback | Wrong `KEYCLOAK_CLIENT_SECRET` or realm misconfigured | Check the API console — `console.error("Token Exchange Failed: ...")` logs the Keycloak response |
-| `?error=missing_org_id` on callback | The token validated but the `org_id` claim is missing | Add the `org_id` mapper to `givernance-web`, set the user attribute, then log in again |
+| `?error=missing_org_id` on callback | Keycloak realm pre-dates the `org_id` user-profile / mapper config (common on containers created before April 2026) | Run `./scripts/keycloak-sync-realm.sh` to patch the live realm, then log in again |
 | Clicking logout leaves you signed in on Keycloak | Old session from before the `post.logout.redirect.uris` attribute was added | Push the attribute via admin API or clear cookies for `localhost:8080` |
 | Clicking login after logout auto-redirects without Keycloak prompt | Keycloak session cookie still alive | Expected once Keycloak session is ended via logout; if not, see row above |

@@ -105,7 +105,7 @@ You should see the web on `http://localhost:3000`, the API on `http://localhost:
 
 The web now stores the raw Keycloak access token in `givernance_jwt`. Both the Next.js server guards and the Fastify API verify that token against the realm JWKS (`KEYCLOAK_JWKS_URL`) and enforce the configured issuer (`KEYCLOAK_ISSUER`).
 
-The seeded realm also ships an `org_id` protocol mapper on the `givernance-web` client. It reads the Keycloak user attribute `org_id` and injects it into access and ID tokens. Existing realms are not updated by `--import-realm`; if your local realm predates this change, recreate the Keycloak container or add the mapper manually in the admin console before logging in again.
+The seeded realm also ships an `org_id` protocol mapper on the `givernance-web` client (and an `unmanagedAttributePolicy=ENABLED` user profile so Keycloak 24 accepts the `org_id` attribute). It reads the Keycloak user attribute `org_id` and injects it into access and ID tokens. Existing realms are not updated by `--import-realm`; `scripts/dev-up.sh` reconciles them automatically via `scripts/keycloak-sync-realm.sh`, which you can also invoke directly.
 
 ### Troubleshooting
 
@@ -113,7 +113,7 @@ The seeded realm also ships an `org_id` protocol mapper on the `givernance-web` 
 |---------|-------------|
 | `GET /v1/constituents` → `ECONNREFUSED` from the web | Node's fetch races `::1` (IPv6) against `127.0.0.1` for `localhost`; the API binds IPv4-only. `.env` already pins `API_URL=http://127.0.0.1:4000` — don't change it back to `localhost`. |
 | `ERR_TOO_MANY_REDIRECTS` on `/dashboard` after login | Stale or invalid auth cookies. Delete `givernance_jwt` / `givernance_id_token` in DevTools → Application → Cookies, then log in again. |
-| Login redirects back to `/login?error=missing_org_id` | The Keycloak access token was valid but did not contain `org_id`. Add the `org_id` protocol mapper on the client and ensure the user has an `org_id` attribute, then log in again. |
+| Login redirects back to `/login?error=missing_org_id` | The Keycloak access token was valid but did not contain `org_id`. Run `./scripts/keycloak-sync-realm.sh` to reconcile the live realm with the expected mapper + user attribute, then log in again. |
 | Web starts on port 4000 instead of 3000 (`EADDRINUSE`) | `.env` sets `PORT=4000` for the API; `dotenv-cli` forwards it. The web `dev` script already passes `-p 3000` to override. |
 | `/constituents` shows empty state despite seed running | The Keycloak user's `org_id` attribute does not match the seeded tenant UUID. Set it to `00000000-0000-0000-0000-0000000000a1` or re-run the seed and re-login. |
 
