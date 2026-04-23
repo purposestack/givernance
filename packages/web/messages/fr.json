@@ -414,6 +414,70 @@
   "title": "Paramètres",
   "subtitle": "Gérez les paramètres de l'organisation et les outils d'export.",
   "breadcrumbRoot": "Tableau de bord",
+  "funds": {
+    "settings": "Paramètres",
+    "title": "Fonds",
+    "subtitleEmpty": "Créez des fonds restreints ou non restreints pouvant être rattachés aux campagnes et aux dons.",
+    "subtitleWithCount": "{count, plural, one {# fonds configuré} other {# fonds configurés}}",
+    "readOnly": "Seuls les administrateurs de l'organisation peuvent créer des fonds.",
+    "descriptionEmpty": "Aucune description",
+    "types": {
+      "restricted": "Restreint",
+      "unrestricted": "Non restreint"
+    },
+    "columns": {
+      "name": "Fonds",
+      "type": "Type",
+      "description": "Description",
+      "createdAt": "Créé le"
+    },
+    "actions": {
+      "new": "Nouveau fonds"
+    },
+    "empty": {
+      "title": "Aucun fonds",
+      "description": "Ajoutez un premier fonds pour contrôler les affectations disponibles dans les campagnes et les dons."
+    },
+    "form": {
+      "createTitle": "Créer un fonds",
+      "createSubtitle": "Ajoutez un fonds restreint ou non restreint pour l’affectation des campagnes et des dons.",
+      "breadcrumbNew": "Nouveau fonds",
+      "sections": {
+        "identity": {
+          "title": "Identité",
+          "description": "Informations principales utilisées pour nommer et classer le fonds."
+        },
+        "description": {
+          "title": "Description",
+          "description": "Contexte optionnel pour expliquer quand utiliser ce fonds."
+        }
+      },
+      "fields": {
+        "name": "Nom du fonds",
+        "namePlaceholder": "Fonds restreint grands donateurs",
+        "nameHint": "Utilisez un libellé précis reconnu par l’équipe fundraising.",
+        "type": "Type de fonds",
+        "typeHint": "Les fonds restreints servent aux dons fléchés. Les fonds non restreints peuvent financer les opérations générales.",
+        "description": "Description",
+        "descriptionPlaceholder": "Expliquez l’affectation ou l’usage interne de ce fonds.",
+        "descriptionHint": "Optionnel, mais utile quand plusieurs fonds se ressemblent."
+      },
+      "actions": {
+        "cancel": "Annuler",
+        "submitCreate": "Créer le fonds",
+        "submitting": "Enregistrement…"
+      },
+      "errors": {
+        "nameRequired": "Le nom du fonds est requis.",
+        "nameTooLong": "Le nom du fonds doit contenir au plus 255 caractères.",
+        "descriptionTooLong": "La description doit contenir au plus 5000 caractères.",
+        "generic": "Une erreur est survenue pendant l’enregistrement. Veuillez réessayer."
+      },
+      "success": {
+        "created": "Fonds créé."
+      }
+    }
+  },
   "tenant": {
     "title": "Paramètres de l'organisation",
     "description": "Choisissez la devise de base du tenant utilisée pour le reporting et les conversions.",
@@ -705,6 +769,10 @@
         "structure": {
           "title": "Structure",
           "description": "Campagne parente et coût opérationnel utilisés pour le regroupement et le reporting ROI."
+        },
+        "funds": {
+          "title": "Fonds éligibles",
+          "description": "Choisissez les affectations de fonds qui peuvent être associées à cette campagne."
         }
       },
       "fields": {
@@ -719,7 +787,15 @@
         "parentLoading": "Chargement des campagnes disponibles…",
         "operationalCost": "Coût opérationnel",
         "operationalCostPlaceholder": "0,00",
-        "operationalCostHint": "Dépense saisie par l'organisation. Les frais plateforme sont suivis séparément sur les dons."
+        "operationalCostHint": "Dépense saisie par l'organisation. Les frais plateforme sont suivis séparément sur les dons.",
+        "funds": "Fonds éligibles",
+        "fundsHint": "Les fonds sélectionnés seront disponibles lorsque des dons seront associés à cette campagne.",
+        "fundsLoading": "Chargement des fonds disponibles…",
+        "fundsEmpty": "Aucun fonds n’est configuré pour le moment. Créez-en un depuis les paramètres."
+      },
+      "fundTypeHint": {
+        "restricted": "Fonds restreint",
+        "unrestricted": "Fonds non restreint"
       },
       "actions": {
         "cancel": "Annuler",
@@ -729,6 +805,7 @@
       },
       "errors": {
         "validation": "Corrigez les champs en surbrillance.",
+        "optionsLoad": "Impossible de charger les campagnes ou fonds associés. Rechargez la page avant d’enregistrer pour éviter d’écraser les fonds existants.",
         "generic": "Une erreur est survenue lors de l'enregistrement. Réessayez."
       },
       "success": {
