@@ -56,7 +56,8 @@ const SnapshotCampaignResponse = Type.Object({
   type: Type.String(),
   status: Type.String(),
   parentId: Type.Union([UuidSchema, Type.Null()]),
-  costCents: Type.Union([Type.Integer(), Type.Null()]),
+  operationalCostCents: Type.Union([Type.Integer(), Type.Null()]),
+  platformFeesCents: Type.Integer(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });

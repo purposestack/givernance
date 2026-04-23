@@ -169,6 +169,13 @@
       "when": 1776956400000,
       "tag": "0023_multi_currency_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1776960000000,
+      "tag": "0024_campaign_roi_read_model",
+      "breakpoints": true
     }
   ]
 }

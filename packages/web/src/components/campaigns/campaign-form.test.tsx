@@ -12,7 +12,9 @@ const parentCampaign: Campaign = {
   status: "active",
   defaultCurrency: "EUR",
   parentId: null,
-  costCents: 35000,
+  operationalCostCents: 35000,
+  platformFeesCents: 0,
+  goalAmountCents: null,
   createdAt: "2026-04-21T10:00:00.000Z",
   updatedAt: "2026-04-21T10:00:00.000Z",
 };
@@ -32,7 +34,7 @@ describe("CampaignForm", () => {
       ...parentCampaign,
       id: "22222222-2222-4222-8222-222222222222",
       name: "Spring Appeal 2026",
-      costCents: 1250,
+      operationalCostCents: 1250,
     });
 
     render(<CampaignForm mode="create" />);
@@ -50,7 +52,7 @@ describe("CampaignForm", () => {
           name: "Spring Appeal 2026",
           type: "digital",
           parentId: null,
-          costCents: 1250,
+          operationalCostCents: 1250,
         }),
       ),
     );

@@ -84,7 +84,7 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
     title: initialPage?.title ?? campaign.name,
     description: initialPage?.description ?? "",
     colorPrimary: normalizeThemeColor(initialPage?.colorPrimary),
-    goalAmountCents: initialPage?.goalAmountCents ?? campaign.costCents ?? null,
+    goalAmountCents: initialPage?.goalAmountCents ?? campaign.goalAmountCents ?? null,
     status: initialPage?.status ?? "draft",
   };
 
@@ -294,7 +294,7 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
         description={previewValues.description?.trim() || ""}
         colorPrimary={normalizeThemeColor(previewValues.colorPrimary)}
         goalAmountCents={normalizeGoalAmount(previewValues.goalAmountCents)}
-        fallbackGoalAmountCents={campaign.costCents}
+        fallbackGoalAmountCents={campaign.goalAmountCents}
         fallbackTypeLabel={tCampaigns(`types.${campaign.type}`)}
       />
     </div>

@@ -117,7 +117,7 @@ export const CampaignCreateSchema = Type.Object({
   ]),
   defaultCurrency: Type.Optional(MultiCurrencySchema),
   parentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
-  costCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
+  operationalCostCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
 });
 
 /** Schema for updating a campaign (all fields optional) */

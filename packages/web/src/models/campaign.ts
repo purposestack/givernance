@@ -12,7 +12,9 @@ export interface Campaign {
   status: CampaignStatus;
   defaultCurrency: CampaignCurrency;
   parentId: string | null;
-  costCents: number | null;
+  operationalCostCents: number | null;
+  platformFeesCents: number;
+  goalAmountCents: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,8 +37,22 @@ export interface CampaignStats {
   uniqueDonors: number;
 }
 
+export interface CampaignRoiMetrics {
+  campaignId: string;
+  rawGoalCents: number | null;
+  rawRaisedCents: number;
+  rawPlatformFeesCents: number;
+  rawOperationalCostCents: number | null;
+  totalCostCents: number;
+  roiPct: number | null;
+}
+
 export interface CampaignStatsResponse {
   data: CampaignStats;
+}
+
+export interface CampaignRoiResponse {
+  data: CampaignRoiMetrics;
 }
 
 export interface CampaignDetailResponse {
@@ -48,7 +64,7 @@ export interface CampaignCreateInput {
   type: CampaignType;
   defaultCurrency?: CampaignCurrency;
   parentId?: string | null;
-  costCents?: number | null;
+  operationalCostCents?: number | null;
 }
 
 export type CampaignUpdateInput = Partial<CampaignCreateInput> & {

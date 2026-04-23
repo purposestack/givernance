@@ -31,7 +31,9 @@ describe("CampaignPublicPageForm", () => {
           status: "active",
           defaultCurrency: "EUR",
           parentId: null,
-          costCents: null,
+          operationalCostCents: null,
+          platformFeesCents: 0,
+          goalAmountCents: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }}

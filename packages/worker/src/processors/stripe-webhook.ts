@@ -3,6 +3,7 @@
 import { ExchangeRateService } from "@givernance/shared";
 import type { ProcessStripeWebhookJob } from "@givernance/shared/jobs";
 import {
+  campaigns,
   constituents,
   donations,
   outboxEvents,
@@ -100,6 +101,7 @@ async function handlePaymentIntentSucceeded(
   const constituentFirstName = metadata.constituent_first_name ?? "Anonymous";
   const constituentLastName = metadata.constituent_last_name ?? "Donor";
   const campaignId = metadata.campaign_id || null;
+  const platformFeeCents = Number((payload.application_fee_amount as number | null) ?? 0);
 
   await withWorkerContext(orgId, async (tx) => {
     const exchangeRateService = new ExchangeRateService({
@@ -168,6 +170,8 @@ async function handlePaymentIntentSucceeded(
         exchangeRate: convertedAmount.exchangeRate.toFixed(8),
         amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: campaignId || undefined,
+        status: "cleared",
+        platformFeeCents,
         paymentMethod: "stripe",
         paymentRef: paymentIntentId,
         donatedAt: new Date(),
@@ -182,6 +186,16 @@ async function handlePaymentIntentSucceeded(
     }
 
     const donationId = donation.id;
+
+    if (campaignId) {
+      await tx
+        .update(campaigns)
+        .set({
+          platformFeesCents: sql`${campaigns.platformFeesCents} + ${platformFeeCents}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(campaigns.id, campaignId));
+    }
 
     // Emit DonationCreated domain event atomically
     await tx.insert(outboxEvents).values({

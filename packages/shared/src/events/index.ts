@@ -70,7 +70,7 @@ export interface CampaignChanges {
   type?: "nominative_postal" | "door_drop" | "digital";
   status?: "draft" | "active" | "closed";
   parentId?: string | null;
-  costCents?: number | null;
+  operationalCostCents?: number | null;
 }
 
 export interface CampaignCreated extends BaseEvent {

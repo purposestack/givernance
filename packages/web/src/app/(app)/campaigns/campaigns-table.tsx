@@ -122,7 +122,7 @@ export function CampaignsTable({ campaigns, pagination }: CampaignsTableProps) {
         cell: ({ row }) => {
           const { campaign, stats } = row.original;
           const raisedCents = stats?.totalRaisedCents ?? 0;
-          const goalCents = campaign.costCents ?? 0;
+          const goalCents = campaign.goalAmountCents ?? 0;
           const progress = goalCents > 0 ? Math.min((raisedCents / goalCents) * 100, 100) : 0;
 
           return (
