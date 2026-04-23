@@ -28,6 +28,12 @@ import { authPlugin } from "./plugins/auth.js";
 /** Create and configure the Fastify server instance */
 export async function createServer() {
   const app = Fastify({
+    // Trust proxy headers (X-Forwarded-For, X-Real-IP) so rate-limit keying
+    // and `ipHash` use the real client IP instead of the LB's internal IP
+    // (ADR-016 §8, PR #117 review SEC-3 / ENG-1). Production deployments can
+    // tighten this to an explicit CIDR via env (`TRUST_PROXY`) if the LB is
+    // on a fixed subnet.
+    trustProxy: process.env.TRUST_PROXY ?? true,
     logger: {
       level: env.LOG_LEVEL,
       base: { service: "givernance-api", env: process.env.NODE_ENV },

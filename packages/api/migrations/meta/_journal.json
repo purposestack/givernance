@@ -148,6 +148,13 @@
       "when": 1744502420000,
       "tag": "0021_tenant_onboarding_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1744502421000,
+      "tag": "0022_invitation_purpose",
+      "breakpoints": true
     }
   ]
 }

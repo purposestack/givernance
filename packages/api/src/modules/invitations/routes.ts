@@ -84,6 +84,7 @@ export async function invitationRoutes(app: FastifyInstance) {
             email: body.email,
             role: (body.role as "org_admin" | "user" | "viewer") ?? "user",
             invitedById: inviter?.id ?? null,
+            purpose: "team_invite",
             expiresAt,
           })
           .returning();
@@ -122,11 +123,19 @@ export async function invitationRoutes(app: FastifyInstance) {
       const { token } = request.params as { token: string };
       const body = request.body as { firstName: string; lastName: string };
 
-      // Step 1: Look up invitation without tenant context (no FORCE RLS on invitations)
+      // Step 1: Look up invitation without tenant context (no FORCE RLS on invitations).
+      // Filter to purpose='team_invite' so self-serve signup-verification tokens
+      // cannot be consumed here (SEC-1 / DATA-3, review of PR #117).
       const [invitation] = await db
         .select()
         .from(invitations)
-        .where(and(eq(invitations.token, token), isNull(invitations.acceptedAt)));
+        .where(
+          and(
+            eq(invitations.token, token),
+            eq(invitations.purpose, "team_invite"),
+            isNull(invitations.acceptedAt),
+          ),
+        );
 
       if (!invitation) {
         return reply

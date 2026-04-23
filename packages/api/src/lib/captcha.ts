@@ -24,18 +24,31 @@ interface VerifierConfig {
   secret?: string;
   /** Inject for tests. */
   fetchImpl?: typeof fetch;
-  /** NODE_ENV, used to decide fail-open behaviour in tests. */
-  mode?: "test" | "prod";
+  /** Verification mode. Defaults: `disabled` in tests or when `CAPTCHA_MODE=disabled`; `prod` otherwise. */
+  mode?: "disabled" | "prod";
+}
+
+/**
+ * Resolve the CAPTCHA mode. Priority: explicit config > `CAPTCHA_MODE` env >
+ * `NODE_ENV === "test"` default. An explicit `CAPTCHA_MODE=disabled` on a
+ * staging/preview environment is logged at boot so operators see the knob.
+ */
+function resolveMode(configMode: VerifierConfig["mode"]): "disabled" | "prod" {
+  if (configMode) return configMode;
+  const envMode = process.env.CAPTCHA_MODE;
+  if (envMode === "disabled" || envMode === "prod") return envMode;
+  if (process.env.NODE_ENV === "test") return "disabled";
+  return "prod";
 }
 
 export function createCaptchaVerifier(config: VerifierConfig = {}): CaptchaVerifier {
-  const mode = config.mode ?? (process.env.NODE_ENV === "test" ? "test" : "prod");
+  const mode = resolveMode(config.mode);
   const secret = config.secret ?? env.HCAPTCHA_SECRET;
   const fetchImpl = config.fetchImpl ?? fetch;
 
   return {
     async verify(token, ip) {
-      if (mode === "test") {
+      if (mode === "disabled") {
         // Dev / CI fail-open: accept any token, including undefined.
         return { ok: true };
       }

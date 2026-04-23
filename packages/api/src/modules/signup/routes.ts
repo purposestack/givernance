@@ -2,18 +2,29 @@
  * Public self-serve signup routes (issue #108 / ADR-016).
  *
  * All endpoints are unauthenticated and rate-limited. CAPTCHA is fail-open
- * in NODE_ENV=test (see `lib/captcha.ts`), fail-closed elsewhere.
+ * in `CAPTCHA_MODE=disabled` (or `NODE_ENV=test`), fail-closed elsewhere.
+ *
+ * Review pass (PR #117):
+ *  - SEC-5 / ENG-4: slug_taken + email_in_use → 409 with a single generic
+ *    "Signup could not be completed" message (no enumeration oracle).
+ *  - SEC-6: verify collapses all failure paths to 410 generic.
+ *  - SEC-10: resend is rate-limited per-email via a Redis bucket in
+ *    addition to the per-IP Fastify rate limit.
+ *  - ENG-5: dropped the `checkEmail: Literal(true)` field from the 201
+ *    response — 201 already means "verification required".
+ *  - ENG-6: captcha failure → 400 generic, reason is logged internally.
  */
 
 import { createHash } from "node:crypto";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { defaultCaptchaVerifier } from "../../lib/captcha.js";
+import { redis } from "../../lib/redis.js";
 import {
   DataResponse,
   ErrorResponses,
-  problemDetail,
   ProblemDetailSchema,
+  problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
 import { lookupTenantForEmail, resendVerification, signup, verifySignup } from "./service.js";
@@ -46,7 +57,6 @@ const VerifyBody = Type.Object({
 const SignupResponse = Type.Object({
   tenantId: UuidSchema,
   email: Type.String(),
-  checkEmail: Type.Literal(true),
 });
 
 const VerifyResponse = Type.Object({
@@ -63,7 +73,6 @@ const LookupQuery = Type.Object({
 const LookupResponse = Type.Object({
   hasExistingTenant: Type.Boolean(),
   hint: Type.Union([Type.Literal("contact_admin"), Type.Literal("create_new")]),
-  orgSlug: Type.Optional(Type.String()),
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -76,6 +85,20 @@ function hashIp(ip: string | undefined): string | undefined {
 
 function clientIp(request: FastifyRequest): string | undefined {
   return request.ip ?? undefined;
+}
+
+/**
+ * Per-email rate limit for the resend endpoint, on top of the per-IP Fastify
+ * limit. Defends against a botnet spamming a single victim's inbox (SEC-10).
+ * Returns `true` when the request is allowed, `false` when the bucket is full.
+ */
+async function acceptResendForEmail(email: string): Promise<boolean> {
+  const key = `signup:resend:email:${email.trim().toLowerCase()}`;
+  const hits = await redis.incr(key);
+  if (hits === 1) {
+    await redis.expire(key, 60 * 60); // 1h window
+  }
+  return hits <= 3; // max 3 resends per email per hour globally
 }
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
@@ -92,6 +115,8 @@ export async function signupRoutes(app: FastifyInstance) {
         headers: CaptchaHeader,
         response: {
           201: DataResponse(SignupResponse),
+          400: ProblemDetailSchema,
+          409: ProblemDetailSchema,
           422: ProblemDetailSchema,
           429: Type.Any(),
           ...ErrorResponses,
@@ -114,9 +139,11 @@ export async function signupRoutes(app: FastifyInstance) {
         clientIp(request),
       );
       if (!captcha.ok) {
+        request.log.warn({ reason: captcha.reason }, "signup.captcha_rejected");
+        // Generic message — don't tell the attacker which gate failed.
         return reply
-          .status(422)
-          .send(problemDetail(422, "CAPTCHA Required", "A valid CAPTCHA token is required."));
+          .status(400)
+          .send(problemDetail(400, "Signup rejected", "Signup could not be completed."));
       }
 
       const ipHash = hashIp(clientIp(request));
@@ -125,41 +152,29 @@ export async function signupRoutes(app: FastifyInstance) {
           ? request.headers["user-agent"].slice(0, 512)
           : undefined;
 
-      const result = await signup({
-        ...body,
-        ipHash,
-        userAgent,
-      });
+      const result = await signup({ ...body, ipHash, userAgent });
 
       if (!result.ok) {
-        const reasonMap: Record<string, { title: string; detail: string }> = {
-          disposable_email: {
-            title: "Email not accepted",
-            detail: "The email address provided is not accepted for signup.",
-          },
-          invalid_slug: {
-            title: "Invalid organization URL",
-            detail: "The organization URL is invalid, reserved, or uses a non-ASCII prefix.",
-          },
-          slug_taken: {
-            title: "Organization URL already taken",
-            detail:
-              "Another organization is already using this URL. Please choose a different one.",
-          },
-          email_in_use: {
-            title: "Organization already exists",
-            detail:
-              "An organization with this email domain is already on Givernance — ask an admin to invite you.",
-          },
-        };
-        const mapped = reasonMap[result.error.kind];
+        request.log.info({ reason: result.error.kind }, "signup.rejected");
+        if (result.error.kind === "invalid_slug") {
+          return reply
+            .status(422)
+            .send(
+              problemDetail(
+                422,
+                "Invalid organization URL",
+                "The organization URL is invalid, reserved, or uses a non-ASCII prefix.",
+              ),
+            );
+        }
+        // Both slug_taken and email_in_use → 409 + generic message (SEC-5).
         return reply
-          .status(422)
+          .status(409)
           .send(
             problemDetail(
-              422,
-              mapped?.title ?? "Signup rejected",
-              mapped?.detail ?? "Signup rejected",
+              409,
+              "Signup could not be completed",
+              "Signup could not be completed. If you believe this is an error, please contact support.",
             ),
           );
       }
@@ -168,7 +183,6 @@ export async function signupRoutes(app: FastifyInstance) {
         data: {
           tenantId: result.tenantId,
           email: result.email,
-          checkEmail: true as const,
         },
       });
     },
@@ -191,7 +205,12 @@ export async function signupRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { email } = request.body as { email: string };
-      // Never leak whether the email matched anything — always 204.
+      const allowed = await acceptResendForEmail(email);
+      if (!allowed) {
+        // Silently accept — the endpoint cannot be used as an enumeration or
+        // spam-amplification oracle.
+        return reply.status(204).send();
+      }
       await resendVerification(email);
       return reply.status(204).send();
     },
@@ -208,7 +227,6 @@ export async function signupRoutes(app: FastifyInstance) {
         response: {
           201: DataResponse(VerifyResponse),
           410: ProblemDetailSchema,
-          422: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -224,20 +242,17 @@ export async function signupRoutes(app: FastifyInstance) {
       const result = await verifySignup({ ...body, ipHash, userAgent });
 
       if (!result.ok) {
-        if (result.error.kind === "invalid_or_expired") {
-          return reply
-            .status(410)
-            .send(
-              problemDetail(
-                410,
-                "Verification expired",
-                "The verification link has expired or is invalid.",
-              ),
-            );
-        }
+        // SEC-6: collapse all failure modes into one generic 410 to remove
+        // the status-code enumeration oracle.
         return reply
-          .status(422)
-          .send(problemDetail(422, "Already verified", "This tenant has already been verified."));
+          .status(410)
+          .send(
+            problemDetail(
+              410,
+              "Verification expired",
+              "This verification link is invalid or has already been used. Please start signup again.",
+            ),
+          );
       }
 
       return reply.status(201).send({
