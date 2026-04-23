@@ -302,6 +302,112 @@
           }
         }
       }
+    },
+    "tenants": {
+      "list": {
+        "title": "Gestion des tenants",
+        "subtitle": "Consultez l’ensemble des tenants enterprise et accédez à leur cycle de vie, domaines, utilisateurs et audit récent.",
+        "columns": {
+          "name": "Tenant",
+          "status": "Statut",
+          "plan": "Plan",
+          "primaryDomain": "Domaine principal",
+          "createdVia": "Créé via",
+          "updatedAt": "Dernière mise à jour"
+        },
+        "statuses": {
+          "active": "Actif",
+          "suspended": "Suspendu",
+          "archived": "Archivé"
+        },
+        "verification": {
+          "verified": "Vérifié",
+          "pending": "En attente"
+        },
+        "empty": {
+          "title": "Aucun tenant",
+          "description": "Les tenants créés via le parcours de super-admin apparaîtront ici."
+        }
+      },
+      "detail": {
+        "backToList": "Retour à la liste",
+        "statuses": {
+          "active": "Actif",
+          "suspended": "Suspendu",
+          "archived": "Archivé"
+        },
+        "verification": {
+          "verified": "Vérifié",
+          "pending": "En attente"
+        },
+        "tabs": {
+          "overview": "Vue d’ensemble",
+          "domains": "Domaines",
+          "users": "Utilisateurs",
+          "audit": "Audit"
+        },
+        "overview": {
+          "fields": {
+            "slug": "Slug",
+            "plan": "Plan",
+            "createdVia": "Créé via",
+            "primaryDomain": "Domaine principal",
+            "keycloakOrgId": "ID org Keycloak",
+            "createdAt": "Créé le",
+            "updatedAt": "Mis à jour le",
+            "verifiedAt": "Vérifié le"
+          }
+        },
+        "domains": {
+          "columns": {
+            "domain": "Domaine",
+            "state": "État",
+            "dnsTxtValue": "DNS TXT",
+            "verifiedAt": "Vérifié le"
+          },
+          "empty": "Aucun domaine géré n’est encore rattaché à ce tenant."
+        },
+        "users": {
+          "columns": {
+            "name": "Nom",
+            "email": "Email",
+            "role": "Rôle",
+            "flags": "Indicateurs",
+            "lastVisitedAt": "Dernière visite"
+          },
+          "flags": {
+            "firstAdmin": "Premier admin",
+            "provisionalUntil": "Provisoire jusqu’au {date}"
+          },
+          "empty": "Aucun utilisateur n’a encore été provisionné pour ce tenant."
+        },
+        "audit": {
+          "columns": {
+            "createdAt": "Créé le",
+            "action": "Action",
+            "resource": "Ressource",
+            "actor": "Acteur",
+            "changes": "Changements"
+          },
+          "oldValues": "Ancien : {value}",
+          "newValues": "Nouveau : {value}",
+          "empty": "Aucun événement d’audit récent n’est disponible pour ce tenant."
+        },
+        "lifecycle": {
+          "title": "Actions de cycle de vie",
+          "description": "Suspendre, archiver ou réactiver le tenant depuis le back-office super-admin.",
+          "reasonLabel": "Motif",
+          "reasonPlaceholder": "Note facultative enregistrée avec la transition de cycle de vie.",
+          "actions": {
+            "suspend": "Suspendre",
+            "archive": "Archiver",
+            "activate": "Réactiver"
+          },
+          "submitting": "Enregistrement…",
+          "success": "Cycle de vie du tenant mis à jour : {action}.",
+          "error": "Impossible de mettre à jour le cycle de vie du tenant. Réessayez."
+        }
+      }
     }
   },
   "settings": {
