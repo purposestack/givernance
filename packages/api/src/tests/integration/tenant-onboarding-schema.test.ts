@@ -221,19 +221,22 @@ describe("validateTenantSlug", () => {
 
 describe.sequential("tenants back-fill (migration 0021)", () => {
   it("existing seeded tenants have status='active' and created_via='enterprise'", async () => {
+    // Filter to the shared test-suite tenants only — other suites (e.g. the
+    // public-signup flow) legitimately create `provisional` rows in parallel,
+    // so a full-table scan here would be flaky.
     const rows = await db
       .select({
         id: tenants.id,
         status: tenants.status,
         createdVia: tenants.createdVia,
       })
-      .from(tenants);
-    // Every pre-existing tenant row inherits the new defaults from the migration.
+      .from(tenants)
+      .where(sql`${tenants.id} IN (${ONBOARD_A}, ${ONBOARD_B})`);
     for (const row of rows) {
       expect(row.status).toBe("active");
       expect(row.createdVia).toBe("enterprise");
     }
-    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows.length).toBe(2);
   });
 
   it("existing users have first_admin=false after migration", async () => {

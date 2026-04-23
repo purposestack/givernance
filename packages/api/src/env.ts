@@ -47,6 +47,8 @@ const EnvSchema = Type.Object({
   KEYCLOAK_ADMIN_CLIENT_ID: Type.String({ minLength: 1, default: "givernance-admin" }),
   /** Service-account client secret used for Keycloak Admin API calls. */
   KEYCLOAK_ADMIN_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
+  /** hCaptcha server-side secret used by the public signup flow (ADR-016 / issue #108). */
+  HCAPTCHA_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   /** HTTP port */
   PORT: Type.Number({ default: 4000 }),
   /** HTTP bind address */
