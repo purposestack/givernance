@@ -73,10 +73,7 @@ export function FundForm({ canManageFunds }: FundFormProps) {
       router.push("/settings/funds");
       router.refresh();
     } catch (error) {
-      form.setError("root", {
-        type: "server",
-        message: resolveApiErrorMessage(error, t("errors.generic")),
-      });
+      handleApiError(error, form, t("errors.generic"));
     }
   }
 
@@ -204,6 +201,19 @@ export function FundForm({ canManageFunds }: FundFormProps) {
       </form>
     </Form>
   );
+}
+
+function handleApiError(
+  error: unknown,
+  form: ReturnType<typeof useForm<FundFormValues>>,
+  fallback: string,
+) {
+  const message = resolveApiErrorMessage(error, fallback);
+  form.setError("root", {
+    type: "server",
+    message,
+  });
+  toast.error(message);
 }
 
 function resolveApiErrorMessage(error: unknown, fallback: string): string {

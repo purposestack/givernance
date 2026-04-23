@@ -14,7 +14,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
-import { type DefaultValues, type Resolver, type UseFormReturn, useForm } from "react-hook-form";
+import {
+  type ControllerRenderProps,
+  type DefaultValues,
+  type Resolver,
+  type UseFormReturn,
+  useForm,
+} from "react-hook-form";
 
 import { AmountInput } from "@/components/shared/amount-input";
 import {
@@ -25,6 +31,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  useFormField,
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
@@ -74,6 +81,7 @@ export function CampaignForm(props: CampaignFormProps) {
   const router = useRouter();
   const t = useTranslations("campaigns.form");
   const tCampaigns = useTranslations("campaigns");
+  const optionsLoadErrorMessage = t("errors.optionsLoad");
 
   const defaultValues: DefaultValues<CampaignFormValues> = {
     name: props.campaign?.name ?? "",
@@ -94,6 +102,7 @@ export function CampaignForm(props: CampaignFormProps) {
   const [fundOptions, setFundOptions] = useState<Fund[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [fundsLoading, setFundsLoading] = useState(true);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -105,17 +114,26 @@ export function CampaignForm(props: CampaignFormProps) {
           props.campaign?.id,
         );
         if (!active) return;
-        setParentOptions(
-          campaigns.filter((campaign) =>
-            mode === "edit" ? campaign.id !== props.campaign.id : true,
-          ),
-        );
-        setFundOptions(funds);
-        form.setValue("fundIds", selectedFundIds, { shouldDirty: false });
+        applyCampaignFormOptions({
+          campaigns,
+          funds,
+          selectedFundIds,
+          mode,
+          campaignId: props.campaign?.id,
+          form,
+          setOptionsError,
+          setParentOptions,
+          setFundOptions,
+        });
       } catch {
         if (!active) return;
-        setParentOptions([]);
-        setFundOptions([]);
+        resetCampaignFormOptions({
+          mode,
+          optionsLoadError: optionsLoadErrorMessage,
+          setOptionsError,
+          setParentOptions,
+          setFundOptions,
+        });
       } finally {
         if (active) {
           setOptionsLoading(false);
@@ -129,10 +147,15 @@ export function CampaignForm(props: CampaignFormProps) {
     return () => {
       active = false;
     };
-  }, [form, mode, props.campaign?.id]);
+  }, [form, mode, optionsLoadErrorMessage, props.campaign?.id]);
 
   async function onSubmit(values: CampaignFormValues) {
     form.clearErrors("root");
+
+    if (mode === "edit" && optionsError) {
+      toast.error(optionsError);
+      return;
+    }
 
     try {
       if (mode === "create") {
@@ -317,56 +340,13 @@ export function CampaignForm(props: CampaignFormProps) {
             name="fundIds"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t("fields.funds")}</FormLabel>
-                {fundsLoading ? (
-                  <FormDescription>{t("fields.fundsLoading")}</FormDescription>
-                ) : fundOptions.length > 0 ? (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {fundOptions.map((fund) => {
-                      const checked = field.value.includes(fund.id);
-                      const checkboxId = `campaign-fund-${fund.id}`;
-                      const descriptionId = `${checkboxId}-description`;
-                      return (
-                        <div
-                          key={fund.id}
-                          className="flex items-start gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3"
-                        >
-                          <Checkbox
-                            id={checkboxId}
-                            checked={checked}
-                            onCheckedChange={(nextChecked) => {
-                              const current = field.value;
-                              if (nextChecked === true) {
-                                field.onChange([...current, fund.id]);
-                                return;
-                              }
-                              field.onChange(current.filter((value) => value !== fund.id));
-                            }}
-                            aria-describedby={descriptionId}
-                          />
-                          <div className="min-w-0">
-                            <label
-                              htmlFor={checkboxId}
-                              className="block font-medium text-on-surface"
-                            >
-                              {fund.name}
-                            </label>
-                            <span
-                              id={descriptionId}
-                              className="block text-xs text-on-surface-variant"
-                            >
-                              {t(`fundTypeHint.${fund.type}`)}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <FormDescription>{t("fields.fundsEmpty")}</FormDescription>
-                )}
-                <FormDescription>{t("fields.fundsHint")}</FormDescription>
-                <FormMessage />
+                <CampaignFundIdsField
+                  field={field}
+                  fundOptions={fundOptions}
+                  fundsLoading={fundsLoading}
+                  optionsError={optionsError}
+                  t={t}
+                />
               </FormItem>
             )}
           />
@@ -380,7 +360,10 @@ export function CampaignForm(props: CampaignFormProps) {
                 {t("actions.cancel")}
               </Link>
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              disabled={isSubmitting || (mode === "edit" && Boolean(optionsError))}
+            >
               {isSubmitting
                 ? t("actions.submitting")
                 : mode === "create"
@@ -436,6 +419,131 @@ function buildResolver(): Resolver<CampaignFormValues> {
   };
 
   return adapted;
+}
+
+function applyCampaignFormOptions({
+  campaigns,
+  funds,
+  selectedFundIds,
+  mode,
+  campaignId,
+  form,
+  setOptionsError,
+  setParentOptions,
+  setFundOptions,
+}: {
+  campaigns: Campaign[];
+  funds: Fund[];
+  selectedFundIds: string[];
+  mode: CampaignFormProps["mode"];
+  campaignId?: string;
+  form: UseFormReturn<CampaignFormValues>;
+  setOptionsError: (value: string | null) => void;
+  setParentOptions: (value: Campaign[]) => void;
+  setFundOptions: (value: Fund[]) => void;
+}) {
+  setOptionsError(null);
+  setParentOptions(
+    campaigns.filter((campaign) => (mode === "edit" ? campaign.id !== campaignId : true)),
+  );
+  setFundOptions(funds);
+  form.setValue("fundIds", selectedFundIds, { shouldDirty: false });
+}
+
+function resetCampaignFormOptions({
+  mode,
+  optionsLoadError,
+  setOptionsError,
+  setParentOptions,
+  setFundOptions,
+}: {
+  mode: CampaignFormProps["mode"];
+  optionsLoadError: string;
+  setOptionsError: (value: string | null) => void;
+  setParentOptions: (value: Campaign[]) => void;
+  setFundOptions: (value: Fund[]) => void;
+}) {
+  setParentOptions([]);
+  setFundOptions([]);
+  setOptionsError(mode === "edit" ? optionsLoadError : null);
+}
+
+function CampaignFundIdsField({
+  field,
+  fundOptions,
+  fundsLoading,
+  optionsError,
+  t,
+}: {
+  field: ControllerRenderProps<CampaignFormValues, "fundIds">;
+  fundOptions: Fund[];
+  fundsLoading: boolean;
+  optionsError: string | null;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { formItemId, formDescriptionId, formMessageId, error } = useFormField();
+  const isInvalid = Boolean(error || optionsError);
+  const describedBy = isInvalid ? `${formDescriptionId} ${formMessageId}` : formDescriptionId;
+
+  return (
+    <>
+      <fieldset aria-describedby={describedBy} aria-invalid={isInvalid} className="space-y-3">
+        <legend
+          id={formItemId}
+          className={
+            isInvalid ? "text-sm font-medium text-error" : "text-sm font-medium text-on-surface"
+          }
+        >
+          {t("fields.funds")}
+        </legend>
+        {fundsLoading ? (
+          <p className="text-xs text-on-surface-variant">{t("fields.fundsLoading")}</p>
+        ) : fundOptions.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {fundOptions.map((fund) => {
+              const checked = field.value.includes(fund.id);
+              const checkboxId = `campaign-fund-${fund.id}`;
+              const descriptionId = `${checkboxId}-description`;
+              return (
+                <div
+                  key={fund.id}
+                  className="flex items-start gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3"
+                >
+                  <Checkbox
+                    id={checkboxId}
+                    checked={checked}
+                    onCheckedChange={(nextChecked) => {
+                      const current = field.value;
+                      if (nextChecked === true) {
+                        field.onChange([...current, fund.id]);
+                        return;
+                      }
+                      field.onChange(current.filter((value) => value !== fund.id));
+                    }}
+                    aria-describedby={`${formDescriptionId} ${descriptionId}`}
+                    aria-invalid={isInvalid}
+                    disabled={Boolean(optionsError)}
+                  />
+                  <div className="min-w-0">
+                    <label htmlFor={checkboxId} className="block font-medium text-on-surface">
+                      {fund.name}
+                    </label>
+                    <span id={descriptionId} className="block text-xs text-on-surface-variant">
+                      {t(`fundTypeHint.${fund.type}`)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-on-surface-variant">{t("fields.fundsEmpty")}</p>
+        )}
+      </fieldset>
+      <FormDescription>{t("fields.fundsHint")}</FormDescription>
+      <FormMessage>{optionsError}</FormMessage>
+    </>
+  );
 }
 
 interface ErrorMessages {

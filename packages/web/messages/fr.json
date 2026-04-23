@@ -805,6 +805,7 @@
       },
       "errors": {
         "validation": "Corrigez les champs en surbrillance.",
+        "optionsLoad": "Impossible de charger les campagnes ou fonds associés. Rechargez la page avant d’enregistrer pour éviter d’écraser les fonds existants.",
         "generic": "Une erreur est survenue lors de l'enregistrement. Réessayez."
       },
       "success": {

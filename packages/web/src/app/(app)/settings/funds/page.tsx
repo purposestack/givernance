@@ -5,10 +5,8 @@ import { getTranslations } from "next-intl/server";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
-import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
-import type { FundListResponse } from "@/models/fund";
 import { FundService } from "@/services/FundService";
 
 import { FundsTable } from "./funds-table";
@@ -38,20 +36,7 @@ export default async function FundsPage({ searchParams }: FundsPageProps) {
   const canManageFunds = auth.roles.includes("org_admin");
 
   const client = await createServerApiClient();
-
-  let result: FundListResponse;
-  try {
-    result = await FundService.listFunds(client, { page, perPage });
-  } catch (error) {
-    if (error instanceof ApiProblem && (error.status === 401 || error.status === 403)) {
-      result = {
-        data: [],
-        pagination: { page, perPage, total: 0, totalPages: 0 },
-      };
-    } else {
-      throw error;
-    }
-  }
+  const result = await FundService.listFunds(client, { page, perPage });
 
   const hasAny = result.pagination.total > 0;
 

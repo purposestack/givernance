@@ -805,6 +805,7 @@
       },
       "errors": {
         "validation": "Please correct the highlighted fields.",
+        "optionsLoad": "Unable to load the related campaigns or funds. Reload the page before saving to avoid overwriting existing funds.",
         "generic": "Something went wrong while saving. Please try again."
       },
       "success": {

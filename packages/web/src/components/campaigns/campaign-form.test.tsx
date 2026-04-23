@@ -60,7 +60,9 @@ describe("CampaignForm", () => {
 
     await user.type(screen.getByPlaceholderText("Spring appeal 2026"), "  Spring Appeal 2026  ");
     await user.type(screen.getByPlaceholderText("0.00"), "12.50");
-    await user.click(screen.getByRole("checkbox", { name: "Restricted Fund" }));
+    const fundCheckbox = await screen.findByRole("checkbox", { name: "Restricted Fund" });
+    await user.click(fundCheckbox);
+    await waitFor(() => expect(fundCheckbox).toHaveAttribute("data-state", "checked"));
     await user.click(screen.getByRole("button", { name: "Create campaign" }));
 
     await waitFor(() =>
@@ -102,5 +104,34 @@ describe("CampaignForm", () => {
     await user.click(screen.getByRole("button", { name: "Create campaign" }));
 
     expect(await screen.findByText("Campaign name is already used.")).toBeInTheDocument();
+  });
+
+  it("exposes the eligible funds as an accessible group", async () => {
+    render(<CampaignForm mode="create" />);
+
+    await waitFor(() => expect(FundService.listFunds).toHaveBeenCalled());
+
+    expect(screen.getByRole("group", { name: "Eligible funds" })).toBeInTheDocument();
+  });
+
+  it("blocks editing when campaign fund options fail to load", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(FundService, "listCampaignFunds").mockRejectedValueOnce(new Error("boom"));
+    const updateCampaign = vi
+      .spyOn(CampaignService, "updateCampaign")
+      .mockResolvedValue(parentCampaign);
+
+    render(<CampaignForm mode="edit" campaign={parentCampaign} />);
+
+    expect(
+      await screen.findByText(/Unable to load the related campaigns or funds/i),
+    ).toBeInTheDocument();
+
+    const submitButton = screen.getByRole("button", { name: "Save changes" });
+    expect(submitButton).toBeDisabled();
+
+    await user.click(submitButton);
+
+    expect(updateCampaign).not.toHaveBeenCalled();
   });
 });
