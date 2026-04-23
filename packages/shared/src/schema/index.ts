@@ -102,8 +102,8 @@ export const tenants = pgTable(
       .$type<TenantCreatedVia>(),
     /** Email verification timestamp for self-serve signup; NULL until the first admin verifies. */
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
-    /** Keycloak 26 Organization id bound to this tenant. NULL during migration + for rows awaiting Keycloak provisioning. */
-    keycloakOrgId: text("keycloak_org_id"),
+    /** Keycloak 26 Organization id (UUID) bound to this tenant; enforced by CHECK in migration 0021. */
+    keycloakOrgId: varchar("keycloak_org_id", { length: 64 }),
     /** Convenience pointer to the tenant's verified primary domain — denormalised; source of truth is `tenant_domains`. */
     primaryDomain: varchar("primary_domain", { length: 255 }),
     stripeAccountId: varchar("stripe_account_id", { length: 255 }),
@@ -206,6 +206,7 @@ export const tenantDomains = pgTable(
 /**
  * Dispute log for the 7-day provisional-admin grace period on self-serve tenants.
  * Only one open dispute per tenant; closed disputes are retained for audit.
+ * User FKs use `ON DELETE SET NULL` so GDPR Art. 17 erasures don't break audit.
  * Migration 0021 (ADR-016).
  */
 export const tenantAdminDisputes = pgTable(
@@ -215,16 +216,16 @@ export const tenantAdminDisputes = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
-    disputerId: uuid("disputer_id")
-      .notNull()
-      .references(() => users.id),
-    provisionalAdminId: uuid("provisional_admin_id")
-      .notNull()
-      .references(() => users.id),
-    reason: text("reason"),
+    disputerId: uuid("disputer_id").references(() => users.id, { onDelete: "set null" }),
+    provisionalAdminId: uuid("provisional_admin_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reason: varchar("reason", { length: 2000 }),
     resolution: varchar("resolution", { length: 32 }).$type<TenantAdminDisputeResolution>(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("tenant_admin_disputes_org_id_idx").on(table.orgId)],
 );

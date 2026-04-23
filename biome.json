@@ -51,6 +51,7 @@
               "level": "error",
               "options": {
                 "paths": {
+                  "@givernance/shared": "Importing the @givernance/shared root barrel in packages/web is forbidden (ADR-013). Use a specific subpath like @givernance/shared/validators or @givernance/shared/constants.",
                   "@givernance/shared/schema": "Importing Drizzle schema in packages/web is forbidden (ADR-013). Use @/models/ for API response types.",
                   "@givernance/shared/events": "Importing domain events in packages/web is forbidden (ADR-013). Events are backend-only.",
                   "@givernance/shared/jobs": "Importing job definitions in packages/web is forbidden (ADR-013). Jobs are backend-only."

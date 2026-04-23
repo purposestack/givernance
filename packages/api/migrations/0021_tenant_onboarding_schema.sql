@@ -10,28 +10,41 @@
 --
 -- Existing tenants are back-filled with status='active' / created_via='enterprise'
 -- so the Phase 1 super-admin-provisioned rows keep working unchanged.
+--
+-- Naming: every new constraint / index is explicitly named so integration
+-- tests can assert against stable error strings (see
+-- `tenant-onboarding-schema.test.ts`). A future migration that renames a
+-- constraint MUST update the matching test regex.
 
 -- ─── tenants: lifecycle + provenance ──────────────────────────────────────────
 
 ALTER TABLE tenants
     ADD COLUMN IF NOT EXISTS created_via      VARCHAR(32)  NOT NULL DEFAULT 'enterprise',
     ADD COLUMN IF NOT EXISTS verified_at      TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS keycloak_org_id  TEXT,
+    ADD COLUMN IF NOT EXISTS keycloak_org_id  VARCHAR(64),
     ADD COLUMN IF NOT EXISTS primary_domain   VARCHAR(255);
 
--- Existing `status` column uses VARCHAR(50) DEFAULT 'active' with no CHECK constraint.
--- Keep the width unchanged and add the CHECK + back-fill the new vocabulary.
-UPDATE tenants SET status = 'active' WHERE status IS NULL;
-
+-- Existing `status` column is NOT NULL DEFAULT 'active' (migration 0002) so
+-- the legacy rows are already at 'active'; column defaults cover the new
+-- columns. We add the CHECK constraints directly without a back-fill UPDATE.
 ALTER TABLE tenants
     ADD CONSTRAINT tenants_status_chk
         CHECK (status IN ('provisional','active','suspended','archived')),
     ADD CONSTRAINT tenants_created_via_chk
         CHECK (created_via IN ('self_serve','enterprise','invitation')),
-    -- primary_domain, if set, must be a lowercase host (coarse check — validators
-    -- enforce the fine-grained syntax at the API layer).
     ADD CONSTRAINT tenants_primary_domain_lower_chk
-        CHECK (primary_domain IS NULL OR primary_domain = lower(primary_domain));
+        CHECK (primary_domain IS NULL OR primary_domain = lower(primary_domain)),
+    -- Keycloak 26 Organization ids are UUIDs. Reject anything else to
+    -- prevent typos from silently binding a tenant to the wrong KC org.
+    ADD CONSTRAINT tenants_keycloak_org_id_uuid_chk
+        CHECK (keycloak_org_id IS NULL
+               OR keycloak_org_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'),
+    -- Self-serve tenants must either be provisional or have been verified.
+    -- Enterprise/invitation rows can be in any state (super-admin drives them).
+    ADD CONSTRAINT tenants_self_serve_requires_verification_chk
+        CHECK (created_via <> 'self_serve'
+               OR status = 'provisional'
+               OR verified_at IS NOT NULL);
 
 -- One Keycloak Organization id per tenant at most.
 CREATE UNIQUE INDEX IF NOT EXISTS tenants_keycloak_org_id_uniq
@@ -49,6 +62,12 @@ ALTER TABLE users
     ADD CONSTRAINT users_provisional_requires_first_admin_chk
         CHECK (provisional_until IS NULL OR first_admin = true);
 
+-- At most one first_admin per tenant. If the provisional admin is replaced
+-- via a dispute, the replacement swap MUST flip the old first_admin=false
+-- in the same transaction. Prevents privilege-escalation via dup flags.
+CREATE UNIQUE INDEX IF NOT EXISTS users_one_first_admin_per_org
+    ON users (org_id) WHERE first_admin = true;
+
 -- ─── tenant_domains ──────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS tenant_domains (
@@ -63,10 +82,14 @@ CREATE TABLE IF NOT EXISTS tenant_domains (
 
     CONSTRAINT tenant_domains_state_chk
         CHECK (state IN ('pending_dns','verified','revoked')),
-    -- Domain is always stored lowercase; keep the column narrow enough to be
-    -- a btree key without TOAST.
+    -- Domain is always stored lowercase.
     CONSTRAINT tenant_domains_lowercase_chk
-        CHECK (domain = lower(domain))
+        CHECK (domain = lower(domain)),
+    -- DNS TXT tokens must carry real entropy (≥32 chars). The generator ships
+    -- base64url of 24+ random bytes (=> 32 chars); the floor here rejects any
+    -- bypass that would let a weak token verify a domain.
+    CONSTRAINT tenant_domains_dns_txt_entropy_chk
+        CHECK (length(dns_txt_value) >= 32)
 );
 
 -- A domain claim is globally unique — once `ngo.fr` is bound to Org A,
@@ -75,32 +98,70 @@ CREATE TABLE IF NOT EXISTS tenant_domains (
 CREATE UNIQUE INDEX IF NOT EXISTS tenant_domains_active_domain_uniq
     ON tenant_domains (domain) WHERE state <> 'revoked';
 
+-- DNS TXT values must be unique across active rows too, so two domains
+-- cannot accidentally share the same proof token.
+CREATE UNIQUE INDEX IF NOT EXISTS tenant_domains_active_txt_uniq
+    ON tenant_domains (dns_txt_value) WHERE state <> 'revoked';
+
 CREATE INDEX IF NOT EXISTS tenant_domains_org_id_idx ON tenant_domains (org_id);
 CREATE INDEX IF NOT EXISTS tenant_domains_state_idx  ON tenant_domains (state);
+-- Hot-path index for "give me this tenant's verified domains" (Home IdP Discovery,
+-- login-side domain lookup). Partial covers the common case cheaply.
+CREATE INDEX IF NOT EXISTS tenant_domains_verified_by_org_idx
+    ON tenant_domains (org_id) WHERE state = 'verified';
 
 ALTER TABLE tenant_domains ENABLE  ROW LEVEL SECURITY;
 ALTER TABLE tenant_domains FORCE   ROW LEVEL SECURITY;
 
+-- FOR ALL + WITH CHECK ensures RLS applies to SELECT/INSERT/UPDATE/DELETE,
+-- and that a bug in the API layer cannot write a row with the wrong org_id.
 CREATE POLICY tenant_isolation ON tenant_domains
-    USING (org_id = app_current_organization_id());
+    FOR ALL
+    USING      (org_id = app_current_organization_id())
+    WITH CHECK (org_id = app_current_organization_id());
+
+-- Auto-maintain updated_at on every write.
+CREATE OR REPLACE FUNCTION tenant_domains_set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER tenant_domains_updated_at_trg
+    BEFORE UPDATE ON tenant_domains
+    FOR EACH ROW EXECUTE FUNCTION tenant_domains_set_updated_at();
 
 -- ─── tenant_admin_disputes ───────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS tenant_admin_disputes (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id                  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    disputer_id             UUID NOT NULL REFERENCES users(id),
-    provisional_admin_id    UUID NOT NULL REFERENCES users(id),
-    reason                  TEXT,
+    -- ON DELETE SET NULL so GDPR Art. 17 user erasures don't fail on FK.
+    -- The dispute row is retained with the NULL placeholder for audit.
+    disputer_id             UUID REFERENCES users(id) ON DELETE SET NULL,
+    provisional_admin_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+    reason                  VARCHAR(2000),
     resolution              VARCHAR(32),
     resolved_at             TIMESTAMPTZ,
+    resolved_by             UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT tenant_admin_disputes_resolution_chk
         CHECK (resolution IS NULL
                OR resolution IN ('kept','replaced','escalated_to_support')),
+    -- disputer and provisional admin must be different *when both are
+    -- non-null*. GDPR erasure may null them independently.
     CONSTRAINT tenant_admin_disputes_different_actors_chk
-        CHECK (disputer_id <> provisional_admin_id)
+        CHECK (disputer_id IS NULL
+               OR provisional_admin_id IS NULL
+               OR disputer_id <> provisional_admin_id),
+    -- resolution and resolved_at must co-exist.
+    CONSTRAINT tenant_admin_disputes_resolved_consistency_chk
+        CHECK ((resolution IS NULL AND resolved_at IS NULL)
+               OR (resolution IS NOT NULL AND resolved_at IS NOT NULL))
 );
 
 -- One open dispute per tenant at most. Closed disputes (resolution set)
@@ -115,4 +176,26 @@ ALTER TABLE tenant_admin_disputes ENABLE  ROW LEVEL SECURITY;
 ALTER TABLE tenant_admin_disputes FORCE   ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON tenant_admin_disputes
-    USING (org_id = app_current_organization_id());
+    FOR ALL
+    USING      (org_id = app_current_organization_id())
+    WITH CHECK (org_id = app_current_organization_id());
+
+CREATE OR REPLACE FUNCTION tenant_admin_disputes_set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER tenant_admin_disputes_updated_at_trg
+    BEFORE UPDATE ON tenant_admin_disputes
+    FOR EACH ROW EXECUTE FUNCTION tenant_admin_disputes_set_updated_at();
+
+-- ─── Explicit grants to givernance_app ───────────────────────────────────────
+-- Matches the pattern from migrations 0008, 0009, 0010, 0017, 0018.
+-- ALTER DEFAULT PRIVILEGES from 0005 handles the common case, but explicit
+-- grants are robust to environments where migrations were historically
+-- run as a different role.
+GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_domains         TO givernance_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_admin_disputes  TO givernance_app;
