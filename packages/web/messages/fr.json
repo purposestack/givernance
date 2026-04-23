@@ -122,10 +122,32 @@
     }
   },
   "settings": {
-    "title": "Paramètres",
-    "subtitle": "Configuration minimale de l'organisation pour la démo MVP.",
-    "breadcrumbRoot": "Tableau de bord",
-    "snapshot": {
+  "title": "Paramètres",
+  "subtitle": "Gérez les paramètres de l'organisation et les outils d'export.",
+  "breadcrumbRoot": "Tableau de bord",
+  "tenant": {
+    "title": "Paramètres de l'organisation",
+    "description": "Choisissez la devise de base du tenant utilisée pour le reporting et les conversions.",
+    "readOnly": "Seuls les administrateurs de l'organisation peuvent modifier ces paramètres.",
+    "fields": {
+      "baseCurrency": "Devise de base",
+      "baseCurrencyPlaceholder": "Choisissez une devise de base",
+      "baseCurrencyHint": "Cette devise est utilisée comme devise de reporting de l'organisation.",
+      "baseCurrencyHintWithName": "{name} utilisera cette devise pour les montants convertis et les rapports."
+    },
+    "actions": {
+      "save": "Enregistrer les paramètres",
+      "saving": "Enregistrement…"
+    },
+    "errors": {
+      "load": "Impossible de charger les paramètres de l'organisation pour le moment.",
+      "save": "Impossible d'enregistrer les paramètres de l'organisation pour le moment."
+    },
+    "success": {
+      "updated": "Paramètres de l'organisation mis à jour."
+    }
+  },
+  "snapshot": {
       "badge": "ADM-001 MVP",
       "title": "Export des données (RGPD / GL)",
       "description": "Téléchargez un snapshot JSON des données de l'organisation pour les besoins de portabilité, d'archivage ou de handoff comptable.",
@@ -396,12 +418,14 @@
           "description": "Campagne parente et montant cible utilisés pour le regroupement et le reporting."
         }
       },
-      "fields": {
-        "name": "Nom de la campagne",
-        "namePlaceholder": "Campagne de printemps 2026",
-        "type": "Type de campagne",
-        "parent": "Campagne parente",
-        "parentPlaceholder": "Aucune campagne parente",
+    "fields": {
+      "name": "Nom de la campagne",
+      "namePlaceholder": "Campagne de printemps 2026",
+      "type": "Type de campagne",
+      "defaultCurrency": "Devise par défaut",
+      "defaultCurrencyHint": "Préremplie lorsque des dons sont créés depuis cette campagne.",
+      "parent": "Campagne parente",
+      "parentPlaceholder": "Aucune campagne parente",
         "parentHint": "Utilisez une campagne parente pour regrouper des actions liées.",
         "parentLoading": "Chargement des campagnes disponibles…",
         "goal": "Montant cible",
@@ -579,9 +603,11 @@
         "lastNamePlaceholder": "Dupont",
         "email": "Email",
         "emailPlaceholder": "marie.dupont@exemple.org",
-        "amount": "Montant",
-        "amountPlaceholder": "50"
-      },
+    "amount": "Montant",
+    "amountPlaceholder": "50"
+    ,
+    "currency": "Devise"
+  },
       "actions": {
         "submit": "Continuer vers le paiement",
         "submitting": "Préparation…"
@@ -592,9 +618,9 @@
         "emailRequired": "Saisissez votre adresse e-mail.",
         "emailInvalid": "Saisissez une adresse e-mail valide.",
         "amountRequired": "Saisissez un montant de don.",
-        "amountInvalid": "Le montant doit être d'au moins 1 €.",
-        "generic": "Une erreur est survenue lors de la préparation du paiement. Réessayez."
-      },
+    "amountInvalid": "Le montant doit être d'au moins 1.",
+    "generic": "Une erreur est survenue lors de la préparation du paiement. Réessayez."
+  },
       "success": {
         "intentCreated": "Votre don est prêt. L'étape de paiement Stripe est la prochaine intégration.",
         "nextStepTitle": "Étape suivante",

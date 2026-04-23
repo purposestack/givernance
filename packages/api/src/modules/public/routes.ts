@@ -21,11 +21,12 @@ const PublicPageResponse = Type.Object({
   description: Type.Union([Type.String(), Type.Null()]),
   colorPrimary: Type.Union([Type.String(), Type.Null()]),
   goalAmountCents: Type.Union([Type.Integer(), Type.Null()]),
+  defaultCurrency: Type.Union([Type.Literal("EUR"), Type.Literal("GBP"), Type.Literal("CHF")]),
 });
 
 const DonateBody = Type.Object({
   amountCents: Type.Integer({ minimum: 100, maximum: 1000000 }),
-  currency: Type.Union([Type.Literal("EUR"), Type.Literal("CHF")]),
+  currency: Type.Union([Type.Literal("EUR"), Type.Literal("GBP"), Type.Literal("CHF")]),
   email: Type.String({ format: "email" }),
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
@@ -140,7 +141,7 @@ export async function publicDonationRoutes(app: FastifyInstance) {
       const { id } = request.params as { id: string };
       const body = request.body as {
         amountCents: number;
-        currency: "EUR" | "CHF";
+        currency: "EUR" | "GBP" | "CHF";
         email: string;
         firstName: string;
         lastName: string;

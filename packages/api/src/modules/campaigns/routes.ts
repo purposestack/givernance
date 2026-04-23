@@ -1,6 +1,7 @@
 /** Campaign routes — full CRUD, stats, ROI, and document generation */
 
 import { CAMPAIGN_STATUS_VALUES, CAMPAIGN_TYPE_VALUES } from "@givernance/shared/schema";
+import { MULTI_CURRENCY_VALUES } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
@@ -31,6 +32,9 @@ const CampaignTypeSchema = Type.Union(CAMPAIGN_TYPE_VALUES.map((v) => Type.Liter
 
 /** Shared campaign status TypeBox union built from the canonical CAMPAIGN_STATUS_VALUES */
 const CampaignStatusSchema = Type.Union(CAMPAIGN_STATUS_VALUES.map((v) => Type.Literal(v)));
+const CampaignDefaultCurrencySchema = Type.Union(
+  MULTI_CURRENCY_VALUES.map((value) => Type.Literal(value)),
+);
 
 /** Idempotency-Key header schema — accepted on POST routes for future dedup enforcement */
 const IdempotencyKeyHeader = Type.Object({
@@ -46,6 +50,7 @@ const IdempotencyKeyHeader = Type.Object({
 const CampaignCreateBody = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
   type: CampaignTypeSchema,
+  defaultCurrency: Type.Optional(CampaignDefaultCurrencySchema),
   parentId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
   costCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
 });
@@ -54,6 +59,7 @@ const CampaignUpdateBody = Type.Object(
   {
     name: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
     type: Type.Optional(CampaignTypeSchema),
+    defaultCurrency: Type.Optional(CampaignDefaultCurrencySchema),
     status: Type.Optional(
       Type.Union([Type.Literal("draft"), Type.Literal("active"), Type.Literal("closed")]),
     ),
@@ -73,6 +79,7 @@ const CampaignResponse = Type.Object({
   name: Type.String(),
   type: CampaignTypeSchema,
   status: CampaignStatusSchema,
+  defaultCurrency: CampaignDefaultCurrencySchema,
   parentId: Type.Union([UuidSchema, Type.Null()]),
   costCents: Type.Union([Type.Integer(), Type.Null()]),
   createdAt: Type.String(),
@@ -152,6 +159,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       const body = request.body as {
         name: string;
         type: "nominative_postal" | "door_drop" | "digital";
+        defaultCurrency?: "EUR" | "GBP" | "CHF";
         parentId?: string | null;
         costCents?: number | null;
       };
@@ -222,6 +230,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       const body = request.body as {
         name?: string;
         type?: "nominative_postal" | "door_drop" | "digital";
+        defaultCurrency?: "EUR" | "GBP" | "CHF";
         status?: "draft" | "active" | "closed";
         parentId?: string | null;
         costCents?: number | null;

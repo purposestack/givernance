@@ -29,6 +29,7 @@ describe("CampaignPublicPageForm", () => {
           name: "Spring Appeal",
           type: "digital",
           status: "active",
+          defaultCurrency: "EUR",
           parentId: null,
           costCents: null,
           createdAt: "2026-01-01T00:00:00.000Z",

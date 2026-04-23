@@ -22,8 +22,10 @@ export async function getPublicPage(campaignId: string) {
       description: campaignPublicPages.description,
       colorPrimary: campaignPublicPages.colorPrimary,
       goalAmountCents: campaignPublicPages.goalAmountCents,
+      defaultCurrency: campaigns.defaultCurrency,
     })
     .from(campaignPublicPages)
+    .innerJoin(campaigns, eq(campaigns.id, campaignPublicPages.campaignId))
     .where(
       and(
         eq(campaignPublicPages.campaignId, campaignId),
@@ -82,7 +84,11 @@ export async function createDonationIntent(
 
   // Look up the campaign to find the org
   const [campaign] = await db
-    .select({ id: campaigns.id, orgId: campaigns.orgId })
+    .select({
+      id: campaigns.id,
+      orgId: campaigns.orgId,
+      defaultCurrency: campaigns.defaultCurrency,
+    })
     .from(campaigns)
     .where(eq(campaigns.id, campaignId));
 
@@ -112,6 +118,7 @@ export async function createDonationIntent(
     metadata: {
       campaign_id: campaignId,
       org_id: campaign.orgId,
+      campaign_default_currency: campaign.defaultCurrency,
       constituent_first_name: body.firstName,
       constituent_last_name: body.lastName,
     },

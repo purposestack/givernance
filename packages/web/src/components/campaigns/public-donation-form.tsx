@@ -6,10 +6,18 @@ import { type FormEvent, type ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatCurrency } from "@/lib/format";
+import type { PublicDonationCurrency } from "@/models/public-page";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 
 interface PublicDonationFormProps {
@@ -17,6 +25,7 @@ interface PublicDonationFormProps {
   colorPrimary: string;
   locale: string;
   goalAmountCents: number | null;
+  defaultCurrency?: PublicDonationCurrency;
 }
 
 interface PublicDonationFormValues {
@@ -24,6 +33,7 @@ interface PublicDonationFormValues {
   lastName: string;
   email: string;
   amount: string;
+  currency: PublicDonationCurrency;
 }
 
 interface FormErrors {
@@ -40,16 +50,22 @@ const DEFAULT_VALUES: PublicDonationFormValues = {
   lastName: "",
   email: "",
   amount: "",
+  currency: "EUR",
 };
+const PUBLIC_DONATION_CURRENCIES: PublicDonationCurrency[] = ["EUR", "GBP", "CHF"];
 
 export function PublicDonationForm({
   campaignId,
   colorPrimary,
   locale,
   goalAmountCents,
+  defaultCurrency = "EUR",
 }: PublicDonationFormProps) {
   const t = useTranslations("publicDonationPage.form");
-  const [values, setValues] = useState<PublicDonationFormValues>(DEFAULT_VALUES);
+  const [values, setValues] = useState<PublicDonationFormValues>({
+    ...DEFAULT_VALUES,
+    currency: defaultCurrency,
+  });
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -69,7 +85,7 @@ export function PublicDonationForm({
         campaignId,
         {
           amountCents: parseAmountToCents(values.amount),
-          currency: "EUR",
+          currency: values.currency,
           email: values.email.trim(),
           firstName: values.firstName.trim(),
           lastName: values.lastName.trim(),
@@ -128,7 +144,7 @@ export function PublicDonationForm({
             <span className="block text-center text-lg font-semibold sm:text-xl">
               {new Intl.NumberFormat(locale, {
                 style: "currency",
-                currency: "EUR",
+                currency: values.currency,
                 maximumFractionDigits: 0,
               }).format(amount)}
             </span>
@@ -138,7 +154,7 @@ export function PublicDonationForm({
 
       {goalAmountCents !== null ? (
         <p className="mt-4 text-sm text-on-surface-variant">
-          {t("goal", { amount: formatCurrency(goalAmountCents, locale) })}
+          {t("goal", { amount: formatCurrency(goalAmountCents, locale, defaultCurrency) })}
         </p>
       ) : null}
 
@@ -213,7 +229,7 @@ export function PublicDonationForm({
           input={
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant">
-                €
+                {getCurrencySymbol(values.currency)}
               </span>
               <Input
                 id="public-donation-amount"
@@ -231,6 +247,33 @@ export function PublicDonationForm({
                 inputMode="decimal"
               />
             </div>
+          }
+        />
+
+        <Field
+          inputId="public-donation-currency"
+          label={t("fields.currency")}
+          input={
+            <Select
+              value={values.currency}
+              onValueChange={(currency) =>
+                setValues((current) => ({
+                  ...current,
+                  currency: currency as PublicDonationCurrency,
+                }))
+              }
+            >
+              <SelectTrigger id="public-donation-currency">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PUBLIC_DONATION_CURRENCIES.map((currency) => (
+                  <SelectItem key={currency} value={currency}>
+                    {currency}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           }
         />
 
@@ -263,6 +306,17 @@ export function PublicDonationForm({
       </form>
     </section>
   );
+}
+
+function getCurrencySymbol(currency: PublicDonationCurrency): string {
+  switch (currency) {
+    case "GBP":
+      return "£";
+    case "CHF":
+      return "CHF";
+    default:
+      return "€";
+  }
 }
 
 function Field({

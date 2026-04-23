@@ -8,6 +8,7 @@ import { withTenantContext } from "../../lib/db.js";
 export interface CreateCampaignInput {
   name: string;
   type: "nominative_postal" | "door_drop" | "digital";
+  defaultCurrency?: "EUR" | "GBP" | "CHF";
   parentId?: string | null;
   costCents?: number | null;
 }
@@ -15,6 +16,7 @@ export interface CreateCampaignInput {
 export interface UpdateCampaignInput {
   name?: string;
   type?: "nominative_postal" | "door_drop" | "digital";
+  defaultCurrency?: "EUR" | "GBP" | "CHF";
   status?: "draft" | "active" | "closed";
   parentId?: string | null;
   costCents?: number | null;
@@ -84,6 +86,7 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput, 
         orgId,
         name: input.name,
         type: input.type,
+        defaultCurrency: input.defaultCurrency ?? "EUR",
         parentId: input.parentId ?? null,
         costCents: input.costCents ?? null,
       })

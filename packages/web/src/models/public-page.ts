@@ -1,7 +1,7 @@
 import type { CampaignPublicPageColor } from "@givernance/shared/validators";
 
 export type PublicPageStatus = "draft" | "published";
-export type PublicDonationCurrency = "EUR" | "CHF";
+export type PublicDonationCurrency = "EUR" | "GBP" | "CHF";
 
 export interface CampaignPublicPage {
   id: string;
@@ -27,6 +27,7 @@ export interface PublishedCampaignPublicPage {
   description: string | null;
   colorPrimary: CampaignPublicPageColor | null;
   goalAmountCents: number | null;
+  defaultCurrency: PublicDonationCurrency;
 }
 
 export interface PublishedCampaignPublicPageResponse {
