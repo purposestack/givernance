@@ -11,6 +11,7 @@ import type {
   CampaignStatsResponse,
   CampaignUpdateInput,
 } from "@/models/campaign";
+import type { Fund } from "@/models/fund";
 
 /**
  * CampaignService — ADR-011 Layer 2 (services).
@@ -70,6 +71,13 @@ export const CampaignService = {
       `/v1/campaigns/${encodeURIComponent(id)}`,
     );
     return mapCampaign(response.data);
+  },
+
+  async getCampaignFunds(client: ApiClient, id: string): Promise<Fund[]> {
+    const response = await client.get<{ data: Fund[] }>(
+      `/v1/campaigns/${encodeURIComponent(id)}/funds`,
+    );
+    return response.data;
   },
 
   async createCampaign(client: ApiClient, input: CampaignCreateInput): Promise<Campaign> {

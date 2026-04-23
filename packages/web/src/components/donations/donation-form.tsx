@@ -60,6 +60,7 @@ import { cn } from "@/lib/utils";
 import type { Campaign, CampaignCurrency } from "@/models/campaign";
 import { type Constituent, fullName } from "@/models/constituent";
 import type { DonationAllocationInput, DonationCreateInput } from "@/models/donation";
+import type { Fund } from "@/models/fund";
 import { CampaignService } from "@/services/CampaignService";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
@@ -122,6 +123,9 @@ export function DonationForm() {
   const [campaignOptions, setCampaignOptions] = useState<Campaign[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
 
+  const [fundOptions, setFundOptions] = useState<Fund[]>([]);
+  const [fundsLoading, setFundsLoading] = useState(true);
+
   useEffect(() => {
     let active = true;
     async function loadCampaigns() {
@@ -164,6 +168,39 @@ export function DonationForm() {
 
     return () => subscription.unsubscribe();
   }, [campaignOptions, form]);
+
+  const watchedCampaignId = form.watch("campaignId");
+
+  useEffect(() => {
+    let active = true;
+    setFundsLoading(true);
+
+    async function loadFunds() {
+      try {
+        const client = createClientApiClient();
+        if (watchedCampaignId) {
+          const campaignFunds = await CampaignService.getCampaignFunds(client, watchedCampaignId);
+          if (active) setFundOptions(campaignFunds);
+        } else {
+          // If no campaign selected, we could either clear the funds or fetch all funds.
+          // Let's clear them for strict linkage or you can fetch all if preferred.
+          const allFundsResult = await client.get<{ data: Fund[], pagination: unknown }>("/v1/funds", {
+            params: { page: 1, perPage: 100 },
+          });
+          if (active) setFundOptions(allFundsResult.data);
+        }
+      } catch {
+        if (active) setFundOptions([]);
+      } finally {
+        if (active) setFundsLoading(false);
+      }
+    }
+
+    loadFunds();
+    return () => {
+      active = false;
+    };
+  }, [watchedCampaignId]);
 
   async function onSubmit(values: DonationFormValues) {
     form.clearErrors("root");
@@ -403,13 +440,26 @@ export function DonationForm() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>{t("fields.allocationFund")}</FormLabel>
-                          <Input
-                            {...field}
-                            placeholder={t("fields.allocationFundPlaceholder")}
-                            aria-invalid={Boolean(
-                              form.formState.errors.allocations?.[index]?.fundId,
-                            )}
-                          />
+                          <Select
+                            value={field.value || "__none__"}
+                            onValueChange={(value) => field.onChange(value === "__none__" ? "" : value)}
+                          >
+                            <SelectTrigger
+                              aria-invalid={Boolean(form.formState.errors.allocations?.[index]?.fundId)}
+                            >
+                              <SelectValue placeholder={t("fields.allocationFundPlaceholder")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">
+                                {t("fields.allocationFundPlaceholder")}
+                              </SelectItem>
+                              {fundOptions.map((fund) => (
+                                <SelectItem key={fund.id} value={fund.id}>
+                                  {fund.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
