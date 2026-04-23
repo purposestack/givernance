@@ -7,6 +7,7 @@ import {
   type AnyPgColumn,
   bigint,
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -106,6 +107,7 @@ export const tenants = pgTable(
     keycloakOrgId: varchar("keycloak_org_id", { length: 64 }),
     /** Convenience pointer to the tenant's verified primary domain — denormalised; source of truth is `tenant_domains`. */
     primaryDomain: varchar("primary_domain", { length: 255 }),
+    baseCurrency: varchar("base_currency", { length: 3 }).notNull().default("EUR"),
     stripeAccountId: varchar("stripe_account_id", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -273,6 +275,32 @@ export const auditLogs = pgTable(
   ],
 );
 
+// ─── Exchange Rates ──────────────────────────────────────────────────────────
+
+/** Exchange rates — historical currency conversion rates by day */
+export const exchangeRates = pgTable(
+  "exchange_rates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    baseCurrency: varchar("base_currency", { length: 3 }).notNull(),
+    rate: numeric("rate", { precision: 18, scale: 8 }).notNull(),
+    date: date("date").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("exchange_rates_currency_idx").on(table.currency),
+    index("exchange_rates_base_currency_idx").on(table.baseCurrency),
+    index("exchange_rates_date_idx").on(table.date),
+    unique("exchange_rates_currency_base_date_uniq").on(
+      table.currency,
+      table.baseCurrency,
+      table.date,
+    ),
+  ],
+);
+
 // ─── Constituents ─────────────────────────────────────────────────────────────
 
 export { outboxEvents } from "./outbox.js";
@@ -307,6 +335,8 @@ export const donations = pgTable(
       .references(() => constituents.id),
     amountCents: integer("amount_cents").notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("EUR"),
+    exchangeRate: numeric("exchange_rate", { precision: 18, scale: 8 }),
+    amountBaseCents: integer("amount_base_cents").notNull(),
     campaignId: uuid("campaign_id"),
     paymentMethod: varchar("payment_method", { length: 50 }),
     paymentRef: varchar("payment_ref", { length: 255 }),
@@ -482,6 +512,7 @@ export const campaigns = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     type: campaignTypeEnum("type").notNull(),
     status: campaignStatusEnum("status").notNull().default("draft"),
+    defaultCurrency: varchar("default_currency", { length: 3 }).notNull().default("EUR"),
     parentId: uuid("parent_id").references((): AnyPgColumn => campaigns.id, {
       onDelete: "set null",
     }),

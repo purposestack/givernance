@@ -17,10 +17,13 @@ beforeAll(async () => {
   app = await createServer();
   await app.ready();
   await ensureTestTenants();
+  await db.execute(sql`DELETE FROM outbox_events WHERE tenant_id = ${REPORTS_ORG}`);
+  await db.execute(sql`DELETE FROM donations WHERE org_id = ${REPORTS_ORG}`);
+  await db.execute(sql`DELETE FROM constituents WHERE org_id = ${REPORTS_ORG}`);
   await db.execute(
-    sql`INSERT INTO tenants (id, name, slug)
-        VALUES (${REPORTS_ORG}, 'Reports Org', 'reports-org')
-        ON CONFLICT (id) DO NOTHING`,
+    sql`INSERT INTO tenants (id, name, slug, base_currency)
+        VALUES (${REPORTS_ORG}, 'Reports Org', 'reports-org', 'CHF')
+        ON CONFLICT (id) DO UPDATE SET base_currency = 'CHF'`,
   );
 
   const tokenA = signToken(app, { org_id: REPORTS_ORG });
@@ -70,21 +73,29 @@ beforeAll(async () => {
 
   // Insert donations directly for precise date control
   await db.execute(sql`
-    INSERT INTO donations (org_id, constituent_id, amount_cents, currency, donated_at)
+    INSERT INTO donations (
+      org_id,
+      constituent_id,
+      amount_cents,
+      currency,
+      exchange_rate,
+      amount_base_cents,
+      donated_at
+    )
     VALUES
       -- LYBUNT donor: donated last year only
-      (${REPORTS_ORG}, ${lybuntId}, 5000, 'EUR', ${`${lastYear}-06-15`}::timestamptz),
+      (${REPORTS_ORG}, ${lybuntId}, 5000, 'EUR', 0.98000000, 4900, ${`${lastYear}-06-15`}::timestamptz),
       -- SYBUNT donor: donated two years ago only
-      (${REPORTS_ORG}, ${sybuntId}, 3000, 'EUR', ${`${twoYearsAgo}-03-10`}::timestamptz),
+      (${REPORTS_ORG}, ${sybuntId}, 3000, 'EUR', 0.93333333, 2800, ${`${twoYearsAgo}-03-10`}::timestamptz),
       -- Active donor: donated this year (should NOT appear in either report)
-      (${REPORTS_ORG}, ${activeId}, 10000, 'EUR', ${`${thisYear}-01-20`}::timestamptz),
+      (${REPORTS_ORG}, ${activeId}, 10000, 'EUR', 0.97000000, 9700, ${`${thisYear}-01-20`}::timestamptz),
       -- Active donor also donated last year
-      (${REPORTS_ORG}, ${activeId}, 8000, 'EUR', ${`${lastYear}-11-05`}::timestamptz),
+      (${REPORTS_ORG}, ${activeId}, 8000, 'EUR', 0.97500000, 7800, ${`${lastYear}-11-05`}::timestamptz),
       -- MultiYear donor: donated last year + two years ago (LYBUNT, total = 12000)
-      (${REPORTS_ORG}, ${multiYearId}, 7000, 'EUR', ${`${lastYear}-04-01`}::timestamptz),
-      (${REPORTS_ORG}, ${multiYearId}, 5000, 'EUR', ${`${twoYearsAgo}-09-20`}::timestamptz),
+      (${REPORTS_ORG}, ${multiYearId}, 7000, 'EUR', 0.97142857, 6800, ${`${lastYear}-04-01`}::timestamptz),
+      (${REPORTS_ORG}, ${multiYearId}, 5000, 'EUR', 0.94000000, 4700, ${`${twoYearsAgo}-09-20`}::timestamptz),
       -- Ancient donor: donated 3 years ago only (SYBUNT boundary, total = 2500)
-      (${REPORTS_ORG}, ${ancientId}, 2500, 'EUR', ${`${threeYearsAgo}-12-01`}::timestamptz)
+      (${REPORTS_ORG}, ${ancientId}, 2500, 'EUR', 0.96000000, 2400, ${`${threeYearsAgo}-12-01`}::timestamptz)
   `);
 });
 
@@ -123,8 +134,7 @@ describe("LYBUNT Report", () => {
     const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
     const multiYear = body.data.find((d) => d.firstName === "MultiYear");
     expect(multiYear).toBeDefined();
-    // LYBUNT only sums last-year donations: 7000
-    expect(multiYear?.totalDonatedCents).toBe(7000);
+    expect(multiYear?.totalDonatedCents).toBe(6800);
   });
 
   it("does not include ancient-only donor (no last year donations)", async () => {
@@ -152,7 +162,7 @@ describe("LYBUNT Report", () => {
     const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
     const lybunt = body.data.find((d) => d.firstName === "Lybunt");
     expect(lybunt).toBeDefined();
-    expect(lybunt?.totalDonatedCents).toBe(5000);
+    expect(lybunt?.totalDonatedCents).toBe(4900);
   });
 
   it("GET /v1/reports/lybunt accepts year query parameter", async () => {
@@ -211,7 +221,7 @@ describe("SYBUNT Report", () => {
     const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
     const ancient = body.data.find((d) => d.firstName === "Ancient");
     expect(ancient).toBeDefined();
-    expect(ancient?.totalDonatedCents).toBe(2500);
+    expect(ancient?.totalDonatedCents).toBe(2400);
   });
 
   it("multi-year donor totalDonatedCents aggregates all past donations", async () => {
@@ -226,8 +236,7 @@ describe("SYBUNT Report", () => {
     const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
     const multiYear = body.data.find((d) => d.firstName === "MultiYear");
     expect(multiYear).toBeDefined();
-    // SYBUNT sums all past donations: 7000 + 5000 = 12000
-    expect(multiYear?.totalDonatedCents).toBe(12000);
+    expect(multiYear?.totalDonatedCents).toBe(11500);
   });
 
   it("Sybunt donor totalDonatedCents is correct", async () => {
@@ -241,7 +250,7 @@ describe("SYBUNT Report", () => {
     const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
     const sybunt = body.data.find((d) => d.firstName === "Sybunt");
     expect(sybunt).toBeDefined();
-    expect(sybunt?.totalDonatedCents).toBe(3000);
+    expect(sybunt?.totalDonatedCents).toBe(2800);
   });
 
   it("GET /v1/reports/sybunt without auth returns 401", async () => {

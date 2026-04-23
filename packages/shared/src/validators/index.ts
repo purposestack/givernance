@@ -76,6 +76,12 @@ export const DonationAllocationSchema = Type.Object({
   amountCents: Type.Integer({ exclusiveMinimum: 0 }),
 });
 
+export const MULTI_CURRENCY_VALUES = ["EUR", "GBP", "CHF"] as const;
+export const MultiCurrencySchema = Type.Union(
+  MULTI_CURRENCY_VALUES.map((currency) => Type.Literal(currency)),
+  { default: "EUR" },
+);
+
 /** Schema for creating a new donation */
 export const DonationCreateSchema = Type.Object({
   constituentId: Type.String({ format: "uuid" }),
@@ -109,6 +115,7 @@ export const CampaignCreateSchema = Type.Object({
     Type.Literal("door_drop"),
     Type.Literal("digital"),
   ]),
+  defaultCurrency: Type.Optional(MultiCurrencySchema),
   parentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
   costCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
 });

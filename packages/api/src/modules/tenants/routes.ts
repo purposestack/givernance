@@ -24,11 +24,25 @@ const CreateTenantBody = Type.Object({
   ),
 });
 
+const TenantBaseCurrencySchema = Type.Union([
+  Type.Literal("EUR"),
+  Type.Literal("GBP"),
+  Type.Literal("CHF"),
+]);
+
+const UpdateTenantBody = Type.Object(
+  {
+    baseCurrency: Type.Optional(TenantBaseCurrencySchema),
+  },
+  { minProperties: 1 },
+);
+
 const TenantResponse = Type.Object({
   id: UuidSchema,
   name: Type.String(),
   slug: Type.String(),
   plan: Type.String(),
+  baseCurrency: TenantBaseCurrencySchema,
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -87,6 +101,73 @@ const TenantSnapshotResponse = Type.Object({
 });
 
 export async function tenantRoutes(app: FastifyInstance) {
+  /** GET /v1/admin/tenants/:orgId — fetch tenant settings for the owning org admin */
+  app.get(
+    "/admin/tenants/:orgId",
+    {
+      preHandler: requireSuperAdminOrOwnOrgAdmin,
+      schema: {
+        tags: ["Admin"],
+        params: OrgIdParams,
+        response: { 200: DataResponse(TenantResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const { orgId } = request.params as { orgId: string };
+      const [tenant] = await db.select().from(tenants).where(eq(tenants.id, orgId));
+
+      if (!tenant) {
+        const t = resolveTranslations(request);
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: t("errors.notFound", { resource: t("resources.tenant") }),
+        });
+      }
+
+      return reply.send({ data: tenant });
+    },
+  );
+
+  /** PUT /v1/admin/tenants/:orgId — update tenant settings for the owning org admin */
+  app.put(
+    "/admin/tenants/:orgId",
+    {
+      preHandler: requireSuperAdminOrOwnOrgAdmin,
+      schema: {
+        tags: ["Admin"],
+        params: OrgIdParams,
+        body: UpdateTenantBody,
+        response: { 200: DataResponse(TenantResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const { orgId } = request.params as { orgId: string };
+      const body = request.body as { baseCurrency?: "EUR" | "GBP" | "CHF" };
+      const [updated] = await db
+        .update(tenants)
+        .set({
+          ...(body.baseCurrency ? { baseCurrency: body.baseCurrency } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, orgId))
+        .returning();
+
+      if (!updated) {
+        const t = resolveTranslations(request);
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: t("errors.notFound", { resource: t("resources.tenant") }),
+        });
+      }
+
+      return reply.send({ data: updated });
+    },
+  );
+
   /** GET /v1/admin/tenants/:orgId/snapshot — export tenant data as JSON */
   app.get(
     "/admin/tenants/:orgId/snapshot",

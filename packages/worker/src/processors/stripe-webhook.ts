@@ -1,5 +1,6 @@
 /** Job processor — handle Stripe webhook events asynchronously */
 
+import { ExchangeRateService } from "@givernance/shared";
 import type { ProcessStripeWebhookJob } from "@givernance/shared/jobs";
 import {
   constituents,
@@ -10,6 +11,7 @@ import {
 } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { eq, sql } from "drizzle-orm";
+import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
 
@@ -100,6 +102,18 @@ async function handlePaymentIntentSucceeded(
   const campaignId = metadata.campaign_id || null;
 
   await withWorkerContext(orgId, async (tx) => {
+    const exchangeRateService = new ExchangeRateService({
+      apiKey: env.EXCHANGE_RATE_API_KEY,
+      dbClient: tx,
+      logger: log,
+    });
+    const baseCurrency = await exchangeRateService.getOrgBaseCurrency(orgId);
+    const convertedAmount = await exchangeRateService.convertAmountCents(
+      amountCents,
+      currency,
+      baseCurrency,
+    );
+
     // Find or create constituent
     let constituentId: string;
 
@@ -151,6 +165,8 @@ async function handlePaymentIntentSucceeded(
         constituentId,
         amountCents,
         currency,
+        exchangeRate: convertedAmount.exchangeRate.toFixed(8),
+        amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: campaignId || undefined,
         paymentMethod: "stripe",
         paymentRef: paymentIntentId,
@@ -183,7 +199,15 @@ async function handlePaymentIntentSucceeded(
     });
 
     log.info(
-      { donationId, constituentId, amountCents, currency },
+      {
+        amountBaseCents: convertedAmount.amountBaseCents,
+        baseCurrency,
+        constituentId,
+        currency,
+        donationId,
+        exchangeRate: convertedAmount.exchangeRate,
+        amountCents,
+      },
       "Donation created from Stripe payment_intent.succeeded",
     );
   });

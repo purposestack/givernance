@@ -8,6 +8,7 @@ import { withTenantContext } from "../../lib/db.js";
 export interface CreateCampaignInput {
   name: string;
   type: "nominative_postal" | "door_drop" | "digital";
+  defaultCurrency?: "EUR" | "GBP" | "CHF";
   parentId?: string | null;
   costCents?: number | null;
 }
@@ -15,6 +16,7 @@ export interface CreateCampaignInput {
 export interface UpdateCampaignInput {
   name?: string;
   type?: "nominative_postal" | "door_drop" | "digital";
+  defaultCurrency?: "EUR" | "GBP" | "CHF";
   status?: "draft" | "active" | "closed";
   parentId?: string | null;
   costCents?: number | null;
@@ -84,6 +86,7 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput, 
         orgId,
         name: input.name,
         type: input.type,
+        defaultCurrency: input.defaultCurrency ?? "EUR",
         parentId: input.parentId ?? null,
         costCents: input.costCents ?? null,
       })
@@ -235,7 +238,7 @@ export async function getCampaignStats(orgId: string, campaignId: string) {
 
     const [stats] = await tx
       .select({
-        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountCents}), 0)`,
+        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountBaseCents}), 0)`,
         donationCount: sql<number>`COUNT(${donations.id})`,
         uniqueDonors: sql<number>`COUNT(DISTINCT ${donations.constituentId})`,
       })
@@ -263,7 +266,7 @@ export async function getCampaignRoi(orgId: string, campaignId: string) {
 
     const [stats] = await tx
       .select({
-        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountCents}), 0)`,
+        totalRaisedCents: sql<number>`COALESCE(SUM(${donations.amountBaseCents}), 0)`,
       })
       .from(donations)
       .where(and(eq(donations.campaignId, campaignId), eq(donations.orgId, orgId)));

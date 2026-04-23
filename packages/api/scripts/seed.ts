@@ -250,11 +250,14 @@ async function seedOrgData(orgId: string) {
       const constituent = randomPick(insertedConstituents);
       const campaign = Math.random() > 0.2 ? randomPick(insertedCampaigns) : null;
       const donatedAt = randomDateWithinLastYear();
+      const amountCents = randomInt(500, 500_000);
       return {
         orgId,
         constituentId: constituent.id,
-        amountCents: randomInt(500, 500_000),
+        amountCents,
         currency: "EUR",
+        exchangeRate: "1",
+        amountBaseCents: amountCents,
         campaignId: campaign?.id ?? null,
         paymentMethod: randomPick(paymentMethods),
         paymentRef: `SEED-${Date.now()}-${i.toString().padStart(4, "0")}`,

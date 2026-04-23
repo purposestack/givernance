@@ -7,10 +7,12 @@ import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
 
 let app: FastifyInstance;
+const MULTI_CURRENCY_ORG = "00000000-0000-0000-0000-000000000126";
 
 let constituentIdA: string;
 let constituentIdB: string;
 let fundIdA: string;
+let multiCurrencyConstituentId: string;
 
 beforeAll(async () => {
   app = await createServer();
@@ -46,6 +48,21 @@ beforeAll(async () => {
     // biome-ignore lint/style/noNonNullAssertion: test setup — insert always returns a row
     fundIdA = fund!.id;
   });
+
+  await db.execute(
+    sql`INSERT INTO tenants (id, name, slug, base_currency)
+        VALUES (${MULTI_CURRENCY_ORG}, 'Donations Multi Currency Org', 'donations-multi-currency-org', 'CHF')
+        ON CONFLICT (id) DO UPDATE SET base_currency = 'CHF'`,
+  );
+
+  const multiCurrencyToken = signToken(app, { org_id: MULTI_CURRENCY_ORG });
+  const multiCurrencyConstituentRes = await app.inject({
+    method: "POST",
+    url: "/v1/constituents?force=true",
+    headers: authHeader(multiCurrencyToken),
+    payload: { firstName: "Multi", lastName: "Currency", type: "donor" },
+  });
+  multiCurrencyConstituentId = multiCurrencyConstituentRes.json<{ data: { id: string } }>().data.id;
 });
 
 afterAll(async () => {
@@ -93,6 +110,42 @@ describe("Donations CRUD", () => {
     });
 
     expect(res.statusCode).toBe(201);
+  });
+
+  it("POST /v1/donations computes amountBaseCents from the organization base currency", async () => {
+    await db.execute(
+      sql`INSERT INTO exchange_rates (currency, base_currency, rate, date)
+          VALUES ('EUR', 'CHF', 0.95000000, CURRENT_DATE)
+          ON CONFLICT (currency, base_currency, date)
+          DO UPDATE SET rate = EXCLUDED.rate, updated_at = NOW()`,
+    );
+
+    const token = signToken(app, { org_id: MULTI_CURRENCY_ORG });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(token),
+      payload: {
+        constituentId: multiCurrencyConstituentId,
+        amountCents: 10000,
+        currency: "EUR",
+        paymentMethod: "bank_transfer",
+        paymentRef: `XCH-${Date.now()}`,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const donationId = res.json<{ data: { id: string } }>().data.id;
+    const row = await db.execute(
+      sql`SELECT amount_base_cents, exchange_rate
+          FROM donations
+          WHERE id = ${donationId}`,
+    );
+
+    expect(row.rows[0]).toMatchObject({
+      amount_base_cents: 9500,
+      exchange_rate: "0.95000000",
+    });
   });
 
   it("GET /v1/donations lists donations", async () => {

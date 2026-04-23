@@ -10,6 +10,7 @@ const parentCampaign: Campaign = {
   name: "Regional Appeal",
   type: "digital",
   status: "active",
+  defaultCurrency: "EUR",
   parentId: null,
   costCents: 35000,
   createdAt: "2026-04-21T10:00:00.000Z",

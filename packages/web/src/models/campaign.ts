@@ -2,6 +2,7 @@ import type { Pagination } from "@/models/constituent";
 
 export type CampaignType = "nominative_postal" | "door_drop" | "digital";
 export type CampaignStatus = "draft" | "active" | "closed";
+export type CampaignCurrency = "EUR" | "GBP" | "CHF";
 
 export interface Campaign {
   id: string;
@@ -9,6 +10,7 @@ export interface Campaign {
   name: string;
   type: CampaignType;
   status: CampaignStatus;
+  defaultCurrency: CampaignCurrency;
   parentId: string | null;
   costCents: number | null;
   createdAt: string;
@@ -44,6 +46,7 @@ export interface CampaignDetailResponse {
 export interface CampaignCreateInput {
   name: string;
   type: CampaignType;
+  defaultCurrency?: CampaignCurrency;
   parentId?: string | null;
   costCents?: number | null;
 }

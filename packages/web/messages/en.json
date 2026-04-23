@@ -190,6 +190,10 @@
       "donations": "Donations",
       "settings": "Settings",
       "orgPlaceholder": "Organisation",
+      "userPlaceholder": "User",
+      "workspaceSwitcher": "Open workspace switcher",
+      "workspaceSettings": "Organisation settings",
+      "profile": "My profile",
       "signOut": "Sign out"
     },
     "topbar": {
@@ -277,10 +281,32 @@
     }
   },
   "settings": {
-    "title": "Settings",
-    "subtitle": "Minimal organisation settings surface for the MVP demo.",
-    "breadcrumbRoot": "Dashboard",
-    "snapshot": {
+  "title": "Settings",
+  "subtitle": "Manage organisation-level defaults and export tools.",
+  "breadcrumbRoot": "Dashboard",
+  "tenant": {
+    "title": "Organisation settings",
+    "description": "Choose the tenant base currency used for reporting and currency conversions.",
+    "readOnly": "Only organisation admins can update tenant settings.",
+    "fields": {
+      "baseCurrency": "Base currency",
+      "baseCurrencyPlaceholder": "Select a base currency",
+      "baseCurrencyHint": "This currency is used as the organisation reporting currency.",
+      "baseCurrencyHintWithName": "{name} will use this currency for converted totals and reports."
+    },
+    "actions": {
+      "save": "Save settings",
+      "saving": "Saving…"
+    },
+    "errors": {
+      "load": "Unable to load organisation settings right now.",
+      "save": "Unable to save organisation settings right now."
+    },
+    "success": {
+      "updated": "Organisation settings updated."
+    }
+  },
+  "snapshot": {
       "badge": "ADM-001 MVP",
       "title": "Data export (GDPR / GL)",
       "description": "Download a JSON snapshot of the organisation data for portability, archival, or general-ledger handoff needs.",
@@ -551,12 +577,14 @@
           "description": "Parent campaign and target amount used for rollup and reporting."
         }
       },
-      "fields": {
-        "name": "Campaign name",
-        "namePlaceholder": "Spring appeal 2026",
-        "type": "Campaign type",
-        "parent": "Parent campaign",
-        "parentPlaceholder": "No parent campaign",
+    "fields": {
+      "name": "Campaign name",
+      "namePlaceholder": "Spring appeal 2026",
+      "type": "Campaign type",
+      "defaultCurrency": "Default currency",
+      "defaultCurrencyHint": "Preselected when donations are created from this campaign.",
+      "parent": "Parent campaign",
+      "parentPlaceholder": "No parent campaign",
         "parentHint": "Use a parent campaign to group related outreach.",
         "parentLoading": "Loading available campaigns…",
         "goal": "Goal amount",
@@ -734,9 +762,11 @@
         "lastNamePlaceholder": "Doe",
         "email": "Email",
         "emailPlaceholder": "jane.doe@example.org",
-        "amount": "Amount",
-        "amountPlaceholder": "50"
-      },
+    "amount": "Amount",
+    "amountPlaceholder": "50"
+    ,
+    "currency": "Currency"
+  },
       "actions": {
         "submit": "Continue to payment",
         "submitting": "Preparing…"
@@ -747,9 +777,9 @@
         "emailRequired": "Enter your email address.",
         "emailInvalid": "Enter a valid email address.",
         "amountRequired": "Enter a donation amount.",
-        "amountInvalid": "Amount must be at least €1.",
-        "generic": "Something went wrong while preparing payment. Please try again."
-      },
+    "amountInvalid": "Amount must be at least 1.",
+    "generic": "Something went wrong while preparing payment. Please try again."
+  },
       "success": {
         "intentCreated": "Your donation is ready. The Stripe payment step is the next integration.",
         "nextStepTitle": "Next step",

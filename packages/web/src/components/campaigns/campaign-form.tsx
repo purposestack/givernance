@@ -38,7 +38,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import type { Campaign, CampaignType } from "@/models/campaign";
+import type { Campaign, CampaignCurrency, CampaignType } from "@/models/campaign";
 import { CampaignService } from "@/services/CampaignService";
 
 const CAMPAIGN_TYPES: readonly CampaignType[] = [
@@ -46,10 +46,12 @@ const CAMPAIGN_TYPES: readonly CampaignType[] = [
   "door_drop",
   "digital",
 ] as const;
+const CAMPAIGN_CURRENCIES: readonly CampaignCurrency[] = ["EUR", "GBP", "CHF"] as const;
 
 interface CampaignFormValues {
   name: string;
   type: CampaignType;
+  defaultCurrency: CampaignCurrency;
   parentId: string;
   costCents: number | null;
 }
@@ -70,6 +72,7 @@ export function CampaignForm(props: CampaignFormProps) {
   const defaultValues: DefaultValues<CampaignFormValues> = {
     name: props.campaign?.name ?? "",
     type: props.campaign?.type ?? "digital",
+    defaultCurrency: props.campaign?.defaultCurrency ?? "EUR",
     parentId: props.campaign?.parentId ?? "",
     costCents: props.campaign?.costCents ?? null,
   };
@@ -200,6 +203,33 @@ export function CampaignForm(props: CampaignFormProps) {
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="defaultCurrency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel required>{t("fields.defaultCurrency")}</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger aria-invalid={Boolean(form.formState.errors.defaultCurrency)}>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {CAMPAIGN_CURRENCIES.map((currency) => (
+                        <SelectItem key={currency} value={currency}>
+                          {currency}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-on-surface-variant">
+                    {t("fields.defaultCurrencyHint")}
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
         </FormSection>
 
@@ -286,6 +316,7 @@ function toApiPayload(values: CampaignFormValues) {
   return {
     name: values.name?.trim() ?? "",
     type: values.type,
+    defaultCurrency: values.defaultCurrency,
     parentId: values.parentId?.trim() || null,
     costCents: values.costCents,
   };
@@ -302,6 +333,7 @@ function buildResolver(): Resolver<CampaignFormValues> {
     const cleaned: Record<string, unknown> = {
       name: values.name?.trim() ?? "",
       type: values.type,
+      defaultCurrency: values.defaultCurrency,
     };
 
     if (values.parentId?.trim() !== "") {

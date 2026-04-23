@@ -45,7 +45,7 @@ export async function getLybuntReport(
         c.last_name  AS "lastName",
         c.email,
         MAX(d.donated_at)::text AS "lastDonationAt",
-        COALESCE(SUM(d.amount_cents), 0)::int AS "totalDonatedCents"
+        COALESCE(SUM(d.amount_base_cents), 0)::int AS "totalDonatedCents"
       FROM constituents c
       INNER JOIN donations d ON d.constituent_id = c.id AND d.org_id = c.org_id
       WHERE c.org_id = ${orgId}
@@ -105,7 +105,7 @@ export async function getSybuntReport(
         c.last_name  AS "lastName",
         c.email,
         MAX(d.donated_at)::text AS "lastDonationAt",
-        COALESCE(SUM(d.amount_cents), 0)::int AS "totalDonatedCents"
+        COALESCE(SUM(d.amount_base_cents), 0)::int AS "totalDonatedCents"
       FROM constituents c
       INNER JOIN donations d ON d.constituent_id = c.id AND d.org_id = c.org_id
       WHERE c.org_id = ${orgId}

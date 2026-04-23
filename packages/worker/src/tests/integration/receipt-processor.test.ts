@@ -53,6 +53,8 @@ beforeAll(async () => {
       constituentId,
       amountCents: 5000,
       currency: "EUR",
+      exchangeRate: "1",
+      amountBaseCents: 5000,
       paymentMethod: "wire",
       donatedAt: new Date("2026-01-15"),
       fiscalYear: 2026,

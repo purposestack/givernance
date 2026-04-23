@@ -87,6 +87,7 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
               colorPrimary={colorPrimary}
               locale={locale}
               goalAmountCents={page.goalAmountCents}
+              defaultCurrency={page.defaultCurrency}
             />
           </div>
         </div>
