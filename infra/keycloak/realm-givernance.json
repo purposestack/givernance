@@ -40,6 +40,19 @@
         }
       ],
       "realmRoles": ["super_admin"]
+    },
+    {
+      "username": "service-account-givernance-admin",
+      "enabled": true,
+      "serviceAccountClientId": "givernance-admin",
+      "clientRoles": {
+        "realm-management": [
+          "manage-realm",
+          "manage-users",
+          "manage-identity-providers",
+          "view-clients"
+        ]
+      }
     }
   ],
   "roles": {
@@ -55,6 +68,18 @@
     ]
   },
   "clients": [
+    {
+      "clientId": "givernance-admin",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "ci-test-admin-secret-do-not-use-in-production",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "description": "Service-account client for Keycloak Admin API calls from the Givernance backend (ADR-016 / issue #107). Scoped to realm-management roles: manage-realm, manage-users, manage-identity-providers, view-clients."
+    },
     {
       "clientId": "givernance-web",
       "enabled": true,

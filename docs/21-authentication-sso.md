@@ -210,6 +210,12 @@ KEYCLOAK_CLIENT_ID=givernance-web
 KEYCLOAK_CLIENT_SECRET=ci-test-secret-do-not-use-in-production
 KEYCLOAK_ISSUER=http://localhost:8080/realms/givernance
 KEYCLOAK_JWKS_URL=http://localhost:8080/realms/givernance/protocol/openid-connect/certs
+# Admin API service account (issue #107) — used by the API server to provision
+# Organizations, Identity Providers, and invitations. Leave the secret unset
+# to disable the admin client entirely.
+KEYCLOAK_ADMIN_CLIENT_ID=givernance-admin
+KEYCLOAK_ADMIN_CLIENT_SECRET=ci-test-admin-secret-do-not-use-in-production
+# KEYCLOAK_ADMIN_URL=http://localhost:8080  # defaults to KEYCLOAK_URL
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_API_URL=http://localhost:4000
 API_URL=http://localhost:4000
