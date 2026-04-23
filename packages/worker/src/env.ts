@@ -39,6 +39,8 @@ const EnvSchema = Type.Object({
   LOG_LEVEL: LogLevel,
   /** Stripe secret key (sk_test_... or sk_live_...) */
   STRIPE_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /** ExchangeRate-API key used for currency conversion refreshes */
+  EXCHANGE_RATE_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
 });
 
 export type WorkerEnv = Static<typeof EnvSchema>;
