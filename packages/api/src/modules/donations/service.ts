@@ -6,10 +6,12 @@ import {
   donations,
   outboxEvents,
   receipts,
+  tenants,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
+import { ExchangeRateService } from "../finance/exchange-rate-service.js";
 
 /** Thrown when allocation amounts don't sum to the donation total */
 export class AllocationSumMismatchError extends Error {
@@ -196,13 +198,23 @@ export async function createDonation(orgId: string, userId: string, input: Donat
 
   return withTenantContext(orgId, async (tx) => {
     // Verify constituent belongs to this tenant (FK check alone doesn't enforce RLS)
-    const [constituent] = await tx
-      .select({ id: constituents.id })
-      .from(constituents)
-      .where(and(eq(constituents.id, input.constituentId), eq(constituents.orgId, orgId)));
+    const [constituent, tenant] = await Promise.all([
+      tx
+        .select({ id: constituents.id })
+        .from(constituents)
+        .where(and(eq(constituents.id, input.constituentId), eq(constituents.orgId, orgId))),
+      tx.select({ baseCurrency: tenants.baseCurrency }).from(tenants).where(eq(tenants.id, orgId)),
+    ]);
 
-    if (!constituent) return null;
-    const currency = input.currency ?? "EUR";
+    if (!constituent[0]) return null;
+    const currency = (input.currency ?? "EUR").toUpperCase();
+    const baseCurrency = (tenant[0]?.baseCurrency ?? "EUR").toUpperCase();
+    const exchangeRateService = new ExchangeRateService({ dbClient: tx });
+    const convertedAmount = await exchangeRateService.convertAmountCents(
+      input.amountCents,
+      currency,
+      baseCurrency,
+    );
 
     const [donation] = await tx
       .insert(donations)
@@ -211,8 +223,8 @@ export async function createDonation(orgId: string, userId: string, input: Donat
         constituentId: input.constituentId,
         amountCents: input.amountCents,
         currency,
-        exchangeRate: "1",
-        amountBaseCents: input.amountCents,
+        exchangeRate: convertedAmount.exchangeRate.toFixed(8),
+        amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: input.campaignId,
         paymentMethod: input.paymentMethod,
         paymentRef: input.paymentRef,
