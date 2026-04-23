@@ -1,14 +1,14 @@
 /**
  * Enterprise-track tenant routes (issue #110 / ADR-016 / doc 22 §3.2, §5).
  *
- *  - `POST /v1/admin/tenants`                         — super-admin, create enterprise tenant.
- *  - `GET  /v1/admin/tenants`                         — super-admin, list + filter.
- *  - `GET  /v1/admin/tenants/:id/detail`              — super-admin, detail + tabs data.
- *  - `POST /v1/admin/tenants/:id/provision-idp`       — super-admin.
- *  - `PATCH /v1/admin/tenants/:id/idp`                — super-admin, rotate/patch config.
- *  - `DELETE /v1/admin/tenants/:id/idp`               — super-admin.
- *  - `POST /v1/admin/tenants/:id/lifecycle`           — super-admin, suspend/archive/activate.
- *  - `POST /v1/admin/tenants/:id/invite-first-admin`  — super-admin, seed first user.
+ *  - `POST /v1/superadmin/tenants`                         — super-admin, create enterprise tenant.
+ *  - `GET  /v1/superadmin/tenants`                         — super-admin, list + filter.
+ *  - `GET  /v1/superadmin/tenants/:id/detail`              — super-admin, detail + tabs data.
+ *  - `POST /v1/superadmin/tenants/:id/provision-idp`       — super-admin.
+ *  - `PATCH /v1/superadmin/tenants/:id/idp`                — super-admin, rotate/patch config.
+ *  - `DELETE /v1/superadmin/tenants/:id/idp`               — super-admin.
+ *  - `POST /v1/superadmin/tenants/:id/lifecycle`           — super-admin, suspend/archive/activate.
+ *  - `POST /v1/superadmin/tenants/:id/invite-first-admin`  — super-admin, seed first user.
  *  - `POST /v1/tenants/:id/domains`                   — super_admin OR owning org_admin.
  *  - `POST /v1/tenants/:id/domains/:domain/verify`    — same auth.
  *  - `DELETE /v1/tenants/:id/domains/:domain`         — same auth.
@@ -205,9 +205,9 @@ function auditFromRequest(request: FastifyRequest) {
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 export async function tenantAdminRoutes(app: FastifyInstance) {
-  /** POST /v1/admin/tenants — create an enterprise-track tenant (super-admin). */
+  /** POST /v1/superadmin/tenants — create an enterprise-track tenant (super-admin). */
   app.post(
-    "/admin/tenants",
+    "/superadmin/tenants",
     {
       preHandler: requireSuperAdmin,
       schema: {
@@ -270,9 +270,9 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** GET /v1/admin/tenants — list tenants with filters (super-admin). */
+  /** GET /v1/superadmin/tenants — list tenants with filters (super-admin). */
   app.get(
-    "/admin/tenants",
+    "/superadmin/tenants",
     {
       preHandler: requireSuperAdmin,
       schema: {
@@ -291,9 +291,9 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** GET /v1/admin/tenants/:id/detail — tenant detail + tabs payload (super-admin). */
+  /** GET /v1/superadmin/tenants/:id/detail — tenant detail + tabs payload (super-admin). */
   app.get(
-    "/admin/tenants/:id/detail",
+    "/superadmin/tenants/:id/detail",
     {
       preHandler: requireSuperAdmin,
       schema: {
@@ -316,9 +316,9 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** POST /v1/admin/tenants/:id/provision-idp — create + bind OIDC/SAML IdP. */
+  /** POST /v1/superadmin/tenants/:id/provision-idp — create + bind OIDC/SAML IdP. */
   app.post(
-    "/admin/tenants/:id/provision-idp",
+    "/superadmin/tenants/:id/provision-idp",
     {
       preHandler: requireSuperAdmin,
       schema: {
@@ -378,9 +378,9 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** PATCH /v1/admin/tenants/:id/idp — rotate secret / adjust config. */
+  /** PATCH /v1/superadmin/tenants/:id/idp — rotate secret / adjust config. */
   app.patch(
-    "/admin/tenants/:id/idp",
+    "/superadmin/tenants/:id/idp",
     {
       preHandler: requireSuperAdmin,
       schema: {
@@ -426,9 +426,9 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** DELETE /v1/admin/tenants/:id/idp — unbind + remove. */
+  /** DELETE /v1/superadmin/tenants/:id/idp — unbind + remove. */
   app.delete(
-    "/admin/tenants/:id/idp",
+    "/superadmin/tenants/:id/idp",
     {
       preHandler: requireSuperAdmin,
       schema: {
@@ -450,9 +450,9 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** POST /v1/admin/tenants/:id/lifecycle — suspend/archive/activate. */
+  /** POST /v1/superadmin/tenants/:id/lifecycle — suspend/archive/activate. */
   app.post(
-    "/admin/tenants/:id/lifecycle",
+    "/superadmin/tenants/:id/lifecycle",
     {
       preHandler: requireSuperAdmin,
       schema: {
@@ -495,9 +495,9 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** POST /v1/admin/tenants/:id/invite-first-admin — seed the first enterprise user. */
+  /** POST /v1/superadmin/tenants/:id/invite-first-admin — seed the first enterprise user. */
   app.post(
-    "/admin/tenants/:id/invite-first-admin",
+    "/superadmin/tenants/:id/invite-first-admin",
     {
       preHandler: requireSuperAdmin,
       schema: {
