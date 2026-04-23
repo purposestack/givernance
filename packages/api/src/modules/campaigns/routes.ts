@@ -52,7 +52,7 @@ const CampaignCreateBody = Type.Object({
   type: CampaignTypeSchema,
   defaultCurrency: Type.Optional(CampaignDefaultCurrencySchema),
   parentId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
-  costCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
+  operationalCostCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
 });
 
 const CampaignUpdateBody = Type.Object(
@@ -64,7 +64,7 @@ const CampaignUpdateBody = Type.Object(
       Type.Union([Type.Literal("draft"), Type.Literal("active"), Type.Literal("closed")]),
     ),
     parentId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
-    costCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
+    operationalCostCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
   },
   { minProperties: 1 },
 );
@@ -81,7 +81,9 @@ const CampaignResponse = Type.Object({
   status: CampaignStatusSchema,
   defaultCurrency: CampaignDefaultCurrencySchema,
   parentId: Type.Union([UuidSchema, Type.Null()]),
-  costCents: Type.Union([Type.Integer(), Type.Null()]),
+  operationalCostCents: Type.Union([Type.Integer(), Type.Null()]),
+  platformFeesCents: Type.Integer(),
+  goalAmountCents: Type.Union([Type.Integer(), Type.Null()]),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -100,9 +102,12 @@ const CampaignStatsResponse = Type.Object({
 
 const CampaignRoiResponse = Type.Object({
   campaignId: UuidSchema,
-  totalRaisedCents: Type.Integer(),
-  costCents: Type.Union([Type.Integer(), Type.Null()]),
-  roi: Type.Union([Type.Number(), Type.Null()]),
+  rawGoalCents: Type.Union([Type.Integer(), Type.Null()]),
+  rawRaisedCents: Type.Integer(),
+  rawPlatformFeesCents: Type.Integer(),
+  rawOperationalCostCents: Type.Union([Type.Integer(), Type.Null()]),
+  totalCostCents: Type.Integer(),
+  roiPct: Type.Union([Type.Number(), Type.Null()]),
 });
 
 export async function campaignRoutes(app: FastifyInstance) {
@@ -161,7 +166,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         type: "nominative_postal" | "door_drop" | "digital";
         defaultCurrency?: "EUR" | "GBP" | "CHF";
         parentId?: string | null;
-        costCents?: number | null;
+        operationalCostCents?: number | null;
       };
       try {
         const campaign = await createCampaign(orgId, body, userId);
@@ -233,7 +238,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         defaultCurrency?: "EUR" | "GBP" | "CHF";
         status?: "draft" | "active" | "closed";
         parentId?: string | null;
-        costCents?: number | null;
+        operationalCostCents?: number | null;
       };
 
       try {
@@ -310,7 +315,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Get campaign ROI: (totalRaised - costCents) / costCents */
+  /** Get campaign ROI read-model */
   app.get(
     "/campaigns/:id/roi",
     {

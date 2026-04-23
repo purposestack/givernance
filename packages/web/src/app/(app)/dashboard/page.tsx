@@ -324,7 +324,7 @@ function CampaignProgressItem({
 }) {
   const { campaign, stats } = item;
   const raisedCents = stats?.totalRaisedCents ?? 0;
-  const goalCents = campaign.costCents ?? 0;
+  const goalCents = campaign.goalAmountCents ?? 0;
   const progress = goalCents > 0 ? Math.min(Math.round((raisedCents / goalCents) * 100), 100) : 0;
   const translate = t as unknown as DashboardTranslate;
 

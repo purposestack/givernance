@@ -82,21 +82,26 @@ describe("Campaigns CRUD", () => {
     expect(body.data.type).toBe("door_drop");
   });
 
-  it("POST /v1/campaigns creates a campaign with parentId and costCents", async () => {
+  it("POST /v1/campaigns creates a campaign with parentId and operationalCostCents", async () => {
     const token = signToken(app);
     const res = await app.inject({
       method: "POST",
       url: "/v1/campaigns",
       headers: authHeader(token),
-      payload: { name: "Sub-Campaign", type: "digital", parentId: campaignId, costCents: 50000 },
+      payload: {
+        name: "Sub-Campaign",
+        type: "digital",
+        parentId: campaignId,
+        operationalCostCents: 50000,
+      },
     });
 
     expect(res.statusCode).toBe(201);
     const body = res.json<{
-      data: { parentId: string; costCents: number };
+      data: { parentId: string; operationalCostCents: number };
     }>();
     expect(body.data.parentId).toBe(campaignId);
-    expect(body.data.costCents).toBe(50000);
+    expect(body.data.operationalCostCents).toBe(50000);
   });
 
   it("POST /v1/campaigns rejects non-existent parent UUID", async () => {
@@ -187,13 +192,13 @@ describe("Campaigns CRUD", () => {
       method: "PATCH",
       url: `/v1/campaigns/${campaignId}`,
       headers: authHeader(token),
-      payload: { name: "Spring Appeal 2026 Updated", costCents: 25000 },
+      payload: { name: "Spring Appeal 2026 Updated", operationalCostCents: 25000 },
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ data: { name: string; costCents: number } }>();
+    const body = res.json<{ data: { name: string; operationalCostCents: number } }>();
     expect(body.data.name).toBe("Spring Appeal 2026 Updated");
-    expect(body.data.costCents).toBe(25000);
+    expect(body.data.operationalCostCents).toBe(25000);
   });
 
   it("PATCH /v1/campaigns/:id returns 404 for non-existent campaign", async () => {
@@ -294,25 +299,25 @@ describe("Campaigns CRUD", () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it("POST /v1/campaigns accepts BIGINT costCents (> INT32_MAX)", async () => {
+  it("POST /v1/campaigns accepts BIGINT operationalCostCents (> INT32_MAX)", async () => {
     // Validates the DB column is truly BIGINT and can store values > INT32_MAX.
     // Use explicit BIGINT cast to ensure correct type inference by PostgreSQL.
     const rows = await db.execute(
-      sql`INSERT INTO campaigns (org_id, name, type, cost_cents)
+      sql`INSERT INTO campaigns (org_id, name, type, operational_cost_cents)
           VALUES (${ORG_A}, 'BigInt Cost Campaign', 'digital', 2200000000::bigint)
-          RETURNING cost_cents`,
+          RETURNING operational_cost_cents`,
     );
 
-    expect(Number(rows.rows[0]?.cost_cents)).toBe(2_200_000_000);
+    expect(Number(rows.rows[0]?.operational_cost_cents)).toBe(2_200_000_000);
   });
 
-  it("POST /v1/campaigns rejects negative costCents (DB CHECK constraint)", async () => {
+  it("POST /v1/campaigns rejects negative operationalCostCents", async () => {
     const token = signToken(app);
     const res = await app.inject({
       method: "POST",
       url: "/v1/campaigns",
       headers: authHeader(token),
-      payload: { name: "Negative Cost", type: "digital", costCents: -100 },
+      payload: { name: "Negative Cost", type: "digital", operationalCostCents: -100 },
     });
 
     // The TypeBox schema enforces minimum: 0, so Fastify returns 400 before hitting the DB
@@ -598,7 +603,7 @@ describe("Campaign Stats & ROI", () => {
       method: "POST",
       url: "/v1/campaigns",
       headers: authHeader(token),
-      payload: { name: "Stats Campaign", type: "digital", costCents: 10000 },
+      payload: { name: "Stats Campaign", type: "digital", operationalCostCents: 10000 },
     });
     statsCampaignId = campaignRes.json<{ data: { id: string } }>().data.id;
 
@@ -663,15 +668,24 @@ describe("Campaign Stats & ROI", () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json<{
-      data: { campaignId: string; totalRaisedCents: number; costCents: number; roi: number };
+      data: {
+        campaignId: string;
+        rawRaisedCents: number;
+        rawOperationalCostCents: number;
+        rawPlatformFeesCents: number;
+        totalCostCents: number;
+        roiPct: number;
+      };
     }>();
     expect(body.data.campaignId).toBe(statsCampaignId);
-    expect(body.data.totalRaisedCents).toBe(19000);
-    expect(body.data.costCents).toBe(10000);
-    expect(body.data.roi).toBe(0.9);
+    expect(body.data.rawRaisedCents).toBe(19000);
+    expect(body.data.rawOperationalCostCents).toBe(10000);
+    expect(body.data.rawPlatformFeesCents).toBe(0);
+    expect(body.data.totalCostCents).toBe(10000);
+    expect(body.data.roiPct).toBe(90);
   });
 
-  it("GET /v1/campaigns/:id/roi returns null ROI and null costCents when no cost set", async () => {
+  it("GET /v1/campaigns/:id/roi returns null ROI and null operational cost when no cost set", async () => {
     const token = signToken(app);
 
     // Create campaign without cost
@@ -690,9 +704,16 @@ describe("Campaign Stats & ROI", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ data: { roi: number | null; costCents: number | null } }>();
-    expect(body.data.roi).toBeNull();
-    expect(body.data.costCents).toBeNull();
+    const body = res.json<{
+      data: {
+        roiPct: number | null;
+        rawOperationalCostCents: number | null;
+        totalCostCents: number;
+      };
+    }>();
+    expect(body.data.roiPct).toBeNull();
+    expect(body.data.rawOperationalCostCents).toBeNull();
+    expect(body.data.totalCostCents).toBe(0);
   });
 
   it("GET /v1/campaigns/:id/roi returns negative ROI when cost exceeds raised", async () => {
@@ -703,7 +724,7 @@ describe("Campaign Stats & ROI", () => {
       method: "POST",
       url: "/v1/campaigns",
       headers: authHeader(token),
-      payload: { name: "Negative ROI Campaign", type: "digital", costCents: 100000 },
+      payload: { name: "Negative ROI Campaign", type: "digital", operationalCostCents: 100000 },
     });
     const highCostId = createRes.json<{ data: { id: string } }>().data.id;
 
@@ -714,11 +735,65 @@ describe("Campaign Stats & ROI", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ data: { roi: number; costCents: number; totalRaisedCents: number } }>();
-    expect(body.data.costCents).toBe(100000);
-    expect(body.data.totalRaisedCents).toBe(0);
-    // ROI = (0 - 100000) / 100000 = -1.0
-    expect(body.data.roi).toBe(-1.0);
+    const body = res.json<{
+      data: { roiPct: number; totalCostCents: number; rawRaisedCents: number };
+    }>();
+    expect(body.data.totalCostCents).toBe(100000);
+    expect(body.data.rawRaisedCents).toBe(0);
+    expect(body.data.roiPct).toBe(-100);
+  });
+
+  it("GET /v1/campaigns/:id/roi counts cleared donations only, subtracts refunds, and ignores other campaigns", async () => {
+    const token = signToken(app, { org_id: CAMPAIGN_STATS_ORG });
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Filtered ROI Campaign", type: "digital", operationalCostCents: 1000 },
+    });
+    const filteredCampaignId = createRes.json<{ data: { id: string } }>().data.id;
+
+    const otherCampaignRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Other Campaign", type: "digital", operationalCostCents: 1000 },
+    });
+    const otherCampaignId = otherCampaignRes.json<{ data: { id: string } }>().data.id;
+
+    await db.execute(sql`
+      INSERT INTO donations (
+        org_id,
+        constituent_id,
+        amount_cents,
+        currency,
+        exchange_rate,
+        amount_base_cents,
+        campaign_id,
+        status,
+        donated_at
+      )
+      VALUES
+        (${CAMPAIGN_STATS_ORG}, ${statsConstituentId}, 2000, 'EUR', 1.00000000, 2000, ${filteredCampaignId}, 'cleared', NOW()),
+        (${CAMPAIGN_STATS_ORG}, ${statsConstituentId}, 500, 'EUR', 1.00000000, 500, ${filteredCampaignId}, 'pending', NOW()),
+        (${CAMPAIGN_STATS_ORG}, ${statsConstituentId}, 300, 'EUR', 1.00000000, 300, ${filteredCampaignId}, 'failed', NOW()),
+        (${CAMPAIGN_STATS_ORG}, ${statsConstituentId}, 250, 'EUR', 1.00000000, 250, ${filteredCampaignId}, 'refunded', NOW()),
+        (${CAMPAIGN_STATS_ORG}, ${statsConstituentId}, 9999, 'EUR', 1.00000000, 9999, ${otherCampaignId}, 'cleared', NOW())
+    `);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${filteredCampaignId}/roi`,
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { rawRaisedCents: number; totalCostCents: number; roiPct: number };
+    }>();
+    expect(body.data.rawRaisedCents).toBe(1750);
+    expect(body.data.totalCostCents).toBe(1000);
+    expect(body.data.roiPct).toBe(75);
   });
 });
 

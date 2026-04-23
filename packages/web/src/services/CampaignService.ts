@@ -5,6 +5,8 @@ import type {
   CampaignDetailResponse,
   CampaignListQuery,
   CampaignListResponse,
+  CampaignRoiMetrics,
+  CampaignRoiResponse,
   CampaignStats,
   CampaignStatsResponse,
   CampaignUpdateInput,
@@ -18,14 +20,6 @@ import type {
  * grows that filter.
  */
 export const CampaignService = {
-  calculateRoi(costCents: number | null, raisedCents: number): number | null {
-    if (costCents === null || costCents <= 0) {
-      return null;
-    }
-
-    return ((raisedCents - costCents) / costCents) * 100;
-  },
-
   async listCampaigns(
     client: ApiClient,
     query: CampaignListQuery = {},
@@ -60,6 +54,13 @@ export const CampaignService = {
   async getCampaignStats(client: ApiClient, id: string): Promise<CampaignStats> {
     const response = await client.get<CampaignStatsResponse>(
       `/v1/campaigns/${encodeURIComponent(id)}/stats`,
+    );
+    return response.data;
+  },
+
+  async getCampaignRoi(client: ApiClient, id: string): Promise<CampaignRoiMetrics> {
+    const response = await client.get<CampaignRoiResponse>(
+      `/v1/campaigns/${encodeURIComponent(id)}/roi`,
     );
     return response.data;
   },
@@ -109,7 +110,9 @@ function mapCampaign(raw: Campaign): Campaign {
     status: raw.status,
     defaultCurrency: raw.defaultCurrency,
     parentId: raw.parentId,
-    costCents: raw.costCents,
+    operationalCostCents: raw.operationalCostCents,
+    platformFeesCents: raw.platformFeesCents,
+    goalAmountCents: raw.goalAmountCents,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
@@ -124,7 +127,9 @@ function toRequestBody(input: CampaignCreateInput | CampaignUpdateInput): Record
   if (input.defaultCurrency !== undefined) body.defaultCurrency = input.defaultCurrency;
   if (maybeStatus.status !== undefined) body.status = maybeStatus.status;
   if (input.parentId !== undefined) body.parentId = input.parentId;
-  if (input.costCents !== undefined) body.costCents = input.costCents;
+  if (input.operationalCostCents !== undefined) {
+    body.operationalCostCents = input.operationalCostCents;
+  }
 
   return body;
 }

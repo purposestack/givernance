@@ -773,6 +773,18 @@ Frontend-specific API response models live in `packages/web/src/models/` as plai
 
 ---
 
+### Campaign ROI Rule (2026-04-23)
+
+Campaign ROI is a **read-model, never a stored field**.
+
+- ROI is computed at read time in the API service layer from campaign primitives, not persisted on `campaigns`.
+- The numerator uses **cleared donations only**, with **refunded donations subtracted** from raised totals.
+- Pending and failed donations are excluded from ROI.
+- Total campaign cost is `operational_cost_cents + platform_fees_cents`.
+- Frontend code consumes the typed API read-model and must not recompute ROI from raw donation rows, consistent with ADR-011 and ADR-013.
+
+---
+
 ## ADR-015: Internationalization & Translation Strategy
 
 - **Status**: Accepted

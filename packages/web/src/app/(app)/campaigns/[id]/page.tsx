@@ -1,4 +1,4 @@
-import { ArrowLeft, Gift, Globe, Pencil } from "lucide-react";
+import { ArrowLeft, CircleHelp, Gift, Globe, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -9,11 +9,12 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
-import type { Campaign, CampaignStats } from "@/models/campaign";
+import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campaign";
 import type { DonationListResponse } from "@/models/donation";
 import { CampaignService } from "@/services/CampaignService";
 import { DonationService } from "@/services/DonationService";
@@ -87,19 +88,24 @@ export default async function CampaignDetailPage({
   const client = await createServerApiClient();
   const campaign = await fetchCampaignOrNotFound(id);
 
-  const [stats, donationsResult, t, tCampaigns, tDonations, locale] = await Promise.all([
-    CampaignService.getCampaignStats(client, id),
-    fetchDonationsOrEmpty(id, donationsPage, donationsPerPage),
-    getTranslations("campaigns.detail"),
-    getTranslations("campaigns"),
-    getTranslations("donations"),
-    getLocale(),
-  ]);
-  const roi = CampaignService.calculateRoi(campaign.costCents, stats.totalRaisedCents);
-  const costDisplayValue =
-    campaign.costCents !== null ? formatCurrency(campaign.costCents, locale) : t("roi.unavailable");
-  const raisedDisplayValue = formatCurrency(stats.totalRaisedCents, locale);
-  const roiDisplayValue = roi !== null ? formatPercent(roi, locale, 1) : t("roi.unavailable");
+  const [stats, roiMetrics, donationsResult, t, tCampaigns, tDonations, locale] = await Promise.all(
+    [
+      CampaignService.getCampaignStats(client, id),
+      CampaignService.getCampaignRoi(client, id),
+      fetchDonationsOrEmpty(id, donationsPage, donationsPerPage),
+      getTranslations("campaigns.detail"),
+      getTranslations("campaigns"),
+      getTranslations("donations"),
+      getLocale(),
+    ],
+  );
+  const totalCostDisplayValue =
+    roiMetrics.totalCostCents > 0
+      ? formatCurrency(roiMetrics.totalCostCents, locale)
+      : t("roi.unavailable");
+  const raisedDisplayValue = formatCurrency(roiMetrics.rawRaisedCents, locale);
+  const roiDisplayValue =
+    roiMetrics.roiPct !== null ? formatPercent(roiMetrics.roiPct, locale, 1) : t("roi.unavailable");
 
   return (
     <>
@@ -144,19 +150,19 @@ export default async function CampaignDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
         <aside className="space-y-6">
-          <StatsCard campaign={campaign} stats={stats} locale={locale} />
+          <StatsCard campaign={campaign} stats={stats} roiMetrics={roiMetrics} locale={locale} />
           <StatusCard campaign={campaign} />
         </aside>
         <div className="space-y-6">
           <CampaignRoiChart
-            costCents={campaign.costCents}
-            totalRaisedCents={stats.totalRaisedCents}
-            roi={roi}
+            costCents={roiMetrics.totalCostCents > 0 ? roiMetrics.totalCostCents : null}
+            totalRaisedCents={roiMetrics.rawRaisedCents}
+            roi={roiMetrics.roiPct}
             locale={locale}
             labels={{
               title: t("roi.title"),
               subtitle: t("roi.subtitle"),
-              cost: t("roi.cost"),
+              cost: t("roi.totalCost"),
               raised: t("roi.raised"),
               roi: t("roi.roi"),
               metric: t("roi.metric"),
@@ -165,15 +171,16 @@ export default async function CampaignDetailPage({
               tableCaption: t("roi.tableCaption"),
               chartSummary: t("roi.chartSummary", {
                 raised: raisedDisplayValue,
-                cost: costDisplayValue,
+                cost: totalCostDisplayValue,
                 roi: roiDisplayValue,
               }),
               chartSummaryUnavailable: t("roi.chartSummaryUnavailable", {
                 raised: raisedDisplayValue,
-                cost: costDisplayValue,
+                cost: totalCostDisplayValue,
               }),
             }}
           />
+          <CostBreakdownCard metrics={roiMetrics} locale={locale} />
           <DonationBreakdownCard
             campaign={campaign}
             donationsResult={donationsResult}
@@ -188,10 +195,12 @@ export default async function CampaignDetailPage({
 async function StatsCard({
   campaign,
   stats,
+  roiMetrics,
   locale,
 }: {
   campaign: Campaign;
   stats: CampaignStats;
+  roiMetrics: CampaignRoiMetrics;
   locale: string;
 }) {
   const t = await getTranslations("campaigns.detail");
@@ -202,11 +211,11 @@ async function StatsCard({
       <dl className="space-y-4">
         <StatRow
           label={t("stats.raised")}
-          value={formatCurrency(stats.totalRaisedCents, locale)}
+          value={formatCurrency(roiMetrics.rawRaisedCents, locale)}
           hint={t("stats.goalHint", {
             goal:
-              campaign.costCents !== null
-                ? formatCurrency(campaign.costCents, locale)
+              campaign.goalAmountCents !== null
+                ? formatCurrency(campaign.goalAmountCents, locale)
                 : t("stats.noGoal"),
           })}
         />
@@ -220,6 +229,62 @@ async function StatsCard({
           value={formatDate(campaign.createdAt, locale, "long")}
           hint={t("stats.updatedHint", { date: formatDate(campaign.updatedAt, locale, "medium") })}
         />
+      </dl>
+    </section>
+  );
+}
+
+async function CostBreakdownCard({
+  metrics,
+  locale,
+}: {
+  metrics: CampaignRoiMetrics;
+  locale: string;
+}) {
+  const t = await getTranslations("campaigns.detail");
+  const operationalCost =
+    metrics.rawOperationalCostCents !== null
+      ? formatCurrency(metrics.rawOperationalCostCents, locale)
+      : t("roi.unavailable");
+  const platformFees = formatCurrency(metrics.rawPlatformFeesCents, locale);
+  const totalCost =
+    metrics.totalCostCents > 0
+      ? formatCurrency(metrics.totalCostCents, locale)
+      : t("roi.unavailable");
+
+  return (
+    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="font-heading text-xl text-on-surface">{t("roi.breakdownTitle")}</h2>
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex size-7 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
+                    aria-label={t("roi.breakdownTooltipLabel")}
+                  >
+                    <CircleHelp size={16} aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-72 text-sm leading-relaxed">
+                  {t("roi.breakdownTooltip")}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <p className="mt-1 text-sm text-on-surface-variant">{t("roi.breakdownSubtitle")}</p>
+        </div>
+        <span className="font-mono text-lg font-semibold tabular-nums text-on-surface">
+          {totalCost}
+        </span>
+      </div>
+      <dl className="mt-5 grid gap-4 sm:grid-cols-3">
+        <StatRow label={t("roi.operationalCost")} value={operationalCost} />
+        <StatRow label={t("roi.platformFees")} value={platformFees} />
+        <StatRow label={t("roi.totalCost")} value={totalCost} />
       </dl>
     </section>
   );

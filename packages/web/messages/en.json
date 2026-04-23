@@ -586,9 +586,9 @@
     "progressAria": "{raised} raised of {goal}",
     "form": {
       "createTitle": "New campaign",
-      "createSubtitle": "Set up a campaign with its type, parent relationship, and fundraising goal.",
+      "createSubtitle": "Set up a campaign with its type, parent relationship, and operational cost.",
       "editTitle": "Edit campaign",
-      "editSubtitle": "Update the campaign name, structure, or target amount.",
+      "editSubtitle": "Update the campaign name, structure, or operational cost.",
       "breadcrumbNew": "New",
       "breadcrumbEdit": "Edit",
       "sections": {
@@ -598,22 +598,22 @@
         },
         "structure": {
           "title": "Structure",
-          "description": "Parent campaign and target amount used for rollup and reporting."
+          "description": "Parent campaign and operational cost used for rollup and ROI reporting."
         }
       },
-    "fields": {
-      "name": "Campaign name",
-      "namePlaceholder": "Spring appeal 2026",
-      "type": "Campaign type",
-      "defaultCurrency": "Default currency",
-      "defaultCurrencyHint": "Preselected when donations are created from this campaign.",
-      "parent": "Parent campaign",
-      "parentPlaceholder": "No parent campaign",
+      "fields": {
+        "name": "Campaign name",
+        "namePlaceholder": "Spring appeal 2026",
+        "type": "Campaign type",
+        "defaultCurrency": "Default currency",
+        "defaultCurrencyHint": "Preselected when donations are created from this campaign.",
+        "parent": "Parent campaign",
+        "parentPlaceholder": "No parent campaign",
         "parentHint": "Use a parent campaign to group related outreach.",
         "parentLoading": "Loading available campaigns…",
-        "goal": "Goal amount",
-        "goalPlaceholder": "0.00",
-        "goalHint": "Shown as the fundraising target on the detail page."
+        "operationalCost": "Operational cost",
+        "operationalCostPlaceholder": "0.00",
+        "operationalCostHint": "Manual campaign spend. Platform fees are tracked separately from donations."
       },
       "actions": {
         "cancel": "Cancel",
@@ -705,33 +705,39 @@
       }
     },
     "detail": {
-    "stats": {
-      "title": "Campaign stats",
-      "raised": "Raised",
-      "donors": "Donors",
-      "created": "Created",
-      "noGoal": "No goal",
-      "goalHint": "Goal: {goal}",
-      "donationsHint": "{count, plural, =0 {No donations yet} one {# donation recorded} other {# donations recorded}}",
-      "updatedHint": "Updated {date}"
-    },
-    "roi": {
-      "title": "Campaign ROI",
-      "subtitle": "Compare campaign cost against funds raised.",
-      "cost": "Cost",
-      "raised": "Raised",
-      "roi": "ROI",
-      "metric": "Metric",
-      "amount": "Amount",
-      "unavailable": "Not available",
-      "tableCaption": "Campaign ROI data",
-      "chartSummary": "Raised {raised} against a cost of {cost}. ROI: {roi}.",
-      "chartSummaryUnavailable": "Raised {raised} against a cost of {cost}. ROI unavailable."
-    },
-    "actions": {
-      "title": "Status actions",
-      "description": "Move this campaign between draft, active, and closed states.",
-      "back": "Back to campaigns",
+      "stats": {
+        "title": "Campaign stats",
+        "raised": "Raised",
+        "donors": "Donors",
+        "created": "Created",
+        "noGoal": "No goal",
+        "goalHint": "Goal: {goal}",
+        "donationsHint": "{count, plural, =0 {No donations yet} one {# donation recorded} other {# donations recorded}}",
+        "updatedHint": "Updated {date}"
+      },
+      "roi": {
+        "title": "Campaign ROI",
+        "subtitle": "Compare cleared revenue against total campaign cost.",
+        "raised": "Raised",
+        "roi": "ROI",
+        "metric": "Metric",
+        "amount": "Amount",
+        "unavailable": "Not available",
+        "operationalCost": "Operational cost",
+        "platformFees": "Platform fees",
+        "totalCost": "Total cost",
+        "breakdownTitle": "Cost breakdown",
+        "breakdownSubtitle": "Operational spend entered by the organization plus platform fees from public donations.",
+        "breakdownTooltipLabel": "Explain campaign cost breakdown",
+        "breakdownTooltip": "ROI is computed at read time from cleared donations only. Refunded donations reduce raised totals. Pending and failed donations are excluded.",
+        "tableCaption": "Campaign ROI data",
+        "chartSummary": "Raised {raised} against a cost of {cost}. ROI: {roi}.",
+        "chartSummaryUnavailable": "Raised {raised} against a cost of {cost}. ROI unavailable."
+      },
+      "actions": {
+        "title": "Status actions",
+        "description": "Move this campaign between draft, active, and closed states.",
+        "back": "Back to campaigns",
         "edit": "Edit",
         "publicPage": "Public page",
         "activate": "Activate",

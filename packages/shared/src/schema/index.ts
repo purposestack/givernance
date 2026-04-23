@@ -48,6 +48,13 @@ export const campaignDocumentStatusEnum = pgEnum("campaign_document_status", [
 
 export const fundTypeEnum = pgEnum("fund_type", ["restricted", "unrestricted"]);
 
+export const donationStatusEnum = pgEnum("donation_status", [
+  "pending",
+  "cleared",
+  "refunded",
+  "failed",
+]);
+
 export const pledgeFrequencyEnum = pgEnum("pledge_frequency", ["monthly", "yearly"]);
 
 export const pledgeStatusEnum = pgEnum("pledge_status", ["active", "paused", "cancelled"]);
@@ -338,6 +345,8 @@ export const donations = pgTable(
     exchangeRate: numeric("exchange_rate", { precision: 18, scale: 8 }),
     amountBaseCents: integer("amount_base_cents").notNull(),
     campaignId: uuid("campaign_id"),
+    status: donationStatusEnum("status").notNull().default("cleared"),
+    platformFeeCents: integer("platform_fee_cents").notNull().default(0),
     paymentMethod: varchar("payment_method", { length: 50 }),
     paymentRef: varchar("payment_ref", { length: 255 }),
     donatedAt: timestamp("donated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -516,7 +525,8 @@ export const campaigns = pgTable(
     parentId: uuid("parent_id").references((): AnyPgColumn => campaigns.id, {
       onDelete: "set null",
     }),
-    costCents: bigint("cost_cents", { mode: "number" }),
+    operationalCostCents: bigint("operational_cost_cents", { mode: "number" }),
+    platformFeesCents: bigint("platform_fees_cents", { mode: "number" }).notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

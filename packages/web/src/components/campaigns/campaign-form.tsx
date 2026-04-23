@@ -53,7 +53,7 @@ interface CampaignFormValues {
   type: CampaignType;
   defaultCurrency: CampaignCurrency;
   parentId: string;
-  costCents: number | null;
+  operationalCostCents: number | null;
 }
 
 type CreateMode = { mode: "create"; campaign?: undefined };
@@ -74,7 +74,7 @@ export function CampaignForm(props: CampaignFormProps) {
     type: props.campaign?.type ?? "digital",
     defaultCurrency: props.campaign?.defaultCurrency ?? "EUR",
     parentId: props.campaign?.parentId ?? "",
-    costCents: props.campaign?.costCents ?? null,
+    operationalCostCents: props.campaign?.operationalCostCents ?? null,
   };
 
   const form = useForm<CampaignFormValues>({
@@ -271,18 +271,20 @@ export function CampaignForm(props: CampaignFormProps) {
             />
             <FormField
               control={form.control}
-              name="costCents"
+              name="operationalCostCents"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t("fields.goal")}</FormLabel>
+                  <FormLabel>{t("fields.operationalCost")}</FormLabel>
                   <FormControl>
                     <AmountInput
                       value={field.value}
                       onChange={(nextValue) => field.onChange(nextValue)}
-                      placeholder={t("fields.goalPlaceholder")}
+                      placeholder={t("fields.operationalCostPlaceholder")}
                     />
                   </FormControl>
-                  <p className="text-xs text-on-surface-variant">{t("fields.goalHint")}</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {t("fields.operationalCostHint")}
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -318,7 +320,7 @@ function toApiPayload(values: CampaignFormValues) {
     type: values.type,
     defaultCurrency: values.defaultCurrency,
     parentId: values.parentId?.trim() || null,
-    costCents: values.costCents,
+    operationalCostCents: values.operationalCostCents,
   };
 }
 
@@ -339,8 +341,8 @@ function buildResolver(): Resolver<CampaignFormValues> {
     if (values.parentId?.trim() !== "") {
       cleaned.parentId = values.parentId?.trim();
     }
-    if (values.costCents !== null) {
-      cleaned.costCents = values.costCents;
+    if (values.operationalCostCents !== null) {
+      cleaned.operationalCostCents = values.operationalCostCents;
     }
 
     const result = await innerResolver(

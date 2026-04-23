@@ -237,7 +237,7 @@ function buildCampaign(index: number) {
     name: `${base} ${new Date().getFullYear() - (index % 2)}`,
     type: randomPick(types),
     status: randomPick(statuses),
-    costCents: randomInt(50_000, 500_000),
+    operationalCostCents: randomInt(50_000, 500_000),
   };
 }
 
