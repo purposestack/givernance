@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
-import { cookies } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import "./globals.css";
@@ -35,12 +34,6 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale();
 
-  // cookies() opts the entire app out of static rendering — intentional for an
-  // auth-gated SPA where every page needs session context (see ADR-011).
-  // Do not remove without discussion: it provides CSRF and auth cookie access.
-  const cookieStore = await cookies();
-  const csrfToken = cookieStore.get("csrf-token")?.value;
-
   const t = await getTranslations("common");
 
   return (
@@ -48,7 +41,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       lang={locale}
       className={`${inter.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
     >
-      <head>{csrfToken && <meta name="csrf-token" content={csrfToken} />}</head>
+      <head />
       <body>
         <a
           href="#main-content"

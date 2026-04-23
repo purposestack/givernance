@@ -3,6 +3,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "../../server.js";
 import { authHeader, signToken } from "../helpers/auth.js";
 
+const JWT_COOKIE_NAME = "givernance_jwt";
+const CSRF_COOKIE_NAME = "csrf-token";
+const CSRF_HEADER_NAME = "x-csrf-token";
+
+function authCookieHeader(token: string, csrfToken?: string): string {
+  const cookies = [`${JWT_COOKIE_NAME}=${token}`];
+  if (csrfToken) cookies.push(`${CSRF_COOKIE_NAME}=${csrfToken}`);
+  return cookies.join("; ");
+}
+
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -77,6 +87,48 @@ describe("RBAC — authenticated access", () => {
       data: expect.any(Array),
       pagination: expect.objectContaining({ page: 1 }),
     });
+  });
+
+  it("rejects cookie-authenticated mutating requests without a matching CSRF token", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/users/00000000-0000-0000-0000-000000000000",
+      headers: {
+        cookie: authCookieHeader(token, "csrf-cookie-token"),
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({
+      title: "Forbidden",
+      detail: "Missing or invalid CSRF double-submit token",
+    });
+  });
+
+  it("accepts cookie-authenticated mutating requests with a valid double-submit token", async () => {
+    const token = signToken(app);
+    const csrfToken = "csrf-cookie-token";
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/users/00000000-0000-0000-0000-000000000000",
+      headers: {
+        cookie: authCookieHeader(token, csrfToken),
+        [CSRF_HEADER_NAME]: csrfToken,
+      },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("does not require CSRF for mutating requests authenticated by Authorization header", async () => {
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/users/00000000-0000-0000-0000-000000000000",
+      headers: authHeader(signToken(app)),
+    });
+
+    expect(res.statusCode).toBe(404);
   });
 });
 

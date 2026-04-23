@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
+import { buildCsrfCookieOptions, getCsrfCookieName } from "@/lib/auth/csrf";
 import {
   APP_URL,
   ID_TOKEN_COOKIE_NAME,
@@ -124,6 +125,7 @@ export async function GET(request: NextRequest) {
     // Clean up OIDC flow cookies and set the JWT + ID token cookies
     cleanup();
     jar.set(JWT_COOKIE_NAME, sessionJwt, jwtCookieOptions(sessionMaxAge));
+    jar.set(getCsrfCookieName(), crypto.randomUUID(), buildCsrfCookieOptions(sessionMaxAge));
     if (tokens.id_token) {
       jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(sessionMaxAge));
     }

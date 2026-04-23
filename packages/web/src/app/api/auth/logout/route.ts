@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getCsrfCookieName } from "@/lib/auth/csrf";
 import {
   APP_URL,
   ID_TOKEN_COOKIE_NAME,
@@ -25,6 +26,7 @@ export async function POST() {
   const idToken = jar.get(ID_TOKEN_COOKIE_NAME)?.value;
   jar.delete(JWT_COOKIE_NAME);
   jar.delete(ID_TOKEN_COOKIE_NAME);
+  jar.delete(getCsrfCookieName());
 
   const params = new URLSearchParams({
     post_logout_redirect_uri: `${APP_URL}/login`,
