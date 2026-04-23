@@ -29,7 +29,8 @@
       "firstName": "Super",
       "lastName": "Admin",
       "attributes": {
-        "org_id": ["00000000-0000-0000-0000-0000000000a1"]
+        "org_id": ["00000000-0000-0000-0000-0000000000a1"],
+        "role": ["org_admin"]
       },
       "credentials": [
         {
@@ -86,6 +87,20 @@
             "id.token.claim": "true",
             "access.token.claim": "true",
             "claim.name": "org_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "role",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "role",
             "jsonType.label": "String"
           }
         }
