@@ -81,6 +81,21 @@
       "captchaLabel": "Contrôle de sécurité",
       "emailHasTenant": "Votre association est peut-être déjà sur Givernance. Contactez votre administrateur pour être invité.",
       "haveAccount": "Vous avez déjà un compte ? <link>Se connecter</link>",
+      "sections": {
+        "workspace": {
+          "title": "Votre espace",
+          "description": "Définissez le nom et l’URL publique de votre organisation."
+        },
+        "contact": {
+          "title": "Vos informations",
+          "description": "Renseignez les coordonnées du premier administrateur."
+        },
+        "security": {
+          "title": "Validation et conformité",
+          "description": "Confirmez les conditions d’utilisation avant de créer l’espace.",
+          "consentLabel": "Accord requis"
+        }
+      },
       "fields": {
         "orgName": "Nom de l'association",
         "slug": "URL de l'espace",
@@ -157,8 +172,16 @@
       "title": "Quel espace souhaitez-vous ouvrir ?",
       "subtitle": "Votre compte est associé à plusieurs associations.",
       "continue": "Continuer",
+      "submitting": "Ouverture…",
+      "currentSelection": "Espace sélectionné : {name}",
       "provisional": "Admin provisoire",
       "lastVisited": "Dernière visite le {date}",
+      "sections": {
+        "workspace": {
+          "title": "Choix de l’espace",
+          "description": "Sélectionnez l’organisation à ouvrir dans cette session."
+        }
+      },
       "errors": {
         "forbidden": "Vous ne pouvez pas ouvrir cet espace.",
         "generic": "Impossible de changer d'espace. Veuillez réessayer."
@@ -192,6 +215,7 @@
       "orgPlaceholder": "Association",
       "userPlaceholder": "Utilisateur",
       "workspaceSwitcher": "Ouvrir le sélecteur d’espace de travail",
+      "changeOrganization": "Changer d’organisation",
       "workspaceSettings": "Paramètres de l’organisation",
       "profile": "Mon profil",
       "signOut": "Se déconnecter"

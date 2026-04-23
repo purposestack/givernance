@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronsUpDown, Gift, LayoutDashboard, LogOut, Users } from "lucide-react";
+import { ChevronsUpDown, Gift, LayoutDashboard, LogOut, RefreshCw, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -41,16 +41,18 @@ const NAV_ITEMS: NavItem[] = [
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
+  membershipCount?: number;
 }
 
 /**
  * Sidebar navigation — 288px fixed, collapsible on mobile.
  * Matches dashboard.html mockup layout and base.css sidebar specs.
  */
-export function Sidebar({ open, onClose }: SidebarProps) {
+export function Sidebar({ open, onClose, membershipCount }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const t = useTranslations("appShell.sidebar");
+  const canSwitchOrganization = typeof membershipCount !== "number" || membershipCount > 1;
 
   const initials = user
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
@@ -160,6 +162,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               className="w-[var(--sidebar-width)] max-w-[calc(100vw-2rem)]"
             >
               <DropdownMenuLabel>{user?.orgName ?? t("orgPlaceholder")}</DropdownMenuLabel>
+              {canSwitchOrganization ? (
+                <DropdownMenuItem asChild>
+                  <Link href="/select-organization" onClick={handleMobileClose}>
+                    <RefreshCw size={16} aria-hidden="true" />
+                    <span>{t("changeOrganization")}</span>
+                  </Link>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem asChild>
                 <Link href="/settings" onClick={handleMobileClose}>
                   {t("workspaceSettings")}

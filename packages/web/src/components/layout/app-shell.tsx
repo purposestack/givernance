@@ -17,7 +17,7 @@ interface AppShellProps {
   impersonationUserName: string | undefined;
   /** SSR provisional-admin info from the `/users/me` query (doc 22 §3.1). */
   provisionalAdmin?: ProvisionalAdminInfo;
-  /** Number of tenants the user belongs to — lets the topbar skip the org switcher for solo-tenant users. */
+  /** Number of tenants the user belongs to — used to hide the org-switch action for solo-tenant users. */
   membershipCount?: number;
 }
 
@@ -66,7 +66,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar open={sidebarOpen} onClose={handleSidebarClose} />
+      <Sidebar open={sidebarOpen} onClose={handleSidebarClose} membershipCount={membershipCount} />
 
       <div className="flex min-h-screen flex-1 flex-col md:ml-[var(--sidebar-width)]">
         <ImpersonationBanner impersonation={impersonation} userName={impersonationUserName} />
@@ -75,7 +75,6 @@ export function AppShell({
           onMenuToggle={handleMenuToggle}
           sidebarOpen={sidebarOpen}
           hamburgerRef={hamburgerRef}
-          membershipCount={membershipCount}
         />
 
         <main
