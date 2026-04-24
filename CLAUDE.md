@@ -140,7 +140,7 @@ When proposing a new service or Compose change that needs Postgres storage (e.g.
 
 ### 🛑 No secrets in Keycloak Organization attributes (issue #114)
 
-**Never put secrets, API keys, billing tokens, or any sensitive data into a Keycloak Organization's `attributes` map.** Keycloak 26's built-in `oidc-organization-membership-mapper` — which the `givernance-web` client uses with `addOrganizationAttributes=true` and the `organization` scope on its default scopes — emits every organization attribute into every access, ID, and introspection token for members of that org. Any secret stashed there will leak to the browser and every downstream service that sees the JWT.
+**Never put secrets, API keys, billing tokens, or any sensitive data into a Keycloak Organization's `attributes` map.** The `organization` client scope (attached as default to `givernance-web` and as optional to `admin-cli`) carries an `oidc-organization-membership-mapper` configured with `addOrganizationAttributes=true`, which emits every organization attribute into every access, ID, and introspection token for members of that org. Any secret stashed there will leak to the browser and every downstream service that sees the JWT.
 
 Valid uses for Organization attributes: non-sensitive identifiers (`org_id`, slug), feature flags that don't imply entitlements (`theme`, `locale`), public-facing labels. Anything else belongs in the application database (`tenants` table) with RLS.
 

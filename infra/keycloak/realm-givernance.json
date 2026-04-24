@@ -127,53 +127,6 @@
         "profile",
         "email",
         "organization"
-      ],
-      "protocolMappers": [
-        {
-          "name": "org_id",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "userinfo.token.claim": "true",
-            "user.attribute": "org_id",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "claim.name": "org_id",
-            "jsonType.label": "String"
-          }
-        },
-        {
-          "name": "role",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "userinfo.token.claim": "true",
-            "user.attribute": "role",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "claim.name": "role",
-            "jsonType.label": "String"
-          }
-        },
-        {
-          "name": "organization",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-organization-membership-mapper",
-          "consentRequired": false,
-          "config": {
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true",
-            "introspection.token.claim": "true",
-            "claim.name": "organization",
-            "jsonType.label": "JSON",
-            "multivalued": "true",
-            "addOrganizationId": "true",
-            "addOrganizationAttributes": "true"
-          }
-        }
       ]
     }
   ]

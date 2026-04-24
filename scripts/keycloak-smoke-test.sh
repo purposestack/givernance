@@ -152,8 +152,9 @@ fi
 ok "Access token carries org_id=${org_id_claim}."
 
 # ── 3. Assert the nested Keycloak 26 `organization` claim is also emitted
-#      via the oidc-organization-membership-mapper — this is what future
-#      consumers read from (docs/21 §2.1.bis).
+#      via the oidc-organization-membership-mapper (on the `organization`
+#      client scope — see docs/21 §2.1). Carries the Keycloak org UUID and
+#      every Organization attribute.
 org_claim_present=$(printf '%s' "$payload_json" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
