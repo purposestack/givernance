@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Givernance &mdash; Admin &mdash; Tenant / Domains</title>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../shared/tokens.css">
+  <link rel="stylesheet" href="../../shared/base.css">
+  <style>
+    .tenant-detail { padding: var(--space-8) var(--space-6); max-width: 1200px; margin: 0 auto; }
+    .tenant-detail a.back { font-size: var(--text-xs); color: var(--color-primary); text-decoration: none; }
+    .tenant-detail header.hero { display: flex; align-items: flex-start; justify-content: space-between; margin: var(--space-2) 0 var(--space-4); }
+    .hero-left h1 { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); margin-bottom: var(--space-1); }
+    .hero-left .slug { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-sm); }
+    .status-badge { display: inline-flex; padding: 2px 10px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: var(--weight-medium); }
+    .status-badge.active { background: var(--color-primary-50); color: var(--color-primary); }
+    .tenant-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--color-border); margin-bottom: var(--space-6); }
+    .tenant-tabs a { padding: var(--space-3) var(--space-4); color: var(--color-text-secondary); text-decoration: none; font-size: var(--text-sm); font-weight: var(--weight-medium); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tenant-tabs a.tab--active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+    .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-5); margin-bottom: var(--space-4); }
+    .panel h2 { font-size: var(--text-sm); font-weight: var(--weight-semi); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-secondary); margin-bottom: var(--space-3); display: flex; justify-content: space-between; align-items: center; }
+
+    .domain-table { width: 100%; border-collapse: collapse; }
+    .domain-table th, .domain-table td { padding: var(--space-3) 0; text-align: left; font-size: var(--text-sm); border-bottom: 1px solid var(--color-border-light); }
+    .domain-table th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); }
+    .state-badge { display: inline-flex; padding: 2px 10px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: var(--weight-medium); }
+    .state-badge.pending_dns { background: var(--color-amber-light); color: var(--color-amber-text); }
+    .state-badge.verified { background: var(--color-primary-50); color: var(--color-primary); }
+    .state-badge.revoked { background: var(--color-surface-container-low); color: var(--color-text-muted); }
+
+    .dns-txt-row { background: var(--color-surface-container-lowest); padding: var(--space-4); border-radius: var(--radius-md); border: 1px dashed var(--color-amber-border); margin-top: var(--space-3); }
+    .dns-txt-row .txt-value { display: flex; align-items: center; gap: var(--space-2); background: var(--color-white); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--text-xs); margin-top: var(--space-2); border: 1px solid var(--color-border); }
+    .dns-txt-row button { margin-left: auto; }
+    .claim-form { display: flex; gap: var(--space-2); }
+    .claim-form input { flex: 1; height: var(--btn-height-md); border: 1px solid var(--color-border); border-radius: var(--radius-input); padding: 0 var(--space-3); font-size: var(--text-sm); }
+    .action-btn { height: var(--btn-height-sm); padding: 0 var(--space-3); border-radius: var(--radius-button); border: 1px solid var(--color-border); background: var(--color-white); color: var(--color-text); font-size: var(--text-sm); cursor: pointer; }
+    .action-btn.primary { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
+    .action-btn.destructive { color: var(--color-red); border-color: var(--color-red); background: var(--color-white); }
+  </style>
+</head>
+<body>
+  <main class="tenant-detail">
+    <a class="back" href="list.html">← Back to tenants</a>
+    <header class="hero">
+      <div class="hero-left">
+        <h1>Croix-Rouge Française</h1>
+        <span class="slug">croix-rouge</span>
+      </div>
+      <span class="status-badge active">Active</span>
+    </header>
+    <nav class="tenant-tabs">
+      <a href="detail-overview.html">Overview</a>
+      <a href="detail-domains.html" class="tab--active">Domains</a>
+      <a href="detail-idp.html">Identity providers</a>
+      <a href="detail-users.html">Users</a>
+      <a href="detail-lifecycle.html">Lifecycle</a>
+    </nav>
+
+    <section class="panel">
+      <h2>
+        Claim a new domain
+      </h2>
+      <form class="claim-form">
+        <input type="text" placeholder="npo.org" aria-label="Domain">
+        <button class="action-btn primary" type="submit">Claim</button>
+      </form>
+
+      <div class="dns-txt-row">
+        <strong style="font-size: var(--text-sm);">DNS TXT record to publish on npo.org</strong>
+        <p style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">Once propagated, click <em>Verify</em> next to the domain below.</p>
+        <div class="txt-value">
+          <code>givernance-verify=aQsWeRtYu123456789AbCdEfGhIjKlMnOp</code>
+          <button class="action-btn" type="button" aria-label="Copy to clipboard">Copy</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Claimed domains</h2>
+      <table class="domain-table">
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th>State</th>
+            <th>DNS TXT</th>
+            <th>Verified at</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>croix-rouge.fr</td>
+            <td><span class="state-badge verified">Verified</span></td>
+            <td style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted);">givernance-verify=…OpQr</td>
+            <td style="color: var(--color-text-secondary);">2025-11-14</td>
+            <td style="text-align: right;"><button class="action-btn destructive" type="button">Revoke</button></td>
+          </tr>
+          <tr>
+            <td>npo.org</td>
+            <td><span class="state-badge pending_dns">Pending DNS</span></td>
+            <td style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted);">givernance-verify=…KlMn</td>
+            <td style="color: var(--color-text-muted);">—</td>
+            <td style="text-align: right;">
+              <button class="action-btn primary" type="button">Verify</button>
+              <button class="action-btn destructive" type="button">Revoke</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,6 +1,15 @@
 "use client";
 
-import { ChevronsUpDown, Gift, LayoutDashboard, LogOut, RefreshCw, Users } from "lucide-react";
+import {
+  Building2,
+  ChevronsUpDown,
+  Gift,
+  LayoutDashboard,
+  LogOut,
+  RefreshCw,
+  ShieldAlert,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -28,6 +37,12 @@ interface NavItem {
   icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 }
 
+interface AdminNavItem {
+  href: string;
+  labelKey: "tenants" | "disputes";
+  icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
+}
+
 /**
  * Navigation items — only features with implemented pages.
  * Add new entries here as pages are built (issues #41, #42, etc.).
@@ -36,6 +51,17 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/constituents", labelKey: "constituents", icon: Users },
   { href: "/donations", labelKey: "donations", icon: Gift },
+];
+
+/**
+ * Givernance-operator navigation — rendered only when the caller has the
+ * `super_admin` realm role (doc 22 §6.4: "Never surface the admin nav link
+ * to non-super-admins"). Non-super-admins never see the section; requesting
+ * any admin URL directly yields 404 via `(admin)/layout.tsx`.
+ */
+const ADMIN_NAV_ITEMS: AdminNavItem[] = [
+  { href: "/admin/tenants", labelKey: "tenants", icon: Building2 },
+  { href: "/admin/disputes", labelKey: "disputes", icon: ShieldAlert },
 ];
 
 interface SidebarProps {
@@ -50,8 +76,10 @@ interface SidebarProps {
  */
 export function Sidebar({ open, onClose, membershipCount }: SidebarProps) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, hasRole, logout } = useAuth();
   const t = useTranslations("appShell.sidebar");
+  const tAdmin = useTranslations("appShell.sidebar.admin");
+  const isSuperAdmin = hasRole("super_admin");
   const canSwitchOrganization = typeof membershipCount !== "number" || membershipCount > 1;
 
   const initials = user
@@ -126,6 +154,37 @@ export function Sidebar({ open, onClose, membershipCount }: SidebarProps) {
               </Link>
             );
           })}
+
+          {isSuperAdmin && (
+            <section
+              className="mt-6 border-t border-outline-variant pt-4"
+              aria-label={tAdmin("section")}
+            >
+              <h2 className="mb-2 px-4 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                {tAdmin("section")}
+              </h2>
+              {ADMIN_NAV_ITEMS.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={handleMobileClose}
+                    className={`flex items-center gap-4 rounded-lg px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                      isActive
+                        ? "bg-surface-container font-medium text-primary"
+                        : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
+                    }`}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    <Icon size={20} aria-hidden="true" />
+                    <span>{tAdmin(item.labelKey)}</span>
+                  </Link>
+                );
+              })}
+            </section>
+          )}
         </nav>
 
         {/* Footer — workspace switcher with org settings and user actions */}

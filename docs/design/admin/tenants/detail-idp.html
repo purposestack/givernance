@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Givernance &mdash; Admin &mdash; Tenant / Identity providers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../shared/tokens.css">
+  <link rel="stylesheet" href="../../shared/base.css">
+  <style>
+    .tenant-detail { padding: var(--space-8) var(--space-6); max-width: 1200px; margin: 0 auto; }
+    .tenant-detail a.back { font-size: var(--text-xs); color: var(--color-primary); text-decoration: none; }
+    .tenant-detail header.hero { display: flex; align-items: flex-start; justify-content: space-between; margin: var(--space-2) 0 var(--space-4); }
+    .hero-left h1 { font-family: var(--font-heading); font-size: var(--text-3xl); margin-bottom: var(--space-1); }
+    .hero-left .slug { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-sm); }
+    .status-badge { display: inline-flex; padding: 2px 10px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: var(--weight-medium); background: var(--color-primary-50); color: var(--color-primary); }
+    .tenant-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--color-border); margin-bottom: var(--space-6); }
+    .tenant-tabs a { padding: var(--space-3) var(--space-4); color: var(--color-text-secondary); text-decoration: none; font-size: var(--text-sm); font-weight: var(--weight-medium); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tenant-tabs a.tab--active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+    .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-5); margin-bottom: var(--space-4); }
+    .panel h2 { font-size: var(--text-sm); font-weight: var(--weight-semi); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-secondary); margin-bottom: var(--space-3); }
+
+    .idp-type-toggle { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); }
+    .idp-type-toggle button { flex: 1; height: var(--btn-height-md); border: 1px solid var(--color-border); background: var(--color-white); border-radius: var(--radius-button); cursor: pointer; font-size: var(--text-sm); color: var(--color-text-secondary); }
+    .idp-type-toggle button.active { border-color: var(--color-primary); background: var(--color-primary-50); color: var(--color-primary); font-weight: var(--weight-medium); }
+
+    .form-row { margin-bottom: var(--space-3); }
+    .form-row label { display: block; font-size: var(--text-sm); font-weight: var(--weight-medium); margin-bottom: var(--space-1); }
+    .form-row input, .form-row textarea { width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-input); padding: var(--space-2) var(--space-3); font-size: var(--text-sm); font-family: inherit; }
+    .form-row input { height: var(--btn-height-md); }
+    .form-row textarea { min-height: 100px; font-family: var(--font-mono); font-size: var(--text-xs); }
+    .actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); }
+    .action-btn { height: var(--btn-height-md); padding: 0 var(--space-4); border-radius: var(--radius-button); border: 1px solid var(--color-border); background: var(--color-white); font-size: var(--text-sm); cursor: pointer; }
+    .action-btn.primary { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
+    .action-btn.destructive { color: var(--color-red); border-color: var(--color-red); }
+
+    .bound-idp { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-primary-50); }
+    .bound-idp .label { flex: 1; font-size: var(--text-sm); }
+    .bound-idp .alias { font-family: var(--font-mono); color: var(--color-text-muted); font-size: var(--text-xs); }
+  </style>
+</head>
+<body>
+  <main class="tenant-detail">
+    <a class="back" href="list.html">← Back to tenants</a>
+    <header class="hero">
+      <div class="hero-left">
+        <h1>Croix-Rouge Française</h1>
+        <span class="slug">croix-rouge</span>
+      </div>
+      <span class="status-badge">Active</span>
+    </header>
+    <nav class="tenant-tabs">
+      <a href="detail-overview.html">Overview</a>
+      <a href="detail-domains.html">Domains</a>
+      <a href="detail-idp.html" class="tab--active">Identity providers</a>
+      <a href="detail-users.html">Users</a>
+      <a href="detail-lifecycle.html">Lifecycle</a>
+    </nav>
+
+    <section class="panel">
+      <h2>Currently bound</h2>
+      <div class="bound-idp">
+        <div class="label">
+          <strong>OIDC</strong> · <span class="alias">tenant-croix-rouge</span>
+          <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 2px;">Discovery: https://login.croix-rouge.fr/realms/staff/.well-known/openid-configuration</p>
+        </div>
+        <button class="action-btn" type="button">Rotate secret</button>
+        <button class="action-btn destructive" type="button">Remove</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Provision or rotate</h2>
+      <div class="idp-type-toggle" role="tablist">
+        <button class="active" type="button">OIDC</button>
+        <button type="button">SAML</button>
+      </div>
+
+      <div class="form-row">
+        <label for="disc">Discovery URL</label>
+        <input id="disc" type="url" placeholder="https://login.npo.org/.well-known/openid-configuration">
+      </div>
+      <div class="form-row">
+        <label for="cid">Client ID</label>
+        <input id="cid" type="text" placeholder="givernance">
+      </div>
+      <div class="form-row">
+        <label for="csec">Client secret</label>
+        <input id="csec" type="password" placeholder="••••••••••••••••">
+      </div>
+
+      <div class="actions">
+        <button class="action-btn primary" type="submit">Provision</button>
+        <button class="action-btn" type="button">Test config</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -218,7 +218,12 @@
       "changeOrganization": "Change organisation",
       "workspaceSettings": "Organisation settings",
       "profile": "My profile",
-      "signOut": "Sign out"
+      "signOut": "Sign out",
+      "admin": {
+        "section": "Platform admin",
+        "tenants": "Tenants",
+        "disputes": "Disputes"
+      }
     },
     "topbar": {
       "openMenu": "Open menu",
@@ -307,6 +312,7 @@
       "list": {
         "title": "Tenant management",
         "subtitle": "Inspect every enterprise tenant and drill into lifecycle state, domains, users, and recent audit events.",
+        "createCta": "+ New enterprise tenant",
         "columns": {
           "name": "Tenant",
           "status": "Status",
@@ -327,6 +333,58 @@
         "empty": {
           "title": "No tenants found",
           "description": "Tenant records created through the super-admin onboarding flow will appear here."
+        }
+      },
+      "new": {
+        "back": "Back to tenants",
+        "title": "New enterprise tenant",
+        "subtitle": "Provisions the tenant row and its Keycloak Organization. IdP and first-admin invite land after.",
+        "success": "Tenant created.",
+        "sections": {
+          "identity": {
+            "title": "Identity",
+            "description": "Core facts used across the back-office and the tenant's login URL."
+          },
+          "plan": {
+            "title": "Plan",
+            "description": "Drives feature gating at runtime; can be changed later by the super-admin."
+          }
+        },
+        "fields": {
+          "name": "Organisation name",
+          "namePlaceholder": "Croix-Rouge Française",
+          "nameHint": "The legal entity name shown throughout the app.",
+          "slug": "Workspace URL",
+          "slugHint": "Lowercase alnum + dashes, 2–50 characters, not a reserved platform slug.",
+          "slugPreview": "Slug preview: {slug}",
+          "plan": "Plan",
+          "planHint": "Enterprise unlocks SSO, custom domains, and the full audit drawer."
+        },
+        "plan": {
+          "starter": "Starter",
+          "pro": "Pro",
+          "enterprise": "Enterprise"
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "submit": "Create tenant",
+          "submitting": "Creating…"
+        },
+        "errors": {
+          "nameRequired": "Organisation name is required.",
+          "nameTooLong": "Organisation name is too long.",
+          "slugSyntax": "Slug must be lowercase alphanumeric with internal dashes only.",
+          "slugReserved": "This slug is reserved — choose another.",
+          "slugPunycode": "International domain prefixes (xn--) are not supported yet.",
+          "slugTaken": "This slug is already taken.",
+          "upstream": "Could not reach Keycloak to provision the Organization. Please retry.",
+          "generic": "Could not create the tenant. Please retry."
+        },
+        "nextSteps": {
+          "title": "After creation",
+          "step1": "Claim a domain and share the DNS TXT value with the NPO's IT team.",
+          "step2": "Provision the OIDC or SAML identity provider once DNS is verified.",
+          "step3": "Invite the first admin — they complete onboarding via Keycloak."
         }
       },
       "detail": {

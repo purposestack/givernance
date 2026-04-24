@@ -218,7 +218,12 @@
       "changeOrganization": "Changer d’organisation",
       "workspaceSettings": "Paramètres de l’organisation",
       "profile": "Mon profil",
-      "signOut": "Se déconnecter"
+      "signOut": "Se déconnecter",
+      "admin": {
+        "section": "Administration plateforme",
+        "tenants": "Tenants",
+        "disputes": "Litiges"
+      }
     },
     "topbar": {
       "openMenu": "Ouvrir le menu",
@@ -307,6 +312,7 @@
       "list": {
         "title": "Gestion des tenants",
         "subtitle": "Consultez l’ensemble des tenants enterprise et accédez à leur cycle de vie, domaines, utilisateurs et audit récent.",
+        "createCta": "+ Nouveau tenant enterprise",
         "columns": {
           "name": "Tenant",
           "status": "Statut",
@@ -327,6 +333,58 @@
         "empty": {
           "title": "Aucun tenant",
           "description": "Les tenants créés via le parcours de super-admin apparaîtront ici."
+        }
+      },
+      "new": {
+        "back": "Retour aux tenants",
+        "title": "Nouveau tenant enterprise",
+        "subtitle": "Provisionne l’enregistrement tenant et son Keycloak Organization. L’IdP et l’invitation du premier admin viennent ensuite.",
+        "success": "Tenant créé.",
+        "sections": {
+          "identity": {
+            "title": "Identité",
+            "description": "Informations utilisées dans le back-office et l’URL de connexion du tenant."
+          },
+          "plan": {
+            "title": "Plan",
+            "description": "Conditionne les fonctionnalités à l’exécution ; modifiable plus tard par un super-admin."
+          }
+        },
+        "fields": {
+          "name": "Nom de l’association",
+          "namePlaceholder": "Croix-Rouge Française",
+          "nameHint": "Dénomination légale affichée dans toute l’application.",
+          "slug": "URL de l’espace",
+          "slugHint": "Minuscules alphanumériques et tirets, 2–50 caractères, slug plateforme réservé interdit.",
+          "slugPreview": "Aperçu du slug : {slug}",
+          "plan": "Plan",
+          "planHint": "Enterprise débloque le SSO, les domaines personnalisés et l’audit complet."
+        },
+        "plan": {
+          "starter": "Starter",
+          "pro": "Pro",
+          "enterprise": "Enterprise"
+        },
+        "actions": {
+          "cancel": "Annuler",
+          "submit": "Créer le tenant",
+          "submitting": "Création…"
+        },
+        "errors": {
+          "nameRequired": "Le nom de l’association est requis.",
+          "nameTooLong": "Le nom de l’association est trop long.",
+          "slugSyntax": "Le slug doit être en minuscules alphanumériques avec des tirets internes uniquement.",
+          "slugReserved": "Ce slug est réservé — choisissez-en un autre.",
+          "slugPunycode": "Les préfixes de domaines internationalisés (xn--) ne sont pas encore pris en charge.",
+          "slugTaken": "Ce slug est déjà pris.",
+          "upstream": "Impossible de joindre Keycloak pour provisionner l’Organization. Veuillez réessayer.",
+          "generic": "Impossible de créer le tenant. Veuillez réessayer."
+        },
+        "nextSteps": {
+          "title": "Après la création",
+          "step1": "Revendiquez un domaine et partagez la valeur DNS TXT avec l’équipe IT de l’association.",
+          "step2": "Provisionnez le fournisseur d’identité OIDC ou SAML une fois le DNS vérifié.",
+          "step3": "Invitez le premier administrateur — il finalise l’onboarding via Keycloak."
         }
       },
       "detail": {
