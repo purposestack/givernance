@@ -2,7 +2,8 @@
  * Public self-serve signup routes (issue #108 / ADR-016).
  *
  * All endpoints are unauthenticated and rate-limited. CAPTCHA is fail-open
- * in `CAPTCHA_MODE=disabled` (or `NODE_ENV=test`), fail-closed elsewhere.
+ * when `CAPTCHA_MODE=disabled` or `NODE_ENV !== "production"`, fail-closed
+ * otherwise.
  *
  * Review pass (PR #117):
  *  - SEC-5 / ENG-4: slug_taken + email_in_use → 409 with a single generic
