@@ -10,13 +10,21 @@ set -euo pipefail
 #
 # Reconciles:
 #   - Realm user profile: unmanagedAttributePolicy=ENABLED (permits org_id / role)
-#   - Client `givernance-web`: `org_id`, `role`, and `organization` protocol mappers
-#   - Client `givernance-web`: `organization` client scope on default scopes
-#   - Client `admin-cli`:     `organization` client scope on optional scopes
-#     (so the smoke test's RO-password grant can request the scope)
 #   - Realm: `organization` client scope exists (KC creates it when
 #     Organizations is enabled, but a realm upgraded from <26 or with the
 #     flag toggled post-import may be missing it — we create it if so)
+#   - Scope `organization`: carries `org_id`, `role`, and the rich
+#     `organization` membership mapper. Wiring lives on the scope (not on
+#     individual clients) so any client with `organization` as a default or
+#     optional scope — web login flow on `givernance-web`, RO password flow
+#     on `admin-cli` for the smoke test — sees the same claims.
+#   - Client `givernance-web`: legacy client-level mappers removed (they
+#     would duplicate the scope's claims); `organization` scope attached
+#     as DEFAULT so every web token carries membership + org_id + role.
+#   - Client `admin-cli`: `organization` scope attached as OPTIONAL, and
+#     `client.use.lightweight.access.token.enabled=false` so the access
+#     token carries the full claim set (Keycloak 26 defaults admin-cli to
+#     lightweight, which strips every mapper-contributed claim).
 #   - User `admin@givernance.org`: `org_id` and `role` attributes
 #   - User `admin@givernance.org`: `super_admin` realm role assignment
 #   - Organizations (Keycloak 26+): platform org exists with `org_id` attribute,
@@ -88,116 +96,165 @@ else
   log "User profile already permissive — no change."
 fi
 
-# 2. Ensure the givernance-web client has an `org_id` protocol mapper.
+# 2. Ensure the `organization` client scope is the single home for all
+#    org-related claims (`org_id`, `role`, `organization` membership), then
+#    attach it to `givernance-web` (default) and `admin-cli` (optional).
+#    Keeping the wiring on the scope rather than per-client means every
+#    client that opts into `organization` — including the admin-cli path
+#    used by the smoke test — emits the same claims.
 client_uuid=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients?clientId=$(urlencode "$CLIENT_ID")" \
   | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')
-if [ -z "$client_uuid" ]; then
-  log "Client '${CLIENT_ID}' not found — skipping mapper sync."
-else
-  mappers=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/protocol-mappers/models")
-  for claim in org_id role; do
-    if printf '%s' "$mappers" | CLAIM="$claim" python3 -c '
+
+# 2.a Remove any client-level `org_id`, `role`, or `organization` mappers
+#     left over from earlier versions of this script on `givernance-web`.
+#     If both the client AND the scope emit a mapper with the same claim
+#     name, Keycloak builds a token with duplicate claims — the second
+#     mapper's value silently clobbers the first, which masks drift.
+if [ -n "$client_uuid" ]; then
+  client_mappers=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/protocol-mappers/models")
+  for legacy in org_id role organization; do
+    legacy_id=$(printf '%s' "$client_mappers" | CLAIM="$legacy" python3 -c '
 import json, os, sys
 wanted = os.environ["CLAIM"]
-have = any(m["name"] == wanted for m in json.load(sys.stdin))
-sys.exit(0 if have else 1)
-'; then
-      log "Client '${CLIENT_ID}' already has ${claim} protocol mapper."
-    else
-      curl -sS -o /dev/null -w "mapper create (${claim}): HTTP %{http_code}\n" \
-        -X POST "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/protocol-mappers/models" \
-        "${auth[@]}" -H "Content-Type: application/json" -d "{
-          \"name\":\"${claim}\",
-          \"protocol\":\"openid-connect\",
-          \"protocolMapper\":\"oidc-usermodel-attribute-mapper\",
-          \"consentRequired\":false,
-          \"config\":{
-            \"userinfo.token.claim\":\"true\",
-            \"user.attribute\":\"${claim}\",
-            \"id.token.claim\":\"true\",
-            \"access.token.claim\":\"true\",
-            \"claim.name\":\"${claim}\",
-            \"jsonType.label\":\"String\"
-          }
-        }"
-      log "Added ${claim} protocol mapper to client '${CLIENT_ID}'."
+for m in json.load(sys.stdin):
+    if m.get("name") == wanted:
+        print(m["id"])
+        break
+')
+    if [ -n "$legacy_id" ]; then
+      curl -sS -o /dev/null -w "client-mapper delete (${legacy}): HTTP %{http_code}\n" \
+        -X DELETE "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/protocol-mappers/models/${legacy_id}" \
+        "${auth[@]}"
+      log "Removed legacy client-level '${legacy}' mapper from '${CLIENT_ID}' (now lives on the organization scope)."
     fi
   done
+else
+  log "Client '${CLIENT_ID}' not found — skipping client-side mapper cleanup."
+fi
 
-  # 2.bis Ensure the `organization` protocol mapper (Keycloak 26 built-in,
-  #       oidc-organization-membership-mapper) emits the org membership claim
-  #       including org id + attributes. Read by the app as an alternative to
-  #       the flat `org_id` user-attribute mapper (ADR-016 / issue #114).
-  if printf '%s' "$mappers" | python3 -c '
-import json, sys
-have = any(m["name"] == "organization" for m in json.load(sys.stdin))
-sys.exit(0 if have else 1)
-'; then
-    log "Client '${CLIENT_ID}' already has organization protocol mapper."
-  else
-    curl -sS -o /dev/null -w 'mapper create (organization): HTTP %{http_code}\n' \
-      -X POST "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/protocol-mappers/models" \
-      "${auth[@]}" -H "Content-Type: application/json" -d '{
-        "name":"organization",
-        "protocol":"openid-connect",
-        "protocolMapper":"oidc-organization-membership-mapper",
-        "consentRequired":false,
-        "config":{
-          "id.token.claim":"true",
-          "access.token.claim":"true",
-          "userinfo.token.claim":"true",
-          "introspection.token.claim":"true",
-          "claim.name":"organization",
-          "jsonType.label":"JSON",
-          "multivalued":"true",
-          "addOrganizationId":"true",
-          "addOrganizationAttributes":"true"
-        }
-      }'
-    log "Added organization protocol mapper to client '${CLIENT_ID}'."
-  fi
-
-  # 2.ter Ensure the `organization` client scope exists, then attach it:
-  #       - as a DEFAULT scope on `givernance-web` (so every web-app token
-  #         carries the membership claim without requesting it)
-  #       - as an OPTIONAL scope on `admin-cli` (so the smoke test's RO
-  #         password grant — which uses admin-cli — can request it)
-  #
-  #       Keycloak auto-creates the `organization` client scope when
-  #       Organizations is enabled at first-import time. But a realm that was
-  #       imported with the flag off and flipped on later does NOT get the
-  #       scope auto-provisioned (keycloak-user list, 2025). We create it
-  #       ourselves to make the script self-healing on partial upgrades.
-  org_scope_json=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/client-scopes" \
-    | python3 -c '
+# 2.b Ensure the `organization` client scope exists. Keycloak auto-creates
+#     it when Organizations is enabled at first-import time, but a realm
+#     imported with the flag off and flipped on later does NOT get the
+#     scope auto-provisioned. Self-heal here.
+org_scope_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/client-scopes" \
+  | python3 -c '
 import sys, json
 for s in json.load(sys.stdin):
     if s.get("name") == "organization":
         print(s["id"])
         break
 ')
-  if [ -z "$org_scope_json" ]; then
-    log "Client scope 'organization' not found — creating it."
-    scope_resp=$(curl -sS -D - -o /dev/null \
-      -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes" \
-      "${auth[@]}" -H "Content-Type: application/json" -d '{
-        "name":"organization",
-        "protocol":"openid-connect",
-        "description":"Keycloak 26 Organizations membership claim (ADR-016)",
-        "attributes":{
-          "include.in.token.scope":"true",
-          "display.on.consent.screen":"false"
-        }
-      }')
-    org_scope_json=$(printf '%s' "$scope_resp" | awk -F': ' 'tolower($1)=="location"{print $2}' | tr -d '\r\n' | awk -F/ '{print $NF}')
-    if [ -z "$org_scope_json" ]; then
-      warn "Failed to create 'organization' client scope — membership claim will not be emitted."
-      exit 1
-    fi
-    log "Created 'organization' client scope (id=${org_scope_json})."
+if [ -z "$org_scope_id" ]; then
+  log "Client scope 'organization' not found — creating it."
+  scope_resp=$(curl -sS -D - -o /dev/null \
+    -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes" \
+    "${auth[@]}" -H "Content-Type: application/json" -d '{
+      "name":"organization",
+      "protocol":"openid-connect",
+      "description":"Keycloak 26 Organizations membership + Givernance org_id/role claims (ADR-016).",
+      "attributes":{
+        "include.in.token.scope":"true",
+        "display.on.consent.screen":"false"
+      }
+    }')
+  org_scope_id=$(printf '%s' "$scope_resp" | awk -F': ' 'tolower($1)=="location"{print $2}' | tr -d '\r\n' | awk -F/ '{print $NF}')
+  if [ -z "$org_scope_id" ]; then
+    warn "Failed to create 'organization' client scope — membership claim will not be emitted."
+    exit 1
   fi
+  log "Created 'organization' client scope (id=${org_scope_id})."
+fi
 
-  # Attach to `givernance-web` default scopes.
+# 2.c Reconcile mappers on the `organization` client scope to the target
+#     config. Upsert pattern: create missing mappers; overwrite existing
+#     ones with the desired config so drift (e.g., Keycloak's auto-created
+#     minimal membership mapper) is corrected every run.
+scope_mappers=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/client-scopes/${org_scope_id}/protocol-mappers/models")
+
+reconcile_scope_mapper() {
+  local mapper_name="$1"
+  local desired_body="$2"
+  local existing_id
+  existing_id=$(printf '%s' "$scope_mappers" | NAME="$mapper_name" python3 -c '
+import json, os, sys
+wanted = os.environ["NAME"]
+for m in json.load(sys.stdin):
+    if m.get("name") == wanted:
+        print(m["id"])
+        break
+')
+  if [ -z "$existing_id" ]; then
+    curl -sS -o /dev/null -w "scope-mapper create (${mapper_name}): HTTP %{http_code}\n" \
+      -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes/${org_scope_id}/protocol-mappers/models" \
+      "${auth[@]}" -H "Content-Type: application/json" -d "$desired_body"
+    log "Added '${mapper_name}' mapper to 'organization' client scope."
+  else
+    body_with_id=$(printf '%s' "$desired_body" | ID="$existing_id" python3 -c '
+import json, os, sys
+d = json.load(sys.stdin)
+d["id"] = os.environ["ID"]
+print(json.dumps(d))
+')
+    curl -sS -o /dev/null -w "scope-mapper update (${mapper_name}): HTTP %{http_code}\n" \
+      -X PUT "${KC_URL}/admin/realms/${REALM}/client-scopes/${org_scope_id}/protocol-mappers/models/${existing_id}" \
+      "${auth[@]}" -H "Content-Type: application/json" -d "$body_with_id"
+    log "Reconciled '${mapper_name}' mapper on 'organization' client scope."
+  fi
+}
+
+reconcile_scope_mapper "org_id" '{
+  "name":"org_id",
+  "protocol":"openid-connect",
+  "protocolMapper":"oidc-usermodel-attribute-mapper",
+  "consentRequired":false,
+  "config":{
+    "userinfo.token.claim":"true",
+    "user.attribute":"org_id",
+    "id.token.claim":"true",
+    "access.token.claim":"true",
+    "introspection.token.claim":"true",
+    "claim.name":"org_id",
+    "jsonType.label":"String"
+  }
+}'
+
+reconcile_scope_mapper "role" '{
+  "name":"role",
+  "protocol":"openid-connect",
+  "protocolMapper":"oidc-usermodel-attribute-mapper",
+  "consentRequired":false,
+  "config":{
+    "userinfo.token.claim":"true",
+    "user.attribute":"role",
+    "id.token.claim":"true",
+    "access.token.claim":"true",
+    "introspection.token.claim":"true",
+    "claim.name":"role",
+    "jsonType.label":"String"
+  }
+}'
+
+reconcile_scope_mapper "organization" '{
+  "name":"organization",
+  "protocol":"openid-connect",
+  "protocolMapper":"oidc-organization-membership-mapper",
+  "consentRequired":false,
+  "config":{
+    "id.token.claim":"true",
+    "access.token.claim":"true",
+    "userinfo.token.claim":"true",
+    "introspection.token.claim":"true",
+    "claim.name":"organization",
+    "jsonType.label":"JSON",
+    "multivalued":"true",
+    "addOrganizationId":"true",
+    "addOrganizationAttributes":"true"
+  }
+}'
+
+# 2.d Attach the `organization` scope as DEFAULT on `givernance-web` so every
+#     web-app token carries the claims without the SPA having to request them.
+if [ -n "$client_uuid" ]; then
   default_scopes=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes")
   if printf '%s' "$default_scopes" | python3 -c '
 import sys, json
@@ -207,33 +264,58 @@ sys.exit(0 if have else 1)
     log "Client '${CLIENT_ID}' already has the organization scope on default."
   else
     curl -sS -o /dev/null -w 'client-scope attach (web default): HTTP %{http_code}\n' \
-      -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes/${org_scope_json}" \
+      -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes/${org_scope_id}" \
       "${auth[@]}"
     log "Added 'organization' client scope to default on '${CLIENT_ID}'."
   fi
+fi
 
-  # Attach to `admin-cli` optional scopes so the smoke test can request it.
-  # Every realm has an admin-cli client; look it up and attach the scope as
-  # OPTIONAL (not default — we don't want every admin-cli token to carry an
-  # org claim unless explicitly requested).
-  admin_cli_uuid=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients?clientId=admin-cli" \
-    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')
-  if [ -z "$admin_cli_uuid" ]; then
-    warn "Built-in 'admin-cli' client not found on realm '${REALM}' — smoke test will be unable to request the organization scope."
-  else
-    admin_cli_optional=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${admin_cli_uuid}/optional-client-scopes")
-    if printf '%s' "$admin_cli_optional" | python3 -c '
+# 2.e Attach the `organization` scope as OPTIONAL on `admin-cli`, and turn
+#     off lightweight access tokens so the scope's mappers actually land in
+#     the access token the smoke test inspects. Keycloak 26 ships admin-cli
+#     with `client.use.lightweight.access.token.enabled=true` by default,
+#     which strips every mapper-contributed claim from the access token.
+admin_cli_uuid=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients?clientId=admin-cli" \
+  | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')
+if [ -z "$admin_cli_uuid" ]; then
+  warn "Built-in 'admin-cli' client not found on realm '${REALM}' — smoke test will be unable to request the organization scope."
+else
+  admin_cli_optional=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${admin_cli_uuid}/optional-client-scopes")
+  if printf '%s' "$admin_cli_optional" | python3 -c '
 import sys, json
 have = any(s.get("name") == "organization" for s in json.load(sys.stdin))
 sys.exit(0 if have else 1)
 '; then
-      log "Client 'admin-cli' already has the organization scope on optional."
-    else
-      curl -sS -o /dev/null -w 'client-scope attach (admin-cli optional): HTTP %{http_code}\n' \
-        -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${admin_cli_uuid}/optional-client-scopes/${org_scope_json}" \
-        "${auth[@]}"
-      log "Added 'organization' client scope to optional on 'admin-cli'."
-    fi
+    log "Client 'admin-cli' already has the organization scope on optional."
+  else
+    curl -sS -o /dev/null -w 'client-scope attach (admin-cli optional): HTTP %{http_code}\n' \
+      -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${admin_cli_uuid}/optional-client-scopes/${org_scope_id}" \
+      "${auth[@]}"
+    log "Added 'organization' client scope to optional on 'admin-cli'."
+  fi
+
+  admin_cli_full=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${admin_cli_uuid}")
+  lightweight_enabled=$(printf '%s' "$admin_cli_full" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+attrs = d.get("attributes") or {}
+print("yes" if attrs.get("client.use.lightweight.access.token.enabled") == "true" else "no")
+')
+  if [ "$lightweight_enabled" = "yes" ]; then
+    patched_admin_cli=$(printf '%s' "$admin_cli_full" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+attrs = d.get("attributes") or {}
+attrs["client.use.lightweight.access.token.enabled"] = "false"
+d["attributes"] = attrs
+print(json.dumps(d))
+')
+    curl -sS -o /dev/null -w 'admin-cli lightweight off: HTTP %{http_code}\n' \
+      -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${admin_cli_uuid}" \
+      "${auth[@]}" -H "Content-Type: application/json" -d "$patched_admin_cli"
+    log "Disabled lightweight access tokens on 'admin-cli' (needed for smoke test to inspect claim set)."
+  else
+    log "Client 'admin-cli' already issues full access tokens."
   fi
 fi
 

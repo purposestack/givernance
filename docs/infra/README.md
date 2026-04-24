@@ -137,9 +137,9 @@ The web now stores the raw Keycloak access token in `givernance_jwt`. Both the N
 
 The seeded realm ships:
 
-- A flat `org_id` protocol mapper on the `givernance-web` client, reading the Keycloak user attribute `org_id` and injecting it into access + ID tokens. An `unmanagedAttributePolicy=ENABLED` user profile permits the attribute.
-- A Keycloak 26 **Organization** (alias `platform`) with `attributes.org_id=[…]` that the super-admin user is bound to (ADR-016 / issue #114). The `oidc-organization-membership-mapper` on `givernance-web` emits a nested `organization` claim carrying the org id and attributes — this is the forward-looking source of truth; the flat `org_id` mapper remains as a transitional shim for the current API JWT verifier.
-- The `organization` client scope on `givernance-web`'s default scopes, so every token carries the membership claim without the web app opting in via `scope=organization`.
+- An `organization` **client scope** (reconciled by `scripts/keycloak-sync-realm.sh`) carrying three claim mappers: flat `org_id` (from the user's `org_id` attribute), flat `role`, and the Keycloak 26 `oidc-organization-membership-mapper` with `addOrganizationId=true` + `addOrganizationAttributes=true`. `givernance-web` has this scope on its default scopes, so every web token carries all three claims without the SPA having to request them.
+- A Keycloak 26 **Organization** (alias `platform`) with `attributes.org_id=[…]` that the super-admin user is bound to (ADR-016 / issue #114). An `unmanagedAttributePolicy=ENABLED` user profile permits the `org_id` user attribute that the scope's flat mapper reads from.
+- `admin-cli` gets the same `organization` scope as an optional scope plus `client.use.lightweight.access.token.enabled=false`, so `scripts/keycloak-smoke-test.sh` can exercise the same claim pipeline via RO password grant.
 
 Existing realms are not updated by `--import-realm`; `scripts/dev-up.sh` reconciles them automatically via `scripts/keycloak-sync-realm.sh` (which also creates the platform Organization + binds the member if missing), then runs `scripts/keycloak-smoke-test.sh` to validate login + the `org_id` claim end-to-end.
 

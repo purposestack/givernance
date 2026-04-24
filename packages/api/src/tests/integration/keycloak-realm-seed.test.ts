@@ -16,9 +16,14 @@
  *   - Organizations feature is enabled at the realm level
  *   - A seeded platform Organization exists with the canonical org_id
  *   - The seeded super-admin user is a member of that Organization
- *   - The `givernance-web` client emits the `organization` membership claim
- *     via the Keycloak 26 built-in mapper, on the default client scopes so
- *     every token carries it without scope opt-in
+ *   - The `givernance-web` client has the `organization` scope on default
+ *     scopes so every token carries the membership + org_id + role claims
+ *     (the mapper *contents* live on the scope and are reconciled at
+ *     runtime by scripts/keycloak-sync-realm.sh — covered by the smoke
+ *     script, not here)
+ *   - The `givernance-web` client does NOT carry redundant client-level
+ *     `org_id` / `role` / `organization` mappers (duplicates clobber each
+ *     other silently — the wiring must live on the scope only)
  *   - The user-attribute `org_id` and the Organization-attribute `org_id`
  *     are cross-consistent (addresses the transitional two-sources-of-truth
  *     risk flagged in PR #139 review)
@@ -105,37 +110,31 @@ describe("Keycloak realm seed (issue #114 — Organizations migration)", () => {
     expect(admin?.membershipType).toBe("UNMANAGED");
   });
 
-  it("adds the organization membership mapper on givernance-web", () => {
-    const client = realm.clients.find((c) => c.clientId === "givernance-web");
-    expect(client).toBeDefined();
-    const mapper = client?.protocolMappers?.find(
-      (m) => m.protocolMapper === "oidc-organization-membership-mapper",
-    );
-    expect(mapper, "oidc-organization-membership-mapper must be configured").toBeDefined();
-    // Emitting the org id + attributes is what lets downstream read org_id
-    // from the nested `organization` claim (docs/21 §2.1.bis target state).
-    expect(mapper?.config?.addOrganizationId).toBe("true");
-    expect(mapper?.config?.addOrganizationAttributes).toBe("true");
-    expect(mapper?.config?.["access.token.claim"]).toBe("true");
-  });
-
   it("puts the organization scope on givernance-web's default scopes", () => {
-    // The membership mapper emits nothing unless the `organization` scope is
-    // requested; pinning it on default scopes means every token carries the
-    // claim without the web app needing to opt in via `scope=organization`.
+    // The `organization` client scope is where the `org_id`, `role`, and
+    // `organization` membership mappers live (reconciled at runtime by
+    // scripts/keycloak-sync-realm.sh). Pinning it on default scopes means
+    // every web token carries those claims without the SPA having to
+    // request them explicitly.
     const client = realm.clients.find((c) => c.clientId === "givernance-web");
     expect(client?.defaultClientScopes).toContain("organization");
   });
 
-  it("keeps the transitional flat org_id mapper for backward compatibility", () => {
-    // Until the API's JWT verifier migrates to read org_id from the nested
-    // `organization` claim (follow-up to this PR), the flat claim sourced
-    // from the user attribute must keep working — otherwise the seeded
-    // super-admin cannot be used by the app.
+  it("does not wire org claims as client-level mappers on givernance-web", () => {
+    // The claim wiring lives on the `organization` client scope, not on the
+    // client. If a client-level mapper with the same name coexists with the
+    // scope-level one, Keycloak builds a token with duplicate claims — the
+    // second mapper's value silently clobbers the first, which masks drift
+    // and breaks the admin-cli path the smoke test relies on.
     const client = realm.clients.find((c) => c.clientId === "givernance-web");
-    const orgIdMapper = client?.protocolMappers?.find((m) => m.name === "org_id");
-    expect(orgIdMapper?.protocolMapper).toBe("oidc-usermodel-attribute-mapper");
-    expect(orgIdMapper?.config?.["claim.name"]).toBe("org_id");
+    const forbidden = new Set(["org_id", "role", "organization"]);
+    const duplicates = (client?.protocolMappers ?? [])
+      .map((m) => m.name)
+      .filter((n) => forbidden.has(n));
+    expect(
+      duplicates,
+      "Move these mappers to the `organization` client scope (see scripts/keycloak-sync-realm.sh §2.c).",
+    ).toEqual([]);
   });
 
   it("keeps the seeded admin user's org_id attribute aligned with the org attribute", () => {
