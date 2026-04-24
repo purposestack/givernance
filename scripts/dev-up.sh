@@ -108,6 +108,9 @@ done
 echo "Syncing Keycloak realm state (idempotent)..."
 KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-sync-realm.sh"
 
+echo "Running Keycloak smoke test (issue #114 acceptance criterion)..."
+KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-smoke-test.sh"
+
 # Seed the demo tenant only on a truly empty dev DB.
 # The seed script appends on every run (50 constituents + 5 campaigns +
 # 100 donations), so gating it on "no constituents for the fixture org_id"
