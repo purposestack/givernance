@@ -11,6 +11,10 @@ import { processGenerateCampaignDocuments } from "./processors/campaign-document
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
+import {
+  processSignupVerificationEmail,
+  type SignupEmailJobPayload,
+} from "./processors/signup-email.js";
 import { processStripeWebhook } from "./processors/stripe-webhook.js";
 import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
 
@@ -110,6 +114,23 @@ async function processDomainEvent(job: Job): Promise<void> {
     );
 
     log.info({ campaignId }, "Enqueued campaign document generation");
+    return;
+  }
+
+  if (
+    type === "tenant.signup_verification_requested" ||
+    type === "tenant.signup_verification_resent"
+  ) {
+    const emailPayload: SignupEmailJobPayload = {
+      tenantId,
+      invitationId: payload.invitationId as string,
+      expiresAt: payload.expiresAt as string,
+      country: typeof payload.country === "string" ? payload.country : undefined,
+    };
+    const result = await processSignupVerificationEmail(emailPayload);
+    // `not_found` / `already_accepted` are terminal no-ops (old token rotated,
+    // or user already verified) — do not throw, the outbox event is done.
+    log.info({ invitationId: emailPayload.invitationId, ...result }, "Signup email dispatched");
     return;
   }
 

@@ -208,6 +208,7 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
             tenantId: t.id,
             invitationId,
             expiresAt: expiresAt.toISOString(),
+            country: input.country,
           },
         },
       ]);

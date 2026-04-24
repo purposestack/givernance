@@ -41,6 +41,18 @@ const EnvSchema = Type.Object({
   STRIPE_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
   /** ExchangeRate-API key used for currency conversion refreshes */
   EXCHANGE_RATE_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /** SMTP host for outbound mail — defaults to local Mailpit */
+  SMTP_HOST: Type.String({ minLength: 1, default: "localhost" }),
+  /** SMTP port (1025 for Mailpit, 587 for submission, 465 for SMTPS) */
+  SMTP_PORT: Type.Integer({ minimum: 1, maximum: 65535, default: 1025 }),
+  /** SMTP username — leave unset (empty) for auth-less dev relays like Mailpit */
+  SMTP_USER: Type.Optional(Type.String()),
+  /** SMTP password — leave unset (empty) for auth-less dev relays like Mailpit */
+  SMTP_PASS: Type.Optional(Type.String()),
+  /** RFC 5322 From header for outbound mail */
+  SMTP_FROM: Type.String({ minLength: 1, default: "Givernance <no-reply@givernance.local>" }),
+  /** Public URL of the web app — used to build verification links sent by email */
+  APP_URL: Type.String({ minLength: 1, default: "http://localhost:3000" }),
 });
 
 export type WorkerEnv = Static<typeof EnvSchema>;
