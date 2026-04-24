@@ -12,20 +12,11 @@ export async function getPublicPage(campaignId: string) {
     return null;
   }
 
-  // Direct query without RLS — public pages are public by definition.
-  // We filter on status = 'published' to avoid exposing draft pages.
-  const [page] = await db
-    .select({
-      id: campaignPublicPages.id,
-      campaignId: campaignPublicPages.campaignId,
-      title: campaignPublicPages.title,
-      description: campaignPublicPages.description,
-      colorPrimary: campaignPublicPages.colorPrimary,
-      goalAmountCents: campaignPublicPages.goalAmountCents,
-      defaultCurrency: campaigns.defaultCurrency,
-    })
+  // Find the page without RLS to get the orgId.
+  // campaign_public_pages does not enforce RLS for reads.
+  const [basicPage] = await db
+    .select({ orgId: campaignPublicPages.orgId })
     .from(campaignPublicPages)
-    .innerJoin(campaigns, eq(campaigns.id, campaignPublicPages.campaignId))
     .where(
       and(
         eq(campaignPublicPages.campaignId, campaignId),
@@ -33,7 +24,28 @@ export async function getPublicPage(campaignId: string) {
       ),
     );
 
-  return page ?? null;
+  if (!basicPage) {
+    return null;
+  }
+
+  // Query with tenant context to allow joining with campaigns (which has strict RLS)
+  return withTenantContext(basicPage.orgId, async (tx) => {
+    const [page] = await tx
+      .select({
+        id: campaignPublicPages.id,
+        campaignId: campaignPublicPages.campaignId,
+        title: campaignPublicPages.title,
+        description: campaignPublicPages.description,
+        colorPrimary: campaignPublicPages.colorPrimary,
+        goalAmountCents: campaignPublicPages.goalAmountCents,
+        defaultCurrency: campaigns.defaultCurrency,
+      })
+      .from(campaignPublicPages)
+      .innerJoin(campaigns, eq(campaigns.id, campaignPublicPages.campaignId))
+      .where(eq(campaignPublicPages.campaignId, campaignId));
+
+    return page ?? null;
+  });
 }
 
 /** Fetch the current public page configuration by campaign ID (admin) */
@@ -82,59 +94,69 @@ export async function createDonationIntent(
 
   const stripe = getStripe();
 
-  // Look up the campaign to find the org
-  const [campaign] = await db
-    .select({
-      id: campaigns.id,
-      orgId: campaigns.orgId,
-      defaultCurrency: campaigns.defaultCurrency,
-    })
-    .from(campaigns)
-    .where(eq(campaigns.id, campaignId));
+  // Find the orgId from the public page (readable without RLS)
+  const [publicPage] = await db
+    .select({ orgId: campaignPublicPages.orgId })
+    .from(campaignPublicPages)
+    .where(eq(campaignPublicPages.campaignId, campaignId));
 
-  if (!campaign) return null;
+  if (!publicPage) return null;
 
-  // Look up the tenant's Stripe account
-  const [tenant] = await db
-    .select({ id: tenants.id, stripeAccountId: tenants.stripeAccountId })
-    .from(tenants)
-    .where(eq(tenants.id, campaign.orgId));
+  return withTenantContext(publicPage.orgId, async (tx) => {
+    // Look up the campaign to find the default currency (requires RLS context)
+    const [campaign] = await tx
+      .select({
+        id: campaigns.id,
+        orgId: campaigns.orgId,
+        defaultCurrency: campaigns.defaultCurrency,
+      })
+      .from(campaigns)
+      .where(eq(campaigns.id, campaignId));
 
-  if (!tenant?.stripeAccountId) {
-    throw new Error("Organization has not completed Stripe onboarding");
-  }
+    if (!campaign) return null;
 
-  const stripeAccountDetails = await stripe.accounts.retrieve(tenant.stripeAccountId);
-  if (!stripeAccountDetails.charges_enabled) {
-    throw new Error("Organization Stripe account is not fully onboarded");
-  }
-  const applicationFeeAmount = calculatePlatformFee(body.amountCents);
+    // Look up the tenant's Stripe account
+    const [tenant] = await tx
+      .select({ id: tenants.id, stripeAccountId: tenants.stripeAccountId })
+      .from(tenants)
+      .where(eq(tenants.id, campaign.orgId));
 
-  const intentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {
-    amount: body.amountCents,
-    currency: body.currency.toLowerCase(),
-    application_fee_amount: applicationFeeAmount,
-    receipt_email: body.email,
-    metadata: {
-      campaign_id: campaignId,
-      org_id: campaign.orgId,
-      campaign_default_currency: campaign.defaultCurrency,
-      constituent_first_name: body.firstName,
-      constituent_last_name: body.lastName,
-    },
-  };
+    if (!tenant?.stripeAccountId) {
+      throw new Error("Organization has not completed Stripe onboarding");
+    }
 
-  const requestOptions: Parameters<typeof stripe.paymentIntents.create>[1] = {
-    stripeAccount: tenant.stripeAccountId,
-  };
+    const stripeAccountDetails = await stripe.accounts.retrieve(tenant.stripeAccountId);
+    if (!stripeAccountDetails.charges_enabled) {
+      throw new Error("Organization Stripe account is not fully onboarded");
+    }
+    const applicationFeeAmount = calculatePlatformFee(body.amountCents);
 
-  if (idempotencyKey) {
-    requestOptions.idempotencyKey = idempotencyKey;
-  }
+    const intentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {
+      amount: body.amountCents,
+      currency: body.currency.toLowerCase(),
+      application_fee_amount: applicationFeeAmount,
+      receipt_email: body.email,
+      metadata: {
+        campaign_id: campaignId,
+        org_id: campaign.orgId,
+        campaign_default_currency: campaign.defaultCurrency,
+        constituent_first_name: body.firstName,
+        constituent_last_name: body.lastName,
+      },
+    };
 
-  const intent = await stripe.paymentIntents.create(intentParams, requestOptions);
+    const requestOptions: Parameters<typeof stripe.paymentIntents.create>[1] = {
+      stripeAccount: tenant.stripeAccountId,
+    };
 
-  return { clientSecret: intent.client_secret };
+    if (idempotencyKey) {
+      requestOptions.idempotencyKey = idempotencyKey;
+    }
+
+    const intent = await stripe.paymentIntents.create(intentParams, requestOptions);
+
+    return { clientSecret: intent.client_secret };
+  });
 }
 
 /** Upsert a public page configuration for a campaign (admin) */
