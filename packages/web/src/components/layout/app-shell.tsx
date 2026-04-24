@@ -19,6 +19,12 @@ interface AppShellProps {
   provisionalAdmin?: ProvisionalAdminInfo;
   /** Number of tenants the user belongs to — used to hide the org-switch action for solo-tenant users. */
   membershipCount?: number;
+  /**
+   * SSR-resolved super-admin flag — lets the sidebar's "Back office" section
+   * render on the server instead of popping in after `/v1/users/me` hydrates.
+   * FE-1 (PR #135 review).
+   */
+  isSuperAdmin?: boolean;
 }
 
 /**
@@ -41,6 +47,7 @@ export function AppShell({
   impersonationUserName,
   provisionalAdmin,
   membershipCount,
+  isSuperAdmin,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
@@ -66,7 +73,12 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar open={sidebarOpen} onClose={handleSidebarClose} membershipCount={membershipCount} />
+      <Sidebar
+        open={sidebarOpen}
+        onClose={handleSidebarClose}
+        membershipCount={membershipCount}
+        isSuperAdmin={isSuperAdmin}
+      />
 
       <div className="flex min-h-screen flex-1 flex-col md:ml-[var(--sidebar-width)]">
         <ImpersonationBanner impersonation={impersonation} userName={impersonationUserName} />

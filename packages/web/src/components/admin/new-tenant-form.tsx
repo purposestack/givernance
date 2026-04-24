@@ -19,24 +19,27 @@ import {
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
-import { createEnterpriseTenant, type TenantPlan } from "@/services/TenantAdminService";
+import { createEnterpriseTenant } from "@/services/TenantAdminService";
 
 interface NewTenantFormValues {
   name: string;
   slug: string;
-  plan: TenantPlan;
 }
 
-const PLANS: readonly TenantPlan[] = ["starter", "pro", "enterprise"];
+/** Host prefix shown before the slug input. MOCKUP-9 (PR #135 review):
+ * parameterised so white-label deployments don't surface `givernance.app/`. */
+function resolveWorkspaceHost(): string {
+  const raw = process.env.NEXT_PUBLIC_APP_URL;
+  if (!raw) return "givernance.app/";
+  try {
+    const url = new URL(raw);
+    return `${url.host}/`;
+  } catch {
+    return "givernance.app/";
+  }
+}
 
 /** Strip accents + special chars → lowercase alnum-dash slug. */
 function slugify(input: string): string {
@@ -58,25 +61,28 @@ function slugify(input: string): string {
  * edits it manually (matches the self-serve signup UX from issue #109).
  * Post-create we route to the tenant detail so the operator can move on
  * to claiming a domain and provisioning the IdP.
+ *
+ * Plan is fixed to `enterprise` — this is the back-office creation surface;
+ * the self-serve signup flow handles Starter/Pro (UX-6 of PR #135 review).
  */
 export function NewTenantForm() {
   const t = useTranslations("admin.tenants.new");
   const router = useRouter();
+  const hostPrefix = resolveWorkspaceHost();
 
   const form = useForm<NewTenantFormValues>({
     mode: "onBlur",
     defaultValues: {
       name: "",
       slug: "",
-      plan: "enterprise",
     },
   });
 
   const nameValue = form.watch("name");
-  const slugValue = form.watch("slug");
   const slugDirty = form.formState.dirtyFields.slug;
 
-  // Auto-derive the slug until the operator manually types into it.
+  // FE-2/3: setValue without shouldDirty keeps dirtyFields.slug === false so
+  // auto-slug stays active until the user types into the slug input directly.
   useEffect(() => {
     if (!slugDirty) {
       form.setValue("slug", slugify(nameValue), { shouldValidate: false });
@@ -101,7 +107,7 @@ export function NewTenantForm() {
       const res = await createEnterpriseTenant({
         name: values.name.trim(),
         slug: slugCheck.slug,
-        plan: values.plan,
+        plan: "enterprise",
       });
       toast.success(t("success"));
       router.push(`/admin/tenants/${res.tenantId}`);
@@ -142,7 +148,12 @@ export function NewTenantForm() {
               <FormItem>
                 <FormLabel required>{t("fields.name")}</FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder={t("fields.namePlaceholder")} maxLength={255} />
+                  <Input
+                    {...field}
+                    autoComplete="off"
+                    placeholder={t("fields.namePlaceholder")}
+                    maxLength={255}
+                  />
                 </FormControl>
                 <FormDescription>{t("fields.nameHint")}</FormDescription>
                 <FormMessage />
@@ -164,48 +175,20 @@ export function NewTenantForm() {
               <FormItem>
                 <FormLabel required>{t("fields.slug")}</FormLabel>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-on-surface-variant">givernance.app/</span>
+                  <span className="text-sm text-on-surface-variant">{hostPrefix}</span>
                   <FormControl>
                     <Input
                       {...field}
+                      autoComplete="off"
                       onChange={(e) => field.onChange(e.target.value.toLowerCase().slice(0, 50))}
                       maxLength={50}
                       pattern="^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$"
                     />
                   </FormControl>
                 </div>
-                <FormDescription>{t("fields.slugHint")}</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </FormSection>
-
-        <FormSection title={t("sections.plan.title")} description={t("sections.plan.description")}>
-          <FormField
-            control={form.control}
-            name="plan"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel required>{t("fields.plan")}</FormLabel>
-                <Select
-                  value={field.value}
-                  onValueChange={(value) => field.onChange(value as TenantPlan)}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {PLANS.map((plan) => (
-                      <SelectItem key={plan} value={plan}>
-                        {t(`plan.${plan}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormDescription>{t("fields.planHint")}</FormDescription>
+                <FormDescription>
+                  {slugDirty ? t("fields.slugHint") : t("fields.slugAutoGenerated")}
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -213,7 +196,11 @@ export function NewTenantForm() {
         </FormSection>
 
         <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-h-5 text-sm text-error">{rootError}</div>
+          {/* UX-1 (review): announced to AT via role="alert" so screen-reader users
+              are notified on upstream/502 without relying on the toast. */}
+          <div className="min-h-5 text-sm text-error" role="alert">
+            {rootError}
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button asChild variant="ghost">
               <Link href="/admin/tenants">{t("actions.cancel")}</Link>
@@ -223,11 +210,6 @@ export function NewTenantForm() {
             </Button>
           </div>
         </div>
-
-        {/* Slug preview for accessibility — shown to screen readers only */}
-        <span className="sr-only" aria-live="polite">
-          {slugValue ? t("fields.slugPreview", { slug: slugValue }) : ""}
-        </span>
       </form>
     </Form>
   );
