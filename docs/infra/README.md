@@ -33,14 +33,14 @@ docker compose up -d
 
 #### Upgrading from a pre-ADR-017 checkout
 
-If you already have a `pgdata` volume from before the Keycloak DB split (ADR-017), the init script in `infra/postgres/init/` will **not** run — the Postgres image only executes `/docker-entrypoint-initdb.d/*` on an empty data directory. You'll see Keycloak start up and fail to connect to `givernance_keycloak`. Reset the local volumes once:
+If you already have a `pgdata` volume from before the Keycloak DB split (ADR-017), the init script in `infra/postgres/init/` will **not** run — the Postgres image only executes `/docker-entrypoint-initdb.d/*` on an empty data directory. You'll see Keycloak start up and fail to connect to `givernance_keycloak`, and `./scripts/dev-up.sh` now fails fast with a pointer back to this section rather than hanging on the readiness probe. Reset the local volumes once:
 
 ```bash
 docker compose down -v   # wipes pgdata, redisdata, miniodata, mailpitdata
 ./scripts/dev-up.sh      # recreates everything, including givernance_keycloak
 ```
 
-This is safe in dev — Keycloak realm state is rebuilt from [`infra/keycloak/realm-givernance.json`](../../infra/keycloak/realm-givernance.json) and then reconciled idempotently by [`scripts/keycloak-sync-realm.sh`](../../scripts/keycloak-sync-realm.sh). The app DB is rebuilt by `pnpm db:migrate` and (optionally) `pnpm --filter @givernance/api run db:seed`.
+This is safe in dev because **all state is reproducible from fixtures and migrations**: Keycloak realm state is rebuilt from [`infra/keycloak/realm-givernance.json`](../../infra/keycloak/realm-givernance.json) and then reconciled idempotently by [`scripts/keycloak-sync-realm.sh`](../../scripts/keycloak-sync-realm.sh), and the app DB is rebuilt by `pnpm db:migrate` and (optionally) `pnpm --filter @givernance/api run db:seed`. **Don't run `down -v` against a volume you've customised manually** (hand-added realm users, hand-edited rows, test tenants you care about) — it wipes the lot. Dump what you need first with `docker compose exec postgres pg_dump …`.
 
 ### Local Services
 
@@ -146,6 +146,9 @@ The seeded realm also ships an `org_id` protocol mapper on the `givernance-web` 
 | Login redirects back to `/login?error=missing_org_id` | The Keycloak access token was valid but did not contain `org_id`. Run `./scripts/keycloak-sync-realm.sh` to reconcile the live realm with the expected mapper + user attribute, then log in again. |
 | Web starts on port 4000 instead of 3000 (`EADDRINUSE`) | `.env` sets `PORT=4000` for the API; `dotenv-cli` forwards it. The web `dev` script already passes `-p 3000` to override. |
 | `/constituents` shows empty state despite seed running | The Keycloak user's `org_id` attribute does not match the seeded tenant UUID. Set it to `00000000-0000-0000-0000-0000000000a1` or re-run the seed and re-login. |
+| Keycloak logs `FATAL: password authentication failed for user "keycloak"` after editing `.env` | Both the `postgres` and `keycloak` services read `KEYCLOAK_DB_*` from host env at container-create time. If you `export KEYCLOAK_DB_PASSWORD=…` in your shell **after** `docker compose up -d` has already provisioned the volume, postgres keeps the old hash while keycloak starts connecting with the new password. Fix: `docker compose down -v && docker compose up -d` (or `ALTER ROLE keycloak WITH PASSWORD …` inside the postgres container) so the two sides agree again. |
+
+> **Secrets in dev-only env:** `docker inspect postgres` prints every value from `KEYCLOAK_DB_PASSWORD`, `POSTGRES_PASSWORD`, etc. in plaintext — these are the `ci-test-*` / `*_dev` defaults committed in `.env.example` and are intentional for local dev. Production (Scaleway / self-hosted) must inject these via a secret manager (Scaleway secret manager + Kamal secrets, or your self-hosted equivalent) and never via a committed `.env`.
 
 ---
 

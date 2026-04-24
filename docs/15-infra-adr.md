@@ -972,7 +972,7 @@ All three tracks produce the same domain model: a `tenants` row, an optional `te
 - **Keycloak Organizations over custom group/attribute plumbing.** The groups-and-attributes approach chosen in Spike #80 predates Keycloak 26. For a product starting to add tenants in 2026, Organizations is the right primitive: fewer custom mappers, native Home IdP Discovery, built-in invitation templates, actively developed.
 - **URL-path over subdomain** avoids wildcard-TLS provisioning, cross-subdomain cookie pitfalls, and per-tenant DNS operations — and it unlocks *instant* tenant creation, which the self-serve flow requires.
 - **Provisional admin with grace period** prevents the "random intern becomes org_admin" failure mode without blocking legitimate self-serve signup.
-- **RLS unchanged** — this ADR adds primitives around identity but leaves the data-layer tenancy model (single shared database, `org_id`-scoped RLS, 3-role Postgres pattern) exactly as decided in ADR-009.
+- **RLS unchanged** — this ADR adds primitives around identity but leaves the data-layer tenancy model (single shared application database, `org_id`-scoped RLS, 3-role Postgres pattern) exactly as decided in ADR-009. "Single shared" here refers to the application DB; Keycloak's storage has been split out into `givernance_keycloak` by [ADR-017](#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db).
 - **Card-at-conversion, not signup** — nonprofit budgets are annual and board-approved; card-at-signup is a conversion killer for this segment (ProfitWell / Baymard SMB benchmarks). Reserve card-at-signup for a future high-abuse scenario.
 
 ### Rejected alternatives
@@ -1062,7 +1062,13 @@ The `givernance_keycloak` database + role are provisioned on first Postgres brin
 - **`scripts/dev-up.sh`** now reads Keycloak's `realm` table from `${KEYCLOAK_DB_NAME}` (not `${POSTGRES_DB}`) when relaxing the `master` realm's `ssl_required`.
 - **`.env.example` / `.env`** now carry `KEYCLOAK_DB_NAME`, `KEYCLOAK_DB_USER`, `KEYCLOAK_DB_PASSWORD`, defaulted for local dev. The CI-test passwords are committed as-is in `.env.example`; production overrides them via Scaleway secrets.
 - **CI.** `.github/workflows/ci.yml` is unchanged — CI does not spin up Keycloak today, only the app DB (`givernance_test`). When Keycloak-dependent e2e tests land, they must use a separate `givernance_keycloak_test` database and must not reuse `givernance_test`.
-- **SaaS production (Scaleway).** Provision `givernance_keycloak` as a second logical database on the same Scaleway Managed PostgreSQL instance for Phase 1–3. If Keycloak's SLA or failure-isolation requirements later diverge from the app's, revisit and move Keycloak to a smaller dedicated Scaleway Managed PostgreSQL — the topology decision, not the split itself, is the variable.
+- **SaaS production (Scaleway).** Provision `givernance_keycloak` as a second logical database on the same Scaleway Managed PostgreSQL instance for Phase 1–3. Operator steps (Scaleway console, one-off, documented in the launch runbook):
+  1. Scaleway console → *Managed Databases* → your cluster → *Users* tab → **Create user** `keycloak` with a long random password; disable the "is admin" toggle. Store the password in the Scaleway secret manager under `givernance/prod/keycloak_db_password`.
+  2. Same cluster → *Databases* tab → **Create database** `givernance_keycloak` and set its owner to the `keycloak` user from step 1.
+  3. In the Kamal secret inventory, set `KEYCLOAK_DB_NAME=givernance_keycloak`, `KEYCLOAK_DB_USER=keycloak`, and bind `KEYCLOAK_DB_PASSWORD` to the secret-manager entry. The same env contract as local dev — no code change across environments.
+  4. Connect as `keycloak` once and run the same `REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT ALL ON SCHEMA public TO keycloak;` that `infra/postgres/init/01-init-keycloak-db.sh` runs in dev. Scaleway does not execute init scripts.
+
+  If Keycloak's SLA or failure-isolation requirements later diverge from the app's, revisit and move Keycloak to a smaller dedicated Scaleway Managed PostgreSQL — the topology decision, not the split itself, is the variable.
 - **Self-hosted deployments.** The same Docker Compose file drives both local and self-hosted; the init script and env vars apply unchanged.
 - **Documentation guardrail.** `CLAUDE.md`, `docs/infra/README.md`, `docs/02-reference-architecture.md`, `docs/03-data-model.md`, and the specialized agent playbooks all carry the one-DB-per-tool rule, so a new service proposal triggers an explicit decision rather than a silent co-location.
 

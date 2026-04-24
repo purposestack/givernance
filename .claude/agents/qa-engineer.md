@@ -96,6 +96,10 @@ describe('GET /constituents', () => {
 })
 ```
 
+## Test database topology — one logical DB per tool (ADR-017)
+
+Integration tests connect only to the `givernance_test` database (app schema, owned by `givernance`). Keycloak is not spun up in CI today. When a Keycloak-dependent e2e test lands, it **must** use a separate `givernance_keycloak_test` database + `keycloak` role — never reuse `givernance_test` or any other co-located schema. Same rule as prod: any new tool that needs Postgres storage gets its own logical DB and its own owner role. Co-locating a third-party service's schema with app tables is rejected at review time. See [ADR-017](../../docs/15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db).
+
 ## RLS multi-tenancy tests (mandatory for every module)
 
 Every module must have an explicit RLS isolation test:
