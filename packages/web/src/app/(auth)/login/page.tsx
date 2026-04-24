@@ -105,7 +105,7 @@ function LoginForm() {
           {t.rich("noAccount", {
             link: (chunks) => (
               <Link
-                href="/request-access"
+                href="/signup"
                 className="font-medium text-primary no-underline transition-colors duration-normal ease-out hover:text-primary-dark hover:underline"
               >
                 {chunks}
