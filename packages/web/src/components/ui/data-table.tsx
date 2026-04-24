@@ -134,7 +134,7 @@ export function DataTable<TData>({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-2xl border border-outline-variant/70 bg-surface-container-lowest shadow-card",
+        "overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card",
         className,
       )}
     >

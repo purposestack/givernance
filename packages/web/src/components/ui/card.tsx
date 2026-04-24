@@ -6,7 +6,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLElement>) {
   return (
     <section
       className={cn(
-        "rounded-2xl border border-outline-variant/70 bg-surface-container-lowest p-5 shadow-card sm:p-6",
+        "rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6",
         className,
       )}
       {...props}
