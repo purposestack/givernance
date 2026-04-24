@@ -2,9 +2,11 @@
  * CAPTCHA verification helper (issue #108 / ADR-016 §8 anti-abuse).
  *
  * Uses hCaptcha's server-side verification endpoint. The helper fails
- * **open** in `NODE_ENV=test` (so integration tests don't need a real
- * hCaptcha account) and **closed** everywhere else — if the secret is
- * unset or the provider is unreachable, the request is rejected.
+ * **open** whenever `NODE_ENV !== "production"` (so local dev, CI tests,
+ * and preview environments don't need a real hCaptcha account) and
+ * **closed** in production — if the secret is unset or the provider is
+ * unreachable, the request is rejected. An explicit `CAPTCHA_MODE=prod`
+ * on a non-production environment overrides the default.
  */
 
 import { env } from "../env.js";
@@ -24,21 +26,26 @@ interface VerifierConfig {
   secret?: string;
   /** Inject for tests. */
   fetchImpl?: typeof fetch;
-  /** Verification mode. Defaults: `disabled` in tests or when `CAPTCHA_MODE=disabled`; `prod` otherwise. */
+  /**
+   * Verification mode. Defaults: `prod` when `NODE_ENV === "production"`,
+   * `disabled` everywhere else (development, test, preview) so local runs
+   * and CI don't need a real hCaptcha account. Override via `CAPTCHA_MODE`.
+   */
   mode?: "disabled" | "prod";
 }
 
 /**
  * Resolve the CAPTCHA mode. Priority: explicit config > `CAPTCHA_MODE` env >
- * `NODE_ENV === "test"` default. An explicit `CAPTCHA_MODE=disabled` on a
- * staging/preview environment is logged at boot so operators see the knob.
+ * `NODE_ENV`-based default (`prod` only when `NODE_ENV === "production"`).
+ * Non-production envs default to `disabled` so signup works out of the box
+ * in local dev; a staging deploy that needs real captcha must set
+ * `CAPTCHA_MODE=prod` explicitly.
  */
 function resolveMode(configMode: VerifierConfig["mode"]): "disabled" | "prod" {
   if (configMode) return configMode;
   const envMode = process.env.CAPTCHA_MODE;
   if (envMode === "disabled" || envMode === "prod") return envMode;
-  if (process.env.NODE_ENV === "test") return "disabled";
-  return "prod";
+  return process.env.NODE_ENV === "production" ? "prod" : "disabled";
 }
 
 export function createCaptchaVerifier(config: VerifierConfig = {}): CaptchaVerifier {
