@@ -29,13 +29,15 @@ CREATE TABLE "merge_history" (
 ALTER TABLE "campaign_qr_codes" DROP CONSTRAINT IF EXISTS "campaign_qr_codes_code_unique";--> statement-breakpoint
 ALTER TABLE "campaign_qr_codes" DROP CONSTRAINT IF EXISTS "campaign_qr_codes_code_key";--> statement-breakpoint
 -- QR codes were deterministic concatenations of `${orgId}-${campaignId}-${constituentId}`
--- that overflow the new varchar(32). Rotate existing rows to opaque base64url
+-- that overflow the new varchar(32). Rotate existing rows to opaque URL-safe
 -- tokens derived from md5(random()::text) — sufficient for the small volume of
 -- Phase 1 pre-customer QR codes; any printed materials stop resolving (documented
 -- in issue #56). We avoid `gen_random_bytes` so we don't need to enable pgcrypto
--- just to rewrite a table we'd happily truncate in dev.
+-- just to rewrite a table we'd happily truncate in dev. `translate` maps both
+-- `+` and `/` into base64url's `-` and `_` so the resulting token is safe in
+-- path segments (PR #142 review — M1).
 UPDATE "campaign_qr_codes"
-  SET "code" = substr(replace(encode(md5(random()::text || id::text)::bytea, 'base64'), '/', '_'), 1, 22);
+  SET "code" = substr(translate(encode(md5(random()::text || id::text)::bytea, 'base64'), '+/', '-_'), 1, 22);
 --> statement-breakpoint
 ALTER TABLE "campaign_qr_codes" ALTER COLUMN "code" SET DATA TYPE varchar(32);--> statement-breakpoint
 ALTER TABLE "audit_logs" ADD COLUMN "actor_id" varchar(255);--> statement-breakpoint
@@ -43,12 +45,21 @@ ALTER TABLE "donation_allocations" ADD COLUMN "created_at" timestamp with time z
 ALTER TABLE "donation_allocations" ADD COLUMN "updated_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
 ALTER TABLE "outbox_events" ADD COLUMN "metadata" jsonb;--> statement-breakpoint
 -- pledge_installments.amount_cents backfill: legacy rows inherit the pledge's
--- amount so the NOT NULL constraint can be applied in a single migration.
+-- amount so the NOT NULL constraint can be applied in a single migration. The
+-- second UPDATE catches any orphaned installments whose parent pledge is
+-- missing — before the FK added cascade deletes (migration unknown) there was
+-- a brief window where this could happen. A zero sentinel keeps the NOT NULL
+-- constraint applicable without silently corrupting reconciliation (zero rows
+-- stand out in reports).
 ALTER TABLE "pledge_installments" ADD COLUMN "amount_cents" integer;--> statement-breakpoint
 UPDATE "pledge_installments" pi
   SET "amount_cents" = p."amount_cents"
   FROM "pledges" p
   WHERE pi."pledge_id" = p."id" AND pi."amount_cents" IS NULL;
+--> statement-breakpoint
+UPDATE "pledge_installments"
+  SET "amount_cents" = 0
+  WHERE "amount_cents" IS NULL;
 --> statement-breakpoint
 ALTER TABLE "pledge_installments" ALTER COLUMN "amount_cents" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "pledge_installments" ADD COLUMN "fund_id" uuid;--> statement-breakpoint
@@ -59,7 +70,58 @@ ALTER TABLE "merge_history" ADD CONSTRAINT "merge_history_org_id_tenants_id_fk" 
 CREATE INDEX "merge_history_org_id_idx" ON "merge_history" USING btree ("org_id");--> statement-breakpoint
 CREATE INDEX "merge_history_survivor_id_idx" ON "merge_history" USING btree ("survivor_id");--> statement-breakpoint
 CREATE INDEX "merge_history_merged_id_idx" ON "merge_history" USING btree ("merged_id");--> statement-breakpoint
+
+-- ─── Preflight before the new FKs and UNIQUE constraints ────────────────────
+-- The very bug this PR exists to fix (PR #49 review: "campaignId not validated
+-- cross-tenant") means some `donations.campaign_id` rows in staging/prod may
+-- already reference a campaign from another tenant. Without this null-out,
+-- adding the FK would abort the migration mid-way. We log the count via
+-- `RAISE NOTICE` so operators see it in the migration log.
+DO $$
+DECLARE
+  fixed_donations INTEGER;
+BEGIN
+  UPDATE "donations" d
+    SET "campaign_id" = NULL
+    WHERE d."campaign_id" IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM "campaigns" c
+        WHERE c."id" = d."campaign_id" AND c."org_id" = d."org_id"
+      );
+  GET DIAGNOSTICS fixed_donations = ROW_COUNT;
+  IF fixed_donations > 0 THEN
+    RAISE NOTICE 'Issue #56 preflight: nulled % cross-tenant donations.campaign_id references before adding FK', fixed_donations;
+  END IF;
+END
+$$;
+--> statement-breakpoint
 ALTER TABLE "donations" ADD CONSTRAINT "donations_campaign_id_campaigns_id_fk" FOREIGN KEY ("campaign_id") REFERENCES "public"."campaigns"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+
+-- Dedup funds by `(org_id, name)` before adding the new UNIQUE constraint.
+-- Any pre-existing duplicates get `" (N)"` appended in created_at order so the
+-- oldest row keeps the clean name. The application layer now rejects duplicate
+-- inserts; this preflight only heals historical data.
+DO $$
+DECLARE
+  renamed_funds INTEGER;
+BEGIN
+  WITH dupes AS (
+    SELECT "id", row_number() OVER (PARTITION BY "org_id", "name" ORDER BY "created_at", "id") AS rn
+    FROM "funds"
+  )
+  UPDATE "funds" f
+    SET "name" = f."name" || ' (' || dupes.rn || ')',
+        "updated_at" = now()
+    FROM dupes
+    WHERE f."id" = dupes."id" AND dupes.rn > 1;
+  GET DIAGNOSTICS renamed_funds = ROW_COUNT;
+  IF renamed_funds > 0 THEN
+    RAISE NOTICE 'Issue #56 preflight: renamed % duplicate funds before adding UNIQUE(org_id, name)', renamed_funds;
+  END IF;
+END
+$$;
+--> statement-breakpoint
+
 ALTER TABLE "pledge_installments" ADD CONSTRAINT "pledge_installments_fund_id_funds_id_fk" FOREIGN KEY ("fund_id") REFERENCES "public"."funds"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "audit_logs_actor_id_idx" ON "audit_logs" USING btree ("actor_id");--> statement-breakpoint
 CREATE INDEX "audit_logs_resource_idx" ON "audit_logs" USING btree ("resource_type","resource_id");--> statement-breakpoint

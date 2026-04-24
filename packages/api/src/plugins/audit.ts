@@ -52,10 +52,12 @@ async function audit(app: FastifyInstance) {
           userId: request.auth?.userId ?? "",
           // RFC 8693 `act` claim: when an admin impersonates a user (issue
           // #24, ADR-016) the JWT carries `{ sub: <user>, act: { sub: <admin> } }`.
-          // We record *both* so audit reviewers can reconstruct "who *really*
-          // did this" vs "whose rights were used". Falls back to the primary
-          // userId under normal auth so the column is queryable unconditionally.
-          actorId: request.auth?.act?.sub ?? request.auth?.userId ?? null,
+          // We record the actor ONLY when it differs from the subject, i.e.
+          // only for impersonated requests. Under normal auth `actor_id` is
+          // NULL, which is honest — there is no separate actor. Audit readers
+          // who want the effective actor compute `COALESCE(actor_id, user_id)`.
+          // (PR #142 review M2.)
+          actorId: request.auth?.act?.sub ?? null,
           action: `${request.method}:${routeUrl}`,
           resourceType: extractResourceType(routeUrl),
           resourceId: extractResourceId(request.url),
@@ -79,7 +81,7 @@ async function audit(app: FastifyInstance) {
         url: request.url,
         statusCode: reply.statusCode,
         userId: request.auth.userId,
-        actorId: request.auth.act?.sub ?? request.auth.userId,
+        actorId: request.auth.act?.sub ?? null,
         orgId: request.auth.orgId,
       },
       "audit",

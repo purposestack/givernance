@@ -10,7 +10,7 @@
  */
 
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
-import { outboxEvents } from "@givernance/shared/schema";
+import { type OutboxMetadata, outboxEvents } from "@givernance/shared/schema";
 import { Queue } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -34,11 +34,6 @@ const redis = new Redis(env.REDIS_URL, {
 });
 
 const eventsQueue = new Queue(QUEUE_NAMES.EVENTS, { connection: redis });
-
-interface OutboxMetadata {
-  traceparent?: string;
-  tracestate?: string;
-}
 
 async function relayPendingEvents(): Promise<number> {
   // SELECT FOR UPDATE SKIP LOCKED prevents multiple relay instances from racing

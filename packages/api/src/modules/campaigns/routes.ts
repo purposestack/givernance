@@ -42,13 +42,24 @@ const CampaignDefaultCurrencySchema = Type.Union(
   MULTI_CURRENCY_VALUES.map((value) => Type.Literal(value)),
 );
 
-/** Idempotency-Key header schema — accepted on POST routes for future dedup enforcement */
+/**
+ * Idempotency-Key header schema.
+ *
+ * 24h TTL, scoped per-route and per-tenant. A duplicate in-flight request
+ * with the same key returns 409 + `retry-after`. A key whose original
+ * request already completed replays that response (including `Location`,
+ * `ETag`, `Content-Type`, `retry-after` headers) with
+ * `idempotency-replayed: true`. Body fingerprint is NOT verified — same key
+ * with a different body replays the original response. Non-2xx responses
+ * are not cached, so a 4xx retry re-runs the handler.
+ */
 const IdempotencyKeyHeader = Type.Object({
   "idempotency-key": Type.Optional(
     Type.String({
       minLength: 1,
       maxLength: 255,
-      description: "Client-supplied idempotency key for safe retries",
+      description:
+        "Client-supplied idempotency key. Same key within 24h replays the first 2xx response. See plugins/idempotency.ts for semantics.",
     }),
   ),
 });

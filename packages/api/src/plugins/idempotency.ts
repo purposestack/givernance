@@ -18,10 +18,20 @@
  *           sighting. If the key already has a response, replay it with an
  *           `Idempotency-Replayed: true` hint and short-circuit the route.
  *       (2) `onSend` overwrites the sentinel with the serialised response
- *           envelope `{status, body}` — only for terminal (≥200) responses so
- *           a crashed handler doesn't cache "nothing" permanently. Non-2xx
- *           outcomes (400/409/500) intentionally *are* cached — a retry with
- *           the same key should not flip from 409 to 200 silently.
+ *           envelope `{status, body, headers}` — but only for 2xx responses.
+ *           4xx and 5xx both skip caching (PR #142 review H1): 4xx bodies
+ *           often echo donor PII from validation context, so holding them in
+ *           Redis for 24h would create a PII store outside the docs/17
+ *           retention model, and 5xx caching would pin transient faults as a
+ *           permanent reply. The tradeoff: a client retrying after a 400/409
+ *           gets the route to re-run — deliberate, matches Stripe's
+ *           end-result (they cache 4xx but within a compliance envelope we
+ *           don't have).
+ *       (3) Headers that matter for "create + follow" retries (`Location`,
+ *           `ETag`, `Content-Type`, `retry-after`) are snapshot alongside the
+ *           body so a replay re-emits them (PR #142 review O1). Without this,
+ *           replayed 201s would lose their `Location` and clients following
+ *           the header on retry would break silently.
  *   • Scope: `addIdempotency()` opts routes in explicitly. The plugin is a
  *     no-op for routes not configured, so existing GETs and non-financial
  *     POSTs pay zero cost.
@@ -47,7 +57,15 @@ const PENDING_SENTINEL = "__pending__";
 interface CachedResponse {
   status: number;
   body: unknown;
+  headers?: Record<string, string>;
 }
+
+/**
+ * Allowlist of response headers we snapshot + replay. Keep intentionally
+ * narrow — we don't want to leak Set-Cookie, auth hints, or rate-limit state
+ * across replays.
+ */
+const REPLAYED_HEADERS = ["location", "etag", "content-type", "retry-after"];
 
 declare module "fastify" {
   interface FastifyContextConfig {
@@ -103,10 +121,12 @@ async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
 
     if (!cached || cached === PENDING_SENTINEL) {
       // In flight from another connection. Returning 409 is friendlier than a
-      // blocking wait — the client can back off and retry in a second.
+      // blocking wait — the client can back off and retry. `retry-after: 2`
+      // (PR #142 review Y7) gives slow handlers (e.g. PDF generation) a
+      // chance to finish so the next retry lands on the cached response.
       return reply
         .status(409)
-        .header("retry-after", "1")
+        .header("retry-after", "2")
         .send(
           problemDetail(
             409,
@@ -117,8 +137,13 @@ async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
     }
 
     try {
-      const { status, body } = JSON.parse(cached) as CachedResponse;
+      const { status, body, headers } = JSON.parse(cached) as CachedResponse;
       reply.header("idempotency-replayed", "true");
+      if (headers) {
+        for (const [name, value] of Object.entries(headers)) {
+          reply.header(name, value);
+        }
+      }
       // Skip the rest of the handler — the cached body IS the response.
       request.idempotencyCacheKey = null;
       return reply.status(status).send(body);
@@ -136,12 +161,13 @@ async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
     const cacheKey = request.idempotencyCacheKey;
     if (!cacheKey) return payload;
 
-    // Only cache responses the handler actually produced — headers already
-    // sent means Fastify has serialised; we just snapshot status + body.
-    // Don't cache 5xx so server crashes become retryable (transient faults
-    // shouldn't pin a "500 forever" response to the idempotency key).
-    if (reply.statusCode >= 500) {
-      await sharedRedis.del(cacheKey);
+    // Only cache 2xx. 4xx bodies often contain echoed donor PII from
+    // validation errors — Redis is not in the docs/17 PII retention model,
+    // so we let 4xx re-execute on retry. 5xx never caches so transient
+    // faults stay retryable. The pending sentinel still expires via TTL.
+    // (PR #142 review H1.)
+    if (reply.statusCode < 200 || reply.statusCode >= 300) {
+      await redis.del(cacheKey);
       return payload;
     }
 
@@ -156,7 +182,25 @@ async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
       body = payload;
     }
 
-    const cached: CachedResponse = { status: reply.statusCode, body };
+    // Snapshot the allowlisted headers so a replay re-emits `Location`,
+    // `ETag`, etc. Without this, a retried `POST /donations` 201 loses its
+    // `Location` header and clients relying on `Location: /v1/donations/:id`
+    // to follow up break silently (PR #142 review O1).
+    const capturedHeaders: Record<string, string> = {};
+    for (const name of REPLAYED_HEADERS) {
+      const value = reply.getHeader(name);
+      if (typeof value === "string") {
+        capturedHeaders[name] = value;
+      } else if (typeof value === "number") {
+        capturedHeaders[name] = String(value);
+      }
+    }
+
+    const cached: CachedResponse = {
+      status: reply.statusCode,
+      body,
+      ...(Object.keys(capturedHeaders).length > 0 ? { headers: capturedHeaders } : {}),
+    };
     await redis.set(cacheKey, JSON.stringify(cached), "EX", IDEMPOTENCY_TTL_SECONDS);
     return payload;
   });

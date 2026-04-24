@@ -74,4 +74,36 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   "*.nationalId",
   "*.notes",
   "*.customFields",
+
+  // ─── Nested domain objects (two-level reach) ───────────────────────────────
+  // Pino's wildcard is one-level only; enumerate the likely carrier keys so a
+  // log line like `log.info({ constituent: {...full row...} })` still redacts
+  // the PII fields. Catches the common "I just spread the whole entity into
+  // the log context" mistake highlighted in PR #142 review M3.
+  "body.constituent.email",
+  "body.constituent.phone",
+  "body.constituent.firstName",
+  "body.constituent.lastName",
+  "body.constituent.address",
+  "body.constituent.nationalId",
+  "req.body.constituent.email",
+  "req.body.constituent.phone",
+  "req.body.constituent.firstName",
+  "req.body.constituent.lastName",
+  "req.body.constituent.address",
+  "req.body.constituent.nationalId",
+  "constituent.email",
+  "constituent.phone",
+  "constituent.firstName",
+  "constituent.lastName",
+  "constituent.address",
+  "constituent.nationalId",
+  "volunteer.email",
+  "volunteer.phone",
+  "volunteer.firstName",
+  "volunteer.lastName",
+  "donor.email",
+  "donor.phone",
+  "donor.firstName",
+  "donor.lastName",
 ];
