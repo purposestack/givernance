@@ -98,21 +98,27 @@ SMTP_PORT=1025
 
 ## Running the Application Locally
 
-Once the infra stack is up (`./scripts/dev-up.sh` or `docker compose up -d`):
+`./scripts/dev-up.sh` already installs dependencies, runs migrations on both the app and test DBs, reconciles the Keycloak realm, and — **if the fixture tenant has no constituents yet** — seeds a demo tenant (`givernance`, UUID `00000000-0000-0000-0000-0000000000a1`) with 50 constituents, 5 campaigns, and 100 donations. Re-running the script after the seed is in place will skip seeding (the script is safe to invoke repeatedly).
+
+So the happy path is:
 
 ```bash
-# 1. Install dependencies
+./scripts/dev-up.sh   # one command: infra + migrations + seed (first time) + realm sync
+pnpm dev              # start all workspace dev servers in parallel
+```
+
+To force a fresh seed (e.g. after schema churn), wipe volumes first:
+
+```bash
+docker compose down -v && ./scripts/dev-up.sh
+```
+
+Manual equivalents if you're running Compose directly (`docker compose up -d` instead of `dev-up.sh`):
+
+```bash
 pnpm install
-
-# 2. Run database migrations
 pnpm db:migrate
-
-# 3. Seed a demo tenant with 50 constituents / 5 campaigns / 100 donations
-pnpm --filter @givernance/api run db:seed
-# → creates tenant "givernance" with fixed UUID 00000000-0000-0000-0000-0000000000a1
-
-# 4. Start all workspace dev servers in parallel
-pnpm dev
+pnpm --filter @givernance/api run db:seed   # one-shot; re-runs append, so only run on empty DB
 ```
 
 You should see the web on `http://localhost:3000`, the API on `http://localhost:4000`, plus worker and outbox relay processes.
