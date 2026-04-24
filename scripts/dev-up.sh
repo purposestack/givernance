@@ -51,12 +51,31 @@ echo "Running migrations on test database..."
 DATABASE_URL="postgresql://${POSTGRES_USER:-givernance}:${POSTGRES_PASSWORD:-givernance_dev}@localhost:5432/givernance_test" \
   pnpm --filter @givernance/api db:migrate
 
+# Pre-check: on a pre-ADR-017 volume the init script in infra/postgres/init/
+# never fires (Postgres only runs it on an empty data dir), and the readiness
+# probe below would hang forever. Fail loudly with a pointer to the upgrade
+# steps instead.
+KC_DB_NAME="${KEYCLOAK_DB_NAME:-givernance_keycloak}"
+if ! docker compose exec -T postgres psql \
+  -U "${POSTGRES_USER:-givernance}" \
+  -d postgres \
+  -tAc "SELECT 1 FROM pg_database WHERE datname='${KC_DB_NAME}'" | grep -q 1; then
+  echo "✗ Keycloak database '${KC_DB_NAME}' does not exist on this volume."
+  echo "  This looks like a pre-ADR-017 checkout — see docs/infra/README.md"
+  echo "  §\"Upgrading from a pre-ADR-017 checkout\":"
+  echo "    docker compose down -v && ./scripts/dev-up.sh"
+  exit 2
+fi
+
 echo "Waiting for Keycloak to initialize its database schema..."
 # Keycloak has its own logical database (ADR-017). We connect as the Postgres
-# superuser (POSTGRES_USER) — it can read any DB regardless of ownership.
+# superuser (POSTGRES_USER) for convenience in local dev — this is the bootstrap
+# role from the native postgres image, not the `keycloak` role. The equivalent
+# SaaS/self-hosted runbook must connect as the `keycloak` role (least privilege);
+# do NOT copy this superuser shortcut into production automation.
 until docker compose exec -T postgres psql \
   -U "${POSTGRES_USER:-givernance}" \
-  -d "${KEYCLOAK_DB_NAME:-givernance_keycloak}" \
+  -d "${KC_DB_NAME}" \
   -tc "SELECT 1 FROM realm WHERE name='master'" 2>/dev/null | grep -q 1; do
   sleep 2
 done
@@ -68,10 +87,15 @@ echo "Relaxing Keycloak SSL requirement for local dev..."
 # PR #136 sets `sslRequired: none` in the realm JSON so a fresh import
 # is already permissive, but we still UPDATE here to cover any env where
 # the realm was seeded before that change landed.
+#
+# The literal 'givernance' is hardcoded alongside ${KEYCLOAK_REALM} because
+# infra/keycloak/realm-givernance.json pins `"realm": "givernance"` — a custom
+# KEYCLOAK_REALM override does not rename the imported realm, so we must still
+# update the row that actually exists.
 docker compose exec -T postgres psql \
   -U "${POSTGRES_USER:-givernance}" \
-  -d "${KEYCLOAK_DB_NAME:-givernance_keycloak}" \
-  -c "UPDATE realm SET ssl_required='NONE' WHERE name IN ('master', '${KEYCLOAK_REALM:-givernance}');"
+  -d "${KC_DB_NAME}" \
+  -c "UPDATE realm SET ssl_required='NONE' WHERE name IN ('master', 'givernance', '${KEYCLOAK_REALM:-givernance}');"
 docker compose restart keycloak > /dev/null
 
 echo "Waiting for Keycloak realm '${KEYCLOAK_REALM:-givernance}' to be reachable..."
@@ -88,12 +112,17 @@ KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-sync-realm.sh"
 # The seed script appends on every run (50 constituents + 5 campaigns +
 # 100 donations), so gating it on "no constituents for the fixture org_id"
 # keeps re-runs of dev-up.sh from ballooning the tables.
+#
+# Do NOT wrap this in `|| echo "0"`: a transient psql failure (restarted
+# postgres, auth hiccup) must fail the script loudly rather than silently
+# re-seed into an already-populated DB. Migrations have run above under
+# `set -e`, so the `constituents` table is guaranteed to exist at this point.
 FIXTURE_ORG_ID="00000000-0000-0000-0000-0000000000a1"
 existing_constituents=$(docker compose exec -T postgres psql \
   -U "${POSTGRES_USER:-givernance}" \
   -d "${POSTGRES_DB:-givernance}" \
-  -tAc "SELECT count(*) FROM constituents WHERE org_id = '${FIXTURE_ORG_ID}'" 2>/dev/null || echo "0")
-if [ "${existing_constituents:-0}" = "0" ]; then
+  -tAc "SELECT count(*) FROM constituents WHERE org_id = '${FIXTURE_ORG_ID}'")
+if [ "${existing_constituents}" = "0" ]; then
   echo ""
   echo "Seeding demo tenant (50 constituents / 5 campaigns / 100 donations)..."
   pnpm --filter @givernance/api run db:seed

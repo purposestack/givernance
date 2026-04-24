@@ -41,6 +41,22 @@ Three layers prevent PII from appearing in logs or error responses:
 - Pseudonymization for deleted PII while preserving finance integrity
 - Data retention policies per object class
 
+### DSAR / SAR spans two logical databases (ADR-017)
+
+Since [ADR-017](./15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db), a full Subject Access Request export must cover **both** the application DB and the Keycloak DB:
+
+| Database | PII held | Joined by |
+|---|---|---|
+| `givernance` | Constituent records, donations, case notes, comms, consent ledger, app-level audit logs | `constituents.id`, `users.id` (Keycloak `sub` claim stored as `users.keycloak_user_id`) |
+| `givernance_keycloak` | Email, username, phone, profile attributes, login events, session history for staff users | `user_entity.id` = the `sub` claim in issued tokens |
+
+Operational impact:
+
+- **Export:** the DSAR tool must query both DBs and join on the `sub`/`keycloak_user_id` link; a single `pg_dump -d givernance` no longer produces a complete subject export for staff users.
+- **Erasure:** the right-to-erasure flow must delete app-DB PII **and** instruct Keycloak to delete the user (via the Admin API `DELETE /users/{id}` — do not issue raw DELETEs against `user_entity` from the app role, which has no grants on `givernance_keycloak` anyway).
+- **Beneficiaries / external constituents** live only in `givernance` (they are not Keycloak users); their SAR flow is unchanged.
+- **Retention:** Keycloak event-log retention (`events-expiration`, `admin-events-expiration`) is configured inside the realm and must match the app-side retention policy — otherwise one DB ages out PII before the other.
+
 ## Access model
 - Roles: super_admin, org_admin, fundraising_manager, program_manager, volunteer_coordinator, data_entry, finance_viewer, volunteer, beneficiary, report_only
 - Privileged operations require step-up auth + reason field

@@ -10,6 +10,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
+    # ADR-017 (one logical DB per tool): CI today only spins up the app DB
+    # (`givernance_test`). When Keycloak-dependent e2e tests land, add a
+    # separate `givernance_keycloak_test` database + `keycloak` role here;
+    # never reuse `givernance_test`. See docs/15-infra-adr.md § ADR-017.
     services:
       postgres:
         image: postgres:16-alpine
