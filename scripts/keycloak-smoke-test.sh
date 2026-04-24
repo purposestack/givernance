@@ -151,6 +151,23 @@ if [ "$org_id_claim" != "$SEED_ORG_ID" ]; then
 fi
 ok "Access token carries org_id=${org_id_claim}."
 
+# ── 2.bis Assert the standard OIDC `sub` claim is present. In Keycloak 26
+#         `sub` is emitted by the `basic` client scope's oidc-sub-mapper;
+#         a realm upgraded from an older Keycloak version won't have
+#         `basic` attached to hand-rolled clients, so the sync script
+#         attaches it explicitly. The web callback's JWT verifier fails
+#         without `sub`, so guard against the regression here.
+sub_claim=$(printf '%s' "$payload_json" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(d.get("sub") or "")
+')
+if [ -z "$sub_claim" ]; then
+  printf '   token payload: %s\n' "$payload_json" >&2
+  fail "Access token missing required 'sub' claim — is the 'basic' client scope attached?"
+fi
+ok "Access token carries standard OIDC sub claim."
+
 # ── 3. Assert the nested Keycloak 26 `organization` claim is also emitted
 #      via the oidc-organization-membership-mapper (on the `organization`
 #      client scope — see docs/21 §2.1). Carries the Keycloak org UUID and

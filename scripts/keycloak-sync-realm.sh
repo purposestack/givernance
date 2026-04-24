@@ -252,22 +252,49 @@ reconcile_scope_mapper "organization" '{
   }
 }'
 
-# 2.d Attach the `organization` scope as DEFAULT on `givernance-web` so every
-#     web-app token carries the claims without the SPA having to request them.
+# 2.d Ensure `givernance-web` has the mandatory default scopes attached.
+#     `organization` — custom, carries org_id / role / membership claims.
+#     `basic`        — built-in, carries the `sub` protocol mapper (added in
+#                      Keycloak 26; realms imported under older Keycloak
+#                      versions don't have it attached to hand-rolled clients
+#                      like `givernance-web`, which strips `sub` from every
+#                      token and breaks the web-app callback's JWT verifier).
 if [ -n "$client_uuid" ]; then
   default_scopes=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes")
-  if printf '%s' "$default_scopes" | python3 -c '
-import sys, json
-have = any(s.get("name") == "organization" for s in json.load(sys.stdin))
+
+  ensure_default_scope() {
+    local scope_name="$1"
+    local scope_id="$2"
+    if [ -z "$scope_id" ]; then
+      warn "Scope '${scope_name}' not found on realm '${REALM}' — cannot attach to '${CLIENT_ID}'."
+      return
+    fi
+    if printf '%s' "$default_scopes" | NAME="$scope_name" python3 -c '
+import json, os, sys
+wanted = os.environ["NAME"]
+have = any(s.get("name") == wanted for s in json.load(sys.stdin))
 sys.exit(0 if have else 1)
 '; then
-    log "Client '${CLIENT_ID}' already has the organization scope on default."
-  else
-    curl -sS -o /dev/null -w 'client-scope attach (web default): HTTP %{http_code}\n' \
-      -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes/${org_scope_id}" \
-      "${auth[@]}"
-    log "Added 'organization' client scope to default on '${CLIENT_ID}'."
-  fi
+      log "Client '${CLIENT_ID}' already has the ${scope_name} scope on default."
+    else
+      curl -sS -o /dev/null -w "client-scope attach (${scope_name} default): HTTP %{http_code}\n" \
+        -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes/${scope_id}" \
+        "${auth[@]}"
+      log "Added '${scope_name}' client scope to default on '${CLIENT_ID}'."
+    fi
+  }
+
+  basic_scope_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/client-scopes" \
+    | python3 -c '
+import sys, json
+for s in json.load(sys.stdin):
+    if s.get("name") == "basic":
+        print(s["id"])
+        break
+')
+
+  ensure_default_scope "organization" "$org_scope_id"
+  ensure_default_scope "basic" "$basic_scope_id"
 fi
 
 # 2.e Attach the `organization` scope as OPTIONAL on `admin-cli`, and turn
