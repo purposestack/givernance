@@ -21,7 +21,6 @@ const PUBLIC_PREFIXES = [
   "/signup",
   "/forgot-password",
   "/reset-password",
-  "/request-access",
   "/p",
   "/api/auth",
   "/_next",
