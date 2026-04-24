@@ -139,9 +139,14 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
 
   useEffect(() => {
     if (!slugDirty) {
+      // Auto-derivation must not force validation: on mount `orgName` is
+      // empty, which would surface the slugSyntax error before the user has
+      // touched the field. Validation still runs on blur (form mode) and on
+      // submit; the `slugState` effect below provides live, non-error hints
+      // while the user is typing.
       form.setValue("slug", slugify(orgNameValue), {
         shouldDirty: false,
-        shouldValidate: true,
+        shouldValidate: false,
       });
     }
   }, [form, orgNameValue, slugDirty]);
