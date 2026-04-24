@@ -83,6 +83,18 @@ export interface DonationCreateInput {
   allocations?: DonationAllocationInput[];
 }
 
+export interface DonationUpdateInput {
+  constituentId: string;
+  amountCents: number;
+  currency?: string;
+  campaignId?: string | null;
+  paymentMethod?: string | null;
+  paymentRef?: string | null;
+  donatedAt?: string;
+  fiscalYear?: number | null;
+  allocations?: DonationAllocationInput[];
+}
+
 export interface DonationReceiptUrl {
   url: string;
 }

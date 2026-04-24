@@ -18,9 +18,11 @@ import {
 import {
   AllocationSumMismatchError,
   createDonation,
+  deleteDonation,
   getDonation,
   getReceiptByDonation,
   listDonations,
+  updateDonation,
 } from "./service.js";
 
 const ListQuery = Type.Intersect([
@@ -44,11 +46,23 @@ const DonationCreateBody = Type.Object({
   constituentId: UuidSchema,
   amountCents: Type.Integer({ minimum: 1 }),
   currency: Type.Optional(CurrencySchema),
-  campaignId: Type.Optional(UuidSchema),
+  campaignId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
   paymentMethod: Type.Optional(Type.String({ maxLength: 50 })),
   paymentRef: Type.Optional(Type.String({ maxLength: 255 })),
   donatedAt: Type.Optional(Type.String({ format: "date-time" })),
   fiscalYear: Type.Optional(Type.Integer()),
+  allocations: Type.Optional(Type.Array(AllocationSchema)),
+});
+
+const DonationUpdateBody = Type.Object({
+  constituentId: UuidSchema,
+  amountCents: Type.Integer({ minimum: 1 }),
+  currency: Type.Optional(CurrencySchema),
+  campaignId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
+  paymentMethod: Type.Optional(Type.Union([Type.String({ maxLength: 50 }), Type.Null()])),
+  paymentRef: Type.Optional(Type.Union([Type.String({ maxLength: 255 }), Type.Null()])),
+  donatedAt: Type.Optional(Type.String({ format: "date-time" })),
+  fiscalYear: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
   allocations: Type.Optional(Type.Array(AllocationSchema)),
 });
 
@@ -276,6 +290,100 @@ export async function donationRoutes(app: FastifyInstance) {
         }
         throw err;
       }
+    },
+  );
+
+  app.patch(
+    "/donations/:id",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["Donations"],
+        params: IdParams,
+        body: DonationUpdateBody,
+        response: { 200: DataResponse(DonationResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const t = resolveTranslations(request);
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", t("errors.unauthorized")));
+      }
+
+      const { id } = request.params as { id: string };
+      const body = request.body as {
+        constituentId: string;
+        amountCents: number;
+        currency?: string;
+        campaignId?: string | null;
+        paymentMethod?: string | null;
+        paymentRef?: string | null;
+        donatedAt?: string;
+        fiscalYear?: number | null;
+        allocations?: { fundId: string; amountCents: number }[];
+      };
+
+      try {
+        const updated = await updateDonation(orgId, id, body);
+
+        if (!updated) {
+          return reply.status(404).send({
+            type: "https://httpproblems.com/http-status/404",
+            title: "Not Found",
+            status: 404,
+            detail: t("errors.notFound", { resource: t("resources.donation") }),
+          });
+        }
+
+        return { data: updated };
+      } catch (err) {
+        if (err instanceof AllocationSumMismatchError) {
+          return reply.status(422).send({
+            type: "https://httpproblems.com/http-status/422",
+            title: "Unprocessable Entity",
+            status: 422,
+            detail: err.message,
+          });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.delete(
+    "/donations/:id",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["Donations"],
+        params: IdParams,
+        response: { 200: DataResponse(DonationResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const t = resolveTranslations(request);
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", t("errors.unauthorized")));
+      }
+
+      const { id } = request.params as { id: string };
+      const deleted = await deleteDonation(orgId, id);
+
+      if (!deleted) {
+        return reply
+          .status(404)
+          .send(
+            problemDetail(
+              404,
+              "Not Found",
+              t("errors.notFound", { resource: t("resources.donation") }),
+            ),
+          );
+      }
+
+      return { data: deleted };
     },
   );
 

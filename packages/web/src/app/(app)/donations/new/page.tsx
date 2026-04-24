@@ -20,7 +20,7 @@ export default async function NewDonationPage() {
           { label: t("breadcrumbNew") },
         ]}
       />
-      <DonationForm />
+      <DonationForm mode="create" />
     </>
   );
 }

@@ -606,7 +606,8 @@
       "amount": "Montant",
       "campaign": "Campagne",
       "paymentMethod": "Paiement",
-      "receipt": "Reçu"
+      "receipt": "Reçu",
+      "actions": "Actions"
     },
     "receiptStatus": {
       "pending": "En attente",
@@ -618,12 +619,32 @@
       "dateTo": "Au"
     },
     "actions": {
-      "new": "Nouveau don"
+      "new": "Nouveau don",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "menu": "Ouvrir le menu d'actions pour {name}"
+    },
+    "deleteDialog": {
+      "title": "Supprimer le don",
+      "description": "Cette action supprimera définitivement le don de {name}.",
+      "descriptionFallback": "Cette action supprimera définitivement le don sélectionné.",
+      "cancel": "Annuler",
+      "confirm": "Supprimer le don",
+      "deleting": "Suppression…"
+    },
+    "success": {
+      "deleted": "Don supprimé."
+    },
+    "errors": {
+      "deleteGeneric": "Une erreur est survenue lors de la suppression du don. Réessayez."
     },
     "form": {
       "createTitle": "Enregistrer un don",
       "createSubtitle": "Ajoutez manuellement un don — chèque, virement, espèces ou carte.",
       "breadcrumbNew": "Nouveau don",
+      "editTitle": "Modifier un don",
+      "editSubtitle": "Mettez à jour le montant, l’attribution et les informations de paiement.",
+      "breadcrumbEdit": "Modifier",
       "sections": {
         "donor": {
           "title": "Donateur",
@@ -673,6 +694,7 @@
       "actions": {
         "cancel": "Annuler",
         "submitCreate": "Enregistrer le don",
+        "submitEdit": "Enregistrer les modifications",
         "submitting": "Enregistrement…"
       },
       "errors": {
@@ -683,7 +705,8 @@
         "amountInvalid": "Le montant doit être supérieur à zéro."
       },
       "success": {
-        "created": "Don enregistré."
+        "created": "Don enregistré.",
+        "updated": "Don mis à jour."
       }
     },
     "detail": {

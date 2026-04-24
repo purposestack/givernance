@@ -8,6 +8,7 @@ import type {
   DonationListResponse,
   DonationListRow,
   DonationReceiptUrl,
+  DonationUpdateInput,
 } from "@/models/donation";
 
 /**
@@ -50,6 +51,25 @@ export const DonationService = {
 
   async createDonation(client: ApiClient, input: DonationCreateInput): Promise<Donation> {
     const response = await client.post<{ data: Donation }>("/v1/donations", toRequestBody(input));
+    return response.data;
+  },
+
+  async updateDonation(
+    client: ApiClient,
+    id: string,
+    input: DonationUpdateInput,
+  ): Promise<Donation> {
+    const response = await client.patch<{ data: Donation }>(
+      `/v1/donations/${encodeURIComponent(id)}`,
+      toUpdateRequestBody(input),
+    );
+    return response.data;
+  },
+
+  async deleteDonation(client: ApiClient, id: string): Promise<Donation> {
+    const response = await client.delete<{ data: Donation }>(
+      `/v1/donations/${encodeURIComponent(id)}`,
+    );
     return response.data;
   },
 
@@ -103,5 +123,22 @@ function toRequestBody(input: DonationCreateInput): Record<string, unknown> {
   if (input.allocations && input.allocations.length > 0) {
     body.allocations = input.allocations;
   }
+  return body;
+}
+
+function toUpdateRequestBody(input: DonationUpdateInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    constituentId: input.constituentId,
+    amountCents: input.amountCents,
+  };
+
+  if (input.currency) body.currency = input.currency;
+  body.campaignId = input.campaignId ?? null;
+  body.paymentMethod = input.paymentMethod ?? null;
+  body.paymentRef = input.paymentRef ?? null;
+  if (input.donatedAt) body.donatedAt = input.donatedAt;
+  if (input.fiscalYear !== undefined) body.fiscalYear = input.fiscalYear;
+  body.allocations = input.allocations ?? [];
+
   return body;
 }

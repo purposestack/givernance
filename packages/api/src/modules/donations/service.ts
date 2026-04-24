@@ -47,6 +47,78 @@ export interface DonationInput {
   allocations?: { fundId: string; amountCents: number }[];
 }
 
+export interface DonationUpdateInput {
+  constituentId: string;
+  amountCents: number;
+  currency?: string;
+  campaignId?: string | null;
+  paymentMethod?: string | null;
+  paymentRef?: string | null;
+  donatedAt?: string;
+  fiscalYear?: number | null;
+  allocations?: { fundId: string; amountCents: number }[];
+}
+
+function normalizeNullableString(value: string | null | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+async function loadDonationUpdateContext(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  donationId: string,
+  constituentId: string,
+) {
+  const [existing, constituent, tenant] = await Promise.all([
+    tx
+      .select({ id: donations.id })
+      .from(donations)
+      .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId))),
+    tx
+      .select({ id: constituents.id })
+      .from(constituents)
+      .where(and(eq(constituents.id, constituentId), eq(constituents.orgId, orgId))),
+    tx.select({ baseCurrency: tenants.baseCurrency }).from(tenants).where(eq(tenants.id, orgId)),
+  ]);
+
+  return { existing: existing[0] ?? null, constituent: constituent[0] ?? null, tenant: tenant[0] };
+}
+
+async function replaceDonationAllocations(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  donationId: string,
+  allocations: { fundId: string; amountCents: number }[] | undefined,
+) {
+  await tx
+    .delete(donationAllocations)
+    .where(
+      and(eq(donationAllocations.donationId, donationId), eq(donationAllocations.orgId, orgId)),
+    );
+
+  if (!allocations || allocations.length === 0) {
+    return;
+  }
+
+  await tx.insert(donationAllocations).values(
+    allocations.map((allocation) => ({
+      orgId,
+      donationId,
+      fundId: allocation.fundId,
+      amountCents: allocation.amountCents,
+    })),
+  );
+}
+
 /** Build the SQL conditions for a list-donations query */
 function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
   const { dateFrom, dateTo, amountMin, amountMax, constituentId, campaignId } = query;
@@ -260,5 +332,71 @@ export async function createDonation(orgId: string, userId: string, input: Donat
     });
 
     return donation;
+  });
+}
+
+/** Update a donation and fully replace its allocations. */
+export async function updateDonation(orgId: string, id: string, input: DonationUpdateInput) {
+  if (input.allocations && input.allocations.length > 0) {
+    const allocSum = input.allocations.reduce((sum, a) => sum + a.amountCents, 0);
+    if (allocSum !== input.amountCents) {
+      throw new AllocationSumMismatchError(allocSum, input.amountCents);
+    }
+  }
+
+  return withTenantContext(orgId, async (tx) => {
+    const { existing, constituent, tenant } = await loadDonationUpdateContext(
+      tx,
+      orgId,
+      id,
+      input.constituentId,
+    );
+
+    if (!existing || !constituent) {
+      return null;
+    }
+
+    const currency = (input.currency ?? "EUR").toUpperCase();
+    const baseCurrency = (tenant?.baseCurrency ?? "EUR").toUpperCase();
+    const exchangeRateService = new ExchangeRateService({ dbClient: tx });
+    const convertedAmount = await exchangeRateService.convertAmountCents(
+      input.amountCents,
+      currency,
+      baseCurrency,
+    );
+
+    const [updated] = await tx
+      .update(donations)
+      .set({
+        constituentId: input.constituentId,
+        amountCents: input.amountCents,
+        currency,
+        exchangeRate: convertedAmount.exchangeRate.toFixed(8),
+        amountBaseCents: convertedAmount.amountBaseCents,
+        campaignId: input.campaignId ?? null,
+        paymentMethod: normalizeNullableString(input.paymentMethod) ?? null,
+        paymentRef: normalizeNullableString(input.paymentRef) ?? null,
+        donatedAt: input.donatedAt ? new Date(input.donatedAt) : undefined,
+        fiscalYear: input.fiscalYear === undefined ? undefined : input.fiscalYear,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(donations.id, id), eq(donations.orgId, orgId)))
+      .returning();
+
+    await replaceDonationAllocations(tx, orgId, id, input.allocations);
+
+    return updated ?? null;
+  });
+}
+
+/** Delete a donation. Related allocations and receipts are removed by FK cascade. */
+export async function deleteDonation(orgId: string, id: string) {
+  return withTenantContext(orgId, async (tx) => {
+    const [deleted] = await tx
+      .delete(donations)
+      .where(and(eq(donations.id, id), eq(donations.orgId, orgId)))
+      .returning();
+
+    return deleted ?? null;
   });
 }

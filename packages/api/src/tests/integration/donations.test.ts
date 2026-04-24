@@ -237,6 +237,103 @@ describe("Donations CRUD", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("PATCH /v1/donations/:id updates a donation and replaces allocations", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/donations/${donationId}`,
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 7200,
+        currency: "EUR",
+        campaignId: null,
+        paymentMethod: "wire",
+        paymentRef: `WIRE-${Date.now()}`,
+        donatedAt: "2026-04-20T00:00:00.000Z",
+        fiscalYear: 2026,
+        allocations: [{ fundId: fundIdA, amountCents: 7200 }],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(
+      res.json<{ data: { amountCents: number; paymentMethod: string | null } }>().data,
+    ).toMatchObject({
+      amountCents: 7200,
+      paymentMethod: "wire",
+    });
+
+    const detailRes = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${donationId}`,
+      headers: authHeader(tokenA),
+    });
+
+    expect(detailRes.statusCode).toBe(200);
+    const detail = detailRes.json<{
+      data: {
+        amountCents: number;
+        paymentMethod: string | null;
+        allocations: Array<{ fundId: string; amountCents: number }>;
+      };
+    }>().data;
+
+    expect(detail.amountCents).toBe(7200);
+    expect(detail.paymentMethod).toBe("wire");
+    expect(detail.allocations).toHaveLength(1);
+    expect(detail.allocations[0]).toMatchObject({ fundId: fundIdA, amountCents: 7200 });
+  });
+
+  it("PATCH /v1/donations/:id returns 422 when allocations do not match the amount", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/donations/${donationId}`,
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 7200,
+        currency: "EUR",
+        allocations: [{ fundId: fundIdA, amountCents: 7100 }],
+      },
+    });
+
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("DELETE /v1/donations/:id deletes a donation", async () => {
+    const tokenA = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1800,
+        paymentMethod: "cash",
+        paymentRef: `DELETE-${Date.now()}`,
+      },
+    });
+    const donationToDelete = createRes.json<{ data: { id: string } }>().data.id;
+
+    const deleteRes = await app.inject({
+      method: "DELETE",
+      url: `/v1/donations/${donationToDelete}`,
+      headers: authHeader(tokenA),
+    });
+
+    expect(deleteRes.statusCode).toBe(200);
+
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${donationToDelete}`,
+      headers: authHeader(tokenA),
+    });
+
+    expect(getRes.statusCode).toBe(404);
+  });
+
   it("DonationCreated outbox event is emitted", async () => {
     const rows = await db.execute(
       sql`SELECT type, payload FROM outbox_events
@@ -273,6 +370,33 @@ describe("Donations RLS tenant isolation", () => {
     const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "GET",
+      url: `/v1/donations/${donationInA}`,
+      headers: authHeader(tokenB),
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("Tenant B cannot PATCH a donation from Tenant A", async () => {
+    const tokenB = signTokenB(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/donations/${donationInA}`,
+      headers: authHeader(tokenB),
+      payload: {
+        constituentId: constituentIdB,
+        amountCents: 2400,
+        currency: "EUR",
+      },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("Tenant B cannot DELETE a donation from Tenant A", async () => {
+    const tokenB = signTokenB(app);
+    const res = await app.inject({
+      method: "DELETE",
       url: `/v1/donations/${donationInA}`,
       headers: authHeader(tokenB),
     });

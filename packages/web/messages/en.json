@@ -606,7 +606,8 @@
       "amount": "Amount",
       "campaign": "Campaign",
       "paymentMethod": "Payment method",
-      "receipt": "Receipt"
+      "receipt": "Receipt",
+      "actions": "Actions"
     },
     "receiptStatus": {
       "pending": "Pending",
@@ -618,12 +619,32 @@
       "dateTo": "To"
     },
     "actions": {
-      "new": "New donation"
+      "new": "New donation",
+      "edit": "Edit",
+      "delete": "Delete",
+      "menu": "Open actions menu for {name}"
+    },
+    "deleteDialog": {
+      "title": "Delete donation",
+      "description": "This will permanently delete the donation for {name}.",
+      "descriptionFallback": "This will permanently delete the selected donation.",
+      "cancel": "Cancel",
+      "confirm": "Delete donation",
+      "deleting": "Deleting…"
+    },
+    "success": {
+      "deleted": "Donation deleted."
+    },
+    "errors": {
+      "deleteGeneric": "Something went wrong while deleting the donation. Please try again."
     },
     "form": {
       "createTitle": "Record a donation",
       "createSubtitle": "Log a new donation manually — by cheque, wire, cash, or card.",
       "breadcrumbNew": "New donation",
+      "editTitle": "Edit donation",
+      "editSubtitle": "Update the donation amount, attribution, and payment details.",
+      "breadcrumbEdit": "Edit",
       "sections": {
         "donor": {
           "title": "Donor",
@@ -673,6 +694,7 @@
       "actions": {
         "cancel": "Cancel",
         "submitCreate": "Save donation",
+        "submitEdit": "Save changes",
         "submitting": "Saving…"
       },
       "errors": {
@@ -683,7 +705,8 @@
         "amountInvalid": "Amount must be greater than zero."
       },
       "success": {
-        "created": "Donation recorded."
+        "created": "Donation recorded.",
+        "updated": "Donation updated."
       }
     },
     "detail": {

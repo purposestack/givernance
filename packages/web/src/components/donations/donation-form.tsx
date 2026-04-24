@@ -57,15 +57,21 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { cn } from "@/lib/utils";
-import type { Campaign, CampaignCurrency } from "@/models/campaign";
+import type { Campaign } from "@/models/campaign";
 import { type Constituent, fullName } from "@/models/constituent";
-import type { DonationAllocationInput, DonationCreateInput } from "@/models/donation";
+import type {
+  DonationAllocationInput,
+  DonationCreateInput,
+  DonationDetail,
+  DonationUpdateInput,
+} from "@/models/donation";
 import type { Fund } from "@/models/fund";
 import { CampaignService } from "@/services/CampaignService";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
 
-const CURRENCIES: readonly CampaignCurrency[] = ["EUR", "GBP", "CHF"] as const;
+const CURRENCIES = ["EUR", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK"] as const;
+type DonationCurrency = (typeof CURRENCIES)[number];
 const PAYMENT_METHODS = ["wire", "cheque", "card", "sepa", "cash", "other"] as const;
 
 interface AllocationFormValue {
@@ -76,7 +82,7 @@ interface AllocationFormValue {
 interface DonationFormValues {
   constituentId: string;
   amountCents: number | null;
-  currency: CampaignCurrency;
+  currency: DonationCurrency;
   campaignId: string;
   paymentMethod: (typeof PAYMENT_METHODS)[number] | "";
   paymentRef: string;
@@ -99,6 +105,11 @@ const DEFAULT_VALUES: DefaultValues<DonationFormValues> = {
   allocations: [],
 };
 
+type CreateMode = { mode: "create"; donation?: undefined };
+type EditMode = { mode: "edit"; donation: DonationDetail };
+
+export type DonationFormProps = CreateMode | EditMode;
+
 async function loadDonationFunds(campaignId: string): Promise<Fund[]> {
   const client = createClientApiClient();
 
@@ -113,14 +124,17 @@ async function loadDonationFunds(campaignId: string): Promise<Fund[]> {
   return allFundsResult.data;
 }
 
-export function DonationForm() {
+export function DonationForm(props: DonationFormProps) {
+  const { mode } = props;
   const router = useRouter();
   const t = useTranslations("donations.form");
+
+  const defaultValues = buildDefaultValues(props);
 
   const form = useForm<DonationFormValues>({
     mode: "onBlur",
     resolver: buildResolver(),
-    defaultValues: DEFAULT_VALUES,
+    defaultValues,
   });
 
   const {
@@ -132,7 +146,23 @@ export function DonationForm() {
     name: "allocations",
   });
 
-  const [selectedConstituent, setSelectedConstituent] = useState<Constituent | null>(null);
+  const [selectedConstituent, setSelectedConstituent] = useState<Constituent | null>(
+    props.donation
+      ? {
+          id: props.donation.constituent.id,
+          orgId: props.donation.orgId,
+          firstName: props.donation.constituent.firstName,
+          lastName: props.donation.constituent.lastName,
+          email: props.donation.constituent.email,
+          phone: null,
+          type: "donor",
+          tags: null,
+          deletedAt: null,
+          createdAt: props.donation.createdAt,
+          updatedAt: props.donation.updatedAt,
+        }
+      : null,
+  );
 
   const [campaignOptions, setCampaignOptions] = useState<Campaign[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
@@ -219,9 +249,19 @@ export function DonationForm() {
     const payload = toApiPayload(values);
 
     try {
-      const created = await DonationService.createDonation(createClientApiClient(), payload);
-      toast.success(t("success.created"));
-      router.push(`/donations/${created.id}`);
+      if (mode === "create") {
+        const created = await DonationService.createDonation(createClientApiClient(), payload);
+        toast.success(t("success.created"));
+        router.push(`/donations/${created.id}`);
+      } else {
+        const updated = await DonationService.updateDonation(
+          createClientApiClient(),
+          props.donation.id,
+          toUpdateApiPayload(values),
+        );
+        toast.success(t("success.updated"));
+        router.push(`/donations/${updated.id}`);
+      }
       router.refresh();
     } catch (err) {
       handleApiError(err, form, {
@@ -526,7 +566,11 @@ export function DonationForm() {
             {t("actions.cancel")}
           </Button>
           <Button type="submit" variant="primary" disabled={isSubmitting}>
-            {isSubmitting ? t("actions.submitting") : t("actions.submitCreate")}
+            {isSubmitting
+              ? t("actions.submitting")
+              : mode === "create"
+                ? t("actions.submitCreate")
+                : t("actions.submitEdit")}
           </Button>
         </div>
       </form>
@@ -701,6 +745,54 @@ function toApiPayload(values: DonationFormValues): DonationCreateInput {
     donatedAt,
     allocations: allocations.length > 0 ? allocations : undefined,
   };
+}
+
+function toUpdateApiPayload(values: DonationFormValues): DonationUpdateInput {
+  const donatedAt = parseDateString(values.donatedAt);
+  const allocations = (values.allocations || [])
+    .map((a) => ({ fundId: a.fundId.trim(), amountCents: a.amountCents ?? 0 }))
+    .filter((a) => a.fundId !== "" && a.amountCents > 0);
+
+  return {
+    constituentId: values.constituentId,
+    amountCents: values.amountCents ?? 0,
+    currency: values.currency,
+    campaignId: (values.campaignId || "").trim() || null,
+    paymentMethod: values.paymentMethod || null,
+    paymentRef: (values.paymentRef || "").trim() || null,
+    donatedAt,
+    allocations,
+  };
+}
+
+function buildDefaultValues(props: DonationFormProps): DefaultValues<DonationFormValues> {
+  if (props.mode === "create") {
+    return DEFAULT_VALUES;
+  }
+
+  return {
+    constituentId: props.donation.constituent.id,
+    amountCents: props.donation.amountCents,
+    currency: props.donation.currency as DonationCurrency,
+    campaignId: props.donation.campaignId ?? "",
+    paymentMethod: normalizePaymentMethod(props.donation.paymentMethod),
+    paymentRef: props.donation.paymentRef ?? "",
+    donatedAt: props.donation.donatedAt.slice(0, 10),
+    allocations: props.donation.allocations.map((allocation) => ({
+      fundId: allocation.fundId,
+      amountCents: allocation.amountCents,
+    })),
+  };
+}
+
+function normalizePaymentMethod(paymentMethod: string | null): DonationFormValues["paymentMethod"] {
+  if (!paymentMethod) {
+    return "";
+  }
+
+  return PAYMENT_METHODS.includes(paymentMethod as (typeof PAYMENT_METHODS)[number])
+    ? (paymentMethod as DonationFormValues["paymentMethod"])
+    : "other";
 }
 
 type TypeboxSchema = Parameters<typeof typeboxResolver>[0];
