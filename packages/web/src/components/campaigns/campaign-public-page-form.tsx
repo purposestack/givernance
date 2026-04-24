@@ -272,7 +272,6 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
             <div className="flex flex-wrap items-center gap-3">
               <PublicPageShareActions
                 campaignId={campaign.id}
-                status={previewValues.status ?? initialPage?.status ?? "draft"}
                 initialStatus={initialPage?.status ?? "draft"}
               />
               <Button asChild variant="ghost">
@@ -433,11 +432,9 @@ function PreviewMetric({ label, value, icon }: { label: string; value: string; i
 
 function PublicPageShareActions({
   campaignId,
-  status,
   initialStatus,
 }: {
   campaignId: string;
-  status: PublicPageStatus;
   initialStatus: PublicPageStatus;
 }) {
   const t = useTranslations("campaigns.publicPage");
