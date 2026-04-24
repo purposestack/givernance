@@ -6,6 +6,7 @@ import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { env } from "./env.js";
 import { jobLogger, logger } from "./lib/logger.js";
+import { extractTraceId } from "./lib/trace-context.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
@@ -54,14 +55,20 @@ async function scheduleRepeatableJobs() {
  * Routes events to specific handlers based on type.
  */
 async function processDomainEvent(job: Job): Promise<void> {
-  const { id, tenantId, type, payload } = job.data as {
+  const { id, tenantId, type, payload, traceparent } = job.data as {
     id: string;
     tenantId: string;
     type: string;
     payload: Record<string, unknown>;
+    traceparent?: string;
   };
 
-  const log = jobLogger({ tenantId, jobId: job.id, traceId: id });
+  // Prefer the W3C trace-id threaded from the API → outbox → relay. Falling
+  // back to the outbox event id keeps historical jobs (pre-metadata column)
+  // still queryable by a single correlator.
+  const traceId = extractTraceId(traceparent) ?? id;
+
+  const log = jobLogger({ tenantId, jobId: job.id, traceId });
 
   log.info({ eventType: type }, "Processing domain event");
 
@@ -69,6 +76,8 @@ async function processDomainEvent(job: Job): Promise<void> {
     const donationId = payload.donationId as string;
     const fiscalYear = new Date().getFullYear();
 
+    // Forward traceparent so the child job's jobLogger inherits the same
+    // trace-id — Loki can reconstruct "API request → event → receipt".
     await receiptsQueue.add(
       "generate-receipt",
       {
@@ -76,6 +85,7 @@ async function processDomainEvent(job: Job): Promise<void> {
         orgId: tenantId,
         fiscalYear,
         locale: "en",
+        traceparent,
       },
       { jobId: `receipt-${donationId}` },
     );
@@ -94,6 +104,7 @@ async function processDomainEvent(job: Job): Promise<void> {
         campaignId,
         orgId: tenantId,
         constituentIds,
+        traceparent,
       },
       { jobId: `campaign-docs-${campaignId}` },
     );
@@ -170,7 +181,29 @@ function startWorkers() {
       logger.info({ worker: w.name, jobId: job.id }, "Job completed");
     });
     w.on("failed", (job, err) => {
-      logger.error({ worker: w.name, jobId: job?.id, err: err.message }, "Job failed");
+      // Distinguish TRANSIENT failures (will be retried) from TERMINAL failures
+      // (attempts exhausted → job is on its way to BullMQ's `failed` set).
+      // The terminal case is a Dead-Letter event and demands an alert-worthy
+      // log line so Loki/Sentry can fire on it. See docs/17 §DLQ and
+      // follow-up ADR drafted in issue #56.
+      const attemptsMade = job?.attemptsMade ?? 0;
+      const maxAttempts = job?.opts?.attempts ?? 1;
+      const terminal = attemptsMade >= maxAttempts;
+      const payload = {
+        worker: w.name,
+        jobId: job?.id,
+        jobName: job?.name,
+        tenantId: (job?.data as { tenantId?: string } | undefined)?.tenantId,
+        attemptsMade,
+        maxAttempts,
+        err: err.message,
+        stack: err.stack,
+      };
+      if (terminal) {
+        logger.error({ ...payload, dlq: true }, "Job failed terminally (DLQ candidate)");
+      } else {
+        logger.warn(payload, "Job failed (will retry)");
+      }
     });
   }
 

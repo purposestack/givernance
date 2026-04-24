@@ -269,7 +269,14 @@ export const auditLogs = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "restrict" }),
+    /** Effective subject — the user whose rights were exercised (RFC 8693 `sub`). */
     userId: varchar("user_id", { length: 255 }),
+    /**
+     * Impersonating actor — non-null when an admin acts on behalf of `userId`
+     * via the `act` claim (double-attribution). Equals `userId` under normal
+     * auth, distinct under delegation/impersonation.
+     */
+    actorId: varchar("actor_id", { length: 255 }),
     action: varchar("action", { length: 255 }).notNull(),
     resourceType: varchar("resource_type", { length: 100 }),
     resourceId: varchar("resource_id", { length: 255 }),
@@ -282,6 +289,39 @@ export const auditLogs = pgTable(
   (table) => [
     index("audit_logs_org_id_idx").on(table.orgId),
     index("audit_logs_user_id_idx").on(table.userId),
+    index("audit_logs_actor_id_idx").on(table.actorId),
+    index("audit_logs_resource_idx").on(table.resourceType, table.resourceId),
+  ],
+);
+
+// ─── Merge History ──────────────────────────────────────────────────────────
+
+/**
+ * Constituent merge history — GDPR Art. 5(2) accountability snapshot.
+ * Preserves the before-state of both the survivor and the merged-away record,
+ * plus the post-merge survivor state, so that audit reviewers can reconstruct
+ * exactly which PII was combined and who authorised it.
+ */
+export const mergeHistory = pgTable(
+  "merge_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    survivorId: uuid("survivor_id").notNull(),
+    mergedId: uuid("merged_id").notNull(),
+    mergedByUserId: varchar("merged_by_user_id", { length: 255 }).notNull(),
+    mergedByActorId: varchar("merged_by_actor_id", { length: 255 }),
+    survivorBefore: jsonb("survivor_before").notNull(),
+    mergedBefore: jsonb("merged_before").notNull(),
+    survivorAfter: jsonb("survivor_after").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("merge_history_org_id_idx").on(table.orgId),
+    index("merge_history_survivor_id_idx").on(table.survivorId),
+    index("merge_history_merged_id_idx").on(table.mergedId),
   ],
 );
 
@@ -347,7 +387,9 @@ export const donations = pgTable(
     currency: varchar("currency", { length: 3 }).notNull().default("EUR"),
     exchangeRate: numeric("exchange_rate", { precision: 18, scale: 8 }),
     amountBaseCents: integer("amount_base_cents").notNull(),
-    campaignId: uuid("campaign_id"),
+    campaignId: uuid("campaign_id").references((): AnyPgColumn => campaigns.id, {
+      onDelete: "set null",
+    }),
     status: donationStatusEnum("status").notNull().default("cleared"),
     platformFeeCents: integer("platform_fee_cents").notNull().default(0),
     paymentMethod: varchar("payment_method", { length: 50 }),
@@ -363,6 +405,7 @@ export const donations = pgTable(
     index("donations_org_id_idx").on(table.orgId),
     index("donations_constituent_id_idx").on(table.constituentId),
     index("donations_donated_at_idx").on(table.donatedAt),
+    index("donations_campaign_id_idx").on(table.campaignId),
     unique("donations_org_payment_uniq").on(table.orgId, table.paymentMethod, table.paymentRef),
   ],
 );
@@ -383,7 +426,10 @@ export const funds = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("funds_org_id_idx").on(table.orgId)],
+  (table) => [
+    index("funds_org_id_idx").on(table.orgId),
+    unique("funds_org_name_uniq").on(table.orgId, table.name),
+  ],
 );
 
 // ─── Donation Allocations ────────────────────────────────────────────────────
@@ -403,6 +449,8 @@ export const donationAllocations = pgTable(
       .notNull()
       .references(() => funds.id, { onDelete: "restrict" }),
     amountCents: integer("amount_cents").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("donation_allocations_org_id_idx").on(table.orgId),
@@ -431,6 +479,9 @@ export const pledges = pgTable(
     stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
     stripeAccountId: varchar("stripe_account_id", { length: 255 }),
     paymentGateway: varchar("payment_gateway", { length: 50 }),
+    stripeMandateId: varchar("stripe_mandate_id", { length: 255 }),
+    mandateAcceptedAt: timestamp("mandate_accepted_at", { withTimezone: true }),
+    mandateIpHash: varchar("mandate_ip_hash", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -456,12 +507,17 @@ export const pledgeInstallments = pgTable(
     donationId: uuid("donation_id").references(() => donations.id, { onDelete: "set null" }),
     expectedAt: timestamp("expected_at", { withTimezone: true }).notNull(),
     status: installmentStatusEnum("installment_status").notNull().default("pending"),
+    /** Per-installment amount (cents). Allows bumped/variable installments. */
+    amountCents: integer("amount_cents").notNull(),
+    /** Optional fund allocation for this installment. Reconciles against donation_allocations. */
+    fundId: uuid("fund_id").references(() => funds.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("pledge_installments_org_id_idx").on(table.orgId),
     index("pledge_installments_pledge_id_idx").on(table.pledgeId),
+    index("pledge_installments_fund_id_idx").on(table.fundId),
   ],
 );
 
@@ -608,13 +664,20 @@ export const campaignQrCodes = pgTable(
     constituentId: uuid("constituent_id").references(() => constituents.id, {
       onDelete: "set null",
     }),
-    code: varchar("code", { length: 255 }).notNull().unique(),
+    /**
+     * Opaque nanoid token (21 chars). No tenant / constituent identifiers are
+     * encoded; the code is resolved server-side against `(org_id, code)` so a
+     * stolen QR reveals nothing about who received it. Scoped per-org to avoid
+     * leaking tenant existence via collision errors.
+     */
+    code: varchar("code", { length: 32 }).notNull(),
     scannedAt: timestamp("scanned_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("campaign_qr_codes_org_id_idx").on(table.orgId),
     index("campaign_qr_codes_campaign_id_idx").on(table.campaignId),
+    unique("campaign_qr_codes_org_code_uniq").on(table.orgId, table.code),
   ],
 );
 

@@ -67,6 +67,7 @@ export async function pledgeRoutes(app: FastifyInstance) {
   app.post(
     "/pledges",
     {
+      config: { idempotency: { routeKey: "POST:/v1/pledges" } },
       preHandler: requireAuth,
       schema: {
         tags: ["Pledges"],
@@ -93,6 +94,9 @@ export async function pledgeRoutes(app: FastifyInstance) {
       };
 
       const pledge = await createPledge(orgId, userId, body);
+      if (pledge) {
+        reply.header("Location", `/v1/pledges/${pledge.id}`);
+      }
       return reply.status(201).send({ data: pledge });
     },
   );

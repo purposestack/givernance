@@ -3,7 +3,14 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
-import { authHeader, ensureTestTenants, signToken, signTokenB } from "../helpers/auth.js";
+import {
+  authHeader,
+  ensureTestTenants,
+  ORG_A,
+  ORG_B,
+  signToken,
+  signTokenB,
+} from "../helpers/auth.js";
 
 let app: FastifyInstance;
 
@@ -11,6 +18,13 @@ beforeAll(async () => {
   app = await createServer();
   await app.ready();
   await ensureTestTenants();
+  // Fresh slate for funds — issue #56 Data #13 added `UNIQUE(org_id, name)`
+  // so re-running the suite against a persistent DB without cleanup hits
+  // duplicates on every POST. Delete both tenants' funds here so each test
+  // run starts predictable. Cascade handles campaign_funds / donations.
+  await db.execute(sql`DELETE FROM campaign_funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  await db.execute(sql`DELETE FROM donation_allocations WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  await db.execute(sql`DELETE FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
 });
 
 afterAll(async () => {

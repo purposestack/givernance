@@ -9,6 +9,7 @@ import {
   createDonationIntent,
   getAdminPublicPage,
   getPublicPage,
+  resolveCampaignQrCode,
   upsertPublicPage,
 } from "./service.js";
 
@@ -115,6 +116,51 @@ export async function publicDonationRoutes(app: FastifyInstance) {
       }
 
       return { data: page };
+    },
+  );
+
+  /**
+   * GET /v1/public/qr/:code — resolve an opaque campaign QR-code token.
+   *
+   * Scoped under rate-limiting (unauthenticated) and returns 404 for unknown
+   * codes so a scraper can't distinguish "never issued" from "issued for
+   * another tenant". Response reveals only the campaign id + optional
+   * constituent id the code was bound to, which the public page uses to
+   * pre-fill the donation form.
+   */
+  app.get(
+    "/public/qr/:code",
+    {
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["Public Donations"],
+        params: Type.Object({ code: Type.String({ minLength: 10, maxLength: 32 }) }),
+        response: {
+          200: DataResponse(
+            Type.Object({
+              campaignId: UuidSchema,
+              constituentId: Type.Union([UuidSchema, Type.Null()]),
+            }),
+          ),
+          404: Type.Any(),
+          429: Type.Any(),
+        },
+      },
+    },
+    async (request, reply) => {
+      const { code } = request.params as { code: string };
+      const resolved = await resolveCampaignQrCode(code);
+
+      if (!resolved) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "QR code not found"));
+      }
+
+      return {
+        data: {
+          campaignId: resolved.campaignId,
+          constituentId: resolved.constituentId,
+        },
+      };
     },
   );
 

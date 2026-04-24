@@ -1079,4 +1079,122 @@ The `givernance_keycloak` database + role are provisioned on first Postgres brin
 
 ---
 
+## ADR-018: Offset Pagination for Phase 1 — Cursor Deferred
+
+**Status**: Accepted (Phase 1 Sprint 5, issue #56 API #5)
+**Related**: `docs/02-reference-architecture.md` (API design section), `docs/04-business-capabilities.md`
+
+### Context
+
+`docs/02` specified cursor pagination as the target for scale. Phase 1 Sprints 1–2 shipped offset-based (`page` / `perPage`) pagination on every list endpoint (`/v1/constituents`, `/v1/donations`, `/v1/campaigns`, `/v1/pledges`). PR #49 review flagged this as a gap: at tenant scale, offset pagination degrades (O(page) per request) and can produce duplicate / missing rows under concurrent writes. Reviewers asked us to either migrate to cursor now or document the decision with a revisit trigger.
+
+### Decision
+
+**Keep offset pagination through Phase 1. Migrate to cursor in Phase 2, scoped to endpoints that demonstrate the problem.**
+
+- All existing list endpoints stay on `{ page, perPage, total, totalPages }`.
+- New list endpoints follow the same shape unless the domain is strictly append-only (e.g. `GET /v1/audit-logs` when exposed publicly).
+- Cursor migration is a per-endpoint opt-in — we don't flip the whole API at once.
+
+### Why offset, for now
+
+- **UI needs `total`.** Every dashboard view built from the existing Next.js mockups renders "Showing X–Y of N" and a pageable table. Cursor pagination without a separate `/count` call cannot provide this, and the count query is the exact work we'd try to avoid.
+- **Tenant sizing.** Givernance tenants are 2–200 staff with ≤ 10k constituents / year. Offset cost is bounded by `page × perPage`; users rarely page past 5. The degradation case (page 900 on 50M rows) doesn't exist until we onboard multi-national federations — beyond Phase 1.
+- **Write-concurrency drift is manageable.** Our list endpoints are `ORDER BY created_at DESC` (stable for hours after creation); a single UI client's requests fire fast enough that drift isn't the dominant UX issue.
+- **Switching cost is one-way.** Once the client ships cursor support, reverting is painful. Offset → cursor is additive; cursor → offset regresses the `total` display.
+
+### Rejected alternatives
+
+- **Cursor everywhere, now.** Too large a client refactor for a gap that isn't biting, and we'd need `/count` endpoints to keep the UI honest — doubling request volume.
+- **Hybrid (`cursor` when provided, else `page`).** A single endpoint with two pagination contracts is a documentation trap and a test-matrix nightmare.
+- **Keyset on `(created_at, id)` without calling it cursor.** That *is* cursor by another name; not a real alternative.
+
+### Revisit criteria
+
+- Any list endpoint routinely serves pages > 200 and server-side p95 exceeds 500ms — migrate that endpoint to cursor.
+- A federation / enterprise tenant lands with > 1M rows in any big table — migrate that table's list endpoint.
+- `audit_logs` list endpoint exposed to customers — ship as cursor from day one.
+
+### Consequences
+
+- Phase 1 gets consistent UX with `total` counts and predictable page size.
+- Implicit future Phase 2 task: build a `limit` + `before`/`after` cursor helper when an endpoint warrants it. Keep `PaginationQuery` / `PaginationSchema` live until then.
+
+---
+
+## ADR-019: Cross-Tenant Foreign-Key Violations Return 404 (Not 422)
+
+**Status**: Accepted (Phase 1 Sprint 5, issue #56 Data)
+**Related**: `docs/06-security-compliance.md` (tenant isolation)
+
+### Context
+
+`POST /v1/donations` accepted a `campaignId` / `fundId` that existed in *another* tenant: the FK passed (the id is a real UUID), and our tenant-scoped write landed a donation bound to a different tenant's campaign (QA review of PR #53, issue #56 Data #1/#2). We are adding explicit `assertCampaignBelongsToOrg` / `assertFundsBelongToOrg` checks in the donation service. Question: what HTTP status should the route return for a cross-tenant reference?
+
+### Decision
+
+**Return 404 Not Found for any reference to a resource that exists in another tenant.**
+
+Applied uniformly across cross-tenant FK violations: `campaignId`, `fundId`, and any future FK the services validate themselves. The response body uses the problem+json shape with the same `detail` a genuinely-missing resource returns.
+
+### Why 404 over 422 / 403
+
+- **Existence leakage is the threat model.** An attacker enumerating UUIDs to fish for cross-tenant resources only needs a status-code difference to distinguish "doesn't exist" from "exists elsewhere." 404 for both denies that signal.
+- **422 Unprocessable Entity** would fit if the FK were *structurally* wrong (bad UUID format). "UUID is syntactically fine, just not yours" is a semantic mismatch: from the client's reachable graph, the resource doesn't exist.
+- **403 Forbidden** implies the client *could* have authorised this with more permissions. They cannot — cross-tenant access is structurally impossible.
+- **Industry precedent.** Stripe, GitHub, Notion all 404 for cross-account references.
+
+### Exception: malformed UUIDs
+
+Bad UUID format fails TypeBox validation → 400 Bad Request. Cross-tenant semantics only apply when the id *is* a valid UUID and *does* name a real row elsewhere.
+
+### Rejected alternatives
+
+- **422 everywhere.** Leaks existence.
+- **403 with a generic body.** Reveals the id as "reachable in principle" and tells the client the wrong fix.
+- **Same 404 envelope with a distinct `detail`.** The `detail` string is part of the observable response; matching the "genuine 404" detail is a small defence-in-depth choice.
+
+### Consequences
+
+- A client that typoed a UUID they do own gets the same 404 as a cross-tenant attempt — negligible UX cost.
+- Server logs still carry `orgId`, id, resource type so operators can distinguish the cases at support time. The asymmetry is only public.
+
+---
+
+## ADR-020: BullMQ Dead-Letter Strategy — `failed` Set + Structured Alerting for Phase 1
+
+**Status**: Accepted (Phase 1 Sprint 5, issue #56 Platform #6)
+**Related**: `docs/17-log-management.md`, ADR-008 (job queue)
+
+### Context
+
+Worker jobs retry up to 3× with exponential backoff. After attempts exhaust, BullMQ moves the job into the per-queue `failed` set (retained by `removeOnFail: { count: 50 }`). Before issue #56 there was no explicit handler for *terminal* failures — operators found out via BullBoard when a customer complained.
+
+### Decision
+
+**Structured logging + Loki/Sentry alerting on terminal failure. Keep the BullMQ `failed` set as the operator inspection surface. Revisit if volume grows.**
+
+- **Detection.** Every worker's `on('failed', ...)` handler compares `attemptsMade >= opts.attempts`. Terminal failures log at `error` with `{ dlq: true, tenantId, jobId, jobName, err, stack }`; retryable failures log at `warn`.
+- **Inspection.** BullBoard remains the UI. Retention: `removeOnFail: { count: 50 }` per queue — sufficient for Phase 1 volumes; operators triage within days.
+- **Alerting.** Loki query `{service="givernance-worker"} | json | dlq=true` drives a Grafana alert (operator setup). Sentry's pino transport captures error-level logs with `dlq: true` as breadcrumbs.
+- **Replay.** Manual via BullBoard's retry button. No programmatic retry endpoint yet.
+
+### Why not heavier options
+
+- **Separate DLQ queue.** Doubles per-queue ops burden (connections, metrics, retention) for minimal extra capability at current volume. Revisit when BullMQ's 50-item retention isn't enough for triage.
+- **Postgres `dead_letter_jobs` table.** Overkill when we see a few terminal failures / day. Revisit when (a) compliance demands > 30-day failure retention, or (b) programmatic replay tooling independent of Redis matters.
+
+### Consequences
+
+- Worker code carries exactly one log-line branch — no new infra.
+- BullMQ retry-semantics changes could silently skip the terminal check; we pin the major version and need a follow-up integration test (tracked in issue #56 QA).
+
+### Revisit criteria
+
+- Sustained > 10 terminal jobs / day → separate DLQ queue.
+- Compliance requires > 30-day failure retention → Postgres DLQ table.
+- Replay becomes frequent enough that BullBoard clicks hurt → build a small admin tool, then decide between queue vs table.
+
+---
+
 *This document is curated to show only active architectural decisions. Superseded decisions are removed for clarity.*

@@ -20,6 +20,7 @@ import {
   findDuplicates,
   getConstituent,
   listConstituents,
+  MergePreconditionError,
   mergeConstituents,
   updateConstituent,
 } from "./service.js";
@@ -96,7 +97,11 @@ const ConflictResponse = Type.Intersect([
   Type.Object({ duplicates: Type.Array(DuplicateResponse) }),
 ]);
 
-const MergeResult = Type.Object({ merged: Type.Boolean() });
+const MergeResult = Type.Object({ merged: Type.Boolean(), etag: Type.String() });
+
+const MergeHeaders = Type.Object({
+  "if-match": Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+});
 
 export async function constituentRoutes(app: FastifyInstance) {
   /** List constituents with pagination, search, and filtering */
@@ -241,6 +246,9 @@ export async function constituentRoutes(app: FastifyInstance) {
       }
 
       const constituent = await createConstituent(orgId, body);
+      if (constituent) {
+        reply.header("Location", `/v1/constituents/${constituent.id}`);
+      }
       return reply.status(201).send({ data: constituent });
     },
   );
@@ -322,9 +330,11 @@ export async function constituentRoutes(app: FastifyInstance) {
         tags: ["Constituents"],
         params: IdParams,
         body: MergeBody,
+        headers: MergeHeaders,
         response: {
           200: DataResponse(MergeResult),
           400: ProblemDetailSchema,
+          409: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -338,6 +348,7 @@ export async function constituentRoutes(app: FastifyInstance) {
 
       const { id } = request.params as { id: string };
       const { targetId } = request.body as { targetId: string };
+      const ifMatch = (request.headers as Record<string, string | undefined>)["if-match"];
 
       if (id === targetId) {
         return reply
@@ -345,15 +356,40 @@ export async function constituentRoutes(app: FastifyInstance) {
           .send(problemDetail(400, "Bad Request", "Cannot merge a constituent into itself"));
       }
 
-      const result = await mergeConstituents(orgId, id, targetId, userId);
+      try {
+        const result = await mergeConstituents(
+          orgId,
+          id,
+          targetId,
+          // Pass both the effective subject and the impersonating actor so the
+          // merge_history snapshot records double-attribution (ADR-016 / #24).
+          { userId, actorId: request.auth?.act?.sub ?? null },
+          { ifMatch },
+        );
 
-      if (!result) {
-        return reply
-          .status(404)
-          .send(problemDetail(404, "Not Found", "One or both constituents not found"));
+        if (!result) {
+          return reply
+            .status(404)
+            .send(problemDetail(404, "Not Found", "One or both constituents not found"));
+        }
+
+        // RFC 7232: successful conditional mutation returns the new ETag.
+        reply.header("ETag", result.etag);
+        return { data: result };
+      } catch (err) {
+        if (err instanceof MergePreconditionError) {
+          return reply
+            .status(409)
+            .send(
+              problemDetail(
+                409,
+                "Conflict",
+                "The survivor constituent has been modified since you last read it. Refetch and retry.",
+              ),
+            );
+        }
+        throw err;
       }
-
-      return { data: result };
     },
   );
 }

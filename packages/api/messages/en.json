@@ -12,6 +12,7 @@
     "donation": "Donation",
     "constituent": "Constituent",
     "campaign": "Campaign",
+    "fund": "Fund",
     "grant": "Grant",
     "receipt": "Tax receipt",
     "impersonationSession": "Impersonation session"
