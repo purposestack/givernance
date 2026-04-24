@@ -16,8 +16,8 @@ flowchart TB
   end
 
   subgraph Infrastructure
-    PG["PostgreSQL 16\n(SaaS: Neon.tech EU · Self-hosted: Postgres 16)"]
-    PgBouncer["PgBouncer 1.22\n(self-hosted only — Neon includes pooling)"]
+    PG["PostgreSQL 16 — instance\n(SaaS: Scaleway Managed PG EU · Self-hosted: Postgres 16)\ndb: givernance (app, Drizzle)\ndb: givernance_keycloak (IdP) — ADR-017"]
+    PgBouncer["PgBouncer 1.22\n(self-hosted only — managed PG includes pooling)"]
     PGReplica["PostgreSQL 16\n(read replica — reporting)"]
     Redis["Redis / Upstash\n(job queue + cache + rate limit\nSaaS: Upstash EU · Self-hosted: Redis 7)"]
     Storage["Cloudflare R2 / MinIO\n(SaaS: R2 · Self-hosted: MinIO)"]
@@ -45,7 +45,7 @@ flowchart TB
   Web -->|REST API| API
   Web -->|OIDC flow| Keycloak
 
-  API --> PgBouncer
+  API -->|givernance DB| PgBouncer
   PgBouncer --> PG
   PG -.->|WAL replication| PGReplica
   API -->|outbox enqueue| Redis
@@ -54,12 +54,14 @@ flowchart TB
   API --> Stripe
   API --> Accounting
 
+  Keycloak -->|givernance_keycloak DB| PG
+
   Worker -->|consume jobs| Redis
-  Worker --> PgBouncer
+  Worker -->|givernance DB| PgBouncer
   Worker --> Storage
   Worker --> Email
 
-  Migrate -->|direct DB load| PG
+  Migrate -->|direct DB load — givernance| PG
   Migrate -->|read SF exports| Storage
 
   API -.->|Phase 4+| NATS

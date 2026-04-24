@@ -74,12 +74,13 @@ You are the principal platform architect for Givernance. You own the system arch
 
 1. **Start monolith, extract services only under load or team scale pressure**
 2. **Postgres RLS is the tenancy boundary** — no shared schema tricks
-3. **Every mutation emits a domain event** to the outbox table (transactional outbox pattern)
-4. **CQRS-lite**: separate read models (views/materialized views) from write models
-5. **API-first**: every UI action goes through the API; no direct DB from frontend
-6. **Offline-capable exports**: reports generate async, stored in R2/MinIO, fetched by polling or webhook
-7. **Template deployments**: org onboarding creates schema, seeds roles, runs org-level config from a versioned template
-8. **Shared package as single source of truth**: `@givernance/shared` owns Drizzle schema, Zod validators, domain event types, and BullMQ job type definitions — no duplication across packages
+3. **One logical database per tool** (ADR-017) — never co-locate an application schema with a third-party service's schema (Keycloak, future IdPs, dashboards, analytics sidecars) in the same logical database. Each tool gets its own DB + its own owner role on the shared Postgres instance. Any new tool needing Postgres storage must add an init script under `infra/postgres/init/` and a row in the "Databases" table of `docs/infra/README.md` — never reuse `givernance` or `givernance_keycloak`.
+4. **Every mutation emits a domain event** to the outbox table (transactional outbox pattern)
+5. **CQRS-lite**: separate read models (views/materialized views) from write models
+6. **API-first**: every UI action goes through the API; no direct DB from frontend
+7. **Offline-capable exports**: reports generate async, stored in R2/MinIO, fetched by polling or webhook
+8. **Template deployments**: org onboarding creates schema, seeds roles, runs org-level config from a versioned template
+9. **Shared package as single source of truth**: `@givernance/shared` owns Drizzle schema, Zod validators, domain event types, and BullMQ job type definitions — no duplication across packages
 
 ## RBAC model (summarized)
 

@@ -52,9 +52,11 @@ DATABASE_URL="postgresql://${POSTGRES_USER:-givernance}:${POSTGRES_PASSWORD:-giv
   pnpm --filter @givernance/api db:migrate
 
 echo "Waiting for Keycloak to initialize its database schema..."
+# Keycloak has its own logical database (ADR-017). We connect as the Postgres
+# superuser (POSTGRES_USER) — it can read any DB regardless of ownership.
 until docker compose exec -T postgres psql \
   -U "${POSTGRES_USER:-givernance}" \
-  -d "${POSTGRES_DB:-givernance}" \
+  -d "${KEYCLOAK_DB_NAME:-givernance_keycloak}" \
   -tc "SELECT 1 FROM realm WHERE name='master'" 2>/dev/null | grep -q 1; do
   sleep 2
 done
@@ -62,7 +64,7 @@ done
 echo "Relaxing Keycloak SSL requirement for local dev..."
 docker compose exec -T postgres psql \
   -U "${POSTGRES_USER:-givernance}" \
-  -d "${POSTGRES_DB:-givernance}" \
+  -d "${KEYCLOAK_DB_NAME:-givernance_keycloak}" \
   -c "UPDATE realm SET ssl_required='NONE' WHERE name='master';"
 docker compose restart keycloak > /dev/null
 
@@ -81,7 +83,7 @@ echo "====================================="
 echo " Givernance — Local Dev Stack"
 echo "====================================="
 echo ""
-echo " PostgreSQL   localhost:${POSTGRES_PORT:-5432}   (DB: ${POSTGRES_DB:-givernance})"
+echo " PostgreSQL   localhost:${POSTGRES_PORT:-5432}   (app DB: ${POSTGRES_DB:-givernance} · Keycloak DB: ${KEYCLOAK_DB_NAME:-givernance_keycloak})"
 echo " Redis        localhost:${REDIS_PORT:-6379}"
 echo " Keycloak     http://localhost:${KEYCLOAK_PORT:-8080}   (admin/admin)"
 echo " MinIO API    http://localhost:${MINIO_API_PORT:-9000}"

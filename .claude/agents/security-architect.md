@@ -66,6 +66,7 @@ SET LOCAL app.current_role = 'fundraising_manager';
 - No direct DB access for application users; only the API service user
 - Separate DB credentials per service (API user, migration user, reporting user)
 - DB credentials managed via environment secrets management (e.g., `.env` + secret manager for production); never committed to source control
+- **One logical database per tool (ADR-017)**: the application (`givernance`) and Keycloak (`givernance_keycloak`) have separate logical databases and separate owner roles on the same Postgres instance. The `givernance` owner role has no grants on Keycloak's DB and vice versa — so an app SQLi or a compromised Keycloak role cannot cross the boundary. Any new tool added to the stack must follow the same pattern: new logical DB, new owner role, no cross-grants. RLS only covers app tables — the Keycloak DB's isolation is provided by this boundary, not by RLS.
 
 ### Network security
 - All external traffic: TLS 1.3 minimum; HSTS preload
