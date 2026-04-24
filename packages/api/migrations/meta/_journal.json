@@ -183,6 +183,13 @@
       "when": 1776978756727,
       "tag": "0025_blue_lenny_balinger",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1777049131653,
+      "tag": "0026_phase1_hardening",
+      "breakpoints": true
     }
   ]
 }

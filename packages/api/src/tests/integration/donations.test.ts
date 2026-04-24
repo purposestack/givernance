@@ -39,13 +39,20 @@ beforeAll(async () => {
   });
   constituentIdB = res2.json<{ data: { id: string } }>().data.id;
 
-  // Create a fund for allocation tests (use withTenantContext instead of session-scoped set_config)
+  // Create a fund for allocation tests. Idempotent across runs now that
+  // `funds(org_id, name)` is UNIQUE (issue #56 Data #13): re-running the
+  // suite against a persistent DB without cleanup would otherwise violate
+  // the new constraint.
   await withTenantContext(ORG_A, async (tx) => {
     const [fund] = await tx
       .insert(funds)
       .values({ orgId: ORG_A, name: "General Fund", type: "unrestricted" })
+      .onConflictDoUpdate({
+        target: [funds.orgId, funds.name],
+        set: { updatedAt: new Date() },
+      })
       .returning();
-    // biome-ignore lint/style/noNonNullAssertion: test setup — insert always returns a row
+    // biome-ignore lint/style/noNonNullAssertion: onConflictDoUpdate always returns a row
     fundIdA = fund!.id;
   });
 

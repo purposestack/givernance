@@ -162,6 +162,7 @@ export async function campaignRoutes(app: FastifyInstance) {
   app.post(
     "/campaigns",
     {
+      config: { idempotency: { routeKey: "POST:/v1/campaigns" } },
       preHandler: requireAuth,
       schema: {
         tags: ["Campaigns"],
@@ -191,6 +192,12 @@ export async function campaignRoutes(app: FastifyInstance) {
       };
       try {
         const campaign = await createCampaign(orgId, body, userId);
+        if (!campaign) {
+          return reply
+            .status(404)
+            .send(problemDetail(404, "Not Found", "Parent campaign not found"));
+        }
+        reply.header("Location", `/v1/campaigns/${campaign.id}`);
         return reply.status(201).send({ data: campaign });
       } catch (err) {
         if (err instanceof CampaignValidationError) {
@@ -397,6 +404,7 @@ export async function campaignRoutes(app: FastifyInstance) {
   app.post(
     "/campaigns/:id/documents",
     {
+      config: { idempotency: { routeKey: "POST:/v1/campaigns/:id/documents" } },
       preHandler: requireOrgAdmin,
       schema: {
         tags: ["Campaigns"],
@@ -422,6 +430,10 @@ export async function campaignRoutes(app: FastifyInstance) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
 
+      // `Location` points clients at the polling resource for this job — they
+      // can GET the campaign to watch document statuses move from "pending"
+      // to "generated". Issue #56 API minor.
+      reply.header("Location", `/v1/campaigns/${id}`);
       return reply.status(202).send({ data: result });
     },
   );

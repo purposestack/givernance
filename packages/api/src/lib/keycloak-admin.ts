@@ -34,6 +34,7 @@
  * test ships with issue #114 once the realm is upgraded.
  */
 
+import { PINO_REDACT_PATHS } from "@givernance/shared/constants";
 import pino from "pino";
 import { env } from "../env.js";
 
@@ -43,13 +44,7 @@ const logger = pino({
   name: "keycloak-admin",
   level: env.LOG_LEVEL,
   redact: {
-    paths: [
-      "*.headers.authorization",
-      "*.headers.Authorization",
-      "*.body.client_secret",
-      "accessToken",
-      "*.accessToken",
-    ],
+    paths: [...PINO_REDACT_PATHS],
     censor: "[REDACTED]",
   },
 });

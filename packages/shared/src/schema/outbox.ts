@@ -13,6 +13,13 @@ export const outboxEvents = pgTable("outbox_events", {
   tenantId: uuid("tenant_id").notNull(),
   type: varchar("type", { length: 255 }).notNull(),
   payload: jsonb("payload").notNull(),
+  /**
+   * W3C trace-context propagation for distributed tracing across the outbox
+   * boundary. Expected shape: `{ traceparent: string, tracestate?: string }`.
+   * The relay reads `traceparent` and attaches it to the BullMQ job so the
+   * worker's pino logger can seed its `traceId`/`spanId` fields.
+   */
+  metadata: jsonb("metadata"),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

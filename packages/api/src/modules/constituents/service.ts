@@ -1,8 +1,8 @@
 /** Constituent service — business logic for constituent operations */
 
-import { constituents, donations, outboxEvents } from "@givernance/shared/schema";
+import { constituents, donations, mergeHistory, outboxEvents } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, arrayOverlaps, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
 export interface ListConstituentsQuery {
@@ -52,9 +52,12 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
     }
 
     if (tags && tags.length > 0) {
-      conditions.push(
-        sql`${constituents.tags} && ${sql.raw(`ARRAY[${tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(",")}]::text[]`)}`,
-      );
+      // Drizzle's `arrayOverlaps` compiles to `col && ARRAY[...]::text[]` with
+      // every tag bound as a proper parameter — no SQL interpolation of
+      // user-supplied strings. Replaces the old `sql.raw` + manual `''` escape
+      // (issue #56 Security #7), which worked in practice but was a
+      // correctness footgun one typo away from SQL injection.
+      conditions.push(arrayOverlaps(constituents.tags, tags));
     }
 
     const where = and(...conditions);
@@ -226,13 +229,50 @@ export async function findDuplicates(
   });
 }
 
+export interface MergeActor {
+  userId: string;
+  /** Impersonating admin (RFC 8693 `act.sub`), if any. Null under normal auth. */
+  actorId?: string | null;
+}
+
+/**
+ * Thrown when an `If-Match` header was supplied but the survivor's current
+ * state has moved on since the caller fetched it. Route handler maps this to
+ * 409 Conflict so clients can refetch and decide whether to retry.
+ */
+export class MergePreconditionError extends Error {
+  constructor(
+    public readonly expected: string,
+    public readonly actual: string,
+  ) {
+    super("If-Match precondition failed — survivor has been modified concurrently");
+    this.name = "MergePreconditionError";
+  }
+}
+
+/**
+ * Weak ETag for a constituent row — `id + updatedAt` millis. Good enough to
+ * detect "this row has been written since I read it". Weak (`W/"..."`) because
+ * we don't hash response bodies; strong semantics aren't needed for merge
+ * pre-check.
+ */
+export function constituentEtag(row: { id: string; updatedAt: Date }): string {
+  return `W/"${row.id}-${row.updatedAt.getTime()}"`;
+}
+
+export interface MergeOptions {
+  /** Optional `If-Match` — if present, must match the survivor's current ETag. */
+  ifMatch?: string;
+}
+
 /** Merge a duplicate constituent into a primary (survivor) constituent */
 export async function mergeConstituents(
   orgId: string,
   primaryId: string,
   duplicateId: string,
-  userId: string,
-): Promise<{ merged: true } | null> {
+  actor: MergeActor,
+  options: MergeOptions = {},
+): Promise<{ merged: true; etag: string } | null> {
   if (primaryId === duplicateId) {
     throw new Error("Cannot merge a constituent into itself");
   }
@@ -263,6 +303,17 @@ export async function mergeConstituents(
 
     if (!primary || !duplicate) return null;
 
+    // Optimistic concurrency: if the caller supplied `If-Match`, reject the
+    // merge when the survivor has moved on since they read it. Pre-merge
+    // guard runs INSIDE the tx so the check is serialised against concurrent
+    // writers under REPEATABLE READ. Issue #56 API #6.
+    if (options.ifMatch) {
+      const currentEtag = constituentEtag(primary);
+      if (options.ifMatch !== currentEtag) {
+        throw new MergePreconditionError(options.ifMatch, currentEtag);
+      }
+    }
+
     // Fill null fields on primary with values from duplicate
     const fieldsToFill: Partial<ConstituentInput> = {};
     if (!primary.email && duplicate.email) fieldsToFill.email = duplicate.email;
@@ -275,11 +326,13 @@ export async function mergeConstituents(
 
     const now = new Date();
 
-    // Update primary with filled fields + merged tags
-    await tx
+    // Update primary with filled fields + merged tags — `.returning()` so we
+    // can capture the post-merge state for the audit snapshot below.
+    const [survivorAfter] = await tx
       .update(constituents)
       .set({ ...fieldsToFill, tags: mergedTags, updatedAt: now })
-      .where(eq(constituents.id, primaryId));
+      .where(eq(constituents.id, primaryId))
+      .returning();
 
     // Move all donations from duplicate to primary
     await tx
@@ -293,20 +346,45 @@ export async function mergeConstituents(
       .set({ deletedAt: now, updatedAt: now })
       .where(eq(constituents.id, duplicateId));
 
+    // GDPR Art. 5(2) accountability snapshot — before/after PII of BOTH
+    // records must be reconstructable from audit trail. Scalar fields (ids,
+    // mergedBy*) go to audit_logs via the normal plugin; the JSONB PII
+    // snapshot lives in merge_history under the same tenant isolation.
+    // Double-attribution: `mergedByActorId` distinguishes impersonated merges
+    // from direct admin merges (issue #24 / #56 Security #16).
+    await tx.insert(mergeHistory).values({
+      orgId,
+      survivorId: primaryId,
+      mergedId: duplicateId,
+      mergedByUserId: actor.userId,
+      mergedByActorId: actor.actorId ?? null,
+      survivorBefore: primary,
+      mergedBefore: duplicate,
+      survivorAfter: survivorAfter ?? primary,
+    });
+
     // Emit events in the same transaction
     await tx.insert(outboxEvents).values([
       {
         tenantId: orgId,
         type: "constituent.merged",
-        payload: { survivorId: primaryId, mergedId: duplicateId, mergedBy: userId },
+        payload: {
+          survivorId: primaryId,
+          mergedId: duplicateId,
+          mergedBy: actor.userId,
+          mergedByActor: actor.actorId ?? null,
+        },
       },
       {
         tenantId: orgId,
         type: "constituent.deleted",
-        payload: { constituentId: duplicateId, deletedBy: userId, reason: "merged" },
+        payload: { constituentId: duplicateId, deletedBy: actor.userId, reason: "merged" },
       },
     ]);
 
-    return { merged: true };
+    return {
+      merged: true,
+      etag: constituentEtag(survivorAfter ?? { id: primaryId, updatedAt: now }),
+    };
   });
 }
