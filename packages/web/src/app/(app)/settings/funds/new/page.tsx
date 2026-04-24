@@ -24,7 +24,7 @@ export default async function NewFundPage() {
         ]}
       />
       <SettingsNavigation />
-      <FundForm canManageFunds={auth.roles.includes("org_admin")} />
+      <FundForm mode="create" canManageFunds={auth.roles.includes("org_admin")} />
     </>
   );
 }

@@ -434,19 +434,40 @@
       "name": "Fonds",
       "type": "Type",
       "description": "Description",
-      "createdAt": "Créé le"
+      "createdAt": "Créé le",
+      "actions": "Actions"
     },
     "actions": {
-      "new": "Nouveau fonds"
+      "new": "Nouveau fonds",
+      "menu": "Ouvrir les actions pour {name}",
+      "edit": "Modifier",
+      "delete": "Supprimer"
     },
     "empty": {
       "title": "Aucun fonds",
       "description": "Ajoutez un premier fonds pour contrôler les affectations disponibles dans les campagnes et les dons."
     },
+    "deleteDialog": {
+      "title": "Supprimer le fonds",
+      "description": "Supprimer {name} ? Cette action est irréversible.",
+      "descriptionFallback": "Supprimer ce fonds ? Cette action est irréversible.",
+      "cancel": "Annuler",
+      "confirm": "Supprimer le fonds",
+      "deleting": "Suppression…"
+    },
+    "errors": {
+      "deleteGeneric": "Une erreur est survenue pendant la suppression du fonds. Veuillez réessayer."
+    },
+    "success": {
+      "deleted": "Fonds supprimé."
+    },
     "form": {
       "createTitle": "Créer un fonds",
       "createSubtitle": "Ajoutez un fonds restreint ou non restreint pour l’affectation des campagnes et des dons.",
       "breadcrumbNew": "Nouveau fonds",
+      "editTitle": "Modifier le fonds",
+      "editSubtitle": "Mettez à jour ce fonds pour l’affectation des campagnes et des dons.",
+      "breadcrumbEdit": "Modifier le fonds",
       "sections": {
         "identity": {
           "title": "Identité",
@@ -470,6 +491,7 @@
       "actions": {
         "cancel": "Annuler",
         "submitCreate": "Créer le fonds",
+        "submitUpdate": "Enregistrer les modifications",
         "submitting": "Enregistrement…"
       },
       "errors": {
@@ -479,7 +501,8 @@
         "generic": "Une erreur est survenue pendant l’enregistrement. Veuillez réessayer."
       },
       "success": {
-        "created": "Fonds créé."
+        "created": "Fonds créé.",
+        "updated": "Fonds mis à jour."
       }
     }
   },

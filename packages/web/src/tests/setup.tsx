@@ -30,6 +30,8 @@ function interpolate(message: string, values?: Record<string, unknown>) {
 
 vi.mock("next/navigation", () => ({
   useRouter: () => mockRouter,
+  usePathname: () => "/settings/funds",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -92,4 +94,16 @@ if (!window.ResizeObserver) {
 
 if (!window.HTMLElement.prototype.scrollIntoView) {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
+}
+
+if (!window.HTMLElement.prototype.hasPointerCapture) {
+  window.HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+}
+
+if (!window.HTMLElement.prototype.setPointerCapture) {
+  window.HTMLElement.prototype.setPointerCapture = vi.fn();
+}
+
+if (!window.HTMLElement.prototype.releasePointerCapture) {
+  window.HTMLElement.prototype.releasePointerCapture = vi.fn();
 }

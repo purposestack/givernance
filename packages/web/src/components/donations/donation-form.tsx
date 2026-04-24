@@ -99,6 +99,20 @@ const DEFAULT_VALUES: DefaultValues<DonationFormValues> = {
   allocations: [],
 };
 
+async function loadDonationFunds(campaignId: string): Promise<Fund[]> {
+  const client = createClientApiClient();
+
+  if (campaignId) {
+    return CampaignService.getCampaignFunds(client, campaignId);
+  }
+
+  const allFundsResult = await client.get<{ data: Fund[]; pagination: unknown }>("/v1/funds", {
+    params: { page: 1, perPage: 100 },
+  });
+
+  return allFundsResult.data;
+}
+
 export function DonationForm() {
   const router = useRouter();
   const t = useTranslations("donations.form");
@@ -124,7 +138,6 @@ export function DonationForm() {
   const [campaignsLoading, setCampaignsLoading] = useState(true);
 
   const [fundOptions, setFundOptions] = useState<Fund[]>([]);
-  const [fundsLoading, setFundsLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -173,33 +186,19 @@ export function DonationForm() {
 
   useEffect(() => {
     let active = true;
-    setFundsLoading(true);
 
-    async function loadFunds() {
-      try {
-        const client = createClientApiClient();
-        if (watchedCampaignId) {
-          const campaignFunds = await CampaignService.getCampaignFunds(client, watchedCampaignId);
-          if (active) setFundOptions(campaignFunds);
-        } else {
-          // If no campaign selected, we could either clear the funds or fetch all funds.
-          // Let's clear them for strict linkage or you can fetch all if preferred.
-          const allFundsResult = await client.get<{ data: Fund[]; pagination: unknown }>(
-            "/v1/funds",
-            {
-              params: { page: 1, perPage: 100 },
-            },
-          );
-          if (active) setFundOptions(allFundsResult.data);
+    void loadDonationFunds(watchedCampaignId)
+      .then((nextFunds) => {
+        if (active) {
+          setFundOptions(nextFunds);
         }
-      } catch {
-        if (active) setFundOptions([]);
-      } finally {
-        if (active) setFundsLoading(false);
-      }
-    }
+      })
+      .catch(() => {
+        if (active) {
+          setFundOptions([]);
+        }
+      });
 
-    loadFunds();
     return () => {
       active = false;
     };

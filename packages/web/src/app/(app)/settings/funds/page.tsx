@@ -66,7 +66,11 @@ export default async function FundsPage({ searchParams }: FundsPageProps) {
       <SettingsNavigation />
 
       {hasAny ? (
-        <FundsTable funds={result.data} pagination={result.pagination} />
+        <FundsTable
+          funds={result.data}
+          pagination={result.pagination}
+          canManageFunds={canManageFunds}
+        />
       ) : (
         <div className="rounded-2xl bg-surface-container-lowest shadow-card">
           <EmptyState

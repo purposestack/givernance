@@ -1,16 +1,36 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { PiggyBank } from "lucide-react";
+import { MoreHorizontal, Pencil, PiggyBank, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "@/components/ui/toast";
+import { ApiProblem } from "@/lib/api";
+import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatDate } from "@/lib/format";
 import type { Fund, FundType } from "@/models/fund";
+import { FundService } from "@/services/FundService";
 
 const FUND_TYPES = new Set<FundType>(["restricted", "unrestricted"]);
 
@@ -22,18 +42,21 @@ const TYPE_VARIANTS: Record<FundType, "warning" | "info"> = {
 interface FundsTableProps {
   funds: Fund[];
   pagination: DataTablePagination;
+  canManageFunds: boolean;
 }
 
 function isFundType(value: string): value is FundType {
   return FUND_TYPES.has(value as FundType);
 }
 
-export function FundsTable({ funds, pagination }: FundsTableProps) {
+export function FundsTable({ funds, pagination, canManageFunds }: FundsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const locale = useLocale();
   const t = useTranslations("settings.funds");
+  const [fundToDelete, setFundToDelete] = useState<Fund | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -48,6 +71,26 @@ export function FundsTable({ funds, pagination }: FundsTableProps) {
     },
     [pathname, router, searchParams],
   );
+
+  const confirmDelete = useCallback(async () => {
+    if (!fundToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await FundService.deleteFund(createClientApiClient(), fundToDelete.id);
+      toast.success(t("success.deleted"));
+      setFundToDelete(null);
+      router.refresh();
+    } catch (error) {
+      const message =
+        error instanceof ApiProblem
+          ? (error.detail ?? error.title ?? t("errors.deleteGeneric"))
+          : t("errors.deleteGeneric");
+      toast.error(message);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [fundToDelete, router, t]);
 
   const columns = useMemo<ColumnDef<Fund>[]>(
     () => [
@@ -93,23 +136,99 @@ export function FundsTable({ funds, pagination }: FundsTableProps) {
           </span>
         ),
       },
+      ...(canManageFunds
+        ? [
+            {
+              id: "actions",
+              header: () => <span className="sr-only">{t("columns.actions")}</span>,
+              enableSorting: false,
+              cell: ({ row }: { row: { original: Fund } }) => (
+                <FundActions
+                  fund={row.original}
+                  onDelete={() => setFundToDelete(row.original)}
+                  editLabel={t("actions.edit")}
+                  deleteLabel={t("actions.delete")}
+                  menuLabel={t("actions.menu", { name: row.original.name })}
+                />
+              ),
+            } satisfies ColumnDef<Fund>,
+          ]
+        : []),
     ],
-    [locale, t],
+    [canManageFunds, locale, t],
   );
 
   return (
-    <DataTable
-      columns={columns}
-      data={funds}
-      pagination={pagination}
-      onPageChange={navigateToPage}
-      emptyState={
-        <EmptyState
-          icon={PiggyBank}
-          title={t("empty.title")}
-          description={t("empty.description")}
-        />
-      }
-    />
+    <>
+      <DataTable
+        columns={columns}
+        data={funds}
+        pagination={pagination}
+        onPageChange={navigateToPage}
+        emptyState={
+          <EmptyState
+            icon={PiggyBank}
+            title={t("empty.title")}
+            description={t("empty.description")}
+          />
+        }
+      />
+      <Dialog open={fundToDelete !== null} onOpenChange={(open) => !open && setFundToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("deleteDialog.title")}</DialogTitle>
+            <DialogDescription>
+              {fundToDelete
+                ? t("deleteDialog.description", { name: fundToDelete.name })
+                : t("deleteDialog.descriptionFallback")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setFundToDelete(null)} disabled={isDeleting}>
+              {t("deleteDialog.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmDelete()}
+              disabled={isDeleting}
+            >
+              {isDeleting ? t("deleteDialog.deleting") : t("deleteDialog.confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+interface FundActionsProps {
+  fund: Fund;
+  onDelete: () => void;
+  editLabel: string;
+  deleteLabel: string;
+  menuLabel: string;
+}
+
+function FundActions({ fund, onDelete, editLabel, deleteLabel, menuLabel }: FundActionsProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" aria-label={menuLabel}>
+          <MoreHorizontal size={16} aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link href={`/settings/funds/${fund.id}/edit`}>
+            <Pencil size={16} aria-hidden="true" />
+            {editLabel}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onDelete} className="text-error focus:text-error">
+          <Trash2 size={16} aria-hidden="true" />
+          {deleteLabel}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

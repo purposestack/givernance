@@ -6,6 +6,7 @@ import type {
   FundDetailResponse,
   FundListQuery,
   FundListResponse,
+  FundUpdateInput,
 } from "@/models/fund";
 
 export const FundService = {
@@ -25,6 +26,24 @@ export const FundService = {
 
   async createFund(client: ApiClient, input: FundCreateInput): Promise<Fund> {
     const response = await client.post<FundDetailResponse>("/v1/funds", toRequestBody(input));
+    return mapFund(response.data);
+  },
+
+  async getFund(client: ApiClient, id: string): Promise<Fund> {
+    const response = await client.get<FundDetailResponse>(`/v1/funds/${encodeURIComponent(id)}`);
+    return mapFund(response.data);
+  },
+
+  async updateFund(client: ApiClient, id: string, input: FundUpdateInput): Promise<Fund> {
+    const response = await client.patch<FundDetailResponse>(
+      `/v1/funds/${encodeURIComponent(id)}`,
+      toRequestBody(input),
+    );
+    return mapFund(response.data);
+  },
+
+  async deleteFund(client: ApiClient, id: string): Promise<Fund> {
+    const response = await client.delete<FundDetailResponse>(`/v1/funds/${encodeURIComponent(id)}`);
     return mapFund(response.data);
   },
 
@@ -48,10 +67,20 @@ function mapFund(raw: Fund): Fund {
   };
 }
 
-function toRequestBody(input: FundCreateInput): Record<string, unknown> {
-  return {
-    name: input.name,
-    description: input.description ?? null,
-    type: input.type ?? "unrestricted",
-  };
+function toRequestBody(input: FundCreateInput | FundUpdateInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+
+  if ("name" in input && input.name !== undefined) {
+    body.name = input.name;
+  }
+
+  if ("description" in input) {
+    body.description = input.description ?? null;
+  }
+
+  if ("type" in input && input.type !== undefined) {
+    body.type = input.type;
+  }
+
+  return body;
 }

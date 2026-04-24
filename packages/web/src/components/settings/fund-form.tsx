@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import type { FundType } from "@/models/fund";
+import type { Fund, FundType } from "@/models/fund";
 import { FundService } from "@/services/FundService";
 
 interface FundFormValues {
@@ -38,13 +38,19 @@ interface FundFormValues {
   type: FundType;
 }
 
-interface FundFormProps {
+type CreateMode = { mode: "create"; fund?: undefined };
+type EditMode = { mode: "edit"; fund: Fund };
+
+interface FundFormBaseProps {
   canManageFunds: boolean;
 }
 
+export type FundFormProps = FundFormBaseProps & (CreateMode | EditMode);
+
 const FUND_TYPES: readonly FundType[] = ["unrestricted", "restricted"];
 
-export function FundForm({ canManageFunds }: FundFormProps) {
+export function FundForm(props: FundFormProps) {
+  const { canManageFunds, mode } = props;
   const router = useRouter();
   const t = useTranslations("settings.funds.form");
   const tFunds = useTranslations("settings.funds");
@@ -52,9 +58,9 @@ export function FundForm({ canManageFunds }: FundFormProps) {
   const form = useForm<FundFormValues>({
     mode: "onBlur",
     defaultValues: {
-      name: "",
-      description: "",
-      type: "unrestricted",
+      name: props.fund?.name ?? "",
+      description: props.fund?.description ?? "",
+      type: props.fund?.type ?? "unrestricted",
     },
   });
 
@@ -64,12 +70,21 @@ export function FundForm({ canManageFunds }: FundFormProps) {
     form.clearErrors("root");
 
     try {
-      await FundService.createFund(createClientApiClient(), {
-        name: values.name.trim(),
-        description: values.description.trim() || null,
-        type: values.type,
-      });
-      toast.success(t("success.created"));
+      if (mode === "create") {
+        await FundService.createFund(createClientApiClient(), {
+          name: values.name.trim(),
+          description: values.description.trim() || null,
+          type: values.type,
+        });
+        toast.success(t("success.created"));
+      } else {
+        await FundService.updateFund(createClientApiClient(), props.fund.id, {
+          name: values.name.trim(),
+          description: values.description.trim() || null,
+          type: values.type,
+        });
+        toast.success(t("success.updated"));
+      }
       router.push("/settings/funds");
       router.refresh();
     } catch (error) {
@@ -194,7 +209,11 @@ export function FundForm({ canManageFunds }: FundFormProps) {
               <Link href="/settings/funds">{t("actions.cancel")}</Link>
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? t("actions.submitting") : t("actions.submitCreate")}
+              {isSubmitting
+                ? t("actions.submitting")
+                : mode === "create"
+                  ? t("actions.submitCreate")
+                  : t("actions.submitUpdate")}
             </Button>
           </div>
         </div>

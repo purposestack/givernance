@@ -434,19 +434,40 @@
       "name": "Fund",
       "type": "Type",
       "description": "Description",
-      "createdAt": "Created"
+      "createdAt": "Created",
+      "actions": "Actions"
     },
     "actions": {
-      "new": "New fund"
+      "new": "New fund",
+      "menu": "Open actions for {name}",
+      "edit": "Edit",
+      "delete": "Delete"
     },
     "empty": {
       "title": "No funds yet",
       "description": "Add your first fund to control which designations can be used in campaigns and donations."
     },
+    "deleteDialog": {
+      "title": "Delete fund",
+      "description": "Delete {name}? This action cannot be undone.",
+      "descriptionFallback": "Delete this fund? This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete fund",
+      "deleting": "Deleting…"
+    },
+    "errors": {
+      "deleteGeneric": "Something went wrong while deleting this fund. Please try again."
+    },
+    "success": {
+      "deleted": "Fund deleted."
+    },
     "form": {
       "createTitle": "Create fund",
       "createSubtitle": "Add a restricted or unrestricted fund for campaign and donation allocation.",
       "breadcrumbNew": "New fund",
+      "editTitle": "Edit fund",
+      "editSubtitle": "Update this fund for campaign and donation allocation.",
+      "breadcrumbEdit": "Edit fund",
       "sections": {
         "identity": {
           "title": "Identity",
@@ -470,6 +491,7 @@
       "actions": {
         "cancel": "Cancel",
         "submitCreate": "Create fund",
+        "submitUpdate": "Save changes",
         "submitting": "Saving…"
       },
       "errors": {
@@ -479,7 +501,8 @@
         "generic": "Something went wrong while saving. Please try again."
       },
       "success": {
-        "created": "Fund created."
+        "created": "Fund created.",
+        "updated": "Fund updated."
       }
     }
   },

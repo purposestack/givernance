@@ -32,6 +32,12 @@ export interface FundCreateInput {
   type?: FundType;
 }
 
+export interface FundUpdateInput {
+  name?: string;
+  description?: string | null;
+  type?: FundType;
+}
+
 export interface FundCampaignListResponse {
   data: Fund[];
 }
