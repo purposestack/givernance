@@ -69,18 +69,17 @@ afterEach(async () => {
   const ids = rows.map((r) => r.id);
   if (ids.length > 0) {
     // audit_logs has ON DELETE RESTRICT on org_id AND an immutability trigger
-    // that blocks DELETE. Temporarily disable the trigger so test fixtures
-    // can be torn down; re-enable it immediately after. This matches the
-    // pattern that other integration tests would use if they generated audit
-    // logs — production never runs without the trigger.
-    await db.execute(sql`ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_immutable`);
-    try {
-      await db.delete(auditLogs).where(inArray(auditLogs.orgId, ids));
-    } finally {
-      await db.execute(sql`ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_immutable`);
-    }
-    await db.delete(outboxEvents).where(inArray(outboxEvents.tenantId, ids));
-    await db.delete(tenants).where(inArray(tenants.id, ids));
+    // that blocks DELETE. `SET LOCAL session_replication_role = 'replica'`
+    // bypasses the trigger for this transaction only — no table-level DDL,
+    // no ACCESS EXCLUSIVE lock, and no race with any other test file that
+    // reads audit_logs or tenants concurrently. (Matches the pattern in
+    // onboarding-runtime.test.ts; production never runs with this flag.)
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
+      await tx.delete(auditLogs).where(inArray(auditLogs.orgId, ids));
+      await tx.delete(outboxEvents).where(inArray(outboxEvents.tenantId, ids));
+      await tx.delete(tenants).where(inArray(tenants.id, ids));
+    });
   }
   createdTenantSlugs.clear();
 });
