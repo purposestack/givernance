@@ -10,7 +10,7 @@
  */
 
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
-import { outboxEvents } from "@givernance/shared/schema";
+import { type OutboxMetadata, outboxEvents } from "@givernance/shared/schema";
 import { Queue } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -38,13 +38,16 @@ const eventsQueue = new Queue(QUEUE_NAMES.EVENTS, { connection: redis });
 async function relayPendingEvents(): Promise<number> {
   // SELECT FOR UPDATE SKIP LOCKED prevents multiple relay instances from racing
   // on the same rows (C5 fix). Each instance locks different pending rows.
+  // We now also pull `metadata` so W3C trace-context is propagated to the
+  // BullMQ job (issue #56 Platform #4).
   const pending = await db.execute<{
     id: string;
     tenant_id: string;
     type: string;
     payload: unknown;
+    metadata: OutboxMetadata | null;
   }>(
-    sql`SELECT id, tenant_id, type, payload
+    sql`SELECT id, tenant_id, type, payload, metadata
         FROM outbox_events
         WHERE status = 'pending'
         ORDER BY created_at ASC
@@ -63,6 +66,10 @@ async function relayPendingEvents(): Promise<number> {
           tenantId: row.tenant_id,
           type: row.type,
           payload: row.payload,
+          // Forward the traceparent so the worker's jobLogger can bind
+          // traceId/spanId. Jobs written before this change have null metadata.
+          traceparent: row.metadata?.traceparent,
+          tracestate: row.metadata?.tracestate,
         },
         {
           jobId: row.id,

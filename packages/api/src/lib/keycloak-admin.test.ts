@@ -397,7 +397,9 @@ describe("typed helpers", () => {
     await h.client.sendInvitation("org-1", "bob@ngo.fr");
     await h.client.bindIdpToOrganization("org-1", { alias: "entra" });
 
-    expect(JSON.parse(String(h.calls[1]?.init.body))).toEqual({ id: "user-1" });
+    // Canonical KC 26 member-add body is a raw JSON string (quoted user id),
+    // not an object. See keycloak-admin.ts:attachUserToOrg for rationale.
+    expect(JSON.parse(String(h.calls[1]?.init.body))).toEqual("user-1");
     expect(JSON.parse(String(h.calls[2]?.init.body))).toEqual({ email: "bob@ngo.fr" });
     expect(JSON.parse(String(h.calls[3]?.init.body))).toEqual({ alias: "entra" });
   });

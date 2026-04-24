@@ -1,10 +1,60 @@
 /** Public donations service — unauthenticated campaign page lookups and Stripe intent creation */
 
-import { campaignPublicPages, campaigns, tenants } from "@givernance/shared/schema";
-import { and, eq } from "drizzle-orm";
+import {
+  campaignPublicPages,
+  campaignQrCodes,
+  campaigns,
+  tenants,
+} from "@givernance/shared/schema";
+import { and, eq, sql } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
 import { isUuid } from "../../lib/schemas.js";
 import { getStripe } from "../payments/service.js";
+
+/**
+ * Resolve an opaque QR code scanned from a printed campaign letter.
+ *
+ * The `code` is an opaque nanoid-style token (see worker
+ * `campaign-documents.ts` → `generateQrToken`); nothing about the tenant or
+ * constituent is encoded in it. Resolution happens here, server-side, so a
+ * scanned printout reveals campaign context only to someone who scans it via
+ * the Givernance endpoint — not to anyone inspecting the raw PDF.
+ *
+ * Side-effects: stamps `scanned_at` on first scan (we don't overwrite so the
+ * first-contact timestamp survives repeat scans). Returns `null` for unknown
+ * codes — the caller turns this into a 404 that does not leak whether the
+ * token was ever valid.
+ */
+export async function resolveCampaignQrCode(code: string) {
+  if (!code || code.length < 10 || code.length > 32) {
+    return null;
+  }
+
+  const [row] = await db
+    .select({
+      orgId: campaignQrCodes.orgId,
+      campaignId: campaignQrCodes.campaignId,
+      constituentId: campaignQrCodes.constituentId,
+      scannedAt: campaignQrCodes.scannedAt,
+    })
+    .from(campaignQrCodes)
+    .where(eq(campaignQrCodes.code, code));
+
+  if (!row) return null;
+
+  if (!row.scannedAt) {
+    await db
+      .update(campaignQrCodes)
+      .set({ scannedAt: sql`now()` })
+      .where(and(eq(campaignQrCodes.code, code), eq(campaignQrCodes.orgId, row.orgId)));
+  }
+
+  return {
+    orgId: row.orgId,
+    campaignId: row.campaignId,
+    constituentId: row.constituentId,
+  };
+}
 
 /** Fetch a published public page by campaign ID (unauthenticated) */
 export async function getPublicPage(campaignId: string) {

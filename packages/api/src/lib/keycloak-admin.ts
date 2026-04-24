@@ -34,6 +34,7 @@
  * test ships with issue #114 once the realm is upgraded.
  */
 
+import { PINO_REDACT_PATHS } from "@givernance/shared/constants";
 import pino from "pino";
 import { env } from "../env.js";
 
@@ -43,13 +44,7 @@ const logger = pino({
   name: "keycloak-admin",
   level: env.LOG_LEVEL,
   redact: {
-    paths: [
-      "*.headers.authorization",
-      "*.headers.Authorization",
-      "*.body.client_secret",
-      "accessToken",
-      "*.accessToken",
-    ],
+    paths: [...PINO_REDACT_PATHS],
     censor: "[REDACTED]",
   },
 });
@@ -497,7 +492,11 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
     },
 
     attachUserToOrg: async (orgId, userId) => {
-      await adminRequest<void>("POST", `/organizations/${e(orgId)}/members`, { id: userId });
+      // Keycloak 26 `OrganizationMemberResource.addMember(String)` takes the
+      // user id as a raw JSON string body, not an object. The `{id: userId}`
+      // shape is undocumented and may stop working across patch bumps
+      // (keycloak/keycloak#34529). Send the canonical quoted-string form.
+      await adminRequest<void>("POST", `/organizations/${e(orgId)}/members`, userId);
     },
 
     sendInvitation: async (orgId, email) => {

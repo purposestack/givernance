@@ -6,6 +6,8 @@
 
 export { isPersonalEmailDomain, PERSONAL_EMAIL_DOMAINS } from "./personal-email-domains";
 
+export { PINO_REDACT_PATHS } from "./pino-redact";
+
 export { isReservedSlug, RESERVED_SLUGS } from "./reserved-slugs";
 
 export { DOMAIN_PATTERN, validateTenantDomain } from "./tenant-domain";

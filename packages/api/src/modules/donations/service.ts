@@ -1,9 +1,11 @@
 /** Donations service — business logic for donation operations */
 
 import {
+  campaigns,
   constituents,
   donationAllocations,
   donations,
+  funds,
   outboxEvents,
   receipts,
   tenants,
@@ -22,6 +24,51 @@ export class AllocationSumMismatchError extends Error {
     super(`Allocation sum (${allocSum}) does not equal donation amount (${donationAmount})`);
     this.name = "AllocationSumMismatchError";
   }
+}
+
+/**
+ * Thrown when a referenced `campaignId` or `fundId` belongs to a different
+ * tenant. Route layer maps this to 404 so a curious attacker cannot
+ * distinguish "doesn't exist" from "exists in another tenant" (aligns with
+ * ADR to be added under issue #56 — cross-tenant 404 vs 422 semantics).
+ */
+export class CrossTenantReferenceError extends Error {
+  constructor(
+    public readonly reference: "campaign" | "fund",
+    public readonly id: string,
+  ) {
+    super(`${reference} ${id} not found in tenant`);
+    this.name = "CrossTenantReferenceError";
+  }
+}
+
+async function assertCampaignBelongsToOrg(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  campaignId: string | null | undefined,
+): Promise<void> {
+  if (!campaignId) return;
+  const [row] = await tx
+    .select({ id: campaigns.id })
+    .from(campaigns)
+    .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+  if (!row) throw new CrossTenantReferenceError("campaign", campaignId);
+}
+
+async function assertFundsBelongToOrg(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  allocations: { fundId: string }[] | undefined,
+): Promise<void> {
+  if (!allocations || allocations.length === 0) return;
+  const ids = Array.from(new Set(allocations.map((a) => a.fundId)));
+  const rows = await tx
+    .select({ id: funds.id })
+    .from(funds)
+    .where(and(inArray(funds.id, ids), eq(funds.orgId, orgId)));
+  const foundIds = new Set(rows.map((r) => r.id));
+  const missing = ids.find((id) => !foundIds.has(id));
+  if (missing) throw new CrossTenantReferenceError("fund", missing);
 }
 
 export interface ListDonationsQuery {
@@ -279,6 +326,12 @@ export async function createDonation(orgId: string, userId: string, input: Donat
     ]);
 
     if (!constituent[0]) return null;
+
+    // Cross-tenant FK enforcement — issue #56 Data #1/#2. A Tenant B campaign
+    // or fund id would otherwise pass the schema-level FK (uuid existence)
+    // without being rejected, binding a donation to another tenant's records.
+    await assertCampaignBelongsToOrg(tx, orgId, input.campaignId);
+    await assertFundsBelongToOrg(tx, orgId, input.allocations);
     const currency = (input.currency ?? "EUR").toUpperCase();
     const baseCurrency = (tenant[0]?.baseCurrency ?? "EUR").toUpperCase();
     const exchangeRateService = new ExchangeRateService({ dbClient: tx });
@@ -355,6 +408,10 @@ export async function updateDonation(orgId: string, id: string, input: DonationU
     if (!existing || !constituent) {
       return null;
     }
+
+    // Cross-tenant FK enforcement on update path too.
+    await assertCampaignBelongsToOrg(tx, orgId, input.campaignId ?? null);
+    await assertFundsBelongToOrg(tx, orgId, input.allocations);
 
     const currency = (input.currency ?? "EUR").toUpperCase();
     const baseCurrency = (tenant?.baseCurrency ?? "EUR").toUpperCase();

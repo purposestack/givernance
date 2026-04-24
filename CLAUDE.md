@@ -13,7 +13,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 | Job Queue / Events | BullMQ 5 + Redis (Phase 0-3) — NATS JetStream added Phase 4+ |
 | Cache / Rate-limit | Redis (SaaS: Scaleway Managed Redis EU · Self-hosted: Redis 7) |
 | Storage | Scaleway Object Storage EU (SaaS) · MinIO (Self-hosted) |
-| Auth | Keycloak 24 (OIDC / SAML — all deployments, self-hosted on Scaleway VMs for SaaS) |
+| Auth | Keycloak 26 (OIDC / SAML — all deployments, self-hosted on Scaleway VMs for SaaS). Organizations feature enabled (ADR-016 / issue #114); each Givernance tenant maps 1:1 to a Keycloak Organization. |
 | Observability | Scaleway Cockpit (Grafana + Loki + Mimir + Tempo) — SaaS managed |
 | AI Inference EU | Scaleway Generative APIs (Mistral, Llama 3.1) — GDPR Art. 9, beneficiary data |
 | Deployment | Docker Compose (self-hosted) · Kamal + Scaleway EU VMs (SaaS) |
@@ -137,6 +137,12 @@ Current topology:
 - `givernance_keycloak` — Keycloak's internal tables, owner `keycloak` (provisioned by `infra/postgres/init/01-init-keycloak-db.sh`)
 
 When proposing a new service or Compose change that needs Postgres storage (e.g., adding Mailpit with a durable store, a second IdP, a workflow engine, an analytics sidecar), **do not reuse `givernance` or `givernance_keycloak`** — add a new logical DB + role in `infra/postgres/init/`, document it in the "Databases" table of `docs/infra/README.md`, and reference ADR-017. Co-locating is rejected in PR review. Rationale, rejected alternatives, and revisit criteria are in [`docs/15-infra-adr.md` → ADR-017](docs/15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db).
+
+### 🛑 No secrets in Keycloak Organization attributes (issue #114)
+
+**Never put secrets, API keys, billing tokens, or any sensitive data into a Keycloak Organization's `attributes` map.** The `organization` client scope (attached as default to `givernance-web` and as optional to `admin-cli`) carries an `oidc-organization-membership-mapper` configured with `addOrganizationAttributes=true`, which emits every organization attribute into every access, ID, and introspection token for members of that org. Any secret stashed there will leak to the browser and every downstream service that sees the JWT.
+
+Valid uses for Organization attributes: non-sensitive identifiers (`org_id`, slug), feature flags that don't imply entitlements (`theme`, `locale`), public-facing labels. Anything else belongs in the application database (`tenants` table) with RLS.
 
 ---
 

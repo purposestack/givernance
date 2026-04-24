@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
+import { PINO_REDACT_PATHS } from "@givernance/shared/constants";
 import Fastify, { type FastifyError } from "fastify";
 import { env } from "./env.js";
 import { redis } from "./lib/redis.js";
@@ -28,6 +29,7 @@ import { tenantRoutes } from "./modules/tenants/routes.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { auditPlugin } from "./plugins/audit.js";
 import { authPlugin } from "./plugins/auth.js";
+import { idempotencyPlugin } from "./plugins/idempotency.js";
 
 /** Create and configure the Fastify server instance */
 export async function createServer() {
@@ -41,18 +43,7 @@ export async function createServer() {
     logger: {
       level: env.LOG_LEVEL,
       base: { service: "givernance-api", env: process.env.NODE_ENV },
-      redact: [
-        "req.headers.authorization",
-        "req.headers.cookie",
-        "body.password",
-        "body.token",
-        "body.iban",
-        "body.cardNumber",
-        "body.cvv",
-        "body.pan",
-        "headers.authorization",
-        "headers.cookie",
-      ],
+      redact: [...PINO_REDACT_PATHS],
     },
   });
 
@@ -103,6 +94,7 @@ export async function createServer() {
 
   // --- Custom plugins ---
   await app.register(authPlugin);
+  await app.register(idempotencyPlugin);
   await app.register(auditPlugin);
 
   // --- Routes ---

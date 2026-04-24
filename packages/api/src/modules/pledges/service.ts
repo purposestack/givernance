@@ -50,6 +50,11 @@ export async function createPledge(orgId: string, userId: string, input: PledgeI
         orgId,
         pledgeId,
         expectedAt,
+        // Per-installment amount (issue #56 Data #6). Variable / bumped
+        // installments set this to a different value per row; for the
+        // first-year scaffold generated here every installment mirrors the
+        // pledge amount so reconciliation against donations is straightforward.
+        amountCents: input.amountCents,
       });
     }
 

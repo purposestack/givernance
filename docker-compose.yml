@@ -39,7 +39,9 @@ services:
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    # Keycloak 26.x: Organizations is GA as of 26.0 (ADR-016 / issue #114).
+    # Image tag pinned to 26.6.1 (latest stable patch as of 2026-04-15).
+    image: quay.io/keycloak/keycloak:26.6.1
     ports:
       - "${KEYCLOAK_PORT:-8080}:8080"
     environment:

@@ -24,27 +24,20 @@ Subdomain routing (`<tenant>.givernance.app`) is **deferred**; it is reserved fo
 
 ## 2. Tenant Onboarding Architecture
 
-> **Phase 2 update**: the groups-and-attributes approach below was Spike #80's MVP choice. ADR-016 supersedes that with **Keycloak Organizations** (Keycloak 26+) and adds a self-serve track. The sections below describe the *current implementation surface* (what PR #73 shipped) plus the *target state* from ADR-016. See [`docs/22-tenant-onboarding.md`](./22-tenant-onboarding.md) for the full Phase 2 spec including data model, API surface, and rollout plan.
+### 2.1 Shared realm with Keycloak Organizations (ADR-016)
 
-### 2.1 Option A — shared realm with groups/attributes (Phase 1 MVP, in-code today)
-
-Givernance operates **one shared Keycloak realm per deployment** (`givernance` for SaaS; see `02-reference-architecture.md` §3.2). Tenant membership is represented through:
-
-- A Keycloak **group** per tenant (e.g. `/tenants/red-cross`) holding all the tenant's users.
-- **Token mappers** that emit tenant claims on every access token: `org_id`, `org_slug`, and `role`.
-- **Per-tenant Identity Provider federation** (Entra ID, Okta, Google Workspace, or Keycloak local for smoke tests), routed via `kc_idp_hint` or email-domain alias on the login page.
-
-Because the realm is shared, thousands of small European NPOs can be onboarded without multiplying realms, clients, redirect URI configuration, or admin overhead. Tenant isolation is enforced at the application layer (`org_id` claim → PostgreSQL RLS, see `02-reference-architecture.md` §6).
-
-### 2.1.bis Target state — Keycloak Organizations (Phase 2, per ADR-016)
-
-Keycloak 26 introduced a first-class `Organization` primitive with built-in domain-based IdP routing (Home IdP Discovery), per-org IdP bindings, and invitation flows. ADR-016 adopts this primitive and migrates the dev realm seed away from the ad-hoc group/attribute plumbing. Concretely:
+Keycloak 26 ships a first-class `Organization` primitive with built-in domain-based IdP routing (Home IdP Discovery), per-org IdP bindings, and invitation flows. ADR-016 adopts this primitive and issue [#114](https://github.com/purposestack/givernance/issues/114) landed the realm-seed migration. Concretely:
 
 - Each Givernance tenant maps 1:1 to a Keycloak Organization identified by `tenants.keycloak_org_id`.
 - Per-tenant IdP bindings are attached to the Organization rather than injected via a custom authenticator.
 - Domain-based routing uses Keycloak's Home IdP Discovery, removing the need for custom `kc_idp_hint` wiring in the app.
-- `org_id`, `role`, and `email` remain the trusted claims; the `givernance-web` client keeps its protocol mappers unchanged.
-- Migration is covered by PR #10 of the rollout in [`docs/22-tenant-onboarding.md`](./22-tenant-onboarding.md) §10 and depends on [issue #61](https://github.com/purposestack/givernance/issues/61) (Keycloak DB split).
+- The seeded platform Organization (alias `platform`) owns the canonical `org_id` attribute; the super-admin user is bound as a member.
+- The `organization` client scope carries three protocol mappers (reconciled by `scripts/keycloak-sync-realm.sh`):
+  - `org_id` — flat top-level claim sourced from the user's `org_id` attribute (what the API's JWT verifier reads today).
+  - `role` — flat top-level claim sourced from the user's `role` attribute.
+  - `organization` — nested membership claim from the Keycloak 26 `oidc-organization-membership-mapper` (with `addOrganizationId=true` + `addOrganizationAttributes=true`), carrying the org UUID and every Organization attribute.
+- `givernance-web` has `organization` on its default scopes so every web token carries all three claims without scope opt-in. The same scope is attached to `admin-cli` as optional so the dev smoke test's RO password grant can exercise the same code path.
+- Depends on [issue #61](https://github.com/purposestack/givernance/issues/61) (Keycloak DB split, ADR-017). See [`docs/22-tenant-onboarding.md`](./22-tenant-onboarding.md) for the full Phase 2 spec (data model, API surface, rollout plan).
 
 ### 2.2 Option B — dedicated realm per tenant (future evolution)
 
@@ -227,19 +220,20 @@ API_URL=http://localhost:4000
 ### Docker + Keycloak realm seed
 `docker compose up -d` starts Keycloak, which auto-imports `infra/keycloak/realm-givernance.json` on first startup. The seed provides:
 
-- Realm `givernance` with brute-force protection enabled
-- Client `givernance-web` with PKCE-compatible flow, the `post.logout.redirect.uris` attribute, and an `org_id` protocol mapper
+- Realm `givernance` with brute-force protection and `organizationsEnabled: true`
+- Client `givernance-web` with PKCE-compatible flow, the `post.logout.redirect.uris` attribute, and the `organization` client scope on its default scopes
 - A single pre-provisioned user: **`admin@givernance.org` / `admin`** with the `super_admin` realm role and `org_id=00000000-0000-0000-0000-0000000000a1`
 
-### `org_id` mapper requirement
+### `org_id` claim pipeline
 
-The API treats `org_id` as the sole tenant-binding authority, so the access token must always contain that claim. For local dev, the seeded realm config adds:
+The API treats `org_id` as the sole tenant-binding authority, so the access token must always contain that claim. The pipeline:
 
-- A user profile definition with `unmanagedAttributePolicy=ENABLED` so the custom `org_id` attribute is accepted (Keycloak 24's declarative user profile rejects undeclared attributes by default).
-- A client protocol mapper (`oidc-usermodel-attribute-mapper`) on `givernance-web` that copies the user attribute `org_id` into access and ID tokens.
-- An `org_id` attribute on the seeded `admin@givernance.org` user.
+- A seeded platform Organization (alias `platform`) with `attributes.org_id=[00000000-0000-0000-0000-0000000000a1]`; the super-admin user is bound as a member.
+- A user profile definition with `unmanagedAttributePolicy=ENABLED` so the custom `org_id` attribute on the user is accepted (Keycloak's declarative user profile rejects undeclared attributes by default).
+- An `org_id` attribute on the seeded user mirroring the Organization's attribute.
+- The `organization` **client scope** carries both an `oidc-usermodel-attribute-mapper` (emitting flat `org_id`) and the built-in `oidc-organization-membership-mapper` (emitting the nested `organization` claim). `givernance-web` has the scope on its default scopes, so every token carries both claims.
 
-Keycloak's `--import-realm` uses `IGNORE_EXISTING`, so a container started before this config was added will not pick up these settings on restart. `scripts/dev-up.sh` runs `scripts/keycloak-sync-realm.sh` after Keycloak boots to reconcile the state idempotently. If you bypass `dev-up.sh`, run the sync script manually:
+Keycloak's `--import-realm` uses `IGNORE_EXISTING`, so a container started before the seed was last updated will not pick up these settings on restart. `scripts/dev-up.sh` runs `scripts/keycloak-sync-realm.sh` after Keycloak boots to reconcile the state idempotently. If you bypass `dev-up.sh`, run the sync script manually:
 
 ```bash
 ./scripts/keycloak-sync-realm.sh

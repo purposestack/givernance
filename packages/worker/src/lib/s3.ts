@@ -29,6 +29,11 @@ export async function streamPdfToS3(
       Body: doc as unknown as Readable,
       ContentType: "application/pdf",
       ServerSideEncryption: "AES256",
+      // Belt-and-suspenders: bucket defaults are private on both Scaleway
+      // Object Storage and our MinIO setup, but an object-level ACL guarantees
+      // that a future bucket-policy mistake (e.g. public-read ACL at bucket
+      // scope) cannot accidentally expose tax receipts or campaign letters.
+      ACL: "private",
     },
   });
 

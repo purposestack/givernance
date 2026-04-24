@@ -5,7 +5,9 @@ import { constituents, donations, receipts } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
+import { jobLogger } from "../lib/logger.js";
 import { uploadReceiptPdf } from "../lib/s3.js";
+import { extractTraceId } from "../lib/trace-context.js";
 import { createReceiptPdfStream } from "../services/pdf.js";
 
 /**
@@ -33,9 +35,21 @@ async function nextReceiptNumber(
 }
 
 /** Generate a tax receipt PDF and store it */
-export async function processGenerateReceipt(job: Job<GenerateReceiptJob["data"]>) {
-  const { donationId, orgId, fiscalYear } = job.data;
+export async function processGenerateReceipt(
+  job: Job<GenerateReceiptJob["data"] & { traceparent?: string }>,
+) {
+  const { donationId, orgId, fiscalYear, traceparent } = job.data;
 
+  // Structured pino child — `job.log(...)` only reaches BullBoard/Redis; pino
+  // reaches Loki with typed fields (issue #56 Platform #10).
+  const log = jobLogger({
+    tenantId: orgId,
+    jobId: job.id,
+    traceId: extractTraceId(traceparent),
+  });
+
+  log.info({ donationId, fiscalYear }, "Generating receipt");
+  // Duplicate into BullBoard so operators poking at a single job still see progress.
   job.log(`Generating receipt for donation ${donationId} (org: ${orgId}, year: ${fiscalYear})`);
 
   return withWorkerContext(orgId, async (tx) => {
@@ -94,6 +108,7 @@ export async function processGenerateReceipt(job: Job<GenerateReceiptJob["data"]
       })
       .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)));
 
+    log.info({ receiptNumber, s3Path }, "Receipt generated");
     job.log(`Receipt ${receiptNumber} generated and uploaded to ${s3Path}`);
 
     return { receiptNumber, s3Path };

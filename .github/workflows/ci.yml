@@ -47,9 +47,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Reads the pnpm version from `packageManager` in package.json.
+      # v4 of pnpm/action-setup refuses to run when both `with.version`
+      # and `packageManager` are set, so we keep a single source of truth.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.2
 
       - uses: actions/setup-node@v4
         with:

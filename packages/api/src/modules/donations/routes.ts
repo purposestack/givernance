@@ -17,6 +17,7 @@ import {
 } from "../../lib/schemas.js";
 import {
   AllocationSumMismatchError,
+  CrossTenantReferenceError,
   createDonation,
   deleteDonation,
   getDonation,
@@ -66,14 +67,23 @@ const DonationUpdateBody = Type.Object({
   allocations: Type.Optional(Type.Array(AllocationSchema)),
 });
 
-/** Idempotency-Key header schema — accepted on financial POST routes for future dedup enforcement */
+/**
+ * Idempotency-Key header schema.
+ *
+ * 24h TTL, scoped per-route and per-tenant. A duplicate in-flight request
+ * returns 409 + `retry-after`. A completed key replays that response
+ * (including `Location` / `ETag` / `Content-Type` / `retry-after` headers)
+ * with `idempotency-replayed: true`. Body fingerprint is NOT verified — same
+ * key with a different body replays the original response. Non-2xx
+ * responses are NOT cached (4xx retries re-run the handler).
+ */
 const IdempotencyKeyHeader = Type.Object({
   "idempotency-key": Type.Optional(
     Type.String({
       minLength: 1,
       maxLength: 255,
       description:
-        "Client-generated idempotency key for safe retries. Stored for future deduplication enforcement.",
+        "Client-supplied idempotency key. Same key within 24h replays the first 2xx response. See plugins/idempotency.ts.",
     }),
   ),
 });
@@ -150,6 +160,8 @@ const DonationDetailResponse = Type.Object({
 
 const ReceiptUrlResponse = Type.Object({
   url: Type.String(),
+  /** ISO-8601 absolute expiry. Clients can cache the URL safely up to this instant. */
+  expiresAt: Type.String({ format: "date-time" }),
 });
 
 export async function donationRoutes(app: FastifyInstance) {
@@ -238,6 +250,7 @@ export async function donationRoutes(app: FastifyInstance) {
   app.post(
     "/donations",
     {
+      config: { idempotency: { routeKey: "POST:/v1/donations" } },
       preHandler: requireAuth,
       schema: {
         tags: ["Donations"],
@@ -278,6 +291,7 @@ export async function donationRoutes(app: FastifyInstance) {
           });
         }
 
+        reply.header("Location", `/v1/donations/${donation.id}`);
         return reply.status(201).send({ data: donation });
       } catch (err) {
         if (err instanceof AllocationSumMismatchError) {
@@ -287,6 +301,21 @@ export async function donationRoutes(app: FastifyInstance) {
             status: 422,
             detail: err.message,
           });
+        }
+        // Cross-tenant campaign / fund reference → 404 (not 422) so we don't
+        // expose whether the id exists at all. Aligns with forthcoming ADR on
+        // cross-tenant FK violation semantics.
+        if (err instanceof CrossTenantReferenceError) {
+          return reply.status(404).send(
+            problemDetail(
+              404,
+              "Not Found",
+              t("errors.notFound", {
+                resource:
+                  err.reference === "campaign" ? t("resources.campaign") : t("resources.fund"),
+              }),
+            ),
+          );
         }
         throw err;
       }
@@ -435,8 +464,8 @@ export async function donationRoutes(app: FastifyInstance) {
           );
       }
 
-      const url = await getReceiptPresignedUrl(receipt.s3Path);
-      return { data: { url } };
+      const { url, expiresAt } = await getReceiptPresignedUrl(receipt.s3Path);
+      return { data: { url, expiresAt: expiresAt.toISOString() } };
     },
   );
 }

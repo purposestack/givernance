@@ -42,13 +42,24 @@ const CampaignDefaultCurrencySchema = Type.Union(
   MULTI_CURRENCY_VALUES.map((value) => Type.Literal(value)),
 );
 
-/** Idempotency-Key header schema — accepted on POST routes for future dedup enforcement */
+/**
+ * Idempotency-Key header schema.
+ *
+ * 24h TTL, scoped per-route and per-tenant. A duplicate in-flight request
+ * with the same key returns 409 + `retry-after`. A key whose original
+ * request already completed replays that response (including `Location`,
+ * `ETag`, `Content-Type`, `retry-after` headers) with
+ * `idempotency-replayed: true`. Body fingerprint is NOT verified — same key
+ * with a different body replays the original response. Non-2xx responses
+ * are not cached, so a 4xx retry re-runs the handler.
+ */
 const IdempotencyKeyHeader = Type.Object({
   "idempotency-key": Type.Optional(
     Type.String({
       minLength: 1,
       maxLength: 255,
-      description: "Client-supplied idempotency key for safe retries",
+      description:
+        "Client-supplied idempotency key. Same key within 24h replays the first 2xx response. See plugins/idempotency.ts for semantics.",
     }),
   ),
 });
@@ -162,6 +173,7 @@ export async function campaignRoutes(app: FastifyInstance) {
   app.post(
     "/campaigns",
     {
+      config: { idempotency: { routeKey: "POST:/v1/campaigns" } },
       preHandler: requireAuth,
       schema: {
         tags: ["Campaigns"],
@@ -191,6 +203,12 @@ export async function campaignRoutes(app: FastifyInstance) {
       };
       try {
         const campaign = await createCampaign(orgId, body, userId);
+        if (!campaign) {
+          return reply
+            .status(404)
+            .send(problemDetail(404, "Not Found", "Parent campaign not found"));
+        }
+        reply.header("Location", `/v1/campaigns/${campaign.id}`);
         return reply.status(201).send({ data: campaign });
       } catch (err) {
         if (err instanceof CampaignValidationError) {
@@ -397,6 +415,7 @@ export async function campaignRoutes(app: FastifyInstance) {
   app.post(
     "/campaigns/:id/documents",
     {
+      config: { idempotency: { routeKey: "POST:/v1/campaigns/:id/documents" } },
       preHandler: requireOrgAdmin,
       schema: {
         tags: ["Campaigns"],
@@ -422,6 +441,10 @@ export async function campaignRoutes(app: FastifyInstance) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
 
+      // `Location` points clients at the polling resource for this job — they
+      // can GET the campaign to watch document statuses move from "pending"
+      // to "generated". Issue #56 API minor.
+      reply.header("Location", `/v1/campaigns/${id}`);
       return reply.status(202).send({ data: result });
     },
   );

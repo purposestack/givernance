@@ -8,6 +8,7 @@
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
+  "organizationsEnabled": true,
   "components": {
     "org.keycloak.userprofile.UserProfileProvider": [
       {
@@ -52,9 +53,28 @@
           "manage-identity-providers",
           "query-users",
           "query-clients",
-          "view-clients"
+          "view-clients",
+          "manage-realm",
+          "view-realm"
         ]
       }
+    }
+  ],
+  "organizations": [
+    {
+      "name": "Givernance Platform",
+      "alias": "platform",
+      "description": "Seeded platform organization for the super-admin user (ADR-016 / issue #114). org_id attribute pins the platform tenant UUID (00000000-0000-0000-0000-0000000000a1) so it matches the tenants row seeded in the application DB. NEVER store secrets in organization attributes — Keycloak 26's oidc-organization-membership-mapper emits every attribute to every token on the default scopes.",
+      "redirectUrl": "",
+      "attributes": {
+        "org_id": ["00000000-0000-0000-0000-0000000000a1"]
+      },
+      "domains": [
+        { "name": "platform.givernance.invalid", "verified": true }
+      ],
+      "members": [
+        { "username": "admin@givernance.org", "membershipType": "UNMANAGED" }
+      ]
     }
   ],
   "roles": {
@@ -102,35 +122,14 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
-      "protocolMappers": [
-        {
-          "name": "org_id",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "userinfo.token.claim": "true",
-            "user.attribute": "org_id",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "claim.name": "org_id",
-            "jsonType.label": "String"
-          }
-        },
-        {
-          "name": "role",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "userinfo.token.claim": "true",
-            "user.attribute": "role",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "claim.name": "role",
-            "jsonType.label": "String"
-          }
-        }
+      "defaultClientScopes": [
+        "basic",
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "email",
+        "organization"
       ]
     }
   ]

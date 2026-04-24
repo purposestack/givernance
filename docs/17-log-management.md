@@ -174,9 +174,11 @@ export const requestContext = new AsyncLocalStorage<RequestContext>();
 
 Three layers of protection:
 
-1. **Pino `redact` option** (**implemented**) — strips known PII paths from all log output. The following paths are redacted across API (`packages/api/src/server.ts`), Worker (`packages/worker/src/lib/logger.ts`), and Relay (`packages/relay/src/lib/logger.ts`):
-   - `req.headers.authorization`, `req.headers.cookie`
-   - `body.password`, `body.token`, `body.iban`, `body.cardNumber`, `body.cvv`, `body.pan`
+1. **Pino `redact` option** (**implemented**) — strips known PII paths from all log output. The redact list is owned by a single shared constant (`PINO_REDACT_PATHS` in `packages/shared/src/constants/pino-redact.ts`), imported by API (`packages/api/src/server.ts` + `keycloak-admin.ts`), Worker (`packages/worker/src/lib/logger.ts`), and Relay (`packages/relay/src/lib/logger.ts`). Centralisation means a new sensitive field is added in exactly one place — otherwise PII policy drifts across services (issue #56).
+   - Auth / session: `req.headers.authorization`, `req.headers.cookie`, `*.headers.authorization`, `*.headers.Authorization`
+   - Secrets in request bodies: `body.password`, `body.token`, `body.client_secret`, `body.refresh_token`, `body.access_token`, `accessToken`, `*.accessToken`
+   - Payment instruments: `body.iban`, `body.cardNumber`, `body.cvv`, `body.pan`
+   - PII: `email`, `phone`, `firstName`, `lastName`, `address`, `nationalId`, `notes`, `customFields` (and the `body.*` / `*.*` variants so PII nested under a `constituent`, `volunteer`, or similar object is still caught)
 2. **Custom serializers** — domain objects are logged with safe projections only (`{ id, type }`, never `{ email, name }`)
 3. **Code review rule** — the Log Analyst agent flags any logged field that could contain PII
 4. **Custom Pino serializers for domain objects** — register serializers for `constituent`, `volunteer`, `donation` objects that return only safe projections (`{ id, type }`). This prevents PII leakage even if developers accidentally log full domain objects (e.g., in error handlers or catch blocks).

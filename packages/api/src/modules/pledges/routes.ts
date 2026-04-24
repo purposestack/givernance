@@ -14,14 +14,23 @@ import {
 } from "../../lib/schemas.js";
 import { createPledge, listInstallments } from "./service.js";
 
-/** Idempotency-Key header schema — accepted on financial POST routes for future dedup enforcement */
+/**
+ * Idempotency-Key header schema.
+ *
+ * 24h TTL, scoped per-route and per-tenant. A duplicate in-flight request
+ * returns 409 + `retry-after`. A completed key replays that response
+ * (including `Location` / `ETag` / `Content-Type` / `retry-after` headers)
+ * with `idempotency-replayed: true`. Body fingerprint is NOT verified — same
+ * key with a different body replays the original response. Non-2xx
+ * responses are NOT cached (4xx retries re-run the handler).
+ */
 const IdempotencyKeyHeader = Type.Object({
   "idempotency-key": Type.Optional(
     Type.String({
       minLength: 1,
       maxLength: 255,
       description:
-        "Client-generated idempotency key for safe retries. Stored for future deduplication enforcement.",
+        "Client-supplied idempotency key. Same key within 24h replays the first 2xx response. See plugins/idempotency.ts.",
     }),
   ),
 });
@@ -67,6 +76,7 @@ export async function pledgeRoutes(app: FastifyInstance) {
   app.post(
     "/pledges",
     {
+      config: { idempotency: { routeKey: "POST:/v1/pledges" } },
       preHandler: requireAuth,
       schema: {
         tags: ["Pledges"],
@@ -93,6 +103,9 @@ export async function pledgeRoutes(app: FastifyInstance) {
       };
 
       const pledge = await createPledge(orgId, userId, body);
+      if (pledge) {
+        reply.header("Location", `/v1/pledges/${pledge.id}`);
+      }
       return reply.status(201).send({ data: pledge });
     },
   );
