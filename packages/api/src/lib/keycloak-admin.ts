@@ -497,7 +497,11 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
     },
 
     attachUserToOrg: async (orgId, userId) => {
-      await adminRequest<void>("POST", `/organizations/${e(orgId)}/members`, { id: userId });
+      // Keycloak 26 `OrganizationMemberResource.addMember(String)` takes the
+      // user id as a raw JSON string body, not an object. The `{id: userId}`
+      // shape is undocumented and may stop working across patch bumps
+      // (keycloak/keycloak#34529). Send the canonical quoted-string form.
+      await adminRequest<void>("POST", `/organizations/${e(orgId)}/members`, userId);
     },
 
     sendInvitation: async (orgId, email) => {

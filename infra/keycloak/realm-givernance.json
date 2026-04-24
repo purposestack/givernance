@@ -62,13 +62,13 @@
     {
       "name": "Givernance Platform",
       "alias": "platform",
-      "description": "Seeded platform organization for the super-admin user (ADR-016 / issue #114). org_id attribute pins the platform tenant UUID (00000000-0000-0000-0000-0000000000a1) so it matches the tenants row seeded in the application DB.",
+      "description": "Seeded platform organization for the super-admin user (ADR-016 / issue #114). org_id attribute pins the platform tenant UUID (00000000-0000-0000-0000-0000000000a1) so it matches the tenants row seeded in the application DB. NEVER store secrets in organization attributes — Keycloak 26's oidc-organization-membership-mapper emits every attribute to every token on the default scopes.",
       "redirectUrl": "",
       "attributes": {
         "org_id": ["00000000-0000-0000-0000-0000000000a1"]
       },
       "domains": [
-        { "name": "givernance.org", "verified": true }
+        { "name": "platform.givernance.invalid", "verified": true }
       ],
       "members": [
         { "username": "admin@givernance.org", "membershipType": "UNMANAGED" }

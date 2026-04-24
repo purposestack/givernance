@@ -1,6 +1,10 @@
 /**
  * Keycloak 26 realm-seed shape validation (issue #114).
  *
+ * Hermetic contract test — no services required (no Postgres, Redis, or
+ * Keycloak). Safe to run as a pure unit test; lives in `tests/integration/`
+ * to sit next to the onboarding-runtime tests it guards against regressing.
+ *
  * Runs in CI without a live Keycloak: the full end-to-end smoke — login +
  * org_id claim emitted — is covered by `scripts/keycloak-smoke-test.sh` which
  * `scripts/dev-up.sh` executes on every local bring-up. CI today does not
@@ -15,6 +19,9 @@
  *   - The `givernance-web` client emits the `organization` membership claim
  *     via the Keycloak 26 built-in mapper, on the default client scopes so
  *     every token carries it without scope opt-in
+ *   - The user-attribute `org_id` and the Organization-attribute `org_id`
+ *     are cross-consistent (addresses the transitional two-sources-of-truth
+ *     risk flagged in PR #139 review)
  */
 
 import { readFileSync } from "node:fs";
@@ -60,6 +67,10 @@ const SEED_USERNAME = "admin@givernance.org";
 const realm = JSON.parse(readFileSync(REALM_JSON_PATH, "utf-8")) as RealmSeed;
 
 describe("Keycloak realm seed (issue #114 — Organizations migration)", () => {
+  it("has a top-level `organizations` array", () => {
+    expect(Array.isArray(realm.organizations)).toBe(true);
+  });
+
   it("enables Organizations at the realm level", () => {
     expect(realm.organizationsEnabled).toBe(true);
   });
@@ -70,10 +81,28 @@ describe("Keycloak realm seed (issue #114 — Organizations migration)", () => {
     expect(platform?.attributes?.org_id).toEqual([PLATFORM_ORG_ID]);
   });
 
-  it("binds the super-admin user to the platform Organization", () => {
+  it("uses a non-routable domain on the platform Organization", () => {
+    // Preventing Home IdP Discovery auto-routing of a real @givernance.org
+    // mailbox to the dev-only Organization once a per-tenant IdP is bound
+    // (security review finding on PR #139).
     const platform = realm.organizations?.find((o) => o.alias === "platform");
-    const usernames = platform?.members?.map((m) => m.username) ?? [];
-    expect(usernames).toContain(SEED_USERNAME);
+    const domainNames = platform?.domains?.map((d) => d.name) ?? [];
+    for (const domain of domainNames) {
+      expect(
+        domain.endsWith(".invalid") ||
+          domain.endsWith(".test") ||
+          domain.endsWith(".local") ||
+          domain === "platform.givernance.invalid",
+        `platform org domain must be non-routable, got: ${domain}`,
+      ).toBe(true);
+    }
+  });
+
+  it("binds the super-admin user to the platform Organization as UNMANAGED", () => {
+    const platform = realm.organizations?.find((o) => o.alias === "platform");
+    const admin = platform?.members?.find((m) => m.username === SEED_USERNAME);
+    expect(admin, "admin user must be a platform org member").toBeDefined();
+    expect(admin?.membershipType).toBe("UNMANAGED");
   });
 
   it("adds the organization membership mapper on givernance-web", () => {
@@ -112,5 +141,22 @@ describe("Keycloak realm seed (issue #114 — Organizations migration)", () => {
   it("keeps the seeded admin user's org_id attribute aligned with the org attribute", () => {
     const admin = realm.users.find((u) => u.username === SEED_USERNAME);
     expect(admin?.attributes?.org_id).toEqual([PLATFORM_ORG_ID]);
+  });
+
+  it("cross-checks user.attributes.org_id === organization.attributes.org_id", () => {
+    // Security review finding on PR #139: the transitional design has the
+    // flat `org_id` claim sourced from a user attribute while the canonical
+    // source of truth is the Organization's attribute. Drift between the two
+    // is a silent tenancy-boundary hazard. This test is the CI gate ensuring
+    // the two sources stay in lock-step at the realm seed level; the JWT
+    // verifier migration to read only from the Organization claim is a
+    // follow-up that will remove the user-attribute path entirely.
+    const admin = realm.users.find((u) => u.username === SEED_USERNAME);
+    const platform = realm.organizations?.find((o) => o.alias === "platform");
+    const userOrgId = admin?.attributes?.org_id?.[0];
+    const orgOrgId = platform?.attributes?.org_id?.[0];
+    expect(userOrgId).toBeDefined();
+    expect(orgOrgId).toBeDefined();
+    expect(userOrgId).toBe(orgOrgId);
   });
 });

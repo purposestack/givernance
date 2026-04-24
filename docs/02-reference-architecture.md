@@ -431,7 +431,7 @@ services:
   postgres:    postgres:16-alpine
   pgbouncer:   pgbouncer/pgbouncer:latest
   redis:       redis:7-alpine
-  keycloak:    keycloak/keycloak:24
+  keycloak:    keycloak/keycloak:26
   minio:       minio/minio:latest
   caddy:       caddy:2-alpine      # TLS termination + reverse proxy
 ```

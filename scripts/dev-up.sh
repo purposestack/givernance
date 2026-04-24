@@ -109,6 +109,10 @@ echo "Syncing Keycloak realm state (idempotent)..."
 KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-sync-realm.sh"
 
 echo "Running Keycloak smoke test (issue #114 acceptance criterion)..."
+# Fail-fast: a broken realm (missing org_id claim, missing membership,
+# missing platform Organization) is NOT a green dev stack. Do not swallow
+# this failure — the "Givernance — Local Dev Stack" banner below must
+# never appear when the smoke test fails.
 KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-smoke-test.sh"
 
 # Seed the demo tenant only on a truly empty dev DB.
