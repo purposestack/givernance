@@ -10,9 +10,12 @@ set -euo pipefail
 #
 # Reconciles:
 #   - Realm user profile: unmanagedAttributePolicy=ENABLED (permits org_id / role)
-#   - Client `givernance-web`: `org_id` and `role` protocol mappers
+#   - Client `givernance-web`: `org_id`, `role`, and `organization` protocol mappers
+#   - Client `givernance-web`: `organization` client scope on default scopes
 #   - User `admin@givernance.org`: `org_id` and `role` attributes
 #   - User `admin@givernance.org`: `super_admin` realm role assignment
+#   - Organizations (Keycloak 26+): platform org exists with `org_id` attribute,
+#     seed user is a member (ADR-016 / issue #114).
 #
 # Usage: scripts/keycloak-sync-realm.sh
 
@@ -25,6 +28,9 @@ SEED_USERNAME="${KEYCLOAK_SEED_USERNAME:-admin@givernance.org}"
 SEED_ORG_ID="${KEYCLOAK_SEED_ORG_ID:-00000000-0000-0000-0000-0000000000a1}"
 SEED_USER_ROLE="${KEYCLOAK_SEED_USER_ROLE:-org_admin}"
 SEED_REALM_ROLES="${KEYCLOAK_SEED_REALM_ROLES:-super_admin}"
+SEED_ORG_ALIAS="${KEYCLOAK_SEED_ORG_ALIAS:-platform}"
+SEED_ORG_NAME="${KEYCLOAK_SEED_ORG_NAME:-Givernance Platform}"
+SEED_ORG_DOMAIN="${KEYCLOAK_SEED_ORG_DOMAIN:-givernance.org}"
 
 log() { printf '   %s\n' "$*"; }
 
@@ -98,6 +104,70 @@ sys.exit(0 if have else 1)
       log "Added ${claim} protocol mapper to client '${CLIENT_ID}'."
     fi
   done
+
+  # 2.bis Ensure the `organization` protocol mapper (Keycloak 26 built-in,
+  #       oidc-organization-membership-mapper) emits the org membership claim
+  #       including org id + attributes. Read by the app as an alternative to
+  #       the flat `org_id` user-attribute mapper (ADR-016 / issue #114).
+  if printf '%s' "$mappers" | python3 -c '
+import json, sys
+have = any(m["name"] == "organization" for m in json.load(sys.stdin))
+sys.exit(0 if have else 1)
+'; then
+    log "Client '${CLIENT_ID}' already has organization protocol mapper."
+  else
+    curl -sS -o /dev/null -w 'mapper create (organization): HTTP %{http_code}\n' \
+      -X POST "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/protocol-mappers/models" \
+      "${auth[@]}" -H "Content-Type: application/json" -d '{
+        "name":"organization",
+        "protocol":"openid-connect",
+        "protocolMapper":"oidc-organization-membership-mapper",
+        "consentRequired":false,
+        "config":{
+          "id.token.claim":"true",
+          "access.token.claim":"true",
+          "userinfo.token.claim":"true",
+          "introspection.token.claim":"true",
+          "claim.name":"organization",
+          "jsonType.label":"JSON",
+          "multivalued":"true",
+          "addOrganizationId":"true",
+          "addOrganizationAttributes":"true"
+        }
+      }'
+    log "Added organization protocol mapper to client '${CLIENT_ID}'."
+  fi
+
+  # 2.ter Ensure the `organization` client scope is on the client's default
+  #       scopes; the membership mapper emits nothing unless the scope is
+  #       requested. Adding it to `default` means every token issued for
+  #       `givernance-web` carries the claim without needing `scope=organization`
+  #       on the authorize request.
+  org_scope_json=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/client-scopes" \
+    | python3 -c '
+import sys, json
+for s in json.load(sys.stdin):
+    if s.get("name") == "organization":
+        print(s["id"])
+        break
+')
+  if [ -z "$org_scope_json" ]; then
+    log "Client scope 'organization' not found — realm may not have Organizations enabled."
+  else
+    default_scopes=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes")
+    if printf '%s' "$default_scopes" | python3 -c '
+import sys, json
+have = any(s.get("name") == "organization" for s in json.load(sys.stdin))
+sys.exit(0 if have else 1)
+'; then
+      log "Client '${CLIENT_ID}' already has the organization scope on default."
+    else
+      curl -sS -o /dev/null -w 'client-scope attach: HTTP %{http_code}\n' \
+        -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes/${org_scope_json}" \
+        "${auth[@]}"
+      log "Added 'organization' client scope to default on '${CLIENT_ID}'."
+    fi
+  fi
 fi
 
 # 3. Ensure the seed user has the org_id attribute set.
@@ -162,4 +232,97 @@ print("yes" if any(r.get("name") == wanted for r in json.load(sys.stdin)) else "
       "${auth[@]}" -H "Content-Type: application/json" -d "[${role_body}]"
     log "Assigned realm role '${role_name_trimmed}' to user '${SEED_USERNAME}'."
   done
+fi
+
+# 5. Reconcile Keycloak Organizations (Keycloak 26+, ADR-016 / issue #114).
+#    - Platform Organization with alias `${SEED_ORG_ALIAS}` and attribute
+#      `org_id=${SEED_ORG_ID}` exists; creates it if missing.
+#    - Seed user is a member (UNMANAGED membership).
+#    Organizations API 404s if the `organizationsEnabled` realm flag is off —
+#    we treat that as "Keycloak <26 or legacy realm" and skip, so the script
+#    stays backward-compatible for partial upgrades.
+orgs_probe=$(curl -sS -o /dev/null -w '%{http_code}' "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/organizations")
+if [ "$orgs_probe" != "200" ]; then
+  log "Organizations API returned HTTP ${orgs_probe} — skipping Organizations sync (realm likely pre-26 or flag off)."
+else
+  # 5.a Ensure the platform Organization exists (lookup by alias via ?search=).
+  org_id_kc=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/organizations?search=${SEED_ORG_ALIAS}" \
+    | ALIAS="$SEED_ORG_ALIAS" python3 -c '
+import json, os, sys
+wanted = os.environ["ALIAS"]
+for o in json.load(sys.stdin):
+    if o.get("alias") == wanted:
+        print(o["id"])
+        break
+')
+  if [ -z "$org_id_kc" ]; then
+    create_resp=$(curl -sS -D - -o /dev/null \
+      -X POST "${KC_URL}/admin/realms/${REALM}/organizations" \
+      "${auth[@]}" -H "Content-Type: application/json" -d "{
+        \"name\":\"${SEED_ORG_NAME}\",
+        \"alias\":\"${SEED_ORG_ALIAS}\",
+        \"description\":\"Seeded platform organization (ADR-016 / issue #114).\",
+        \"attributes\":{\"org_id\":[\"${SEED_ORG_ID}\"]},
+        \"domains\":[{\"name\":\"${SEED_ORG_DOMAIN}\",\"verified\":true}]
+      }")
+    # Extract org id from Location header: .../organizations/<uuid>
+    org_id_kc=$(printf '%s' "$create_resp" | awk -F': ' 'tolower($1)=="location"{print $2}' | tr -d '\r\n' | awk -F/ '{print $NF}')
+    if [ -z "$org_id_kc" ]; then
+      log "Organization create returned no Location header — cannot determine new org id."
+    else
+      log "Created platform Organization '${SEED_ORG_ALIAS}' (id=${org_id_kc})."
+    fi
+  else
+    # Reconcile attributes on existing org so org_id stays canonical.
+    existing_org=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/organizations/${org_id_kc}")
+    attrs_ok=$(printf '%s' "$existing_org" | ORG_ID="$SEED_ORG_ID" python3 -c '
+import json, os, sys
+d = json.load(sys.stdin)
+attrs = d.get("attributes") or {}
+org_vals = attrs.get("org_id") or []
+print("yes" if bool(org_vals) and org_vals[0] == os.environ["ORG_ID"] else "no")
+')
+    if [ "$attrs_ok" = "yes" ]; then
+      log "Platform Organization '${SEED_ORG_ALIAS}' already has the expected org_id attribute."
+    else
+      patched_org=$(printf '%s' "$existing_org" | ORG_ID="$SEED_ORG_ID" python3 -c '
+import json, os, sys
+d = json.load(sys.stdin)
+attrs = d.get("attributes") or {}
+attrs["org_id"] = [os.environ["ORG_ID"]]
+d["attributes"] = attrs
+print(json.dumps(d))
+')
+      curl -sS -o /dev/null -w 'org patch: HTTP %{http_code}\n' \
+        -X PUT "${KC_URL}/admin/realms/${REALM}/organizations/${org_id_kc}" \
+        "${auth[@]}" -H "Content-Type: application/json" -d "$patched_org"
+      log "Patched platform Organization '${SEED_ORG_ALIAS}' attributes.org_id=${SEED_ORG_ID}."
+    fi
+  fi
+
+  # 5.b Ensure the seed user is a member of the platform Organization. We must
+  #     re-resolve user_id outside the section-3 conditional (it was scoped
+  #     there) so this section runs independently.
+  member_user_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users?username=${SEED_USERNAME}&exact=true" \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')
+  if [ -z "$member_user_id" ] || [ -z "$org_id_kc" ]; then
+    log "Skipping Organization membership (user_id='${member_user_id}', org_id_kc='${org_id_kc}')."
+  else
+    members=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/organizations/${org_id_kc}/members")
+    is_member=$(printf '%s' "$members" | USER_ID="$member_user_id" python3 -c '
+import json, os, sys
+wanted = os.environ["USER_ID"]
+print("yes" if any(m.get("id") == wanted for m in json.load(sys.stdin)) else "no")
+')
+    if [ "$is_member" = "yes" ]; then
+      log "User '${SEED_USERNAME}' is already a member of '${SEED_ORG_ALIAS}'."
+    else
+      # Keycloak 26 Organizations membership endpoint: POST the user id as the
+      # raw request body (JSON string). See OrganizationMemberResource.addMember.
+      curl -sS -o /dev/null -w 'org member add: HTTP %{http_code}\n' \
+        -X POST "${KC_URL}/admin/realms/${REALM}/organizations/${org_id_kc}/members" \
+        "${auth[@]}" -H "Content-Type: application/json" -d "\"${member_user_id}\""
+      log "Added user '${SEED_USERNAME}' as member of '${SEED_ORG_ALIAS}'."
+    fi
+  fi
 fi

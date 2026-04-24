@@ -48,7 +48,7 @@ This is safe in dev because **all state is reproducible from fixtures and migrat
 |---------|-----|---------|
 | PostgreSQL 16 | `localhost:5432` | Shared instance hosting the `givernance` and `givernance_keycloak` databases — see [Databases](#databases) |
 | Redis 7 | `localhost:6379` | Cache, rate limiting |
-| Keycloak 24 | `http://localhost:8080` | OIDC/SAML identity provider (admin: `admin`/`admin`) |
+| Keycloak 26 | `http://localhost:8080` | OIDC/SAML identity provider with Organizations enabled (ADR-016 / issue #114). Admin: `admin`/`admin` |
 | MinIO | `http://localhost:9000` (API), `http://localhost:9001` (Console) | S3-compatible object storage (user: `givernance`/`givernance_dev`) |
 | Mailpit | `localhost:1025` (SMTP), `http://localhost:8025` (UI) | Local email capture and testing |
 | Caddy | `localhost:3000`, `localhost:3001` | Reverse proxy (optional, `--profile proxy`) |
@@ -60,7 +60,7 @@ Per [ADR-017](../15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-
 | Database | Owner role | Used by | Initialised by |
 |---|---|---|---|
 | `givernance` | `givernance` | Givernance API (Drizzle-managed `public` schema), Worker, Outbox relay | `POSTGRES_DB` / `POSTGRES_USER` on the postgres service (native image bootstrap) |
-| `givernance_keycloak` | `keycloak` | Keycloak 24 — entire Keycloak schema (`realm`, `user_entity`, `client`, `credential`, …) | `infra/postgres/init/01-init-keycloak-db.sh`, on first `docker compose up -d` against a fresh `pgdata` volume |
+| `givernance_keycloak` | `keycloak` | Keycloak 26 — entire Keycloak schema (`realm`, `user_entity`, `client`, `credential`, `organization`, `organization_domain`, …) | `infra/postgres/init/01-init-keycloak-db.sh`, on first `docker compose up -d` against a fresh `pgdata` volume |
 | `givernance_test` | `givernance` | API integration tests only | `scripts/dev-up.sh` on each start (created if missing, migrated fresh) |
 
 The app role that the API uses at runtime (`givernance_app`, NOBYPASSRLS) is provisioned by the Drizzle migrations inside the `givernance` database — see §6 of [`docs/02-reference-architecture.md`](../02-reference-architecture.md) for the 3-role RLS pattern.
@@ -135,7 +135,13 @@ You should see the web on `http://localhost:3000`, the API on `http://localhost:
 
 The web now stores the raw Keycloak access token in `givernance_jwt`. Both the Next.js server guards and the Fastify API verify that token against the realm JWKS (`KEYCLOAK_JWKS_URL`) and enforce the configured issuer (`KEYCLOAK_ISSUER`).
 
-The seeded realm also ships an `org_id` protocol mapper on the `givernance-web` client (and an `unmanagedAttributePolicy=ENABLED` user profile so Keycloak 24 accepts the `org_id` attribute). It reads the Keycloak user attribute `org_id` and injects it into access and ID tokens. Existing realms are not updated by `--import-realm`; `scripts/dev-up.sh` reconciles them automatically via `scripts/keycloak-sync-realm.sh`, which you can also invoke directly.
+The seeded realm ships:
+
+- A flat `org_id` protocol mapper on the `givernance-web` client, reading the Keycloak user attribute `org_id` and injecting it into access + ID tokens. An `unmanagedAttributePolicy=ENABLED` user profile permits the attribute.
+- A Keycloak 26 **Organization** (alias `platform`) with `attributes.org_id=[…]` that the super-admin user is bound to (ADR-016 / issue #114). The `oidc-organization-membership-mapper` on `givernance-web` emits a nested `organization` claim carrying the org id and attributes — this is the forward-looking source of truth; the flat `org_id` mapper remains as a transitional shim for the current API JWT verifier.
+- The `organization` client scope on `givernance-web`'s default scopes, so every token carries the membership claim without the web app opting in via `scope=organization`.
+
+Existing realms are not updated by `--import-realm`; `scripts/dev-up.sh` reconciles them automatically via `scripts/keycloak-sync-realm.sh` (which also creates the platform Organization + binds the member if missing), then runs `scripts/keycloak-smoke-test.sh` to validate login + the `org_id` claim end-to-end.
 
 ### Troubleshooting
 
@@ -195,7 +201,7 @@ For NPOs that need on-premises infrastructure, the same Docker Compose file serv
 PostgreSQL 16 + PgBouncer
 Redis 7
 MinIO (S3-compatible storage)
-Keycloak 24 (OIDC/SAML)
+Keycloak 26 (OIDC/SAML with Organizations)
 Caddy (reverse proxy + TLS)
 ```
 
@@ -211,7 +217,7 @@ Production self-hosted deployments should add:
 
 ### Keycloak Admin Console: "HTTPS required"
 
-Keycloak 24 defaults to `ssl_required=EXTERNAL` on the `master` realm. In local dev (`start-dev` mode), this can trigger an "HTTPS required" error when accessing `http://localhost:8080` — especially if your browser has cached an HSTS header for `localhost` from a previous project.
+Keycloak defaults to `ssl_required=EXTERNAL` on the `master` realm. In local dev (`start-dev` mode), this can trigger an "HTTPS required" error when accessing `http://localhost:8080` — especially if your browser has cached an HSTS header for `localhost` from a previous project.
 
 **The `dev-up.sh` script handles this automatically** by setting `ssl_required=NONE` on the master realm after first boot.
 

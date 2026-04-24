@@ -8,6 +8,7 @@
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
+  "organizationsEnabled": true,
   "components": {
     "org.keycloak.userprofile.UserProfileProvider": [
       {
@@ -57,6 +58,23 @@
       }
     }
   ],
+  "organizations": [
+    {
+      "name": "Givernance Platform",
+      "alias": "platform",
+      "description": "Seeded platform organization for the super-admin user (ADR-016 / issue #114). org_id attribute pins the platform tenant UUID (00000000-0000-0000-0000-0000000000a1) so it matches the tenants row seeded in the application DB.",
+      "redirectUrl": "",
+      "attributes": {
+        "org_id": ["00000000-0000-0000-0000-0000000000a1"]
+      },
+      "domains": [
+        { "name": "givernance.org", "verified": true }
+      ],
+      "members": [
+        { "username": "admin@givernance.org", "membershipType": "UNMANAGED" }
+      ]
+    }
+  ],
   "roles": {
     "realm": [
       {
@@ -102,6 +120,14 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "email",
+        "organization"
+      ],
       "protocolMappers": [
         {
           "name": "org_id",
@@ -129,6 +155,23 @@
             "access.token.claim": "true",
             "claim.name": "role",
             "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "organization",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-organization-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "claim.name": "organization",
+            "jsonType.label": "JSON",
+            "multivalued": "true",
+            "addOrganizationId": "true",
+            "addOrganizationAttributes": "true"
           }
         }
       ]
