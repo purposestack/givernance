@@ -76,3 +76,29 @@ export async function triggerTenantLifecycle(
     },
   );
 }
+
+export type TenantPlan = "starter" | "pro" | "enterprise";
+
+export interface CreateEnterpriseTenantInput {
+  name: string;
+  slug: string;
+  plan?: TenantPlan;
+}
+
+export interface CreateEnterpriseTenantResult {
+  tenantId: string;
+  slug: string;
+  keycloakOrgId: string;
+  status: string;
+}
+
+export async function createEnterpriseTenant(
+  input: CreateEnterpriseTenantInput,
+): Promise<CreateEnterpriseTenantResult> {
+  const api = createClientApiClient();
+  const res = await api.post<{ data: CreateEnterpriseTenantResult }>(
+    "/v1/superadmin/tenants",
+    input,
+  );
+  return res.data;
+}
