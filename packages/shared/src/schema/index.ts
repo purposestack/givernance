@@ -353,7 +353,7 @@ export const exchangeRates = pgTable(
 
 // ─── Constituents ─────────────────────────────────────────────────────────────
 
-export { outboxEvents } from "./outbox";
+export { type OutboxMetadata, outboxEvents } from "./outbox";
 
 /** Constituents — donors, volunteers, members, beneficiaries */
 export const constituents = pgTable("constituents", {

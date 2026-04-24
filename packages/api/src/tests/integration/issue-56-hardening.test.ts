@@ -16,7 +16,14 @@
  * route → service → DB path end-to-end.
  */
 
-import { constituents, donations, funds, outboxEvents, receipts } from "@givernance/shared/schema";
+import {
+  auditLogs,
+  constituents,
+  donations,
+  funds,
+  outboxEvents,
+  receipts,
+} from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -439,6 +446,83 @@ describe("GDPR erasure leaves donations + receipts intact (QA #16)", () => {
         .where(eq(receipts.donationId, donationId!));
       expect(receiptRows.length).toBe(1);
     });
+  });
+});
+
+// ─── Audit double-attribution E2E (Security #16 / ADR impersonation) ───────
+
+describe("Audit actorId double-attribution E2E", () => {
+  /**
+   * Wait up to 2s for the async `onResponse` audit hook to commit the row
+   * for the specific action+subject we just generated. The hook runs AFTER
+   * the response is sent to the client, so `app.inject` returns before the
+   * insert commits. Polling is more robust than a fixed sleep.
+   */
+  async function awaitAuditRow(params: {
+    action: string;
+    userId: string;
+  }): Promise<{ userId: string | null; actorId: string | null } | undefined> {
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      const [row] = await db
+        .select({ userId: auditLogs.userId, actorId: auditLogs.actorId })
+        .from(auditLogs)
+        .where(and(eq(auditLogs.action, params.action), eq(auditLogs.userId, params.userId)))
+        .orderBy(sql`${auditLogs.createdAt} DESC`)
+        .limit(1);
+      if (row) return row;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return undefined;
+  }
+
+  it("records act.sub in audit_logs.actor_id when the JWT carries an `act` claim", async () => {
+    const adminSub = "00000000-0000-0000-0000-0000000000ad";
+    // Use a dedicated subject so we can find our row unambiguously even if
+    // parallel tests are hammering the audit_logs table.
+    const impersonatedUserSub = "00000000-0000-0000-0000-0000000000bd";
+    // Mint a token where the effective subject (`sub`) and the impersonating
+    // actor (`act.sub`) differ — this is what the impersonation flow produces.
+    const impersonationToken = signToken(app, {
+      sub: impersonatedUserSub,
+      act: { sub: adminSub },
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(impersonationToken),
+      payload: { firstName: "Audit", lastName: "DoubleAttr", type: "donor" },
+    });
+    expect(res.statusCode).toBe(201);
+
+    const row = await awaitAuditRow({
+      action: "POST:/v1/constituents",
+      userId: impersonatedUserSub,
+    });
+
+    expect(row).toBeDefined();
+    expect(row?.actorId).toBe(adminSub);
+    expect(row?.userId).toBe(impersonatedUserSub);
+  });
+
+  it("leaves actor_id NULL under normal (non-impersonated) auth", async () => {
+    // Fresh subject so we don't race with the impersonated test above.
+    const plainSub = "00000000-0000-0000-0000-0000000000cd";
+    const tokenA = signToken(app, { sub: plainSub });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenA),
+      payload: { firstName: "Audit", lastName: "NoActor", type: "donor" },
+    });
+    expect(res.statusCode).toBe(201);
+
+    const row = await awaitAuditRow({ action: "POST:/v1/constituents", userId: plainSub });
+
+    expect(row).toBeDefined();
+    expect(row?.actorId).toBeNull();
   });
 });
 

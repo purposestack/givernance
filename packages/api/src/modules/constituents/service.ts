@@ -278,7 +278,12 @@ export async function mergeConstituents(
   }
 
   return withTenantContext(orgId, async (tx) => {
-    // Fetch both constituents (must be in same org, not deleted)
+    // Lock the survivor row for the duration of the tx. Postgres runs
+    // `withTenantContext` at READ COMMITTED, so without a row lock two
+    // concurrent mergers could both read the same survivor snapshot, both
+    // pass If-Match, and both apply — even though only one should succeed
+    // (PR #142 review H3). `FOR UPDATE` serialises the tail of the merge
+    // against any other writer touching this row, including another merge.
     const [primary] = await tx
       .select()
       .from(constituents)
@@ -288,8 +293,13 @@ export async function mergeConstituents(
           eq(constituents.orgId, orgId),
           isNull(constituents.deletedAt),
         ),
-      );
+      )
+      .for("update");
 
+    // The duplicate doesn't strictly need a row lock (we're soft-deleting it,
+    // not racing its updatedAt), but we still want it serialised against
+    // concurrent mergers trying to use the SAME duplicate as the target of
+    // two different merges — the second should see it already deleted.
     const [duplicate] = await tx
       .select()
       .from(constituents)
@@ -299,14 +309,16 @@ export async function mergeConstituents(
           eq(constituents.orgId, orgId),
           isNull(constituents.deletedAt),
         ),
-      );
+      )
+      .for("update");
 
     if (!primary || !duplicate) return null;
 
     // Optimistic concurrency: if the caller supplied `If-Match`, reject the
-    // merge when the survivor has moved on since they read it. Pre-merge
-    // guard runs INSIDE the tx so the check is serialised against concurrent
-    // writers under REPEATABLE READ. Issue #56 API #6.
+    // merge when the survivor has moved on since they read it. Combined
+    // with the `FOR UPDATE` above, this is race-free — any concurrent writer
+    // is blocked on the row lock until we commit, so our current `primary`
+    // snapshot IS the up-to-date one. Issue #56 API #6.
     if (options.ifMatch) {
       const currentEtag = constituentEtag(primary);
       if (options.ifMatch !== currentEtag) {

@@ -18,6 +18,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import type { OutboxMetadata } from "@givernance/shared/schema";
 import type { FastifyRequest } from "fastify";
 
 const TRACEPARENT_HEADER = "traceparent";
@@ -25,17 +26,18 @@ const TRACESTATE_HEADER = "tracestate";
 // Matches W3C trace-context §2.1: `00-<32-hex>-<16-hex>-<2-hex>`.
 const TRACEPARENT_RE = /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/;
 
-export interface OutboxMetadata {
-  traceparent: string;
-  tracestate?: string;
-}
+// Re-export so in-package callers can keep importing `OutboxMetadata` from
+// the trace-context helper if they prefer.
+export type { OutboxMetadata };
 
 /**
  * Build the `metadata` payload for an outbox insert. Prefers an incoming
  * upstream traceparent; falls back to a synthetic one derived from the
  * request id so every write is traceable even without an OTel collector.
  */
-export function buildOutboxMetadata(request: FastifyRequest): OutboxMetadata {
+export function buildOutboxMetadata(
+  request: FastifyRequest,
+): Required<Pick<OutboxMetadata, "traceparent">> & OutboxMetadata {
   const incoming = request.headers[TRACEPARENT_HEADER];
   if (typeof incoming === "string" && TRACEPARENT_RE.test(incoming)) {
     const tracestate = request.headers[TRACESTATE_HEADER];
