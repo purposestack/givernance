@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
-import { SettingsSnapshotPanel } from "@/components/settings/settings-snapshot-panel";
 import { SettingsNavigation } from "@/components/settings/settings-navigation";
+import { SettingsSnapshotPanel } from "@/components/settings/settings-snapshot-panel";
 import { TenantSettingsForm } from "@/components/settings/tenant-settings-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireAuth } from "@/lib/auth/guards";

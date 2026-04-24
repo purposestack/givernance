@@ -1,10 +1,9 @@
 import { PiggyBank, Plus } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-
+import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
-import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { Button } from "@/components/ui/button";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";

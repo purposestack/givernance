@@ -1,7 +1,7 @@
 "use client";
 
-import { PiggyBank, Plus } from "lucide-react";
 import { FormatRegistry } from "@sinclair/typebox";
+import { PiggyBank, Plus } from "lucide-react";
 
 if (!FormatRegistry.Has("uuid")) {
   FormatRegistry.Set("uuid", (value: string) =>
@@ -24,6 +24,7 @@ import {
 } from "react-hook-form";
 
 import { AmountInput } from "@/components/shared/amount-input";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   Form,
   FormControl,
@@ -35,7 +36,6 @@ import {
   useFormField,
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
-import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";

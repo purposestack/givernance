@@ -184,9 +184,12 @@ export function DonationForm() {
         } else {
           // If no campaign selected, we could either clear the funds or fetch all funds.
           // Let's clear them for strict linkage or you can fetch all if preferred.
-          const allFundsResult = await client.get<{ data: Fund[], pagination: unknown }>("/v1/funds", {
-            params: { page: 1, perPage: 100 },
-          });
+          const allFundsResult = await client.get<{ data: Fund[]; pagination: unknown }>(
+            "/v1/funds",
+            {
+              params: { page: 1, perPage: 100 },
+            },
+          );
           if (active) setFundOptions(allFundsResult.data);
         }
       } catch {
@@ -442,10 +445,14 @@ export function DonationForm() {
                           <FormLabel>{t("fields.allocationFund")}</FormLabel>
                           <Select
                             value={field.value || "__none__"}
-                            onValueChange={(value) => field.onChange(value === "__none__" ? "" : value)}
+                            onValueChange={(value) =>
+                              field.onChange(value === "__none__" ? "" : value)
+                            }
                           >
                             <SelectTrigger
-                              aria-invalid={Boolean(form.formState.errors.allocations?.[index]?.fundId)}
+                              aria-invalid={Boolean(
+                                form.formState.errors.allocations?.[index]?.fundId,
+                              )}
                             >
                               <SelectValue placeholder={t("fields.allocationFundPlaceholder")} />
                             </SelectTrigger>
