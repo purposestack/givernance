@@ -84,6 +84,25 @@ done
 echo "Syncing Keycloak realm state (idempotent)..."
 KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-sync-realm.sh"
 
+# Seed the demo tenant only on a truly empty dev DB.
+# The seed script appends on every run (50 constituents + 5 campaigns +
+# 100 donations), so gating it on "no constituents for the fixture org_id"
+# keeps re-runs of dev-up.sh from ballooning the tables.
+FIXTURE_ORG_ID="00000000-0000-0000-0000-0000000000a1"
+existing_constituents=$(docker compose exec -T postgres psql \
+  -U "${POSTGRES_USER:-givernance}" \
+  -d "${POSTGRES_DB:-givernance}" \
+  -tAc "SELECT count(*) FROM constituents WHERE org_id = '${FIXTURE_ORG_ID}'" 2>/dev/null || echo "0")
+if [ "${existing_constituents:-0}" = "0" ]; then
+  echo ""
+  echo "Seeding demo tenant (50 constituents / 5 campaigns / 100 donations)..."
+  pnpm --filter @givernance/api run db:seed
+else
+  echo ""
+  echo "Skipping seed — demo tenant already has ${existing_constituents} constituents."
+  echo "  (Wipe with \`docker compose down -v\` to reseed from scratch.)"
+fi
+
 echo ""
 echo "====================================="
 echo " Givernance — Local Dev Stack"
