@@ -211,7 +211,7 @@ export function Sidebar({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                className="flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
               >
                 <div
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"
@@ -236,7 +236,7 @@ export function Sidebar({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-[var(--sidebar-width)] max-w-[calc(100vw-2rem)]"
+              className="w-[min(var(--sidebar-width),calc(100vw-2rem))]"
             >
               <DropdownMenuLabel>{user?.orgName ?? t("orgPlaceholder")}</DropdownMenuLabel>
               {canSwitchOrganization ? (

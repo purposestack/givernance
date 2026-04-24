@@ -272,7 +272,7 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
             <div className="flex flex-wrap items-center gap-3">
               <PublicPageShareActions
                 campaignId={campaign.id}
-                status={previewValues.status ?? initialPage?.status ?? "draft"}
+                initialStatus={initialPage?.status ?? "draft"}
               />
               <Button asChild variant="ghost">
                 <Link href={`/campaigns/${campaign.id}`}>{t("actions.back")}</Link>
@@ -432,15 +432,17 @@ function PreviewMetric({ label, value, icon }: { label: string; value: string; i
 
 function PublicPageShareActions({
   campaignId,
-  status,
+  initialStatus,
 }: {
   campaignId: string;
-  status: PublicPageStatus;
+  initialStatus: PublicPageStatus;
 }) {
   const t = useTranslations("campaigns.publicPage");
   const publicPath = `/p/${campaignId}`;
 
-  if (status !== "published") return null;
+  // Only show the buttons if the page is currently saved as published in the database,
+  // not just because the user toggled the dropdown in the form locally.
+  if (initialStatus !== "published") return null;
 
   async function copyPublicLink() {
     try {

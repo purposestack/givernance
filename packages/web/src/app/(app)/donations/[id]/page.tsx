@@ -6,6 +6,15 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { ReceiptPreviewButton } from "@/components/donations/receipt-preview-button";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
@@ -94,7 +103,7 @@ async function InfoCard({
   const t = await getTranslations("donations.detail");
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+    <Card className="p-6">
       <h2 className="mb-4 font-heading text-xl text-on-surface">{t("infoSection")}</h2>
       <dl className="space-y-3">
         <DetailRow label={t("fields.donor")}>
@@ -138,7 +147,7 @@ async function InfoCard({
           {formatDate(donation.createdAt, locale, "long")}
         </DetailRow>
       </dl>
-    </section>
+    </Card>
   );
 }
 
@@ -155,59 +164,49 @@ async function AllocationsCard({
 
   if (allocations.length === 0) {
     return (
-      <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+      <Card className="p-6">
         <h2 className="mb-4 font-heading text-xl text-on-surface">{t("allocationsSection")}</h2>
         <p className="text-sm text-on-surface-variant">{t("allocations.empty")}</p>
-      </section>
+      </Card>
     );
   }
 
   const total = allocations.reduce((sum, a) => sum + a.amountCents, 0) || 1;
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+    <Card className="p-6">
       <h2 className="mb-4 font-heading text-xl text-on-surface">{t("allocationsSection")}</h2>
-      <table className="w-full border-separate border-spacing-0 text-sm">
-        <thead>
-          <tr className="text-xs uppercase tracking-wide text-on-surface-variant">
-            <th className="border-b border-outline-variant py-2 text-left font-medium">
-              {t("allocations.columnFund")}
-            </th>
-            <th className="border-b border-outline-variant py-2 text-right font-medium">
-              {t("allocations.columnAmount")}
-            </th>
-            <th className="border-b border-outline-variant py-2 text-right font-medium">
-              {t("allocations.columnPercent")}
-            </th>
+      <Table>
+        <TableHeader>
+          <tr>
+            <TableHead>{t("allocations.columnFund")}</TableHead>
+            <TableHead className="text-right">{t("allocations.columnAmount")}</TableHead>
+            <TableHead className="text-right">{t("allocations.columnPercent")}</TableHead>
           </tr>
-        </thead>
-        <tbody>
+        </TableHeader>
+        <TableBody>
           {allocations.map((allocation) => {
             const percent = Math.round((allocation.amountCents / total) * 100);
             return (
-              <tr key={allocation.id}>
-                <td className="border-b border-outline-variant/50 py-2 font-mono text-xs">
-                  {allocation.fundId}
-                </td>
-                <td className="border-b border-outline-variant/50 py-2 text-right font-mono tabular-nums">
+              <TableRow key={allocation.id}>
+                <TableCell className="font-mono text-xs">{allocation.fundId}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">
                   {formatCurrency(allocation.amountCents, locale, donation.currency)}
-                </td>
-                <td className="border-b border-outline-variant/50 py-2 text-right text-on-surface-variant">
-                  {percent}%
-                </td>
-              </tr>
+                </TableCell>
+                <TableCell className="text-right text-on-surface-variant">{percent}%</TableCell>
+              </TableRow>
             );
           })}
-          <tr className="font-semibold">
-            <td className="py-2">{t("allocations.total")}</td>
-            <td className="py-2 text-right font-mono tabular-nums">
+          <TableRow className="font-semibold hover:bg-transparent">
+            <TableCell>{t("allocations.total")}</TableCell>
+            <TableCell className="text-right font-mono tabular-nums">
               {formatCurrency(donation.amountCents, locale, donation.currency)}
-            </td>
-            <td className="py-2 text-right">100%</td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
+            </TableCell>
+            <TableCell className="text-right">100%</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </Card>
   );
 }
 

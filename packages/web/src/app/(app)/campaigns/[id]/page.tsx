@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
@@ -206,31 +207,37 @@ async function StatsCard({
   const t = await getTranslations("campaigns.detail");
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
-      <h2 className="mb-4 font-heading text-xl text-on-surface">{t("stats.title")}</h2>
-      <dl className="space-y-4">
-        <StatRow
-          label={t("stats.raised")}
-          value={formatCurrency(roiMetrics.rawRaisedCents, locale)}
-          hint={t("stats.goalHint", {
-            goal:
-              campaign.goalAmountCents !== null
-                ? formatCurrency(campaign.goalAmountCents, locale)
-                : t("stats.noGoal"),
-          })}
-        />
-        <StatRow
-          label={t("stats.donors")}
-          value={formatNumber(stats.uniqueDonors, locale)}
-          hint={t("stats.donationsHint", { count: stats.donationCount })}
-        />
-        <StatRow
-          label={t("stats.created")}
-          value={formatDate(campaign.createdAt, locale, "long")}
-          hint={t("stats.updatedHint", { date: formatDate(campaign.updatedAt, locale, "medium") })}
-        />
-      </dl>
-    </section>
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("stats.title")}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <dl className="space-y-4">
+          <StatRow
+            label={t("stats.raised")}
+            value={formatCurrency(roiMetrics.rawRaisedCents, locale)}
+            hint={t("stats.goalHint", {
+              goal:
+                campaign.goalAmountCents !== null
+                  ? formatCurrency(campaign.goalAmountCents, locale)
+                  : t("stats.noGoal"),
+            })}
+          />
+          <StatRow
+            label={t("stats.donors")}
+            value={formatNumber(stats.uniqueDonors, locale)}
+            hint={t("stats.donationsHint", { count: stats.donationCount })}
+          />
+          <StatRow
+            label={t("stats.created")}
+            value={formatDate(campaign.createdAt, locale, "long")}
+            hint={t("stats.updatedHint", {
+              date: formatDate(campaign.updatedAt, locale, "medium"),
+            })}
+          />
+        </dl>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -253,11 +260,11 @@ async function CostBreakdownCard({
       : t("roi.unavailable");
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <Card>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <CardHeader className="gap-2">
           <div className="flex items-center gap-2">
-            <h2 className="font-heading text-xl text-on-surface">{t("roi.breakdownTitle")}</h2>
+            <CardTitle>{t("roi.breakdownTitle")}</CardTitle>
             <TooltipProvider delayDuration={150}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -275,18 +282,18 @@ async function CostBreakdownCard({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <p className="mt-1 text-sm text-on-surface-variant">{t("roi.breakdownSubtitle")}</p>
-        </div>
-        <span className="font-mono text-lg font-semibold tabular-nums text-on-surface">
+          <CardDescription>{t("roi.breakdownSubtitle")}</CardDescription>
+        </CardHeader>
+        <span className="w-full rounded-xl bg-surface-container px-4 py-3 font-mono text-lg font-semibold tabular-nums text-on-surface sm:max-w-52 lg:w-auto">
           {totalCost}
         </span>
       </div>
-      <dl className="mt-5 grid gap-4 sm:grid-cols-3">
+      <CardContent className="grid gap-4 sm:grid-cols-3">
         <StatRow label={t("roi.operationalCost")} value={operationalCost} />
         <StatRow label={t("roi.platformFees")} value={platformFees} />
         <StatRow label={t("roi.totalCost")} value={totalCost} />
-      </dl>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -294,11 +301,13 @@ async function StatusCard({ campaign }: { campaign: Campaign }) {
   const t = await getTranslations("campaigns.detail");
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
-      <h2 className="mb-4 font-heading text-xl text-on-surface">{t("actions.title")}</h2>
-      <p className="mb-4 text-sm text-on-surface-variant">{t("actions.description")}</p>
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("actions.title")}</CardTitle>
+        <CardDescription>{t("actions.description")}</CardDescription>
+      </CardHeader>
       <CampaignStatusActions campaignId={campaign.id} status={campaign.status} />
-    </section>
+    </Card>
   );
 }
 
@@ -315,8 +324,8 @@ async function DonationBreakdownCard({
   const { data: donations, pagination } = donationsResult;
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <Card>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-heading text-xl text-on-surface">{t("donations.title")}</h2>
           <p className="text-sm text-on-surface-variant">
@@ -340,7 +349,7 @@ async function DonationBreakdownCard({
       ) : (
         <DonationsTable donations={donations} pagination={pagination} />
       )}
-    </section>
+    </Card>
   );
 }
 

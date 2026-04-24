@@ -213,7 +213,7 @@ function FundActions({ fund, onDelete, editLabel, deleteLabel, menuLabel }: Fund
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" aria-label={menuLabel}>
+        <Button variant="ghost" size="sm" aria-label={menuLabel} className="justify-center">
           <MoreHorizontal size={16} aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>

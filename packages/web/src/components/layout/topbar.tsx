@@ -29,15 +29,7 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
   const displayName = user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() : "";
 
   return (
-    <header
-      className="sticky top-0 z-[var(--z-sticky)] flex h-[var(--topbar-height)] items-center gap-4 border-b px-[var(--content-padding)]"
-      style={{
-        background: "var(--topbar-bg)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        borderColor: "var(--topbar-border)",
-      }}
-    >
+    <header className="sticky top-0 z-[var(--z-sticky)] flex h-[var(--topbar-height)] items-center gap-4 border-b border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-[var(--content-padding)] backdrop-blur-xl">
       <button
         ref={hamburgerRef}
         type="button"
@@ -62,8 +54,7 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
         />
         <input
           type="text"
-          className="h-10 w-full rounded-pill border-0 bg-surface-container-lowest pl-10 pr-14 text-sm text-text placeholder:text-text-muted focus:ring-2 focus:ring-primary focus:outline-none"
-          style={{ boxShadow: "0 0 0 1px var(--color-border-light)" }}
+          className="h-10 w-full rounded-pill border border-[var(--color-border-light)] bg-surface-container-lowest pl-10 pr-14 text-sm text-text placeholder:text-text-muted focus:ring-2 focus:ring-primary focus:outline-none"
           placeholder={t("searchPlaceholder")}
           aria-label={t("searchLabel")}
         />
@@ -80,8 +71,7 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
         >
           <Bell size={18} aria-hidden="true" />
           <span
-            className="absolute top-2 right-2 h-2 w-2 rounded-full bg-tertiary"
-            style={{ border: "2px solid var(--color-surface-container-lowest)" }}
+            className="absolute top-2 right-2 h-2 w-2 rounded-full border-2 border-surface-container-lowest bg-tertiary"
             aria-hidden="true"
           />
         </button>

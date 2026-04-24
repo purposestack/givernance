@@ -96,9 +96,7 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
         }
       />
 
-      <div className="mb-4">
-        <DonationsFilters dateFrom={dateFrom ?? ""} dateTo={dateTo ?? ""} />
-      </div>
+      <DonationsFilters dateFrom={dateFrom ?? ""} dateTo={dateTo ?? ""} />
 
       {hasAny ? (
         <DonationsTable donations={result.data} pagination={result.pagination} />

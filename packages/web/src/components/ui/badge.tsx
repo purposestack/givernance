@@ -13,7 +13,7 @@ const badgeVariants = cva(
     variants: {
       variant: {
         success: "bg-primary-50 text-primary",
-        warning: "bg-[rgba(134,71,0,0.1)] text-tertiary",
+        warning: "bg-warning-light text-warning-text",
         error: "bg-error-container text-on-error-container",
         info: "bg-sky-50 text-sky-text",
         neutral: "bg-surface-container-highest text-on-surface-variant",

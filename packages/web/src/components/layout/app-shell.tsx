@@ -93,7 +93,7 @@ export function AppShell({
           id="main-content"
           className="w-full max-w-[var(--content-max)] flex-1 p-[var(--content-padding)]"
         >
-          {children}
+          <div className="space-y-6 sm:space-y-8">{children}</div>
         </main>
       </div>
     </div>

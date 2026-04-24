@@ -11,6 +11,14 @@ import {
 } from "@/components/admin/tenant-admin-shared";
 import { TenantDetailTabs } from "@/components/admin/tenant-detail-tabs";
 import { TenantLifecycleActions } from "@/components/admin/tenant-lifecycle-actions";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { createServerApiClient } from "@/lib/api/client-server";
 import type { AdminTenantDetailResponse } from "@/services/TenantAdminService";
 
@@ -79,30 +87,30 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
 
   const domainsTab = domains.length ? (
     <div className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
-      <table className="w-full border-separate border-spacing-0 text-left text-sm">
-        <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-text-secondary">
+      <Table>
+        <TableHeader>
           <tr>
-            <th className="px-4 py-3">{t("domains.columns.domain")}</th>
-            <th className="px-4 py-3">{t("domains.columns.state")}</th>
-            <th className="px-4 py-3">{t("domains.columns.dnsTxtValue")}</th>
-            <th className="px-4 py-3">{t("domains.columns.verifiedAt")}</th>
+            <TableHead>{t("domains.columns.domain")}</TableHead>
+            <TableHead>{t("domains.columns.state")}</TableHead>
+            <TableHead>{t("domains.columns.dnsTxtValue")}</TableHead>
+            <TableHead>{t("domains.columns.verifiedAt")}</TableHead>
           </tr>
-        </thead>
-        <tbody>
+        </TableHeader>
+        <TableBody>
           {domains.map((domain) => (
-            <tr key={domain.id} className="border-t border-outline-variant">
-              <td className="px-4 py-3 text-text">{domain.domain}</td>
-              <td className="px-4 py-3 text-text">{domain.state}</td>
-              <td className="px-4 py-3 font-mono text-xs text-text-secondary">
+            <TableRow key={domain.id}>
+              <TableCell>{domain.domain}</TableCell>
+              <TableCell>{domain.state}</TableCell>
+              <TableCell className="font-mono text-xs text-text-secondary">
                 {domain.dnsTxtValue}
-              </td>
-              <td className="px-4 py-3 text-text-secondary">
+              </TableCell>
+              <TableCell className="text-text-secondary">
                 {formatAdminDate(domain.verifiedAt)}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   ) : (
     <p className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-text-secondary">
@@ -112,25 +120,23 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
 
   const usersTab = users.length ? (
     <div className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
-      <table className="w-full border-separate border-spacing-0 text-left text-sm">
-        <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-text-secondary">
+      <Table>
+        <TableHeader>
           <tr>
-            <th className="px-4 py-3">{t("users.columns.name")}</th>
-            <th className="px-4 py-3">{t("users.columns.email")}</th>
-            <th className="px-4 py-3">{t("users.columns.role")}</th>
-            <th className="px-4 py-3">{t("users.columns.flags")}</th>
-            <th className="px-4 py-3">{t("users.columns.lastVisitedAt")}</th>
+            <TableHead>{t("users.columns.name")}</TableHead>
+            <TableHead>{t("users.columns.email")}</TableHead>
+            <TableHead>{t("users.columns.role")}</TableHead>
+            <TableHead>{t("users.columns.flags")}</TableHead>
+            <TableHead>{t("users.columns.lastVisitedAt")}</TableHead>
           </tr>
-        </thead>
-        <tbody>
+        </TableHeader>
+        <TableBody>
           {users.map((user) => (
-            <tr key={user.id} className="border-t border-outline-variant">
-              <td className="px-4 py-3 text-text">
-                {formatTenantUserName(user.firstName, user.lastName)}
-              </td>
-              <td className="px-4 py-3 text-text-secondary">{user.email}</td>
-              <td className="px-4 py-3 text-text">{user.role}</td>
-              <td className="px-4 py-3 text-text-secondary">
+            <TableRow key={user.id}>
+              <TableCell>{formatTenantUserName(user.firstName, user.lastName)}</TableCell>
+              <TableCell className="text-text-secondary">{user.email}</TableCell>
+              <TableCell>{user.role}</TableCell>
+              <TableCell className="text-text-secondary">
                 {user.firstAdmin
                   ? t("users.flags.firstAdmin")
                   : user.provisionalUntil
@@ -138,14 +144,14 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
                         date: formatAdminDate(user.provisionalUntil),
                       })
                     : "—"}
-              </td>
-              <td className="px-4 py-3 text-text-secondary">
+              </TableCell>
+              <TableCell className="text-text-secondary">
                 {formatAdminDate(user.lastVisitedAt)}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   ) : (
     <p className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-text-secondary">
@@ -155,37 +161,39 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
 
   const auditTab = recentAudit.length ? (
     <div className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
-      <table className="w-full border-separate border-spacing-0 text-left text-sm">
-        <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-text-secondary">
+      <Table>
+        <TableHeader>
           <tr>
-            <th className="px-4 py-3">{t("audit.columns.createdAt")}</th>
-            <th className="px-4 py-3">{t("audit.columns.action")}</th>
-            <th className="px-4 py-3">{t("audit.columns.resource")}</th>
-            <th className="px-4 py-3">{t("audit.columns.actor")}</th>
-            <th className="px-4 py-3">{t("audit.columns.changes")}</th>
+            <TableHead>{t("audit.columns.createdAt")}</TableHead>
+            <TableHead>{t("audit.columns.action")}</TableHead>
+            <TableHead>{t("audit.columns.resource")}</TableHead>
+            <TableHead>{t("audit.columns.actor")}</TableHead>
+            <TableHead>{t("audit.columns.changes")}</TableHead>
           </tr>
-        </thead>
-        <tbody>
+        </TableHeader>
+        <TableBody>
           {recentAudit.map((entry) => (
-            <tr key={entry.id} className="border-t border-outline-variant align-top">
-              <td className="px-4 py-3 text-text-secondary">{formatAdminDate(entry.createdAt)}</td>
-              <td className="px-4 py-3 text-text">{entry.action}</td>
-              <td className="px-4 py-3 text-text-secondary">
+            <TableRow key={entry.id} className="align-top">
+              <TableCell className="text-text-secondary">
+                {formatAdminDate(entry.createdAt)}
+              </TableCell>
+              <TableCell>{entry.action}</TableCell>
+              <TableCell className="text-text-secondary">
                 {[entry.resourceType, entry.resourceId].filter(Boolean).join(" · ") || "—"}
-              </td>
-              <td className="px-4 py-3 font-mono text-xs text-text-secondary">
+              </TableCell>
+              <TableCell className="font-mono text-xs text-text-secondary">
                 {entry.userId ?? "—"}
-              </td>
-              <td className="px-4 py-3 text-xs text-text-secondary">
+              </TableCell>
+              <TableCell className="text-xs text-text-secondary">
                 <p>{t("audit.oldValues", { value: renderJsonPreview(entry.oldValues) })}</p>
                 <p className="mt-1">
                   {t("audit.newValues", { value: renderJsonPreview(entry.newValues) })}
                 </p>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   ) : (
     <p className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-text-secondary">
