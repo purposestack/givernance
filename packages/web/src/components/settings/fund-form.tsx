@@ -17,6 +17,7 @@ import {
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -97,12 +98,12 @@ export function FundForm(props: FundFormProps) {
 
   if (!canManageFunds) {
     return (
-      <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+      <Card>
         <div className="inline-flex items-center gap-2 rounded-xl bg-surface-container px-4 py-3 text-sm text-on-surface-variant">
           <Lock size={16} aria-hidden="true" />
           <span>{tFunds("readOnly")}</span>
         </div>
-      </section>
+      </Card>
     );
   }
 
@@ -202,9 +203,9 @@ export function FundForm(props: FundFormProps) {
           />
         </FormSection>
 
-        <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 py-8">
           <div className="min-h-5 text-sm text-error">{rootError}</div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button asChild variant="ghost">
               <Link href="/settings/funds">{t("actions.cancel")}</Link>
             </Button>

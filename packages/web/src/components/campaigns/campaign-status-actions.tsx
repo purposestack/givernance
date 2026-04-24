@@ -49,7 +49,7 @@ export function CampaignStatusActions({ campaignId, status }: CampaignStatusActi
   const busy = pendingAction !== null;
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className="flex flex-wrap justify-end gap-2">
       <Button onClick={() => void runAction("activate")} disabled={busy || status === "active"}>
         <Play size={16} aria-hidden="true" />
         {pendingAction === "activate" ? t("activating") : t("activate")}

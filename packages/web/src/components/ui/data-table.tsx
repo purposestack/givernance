@@ -44,7 +44,7 @@ export interface DataTableProps<TData> {
 
 const densityClasses: Record<Density, { row: string; header: string }> = {
   comfortable: { row: "py-4", header: "py-3" },
-  compact: { row: "py-2", header: "py-2" },
+  compact: { row: "py-3", header: "py-2.5" },
 };
 
 function sortDirectionAriaValue(sort: "asc" | "desc" | false) {
@@ -134,11 +134,11 @@ export function DataTable<TData>({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card",
+        "overflow-hidden rounded-2xl border border-outline-variant/70 bg-surface-container-lowest shadow-card",
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-4 border-b border-outline-variant px-5 py-3">
+      <div className="flex flex-col gap-3 border-b border-outline-variant px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-on-surface-variant">
           {hasRows
             ? t("rangeSummary", {
@@ -149,7 +149,7 @@ export function DataTable<TData>({
             : t("emptySummary")}
         </div>
         <div
-          className="flex items-center gap-1 text-on-surface-variant"
+          className="flex items-center gap-1 self-end text-on-surface-variant sm:self-auto"
           role="toolbar"
           aria-label={t("densityLabel")}
         >
@@ -211,7 +211,10 @@ export function DataTable<TData>({
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className={cn("px-5 text-sm text-on-surface", rowPadding)}>
+                    <td
+                      key={cell.id}
+                      className={cn("px-5 text-sm text-on-surface align-middle", rowPadding)}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -229,7 +232,7 @@ export function DataTable<TData>({
       </div>
 
       {hasRows ? (
-        <div className="flex items-center justify-between gap-4 border-t border-outline-variant px-5 py-3 text-sm text-on-surface-variant">
+        <div className="flex flex-col gap-3 border-t border-outline-variant px-5 py-3 text-sm text-on-surface-variant sm:flex-row sm:items-center sm:justify-between">
           <span>
             {t("pageOf", { page: pagination.page, totalPages: Math.max(pagination.totalPages, 1) })}
           </span>

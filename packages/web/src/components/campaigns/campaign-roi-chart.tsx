@@ -1,5 +1,6 @@
 import { useId } from "react";
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatPercent } from "@/lib/format";
 
 interface CampaignRoiChartLabels {
@@ -68,13 +69,13 @@ export function CampaignRoiChart({
   ];
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="font-heading text-xl text-on-surface">{labels.title}</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">{labels.subtitle}</p>
-        </div>
-        <div className="rounded-xl bg-surface-container px-4 py-3 sm:min-w-36">
+    <Card>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <CardHeader className="gap-1">
+          <CardTitle>{labels.title}</CardTitle>
+          <CardDescription>{labels.subtitle}</CardDescription>
+        </CardHeader>
+        <div className="w-full rounded-xl bg-surface-container px-4 py-3 sm:max-w-44 lg:w-auto">
           <p className="text-xs font-medium uppercase tracking-wide text-on-surface-variant">
             {labels.roi}
           </p>
@@ -88,27 +89,30 @@ export function CampaignRoiChart({
         </div>
       </div>
 
-      <figure className="mt-6 space-y-4" aria-describedby={figureCaptionId} aria-details={tableId}>
+      <figure className="mt-5 space-y-4" aria-describedby={figureCaptionId} aria-details={tableId}>
         {series.map((item) => {
-          const width = Math.max((item.value / chartMax) * 100, item.value > 0 ? 6 : 0);
+          const width = Math.max((item.value / chartMax) * 100, item.value > 0 ? 8 : 0);
           return (
-            <div key={item.key} className="space-y-2">
-              <div className="flex items-baseline justify-between gap-3">
+            <CardContent
+              key={item.key}
+              className="mt-0 rounded-xl border border-outline-variant/60 bg-surface-container-low p-4"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <span className="text-sm font-medium text-on-surface">{item.label}</span>
                 <span className="font-mono text-sm tabular-nums text-on-surface-variant">
                   {item.displayValue}
                 </span>
               </div>
               <div
-                className="h-4 overflow-hidden rounded-full bg-surface-container"
+                className="mt-3 h-3 overflow-hidden rounded-pill bg-surface-container-highest"
                 aria-hidden="true"
               >
                 <div
-                  className={`h-full rounded-full ${item.barClassName}`}
+                  className={`h-full rounded-pill ${item.barClassName}`}
                   style={{ width: `${Math.min(width, 100)}%` }}
                 />
               </div>
-            </div>
+            </CardContent>
           );
         })}
         <figcaption id={figureCaptionId} className="sr-only">
@@ -143,6 +147,6 @@ export function CampaignRoiChart({
           </tr>
         </tbody>
       </table>
-    </section>
+    </Card>
   );
 }
