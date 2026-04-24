@@ -44,6 +44,7 @@ You are the data architect for the Givernance NPO platform. You own the PostgreS
 3. **Soft deletes everywhere**: constituent records carry `deleted_at`; hard purge only on lawful erasure request
 4. **Custom fields via JSONB**: each org can define extra fields in `org_field_definitions`; stored in `custom_attributes JSONB`
 5. **Event outbox**: `domain_events` table for transactional outbox pattern
+6. **One logical database per tool (ADR-017)**: Drizzle-managed application tables live *only* in the `givernance` database. Keycloak has its own `givernance_keycloak` database with its own owner role `keycloak`, provisioned by `infra/postgres/init/01-init-keycloak-db.sh`. When proposing a new third-party tool that needs Postgres storage (a second IdP, a metrics collector, a workflow engine), add a new logical DB + owner role; never reuse `givernance` or `givernance_keycloak`. Drizzle introspection and `drizzle-kit push` target `DATABASE_URL` and must never see Keycloak's schema.
 
 ## How you work
 

@@ -126,7 +126,17 @@ Key ADRs for frontend work:
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
 - Terminology: **NPO** (nonprofit organization), not "NGO"
 - GDPR in English docs, RGPD in French docs
-- All docs are in `docs/`, numbered 01-20 for architecture specs
+- All docs are in `docs/`, numbered 01-22 for architecture specs
+
+### 🛑 One Logical Database per Tool (ADR-017)
+
+**Never co-locate an application schema with a third-party service's schema in the same Postgres logical database.** Each tool that needs Postgres storage gets its own logical DB and its own owner role on the shared instance.
+
+Current topology:
+- `givernance` — application data (Drizzle-managed), owner `givernance`, runtime role `givernance_app` (NOBYPASSRLS)
+- `givernance_keycloak` — Keycloak's internal tables, owner `keycloak` (provisioned by `infra/postgres/init/01-init-keycloak-db.sh`)
+
+When proposing a new service or Compose change that needs Postgres storage (e.g., adding Mailpit with a durable store, a second IdP, a workflow engine, an analytics sidecar), **do not reuse `givernance` or `givernance_keycloak`** — add a new logical DB + role in `infra/postgres/init/`, document it in the "Databases" table of `docs/infra/README.md`, and reference ADR-017. Co-locating is rejected in PR review. Rationale, rejected alternatives, and revisit criteria are in [`docs/15-infra-adr.md` → ADR-017](docs/15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db).
 
 ---
 

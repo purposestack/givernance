@@ -8,11 +8,18 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     environment:
+      # Bootstrap superuser + application database.
       POSTGRES_DB: ${POSTGRES_DB:-givernance}
       POSTGRES_USER: ${POSTGRES_USER:-givernance}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-givernance_dev}
+      # Consumed by /docker-entrypoint-initdb.d/01-init-keycloak-db.sh on
+      # first boot to provision Keycloak's own database + role (ADR-017).
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME:-givernance_keycloak}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-givernance}"]
       interval: 5s
@@ -39,9 +46,12 @@ services:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-givernance}
-      KC_DB_USERNAME: ${POSTGRES_USER:-givernance}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-givernance_dev}
+      # Keycloak runs against its own logical database + dedicated role so
+      # a schema upgrade or restore on either side can't clobber the other.
+      # See docs/15-infra-adr.md (ADR-017).
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB_NAME:-givernance_keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev}
     command: start-dev --import-realm
     volumes:
       - ./infra/keycloak/realm-givernance.json:/opt/keycloak/data/import/realm-givernance.json:ro

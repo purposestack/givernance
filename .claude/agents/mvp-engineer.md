@@ -78,6 +78,7 @@ packages/shared/src/
 | Error codes | RFC 9457 Problem Details — return `{ type, title, status, detail, instance }` |
 | Pagination | Cursor-based only: `?cursor=<opaque base64>&limit=50` — no offset pagination |
 | Audit logs | Every write operation triggers `audit_log` insert (via DB trigger or service layer) |
+| Database topology | `DATABASE_URL` and `DATABASE_URL_APP` point to the `givernance` logical DB — **only** app tables live there. Keycloak uses its own `givernance_keycloak` DB (ADR-017). Drizzle schema, migrations, and seeds must never target the Keycloak DB. When proposing a new Compose/infra change that needs Postgres storage for a third-party tool, add a new logical DB + owner role under `infra/postgres/init/`; never reuse `givernance` or `givernance_keycloak`. |
 
 ## Fastify route template
 

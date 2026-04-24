@@ -31,16 +31,39 @@ Or manually:
 docker compose up -d
 ```
 
+#### Upgrading from a pre-ADR-017 checkout
+
+If you already have a `pgdata` volume from before the Keycloak DB split (ADR-017), the init script in `infra/postgres/init/` will **not** run — the Postgres image only executes `/docker-entrypoint-initdb.d/*` on an empty data directory. You'll see Keycloak start up and fail to connect to `givernance_keycloak`. Reset the local volumes once:
+
+```bash
+docker compose down -v   # wipes pgdata, redisdata, miniodata, mailpitdata
+./scripts/dev-up.sh      # recreates everything, including givernance_keycloak
+```
+
+This is safe in dev — Keycloak realm state is rebuilt from [`infra/keycloak/realm-givernance.json`](../../infra/keycloak/realm-givernance.json) and then reconciled idempotently by [`scripts/keycloak-sync-realm.sh`](../../scripts/keycloak-sync-realm.sh). The app DB is rebuilt by `pnpm db:migrate` and (optionally) `pnpm --filter @givernance/api run db:seed`.
+
 ### Local Services
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| PostgreSQL 16 | `localhost:5432` | Primary database (`givernance` DB) |
+| PostgreSQL 16 | `localhost:5432` | Shared instance hosting the `givernance` and `givernance_keycloak` databases — see [Databases](#databases) |
 | Redis 7 | `localhost:6379` | Cache, rate limiting |
 | Keycloak 24 | `http://localhost:8080` | OIDC/SAML identity provider (admin: `admin`/`admin`) |
 | MinIO | `http://localhost:9000` (API), `http://localhost:9001` (Console) | S3-compatible object storage (user: `givernance`/`givernance_dev`) |
 | Mailpit | `localhost:1025` (SMTP), `http://localhost:8025` (UI) | Local email capture and testing |
 | Caddy | `localhost:3000`, `localhost:3001` | Reverse proxy (optional, `--profile proxy`) |
+
+### Databases
+
+Per [ADR-017](../15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db), the local Postgres 16 instance hosts **one logical database per tool**. Adding a new tool that needs Postgres storage is an explicit decision: it gets its own database and its own owner role — never a shared one.
+
+| Database | Owner role | Used by | Initialised by |
+|---|---|---|---|
+| `givernance` | `givernance` | Givernance API (Drizzle-managed `public` schema), Worker, Outbox relay | `POSTGRES_DB` / `POSTGRES_USER` on the postgres service (native image bootstrap) |
+| `givernance_keycloak` | `keycloak` | Keycloak 24 — entire Keycloak schema (`realm`, `user_entity`, `client`, `credential`, …) | `infra/postgres/init/01-init-keycloak-db.sh`, on first `docker compose up -d` against a fresh `pgdata` volume |
+| `givernance_test` | `givernance` | API integration tests only | `scripts/dev-up.sh` on each start (created if missing, migrated fresh) |
+
+The app role that the API uses at runtime (`givernance_app`, NOBYPASSRLS) is provisioned by the Drizzle migrations inside the `givernance` database — see §6 of [`docs/02-reference-architecture.md`](../02-reference-architecture.md) for the 3-role RLS pattern.
 
 ### Recommended Local Tooling (macOS Apple Silicon)
 
@@ -51,7 +74,8 @@ docker compose up -d
 
 **Beekeeper Studio** — connect to the local PostgreSQL instance:
 - Host: `localhost`, Port: `5432`
-- Database: `givernance`, User: `givernance`, Password: `givernance_dev`
+- App database: `givernance`, User: `givernance`, Password: `givernance_dev`
+- Keycloak database (rarely needed — prefer the Keycloak admin console): `givernance_keycloak`, User: `keycloak`, Password: `keycloak_dev` — or connect as the `givernance` superuser to inspect both DBs.
 
 **RedisInsight** — connect to the local Redis instance:
 - Host: `localhost`, Port: `6379`

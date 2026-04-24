@@ -103,8 +103,13 @@ See: /diagrams/container.mmd
 - WAL archiving to S3 (continuous backup)
 - Logical replication slot for read replica (reporting workload)
 - Extensions: `uuid-ossp`, `pgcrypto`, `pg_trgm`, `ltree`, `pg_audit`
+- **Topology — one logical database per tool** ([ADR-017](./15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db)). On a single Postgres *instance* the cluster hosts two databases with separate owner roles:
+  - `givernance` — all application tables (Drizzle-managed `public` schema), owner `givernance`, runtime role `givernance_app` (NOBYPASSRLS); this is the DB behind `DATABASE_URL` / `DATABASE_URL_APP`.
+  - `givernance_keycloak` — Keycloak's internal schema, owner `keycloak`; provisioned on first `docker compose up -d` by [`infra/postgres/init/01-init-keycloak-db.sh`](../infra/postgres/init/01-init-keycloak-db.sh). Nothing else writes here.
+
+  No third-party service may share `givernance`. Future tools that need Postgres storage get their own logical DB + role; this rule is enforced in code review and by the specialized agents.
 - **Self-hosted deployments**: PostgreSQL 16 + PgBouncer (Docker Compose)
-- **SaaS managed deployment**: [Scaleway Managed PostgreSQL](https://www.scaleway.com/en/database/) EU region — includes connection pooling, read replicas, WAL backup, full extension support. See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
+- **SaaS managed deployment**: [Scaleway Managed PostgreSQL](https://www.scaleway.com/en/database/) EU region — includes connection pooling, read replicas, WAL backup, full extension support. Provision `givernance` and `givernance_keycloak` as two logical databases on the same instance for Phase 1–3; split to a dedicated Postgres instance for Keycloak only if its SLA or compliance needs diverge from the app's (see ADR-017 "Revisit criteria"). See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
 
 #### `pgbouncer` (PgBouncer 1.22)
 - Transaction-mode pooling — **self-hosted deployments only**
@@ -123,6 +128,7 @@ See: /diagrams/container.mmd
 
 #### `keycloak` (Keycloak 24)
 - OIDC provider; issues JWTs consumed by `givernance-api`
+- **Storage**: writes to its own `givernance_keycloak` logical database with the dedicated `keycloak` role ([ADR-017](./15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db)). Schema upgrades (e.g. the Keycloak 26 / Organizations migration in [issue #114](https://github.com/purposestack/givernance/issues/114)) only touch this database — the app DB is outside its blast radius.
 - Realms: **Option A / MVP choice is one shared realm per deployment** (`givernance` for SaaS, admin, tests, and the MVP). Tenant isolation is carried in the JWT via `org_id` / `org_slug` / `role` claims and enforced at the application layer (PostgreSQL RLS — see §6)
 - Multi-tenancy inside the shared realm: one Keycloak **group** per tenant (`/tenants/<slug>`) + per-tenant **Identity Provider federation** (Entra ID, Okta, Google Workspace, …). Domain routing uses `kc_idp_hint` or email-domain alias. See `21-authentication-sso.md` §2 for the full onboarding architecture (Spike [#80](https://github.com/purposestack/givernance/issues/80))
 - **No self-service signup**: tenant rows and Keycloak groups/IdPs are provisioned by a Givernance Super Admin via `POST /v1/admin/tenants`; NPO users are then created Just-In-Time on first SSO login from the JWT claims

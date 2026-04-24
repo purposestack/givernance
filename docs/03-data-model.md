@@ -9,6 +9,7 @@
 | Principle | Implementation |
 |---|---|
 | Multi-tenant isolation | All tenant-owned tables carry `org_id UUID NOT NULL`; enforced via PostgreSQL RLS |
+| One logical database per tool | All tables described in this document live in the `givernance` database. Keycloak has its own `givernance_keycloak` database with owner role `keycloak` — see [ADR-017](./15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db). Drizzle schema and migrations are scoped to `givernance` and must never introspect or mutate `givernance_keycloak`. |
 | Immutable audit trail | No physical deletes on financial records; soft-delete with `deleted_at` + `deleted_by` |
 | GDPR erasure without corruption | PII stored in erasable `contact_pii` column set; FK references survive erasure as anonymised tombstones |
 | Flexible extension | Custom fields stored as `JSONB custom_fields` on all primary entities; validated against org-defined schema at API layer |
