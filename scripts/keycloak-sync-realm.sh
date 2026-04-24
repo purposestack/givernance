@@ -346,6 +346,63 @@ print(json.dumps(d))
   fi
 fi
 
+# 2.f Reconcile the `givernance-admin` service-account's `realm-management`
+#     client roles. The backend uses this service account to call the
+#     Keycloak Admin API when provisioning tenants. In Keycloak 26,
+#     Organizations API writes (POST/DELETE /organizations) require the
+#     `manage-realm` role — there's no dedicated `manage-organizations`
+#     role in this KC build. Realms created before this config was added
+#     won't have the role, and tenant creation fails with HTTP 403.
+#
+#     Yes, `manage-realm` is broad. Keycloak's fine-grained admin
+#     permissions (FGAP, preview) would let us narrow it to the
+#     organizations resource; wiring that up is a separate hardening
+#     ticket. For dev / self-hosted realms the broader role is acceptable.
+admin_client_uuid=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients?clientId=givernance-admin" \
+  | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')
+realm_mgmt_uuid=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients?clientId=realm-management" \
+  | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')
+if [ -z "$admin_client_uuid" ] || [ -z "$realm_mgmt_uuid" ]; then
+  log "Skipping givernance-admin service-account role sync (admin_client_uuid='${admin_client_uuid}', realm_mgmt_uuid='${realm_mgmt_uuid}')."
+else
+  sa_user_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${admin_client_uuid}/service-account-user" \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id",""))')
+  if [ -z "$sa_user_id" ]; then
+    warn "Service account for 'givernance-admin' not found — Admin API calls from the backend will fail with 403."
+  else
+    sa_current=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users/${sa_user_id}/role-mappings/clients/${realm_mgmt_uuid}")
+    required_roles="manage-realm view-realm"
+    for role_name in $required_roles; do
+      already=$(printf '%s' "$sa_current" | ROLE="$role_name" python3 -c '
+import json, os, sys
+wanted = os.environ["ROLE"]
+print("yes" if any(r.get("name") == wanted for r in json.load(sys.stdin)) else "no")
+')
+      if [ "$already" = "yes" ]; then
+        log "Service account 'givernance-admin' already has realm-management role '${role_name}'."
+        continue
+      fi
+      role_repr=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${realm_mgmt_uuid}/roles/${role_name}")
+      role_id_check=$(printf '%s' "$role_repr" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(d.get("id",""))
+except Exception:
+    print("")
+')
+      if [ -z "$role_id_check" ]; then
+        warn "realm-management role '${role_name}' not found on realm '${REALM}' — Keycloak build may differ from expectations."
+        continue
+      fi
+      curl -sS -o /dev/null -w "sa-role assign (${role_name}): HTTP %{http_code}\n" \
+        -X POST "${KC_URL}/admin/realms/${REALM}/users/${sa_user_id}/role-mappings/clients/${realm_mgmt_uuid}" \
+        "${auth[@]}" -H "Content-Type: application/json" -d "[${role_repr}]"
+      log "Granted realm-management role '${role_name}' to service account 'givernance-admin'."
+    done
+  fi
+fi
+
 # 3. Ensure the seed user has the org_id attribute set.
 user_json=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users?username=$(urlencode "$SEED_USERNAME")&exact=true")
 user_id=$(printf '%s' "$user_json" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')

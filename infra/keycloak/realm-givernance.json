@@ -53,7 +53,9 @@
           "manage-identity-providers",
           "query-users",
           "query-clients",
-          "view-clients"
+          "view-clients",
+          "manage-realm",
+          "view-realm"
         ]
       }
     }

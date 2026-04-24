@@ -63,7 +63,11 @@ interface RealmSeed {
   organizationsEnabled?: boolean;
   organizations?: KeycloakOrganization[];
   clients: KeycloakClient[];
-  users: Array<{ username: string; attributes?: Record<string, string[]> }>;
+  users: Array<{
+    username: string;
+    attributes?: Record<string, string[]>;
+    clientRoles?: Record<string, string[]>;
+  }>;
 }
 
 const PLATFORM_ORG_ID = "00000000-0000-0000-0000-0000000000a1";
@@ -140,6 +144,22 @@ describe("Keycloak realm seed (issue #114 — Organizations migration)", () => {
   it("keeps the seeded admin user's org_id attribute aligned with the org attribute", () => {
     const admin = realm.users.find((u) => u.username === SEED_USERNAME);
     expect(admin?.attributes?.org_id).toEqual([PLATFORM_ORG_ID]);
+  });
+
+  it("grants the givernance-admin service account the realm-management roles Organizations writes need", () => {
+    // In Keycloak 26, POST /admin/realms/:realm/organizations requires the
+    // `manage-realm` role on the realm-management client (and `view-realm`
+    // for the read paths). There is no dedicated `manage-organizations`
+    // role in this KC build. Without these, `createEnterpriseTenant` fails
+    // with HTTP 403 and the app returns 502 on tenant creation.
+    const serviceAccount = realm.users.find(
+      (u) => u.username === "service-account-givernance-admin",
+    );
+    expect(serviceAccount, "givernance-admin service account must be seeded").toBeDefined();
+    const roles = serviceAccount?.clientRoles?.["realm-management"] ?? [];
+    expect(roles, "missing realm-management roles on givernance-admin SA").toEqual(
+      expect.arrayContaining(["manage-realm", "view-realm"]),
+    );
   });
 
   it("cross-checks user.attributes.org_id === organization.attributes.org_id", () => {
