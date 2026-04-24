@@ -18,7 +18,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <AuthProvider>
-      <AppShell impersonation={auth.impersonation} impersonationUserName={undefined}>
+      <AppShell impersonation={auth.impersonation} impersonationUserName={undefined} isSuperAdmin>
         {children}
       </AppShell>
       <Toaster />

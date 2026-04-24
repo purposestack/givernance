@@ -66,6 +66,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         impersonationUserName={auth.impersonation ? userName : undefined}
         provisionalAdmin={provisionalAdmin}
         membershipCount={membershipCount}
+        isSuperAdmin={auth.roles.includes("super_admin")}
       >
         {children}
       </AppShell>

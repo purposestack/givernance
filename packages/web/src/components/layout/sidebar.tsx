@@ -68,18 +68,33 @@ interface SidebarProps {
   open: boolean;
   onClose: () => void;
   membershipCount?: number;
+  /**
+   * SSR-resolved super-admin flag — when provided, the "Back office" section
+   * renders on the server instead of popping in after `/v1/users/me`
+   * hydrates. Falls back to `useAuth().hasRole("super_admin")` for legacy
+   * callers that haven't threaded the prop yet.
+   */
+  isSuperAdmin?: boolean;
 }
 
 /**
  * Sidebar navigation — 288px fixed, collapsible on mobile.
  * Matches dashboard.html mockup layout and base.css sidebar specs.
  */
-export function Sidebar({ open, onClose, membershipCount }: SidebarProps) {
+export function Sidebar({
+  open,
+  onClose,
+  membershipCount,
+  isSuperAdmin: isSuperAdminProp,
+}: SidebarProps) {
   const pathname = usePathname();
   const { user, hasRole, logout } = useAuth();
   const t = useTranslations("appShell.sidebar");
   const tAdmin = useTranslations("appShell.sidebar.admin");
-  const isSuperAdmin = hasRole("super_admin");
+  // Prefer the SSR-resolved flag; fall back to client-side role check so
+  // callers that haven't threaded the prop still get the correct behaviour
+  // (just with a brief post-hydration pop-in).
+  const isSuperAdmin = isSuperAdminProp ?? hasRole("super_admin");
   const canSwitchOrganization = typeof membershipCount !== "number" || membershipCount > 1;
 
   const initials = user
@@ -158,9 +173,12 @@ export function Sidebar({ open, onClose, membershipCount }: SidebarProps) {
           {isSuperAdmin && (
             <section
               className="mt-6 border-t border-outline-variant pt-4"
-              aria-label={tAdmin("section")}
+              aria-labelledby="sidebar-backoffice-heading"
             >
-              <h2 className="mb-2 px-4 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+              <h2
+                id="sidebar-backoffice-heading"
+                className="mb-2 px-4 text-xs font-semibold uppercase tracking-wide text-on-surface-variant"
+              >
                 {tAdmin("section")}
               </h2>
               {ADMIN_NAV_ITEMS.map((item) => {
