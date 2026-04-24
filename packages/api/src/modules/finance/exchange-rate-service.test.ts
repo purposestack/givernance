@@ -129,13 +129,13 @@ describe("ExchangeRateService", () => {
     process.env.EXCHANGE_RATE_API_KEY = "test-key";
     await db
       .delete(exchangeRates)
-      .where(and(eq(exchangeRates.currency, "EUR"), eq(exchangeRates.baseCurrency, "CHF")));
+      .where(and(eq(exchangeRates.currency, "GBP"), eq(exchangeRates.baseCurrency, "JPY")));
 
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
           conversion_rates: {
-            CHF: 0.95,
+            JPY: 150.0,
           },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
@@ -144,7 +144,7 @@ describe("ExchangeRateService", () => {
 
     await withTenantContext(ORG_ID, async (tx) => {
       const service = new ExchangeRateService({ dbClient: tx, fetchImpl });
-      await service.getRate("EUR", "CHF");
+      await service.getRate("GBP", "JPY");
     });
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);

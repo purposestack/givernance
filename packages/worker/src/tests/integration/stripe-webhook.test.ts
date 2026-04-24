@@ -12,8 +12,10 @@ import { db } from "../../lib/db.js";
 import { processStripeWebhook } from "../../processors/stripe-webhook.js";
 
 const ORG_ID = "00000000-0000-0000-0000-00000000000b";
+const MULTI_CURRENCY_ORG = "00000000-0000-0000-0000-000000000126";
 const ORG_ID_OTHER = "00000000-0000-0000-0000-00000000000c";
 const STRIPE_ACCOUNT_ID = "acct_test_worker";
+const STRIPE_ACCOUNT_ID_MULTI = "acct_test_multi";
 const STRIPE_ACCOUNT_ID_OTHER = "acct_test_other";
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -235,24 +237,28 @@ describe("processStripeWebhook", () => {
   });
 
   it("computes amountBaseCents and exchangeRate from the organization base currency", async () => {
-    await db.execute(sql`UPDATE tenants SET base_currency = 'CHF' WHERE id = ${ORG_ID}`);
+    await db.execute(
+      sql`INSERT INTO tenants (id, name, slug, stripe_account_id, base_currency) 
+          VALUES (${MULTI_CURRENCY_ORG}, 'Multi Currency', 'multi-currency-worker', ${STRIPE_ACCOUNT_ID_MULTI}, 'JPY')
+          ON CONFLICT (id) DO UPDATE SET base_currency = 'JPY', stripe_account_id = EXCLUDED.stripe_account_id`,
+    );
     await db
       .insert(exchangeRates)
       .values({
-        currency: "EUR",
-        baseCurrency: "CHF",
-        rate: "0.90000000",
+        currency: "USD",
+        baseCurrency: "JPY",
+        rate: "150.00000000",
         date: TODAY,
       })
       .onConflictDoUpdate({
         target: [exchangeRates.currency, exchangeRates.baseCurrency, exchangeRates.date],
-        set: { rate: "0.90000000", updatedAt: new Date() },
+        set: { rate: "150.00000000", updatedAt: new Date() },
       });
     await db.insert(webhookEvents).values({
       id: "00000000-0000-0000-0000-0000000000e5",
       stripeEventId: "evt_test_foreign_currency",
       eventType: "payment_intent.succeeded",
-      accountId: STRIPE_ACCOUNT_ID,
+      accountId: STRIPE_ACCOUNT_ID_MULTI,
       payload: {},
       status: "pending",
       livemode: false,
@@ -262,11 +268,11 @@ describe("processStripeWebhook", () => {
       webhookEventId: "00000000-0000-0000-0000-0000000000e5",
       stripeEventId: "evt_test_foreign_currency",
       eventType: "payment_intent.succeeded",
-      accountId: STRIPE_ACCOUNT_ID,
+      accountId: STRIPE_ACCOUNT_ID_MULTI,
       payload: {
         id: "pi_test_foreign_currency",
         amount: 2500,
-        currency: "eur",
+        currency: "usd",
         metadata: {
           constituent_email: "stripe-fx@example.org",
         },
@@ -279,12 +285,13 @@ describe("processStripeWebhook", () => {
       .select()
       .from(donations)
       .where(
-        and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, "pi_test_foreign_currency")),
+        and(
+          eq(donations.orgId, MULTI_CURRENCY_ORG),
+          eq(donations.paymentRef, "pi_test_foreign_currency"),
+        ),
       );
 
-    expect(donation?.exchangeRate).toBe("0.90000000");
-    expect(donation?.amountBaseCents).toBe(2250);
-
-    await db.execute(sql`UPDATE tenants SET base_currency = 'EUR' WHERE id = ${ORG_ID}`);
+    expect(donation?.exchangeRate).toBe("150.00000000");
+    expect(donation?.amountBaseCents).toBe(375000);
   });
 });
