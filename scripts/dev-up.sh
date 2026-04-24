@@ -62,10 +62,16 @@ until docker compose exec -T postgres psql \
 done
 
 echo "Relaxing Keycloak SSL requirement for local dev..."
+# Both realms: `master` (admin console) and the app realm (OIDC /
+# .well-known endpoints). Without this, the app realm returns HTTP 403 on
+# http:// and the web app's OIDC flow can't discover the issuer.
+# PR #136 sets `sslRequired: none` in the realm JSON so a fresh import
+# is already permissive, but we still UPDATE here to cover any env where
+# the realm was seeded before that change landed.
 docker compose exec -T postgres psql \
   -U "${POSTGRES_USER:-givernance}" \
   -d "${KEYCLOAK_DB_NAME:-givernance_keycloak}" \
-  -c "UPDATE realm SET ssl_required='NONE' WHERE name='master';"
+  -c "UPDATE realm SET ssl_required='NONE' WHERE name IN ('master', '${KEYCLOAK_REALM:-givernance}');"
 docker compose restart keycloak > /dev/null
 
 echo "Waiting for Keycloak realm '${KEYCLOAK_REALM:-givernance}' to be reachable..."
