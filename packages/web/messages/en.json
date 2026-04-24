@@ -414,6 +414,11 @@
   "title": "Settings",
   "subtitle": "Manage organisation-level defaults and export tools.",
   "breadcrumbRoot": "Dashboard",
+  "navigation": {
+    "label": "Organisation settings navigation",
+    "organization": "Organisation",
+    "funds": "Funds"
+  },
   "funds": {
     "settings": "Settings",
     "title": "Funds",
@@ -791,7 +796,8 @@
         "funds": "Eligible funds",
         "fundsHint": "Selected funds will be available when gifts are associated with this campaign.",
         "fundsLoading": "Loading available funds…",
-        "fundsEmpty": "No funds are configured yet. Create one from settings first."
+        "fundsEmptyTitle": "No funds configured yet",
+        "fundsEmptyDescription": "Create a fund from organisation settings before linking designations to this campaign."
       },
       "fundTypeHint": {
         "restricted": "Restricted fund",
@@ -799,6 +805,7 @@
       },
       "actions": {
         "cancel": "Cancel",
+        "createFund": "Create a fund",
         "submitCreate": "Create campaign",
         "submitEdit": "Save changes",
         "submitting": "Saving…"

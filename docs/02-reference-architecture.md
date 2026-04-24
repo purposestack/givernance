@@ -66,7 +66,7 @@ See: /diagrams/container.mmd
 - Serves REST API on `:8080`; admin API on `:8081` (internal only)
 - Health: `GET /healthz`, `GET /readyz`
 
-#### `givernance-web` (Next.js 15 / React 19)
+#### `givernance-web` (Next.js 16 / React 19)
 - Server-side rendered for list/detail pages (SEO not required; SSR for performance)
 - Client components for interactive forms and dashboards
 - Connects to `givernance-api` only (no direct DB)

@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx --env-file=../../.env scripts/seed.ts"
+    "db:seed": "tsx --env-file=../../.env scripts/seed.ts",
+    "db:seed:funds": "tsx --env-file=../../.env scripts/seed-funds.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.712.0",

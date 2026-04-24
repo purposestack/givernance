@@ -8,7 +8,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 |-------|-----------|
 | API | TypeScript (Node.js 22 LTS), Fastify 5, modular monolith |
 | Worker | TypeScript, BullMQ 5 (Redis-backed) |
-| Web | Next.js 15 (React, TypeScript) |
+| Web | Next.js 16 (React, TypeScript) |
 | Database | PostgreSQL 16 + Drizzle ORM (SaaS: Scaleway Managed PostgreSQL EU · Self-hosted: Postgres 16 + PgBouncer) |
 | Job Queue / Events | BullMQ 5 + Redis (Phase 0-3) — NATS JetStream added Phase 4+ |
 | Cache / Rate-limit | Redis (SaaS: Scaleway Managed Redis EU · Self-hosted: Redis 7) |

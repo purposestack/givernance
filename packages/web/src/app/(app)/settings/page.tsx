@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { SettingsSnapshotPanel } from "@/components/settings/settings-snapshot-panel";
+import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { TenantSettingsForm } from "@/components/settings/tenant-settings-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireAuth } from "@/lib/auth/guards";
@@ -20,6 +21,7 @@ export default async function SettingsPage() {
         description={t("subtitle")}
         breadcrumbs={[{ label: t("breadcrumbRoot"), href: "/dashboard" }, { label: t("title") }]}
       />
+      <SettingsNavigation />
       <TenantSettingsForm orgId={auth.orgId} canManageTenant={auth.roles.includes("org_admin")} />
       <SettingsSnapshotPanel orgId={auth.orgId} canExport={auth.roles.includes("org_admin")} />
     </div>

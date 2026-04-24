@@ -1,5 +1,6 @@
 "use client";
 
+import { PiggyBank, Plus } from "lucide-react";
 import { FormatRegistry } from "@sinclair/typebox";
 
 if (!FormatRegistry.Has("uuid")) {
@@ -34,6 +35,7 @@ import {
   useFormField,
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -537,7 +539,20 @@ function CampaignFundIdsField({
             })}
           </div>
         ) : (
-          <p className="text-xs text-on-surface-variant">{t("fields.fundsEmpty")}</p>
+          <EmptyState
+            icon={PiggyBank}
+            title={t("fields.fundsEmptyTitle")}
+            description={t("fields.fundsEmptyDescription")}
+            className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-low px-6 py-10"
+            action={
+              <Button asChild size="sm">
+                <Link href="/settings/funds">
+                  <Plus size={16} aria-hidden="true" />
+                  {t("actions.createFund")}
+                </Link>
+              </Button>
+            }
+          />
         )}
       </fieldset>
       <FormDescription>{t("fields.fundsHint")}</FormDescription>

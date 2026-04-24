@@ -414,6 +414,11 @@
   "title": "Paramètres",
   "subtitle": "Gérez les paramètres de l'organisation et les outils d'export.",
   "breadcrumbRoot": "Tableau de bord",
+  "navigation": {
+    "label": "Navigation des paramètres de l'organisation",
+    "organization": "Organisation",
+    "funds": "Fonds"
+  },
   "funds": {
     "settings": "Paramètres",
     "title": "Fonds",
@@ -791,7 +796,8 @@
         "funds": "Fonds éligibles",
         "fundsHint": "Les fonds sélectionnés seront disponibles lorsque des dons seront associés à cette campagne.",
         "fundsLoading": "Chargement des fonds disponibles…",
-        "fundsEmpty": "Aucun fonds n’est configuré pour le moment. Créez-en un depuis les paramètres."
+        "fundsEmptyTitle": "Aucun fonds configuré",
+        "fundsEmptyDescription": "Créez un fonds depuis les paramètres de l'organisation avant de lier des affectations à cette campagne."
       },
       "fundTypeHint": {
         "restricted": "Fonds restreint",
@@ -799,6 +805,7 @@
       },
       "actions": {
         "cancel": "Annuler",
+        "createFund": "Créer un fonds",
         "submitCreate": "Créer la campagne",
         "submitEdit": "Enregistrer les modifications",
         "submitting": "Enregistrement…"

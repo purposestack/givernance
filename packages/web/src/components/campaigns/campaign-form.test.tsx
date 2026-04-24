@@ -114,6 +114,21 @@ describe("CampaignForm", () => {
     expect(screen.getByRole("group", { name: "Eligible funds" })).toBeInTheDocument();
   });
 
+  it("shows a direct CTA to create a fund when none are configured", async () => {
+    vi.spyOn(FundService, "listFunds").mockResolvedValueOnce({
+      data: [],
+      pagination: { page: 1, perPage: 100, total: 0, totalPages: 0 },
+    });
+
+    render(<CampaignForm mode="create" />);
+
+    expect(await screen.findByText("No funds configured yet")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Create a fund" })).toHaveAttribute(
+      "href",
+      "/settings/funds",
+    );
+  });
+
   it("blocks editing when campaign fund options fail to load", async () => {
     const user = userEvent.setup();
     vi.spyOn(FundService, "listCampaignFunds").mockRejectedValueOnce(new Error("boom"));

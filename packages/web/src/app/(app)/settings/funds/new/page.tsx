@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 
 import { FundForm } from "@/components/settings/fund-form";
+import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireAuth } from "@/lib/auth/guards";
 
@@ -22,6 +23,7 @@ export default async function NewFundPage() {
           { label: tForm("breadcrumbNew") },
         ]}
       />
+      <SettingsNavigation />
       <FundForm canManageFunds={auth.roles.includes("org_admin")} />
     </>
   );

@@ -45,7 +45,7 @@ The feature flag strategy must enable:
 └─────────┘               └──────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                       Next.js 15 (SSR + React)                           │
+│                       Next.js 16 (SSR + React)                           │
 │                                                                           │
 │  server component (layout/page)                                          │
 │       │  getFlagsForTenant(tenantId) → flags map                         │
@@ -93,7 +93,7 @@ This keeps flag evaluation testable without Redis/PostgreSQL in unit tests.
 
 ### 3.4 Frontend: React context + SSR
 
-Next.js 15 server components fetch the flag map once per request from the API. The map is passed via `<FlagProvider>` context to client components. This ensures:
+Next.js 16 server components fetch the flag map once per request from the API. The map is passed via `<FlagProvider>` context to client components. This ensures:
 
 - No client-side API calls for flags (no waterfall, no flash of wrong content)
 - SSR-safe: server components can call `notFound()` before sending HTML

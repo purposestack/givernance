@@ -51,7 +51,7 @@ Use a **modular monolith** architecture with well-defined bounded contexts, depl
 
 ### Context
 
-Givernance's frontend is already TypeScript (Next.js 15). The original backend was planned in Go 1.23 for raw performance and small binary size. As a Phase 0 project with a single developer, the cost of context-switching between Go (backend) and TypeScript (frontend) is significant. The team needs to maximize velocity and minimize cognitive overhead.
+Givernance's frontend is already TypeScript (Next.js 16). The original backend was planned in Go 1.23 for raw performance and small binary size. As a Phase 0 project with a single developer, the cost of context-switching between Go (backend) and TypeScript (frontend) is significant. The team needs to maximize velocity and minimize cognitive overhead.
 
 ### Decision
 
