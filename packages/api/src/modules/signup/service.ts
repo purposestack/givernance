@@ -40,7 +40,7 @@ import {
 } from "@givernance/shared/schema";
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
-import { db } from "../../lib/db.js";
+import { db, systemDb } from "../../lib/db.js";
 
 const PROVISIONAL_GRACE_DAYS = 7;
 const VERIFICATION_TTL_HOURS = 24;
@@ -262,7 +262,9 @@ export type ResendResult =
 export async function resendVerification(email: string): Promise<ResendResult> {
   const normalised = email.trim().toLowerCase();
 
-  const rows = await db
+  // Owner role: same justification as verifySignup — no org context yet, and
+  // the app role would have RLS filter the invitation join to zero rows.
+  const rows = await systemDb
     .select({
       tenantId: tenants.id,
       status: tenants.status,
@@ -295,7 +297,7 @@ export async function resendVerification(email: string): Promise<ResendResult> {
   const newToken = generateVerificationToken();
   const expiresAt = new Date(Date.now() + VERIFICATION_TTL_HOURS * 60 * 60 * 1000);
 
-  await db.transaction(async (tx) => {
+  await systemDb.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.current_organization_id', ${row.tenantId}, true)`);
 
     await tx
@@ -342,7 +344,11 @@ export async function verifySignup(input: VerifyInput): Promise<VerifyResult> {
   const lastName = input.lastName.trim();
 
   try {
-    return await db.transaction(async (tx) => {
+    // Owner role: the verify request is unauthenticated, so we have no org
+    // context to set before the SELECT — the app role would have RLS hide
+    // the invitation row and we'd return ok:false for every valid token.
+    // The unguessable token IS the security boundary here.
+    return await systemDb.transaction(async (tx) => {
       // FOR UPDATE so concurrent verifies serialise on the invitation row
       // (ENG-9). If the invitation doesn't match, the caller gets a generic
       // 410 (no status-code enumeration oracle — SEC-6).
@@ -472,7 +478,10 @@ export async function lookupTenantForEmail(email: string): Promise<TenantLookupR
     return { hasExistingTenant: false, hint: "create_new" };
   }
 
-  const [claimed] = await db
+  // Owner role: tenant_domains has FORCE RLS and the request is unauthenticated.
+  // Cross-tenant lookup is the entire point of the call (we're answering "is
+  // this email's domain claimed by ANY tenant?"), so RLS isolation doesn't fit.
+  const [claimed] = await systemDb
     .select({ orgId: tenantDomains.orgId })
     .from(tenantDomains)
     .where(and(eq(tenantDomains.domain, parsed.domain), eq(tenantDomains.state, "verified")))
@@ -505,7 +514,9 @@ export async function cleanupUnverifiedTenants(
   // invitation is older than cutoff count. MAX(invitations.expiresAt) handles
   // the "freshly resent" case: a resend within the last hour bumps expiresAt
   // forward, keeping the tenant alive.
-  const candidates = await db
+  // Owner role: cleanup runs from a system cron (no user, no org context),
+  // and `invitations` is FORCE RLS so the app role would see zero candidates.
+  const candidates = await systemDb
     .select({ id: tenants.id })
     .from(tenants)
     .innerJoin(invitations, eq(tenants.id, invitations.orgId))
@@ -524,7 +535,7 @@ export async function cleanupUnverifiedTenants(
   const ids = [...new Set(candidates.map((r) => r.id))];
   // Atomic re-assertion of invariants — even if a verify tx raced the SELECT
   // above, a verified tenant is skipped here.
-  const deleted = await db
+  const deleted = await systemDb
     .delete(tenants)
     .where(
       and(
