@@ -115,6 +115,20 @@ export class KeycloakAuthError extends KeycloakAdminError {
   }
 }
 
+/**
+ * Thrown when `createUser` hits a 409 because the email already exists in
+ * the realm. The caller MUST NOT take this as license to mutate the
+ * existing user — see the security rationale in `createUser` itself.
+ * Surfaces to verifySignup as the trigger to return a generic 410 (no
+ * enumeration oracle) plus a structured `signup.kc_user_exists` log line.
+ */
+export class KeycloakUserExistsError extends KeycloakAdminError {
+  constructor(email: string) {
+    super(`Keycloak user already exists for ${email}`, 409, `/users`);
+    this.name = "KeycloakUserExistsError";
+  }
+}
+
 export class CircuitOpenError extends Error {
   constructor() {
     super("Keycloak Admin API circuit breaker is open");
@@ -171,16 +185,21 @@ export interface KeycloakAdminClient {
   sendInvitation(orgId: string, email: string): Promise<void>;
   bindIdpToOrganization(orgId: string, input: BindIdpInput): Promise<void>;
 
-  // Users (KC 24+) — used by the self-serve signup verify flow (issue #114)
+  // Users (KC 24+) — used by the self-serve signup verify flow (ADR-016)
   /**
-   * Create a realm user with a non-temporary password and `emailVerified=true`.
-   * Returns `{ id, created }` — `created=false` means the email already existed,
-   * we resolved the existing user id and reset its password (idempotent retry
-   * after a previous attempt that left an orphan KC user behind).
+   * Create a realm user with a non-temporary password. Returns the new
+   * user's id.
    *
-   * Throws on any other failure mode. Callers MUST NOT log the password.
+   * Throws `KeycloakUserExistsError` on 409 (email already exists in the
+   * realm). The caller MUST NOT silently take over an existing realm user —
+   * proving control of an inbox is not authorisation to overwrite a
+   * credential another principal previously controlled. Surface a generic
+   * 410 to the verify caller (no enumeration oracle).
+   *
+   * Callers MUST NOT log the password. The KC admin client itself only
+   * logs metadata, never the request body.
    */
-  createUser(input: CreateUserInput): Promise<{ id: string; created: boolean }>;
+  createUser(input: CreateUserInput): Promise<{ id: string }>;
   getUserByEmail(email: string): Promise<KeycloakUser | null>;
   /** Replace a user's password with a new non-temporary credential. */
   resetUserPassword(userId: string, password: string): Promise<void>;
@@ -592,45 +611,28 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
             `/users`,
           );
         }
-        return { id, created: true };
+        return { id };
       } catch (err) {
-        // 409 = email already exists in the realm. Resolve the existing user
-        // and reset its password — this is the idempotent retry case where a
-        // previous verify left an orphan KC user behind. The unguessable
-        // signup token is the security boundary; the caller already proved
-        // ownership of this email by clicking the verification link.
+        // 409 = email already exists in the realm. We MUST NOT silently take
+        // over (no password reset, no attribute rewrite) — proving control of
+        // an inbox at verify time is not authorisation to overwrite a
+        // credential another principal previously controlled (e.g. the
+        // seeded super_admin or any future enterprise-tenant user
+        // provisioned before first JIT login). Bubble up a typed error so
+        // the caller can surface the same generic 410 it uses for
+        // every other verify failure (no enumeration oracle), while SRE
+        // can grep `signup.kc_user_exists` to triage.
+        //
+        // Orphan-recovery from a previous failed verify (KC create
+        // succeeded then DB tx rolled back) is a separate concern best
+        // handled by a compensating-delete job on tx rollback — tracked
+        // as a follow-up.
         if (err instanceof KeycloakAdminError && err.status === 409) {
-          const existing = await adminRequest<KeycloakUser[]>(
-            "GET",
-            `/users?email=${e(normalisedEmail)}&exact=true`,
+          logger.warn(
+            { email: normalisedEmail.replace(/(^.).*(@.*)/, "$1***$2") },
+            "kc-admin user-create 409 — refusing silent takeover",
           );
-          const match = existing?.find((u) => u.email?.toLowerCase() === normalisedEmail);
-          if (!match) {
-            throw new KeycloakAdminError(
-              `User create returned 409 but no matching user found for email`,
-              500,
-              `/users`,
-            );
-          }
-          await adminRequest<void>("PUT", `/users/${e(match.id)}/reset-password`, {
-            type: "password",
-            value: password,
-            temporary: false,
-          });
-          // Attributes (e.g. org_id) skipped at create time because the user
-          // already existed — patch them in now via the GET-then-PUT helper so
-          // the JWT mappers have something to read.
-          if (attributes) {
-            const current = await adminRequest<
-              KeycloakUser & { attributes?: Record<string, string[]> }
-            >("GET", `/users/${e(match.id)}`);
-            const merged = { ...(current?.attributes ?? {}), ...attributes };
-            await adminRequest<void>("PUT", `/users/${e(match.id)}`, {
-              ...current,
-              attributes: merged,
-            });
-          }
-          return { id: match.id, created: false };
+          throw new KeycloakUserExistsError(normalisedEmail);
         }
         throw err;
       }

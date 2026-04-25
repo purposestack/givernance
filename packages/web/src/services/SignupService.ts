@@ -33,10 +33,8 @@ export interface TenantLookupResult {
 }
 
 export interface VerifySuccess {
-  tenantId: string;
-  userId: string;
+  /** Tenant slug — drives the post-verify Keycloak login `?hint=` param. */
   slug: string;
-  provisionalUntil: string;
 }
 
 export type SignupFailure =

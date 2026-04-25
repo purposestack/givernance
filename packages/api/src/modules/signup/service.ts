@@ -1,34 +1,60 @@
 /**
  * Self-serve signup service (issue #108 / ADR-016).
  *
- * Three core flows — signup → verify → lookup + a resend helper — with
- * audit + outbox emission at each state transition. Keycloak provisioning
- * (Organization creation + invite) lands with issue #114 once the realm
- * is on Keycloak 26; until then the verification token lives on an
- * `invitations` row with `purpose='signup_verification'` (migration 0022).
+ * Four endpoints + a cleanup cron, with audit + outbox emission at every
+ * state transition. The verify endpoint is now the integration boundary
+ * for Keycloak provisioning (issue #114 shipped) — it gets-or-creates a
+ * Keycloak Organization for the tenant, gets-or-creates a realm user
+ * with the chosen password, and attaches the user as a member. All KC
+ * orchestration is idempotent across the three half-states the recovery
+ * resend can hand it back in:
  *
- * Review pass (PR #117):
- *  - SEC-1 / DATA-3: invitations carry `purpose='signup_verification'`;
- *    the team-invite endpoint filters to `purpose='team_invite'`.
- *  - SEC-5 / ENG-4: slug / domain conflicts return 409; error messages
- *    collapsed to a single generic "Signup could not be completed".
- *  - SEC-6: verify endpoint collapses "expired" / "already verified" /
- *    "unknown token" into one 410 generic to kill the enumeration oracle.
- *  - SEC-7: outbox `payload` + audit `newValues` no longer carry the raw
+ *   1. **Pending verify** — tenant `provisional`, no `users` row yet,
+ *      no KC artefacts. The straight first-time path.
+ *   2. **No KC credential** — tenant `active`, `users` row exists with
+ *      `keycloak_id IS NULL`, no Org. Recovery: createOrganization +
+ *      createUser + attach + upsert the users row.
+ *   3. **No KC Organization** — tenant `active`, `users` row has
+ *      `keycloak_id` set, but `tenant.keycloak_org_id IS NULL`. Recovery:
+ *      createOrganization + reset existing user's password + set
+ *      attributes + attach. createUser is SKIPPED — we own the existing
+ *      KC user via the durable `users.keycloak_id` binding, so this is
+ *      forgot-password semantics, NOT a takeover of someone else's
+ *      credential.
+ *
+ * The discriminator between "legitimate recovery" and "hijack attempt"
+ * is `users.keycloak_id` — read in the verify tx before any KC call.
+ * If it's set, we own that KC user and may safely re-bind. If it's
+ * null and KC reports the email exists (409 on createUser), we throw
+ * `KeycloakUserExistsError` and the route surfaces a generic 410 (no
+ * enumeration oracle), with an `signup.kc_user_exists` warn log for
+ * SRE.
+ *
+ * Review history:
+ *  - SEC-1 / DATA-3 (PR #117): invitations carry `purpose='signup_
+ *    verification'`; team-invite endpoint filters to `purpose='team_
+ *    invite'`.
+ *  - SEC-5 / ENG-4: slug / domain conflicts → 409, single generic
+ *    "Signup could not be completed".
+ *  - SEC-6: verify collapses "expired" / "already verified" / "unknown
+ *    token" / "kc user exists" / "first_admin race" into one 410.
+ *  - SEC-7: outbox payload + audit newValues never carry the raw
  *    verification token; the email worker looks it up by invitation id.
- *  - DATA-1: 23505 unique violations on slug/domain are mapped to 409
- *    results instead of a 500.
- *  - DATA-2: `email_in_use` now also triggers when a `users.email` row
- *    exists in any tenant — covers the existing-user case from ADR-016.
- *  - DATA-7: `cleanupUnverifiedTenants` re-asserts invariants inside the
- *    DELETE's WHERE (atomic with any concurrent verify).
- *  - ENG-2: dropped the dead `disposable_email` branch.
- *  - ENG-9: `verifySignup` reads the invitation FOR UPDATE + catches the
- *    `users_one_first_admin_per_org` unique-violation → `already_verified`.
+ *  - DATA-1: 23505 unique violations on slug/domain → 409, not 500.
+ *  - DATA-2: `email_in_use` triggers when a `users.email` row exists in
+ *    any tenant.
+ *  - DATA-7: `cleanupUnverifiedTenants` re-asserts invariants inside
+ *    the DELETE's WHERE (atomic with any concurrent verify).
+ *  - PR #143 review: KC org-adoption requires `org_id` attribute match;
+ *    KC user-create 409 fails loud (no silent takeover); outbox events
+ *    gated on actual state changes (no duplicate `tenant.verified` or
+ *    `user.jit_provisioned` on recovery re-runs); resend payload
+ *    carries `country` recovered from the original requested-event for
+ *    EN/FR template selection.
  */
 
 import { randomUUID } from "node:crypto";
-import { isPersonalEmailDomain } from "@givernance/shared/constants";
+import { isPersonalEmailDomain, PINO_REDACT_PATHS } from "@givernance/shared/constants";
 import {
   auditLogs,
   invitations,
@@ -40,12 +66,36 @@ import {
 } from "@givernance/shared/schema";
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import pino from "pino";
 import { db, systemDb } from "../../lib/db.js";
 import {
   type KeycloakAdminClient,
   KeycloakAdminError,
+  KeycloakUserExistsError,
   keycloakAdmin,
 } from "../../lib/keycloak-admin.js";
+
+/**
+ * Postgres UUID v4 shape — mirrors the `tenants_keycloak_org_id_uuid_chk`
+ * CHECK constraint. We validate any id we receive from Keycloak before
+ * binding it to a tenant row so a misconfigured proxy or future KC version
+ * that hands back a non-UUID id (ULID, opaque string) is caught BEFORE the
+ * tx attempts the UPDATE — otherwise the UPDATE 23514s, the verify rolls
+ * back, and the KC-side org+user+membership orphan with no recovery path.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Module-scoped logger. The module's hot paths are unauthenticated public
+ * routes that hand-roll their tx + KC orchestration outside any
+ * Fastify request context (e.g. the cleanup cron, the worker re-entries),
+ * so a Fastify-bound `request.log` isn't always available. PII is masked
+ * via the same redact list every other service uses.
+ */
+const log = pino({
+  name: "signup-service",
+  redact: { paths: [...PINO_REDACT_PATHS], censor: "[REDACTED]" },
+});
 
 const PROVISIONAL_GRACE_DAYS = 7;
 const VERIFICATION_TTL_HOURS = 24;
@@ -291,6 +341,11 @@ export async function resendVerification(email: string): Promise<ResendResult> {
   // the app role would have RLS filter the invitation join to zero rows.
   // Match all recoverable states in one query, ordered so a still-valid
   // pending invitation wins over an older half-provisioned row.
+  // Case-insensitive email join: `invitations.email` is normalised
+  // lowercase at INSERT (signup() / resend()), but `users.email` has no
+  // schema-level case-folding constraint. Mixed-case future writes to
+  // users.email would silently break this join under `eq(...)`. Compare
+  // both sides via lower() so the recovery match stays robust.
   const rows = await systemDb
     .select({
       tenantId: tenants.id,
@@ -299,12 +354,16 @@ export async function resendVerification(email: string): Promise<ResendResult> {
       invitationToken: invitations.token,
       expiresAt: invitations.expiresAt,
       createdAt: invitations.createdAt,
-      userKeycloakId: users.keycloakId,
-      tenantKeycloakOrgId: tenants.keycloakOrgId,
     })
     .from(invitations)
     .innerJoin(tenants, eq(invitations.orgId, tenants.id))
-    .leftJoin(users, and(eq(users.orgId, invitations.orgId), eq(users.email, invitations.email)))
+    .leftJoin(
+      users,
+      and(
+        eq(users.orgId, invitations.orgId),
+        sql`lower(${users.email}) = lower(${invitations.email})`,
+      ),
+    )
     .where(
       and(
         eq(invitations.email, normalised),
@@ -322,11 +381,37 @@ export async function resendVerification(email: string): Promise<ResendResult> {
     .limit(1);
 
   if (rows.length === 0) {
+    log.info({ event: "signup.resend", matched: false }, "resend silent no-match");
     return { ok: false };
   }
 
   const row = rows[0];
   if (!row) return { ok: false };
+
+  // Recover the original signup country so the worker picks the right
+  // EN/FR template on resend. The `country` was emitted on the initial
+  // `tenant.signup_verification_requested` payload (signup() emits it);
+  // pull it from there rather than adding a schema column. Returns
+  // undefined for tenants seeded before country was tracked or for
+  // payloads that omitted it — worker falls back to its EN default.
+  const [originalEvent] = await systemDb
+    .select({ payload: outboxEvents.payload })
+    .from(outboxEvents)
+    .where(
+      and(
+        eq(outboxEvents.tenantId, row.tenantId),
+        eq(outboxEvents.type, "tenant.signup_verification_requested"),
+      ),
+    )
+    .orderBy(sql`${outboxEvents.createdAt} ASC`)
+    .limit(1);
+  const originalCountry =
+    typeof originalEvent?.payload === "object" &&
+    originalEvent.payload !== null &&
+    "country" in originalEvent.payload &&
+    typeof originalEvent.payload.country === "string"
+      ? originalEvent.payload.country
+      : undefined;
 
   const newToken = generateVerificationToken();
   const expiresAt = new Date(Date.now() + VERIFICATION_TTL_HOURS * 60 * 60 * 1000);
@@ -350,9 +435,15 @@ export async function resendVerification(email: string): Promise<ResendResult> {
         tenantId: row.tenantId,
         invitationId: row.invitationId,
         expiresAt: expiresAt.toISOString(),
+        ...(originalCountry ? { country: originalCountry } : {}),
       },
     });
   });
+
+  log.info(
+    { event: "signup.resend", matched: true, tenantId: row.tenantId, status: row.status },
+    "resend rotated invitation token",
+  );
 
   return { ok: true, tenantId: row.tenantId, email: normalised, verificationToken: newToken };
 }
@@ -439,7 +530,13 @@ export async function verifySignup(
 
       await tx.execute(sql`SELECT set_config('app.current_organization_id', ${row.orgId}, true)`);
 
-      await tx
+      // Only count this verify as "the one that flipped the tenant" if the
+      // UPDATE actually moved it out of `provisional`. Recovery re-runs (the
+      // tenant is already `active` from a prior partial success) get an
+      // empty .returning() and we'll skip the `tenant.verified` outbox event
+      // below — downstream consumers (welcome email, billing trial start,
+      // analytics conversion) shouldn't receive duplicates.
+      const flippedTenant = await tx
         .update(tenants)
         .set({
           status: "active",
@@ -452,7 +549,9 @@ export async function verifySignup(
             // Don't accidentally resurrect suspended/archived tenants.
             eq(tenants.status, "provisional"),
           ),
-        );
+        )
+        .returning({ id: tenants.id });
+      const tenantWasFlipped = flippedTenant.length > 0;
 
       // Get-or-create the tenant's Keycloak Organization. The realm's JWT
       // mappers expect every member's token to carry a top-level `org_id`
@@ -477,12 +576,33 @@ export async function verifySignup(
           kcOrgId = created.id;
         } catch (err) {
           if (err instanceof KeycloakAdminError && err.status === 409) {
+            // Recovery: a prior verify attempt already created an Org with
+            // this alias, then the DB tx rolled back. Adopt it ONLY if its
+            // `org_id` attribute proves it belongs to THIS tenant. Without
+            // this guard we'd silently inherit a stranger's Org (and any
+            // members it carries) — those members' future logins would
+            // emit an `organization` membership claim identifying our
+            // tenant. Slugs are globally unique in our DB, so the only
+            // legit alias collision is our own prior crash; an `org_id`
+            // mismatch means manual KC tampering or a stale leftover and
+            // we'd rather fail loud than adopt.
             const existing = await kcAdmin.getOrganizationByAlias(row.tenantSlug);
-            if (!existing) throw err;
+            const existingOrgId = existing?.attributes?.org_id?.[0];
+            if (!existing || existingOrgId !== row.orgId) {
+              throw err;
+            }
             kcOrgId = existing.id;
           } else {
             throw err;
           }
+        }
+        if (!UUID_RE.test(kcOrgId)) {
+          // `tenants_keycloak_org_id_uuid_chk` enforces UUID shape; without
+          // this preflight a non-UUID id (misconfigured proxy, hypothetical
+          // future KC release using ULIDs) would 23514 the UPDATE below,
+          // roll back the verify tx, and leak the just-created KC org +
+          // user with no compensating delete.
+          throw new Error(`Keycloak organization id is not a UUID: ${kcOrgId}`);
         }
         await tx
           .update(tenants)
@@ -490,30 +610,65 @@ export async function verifySignup(
           .where(eq(tenants.id, row.orgId));
       }
 
-      // Create the Keycloak user FIRST (still inside the DB tx so any failure
-      // rolls back the whole verify). Without this the user has a Givernance
-      // row but no realm credential — the post-verify Keycloak login redirect
-      // would dead-end on a "no account" screen. The KC admin client doesn't
-      // retry POST on 5xx so we won't double-create on a flaky upstream.
-      // Attributes are emitted as JWT claims by the realm's user-attribute
-      // mapper — `org_id` is the one the web callback hard-requires.
-      const kcUser = await kcAdmin.createUser({
-        email: row.email,
-        firstName,
-        lastName,
-        password: input.password,
-        // The verify token IS the email-ownership proof — flag the user as
-        // verified so Keycloak doesn't immediately ask them to verify again.
-        emailVerified: true,
-        attributes: { org_id: [row.orgId], role: ["org_admin"] },
-      });
+      // Discriminate two scenarios that both surface as "KC user exists":
+      //   (a) Legitimate recovery — a prior verify for THIS tenant + email
+      //       already bound a KC user, recorded as `users.keycloak_id`.
+      //       The operator just typed a new password on the recovery
+      //       verify form and we should reset that KC user's password +
+      //       refresh attributes (effectively a "forgot password via
+      //       email link" with the verify token as the proof).
+      //   (b) Hijack risk — no prior `users.keycloak_id` for this tenant
+      //       + email exists, but KC says the email is taken. That means
+      //       another principal owns the realm credential (the seeded
+      //       super_admin, an enterprise-tenant user provisioned before
+      //       JIT, manual KC creation). Proving inbox control is NOT
+      //       authorisation to overwrite their credential.
+      //
+      // Look up the existing binding BEFORE touching KC so the decision
+      // is based on durable DB state, not on KC-side guesswork.
+      const [existingUserRow] = await tx
+        .select({ keycloakId: users.keycloakId })
+        .from(users)
+        .where(and(eq(users.orgId, row.orgId), eq(users.email, row.email)))
+        .limit(1);
+      const existingKcId = existingUserRow?.keycloakId ?? null;
+
+      let kcUserId: string;
+      if (existingKcId) {
+        // (a) Recovery — we own this KC user. Reset password to whatever
+        // the operator typed on this verify form (forgot-password
+        // semantics) and patch attributes idempotently.
+        await kcAdmin.resetUserPassword(existingKcId, input.password);
+        await kcAdmin.setUserAttributes(existingKcId, {
+          org_id: [row.orgId],
+          role: ["org_admin"],
+        });
+        kcUserId = existingKcId;
+      } else {
+        // (b) First binding — create. 409 here means the email belongs to
+        // a realm user we do NOT own; createUser throws
+        // `KeycloakUserExistsError` and the outer catch maps it to a
+        // generic 410 (no enumeration oracle) plus a `signup.kc_user_exists`
+        // warn for SRE.
+        const created = await kcAdmin.createUser({
+          email: row.email,
+          firstName,
+          lastName,
+          password: input.password,
+          // The verify token IS the email-ownership proof — flag the user
+          // as verified so Keycloak doesn't ask for another round.
+          emailVerified: true,
+          attributes: { org_id: [row.orgId], role: ["org_admin"] },
+        });
+        kcUserId = created.id;
+      }
 
       // Attach the user as a member of the Organization. 409 = already a
       // member (recovery path: prior verify created the membership but
       // failed before binding `keycloak_id` on the users row). Treat as
       // success.
       try {
-        await kcAdmin.attachUserToOrg(kcOrgId, kcUser.id);
+        await kcAdmin.attachUserToOrg(kcOrgId, kcUserId);
       } catch (err) {
         if (!(err instanceof KeycloakAdminError && err.status === 409)) {
           throw err;
@@ -527,7 +682,13 @@ export async function verifySignup(
       // `keycloak_id` onto the existing row instead of failing on the
       // unique violation. `firstAdmin` and `provisional_until` are left
       // untouched on update so the original grace window stays put.
-      const [upsertedUser] = await tx
+      // `RETURNING (xmax = 0) AS inserted` is the canonical Postgres trick
+      // to distinguish an INSERT from an upsert-UPDATE — `xmax` is 0 only
+      // on freshly-inserted rows. Drives the dedup logic on the
+      // `user.jit_provisioned` outbox event below: a recovery re-run that
+      // patches keycloak_id onto an existing row should NOT re-emit a
+      // provisioning event downstream consumers will treat as new.
+      const upsertResult = await tx
         .insert(users)
         .values({
           orgId: row.orgId,
@@ -536,7 +697,7 @@ export async function verifySignup(
           lastName,
           role: "org_admin",
           firstAdmin: true,
-          keycloakId: kcUser.id,
+          keycloakId: kcUserId,
           provisionalUntil,
         })
         .onConflictDoUpdate({
@@ -544,32 +705,46 @@ export async function verifySignup(
           set: {
             firstName,
             lastName,
-            keycloakId: kcUser.id,
+            keycloakId: kcUserId,
             updatedAt: new Date(),
           },
         })
-        .returning({ id: users.id });
+        .returning({ id: users.id, inserted: sql<boolean>`(xmax = 0)` });
 
       // biome-ignore lint/style/noNonNullAssertion: insert/upsert returning() yields one row
-      const u = upsertedUser!;
+      const u = upsertResult[0]!;
+      const userWasInserted = u.inserted === true;
 
       await tx
         .update(invitations)
         .set({ acceptedAt: new Date() })
         .where(eq(invitations.id, row.invitationId));
 
-      await tx.insert(outboxEvents).values([
-        {
+      // Gate emission on actual state changes — a recovery re-run leaves
+      // both flags false and emits nothing, so welcome-email / billing /
+      // analytics consumers don't fire twice for the same tenant.
+      const eventsToEmit: Array<{
+        tenantId: string;
+        type: string;
+        payload: Record<string, unknown>;
+      }> = [];
+      if (tenantWasFlipped) {
+        eventsToEmit.push({
           tenantId: row.orgId,
           type: "tenant.verified",
           payload: { tenantId: row.orgId, slug: row.tenantSlug },
-        },
-        {
+        });
+      }
+      if (userWasInserted) {
+        eventsToEmit.push({
           tenantId: row.orgId,
           type: "user.jit_provisioned",
           payload: { userId: u.id, orgId: row.orgId, firstAdmin: true },
-        },
-      ]);
+        });
+      }
+      if (eventsToEmit.length > 0) {
+        await tx.insert(outboxEvents).values(eventsToEmit);
+      }
 
       await tx.insert(auditLogs).values({
         orgId: row.orgId,
@@ -591,10 +766,29 @@ export async function verifySignup(
       };
     });
   } catch (err) {
-    // If two verify calls race past the row-lock (unlikely but defensive),
-    // the unique partial index `users_one_first_admin_per_org` fires. Treat
-    // that the same way as a stale token — one generic failure response.
+    // 409 from KC create user: a realm credential already exists for this
+    // email. Surface the same generic 410 every other verify failure
+    // produces (no enumeration oracle), but emit a structured warn so SRE
+    // can grep the trail. The KC client logs its own warn at the wire
+    // layer; this one carries the verify-side context (token holder, etc.).
+    if (err instanceof KeycloakUserExistsError) {
+      log.warn({ event: "signup.kc_user_exists" }, "verify rejected — KC user already exists");
+      return { ok: false };
+    }
+    // `users_one_first_admin_per_org` is a partial unique on
+    // (org_id WHERE first_admin=true). With the FOR UPDATE on the
+    // invitation row, the original "two verify calls race" justification
+    // for catching this is no longer reachable in practice; if we land
+    // here it means a different code path (or manual support write)
+    // already inserted an org_admin first_admin row for this tenant.
+    // Stay opaque to the user (generic 410 like every other failure
+    // mode), but warn loudly — a stuck-tenant-with-no-users-row state
+    // needs an operator to look at it.
     if (isUniqueViolation(err, /users_one_first_admin_per_org/)) {
+      log.warn(
+        { event: "signup.first_admin_conflict" },
+        "verify rejected — another first_admin row already exists for this tenant; needs manual triage",
+      );
       return { ok: false };
     }
     throw err;

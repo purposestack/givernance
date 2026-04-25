@@ -68,11 +68,13 @@ const SignupResponse = Type.Object({
   email: Type.String(),
 });
 
+// Web only consumes `slug` from this response (drives the post-verify
+// Keycloak login redirect). Trim the public payload to match — `userId`
+// in particular leaks a fresh KC user id into the browser for no
+// consumer benefit. The internal `verifySignup` return type still
+// carries the wider shape for service-internal use (audit, metrics).
 const VerifyResponse = Type.Object({
-  tenantId: UuidSchema,
-  userId: UuidSchema,
   slug: Type.String(),
-  provisionalUntil: Type.String({ format: "date-time" }),
 });
 
 const LookupQuery = Type.Object({
@@ -235,6 +237,10 @@ export async function signupRoutes(app: FastifyInstance) {
         body: VerifyBody,
         response: {
           201: DataResponse(VerifyResponse),
+          // Fastify schema-validation rejection (e.g. password < 12) flows
+          // through the global error handler at runtime — declare it here
+          // so OpenAPI consumers can codegen the 400 branch.
+          400: ProblemDetailSchema,
           410: ProblemDetailSchema,
           ...ErrorResponses,
         },
@@ -257,7 +263,12 @@ export async function signupRoutes(app: FastifyInstance) {
 
       if (!result.ok) {
         // SEC-6: collapse all failure modes into one generic 410 to remove
-        // the status-code enumeration oracle.
+        // the status-code enumeration oracle. Service-side `log.warn`
+        // already emits a structured `event` discriminator
+        // (`signup.kc_user_exists`, `signup.first_admin_conflict`, etc.)
+        // for SRE — this route-level log just gives a uniform breadcrumb
+        // tying the request to whatever the service decided.
+        request.log.info({ event: "signup.verify_rejected" }, "verify rejected");
         return reply
           .status(410)
           .send(
@@ -271,10 +282,7 @@ export async function signupRoutes(app: FastifyInstance) {
 
       return reply.status(201).send({
         data: {
-          tenantId: result.tenantId,
-          userId: result.userId,
           slug: result.slug,
-          provisionalUntil: result.provisionalUntil,
         },
       });
     },

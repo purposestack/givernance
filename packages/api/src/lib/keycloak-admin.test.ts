@@ -20,6 +20,7 @@ import {
   createKeycloakAdminClient,
   KeycloakAdminError,
   KeycloakAuthError,
+  KeycloakUserExistsError,
 } from "./keycloak-admin.js";
 
 type StubCall = { url: string; init: RequestInit };
@@ -434,5 +435,244 @@ describe("typed helpers", () => {
     expect(body).toMatchObject({ alias: "entra", providerId: "oidc", enabled: true });
     expect(h.calls[2]?.init.method).toBe("DELETE");
     expect(h.calls[2]?.url).toContain("/identity-provider/instances/entra");
+  });
+});
+
+// ─── User / Organization helpers added in PR #143 ───────────────────────────
+
+const createdUser = (locationId: string): Response =>
+  new Response(null, {
+    status: 201,
+    headers: { Location: `http://kc.test/admin/realms/givernance/users/${locationId}` },
+  });
+
+describe("createUser", () => {
+  it("POSTs to /users with username=email, normalises case, sets non-temporary credential, passes attributes", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() => createdUser("kc-user-uuid"));
+
+    const result = await h.client.createUser({
+      email: "  Alice@Example.org  ",
+      firstName: "Alice",
+      lastName: "Anderson",
+      password: "verify-12-chars",
+      emailVerified: true,
+      attributes: { org_id: ["tenant-uuid"], role: ["org_admin"] },
+    });
+
+    expect(result).toEqual({ id: "kc-user-uuid" });
+    const create = h.calls[1];
+    expect(create?.url).toBe("http://kc.test/admin/realms/givernance/users");
+    expect(create?.init.method).toBe("POST");
+    const body = JSON.parse(String(create?.init.body));
+    expect(body).toEqual({
+      username: "alice@example.org",
+      email: "alice@example.org",
+      firstName: "Alice",
+      lastName: "Anderson",
+      enabled: true,
+      emailVerified: true,
+      credentials: [{ type: "password", value: "verify-12-chars", temporary: false }],
+      attributes: { org_id: ["tenant-uuid"], role: ["org_admin"] },
+    });
+  });
+
+  it("omits the attributes field when no attributes are provided", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() => createdUser("kc-user-uuid-2"));
+
+    await h.client.createUser({
+      email: "bob@example.org",
+      firstName: "Bob",
+      lastName: "B",
+      password: "verify-12-chars",
+    });
+
+    const body = JSON.parse(String(h.calls[1]?.init.body));
+    expect(body).not.toHaveProperty("attributes");
+    expect(body.emailVerified).toBe(false);
+  });
+
+  it("throws KeycloakUserExistsError on 409 — does NOT silently take over the existing realm user", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() => new Response("conflict", { status: 409 }));
+
+    await expect(
+      h.client.createUser({
+        email: "victim@example.org",
+        firstName: "V",
+        lastName: "I",
+        password: "verify-12-chars",
+        attributes: { org_id: ["attacker-tenant"] },
+      }),
+    ).rejects.toBeInstanceOf(KeycloakUserExistsError);
+
+    // Critical: NO follow-up GET /users?email= or PUT /reset-password.
+    // The 409 must be terminal — only token call + the failing POST.
+    expect(h.calls).toHaveLength(2);
+    expect(h.calls[1]?.init.method).toBe("POST");
+  });
+
+  it("throws if the response has no body and no Location header (KC misbehaves)", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() => new Response(null, { status: 201 })); // no Location
+
+    await expect(
+      h.client.createUser({
+        email: "n@b.com",
+        firstName: "N",
+        lastName: "B",
+        password: "verify-12-chars",
+      }),
+    ).rejects.toBeInstanceOf(KeycloakAdminError);
+  });
+
+  it("never logs the password (request body is not logged by the admin client)", async () => {
+    // The admin client logs only `{method, path, status, latencyMs, attempt}`
+    // — it does NOT pass the request body to pino. We assert that property
+    // by spying on console.* (pino's transport in tests) and grepping for
+    // the literal password value across every emitted line.
+    const seen: string[] = [];
+    const origStdoutWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      seen.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      const h = makeHarness();
+      h.enqueue(() => tokenResponse({ expires_in: 300 }));
+      h.enqueue(() => createdUser("kc-user-redact"));
+
+      await h.client.createUser({
+        email: "redact@example.org",
+        firstName: "R",
+        lastName: "E",
+        password: "extremely-secret-pw-123",
+      });
+    } finally {
+      process.stdout.write = origStdoutWrite;
+    }
+    expect(seen.join("")).not.toContain("extremely-secret-pw-123");
+  });
+});
+
+describe("resetUserPassword", () => {
+  it("PUTs the non-temporary password credential to /users/{id}/reset-password", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() => noContent());
+
+    await h.client.resetUserPassword("user-uuid", "new-secret-123");
+
+    const call = h.calls[1];
+    expect(call?.url).toBe("http://kc.test/admin/realms/givernance/users/user-uuid/reset-password");
+    expect(call?.init.method).toBe("PUT");
+    expect(JSON.parse(String(call?.init.body))).toEqual({
+      type: "password",
+      value: "new-secret-123",
+      temporary: false,
+    });
+  });
+
+  it("percent-encodes the user id in the path", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() => noContent());
+
+    await h.client.resetUserPassword("a/b?c", "pw");
+    expect(h.calls[1]?.url).toBe(
+      "http://kc.test/admin/realms/givernance/users/a%2Fb%3Fc/reset-password",
+    );
+  });
+});
+
+describe("setUserAttributes", () => {
+  it("GETs the user, merges attributes, PUTs the full body back (preserves email/firstName/etc.)", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() =>
+      okJson({
+        id: "user-uuid",
+        email: "alice@example.org",
+        firstName: "Alice",
+        lastName: "Anderson",
+        emailVerified: true,
+        attributes: { existing: ["keep-me"] },
+      }),
+    );
+    h.enqueue(() => noContent());
+
+    await h.client.setUserAttributes("user-uuid", { org_id: ["tenant-uuid"] });
+
+    const get = h.calls[1];
+    const put = h.calls[2];
+    expect(get?.init.method ?? "GET").toBe("GET");
+    expect(get?.url).toBe("http://kc.test/admin/realms/givernance/users/user-uuid");
+    expect(put?.init.method).toBe("PUT");
+    expect(put?.url).toBe("http://kc.test/admin/realms/givernance/users/user-uuid");
+    const body = JSON.parse(String(put?.init.body));
+    // Untouched fields preserved.
+    expect(body.email).toBe("alice@example.org");
+    expect(body.firstName).toBe("Alice");
+    expect(body.emailVerified).toBe(true);
+    // Attributes merged, not replaced.
+    expect(body.attributes).toEqual({
+      existing: ["keep-me"],
+      org_id: ["tenant-uuid"],
+    });
+  });
+
+  it("throws KeycloakAdminError when the user is not found (404 on GET)", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() => new Response(null, { status: 404 }));
+
+    await expect(h.client.setUserAttributes("missing", { org_id: ["x"] })).rejects.toBeInstanceOf(
+      KeycloakAdminError,
+    );
+  });
+});
+
+describe("getOrganizationByAlias", () => {
+  it("GETs /organizations?search=alias and returns the EXACT-alias match (filters substring matches client-side)", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() =>
+      okJson([
+        // Substring-match drift — KC's `search` does substring matching, so
+        // a query for `acme` returns both. The client MUST pick the exact one.
+        { id: "org-foundation", name: "Acme Foundation", alias: "acme-foundation" },
+        { id: "org-acme", name: "Acme", alias: "acme" },
+      ]),
+    );
+
+    const result = await h.client.getOrganizationByAlias("acme");
+    expect(result?.id).toBe("org-acme");
+    expect(h.calls[1]?.url).toBe(
+      "http://kc.test/admin/realms/givernance/organizations?search=acme",
+    );
+  });
+
+  it("returns null when no exact alias matches (substring matches alone don't qualify)", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() =>
+      okJson([{ id: "org-foundation", name: "Acme Foundation", alias: "acme-foundation" }]),
+    );
+
+    expect(await h.client.getOrganizationByAlias("acme")).toBeNull();
+  });
+
+  it("normalises the alias (trim + lowercase) before matching", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() => okJson([{ id: "org-acme", name: "Acme", alias: "acme" }]));
+
+    const result = await h.client.getOrganizationByAlias("  ACME  ");
+    expect(result?.id).toBe("org-acme");
   });
 });

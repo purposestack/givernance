@@ -42,7 +42,6 @@ let app: FastifyInstance;
  */
 const kcCreateUser = vi.fn<KeycloakAdminClient["createUser"]>(async (input) => ({
   id: `kc-${input.email}-${randomUUID().slice(0, 8)}`,
-  created: true,
 }));
 const kcCreateOrganization = vi.fn<KeycloakAdminClient["createOrganization"]>(
   async ({ name, alias, attributes }) => ({
@@ -59,6 +58,8 @@ const kcAttachUserToOrg = vi.fn<KeycloakAdminClient["attachUserToOrg"]>(async ()
 const kcGetOrganizationByAlias = vi.fn<KeycloakAdminClient["getOrganizationByAlias"]>(
   async () => null,
 );
+const kcResetUserPassword = vi.fn<KeycloakAdminClient["resetUserPassword"]>(async () => {});
+const kcSetUserAttributes = vi.fn<KeycloakAdminClient["setUserAttributes"]>(async () => {});
 const fakeKeycloakAdmin: KeycloakAdminClient = {
   createOrganization: kcCreateOrganization,
   getOrganization: vi.fn(async () => null),
@@ -70,8 +71,8 @@ const fakeKeycloakAdmin: KeycloakAdminClient = {
   bindIdpToOrganization: vi.fn(async () => {}),
   createUser: kcCreateUser,
   getUserByEmail: vi.fn(async () => null),
-  resetUserPassword: vi.fn(async () => {}),
-  setUserAttributes: vi.fn(async () => {}),
+  resetUserPassword: kcResetUserPassword,
+  setUserAttributes: kcSetUserAttributes,
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
   _circuitState: () => "closed",
@@ -105,6 +106,8 @@ beforeEach(async () => {
   kcCreateOrganization.mockClear();
   kcAttachUserToOrg.mockClear();
   kcGetOrganizationByAlias.mockClear();
+  kcResetUserPassword.mockClear();
+  kcSetUserAttributes.mockClear();
   // Clear any rate-limiter + per-email signup counters from Redis so the
   // 5/hour limits don't poison successive tests. Scoped deletes only — a
   // full `flushdb` would destroy unrelated test fixtures (ENG-3).
@@ -457,6 +460,40 @@ describe("POST /v1/public/signup/resend", () => {
       .where(eq(invitations.email, email));
     expect(invAfter?.token).not.toBe(seedToken);
     expect(invAfter?.acceptedAt).toBeNull();
+
+    // End-to-end: drive the rotated token through verify and assert the
+    // half-state actually heals (this is the QA Major #1 follow-through —
+    // until now we only proved the token rotated, not that the next verify
+    // landed `keycloak_org_id` on the tenant).
+    const [userBefore] = await db.select().from(users).where(eq(users.email, email));
+    const originalKcId = userBefore?.keycloakId;
+
+    const completionRes = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token: invAfter?.token,
+        firstName: "No",
+        lastName: "Org-Healed",
+        password: TEST_PASSWORD,
+      },
+    });
+    expect(completionRes.statusCode).toBe(201);
+
+    const [tenantHealed] = await db.select().from(tenants).where(eq(tenants.slug, slugN));
+    expect(tenantHealed?.keycloakOrgId).toBeTruthy();
+
+    // The user already had a keycloak_id (no-org half-state means the
+    // credential was bound, only the Org was missing) — verify must REUSE
+    // the existing KC user via resetPassword + setUserAttributes, not
+    // create a fresh one. Same id pre/post.
+    const [userAfter] = await db.select().from(users).where(eq(users.email, email));
+    expect(userAfter?.keycloakId).toBe(originalKcId);
+    expect(kcResetUserPassword).toHaveBeenCalledWith(originalKcId, TEST_PASSWORD);
+    expect(kcSetUserAttributes).toHaveBeenCalledWith(originalKcId, {
+      org_id: [tenantHealed?.id],
+      role: ["org_admin"],
+    });
   });
 
   it("does NOT re-emit a token for a fully-provisioned tenant (user already has keycloak_id)", async () => {
@@ -558,7 +595,11 @@ describe("POST /v1/public/signup/verify", () => {
       },
     });
     expect(res.statusCode).toBe(201);
-    const body = res.json<{ data: { userId: string; provisionalUntil: string } }>();
+    const body = res.json<{ data: { slug: string } }>();
+    // The public response is now trimmed to just `slug` (the only field the
+    // web consumes — the previous shape leaked a fresh KC user id into the
+    // browser for no reason). Look the user row up by tenant + email instead.
+    expect(body.data.slug).toBeTruthy();
 
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
     expect(tenant?.status).toBe("active");
@@ -569,7 +610,10 @@ describe("POST /v1/public/signup/verify", () => {
     // web `/api/auth/callback` requires.
     expect(tenant?.keycloakOrgId).toBeTruthy();
 
-    const [user] = await db.select().from(users).where(eq(users.id, body.data.userId));
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.orgId, tenantId), eq(users.email, email)));
     expect(user?.email).toBe(email);
     expect(user?.firstAdmin).toBe(true);
     expect(user?.provisionalUntil).not.toBeNull();
@@ -620,8 +664,13 @@ describe("POST /v1/public/signup/verify", () => {
     });
 
     // Member attach binds the user to the org so the `organization`
-    // membership claim can be emitted on subsequent logins.
+    // membership claim can be emitted on subsequent logins. Assert exact
+    // arguments — `(orgId, userId)` order matters and a swap would emit a
+    // tenant-leakage bug that a `toHaveBeenCalledTimes` check would miss.
+    const orgIdAdopted = await kcCreateOrganization.mock.results[0]?.value;
+    const userIdAdopted = await kcCreateUser.mock.results[0]?.value;
     expect(kcAttachUserToOrg).toHaveBeenCalledTimes(1);
+    expect(kcAttachUserToOrg).toHaveBeenCalledWith(orgIdAdopted?.id, userIdAdopted?.id);
   });
 
   it("recovers from a 409 on createOrganization by looking up by alias (no orphan re-create)", async () => {
@@ -630,7 +679,9 @@ describe("POST /v1/public/signup/verify", () => {
     // Simulate the recovery state: the org was created in a previous attempt
     // but the keycloak_org_id never landed on the tenant row (DB rollback /
     // network glitch). The next createOrganization 409s; verify must fall
-    // back to getOrganizationByAlias and stitch things up.
+    // back to getOrganizationByAlias. The adoption is now gated on the
+    // existing org's `org_id` attribute matching the tenant — without that
+    // gate, a stranger's leftover org could be silently inherited.
     kcCreateOrganization.mockRejectedValueOnce(
       new (await import("../../lib/keycloak-admin.js")).KeycloakAdminError(
         "alias taken",
@@ -643,6 +694,7 @@ describe("POST /v1/public/signup/verify", () => {
       id: recoveredOrgId,
       name: "irrelevant",
       alias: "verify-org-409",
+      attributes: { org_id: [tenantId] },
     });
 
     const res = await app.inject({
@@ -660,6 +712,99 @@ describe("POST /v1/public/signup/verify", () => {
     expect(kcGetOrganizationByAlias).toHaveBeenCalledTimes(1);
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
     expect(tenant?.keycloakOrgId).toBe(recoveredOrgId);
+  });
+
+  it("refuses to adopt an existing KC Organization whose org_id attribute belongs to a different tenant", async () => {
+    const { tenantId, token } = await createSignup("verify-org-mismatch");
+    const stranger = randomUUID();
+    kcCreateOrganization.mockRejectedValueOnce(
+      new (await import("../../lib/keycloak-admin.js")).KeycloakAdminError(
+        "alias taken",
+        409,
+        "/organizations",
+      ),
+    );
+    kcGetOrganizationByAlias.mockResolvedValueOnce({
+      id: randomUUID(),
+      name: "stranger",
+      alias: "verify-org-mismatch",
+      attributes: { org_id: [stranger] }, // <-- different tenant's id
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token,
+        firstName: "No",
+        lastName: "Adoption",
+        password: TEST_PASSWORD,
+      },
+    });
+    // Mismatch must be hard-fail — the route surfaces 500, the verify rolls
+    // back, and the tenant stays provisional. We MUST NOT silently inherit
+    // a stranger's KC org.
+    expect(res.statusCode).toBe(500);
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+    expect(tenant?.status).toBe("provisional");
+    expect(tenant?.keycloakOrgId).toBeNull();
+  });
+
+  it("returns generic 410 (no enumeration oracle) when the email already has a Keycloak credential", async () => {
+    const { tenantId, token } = await createSignup("verify-kc-exists");
+    // Simulate the dangerous case the hijack guard defends against — an
+    // existing realm user with this email (e.g. seeded super_admin or an
+    // enterprise-tenant user provisioned before JIT). createUser must fail
+    // loud (KeycloakUserExistsError); the verify endpoint must surface 410
+    // generic, the tenant must stay provisional, no users row must leak.
+    kcCreateUser.mockRejectedValueOnce(
+      new (await import("../../lib/keycloak-admin.js")).KeycloakUserExistsError(
+        "kc-existing@example.org",
+      ),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token,
+        firstName: "Existing",
+        lastName: "User",
+        password: TEST_PASSWORD,
+      },
+    });
+    expect(res.statusCode).toBe(410);
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+    expect(tenant?.status).toBe("provisional");
+    const userRows = await db.select().from(users).where(eq(users.orgId, tenantId));
+    expect(userRows.length).toBe(0);
+  });
+
+  it("rolls back when attachUserToOrg fails (verifies the orphan KC user gap)", async () => {
+    const { tenantId, token } = await createSignup("verify-attach-fail");
+    kcAttachUserToOrg.mockRejectedValueOnce(new Error("attach exploded"));
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token,
+        firstName: "Attach",
+        lastName: "Fail",
+        password: TEST_PASSWORD,
+      },
+    });
+    // Today this is a known leak: createUser already succeeded by the time
+    // attach blows up, so a Keycloak user with a real password is left
+    // behind with no compensating delete. The DB does roll back correctly,
+    // which is what this test pins down. A follow-up issue tracks adding
+    // the compensating delete on the KC side.
+    expect(res.statusCode).toBe(500);
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+    expect(tenant?.status).toBe("provisional");
+    const userRows = await db.select().from(users).where(eq(users.orgId, tenantId));
+    expect(userRows.length).toBe(0);
+    // createUser DID get called (and the stub returned a fake id) — that's
+    // the orphan we'd need to compensate.
+    expect(kcCreateUser).toHaveBeenCalledTimes(1);
   });
 
   it("rejects when the password is shorter than the minimum length (validation 400)", async () => {

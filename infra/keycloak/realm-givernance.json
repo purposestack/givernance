@@ -8,6 +8,7 @@
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
+  "passwordPolicy": "length(12) and notUsername(undefined)",
   "organizationsEnabled": true,
   "components": {
     "org.keycloak.userprofile.UserProfileProvider": [
@@ -37,7 +38,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "admin",
+          "value": "admin-localdev-12",
           "temporary": false
         }
       ],
