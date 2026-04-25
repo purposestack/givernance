@@ -400,6 +400,65 @@ describe("POST /v1/public/signup/resend", () => {
     expect(invAfter?.acceptedAt).toBeNull();
   });
 
+  // Companion to the "no Keycloak credential" recovery test above: a tenant
+  // that completed verify under the credential-only build has a `keycloak_id`
+  // on the user but no `keycloak_org_id` on the tenant. Without an Org the
+  // user-attribute mapper has no `org_id` to emit and Keycloak login bounces
+  // back with `missing_org_id`. Resend must rotate the token in this state
+  // too, so the next verify call can wire the Org up.
+  it("re-emits a verification token for an active tenant missing keycloak_org_id (no-org recovery)", async () => {
+    const slugN = registerSlug("resend-noorg");
+    const email = `admin+${slugN}@example.org`;
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/public/signup",
+      headers: { "x-captcha-token": "test-token" },
+      payload: {
+        orgName: "NoOrg NGO",
+        slug: slugN,
+        firstName: "N",
+        lastName: "O",
+        email,
+      },
+    });
+    const [invSeed] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.email, email));
+    const seedToken = invSeed?.token;
+    if (!seedToken) throw new Error("seed token missing");
+    const verifyRes = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token: seedToken,
+        firstName: "No",
+        lastName: "Org",
+        password: TEST_PASSWORD,
+      },
+    });
+    expect(verifyRes.statusCode).toBe(201);
+
+    // Reproduce the no-org half-state: clear keycloak_org_id on the tenant.
+    // users.keycloak_id stays set — the user has a credential, just no Org.
+    await db.update(tenants).set({ keycloakOrgId: null }).where(eq(tenants.slug, slugN));
+
+    const resendRes = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/resend",
+      payload: { email },
+    });
+    expect(resendRes.statusCode).toBe(204);
+
+    const [invAfter] = await db
+      .select({ token: invitations.token, acceptedAt: invitations.acceptedAt })
+      .from(invitations)
+      .where(eq(invitations.email, email));
+    expect(invAfter?.token).not.toBe(seedToken);
+    expect(invAfter?.acceptedAt).toBeNull();
+  });
+
   it("does NOT re-emit a token for a fully-provisioned tenant (user already has keycloak_id)", async () => {
     const slugF = registerSlug("resend-full");
     const email = `admin+${slugF}@example.org`;
