@@ -264,6 +264,15 @@ export function DonationForm(props: DonationFormProps) {
       }
       router.refresh();
     } catch (err) {
+      // Log non-ApiProblem errors so silent client-side TypeErrors (e.g. a
+      // bare `.trim()` on a resolver-undefined field, like the constituent
+      // form had) show up in DevTools instead of disappearing into the
+      // generic "Something went wrong" toast. ApiProblem is handled by
+      // handleApiError below so no need to log it twice.
+      if (!(err instanceof ApiProblem)) {
+        // biome-ignore lint/suspicious/noConsole: intentional breadcrumb for unexpected client-side failures
+        console.error("DonationForm submit failed (unexpected error):", err);
+      }
       handleApiError(err, form, {
         allocationSumMismatch: t("errors.allocationSumMismatch"),
         validation: t("errors.validation"),

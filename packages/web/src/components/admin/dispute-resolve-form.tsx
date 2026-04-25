@@ -42,7 +42,15 @@ export function DisputeResolveForm({ disputeId }: { disputeId: string }) {
       try {
         await resolveDisputeApi(disputeId, choice);
         router.refresh();
-      } catch {
+      } catch (err) {
+        // Log every failure so silent TypeErrors don't disappear into the
+        // generic toast — matches the pattern in constituent-form,
+        // donation-form, and fund-form. This form has only one field so
+        // the only realistic failure modes are network or API problems,
+        // but the breadcrumb is cheap and prevents the next regression
+        // from being invisible.
+        // biome-ignore lint/suspicious/noConsole: intentional breadcrumb for unexpected client-side failures
+        console.error("DisputeResolveForm submit failed:", err);
         setError(t("errors.generic"));
       } finally {
         setSubmitting(false);

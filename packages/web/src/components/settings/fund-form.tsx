@@ -89,6 +89,13 @@ export function FundForm(props: FundFormProps) {
       router.push("/settings/funds");
       router.refresh();
     } catch (error) {
+      // Log non-ApiProblem errors so silent client-side TypeErrors don't
+      // disappear into the generic "Something went wrong" toast — same
+      // pattern as constituent-form / donation-form.
+      if (!(error instanceof ApiProblem)) {
+        // biome-ignore lint/suspicious/noConsole: intentional breadcrumb for unexpected client-side failures
+        console.error("FundForm submit failed (unexpected error):", error);
+      }
       handleApiError(error, form, t("errors.generic"));
     }
   }
