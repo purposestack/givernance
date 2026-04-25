@@ -260,32 +260,37 @@ export type ResendResult =
   | { ok: false };
 
 /**
- * Re-emit a verification token. Matches two states so a half-failed signup
- * isn't a dead-end:
+ * Re-emit a verification token. Matches three recoverable states so a
+ * half-failed signup isn't a dead-end:
  *
  *  1. **Pending verify.** Tenant `provisional`, invitation not yet accepted —
  *     the original happy-path resend.
- *  2. **Half-provisioned recovery.** Tenant `active` but the user's
- *     `keycloak_id` is NULL. This is what self-serve signups looked like
- *     before the verify endpoint started provisioning the Keycloak user
- *     (PR #143): the operator went through verify, got a `users` row, then
- *     hit a Keycloak login with no credential. Allow them to request a
- *     fresh token, clear `acceptedAt` on the existing invitation so the
- *     verify endpoint accepts it again, and let the next verify call only
- *     do the missing KC create + bind step (the `users` upsert in
- *     `verifySignup` keeps the row stable).
+ *  2. **No Keycloak credential yet.** Tenant `active` but the user's
+ *     `keycloak_id` is NULL — what self-serve signups looked like before
+ *     the verify endpoint started provisioning the Keycloak user.
+ *  3. **No Keycloak Organization yet.** Tenant `active`, user has a
+ *     `keycloak_id`, but `tenant.keycloak_org_id` is NULL — what they look
+ *     like after the credential-only fix landed but before the Organization
+ *     wiring did. Without an Org the realm's user-attribute mapper has no
+ *     `org_id` to emit and the web auth callback bounces with
+ *     `missing_org_id`.
  *
- * Silently returns `{ok: false}` for everything else (already-fully-bound
- * users, unknown emails) — the route always responds 204 so this cannot
- * be used as an email-enumeration oracle.
+ * Cases (2) and (3) both resolve by clearing `acceptedAt` on the latest
+ * `signup_verification` invitation and letting the next verify call run —
+ * `verifySignup` is idempotent for every step (org get-or-create, user
+ * create-or-update with attribute merge, member attach with 409 swallow).
+ *
+ * Silently returns `{ok: false}` for everything else (fully-bound users,
+ * unknown emails) — the route always responds 204 so this cannot be used
+ * as an email-enumeration oracle.
  */
 export async function resendVerification(email: string): Promise<ResendResult> {
   const normalised = email.trim().toLowerCase();
 
   // Owner role: same justification as verifySignup — no org context yet, and
   // the app role would have RLS filter the invitation join to zero rows.
-  // Match both states (pending + half-provisioned) in one query, ordered so
-  // a still-valid pending invitation wins over an older half-provisioned row.
+  // Match all recoverable states in one query, ordered so a still-valid
+  // pending invitation wins over an older half-provisioned row.
   const rows = await systemDb
     .select({
       tenantId: tenants.id,
@@ -295,6 +300,7 @@ export async function resendVerification(email: string): Promise<ResendResult> {
       expiresAt: invitations.expiresAt,
       createdAt: invitations.createdAt,
       userKeycloakId: users.keycloakId,
+      tenantKeycloakOrgId: tenants.keycloakOrgId,
     })
     .from(invitations)
     .innerJoin(tenants, eq(invitations.orgId, tenants.id))
@@ -307,7 +313,8 @@ export async function resendVerification(email: string): Promise<ResendResult> {
         sql`(
           (${tenants.status} = 'provisional' AND ${invitations.acceptedAt} IS NULL)
           OR
-          (${tenants.status} = 'active' AND ${users.keycloakId} IS NULL)
+          (${tenants.status} = 'active'
+            AND (${users.keycloakId} IS NULL OR ${tenants.keycloakOrgId} IS NULL))
         )`,
       ),
     )
