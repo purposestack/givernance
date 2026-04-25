@@ -16,7 +16,8 @@
     "db:generate": "pnpm --filter @givernance/api run db:generate",
     "db:migrate": "pnpm --filter @givernance/api run db:migrate",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "dev:up": "scripts/dev-up.sh"
   },
   "repository": {
     "type": "git",
