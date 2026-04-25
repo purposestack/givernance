@@ -6,6 +6,7 @@ import {
   Gift,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   RefreshCw,
   ShieldAlert,
   Users,
@@ -33,7 +34,7 @@ const MD_BREAKPOINT = 768;
 /** Navigation item definition — labelKey references appShell.sidebar.{key}. */
 interface NavItem {
   href: string;
-  labelKey: "dashboard" | "constituents" | "donations";
+  labelKey: "dashboard" | "constituents" | "campaigns" | "donations";
   icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 }
 
@@ -50,6 +51,7 @@ interface AdminNavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/constituents", labelKey: "constituents", icon: Users },
+  { href: "/campaigns", labelKey: "campaigns", icon: Megaphone },
   { href: "/donations", labelKey: "donations", icon: Gift },
 ];
 
