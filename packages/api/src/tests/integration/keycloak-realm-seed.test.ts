@@ -64,6 +64,7 @@ interface RealmSeed {
   organizations?: KeycloakOrganization[];
   clients: KeycloakClient[];
   users: Array<{
+    id?: string;
     username: string;
     attributes?: Record<string, string[]>;
     clientRoles?: Record<string, string[]>;
@@ -72,6 +73,14 @@ interface RealmSeed {
 
 const PLATFORM_ORG_ID = "00000000-0000-0000-0000-0000000000a1";
 const SEED_USERNAME = "admin@givernance.org";
+/**
+ * Pinned Keycloak `sub` for the seeded super-admin. The dev seed
+ * (packages/api/scripts/seed.ts) inserts a `users` row with this id in
+ * `keycloak_id` so `GET /v1/users/me` resolves a row on first login. If this
+ * drifts, the sidebar falls back to the i18n placeholder ("Organisation")
+ * because the inner-join on `users` ↔ `tenants` returns no rows.
+ */
+const SEED_ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-000000000ad1";
 
 const realm = JSON.parse(readFileSync(REALM_JSON_PATH, "utf-8")) as RealmSeed;
 
@@ -144,6 +153,16 @@ describe("Keycloak realm seed (issue #114 — Organizations migration)", () => {
   it("keeps the seeded admin user's org_id attribute aligned with the org attribute", () => {
     const admin = realm.users.find((u) => u.username === SEED_USERNAME);
     expect(admin?.attributes?.org_id).toEqual([PLATFORM_ORG_ID]);
+  });
+
+  it("pins the seeded admin user's Keycloak id so the dev DB seed can match it", () => {
+    // The application DB seed inserts a `users` row with `keycloak_id =
+    // SEED_ADMIN_KEYCLOAK_ID` so that `/v1/users/me` resolves a row on first
+    // login. Keycloak honours the imported `id` field on users; if this
+    // attribute drifts (or is dropped), the seed and the realm fall out of
+    // sync and the super-admin sidebar shows the placeholder.
+    const admin = realm.users.find((u) => u.username === SEED_USERNAME);
+    expect(admin?.id).toBe(SEED_ADMIN_KEYCLOAK_ID);
   });
 
   it("grants the givernance-admin service account the realm-management roles Organizations writes need", () => {
