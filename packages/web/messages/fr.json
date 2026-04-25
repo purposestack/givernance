@@ -164,13 +164,19 @@
       },
       "errors": {
         "invalid": "Ce lien de vérification est invalide.",
-        "expired": "Ce lien de vérification est invalide ou a déjà été utilisé. Veuillez recommencer l'inscription.",
+        "expired": "Ce lien de vérification est invalide ou a déjà été utilisé.",
         "missingToken": "Aucun jeton de vérification fourni.",
         "namesRequired": "Veuillez renseigner votre prénom et votre nom.",
         "passwordTooShort": "Utilisez un mot de passe d'au moins {min} caractères.",
         "passwordMismatch": "Les deux mots de passe ne correspondent pas.",
         "rateLimited": "Trop de tentatives. Veuillez réessayer dans quelques minutes.",
         "generic": "Nous n'avons pas pu finaliser la vérification. Veuillez réessayer."
+      },
+      "resend": {
+        "label": "Recevoir un nouveau lien de vérification",
+        "placeholder": "vous@exemple.org",
+        "submit": "Envoyer le lien",
+        "sent": "Si l'adresse correspond à un compte, nous avons envoyé un nouveau lien. Pensez à vérifier votre boîte de réception."
       }
     },
     "selectOrganization": {

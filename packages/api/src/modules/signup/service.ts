@@ -256,15 +256,32 @@ export type ResendResult =
   | { ok: false };
 
 /**
- * Re-emit a verification token for a provisional tenant. Silently returns
- * `{ok: false}` if nothing matches — the route always responds 204 so the
- * endpoint cannot be used as an email-enumeration oracle.
+ * Re-emit a verification token. Matches two states so a half-failed signup
+ * isn't a dead-end:
+ *
+ *  1. **Pending verify.** Tenant `provisional`, invitation not yet accepted —
+ *     the original happy-path resend.
+ *  2. **Half-provisioned recovery.** Tenant `active` but the user's
+ *     `keycloak_id` is NULL. This is what self-serve signups looked like
+ *     before the verify endpoint started provisioning the Keycloak user
+ *     (PR #143): the operator went through verify, got a `users` row, then
+ *     hit a Keycloak login with no credential. Allow them to request a
+ *     fresh token, clear `acceptedAt` on the existing invitation so the
+ *     verify endpoint accepts it again, and let the next verify call only
+ *     do the missing KC create + bind step (the `users` upsert in
+ *     `verifySignup` keeps the row stable).
+ *
+ * Silently returns `{ok: false}` for everything else (already-fully-bound
+ * users, unknown emails) — the route always responds 204 so this cannot
+ * be used as an email-enumeration oracle.
  */
 export async function resendVerification(email: string): Promise<ResendResult> {
   const normalised = email.trim().toLowerCase();
 
   // Owner role: same justification as verifySignup — no org context yet, and
   // the app role would have RLS filter the invitation join to zero rows.
+  // Match both states (pending + half-provisioned) in one query, ordered so
+  // a still-valid pending invitation wins over an older half-provisioned row.
   const rows = await systemDb
     .select({
       tenantId: tenants.id,
@@ -273,16 +290,21 @@ export async function resendVerification(email: string): Promise<ResendResult> {
       invitationToken: invitations.token,
       expiresAt: invitations.expiresAt,
       createdAt: invitations.createdAt,
+      userKeycloakId: users.keycloakId,
     })
     .from(invitations)
     .innerJoin(tenants, eq(invitations.orgId, tenants.id))
+    .leftJoin(users, and(eq(users.orgId, invitations.orgId), eq(users.email, invitations.email)))
     .where(
       and(
         eq(invitations.email, normalised),
         eq(invitations.purpose, "signup_verification"),
-        isNull(invitations.acceptedAt),
-        eq(tenants.status, "provisional"),
         eq(tenants.createdVia, "self_serve"),
+        sql`(
+          (${tenants.status} = 'provisional' AND ${invitations.acceptedAt} IS NULL)
+          OR
+          (${tenants.status} = 'active' AND ${users.keycloakId} IS NULL)
+        )`,
       ),
     )
     .orderBy(sql`${invitations.createdAt} DESC`)
@@ -301,9 +323,13 @@ export async function resendVerification(email: string): Promise<ResendResult> {
   await systemDb.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.current_organization_id', ${row.tenantId}, true)`);
 
+    // Half-provisioned rows have `acceptedAt` set from the prior verify;
+    // clearing it lets verifySignup's invitation-validity guard accept the
+    // fresh token. The pre-existing audit_logs row preserves the original
+    // acceptance event, so this isn't a history rewrite.
     await tx
       .update(invitations)
-      .set({ token: newToken, expiresAt })
+      .set({ token: newToken, expiresAt, acceptedAt: null })
       .where(eq(invitations.id, row.invitationId));
 
     await tx.insert(outboxEvents).values({
@@ -430,7 +456,14 @@ export async function verifySignup(
         emailVerified: true,
       });
 
-      const [newUser] = await tx
+      // Upsert (target = the (org_id, email) unique index) so a verify
+      // re-entry from a half-provisioned tenant — i.e. the resend flow
+      // cleared `acceptedAt` after the original verify already wrote a
+      // users row but couldn't bind a Keycloak credential — just patches
+      // `keycloak_id` onto the existing row instead of failing on the
+      // unique violation. `firstAdmin` and `provisional_until` are left
+      // untouched on update so the original grace window stays put.
+      const [upsertedUser] = await tx
         .insert(users)
         .values({
           orgId: row.orgId,
@@ -442,10 +475,19 @@ export async function verifySignup(
           keycloakId: kcUser.id,
           provisionalUntil,
         })
+        .onConflictDoUpdate({
+          target: [users.orgId, users.email],
+          set: {
+            firstName,
+            lastName,
+            keycloakId: kcUser.id,
+            updatedAt: new Date(),
+          },
+        })
         .returning({ id: users.id });
 
-      // biome-ignore lint/style/noNonNullAssertion: returning() yields one row for single insert
-      const u = newUser!;
+      // biome-ignore lint/style/noNonNullAssertion: insert/upsert returning() yields one row
+      const u = upsertedUser!;
 
       await tx
         .update(invitations)

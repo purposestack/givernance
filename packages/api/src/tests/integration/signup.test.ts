@@ -315,6 +315,129 @@ describe("POST /v1/public/signup/resend", () => {
     });
     expect(res.statusCode).toBe(204);
   });
+
+  // Regression: a user who verified under the pre-PR-#143 build has an active
+  // tenant + a Givernance users row but no `keycloak_id`. The verify token is
+  // already `acceptedAt`, so they're locked out — resend used to silently
+  // 204 because it only matched provisional tenants. The fix opens the gate
+  // for this state and clears `acceptedAt` so the next verify can complete
+  // the missing Keycloak bind step.
+  it("re-emits a verification token for a half-provisioned active tenant (recovery path)", async () => {
+    const slugH = registerSlug("resend-half");
+    const email = `admin+${slugH}@example.org`;
+
+    // Step 1: do a normal signup + verify so we have a Givernance users row.
+    await app.inject({
+      method: "POST",
+      url: "/v1/public/signup",
+      headers: { "x-captcha-token": "test-token" },
+      payload: {
+        orgName: "Half NGO",
+        slug: slugH,
+        firstName: "H",
+        lastName: "P",
+        email,
+      },
+    });
+    const [invSeed] = await db
+      .select({ token: invitations.token, id: invitations.id })
+      .from(invitations)
+      .where(eq(invitations.email, email));
+    const seedToken = invSeed?.token;
+    if (!seedToken) throw new Error("seed token missing");
+
+    const verifyRes = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token: seedToken,
+        firstName: "Half",
+        lastName: "Provisioned",
+        password: TEST_PASSWORD,
+      },
+    });
+    expect(verifyRes.statusCode).toBe(201);
+
+    // Step 2: simulate the half-provisioned state — strip `keycloak_id` from
+    // the users row, just like the pre-PR-#143 build left things behind.
+    await db.update(users).set({ keycloakId: null }).where(eq(users.email, email));
+
+    // Step 3: hit resend. The endpoint should now treat this as recoverable
+    // and rotate the invitation token + clear `acceptedAt`.
+    const resendRes = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/resend",
+      payload: { email },
+    });
+    expect(resendRes.statusCode).toBe(204);
+
+    const [invAfter] = await db
+      .select({
+        token: invitations.token,
+        acceptedAt: invitations.acceptedAt,
+      })
+      .from(invitations)
+      .where(eq(invitations.email, email));
+    expect(invAfter?.token).not.toBe(seedToken);
+    expect(invAfter?.acceptedAt).toBeNull();
+  });
+
+  it("does NOT re-emit a token for a fully-provisioned tenant (user already has keycloak_id)", async () => {
+    const slugF = registerSlug("resend-full");
+    const email = `admin+${slugF}@example.org`;
+    await app.inject({
+      method: "POST",
+      url: "/v1/public/signup",
+      headers: { "x-captcha-token": "test-token" },
+      payload: {
+        orgName: "Full NGO",
+        slug: slugF,
+        firstName: "F",
+        lastName: "U",
+        email,
+      },
+    });
+    const [invSeed] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.email, email));
+    const seedToken = invSeed?.token;
+    if (!seedToken) throw new Error("seed token missing");
+    await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token: seedToken,
+        firstName: "Full",
+        lastName: "Done",
+        password: TEST_PASSWORD,
+      },
+    });
+
+    // Verify completed cleanly → users.keycloak_id is set. Resend must be a
+    // silent 204 with no token rotation.
+    const tokenBefore = (
+      await db
+        .select({ token: invitations.token })
+        .from(invitations)
+        .where(eq(invitations.email, email))
+    )[0]?.token;
+
+    const resendRes = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/resend",
+      payload: { email },
+    });
+    expect(resendRes.statusCode).toBe(204);
+
+    const tokenAfter = (
+      await db
+        .select({ token: invitations.token })
+        .from(invitations)
+        .where(eq(invitations.email, email))
+    )[0]?.token;
+    expect(tokenAfter).toBe(tokenBefore);
+  });
 });
 
 describe("POST /v1/public/signup/verify", () => {
@@ -463,6 +586,91 @@ describe("POST /v1/public/signup/verify", () => {
       },
     });
     expect(res.statusCode).toBe(410);
+  });
+
+  // Recovery path companion to the resend test above: once resend has cleared
+  // `acceptedAt` on a half-provisioned tenant, the second verify call must
+  // upsert the existing users row (binding the new keycloak_id) instead of
+  // failing on the (org_id, email) unique constraint.
+  it("upserts the users row on re-verify after a recovery resend (no duplicate-row error)", async () => {
+    const slugU = registerSlug("verify-upsert");
+    const email = `admin+${slugU}@example.org`;
+
+    // First signup + verify — creates the users row.
+    await app.inject({
+      method: "POST",
+      url: "/v1/public/signup",
+      headers: { "x-captcha-token": "test-token" },
+      payload: {
+        orgName: "Upsert NGO",
+        slug: slugU,
+        firstName: "U",
+        lastName: "P",
+        email,
+      },
+    });
+    const [invSeed] = await db
+      .select({ token: invitations.token, id: invitations.id })
+      .from(invitations)
+      .where(eq(invitations.email, email));
+    const firstToken = invSeed?.token;
+    if (!firstToken) throw new Error("seed token missing");
+    await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token: firstToken,
+        firstName: "Original",
+        lastName: "Owner",
+        password: TEST_PASSWORD,
+      },
+    });
+
+    const [originalUser] = await db.select().from(users).where(eq(users.email, email));
+    expect(originalUser).toBeDefined();
+    const originalId = originalUser?.id;
+    const originalKeycloakId = originalUser?.keycloakId;
+
+    // Reproduce the half-provisioned state, then resend → verify again with a
+    // different name to prove the upsert took.
+    await db.update(users).set({ keycloakId: null }).where(eq(users.email, email));
+    await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/resend",
+      payload: { email },
+    });
+    const [invAfterResend] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.email, email));
+    const recoveryToken = invAfterResend?.token;
+    if (!recoveryToken || recoveryToken === firstToken) {
+      throw new Error("recovery token was not rotated");
+    }
+
+    const recoveryRes = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token: recoveryToken,
+        firstName: "Recovery",
+        lastName: "Pass",
+        password: TEST_PASSWORD,
+      },
+    });
+    expect(recoveryRes.statusCode).toBe(201);
+
+    // Same row id (no duplicate insert), names patched, fresh keycloak_id
+    // bound, firstAdmin / provisional fields preserved.
+    const userRows = await db.select().from(users).where(eq(users.email, email));
+    expect(userRows.length).toBe(1);
+    const u = userRows[0];
+    expect(u?.id).toBe(originalId);
+    expect(u?.firstName).toBe("Recovery");
+    expect(u?.lastName).toBe("Pass");
+    expect(u?.firstAdmin).toBe(true);
+    expect(u?.keycloakId).toBeTruthy();
+    expect(u?.keycloakId).not.toBe(originalKeycloakId);
   });
 
   it("rolls back the verify when the Keycloak admin call fails (no half-provisioned tenant)", async () => {

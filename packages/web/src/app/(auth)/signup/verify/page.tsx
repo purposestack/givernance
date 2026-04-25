@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, LogIn, TriangleAlert } from "lucide-react";
+import { CheckCircle2, LogIn, Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -9,7 +9,7 @@ import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { verifySignup } from "@/services/SignupService";
+import { resendVerification, verifySignup } from "@/services/SignupService";
 
 const PASSWORD_MIN_LENGTH = 12;
 
@@ -30,6 +30,69 @@ function validateVerifyForm(f: VerifyFormFields): ValidationKey | null {
   if (f.password.length < PASSWORD_MIN_LENGTH) return "passwordTooShort";
   if (f.password !== f.passwordConfirm) return "passwordMismatch";
   return null;
+}
+
+/**
+ * Inline resend-link form rendered when verify fails with a 410 (expired or
+ * already-used token). The API treats every resend response as 204 regardless
+ * of whether the email matches a pending or half-provisioned tenant — so the
+ * UI can't distinguish "sent" from "no match" without leaking enumeration
+ * signal. We always show the same "if your email matches, we've sent a new
+ * link" confirmation.
+ */
+function ResendForm() {
+  const t = useTranslations("auth.signupVerify");
+  const inputId = useId();
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<"idle" | "submitting" | "sent">("idle");
+
+  const onSubmit = useCallback(
+    async (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      if (email.trim().length === 0) return;
+      setState("submitting");
+      await resendVerification(email.trim());
+      setState("sent");
+    },
+    [email],
+  );
+
+  if (state === "sent") {
+    return (
+      <p className="mt-3 text-sm text-text-secondary" role="status" aria-live="polite">
+        {t("resend.sent")}
+      </p>
+    );
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="mt-3 space-y-2">
+      <Label htmlFor={inputId}>{t("resend.label")}</Label>
+      <div className="flex gap-2">
+        <Input
+          id={inputId}
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={t("resend.placeholder")}
+        />
+        <button
+          type="submit"
+          disabled={state === "submitting"}
+          className="inline-flex h-[var(--btn-height-md)] shrink-0 items-center justify-center gap-2 rounded-button bg-primary px-4 text-sm font-medium text-on-primary transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {state === "submitting" ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-primary border-t-transparent" />
+          ) : (
+            <Mail className="h-4 w-4" aria-hidden="true" />
+          )}
+          {t("resend.submit")}
+        </button>
+      </div>
+    </form>
+  );
 }
 
 /**
@@ -60,6 +123,9 @@ function VerifyContent() {
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "done">("idle");
   const [error, setError] = useState<string | undefined>();
+  // Tracks the last server status so we can conditionally render the resend
+  // form only when the failure mode (410) is actually recoverable that way.
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
 
   const handleSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
@@ -73,10 +139,12 @@ function VerifyContent() {
       });
       if (validation) {
         setError(t(`errors.${validation}`, { min: PASSWORD_MIN_LENGTH }));
+        setErrorStatus(null);
         return;
       }
       setStatus("submitting");
       setError(undefined);
+      setErrorStatus(null);
       const res = await verifySignup(token, firstName.trim(), lastName.trim(), password);
       if (res.ok) {
         setStatus("done");
@@ -91,6 +159,7 @@ function VerifyContent() {
       const errorKey =
         res.status === 410 ? "expired" : res.status === 429 ? "rateLimited" : "generic";
       setError(t(`errors.${errorKey}`));
+      setErrorStatus(res.status);
     },
     [token, firstName, lastName, password, passwordConfirm, t],
   );
@@ -140,10 +209,13 @@ function VerifyContent() {
         <div
           role="alert"
           aria-live="polite"
-          className="mb-4 flex items-start gap-3 rounded-lg border border-error-border bg-error-container p-3 text-sm text-on-error-container"
+          className="mb-4 rounded-lg border border-error-border bg-error-container p-3 text-sm text-on-error-container"
         >
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span className="flex-1">{error}</span>
+          <div className="flex items-start gap-3">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="flex-1">{error}</span>
+          </div>
+          {errorStatus === 410 && <ResendForm />}
         </div>
       )}
 
