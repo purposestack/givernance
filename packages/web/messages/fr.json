@@ -149,21 +149,26 @@
     },
     "signupVerify": {
       "title": "Finaliser votre inscription",
-      "subtitle": "Confirmez votre nom pour que nous puissions configurer votre espace.",
-      "submit": "Accéder à mon espace",
+      "subtitle": "Confirmez votre nom et choisissez un mot de passe pour vous connecter à votre espace.",
+      "submit": "Créer le compte et se connecter",
       "successTitle": "Espace prêt",
       "successBody": "Redirection vers votre tableau de bord…",
       "errorTitle": "Vérification impossible",
       "restartSignup": "Recommencer l'inscription",
       "fields": {
         "firstName": "Prénom",
-        "lastName": "Nom"
+        "lastName": "Nom",
+        "password": "Choisir un mot de passe",
+        "passwordHint": "Au moins {min} caractères. Vous l'utiliserez à l'écran suivant pour vous connecter.",
+        "passwordConfirm": "Confirmer le mot de passe"
       },
       "errors": {
         "invalid": "Ce lien de vérification est invalide.",
         "expired": "Ce lien de vérification est invalide ou a déjà été utilisé. Veuillez recommencer l'inscription.",
         "missingToken": "Aucun jeton de vérification fourni.",
         "namesRequired": "Veuillez renseigner votre prénom et votre nom.",
+        "passwordTooShort": "Utilisez un mot de passe d'au moins {min} caractères.",
+        "passwordMismatch": "Les deux mots de passe ne correspondent pas.",
         "rateLimited": "Trop de tentatives. Veuillez réessayer dans quelques minutes.",
         "generic": "Nous n'avons pas pu finaliser la vérification. Veuillez réessayer."
       }

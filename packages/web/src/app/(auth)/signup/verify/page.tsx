@@ -11,6 +11,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { verifySignup } from "@/services/SignupService";
 
+const PASSWORD_MIN_LENGTH = 12;
+
+type ValidationKey = "invalid" | "namesRequired" | "passwordTooShort" | "passwordMismatch";
+
+interface VerifyFormFields {
+  token: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+  passwordConfirm: string;
+}
+
+/** Pure validation — returns the i18n error key or null when the form is OK. */
+function validateVerifyForm(f: VerifyFormFields): ValidationKey | null {
+  if (!f.token) return "invalid";
+  if (f.firstName.trim().length < 1 || f.lastName.trim().length < 1) return "namesRequired";
+  if (f.password.length < PASSWORD_MIN_LENGTH) return "passwordTooShort";
+  if (f.password !== f.passwordConfirm) return "passwordMismatch";
+  return null;
+}
+
 /**
  * Email verification landing (issue #109 / doc 22 §6.2).
  *
@@ -29,45 +50,49 @@ function VerifyContent() {
   const ids = {
     firstName: useId(),
     lastName: useId(),
+    password: useId(),
+    passwordConfirm: useId(),
   };
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "done">("idle");
   const [error, setError] = useState<string | undefined>();
 
   const handleSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      if (!token) {
-        setError(t("errors.invalid"));
-        return;
-      }
-      if (firstName.trim().length < 1 || lastName.trim().length < 1) {
-        setError(t("errors.namesRequired"));
+      const validation = validateVerifyForm({
+        token,
+        firstName,
+        lastName,
+        password,
+        passwordConfirm,
+      });
+      if (validation) {
+        setError(t(`errors.${validation}`, { min: PASSWORD_MIN_LENGTH }));
         return;
       }
       setStatus("submitting");
       setError(undefined);
-      const res = await verifySignup(token, firstName.trim(), lastName.trim());
+      const res = await verifySignup(token, firstName.trim(), lastName.trim(), password);
       if (res.ok) {
         setStatus("done");
-        // Redirect to Keycloak login — once Keycloak 26 Organizations are in
-        // (#114), the realm will emit a JWT with the correct `org_id` claim
-        // for the freshly-minted user row.
+        // Redirect to Keycloak login — the API just provisioned a realm user
+        // with the password the operator picked above, so the next screen
+        // accepts it directly. Once per-tenant Organizations land (#114
+        // follow-up) the JWT will carry org_id for this freshly-minted row.
         window.location.href = `/api/auth/login?hint=${encodeURIComponent(res.data.slug)}`;
         return;
       }
       setStatus("idle");
-      if (res.status === 410) {
-        setError(t("errors.expired"));
-      } else if (res.status === 429) {
-        setError(t("errors.rateLimited"));
-      } else {
-        setError(t("errors.generic"));
-      }
+      const errorKey =
+        res.status === 410 ? "expired" : res.status === 429 ? "rateLimited" : "generic";
+      setError(t(`errors.${errorKey}`));
     },
-    [token, firstName, lastName, t],
+    [token, firstName, lastName, password, passwordConfirm, t],
   );
 
   if (!token) {
@@ -152,6 +177,44 @@ function VerifyContent() {
               maxLength={255}
             />
           </div>
+        </div>
+
+        <div>
+          <Label htmlFor={ids.password} required>
+            {t("fields.password")}
+          </Label>
+          <Input
+            id={ids.password}
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={PASSWORD_MIN_LENGTH}
+            maxLength={128}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            aria-describedby={`${ids.password}-hint`}
+          />
+          <p id={`${ids.password}-hint`} className="mt-1 text-xs text-text-muted">
+            {t("fields.passwordHint", { min: PASSWORD_MIN_LENGTH })}
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor={ids.passwordConfirm} required>
+            {t("fields.passwordConfirm")}
+          </Label>
+          <Input
+            id={ids.passwordConfirm}
+            name="passwordConfirm"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={PASSWORD_MIN_LENGTH}
+            maxLength={128}
+            value={passwordConfirm}
+            onChange={(e) => setPasswordConfirm(e.target.value)}
+          />
         </div>
 
         <button
