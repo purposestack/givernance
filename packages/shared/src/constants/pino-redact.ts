@@ -33,11 +33,20 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   "*.headers.Authorization",
 
   // ─── Secrets / credentials in request bodies ───────────────────────────────
+  // Both `body.*` (when serializers strip the request wrapper) and `req.body.*`
+  // / `request.body.*` (Fastify's default request serializer keys) are listed
+  // — Pino wildcards are one-level only so we enumerate the carriers
+  // explicitly. Verified against PR #143 self-serve verify path which posts
+  // both a `password` and a `token`.
   "body.password",
   "body.token",
   "body.client_secret",
   "body.refresh_token",
   "body.access_token",
+  "req.body.password",
+  "req.body.token",
+  "request.body.password",
+  "request.body.token",
   "accessToken",
   "*.accessToken",
 
