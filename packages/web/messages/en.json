@@ -164,13 +164,19 @@
       },
       "errors": {
         "invalid": "This verification link is invalid.",
-        "expired": "This verification link is invalid or has already been used. Please start signup again.",
+        "expired": "This verification link is invalid or has already been used.",
         "missingToken": "No verification token supplied.",
         "namesRequired": "Please provide your first and last name.",
         "passwordTooShort": "Use a password of at least {min} characters.",
         "passwordMismatch": "The two passwords don't match.",
         "rateLimited": "Too many attempts. Please try again in a few minutes.",
         "generic": "We couldn't finish verifying your workspace. Please retry."
+      },
+      "resend": {
+        "label": "Get a new verification link",
+        "placeholder": "you@example.org",
+        "submit": "Send link",
+        "sent": "If the email matches an account, we've sent a fresh verification link. Please check your inbox."
       }
     },
     "selectOrganization": {
