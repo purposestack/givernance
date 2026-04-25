@@ -80,6 +80,62 @@ describe("Constituents CRUD", () => {
     expect(body.data.lastName).toBe("Martin");
   });
 
+  // Regression: the edit form used to drop empty optional fields, which
+  // meant operators couldn't ever delete a previously-set phone or email.
+  // Convention is now: `null` = explicit clear, omitted = leave alone.
+  it("PUT /v1/constituents/:id with phone:null clears a previously-set phone", async () => {
+    const tokenA = signToken(app);
+    // Seed a phone first.
+    const seed = await app.inject({
+      method: "PUT",
+      url: `/v1/constituents/${constituentId}`,
+      headers: authHeader(tokenA),
+      payload: { phone: "+33 6 12 34 56 78" },
+    });
+    expect(seed.statusCode).toBe(200);
+    expect(seed.json<{ data: { phone: string } }>().data.phone).toBe("+33 6 12 34 56 78");
+
+    // Clear it via explicit null.
+    const cleared = await app.inject({
+      method: "PUT",
+      url: `/v1/constituents/${constituentId}`,
+      headers: authHeader(tokenA),
+      payload: { phone: null },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json<{ data: { phone: string | null } }>().data.phone).toBeNull();
+
+    // Sanity: omitting the field DOES leave it alone (would re-set if the
+    // server treated empty payload the same as null).
+    const reSeed = await app.inject({
+      method: "PUT",
+      url: `/v1/constituents/${constituentId}`,
+      headers: authHeader(tokenA),
+      payload: { phone: "+33 1 11 22 33 44" },
+    });
+    expect(reSeed.statusCode).toBe(200);
+    const noTouch = await app.inject({
+      method: "PUT",
+      url: `/v1/constituents/${constituentId}`,
+      headers: authHeader(tokenA),
+      payload: { lastName: "PhoneSurvivor" },
+    });
+    expect(noTouch.statusCode).toBe(200);
+    expect(noTouch.json<{ data: { phone: string | null } }>().data.phone).toBe("+33 1 11 22 33 44");
+  });
+
+  it("PUT /v1/constituents/:id with email:null clears a previously-set email", async () => {
+    const tokenA = signToken(app);
+    const cleared = await app.inject({
+      method: "PUT",
+      url: `/v1/constituents/${constituentId}`,
+      headers: authHeader(tokenA),
+      payload: { email: null },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json<{ data: { email: string | null } }>().data.email).toBeNull();
+  });
+
   it("GET /v1/constituents/:id returns 404 for non-existent ID", async () => {
     const tokenA = signToken(app);
     const res = await app.inject({

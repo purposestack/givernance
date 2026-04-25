@@ -42,7 +42,27 @@ const ConstituentCreateBody = Type.Object({
   tags: Type.Optional(Type.Array(Type.String())),
 });
 
-const ConstituentUpdateBody = Type.Partial(ConstituentCreateBody, { minProperties: 1 });
+// Per the convention in @givernance/shared validators: optional fields accept
+// `null` on UPDATE to mean "clear this field to NULL in the DB" (vs omitted =
+// "leave alone"). Without this distinction the form has no way to express
+// "remove the phone number from this constituent" — the client drops empty
+// fields to avoid clobbering, and the API never sees them.
+//
+// Null variants come FIRST in every nullable Union — Fastify's ajv has
+// `coerceTypes: true` by default and will silently coerce a runtime `null`
+// to `""` if the first schema in the Union is `Type.String()`. With Null
+// first, ajv recognises the value as already-valid and leaves it alone.
+const ConstituentUpdateBody = Type.Object(
+  {
+    firstName: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+    lastName: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+    email: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 255 })])),
+    phone: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 50 })])),
+    type: Type.Optional(ConstituentTypeEnum),
+    tags: Type.Optional(Type.Array(Type.String())),
+  },
+  { minProperties: 1 },
+);
 
 const ListQuery = Type.Intersect([
   PaginationQuery,
@@ -68,17 +88,27 @@ const MergeBody = Type.Object({
   targetId: UuidSchema,
 });
 
-/** Constituent shape returned by the API */
+/**
+ * Constituent shape returned by the API.
+ *
+ * Null variants come FIRST in every nullable Union — fast-json-stringify
+ * (Fastify's response serializer) walks `oneOf` in declaration order and
+ * coerces values to the first compatible schema. With `Type.String()` first,
+ * a runtime `null` from a NULL DB column would be coerced to `""` in the
+ * JSON output, breaking nullable semantics for clients (the constituent
+ * edit form's "clear phone" path returns null from the service but the
+ * client sees an empty string in the response).
+ */
 const ConstituentResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
   firstName: Type.String(),
   lastName: Type.String(),
-  email: Type.Union([Type.String(), Type.Null()]),
-  phone: Type.Union([Type.String(), Type.Null()]),
+  email: Type.Union([Type.Null(), Type.String()]),
+  phone: Type.Union([Type.Null(), Type.String()]),
   type: Type.String(),
-  tags: Type.Union([Type.Array(Type.String()), Type.Null()]),
-  deletedAt: Type.Union([Type.String(), Type.Null()]),
+  tags: Type.Union([Type.Null(), Type.Array(Type.String())]),
+  deletedAt: Type.Union([Type.Null(), Type.String()]),
   createdAt: Type.String(),
   updatedAt: Type.String(),
   activities: Type.Optional(Type.Array(Type.Unknown())),
@@ -276,8 +306,8 @@ export async function constituentRoutes(app: FastifyInstance) {
       const body = request.body as {
         firstName?: string;
         lastName?: string;
-        email?: string;
-        phone?: string;
+        email?: string | null;
+        phone?: string | null;
         type?: string;
         tags?: string[];
       };

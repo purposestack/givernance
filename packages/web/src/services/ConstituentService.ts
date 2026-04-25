@@ -114,18 +114,23 @@ function mapConstituent(raw: Constituent): Constituent {
 }
 
 /**
- * Normalize a form payload for the API: drop empty strings so optional
- * fields don't fail the API's `minLength`/`format` constraints.
+ * Normalize a form payload for the API.
+ *
+ * `undefined` → drop the field (= "leave alone" on update / "use default"
+ * on create). `null` → send through as an explicit clear ("set this column
+ * to NULL"). Empty strings are also dropped to avoid `minLength`/`format`
+ * validator rejections — callers that want to clear a field MUST send
+ * `null` explicitly, not `""`.
  */
 function toRequestBody(input: ConstituentUpdateInput): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   if (input.firstName !== undefined) body.firstName = input.firstName;
   if (input.lastName !== undefined) body.lastName = input.lastName;
-  if (input.email !== undefined && input.email !== null && input.email !== "") {
-    body.email = input.email;
+  if (input.email !== undefined && input.email !== "") {
+    body.email = input.email; // string OR null — both flow through
   }
-  if (input.phone !== undefined && input.phone !== null && input.phone !== "") {
-    body.phone = input.phone;
+  if (input.phone !== undefined && input.phone !== "") {
+    body.phone = input.phone; // string OR null — both flow through
   }
   if (input.type !== undefined) body.type = input.type;
   if (input.tags !== undefined) body.tags = input.tags;
