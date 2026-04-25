@@ -148,10 +148,10 @@ function VerifyContent() {
       const res = await verifySignup(token, firstName.trim(), lastName.trim(), password);
       if (res.ok) {
         setStatus("done");
-        // Redirect to Keycloak login — the API just provisioned a realm user
-        // with the password the operator picked above, so the next screen
-        // accepts it directly. Once per-tenant Organizations land (#114
-        // follow-up) the JWT will carry org_id for this freshly-minted row.
+        // Redirect to Keycloak login — the API just provisioned the realm
+        // Organization, the user with the chosen password, and the
+        // membership, plus stamped the `org_id` user attribute that the
+        // realm's mapper turns into the JWT claim the callback requires.
         window.location.href = `/api/auth/login?hint=${encodeURIComponent(res.data.slug)}`;
         return;
       }

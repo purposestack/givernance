@@ -23,10 +23,21 @@ const pool = new pg.Pool({
  *
  * Do NOT use this for anything that runs on behalf of an authenticated user;
  * those paths must keep going through `db` so RLS isolates tenants.
+ *
+ * Pool sized to 10 (was 5): `verifySignup` holds a transactional connection
+ * across three sequential Keycloak admin HTTP calls (createOrganization,
+ * createUser, attachUserToOrg). Each call is rate-limited by the KC client's
+ * retry budget (POST is not retried on 5xx, so worst-case ~1 retry on 401
+ * rotation), but a flood of half-failed signups can still hold connections
+ * for several seconds each. Splitting the verify into pre-validate /
+ * KC-orchestrate / finalize sub-transactions is the proper fix; tracked as
+ * a follow-up. Until then, doubling the pool gives headroom against the
+ * accidental exhaustion path that would block all unauthenticated /signup/*
+ * endpoints simultaneously.
  */
 const systemPool = new pg.Pool({
   connectionString: env.DATABASE_URL,
-  max: 5,
+  max: 10,
 });
 
 /** Drizzle ORM instance with typed schema (app role — RLS enforced) */
