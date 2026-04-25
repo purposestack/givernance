@@ -17,7 +17,7 @@
  * against production.
  */
 
-import { campaigns, constituents, donations, tenants } from "@givernance/shared/schema";
+import { campaigns, constituents, donations, tenants, users } from "@givernance/shared/schema";
 import { eq } from "drizzle-orm";
 import { db, withTenantContext } from "../src/lib/db.js";
 
@@ -25,6 +25,18 @@ const TENANT_SLUG = "givernance";
 const TENANT_NAME = "Givernance Demo NPO";
 /** Fixed UUID referenced by the seeded Keycloak user's `org_id` attribute. */
 const TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
+/**
+ * Fixed Keycloak `sub` for the seeded super-admin user. Pinned to the
+ * `id` field on `admin@givernance.org` in `infra/keycloak/realm-givernance.json`.
+ * The `users` row inserted below carries this in `keycloak_id` so that
+ * `GET /v1/users/me` (which inner-joins `users` ↔ `tenants` on the JWT
+ * `sub` + `org_id`) resolves a real row for the super admin and the sidebar
+ * renders the tenant name instead of the placeholder.
+ */
+const ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-000000000ad1";
+const ADMIN_EMAIL = "admin@givernance.org";
+const ADMIN_FIRST_NAME = "Super";
+const ADMIN_LAST_NAME = "Admin";
 const CONSTITUENT_COUNT = 50;
 const CAMPAIGN_COUNT = 5;
 const DONATION_COUNT = 100;
@@ -294,9 +306,40 @@ async function seedOrgData(orgId: string) {
   });
 }
 
+/**
+ * Idempotently seed a `users` row for the super-admin so `GET /v1/users/me`
+ * can resolve a row when admin@givernance.org logs in. The Keycloak realm
+ * import creates the user on the IdP side; the application DB needs a
+ * matching row keyed on `keycloak_id` for the sidebar / org switcher to work.
+ */
+async function seedAdminUser(orgId: string): Promise<void> {
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.keycloakId, ADMIN_KEYCLOAK_ID))
+    .limit(1);
+  if (existing) {
+    console.log(`[seed] Admin user already present (keycloakId=${ADMIN_KEYCLOAK_ID})`);
+    return;
+  }
+
+  await withTenantContext(orgId, async (tx) => {
+    await tx.insert(users).values({
+      orgId,
+      email: ADMIN_EMAIL,
+      firstName: ADMIN_FIRST_NAME,
+      lastName: ADMIN_LAST_NAME,
+      role: "org_admin",
+      keycloakId: ADMIN_KEYCLOAK_ID,
+    });
+  });
+  console.log(`[seed] Inserted admin user ${ADMIN_EMAIL}`);
+}
+
 async function main() {
   console.log("[seed] Starting Givernance dev seed…");
   const orgId = await findOrCreateTenant();
+  await seedAdminUser(orgId);
   await seedOrgData(orgId);
   console.log("[seed] Done.");
   process.exit(0);

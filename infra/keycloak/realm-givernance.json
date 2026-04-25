@@ -25,6 +25,7 @@
   },
   "users": [
     {
+      "id": "00000000-0000-0000-0000-000000000ad1",
       "username": "admin@givernance.org",
       "email": "admin@givernance.org",
       "enabled": true,
