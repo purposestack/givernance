@@ -41,7 +41,11 @@ import {
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db, systemDb } from "../../lib/db.js";
-import { type KeycloakAdminClient, keycloakAdmin } from "../../lib/keycloak-admin.js";
+import {
+  type KeycloakAdminClient,
+  KeycloakAdminError,
+  keycloakAdmin,
+} from "../../lib/keycloak-admin.js";
 
 const PROVISIONAL_GRACE_DAYS = 7;
 const VERIFICATION_TTL_HOURS = 24;
@@ -402,9 +406,11 @@ export async function verifySignup(
           role: invitations.role,
           expiresAt: invitations.expiresAt,
           acceptedAt: invitations.acceptedAt,
+          tenantName: tenants.name,
           tenantSlug: tenants.slug,
           tenantStatus: tenants.status,
           createdVia: tenants.createdVia,
+          keycloakOrgId: tenants.keycloakOrgId,
         })
         .from(invitations)
         .innerJoin(tenants, eq(invitations.orgId, tenants.id))
@@ -441,11 +447,49 @@ export async function verifySignup(
           ),
         );
 
+      // Get-or-create the tenant's Keycloak Organization. The realm's JWT
+      // mappers expect every member's token to carry a top-level `org_id`
+      // claim sourced from the user attribute (see scripts/keycloak-sync-
+      // realm.sh `oidc-usermodel-attribute-mapper`), and an `organization`
+      // claim from membership. A self-serve user without an Organization
+      // would land on /api/auth/callback with `missing_org_id` and bounce
+      // back to /login.
+      //
+      // Idempotent for the recovery path: if a previous verify attempt
+      // created the org but its keycloak_org_id never made it back into
+      // the DB row (network glitch, KC 201 + DB rollback), we look up by
+      // alias via the 409 catch.
+      let kcOrgId = row.keycloakOrgId;
+      if (!kcOrgId) {
+        try {
+          const created = await kcAdmin.createOrganization({
+            name: row.tenantName,
+            alias: row.tenantSlug,
+            attributes: { org_id: [row.orgId] },
+          });
+          kcOrgId = created.id;
+        } catch (err) {
+          if (err instanceof KeycloakAdminError && err.status === 409) {
+            const existing = await kcAdmin.getOrganizationByAlias(row.tenantSlug);
+            if (!existing) throw err;
+            kcOrgId = existing.id;
+          } else {
+            throw err;
+          }
+        }
+        await tx
+          .update(tenants)
+          .set({ keycloakOrgId: kcOrgId, updatedAt: new Date() })
+          .where(eq(tenants.id, row.orgId));
+      }
+
       // Create the Keycloak user FIRST (still inside the DB tx so any failure
       // rolls back the whole verify). Without this the user has a Givernance
       // row but no realm credential — the post-verify Keycloak login redirect
       // would dead-end on a "no account" screen. The KC admin client doesn't
       // retry POST on 5xx so we won't double-create on a flaky upstream.
+      // Attributes are emitted as JWT claims by the realm's user-attribute
+      // mapper — `org_id` is the one the web callback hard-requires.
       const kcUser = await kcAdmin.createUser({
         email: row.email,
         firstName,
@@ -454,7 +498,20 @@ export async function verifySignup(
         // The verify token IS the email-ownership proof — flag the user as
         // verified so Keycloak doesn't immediately ask them to verify again.
         emailVerified: true,
+        attributes: { org_id: [row.orgId], role: ["org_admin"] },
       });
+
+      // Attach the user as a member of the Organization. 409 = already a
+      // member (recovery path: prior verify created the membership but
+      // failed before binding `keycloak_id` on the users row). Treat as
+      // success.
+      try {
+        await kcAdmin.attachUserToOrg(kcOrgId, kcUser.id);
+      } catch (err) {
+        if (!(err instanceof KeycloakAdminError && err.status === 409)) {
+          throw err;
+        }
+      }
 
       // Upsert (target = the (org_id, email) unique index) so a verify
       // re-entry from a half-provisioned tenant — i.e. the resend flow
