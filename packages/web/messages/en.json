@@ -149,21 +149,26 @@
     },
     "signupVerify": {
       "title": "Finish signing up",
-      "subtitle": "Confirm your name so we can set up your workspace.",
-      "submit": "Enter my workspace",
+      "subtitle": "Confirm your name and choose a password so you can sign in to your workspace.",
+      "submit": "Create account & sign in",
       "successTitle": "Workspace ready",
       "successBody": "Redirecting you to your dashboard…",
       "errorTitle": "Verification failed",
       "restartSignup": "Start signup again",
       "fields": {
         "firstName": "First name",
-        "lastName": "Last name"
+        "lastName": "Last name",
+        "password": "Choose a password",
+        "passwordHint": "At least {min} characters. You'll use this on the next screen to sign in.",
+        "passwordConfirm": "Confirm password"
       },
       "errors": {
         "invalid": "This verification link is invalid.",
         "expired": "This verification link is invalid or has already been used. Please start signup again.",
         "missingToken": "No verification token supplied.",
         "namesRequired": "Please provide your first and last name.",
+        "passwordTooShort": "Use a password of at least {min} characters.",
+        "passwordMismatch": "The two passwords don't match.",
         "rateLimited": "Too many attempts. Please try again in a few minutes.",
         "generic": "We couldn't finish verifying your workspace. Please retry."
       }

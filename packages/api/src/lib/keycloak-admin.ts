@@ -70,6 +70,24 @@ export interface BindIdpInput {
   alias: string;
 }
 
+export interface KeycloakUser {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  enabled?: boolean;
+  emailVerified?: boolean;
+}
+
+export interface CreateUserInput {
+  email: string;
+  firstName: string;
+  lastName: string;
+  /** Cleartext password — sent over TLS to the Keycloak Admin API; not logged. */
+  password: string;
+  emailVerified?: boolean;
+}
+
 export class KeycloakAdminError extends Error {
   constructor(
     message: string,
@@ -145,6 +163,20 @@ export interface KeycloakAdminClient {
   attachUserToOrg(orgId: string, userId: string): Promise<void>;
   sendInvitation(orgId: string, email: string): Promise<void>;
   bindIdpToOrganization(orgId: string, input: BindIdpInput): Promise<void>;
+
+  // Users (KC 24+) — used by the self-serve signup verify flow (issue #114)
+  /**
+   * Create a realm user with a non-temporary password and `emailVerified=true`.
+   * Returns `{ id, created }` — `created=false` means the email already existed,
+   * we resolved the existing user id and reset its password (idempotent retry
+   * after a previous attempt that left an orphan KC user behind).
+   *
+   * Throws on any other failure mode. Callers MUST NOT log the password.
+   */
+  createUser(input: CreateUserInput): Promise<{ id: string; created: boolean }>;
+  getUserByEmail(email: string): Promise<KeycloakUser | null>;
+  /** Replace a user's password with a new non-temporary credential. */
+  resetUserPassword(userId: string, password: string): Promise<void>;
 
   // Identity Providers (KC 24+)
   createIdentityProvider(idp: KeycloakIdentityProvider): Promise<void>;
@@ -507,6 +539,86 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
       await adminRequest<void>("POST", `/organizations/${e(orgId)}/identity-providers`, { alias });
     },
 
+    createUser: async ({ email, firstName, lastName, password, emailVerified }) => {
+      const normalisedEmail = email.trim().toLowerCase();
+      try {
+        const out = await adminRequest<KeycloakUser & { __locationHeader?: string }>(
+          "POST",
+          `/users`,
+          {
+            username: normalisedEmail,
+            email: normalisedEmail,
+            firstName,
+            lastName,
+            enabled: true,
+            emailVerified: emailVerified ?? false,
+            credentials: [{ type: "password", value: password, temporary: false }],
+          },
+        );
+        if (!out) {
+          throw new KeycloakAdminError(
+            `User create returned no body and no Location header`,
+            500,
+            `/users`,
+          );
+        }
+        const idMatch = out.__locationHeader?.match(/\/users\/([^/]+)$/);
+        const id = idMatch?.[1] ?? out.id;
+        if (!id) {
+          throw new KeycloakAdminError(
+            `User create Location header malformed: ${out.__locationHeader ?? "(missing)"}`,
+            500,
+            `/users`,
+          );
+        }
+        return { id, created: true };
+      } catch (err) {
+        // 409 = email already exists in the realm. Resolve the existing user
+        // and reset its password — this is the idempotent retry case where a
+        // previous verify left an orphan KC user behind. The unguessable
+        // signup token is the security boundary; the caller already proved
+        // ownership of this email by clicking the verification link.
+        if (err instanceof KeycloakAdminError && err.status === 409) {
+          const existing = await adminRequest<KeycloakUser[]>(
+            "GET",
+            `/users?email=${e(normalisedEmail)}&exact=true`,
+          );
+          const match = existing?.find((u) => u.email?.toLowerCase() === normalisedEmail);
+          if (!match) {
+            throw new KeycloakAdminError(
+              `User create returned 409 but no matching user found for email`,
+              500,
+              `/users`,
+            );
+          }
+          await adminRequest<void>("PUT", `/users/${e(match.id)}/reset-password`, {
+            type: "password",
+            value: password,
+            temporary: false,
+          });
+          return { id: match.id, created: false };
+        }
+        throw err;
+      }
+    },
+
+    getUserByEmail: async (email) => {
+      const normalised = email.trim().toLowerCase();
+      const rows = await adminRequest<KeycloakUser[]>(
+        "GET",
+        `/users?email=${e(normalised)}&exact=true`,
+      );
+      return rows?.find((u) => u.email?.toLowerCase() === normalised) ?? null;
+    },
+
+    resetUserPassword: async (userId, password) => {
+      await adminRequest<void>("PUT", `/users/${e(userId)}/reset-password`, {
+        type: "password",
+        value: password,
+        temporary: false,
+      });
+    },
+
     createIdentityProvider: async (idp) => {
       await adminRequest<void>("POST", `/identity-provider/instances`, {
         alias: idp.alias,
@@ -555,4 +667,12 @@ export function keycloakAdmin(): KeycloakAdminClient {
 /** Test helper — resets the module-level singleton + token cache. */
 export function _resetKeycloakAdminSingleton(): void {
   singleton = null;
+}
+
+/**
+ * Test helper — install a fake admin client so callers of `keycloakAdmin()`
+ * receive the stub. Pair with `_resetKeycloakAdminSingleton()` in afterAll.
+ */
+export function _setKeycloakAdminSingleton(client: KeycloakAdminClient): void {
+  singleton = client;
 }

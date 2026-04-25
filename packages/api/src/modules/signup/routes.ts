@@ -53,6 +53,14 @@ const VerifyBody = Type.Object({
   token: Type.String({ format: "uuid" }),
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
+  /**
+   * The password the user picks on the verify form — provisioned as their
+   * non-temporary Keycloak credential so they can log in immediately after
+   * the post-verify redirect (issue #109 follow-up). Min 12 to comply with
+   * the realm's brute-force protection without leaking exact policy back to
+   * the frontend.
+   */
+  password: Type.String({ minLength: 12, maxLength: 128 }),
 });
 
 const SignupResponse = Type.Object({
@@ -233,7 +241,12 @@ export async function signupRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const body = request.body as { token: string; firstName: string; lastName: string };
+      const body = request.body as {
+        token: string;
+        firstName: string;
+        lastName: string;
+        password: string;
+      };
       const ipHash = hashIp(clientIp(request));
       const userAgent =
         typeof request.headers["user-agent"] === "string"

@@ -114,12 +114,13 @@ export async function verifySignup(
   token: string,
   firstName: string,
   lastName: string,
+  password: string,
 ): Promise<{ ok: true; data: VerifySuccess } | { ok: false; status: number; detail?: string }> {
   let res: Response;
   try {
     res = await publicFetch("/v1/public/signup/verify", {
       method: "POST",
-      body: JSON.stringify({ token, firstName, lastName }),
+      body: JSON.stringify({ token, firstName, lastName, password }),
     });
   } catch {
     return { ok: false, status: 0 };

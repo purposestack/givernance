@@ -41,6 +41,7 @@ import {
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db, systemDb } from "../../lib/db.js";
+import { type KeycloakAdminClient, keycloakAdmin } from "../../lib/keycloak-admin.js";
 
 const PROVISIONAL_GRACE_DAYS = 7;
 const VERIFICATION_TTL_HOURS = 24;
@@ -335,13 +336,28 @@ export interface VerifyInput {
   token: string;
   firstName: string;
   lastName: string;
+  /**
+   * Cleartext password the user picks on the verify form. Sent over TLS to
+   * Keycloak as a non-temporary credential. Validated for length at the route
+   * boundary; never logged.
+   */
+  password: string;
   ipHash?: string;
   userAgent?: string;
 }
 
-export async function verifySignup(input: VerifyInput): Promise<VerifyResult> {
+export interface VerifyDeps {
+  /** Override the Keycloak admin client — used by integration tests. */
+  keycloakAdmin?: KeycloakAdminClient;
+}
+
+export async function verifySignup(
+  input: VerifyInput,
+  deps: VerifyDeps = {},
+): Promise<VerifyResult> {
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
+  const kcAdmin = deps.keycloakAdmin ?? keycloakAdmin();
 
   try {
     // Owner role: the verify request is unauthenticated, so we have no org
@@ -399,6 +415,21 @@ export async function verifySignup(input: VerifyInput): Promise<VerifyResult> {
           ),
         );
 
+      // Create the Keycloak user FIRST (still inside the DB tx so any failure
+      // rolls back the whole verify). Without this the user has a Givernance
+      // row but no realm credential — the post-verify Keycloak login redirect
+      // would dead-end on a "no account" screen. The KC admin client doesn't
+      // retry POST on 5xx so we won't double-create on a flaky upstream.
+      const kcUser = await kcAdmin.createUser({
+        email: row.email,
+        firstName,
+        lastName,
+        password: input.password,
+        // The verify token IS the email-ownership proof — flag the user as
+        // verified so Keycloak doesn't immediately ask them to verify again.
+        emailVerified: true,
+      });
+
       const [newUser] = await tx
         .insert(users)
         .values({
@@ -408,6 +439,7 @@ export async function verifySignup(input: VerifyInput): Promise<VerifyResult> {
           lastName,
           role: "org_admin",
           firstAdmin: true,
+          keycloakId: kcUser.id,
           provisionalUntil,
         })
         .returning({ id: users.id });

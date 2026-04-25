@@ -17,13 +17,53 @@ import {
 } from "@givernance/shared/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../lib/db.js";
+import {
+  _resetKeycloakAdminSingleton,
+  _setKeycloakAdminSingleton,
+  type KeycloakAdminClient,
+} from "../../lib/keycloak-admin.js";
 import { redis } from "../../lib/redis.js";
 import { cleanupUnverifiedTenants } from "../../modules/signup/service.js";
 import { createServer } from "../../server.js";
 
 let app: FastifyInstance;
+
+/**
+ * Stub Keycloak admin used by every verify call in this file. We assert the
+ * service hands the right shape over the boundary; the real Admin API
+ * contract is exercised by the unit tests in `keycloak-admin.test.ts`.
+ *
+ * `vi.fn` is typed as the `createUser` shape via the generic param so the
+ * mock-method overloads (`mockClear`, `mockRejectedValueOnce`) stay accessible
+ * on `kcCreateUser` while still satisfying the `KeycloakAdminClient` interface
+ * when slotted into `fakeKeycloakAdmin.createUser`.
+ */
+const kcCreateUser = vi.fn<KeycloakAdminClient["createUser"]>(async (input) => ({
+  id: `kc-${input.email}-${randomUUID().slice(0, 8)}`,
+  created: true,
+}));
+const fakeKeycloakAdmin: KeycloakAdminClient = {
+  createOrganization: vi.fn(async () => {
+    throw new Error("not implemented in stub");
+  }),
+  getOrganization: vi.fn(async () => null),
+  deleteOrganization: vi.fn(async () => {}),
+  addOrgDomain: vi.fn(async () => {}),
+  attachUserToOrg: vi.fn(async () => {}),
+  sendInvitation: vi.fn(async () => {}),
+  bindIdpToOrganization: vi.fn(async () => {}),
+  createUser: kcCreateUser,
+  getUserByEmail: vi.fn(async () => null),
+  resetUserPassword: vi.fn(async () => {}),
+  createIdentityProvider: vi.fn(async () => {}),
+  deleteIdentityProvider: vi.fn(async () => {}),
+  _circuitState: () => "closed",
+};
+
+/** A 12-char password — matches the route's `minLength: 12` floor. */
+const TEST_PASSWORD = "Verify-12345";
 
 /** Use a suite-unique prefix so signup slugs don't collide across runs. */
 const RUN = `sg${Date.now().toString(36)}${Math.floor(Math.random() * 1_000_000).toString(36)}`;
@@ -39,11 +79,14 @@ function registerSlug(name: string): string {
 }
 
 beforeAll(async () => {
+  _setKeycloakAdminSingleton(fakeKeycloakAdmin);
   app = await createServer();
   await app.ready();
 });
 
 beforeEach(async () => {
+  // Reset the KC stub spy so per-test assertions on call counts are clean.
+  kcCreateUser.mockClear();
   // Clear any rate-limiter + per-email signup counters from Redis so the
   // 5/hour limits don't poison successive tests. Scoped deletes only — a
   // full `flushdb` would destroy unrelated test fixtures (ENG-3).
@@ -57,6 +100,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await app.close();
+  _resetKeycloakAdminSingleton();
 });
 
 afterEach(async () => {
@@ -306,7 +350,12 @@ describe("POST /v1/public/signup/verify", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/public/signup/verify",
-      payload: { token, firstName: "Alice", lastName: "Anderson" },
+      payload: {
+        token,
+        firstName: "Alice",
+        lastName: "Anderson",
+        password: TEST_PASSWORD,
+      },
     });
     expect(res.statusCode).toBe(201);
     const body = res.json<{ data: { userId: string; provisionalUntil: string } }>();
@@ -320,6 +369,10 @@ describe("POST /v1/public/signup/verify", () => {
     expect(user?.firstAdmin).toBe(true);
     expect(user?.provisionalUntil).not.toBeNull();
     expect(user?.role).toBe("org_admin");
+    // The verify flow is required to provision a Keycloak user and bind its
+    // id back to the Givernance row — without this, the post-verify Keycloak
+    // login redirect dead-ends because the realm has no matching credential.
+    expect(user?.keycloakId).toBeTruthy();
 
     const [inv] = await db
       .select({ acceptedAt: invitations.acceptedAt })
@@ -328,18 +381,71 @@ describe("POST /v1/public/signup/verify", () => {
     expect(inv?.acceptedAt).not.toBeNull();
   });
 
+  it("provisions the Keycloak user with the chosen password + email already verified", async () => {
+    const { email, token } = await createSignup("verify-kc-call");
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token,
+        firstName: "Bob",
+        lastName: "Builder",
+        password: TEST_PASSWORD,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(kcCreateUser).toHaveBeenCalledTimes(1);
+    expect(kcCreateUser).toHaveBeenCalledWith({
+      email,
+      firstName: "Bob",
+      lastName: "Builder",
+      password: TEST_PASSWORD,
+      // The verify token is the email-ownership proof — Keycloak should NOT
+      // ask for another round of verification.
+      emailVerified: true,
+    });
+  });
+
+  it("rejects when the password is shorter than the minimum length (validation 400)", async () => {
+    const { token } = await createSignup("verify-short-pw");
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token,
+        firstName: "P",
+        lastName: "W",
+        password: "short", // < 12 chars
+      },
+    });
+    // Fastify schema rejects with 400 before the service runs — KC is never
+    // contacted.
+    expect(res.statusCode).toBe(400);
+    expect(kcCreateUser).not.toHaveBeenCalled();
+  });
+
   it("returns 410 when the same token is used twice", async () => {
     const { token } = await createSignup("verify-twice");
     const first = await app.inject({
       method: "POST",
       url: "/v1/public/signup/verify",
-      payload: { token, firstName: "A", lastName: "B" },
+      payload: {
+        token,
+        firstName: "A",
+        lastName: "B",
+        password: TEST_PASSWORD,
+      },
     });
     expect(first.statusCode).toBe(201);
     const second = await app.inject({
       method: "POST",
       url: "/v1/public/signup/verify",
-      payload: { token, firstName: "A", lastName: "B" },
+      payload: {
+        token,
+        firstName: "A",
+        lastName: "B",
+        password: TEST_PASSWORD,
+      },
     });
     // SEC-6: collapsed to a single 410 for every failure mode.
     expect(second.statusCode).toBe(410);
@@ -353,9 +459,46 @@ describe("POST /v1/public/signup/verify", () => {
         token: "00000000-0000-0000-0000-000000000000",
         firstName: "A",
         lastName: "B",
+        password: TEST_PASSWORD,
       },
     });
     expect(res.statusCode).toBe(410);
+  });
+
+  it("rolls back the verify when the Keycloak admin call fails (no half-provisioned tenant)", async () => {
+    const { tenantId, token } = await createSignup("verify-kc-fail");
+    kcCreateUser.mockRejectedValueOnce(new Error("kc admin down"));
+
+    let threw = false;
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/public/signup/verify",
+        payload: {
+          token,
+          firstName: "Rolled",
+          lastName: "Back",
+          password: TEST_PASSWORD,
+        },
+      });
+      // Fastify's default error handler turns the throw into a 500.
+      expect(res.statusCode).toBe(500);
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(false);
+
+    // Tenant must remain provisional, no users row created, invitation still pending.
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+    expect(tenant?.status).toBe("provisional");
+    expect(tenant?.verifiedAt).toBeNull();
+    const userRows = await db.select().from(users).where(eq(users.orgId, tenantId));
+    expect(userRows.length).toBe(0);
+    const [invRow] = await db
+      .select({ acceptedAt: invitations.acceptedAt })
+      .from(invitations)
+      .where(eq(invitations.orgId, tenantId));
+    expect(invRow?.acceptedAt).toBeNull();
   });
 });
 
