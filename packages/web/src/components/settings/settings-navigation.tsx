@@ -13,6 +13,11 @@ const SETTINGS_NAV_ITEMS = [
     match: (pathname: string) => pathname === "/settings",
   },
   {
+    href: "/settings/members",
+    key: "members",
+    match: (pathname: string) => pathname.startsWith("/settings/members"),
+  },
+  {
     href: "/settings/funds",
     key: "funds",
     match: (pathname: string) => pathname.startsWith("/settings/funds"),

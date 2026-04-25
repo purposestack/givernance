@@ -179,6 +179,32 @@
         "sent": "Si l'adresse correspond à un compte, nous avons envoyé un nouveau lien. Pensez à vérifier votre boîte de réception."
       }
     },
+    "inviteAccept": {
+      "title": "Accepter votre invitation",
+      "subtitle": "Confirmez votre nom et choisissez un mot de passe pour rejoindre l'espace.",
+      "submit": "Rejoindre l'espace et se connecter",
+      "successTitle": "Bienvenue",
+      "successBody": "Redirection vers la connexion…",
+      "errorTitle": "Problème d'invitation",
+      "backToLogin": "Retour à la connexion",
+      "fields": {
+        "firstName": "Prénom",
+        "lastName": "Nom",
+        "password": "Choisissez un mot de passe",
+        "passwordHint": "Au moins {min} caractères. Vous l'utiliserez à l'écran suivant pour vous connecter.",
+        "passwordConfirm": "Confirmez le mot de passe"
+      },
+      "errors": {
+        "invalid": "Ce lien d'invitation n'est pas valide.",
+        "expired": "Ce lien d'invitation n'est pas valide ou a déjà été utilisé. Demandez à la personne qui vous a invité·e d'en envoyer un nouveau.",
+        "missingToken": "Aucun token d'invitation fourni.",
+        "namesRequired": "Veuillez saisir votre prénom et votre nom.",
+        "passwordTooShort": "Utilisez un mot de passe d'au moins {min} caractères.",
+        "passwordMismatch": "Les deux mots de passe ne correspondent pas.",
+        "rateLimited": "Trop de tentatives. Réessayez dans quelques minutes.",
+        "generic": "Nous n'avons pas pu accepter cette invitation. Réessayez ou demandez un nouvel envoi."
+      }
+    },
     "selectOrganization": {
       "title": "Quel espace souhaitez-vous ouvrir ?",
       "subtitle": "Votre compte est associé à plusieurs associations.",
@@ -476,7 +502,80 @@
   "navigation": {
     "label": "Navigation des paramètres de l'organisation",
     "organization": "Organisation",
+    "members": "Membres",
     "funds": "Fonds"
+  },
+  "members": {
+    "title": "Membres",
+    "subtitleEmpty": "Invitez vos collègues à rejoindre votre espace.",
+    "subtitleWithCount": "{count, plural, one {# invitation enregistrée} other {# invitations enregistrées}}",
+    "columns": {
+      "email": "Email",
+      "role": "Rôle",
+      "status": "Statut",
+      "createdAt": "Invité·e le",
+      "actions": "Actions"
+    },
+    "roles": {
+      "org_admin": "Administrateur·trice",
+      "user": "Membre",
+      "viewer": "Lecteur·trice"
+    },
+    "statuses": {
+      "pending": "En attente",
+      "accepted": "Accepté·e",
+      "expired": "Expirée"
+    },
+    "actions": {
+      "invite": "Inviter un·e collègue",
+      "menu": "Ouvrir les actions pour {email}",
+      "resend": "Renvoyer l'invitation",
+      "revoke": "Révoquer l'invitation"
+    },
+    "empty": {
+      "title": "Aucune invitation",
+      "description": "Invitez un·e collègue pour lui donner accès à cet espace."
+    },
+    "invite": {
+      "title": "Inviter un·e collègue",
+      "description": "Ils·elles recevront un email avec un lien pour rejoindre l'espace et choisir leur mot de passe.",
+      "fields": {
+        "email": "Adresse email",
+        "emailPlaceholder": "collegue@exemple.org",
+        "role": "Rôle"
+      },
+      "roleHints": {
+        "org_admin": "Accès complet — peut inviter d'autres personnes, gérer les paramètres et accéder à toutes les données.",
+        "user": "Peut consulter et modifier les données opérationnelles (constituants, dons, campagnes).",
+        "viewer": "Accès en lecture seule aux données opérationnelles."
+      },
+      "actions": {
+        "cancel": "Annuler",
+        "submit": "Envoyer l'invitation",
+        "submitting": "Envoi…"
+      },
+      "errors": {
+        "emailRequired": "L'adresse email est requise.",
+        "generic": "Impossible d'envoyer l'invitation. Veuillez réessayer."
+      }
+    },
+    "revokeDialog": {
+      "title": "Révoquer l'invitation",
+      "description": "Révoquer l'invitation de {email} ? Le lien cessera immédiatement de fonctionner.",
+      "descriptionFallback": "Révoquer cette invitation ? Le lien cessera immédiatement de fonctionner.",
+      "cancel": "Annuler",
+      "confirm": "Révoquer l'invitation",
+      "revoking": "Révocation…"
+    },
+    "success": {
+      "invited": "Invitation envoyée à {email}.",
+      "resent": "Invitation renvoyée.",
+      "revoked": "Invitation révoquée."
+    },
+    "errors": {
+      "resendGeneric": "Impossible de renvoyer l'invitation. Veuillez réessayer.",
+      "revokeGeneric": "Impossible de révoquer l'invitation. Veuillez réessayer."
+    }
   },
   "funds": {
     "settings": "Paramètres",

@@ -179,6 +179,32 @@
         "sent": "If the email matches an account, we've sent a fresh verification link. Please check your inbox."
       }
     },
+    "inviteAccept": {
+      "title": "Accept your invitation",
+      "subtitle": "Confirm your name and choose a password to join the workspace.",
+      "submit": "Join workspace & sign in",
+      "successTitle": "You're in",
+      "successBody": "Redirecting you to sign in…",
+      "errorTitle": "Invitation problem",
+      "backToLogin": "Back to sign in",
+      "fields": {
+        "firstName": "First name",
+        "lastName": "Last name",
+        "password": "Choose a password",
+        "passwordHint": "At least {min} characters. You'll use this to sign in on the next screen.",
+        "passwordConfirm": "Confirm password"
+      },
+      "errors": {
+        "invalid": "This invitation link is invalid.",
+        "expired": "This invitation link is invalid or has already been used. Ask the person who invited you to send a new one.",
+        "missingToken": "No invitation token supplied.",
+        "namesRequired": "Please provide your first and last name.",
+        "passwordTooShort": "Use a password of at least {min} characters.",
+        "passwordMismatch": "The two passwords don't match.",
+        "rateLimited": "Too many attempts. Please try again in a few minutes.",
+        "generic": "We couldn't accept this invitation. Please retry or ask the inviter to resend."
+      }
+    },
     "selectOrganization": {
       "title": "Which workspace would you like to enter?",
       "subtitle": "Your account belongs to multiple organisations.",
@@ -476,7 +502,80 @@
   "navigation": {
     "label": "Organisation settings navigation",
     "organization": "Organisation",
+    "members": "Members",
     "funds": "Funds"
+  },
+  "members": {
+    "title": "Members",
+    "subtitleEmpty": "Invite teammates to join your workspace.",
+    "subtitleWithCount": "{count, plural, one {# invitation on file} other {# invitations on file}}",
+    "columns": {
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "createdAt": "Invited",
+      "actions": "Actions"
+    },
+    "roles": {
+      "org_admin": "Admin",
+      "user": "Member",
+      "viewer": "Viewer"
+    },
+    "statuses": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "expired": "Expired"
+    },
+    "actions": {
+      "invite": "Invite teammate",
+      "menu": "Open actions for {email}",
+      "resend": "Resend invitation",
+      "revoke": "Revoke invitation"
+    },
+    "empty": {
+      "title": "No invitations yet",
+      "description": "Invite a teammate to give them access to this workspace."
+    },
+    "invite": {
+      "title": "Invite a teammate",
+      "description": "They'll receive an email with a link to join your workspace and choose their password.",
+      "fields": {
+        "email": "Email address",
+        "emailPlaceholder": "teammate@example.org",
+        "role": "Role"
+      },
+      "roleHints": {
+        "org_admin": "Full access — can invite others, manage settings, and access all data.",
+        "user": "Can read and update operational data (constituents, donations, campaigns).",
+        "viewer": "Read-only access to operational data."
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "submit": "Send invitation",
+        "submitting": "Sending…"
+      },
+      "errors": {
+        "emailRequired": "Email address is required.",
+        "generic": "Couldn't send the invitation. Please try again."
+      }
+    },
+    "revokeDialog": {
+      "title": "Revoke invitation",
+      "description": "Revoke the invitation for {email}? The link will stop working immediately.",
+      "descriptionFallback": "Revoke this invitation? The link will stop working immediately.",
+      "cancel": "Cancel",
+      "confirm": "Revoke invitation",
+      "revoking": "Revoking…"
+    },
+    "success": {
+      "invited": "Invitation sent to {email}.",
+      "resent": "Invitation re-sent.",
+      "revoked": "Invitation revoked."
+    },
+    "errors": {
+      "resendGeneric": "Couldn't resend the invitation. Please try again.",
+      "revokeGeneric": "Couldn't revoke the invitation. Please try again."
+    }
   },
   "funds": {
     "settings": "Settings",

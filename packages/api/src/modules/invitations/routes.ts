@@ -1,59 +1,137 @@
-/** Invitation routes — invite users by email, accept via token */
+/**
+ * Team invitation routes (issue #145).
+ *
+ * - `POST   /v1/invitations`              — org_admin creates an invite
+ * - `GET    /v1/invitations`              — org_admin lists pending/accepted
+ * - `POST   /v1/invitations/:id/resend`   — rotate token, re-emit email
+ * - `DELETE /v1/invitations/:id`          — revoke a pending invite
+ * - `POST   /v1/invitations/:token/accept` — public, token = credential
+ *
+ * The accept endpoint mirrors the structural twin in `signup/routes.ts`:
+ * all failure modes collapse to a single 410 generic to remove the
+ * status-code enumeration oracle. The service-side `log.warn` already
+ * emits a structured `event` discriminator (`team_invite.kc_user_exists`,
+ * etc.) that SRE can grep.
+ */
 
-import { invitations, users } from "@givernance/shared/schema";
+import { createHash } from "node:crypto";
 import { Type } from "@sinclair/typebox";
-import { and, eq, isNull } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
-import { db, withTenantContext } from "../../lib/db.js";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireOrgAdmin } from "../../lib/guards.js";
 import {
+  DataArrayResponse,
   DataResponse,
   ErrorResponses,
+  IdParams,
+  PaginationQuery,
   ProblemDetailSchema,
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
+import {
+  acceptTeamInvitation,
+  createTeamInvitation,
+  listTeamInvitations,
+  resendTeamInvitation,
+  revokeTeamInvitation,
+} from "./service.js";
+
+// ─── Schemas ────────────────────────────────────────────────────────────────
+
+const RoleSchema = Type.Union([
+  Type.Literal("org_admin"),
+  Type.Literal("user"),
+  Type.Literal("viewer"),
+]);
 
 const CreateInvitationBody = Type.Object({
-  email: Type.String({ format: "email" }),
-  role: Type.Optional(
-    Type.Union([Type.Literal("org_admin"), Type.Literal("user"), Type.Literal("viewer")]),
-  ),
+  email: Type.String({ format: "email", maxLength: 255 }),
+  role: Type.Optional(RoleSchema),
 });
 
 const AcceptInvitationBody = Type.Object({
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
+  /**
+   * Cleartext password the invitee picks. Min 12 to comply with the
+   * realm's brute-force protection without leaking exact policy back to
+   * the frontend (matches the signup verify endpoint).
+   */
+  password: Type.String({ minLength: 12, maxLength: 128 }),
 });
+
+const TokenParams = Type.Object({ token: UuidSchema });
 
 const InvitationResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
   email: Type.String(),
-  role: Type.String(),
-  token: Type.String(),
-  invitedById: Type.Union([UuidSchema, Type.Null()]),
-  acceptedAt: Type.Union([Type.String(), Type.Null()]),
+  role: RoleSchema,
+  invitedById: Type.Union([Type.Null(), UuidSchema]),
+  acceptedAt: Type.Union([Type.Null(), Type.String()]),
   expiresAt: Type.String(),
   createdAt: Type.String(),
 });
 
-const AcceptedUserResponse = Type.Object({
+const InvitationListItem = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
   email: Type.String(),
-  firstName: Type.String(),
-  lastName: Type.String(),
-  role: Type.String(),
+  role: RoleSchema,
+  invitedById: Type.Union([Type.Null(), UuidSchema]),
+  acceptedAt: Type.Union([Type.Null(), Type.String()]),
+  expiresAt: Type.String(),
   createdAt: Type.String(),
-  updatedAt: Type.String(),
+  status: Type.Union([Type.Literal("pending"), Type.Literal("accepted"), Type.Literal("expired")]),
 });
 
+const AcceptResponse = Type.Object({
+  /** Tenant slug — drives the post-accept Keycloak login `?hint=` param. */
+  slug: Type.String(),
+});
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function hashIp(ip: string | undefined): string | undefined {
+  if (!ip) return undefined;
+  return createHash("sha256").update(ip).digest("hex").slice(0, 32);
+}
+
+function clientIp(request: FastifyRequest): string | undefined {
+  return request.ip ?? undefined;
+}
+
+function userAgent(request: FastifyRequest): string | undefined {
+  const ua = request.headers["user-agent"];
+  return typeof ua === "string" ? ua.slice(0, 512) : undefined;
+}
+
+function serializeInvitation(row: {
+  id: string;
+  orgId: string;
+  email: string;
+  role: string;
+  invitedById: string | null;
+  acceptedAt: Date | null;
+  expiresAt: Date;
+  createdAt: Date;
+}) {
+  return {
+    id: row.id,
+    orgId: row.orgId,
+    email: row.email,
+    role: row.role,
+    invitedById: row.invitedById,
+    acceptedAt: row.acceptedAt ? row.acceptedAt.toISOString() : null,
+    expiresAt: row.expiresAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+// ─── Routes ─────────────────────────────────────────────────────────────────
+
 export async function invitationRoutes(app: FastifyInstance) {
-  /**
-   * POST /v1/invitations — invite a user by email (org_admin only)
-   * Email delivery is Phase 2 — returns the token for now.
-   */
+  /** POST /v1/invitations — invite a teammate (org_admin only). */
   app.post(
     "/invitations",
     {
@@ -61,58 +139,184 @@ export async function invitationRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Invitations"],
         body: CreateInvitationBody,
-        response: { 201: DataResponse(InvitationResponse), ...ErrorResponses },
+        response: {
+          201: DataResponse(InvitationResponse),
+          409: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
-      const body = request.body as { email: string; role?: string };
+      const body = request.body as { email: string; role?: "org_admin" | "user" | "viewer" };
 
-      const invitation = await withTenantContext(orgId, async (tx) => {
-        const [inviter] = await tx
-          .select({ id: users.id })
-          .from(users)
-          .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
-
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-        const [row] = await tx
-          .insert(invitations)
-          .values({
-            orgId,
-            email: body.email,
-            role: (body.role as "org_admin" | "user" | "viewer") ?? "user",
-            invitedById: inviter?.id ?? null,
-            purpose: "team_invite",
-            expiresAt,
-          })
-          .returning();
-
-        return row;
+      const result = await createTeamInvitation({
+        orgId,
+        email: body.email,
+        role: body.role,
+        inviterKeycloakId: userId,
+        ipHash: hashIp(clientIp(request)),
+        userAgent: userAgent(request),
       });
 
-      return reply.status(201).send({ data: invitation });
+      if (!result.ok) {
+        const detail =
+          result.error.kind === "already_member"
+            ? "This email already belongs to a member of your organisation."
+            : "An invitation for this email is already pending. Resend it instead.";
+        return reply.status(409).send(problemDetail(409, "Conflict", detail));
+      }
+
+      return reply.status(201).send({ data: serializeInvitation(result.data) });
+    },
+  );
+
+  /** GET /v1/invitations — list invitations for the current tenant (org_admin only). */
+  app.get(
+    "/invitations",
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        tags: ["Invitations"],
+        querystring: PaginationQuery,
+        response: {
+          200: DataArrayResponse(InvitationListItem),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId as string;
+      const query = request.query as { page?: number; perPage?: number };
+      const result = await listTeamInvitations({
+        orgId,
+        page: query.page,
+        perPage: query.perPage,
+      });
+
+      return reply.status(200).send({
+        data: result.data.map((row) => ({
+          ...serializeInvitation(row),
+          status: row.status,
+        })),
+        pagination: result.pagination,
+      });
     },
   );
 
   /**
-   * POST /v1/invitations/:token/accept — accept an invitation (no auth required)
-   * The token itself is the credential. Creates a user record in the tenant.
+   * POST /v1/invitations/:id/resend — rotate token and re-emit email.
    *
-   * Invitation lookup uses `db` directly (no tenant context) because this endpoint
-   * is unauthenticated and the orgId isn't known until the invitation is found.
-   * FORCE RLS is intentionally omitted on invitations for this reason.
-   * Writes to users/invitations then use withTenantContext for RLS compliance.
+   * Per-invitation rate limiting protects against an admin accidentally
+   * spamming a single invitee — the service rotates the token on every
+   * call, so a tight loop here would invalidate just-delivered links.
+   */
+  app.post(
+    "/invitations/:id/resend",
+    {
+      preHandler: requireOrgAdmin,
+      config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
+      schema: {
+        tags: ["Invitations"],
+        params: IdParams,
+        response: {
+          204: Type.Null(),
+          409: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.auth?.userId as string;
+      const orgId = request.auth?.orgId as string;
+      const { id } = request.params as { id: string };
+
+      const result = await resendTeamInvitation({
+        orgId,
+        invitationId: id,
+        actorKeycloakId: userId,
+        ipHash: hashIp(clientIp(request)),
+        userAgent: userAgent(request),
+      });
+
+      if (!result.ok) {
+        if (result.error === "not_found") {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
+        }
+        return reply
+          .status(409)
+          .send(problemDetail(409, "Conflict", "This invitation has already been accepted."));
+      }
+
+      return reply.status(204).send();
+    },
+  );
+
+  /** DELETE /v1/invitations/:id — revoke a pending invitation (org_admin only). */
+  app.delete(
+    "/invitations/:id",
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        tags: ["Invitations"],
+        params: IdParams,
+        response: {
+          204: Type.Null(),
+          409: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.auth?.userId as string;
+      const orgId = request.auth?.orgId as string;
+      const { id } = request.params as { id: string };
+
+      const result = await revokeTeamInvitation({
+        orgId,
+        invitationId: id,
+        actorKeycloakId: userId,
+        ipHash: hashIp(clientIp(request)),
+        userAgent: userAgent(request),
+      });
+
+      if (!result.ok) {
+        if (result.error === "not_found") {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
+        }
+        return reply
+          .status(409)
+          .send(
+            problemDetail(
+              409,
+              "Conflict",
+              "This invitation has already been accepted and cannot be revoked.",
+            ),
+          );
+      }
+
+      return reply.status(204).send();
+    },
+  );
+
+  /**
+   * POST /v1/invitations/:token/accept — public accept endpoint.
+   *
+   * The token IS the security boundary. All failure modes collapse to a
+   * generic 410 (no enumeration oracle); SRE breadcrumbs come from the
+   * service-side warn log.
    */
   app.post(
     "/invitations/:token/accept",
     {
       schema: {
         tags: ["Invitations"],
+        params: TokenParams,
         body: AcceptInvitationBody,
         response: {
-          201: DataResponse(AcceptedUserResponse),
+          201: DataResponse(AcceptResponse),
+          400: ProblemDetailSchema,
           410: ProblemDetailSchema,
           ...ErrorResponses,
         },
@@ -121,54 +325,35 @@ export async function invitationRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { token } = request.params as { token: string };
-      const body = request.body as { firstName: string; lastName: string };
+      const body = request.body as {
+        firstName: string;
+        lastName: string;
+        password: string;
+      };
 
-      // Step 1: Look up invitation without tenant context (no FORCE RLS on invitations).
-      // Filter to purpose='team_invite' so self-serve signup-verification tokens
-      // cannot be consumed here (SEC-1 / DATA-3, review of PR #117).
-      const [invitation] = await db
-        .select()
-        .from(invitations)
-        .where(
-          and(
-            eq(invitations.token, token),
-            eq(invitations.purpose, "team_invite"),
-            isNull(invitations.acceptedAt),
-          ),
-        );
-
-      if (!invitation) {
-        return reply
-          .status(404)
-          .send(problemDetail(404, "Not Found", "Invalid or already used invitation token"));
-      }
-
-      if (invitation.expiresAt < new Date()) {
-        return reply.status(410).send(problemDetail(410, "Gone", "Invitation has expired"));
-      }
-
-      // Step 2: Create user and mark invitation accepted within tenant context
-      const user = await withTenantContext(invitation.orgId, async (tx) => {
-        const [newUser] = await tx
-          .insert(users)
-          .values({
-            orgId: invitation.orgId,
-            email: invitation.email,
-            firstName: body.firstName,
-            lastName: body.lastName,
-            role: invitation.role,
-          })
-          .returning();
-
-        await tx
-          .update(invitations)
-          .set({ acceptedAt: new Date() })
-          .where(eq(invitations.id, invitation.id));
-
-        return newUser;
+      const result = await acceptTeamInvitation({
+        token,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        password: body.password,
+        ipHash: hashIp(clientIp(request)),
+        userAgent: userAgent(request),
       });
 
-      return reply.status(201).send({ data: user });
+      if (!result.ok) {
+        request.log.info({ event: "team_invite.accept_rejected" }, "accept rejected");
+        return reply
+          .status(410)
+          .send(
+            problemDetail(
+              410,
+              "Invitation expired",
+              "This invitation link is invalid or has already been used. Ask the person who invited you to send a new one.",
+            ),
+          );
+      }
+
+      return reply.status(201).send({ data: { slug: result.slug } });
     },
   );
 }
