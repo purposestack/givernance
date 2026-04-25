@@ -281,6 +281,7 @@ export async function mergeConstituents(
     throw new Error("Cannot merge a constituent into itself");
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: merge orchestration is sequential by design (lock survivor → load duplicate → merge fields → repoint donations → audit → soft-delete). Splitting it would obscure the tx boundary.
   return withTenantContext(orgId, async (tx) => {
     // Lock the survivor row for the duration of the tx. Postgres runs
     // `withTenantContext` at READ COMMITTED, so without a row lock two

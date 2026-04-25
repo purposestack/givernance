@@ -88,6 +88,7 @@ function buildKey(orgId: string, routeKey: string, clientKey: string): string {
 async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
   const redis = opts.redis ?? sharedRedis;
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: idempotency preHandler walks every replay branch (no key, miss, in-flight, replay-with-fingerprint, malformed cache) inline. Splitting hides the dispatch ladder.
   app.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
     const idemConfig = request.routeOptions.config?.idempotency;
     if (!idemConfig) return;
@@ -157,6 +158,7 @@ async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
     }
   });
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: idempotency onSend gates each cache-write decision (no key, non-2xx, payload-too-large, fingerprint mismatch). Linear flow is the audit-friendly form.
   app.addHook("onSend", async (request: FastifyRequest, reply: FastifyReply, payload) => {
     const cacheKey = request.idempotencyCacheKey;
     if (!cacheKey) return payload;

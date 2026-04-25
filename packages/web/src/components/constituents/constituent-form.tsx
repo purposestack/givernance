@@ -131,7 +131,6 @@ export function ConstituentForm(props: ConstituentFormProps) {
       // with nothing to grep. Log non-ApiProblem errors so the next
       // silent-failure regression is one DevTools tab away.
       if (!(err instanceof ApiProblem)) {
-        // biome-ignore lint/suspicious/noConsole: intentional breadcrumb for unexpected client-side failures
         console.error("ConstituentForm submit failed (unexpected error):", err);
       }
       handleApiError(err, form, values, setDuplicateState, {

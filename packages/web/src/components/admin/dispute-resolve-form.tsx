@@ -49,7 +49,6 @@ export function DisputeResolveForm({ disputeId }: { disputeId: string }) {
         // the only realistic failure modes are network or API problems,
         // but the breadcrumb is cheap and prevents the next regression
         // from being invisible.
-        // biome-ignore lint/suspicious/noConsole: intentional breadcrumb for unexpected client-side failures
         console.error("DisputeResolveForm submit failed:", err);
         setError(t("errors.generic"));
       } finally {
