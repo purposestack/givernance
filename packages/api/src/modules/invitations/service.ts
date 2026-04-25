@@ -1,0 +1,785 @@
+/**
+ * Team invitation service (issue #145).
+ *
+ * Structural twin of `modules/signup/service.ts` — the same recovery-state
+ * matrix and hijack-vs-takeover discriminator apply, with two scoping
+ * differences:
+ *
+ *  - The tenant is already `active`; we never flip status here.
+ *  - The inviter is an org_admin (or the seeded super_admin via
+ *    `inviteFirstEnterpriseUser`), not the operator themselves.
+ *
+ * Recovery half-states the accept endpoint must handle (each one came up
+ * during the PR #143 signup work and has the same shape here):
+ *
+ *   1. **First accept** — invitation `acceptedAt IS NULL`, no `users` row,
+ *      no KC artefact for this email. Straight first-time path.
+ *   2. **No KC credential** — `users` row exists with `keycloak_id IS NULL`
+ *      (e.g. an operator created the row by hand, or a prior accept tx
+ *      rolled back after the user INSERT). Recovery: createUser + attach +
+ *      patch `keycloak_id` onto the existing row.
+ *   3. **No KC Organization yet** — `users.keycloak_id` set, but
+ *      `tenant.keycloak_org_id IS NULL` (the seed-via-super-admin path on
+ *      enterprise tenants ran before issue #114 shipped). Recovery: get-or-
+ *      create the Org, reset the bound user's password, patch attributes,
+ *      attach.
+ *
+ * The discriminator between "legitimate recovery" and "hijack attempt" is
+ * `users.keycloak_id` — read in the accept tx before any KC call. If it's
+ * set, we own that KC user and may safely re-bind. If it's null and KC
+ * reports the email exists (409 on createUser), we throw
+ * `KeycloakUserExistsError` and the route surfaces a generic 410 (no
+ * enumeration oracle), with a `team_invite.kc_user_exists` warn log.
+ *
+ * Patterns inherited verbatim from signup/service.ts:
+ *  - Owner-role DB on the unauthenticated path (token IS the boundary).
+ *  - `FOR UPDATE` on the invitation row to serialise concurrent accepts.
+ *  - Outbox dedup via `RETURNING (xmax = 0)` on user upsert.
+ *  - KC org adoption only when `attributes.org_id` matches THIS tenant.
+ *  - UUID-shape preflight on KC org id before binding to `tenants` (the
+ *    `tenants_keycloak_org_id_uuid_chk` CHECK constraint).
+ *  - SEC-7: outbox payloads never carry the raw token; the email worker
+ *    looks it up by invitation id inside its own trust boundary.
+ */
+
+import { randomUUID } from "node:crypto";
+import { PINO_REDACT_PATHS } from "@givernance/shared/constants";
+import { auditLogs, invitations, outboxEvents, tenants, users } from "@givernance/shared/schema";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import pino from "pino";
+import { systemDb, withTenantContext } from "../../lib/db.js";
+import {
+  type KeycloakAdminClient,
+  KeycloakAdminError,
+  KeycloakUserExistsError,
+  keycloakAdmin,
+} from "../../lib/keycloak-admin.js";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const log = pino({
+  name: "invitations-service",
+  redact: { paths: [...PINO_REDACT_PATHS], censor: "[REDACTED]" },
+});
+
+const INVITATION_TTL_DAYS = 7;
+/** Resend rotates the token; this is the same TTL the create path uses. */
+const RESEND_TTL_DAYS = INVITATION_TTL_DAYS;
+
+export type InviteRole = "org_admin" | "user" | "viewer";
+
+// ─── Create ─────────────────────────────────────────────────────────────────
+
+export interface CreateInvitationInput {
+  orgId: string;
+  email: string;
+  role?: InviteRole;
+  /** Keycloak `sub` of the inviting org_admin (resolved to a `users.id`). */
+  inviterKeycloakId: string;
+  ipHash?: string;
+  userAgent?: string;
+}
+
+export interface CreateInvitationResult {
+  id: string;
+  orgId: string;
+  email: string;
+  role: InviteRole;
+  invitedById: string | null;
+  acceptedAt: Date | null;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+export type CreateInvitationError = { kind: "already_member" } | { kind: "already_invited" };
+
+/**
+ * Insert a `team_invite` invitation, emit `invitation.created`, and audit.
+ *
+ * Returns `already_member` if a `users` row with the same email already
+ * exists in this tenant — the operator's intent (loop them in) is already
+ * satisfied. Returns `already_invited` if a non-expired pending invitation
+ * is already on file — let the operator resend instead of fanning out
+ * duplicate links to the same inbox.
+ *
+ * Both error cases are surfaced as 409 by the route. We deliberately do NOT
+ * collapse them with the underlying DB unique-violation: the operator is
+ * already authenticated, so anti-enumeration concerns from the public
+ * signup flow don't apply here.
+ */
+export async function createTeamInvitation(
+  input: CreateInvitationInput,
+): Promise<
+  { ok: true; data: CreateInvitationResult } | { ok: false; error: CreateInvitationError }
+> {
+  const normalisedEmail = input.email.trim().toLowerCase();
+  const role: InviteRole = input.role ?? "user";
+
+  // Pre-flight: is this email already a member of the tenant? `users` is
+  // FORCE RLS so this lookup must run inside the tenant context.
+  const existingUser = await withTenantContext(input.orgId, async (tx) => {
+    const [row] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.orgId, input.orgId), sql`lower(${users.email}) = ${normalisedEmail}`))
+      .limit(1);
+    return row;
+  });
+  if (existingUser) {
+    return { ok: false, error: { kind: "already_member" } };
+  }
+
+  const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  const result = await withTenantContext(input.orgId, async (tx) => {
+    // Resolve inviter's `users.id` — `invitedById` references the
+    // application user, not the KC subject. The first super_admin seeding
+    // path (`inviteFirstEnterpriseUser`) leaves `invitedById = null`, so
+    // missing rows are tolerated.
+    const [inviter] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.keycloakId, input.inviterKeycloakId), eq(users.orgId, input.orgId)))
+      .limit(1);
+
+    // Reuse a still-pending invitation rather than fan out a duplicate. We
+    // surface this as a 409 from the route so the operator gets a clear
+    // signal that they already invited this person; the dedicated
+    // resend endpoint is the right way to retry.
+    const [pending] = await tx
+      .select({ id: invitations.id, expiresAt: invitations.expiresAt })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.orgId, input.orgId),
+          sql`lower(${invitations.email}) = ${normalisedEmail}`,
+          eq(invitations.purpose, "team_invite"),
+          isNull(invitations.acceptedAt),
+        ),
+      )
+      .limit(1);
+    if (pending && pending.expiresAt > new Date()) {
+      return { ok: false as const, error: { kind: "already_invited" as const } };
+    }
+
+    const [row] = await tx
+      .insert(invitations)
+      .values({
+        orgId: input.orgId,
+        email: normalisedEmail,
+        role,
+        invitedById: inviter?.id ?? null,
+        purpose: "team_invite",
+        expiresAt,
+      })
+      .returning({
+        id: invitations.id,
+        orgId: invitations.orgId,
+        email: invitations.email,
+        role: invitations.role,
+        invitedById: invitations.invitedById,
+        acceptedAt: invitations.acceptedAt,
+        expiresAt: invitations.expiresAt,
+        createdAt: invitations.createdAt,
+      });
+    // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row
+    const invite = row!;
+
+    // SEC-7: never put the raw token in the outbox; the worker looks it up
+    // by invitation id inside its own trust boundary.
+    await tx.insert(outboxEvents).values({
+      tenantId: input.orgId,
+      type: "invitation.created",
+      payload: {
+        tenantId: input.orgId,
+        invitationId: invite.id,
+        email: invite.email,
+        role: invite.role,
+        inviterUserId: inviter?.id ?? null,
+        expiresAt: invite.expiresAt.toISOString(),
+      },
+    });
+
+    await tx.insert(auditLogs).values({
+      orgId: input.orgId,
+      userId: inviter?.id ?? null,
+      action: "invitation.created",
+      resourceType: "invitation",
+      resourceId: invite.id,
+      // No raw email in audit — the redact list masks it but we also
+      // omit it here so a missing redact rule can't leak PII via audit
+      // export. The invitation id is enough to reconstruct the row.
+      newValues: { role: invite.role, purpose: "team_invite" },
+      ipHash: input.ipHash,
+      userAgent: input.userAgent,
+    });
+
+    return { ok: true as const, data: invite };
+  });
+
+  return result;
+}
+
+// ─── List ───────────────────────────────────────────────────────────────────
+
+export interface ListInvitationsInput {
+  orgId: string;
+  page?: number;
+  perPage?: number;
+}
+
+export interface InvitationSummary {
+  id: string;
+  orgId: string;
+  email: string;
+  role: InviteRole;
+  invitedById: string | null;
+  acceptedAt: Date | null;
+  expiresAt: Date;
+  createdAt: Date;
+  /** Derived: pending | accepted | expired. */
+  status: "pending" | "accepted" | "expired";
+}
+
+export interface ListInvitationsResult {
+  data: InvitationSummary[];
+  pagination: { page: number; perPage: number; total: number; totalPages: number };
+}
+
+/**
+ * Paginated list of `team_invite` invitations for the current tenant.
+ *
+ * The route filters by purpose so the members page never surfaces self-
+ * serve `signup_verification` rows; those belong to the signup flow and
+ * leak the raw email of the original signup admin, who may have intended
+ * the inbox shared with someone other than the team-invite UI shows.
+ */
+export async function listTeamInvitations(
+  input: ListInvitationsInput,
+): Promise<ListInvitationsResult> {
+  const page = input.page ?? 1;
+  const perPage = input.perPage ?? 20;
+  const offset = (page - 1) * perPage;
+
+  const now = new Date();
+  return withTenantContext(input.orgId, async (tx) => {
+    const rows = await tx
+      .select({
+        id: invitations.id,
+        orgId: invitations.orgId,
+        email: invitations.email,
+        role: invitations.role,
+        invitedById: invitations.invitedById,
+        acceptedAt: invitations.acceptedAt,
+        expiresAt: invitations.expiresAt,
+        createdAt: invitations.createdAt,
+      })
+      .from(invitations)
+      .where(and(eq(invitations.orgId, input.orgId), eq(invitations.purpose, "team_invite")))
+      .orderBy(desc(invitations.createdAt))
+      .limit(perPage)
+      .offset(offset);
+
+    const totalRows = await tx
+      .select({ total: sql<number>`count(*)::int` })
+      .from(invitations)
+      .where(and(eq(invitations.orgId, input.orgId), eq(invitations.purpose, "team_invite")));
+    const total = Number(totalRows[0]?.total ?? 0);
+
+    const data: InvitationSummary[] = rows.map((r) => ({
+      ...r,
+      role: r.role as InviteRole,
+      status: r.acceptedAt
+        ? ("accepted" as const)
+        : r.expiresAt < now
+          ? ("expired" as const)
+          : ("pending" as const),
+    }));
+
+    return {
+      data,
+      pagination: {
+        page,
+        perPage,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / perPage)),
+      },
+    };
+  });
+}
+
+// ─── Revoke ─────────────────────────────────────────────────────────────────
+
+export interface RevokeInvitationInput {
+  orgId: string;
+  invitationId: string;
+  actorKeycloakId: string;
+  ipHash?: string;
+  userAgent?: string;
+}
+
+export type RevokeInvitationResult =
+  | { ok: true }
+  | { ok: false; error: "not_found" | "already_accepted" };
+
+/**
+ * Revoke a pending team invitation.
+ *
+ * Implemented as a hard DELETE — there is no "revoked" lifecycle state on
+ * the row. This prevents an invitee clicking an old link from getting any
+ * row back at all (the accept route 404s, which the route maps to a
+ * generic 410). Soft-delete (a `revokedAt` column) was rejected: the
+ * accept lookup already filters on `acceptedAt IS NULL`, so a soft-deleted
+ * row would still match unless we added another column to the WHERE; a
+ * second filter is one more thing to forget on an audit query.
+ */
+export async function revokeTeamInvitation(
+  input: RevokeInvitationInput,
+): Promise<RevokeInvitationResult> {
+  return withTenantContext(input.orgId, async (tx) => {
+    const [row] = await tx
+      .select({ id: invitations.id, acceptedAt: invitations.acceptedAt, email: invitations.email })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.id, input.invitationId),
+          eq(invitations.orgId, input.orgId),
+          eq(invitations.purpose, "team_invite"),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return { ok: false as const, error: "not_found" as const };
+    if (row.acceptedAt) {
+      return { ok: false as const, error: "already_accepted" as const };
+    }
+
+    const [actor] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.keycloakId, input.actorKeycloakId), eq(users.orgId, input.orgId)))
+      .limit(1);
+
+    await tx.delete(invitations).where(eq(invitations.id, input.invitationId));
+
+    await tx.insert(auditLogs).values({
+      orgId: input.orgId,
+      userId: actor?.id ?? null,
+      action: "invitation.revoked",
+      resourceType: "invitation",
+      resourceId: input.invitationId,
+      newValues: { revoked: true },
+      ipHash: input.ipHash,
+      userAgent: input.userAgent,
+    });
+
+    return { ok: true as const };
+  });
+}
+
+// ─── Resend ─────────────────────────────────────────────────────────────────
+
+export interface ResendInvitationInput {
+  orgId: string;
+  invitationId: string;
+  actorKeycloakId: string;
+  ipHash?: string;
+  userAgent?: string;
+}
+
+export type ResendInvitationResult =
+  | { ok: true; data: { id: string; expiresAt: Date } }
+  | { ok: false; error: "not_found" | "already_accepted" };
+
+/**
+ * Rotate the token + expiry on a pending invitation and re-emit the
+ * delivery event. The previous token is invalidated by virtue of the
+ * `invitations.token` column being a UNIQUE constraint we overwrite.
+ *
+ * Always rotates the token (even if the existing one hasn't expired)
+ * because the most common reason for a resend is "the original email
+ * never arrived" — if the invitee only just received the original and
+ * the operator clicks resend in parallel, we want only the most recent
+ * link to be live to keep audit trails unambiguous.
+ */
+export async function resendTeamInvitation(
+  input: ResendInvitationInput,
+): Promise<ResendInvitationResult> {
+  return withTenantContext(input.orgId, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: invitations.id,
+        acceptedAt: invitations.acceptedAt,
+        email: invitations.email,
+        role: invitations.role,
+      })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.id, input.invitationId),
+          eq(invitations.orgId, input.orgId),
+          eq(invitations.purpose, "team_invite"),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return { ok: false as const, error: "not_found" as const };
+    if (row.acceptedAt) {
+      return { ok: false as const, error: "already_accepted" as const };
+    }
+
+    const newToken = randomUUID();
+    const expiresAt = new Date(Date.now() + RESEND_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+    await tx
+      .update(invitations)
+      .set({ token: newToken, expiresAt })
+      .where(eq(invitations.id, input.invitationId));
+
+    const [actor] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.keycloakId, input.actorKeycloakId), eq(users.orgId, input.orgId)))
+      .limit(1);
+
+    await tx.insert(outboxEvents).values({
+      tenantId: input.orgId,
+      type: "invitation.resent",
+      payload: {
+        tenantId: input.orgId,
+        invitationId: row.id,
+        email: row.email,
+        role: row.role,
+        inviterUserId: actor?.id ?? null,
+        expiresAt: expiresAt.toISOString(),
+      },
+    });
+
+    await tx.insert(auditLogs).values({
+      orgId: input.orgId,
+      userId: actor?.id ?? null,
+      action: "invitation.resent",
+      resourceType: "invitation",
+      resourceId: input.invitationId,
+      newValues: { rotated: true },
+      ipHash: input.ipHash,
+      userAgent: input.userAgent,
+    });
+
+    return { ok: true as const, data: { id: row.id, expiresAt } };
+  });
+}
+
+// ─── Accept ─────────────────────────────────────────────────────────────────
+
+export interface AcceptInvitationInput {
+  token: string;
+  firstName: string;
+  lastName: string;
+  /**
+   * Cleartext password the invitee picks on the accept form. Sent over TLS
+   * to Keycloak as a non-temporary credential. Validated for length at the
+   * route boundary; never logged.
+   */
+  password: string;
+  ipHash?: string;
+  userAgent?: string;
+}
+
+export interface AcceptInvitationDeps {
+  /** Override the Keycloak admin client — used by integration tests. */
+  keycloakAdmin?: KeycloakAdminClient;
+}
+
+export type AcceptInvitationResult =
+  | {
+      ok: true;
+      tenantId: string;
+      userId: string;
+      slug: string;
+    }
+  | { ok: false };
+
+/**
+ * Accept a team invitation: provision (or recover) the Keycloak user,
+ * attach to the Organization, and bind `users.keycloak_id`.
+ *
+ * Mirrors `verifySignup` exactly — same FOR UPDATE serialisation, same
+ * hijack-vs-recovery discriminator, same UUID preflight on the KC org id,
+ * same outbox-dedup gating on the user upsert. The one Phase-1 difference
+ * is that we don't flip a tenant's `status` here: the tenant is already
+ * `active` (either via super-admin seeding or via a prior signup verify).
+ */
+export async function acceptTeamInvitation(
+  input: AcceptInvitationInput,
+  deps: AcceptInvitationDeps = {},
+): Promise<AcceptInvitationResult> {
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
+  // Lazily resolve the KC admin client AFTER the invitation lookup so a
+  // bogus / expired token doesn't 500 in environments where the KC admin
+  // client isn't configured (e.g. unit tests of the route's RBAC plumbing
+  // that never reach the KC step). The singleton throws if
+  // KEYCLOAK_ADMIN_CLIENT_SECRET is unset.
+  const resolveKcAdmin = (): KeycloakAdminClient => deps.keycloakAdmin ?? keycloakAdmin();
+
+  try {
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: mirrors verifySignup — pending-accept + two recovery half-states + outbox dedup must stay inside one tx for atomicity. Splitting is tracked as the same overnight follow-up.
+    return await systemDb.transaction(async (tx) => {
+      // FOR UPDATE so concurrent accepts serialise on the invitation row.
+      // The token IS the security boundary on this unauthenticated route;
+      // anything that doesn't match here returns a generic 410 (no
+      // status-code enumeration oracle).
+      const [row] = await tx
+        .select({
+          invitationId: invitations.id,
+          orgId: invitations.orgId,
+          email: invitations.email,
+          role: invitations.role,
+          expiresAt: invitations.expiresAt,
+          acceptedAt: invitations.acceptedAt,
+          tenantName: tenants.name,
+          tenantSlug: tenants.slug,
+          keycloakOrgId: tenants.keycloakOrgId,
+        })
+        .from(invitations)
+        .innerJoin(tenants, eq(invitations.orgId, tenants.id))
+        .where(and(eq(invitations.token, input.token), eq(invitations.purpose, "team_invite")))
+        .for("update")
+        .limit(1);
+
+      if (!row || row.acceptedAt || row.expiresAt < new Date()) {
+        return { ok: false } as const;
+      }
+
+      // Resolve the KC admin client now that we know the row is valid —
+      // the singleton throws if KEYCLOAK_ADMIN_CLIENT_SECRET is unset, so
+      // doing this earlier would 500 the no-match path on an unstubbed
+      // test env.
+      const kcAdmin = resolveKcAdmin();
+
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${row.orgId}, true)`);
+
+      // Get-or-create the tenant's Keycloak Organization. Enterprise
+      // tenants seeded via the super-admin path before issue #114 don't
+      // have a `keycloak_org_id` yet — same idempotent shape as
+      // verifySignup uses to recover from a half-failed signup.
+      let kcOrgId = row.keycloakOrgId;
+      if (!kcOrgId) {
+        try {
+          const created = await kcAdmin.createOrganization({
+            name: row.tenantName,
+            alias: row.tenantSlug,
+            attributes: { org_id: [row.orgId] },
+          });
+          kcOrgId = created.id;
+        } catch (err) {
+          if (err instanceof KeycloakAdminError && err.status === 409) {
+            // Recovery: a prior call created the Org but the DB tx rolled
+            // back. Adopt only if its `org_id` attribute proves it belongs
+            // to THIS tenant — slugs are globally unique in our DB, so the
+            // only legit alias collision is our own prior crash.
+            const existing = await kcAdmin.getOrganizationByAlias(row.tenantSlug);
+            const existingOrgId = existing?.attributes?.org_id?.[0];
+            if (!existing || existingOrgId !== row.orgId) {
+              throw err;
+            }
+            kcOrgId = existing.id;
+          } else {
+            throw err;
+          }
+        }
+        if (!UUID_RE.test(kcOrgId)) {
+          throw new Error(`Keycloak organization id is not a UUID: ${kcOrgId}`);
+        }
+        await tx
+          .update(tenants)
+          .set({ keycloakOrgId: kcOrgId, updatedAt: new Date() })
+          .where(eq(tenants.id, row.orgId));
+      }
+
+      // Hijack discriminator — see header comment. Read DB state before
+      // any KC call.
+      const [existingUserRow] = await tx
+        .select({ keycloakId: users.keycloakId })
+        .from(users)
+        .where(and(eq(users.orgId, row.orgId), eq(users.email, row.email)))
+        .limit(1);
+      const existingKcId = existingUserRow?.keycloakId ?? null;
+
+      let kcUserId: string;
+      if (existingKcId) {
+        // Legitimate recovery — we own this KC user. Reset password to
+        // whatever the invitee just typed (forgot-password semantics, with
+        // the invitation token as the proof of inbox control), patch
+        // attributes idempotently. Role attribute is sourced from the
+        // invitation row, NOT from the existing users row, so an admin
+        // updating a stale invitation's role before the invitee accepts
+        // produces the right JWT claims downstream.
+        await kcAdmin.resetUserPassword(existingKcId, input.password);
+        await kcAdmin.setUserAttributes(existingKcId, {
+          org_id: [row.orgId],
+          role: [row.role],
+        });
+        kcUserId = existingKcId;
+      } else {
+        // First binding for this email under this tenant. 409 here means
+        // the email belongs to a realm user we do NOT own — surface as a
+        // generic 410 with a `team_invite.kc_user_exists` warn for SRE.
+        const created = await kcAdmin.createUser({
+          email: row.email,
+          firstName,
+          lastName,
+          password: input.password,
+          // Token possession proves inbox control — flag as verified so KC
+          // doesn't ask the invitee for another round.
+          emailVerified: true,
+          attributes: { org_id: [row.orgId], role: [row.role] },
+        });
+        kcUserId = created.id;
+      }
+
+      try {
+        await kcAdmin.attachUserToOrg(kcOrgId, kcUserId);
+      } catch (err) {
+        if (!(err instanceof KeycloakAdminError && err.status === 409)) {
+          throw err;
+        }
+        // 409 = already a member (recovery path). Treat as success.
+      }
+
+      // Upsert the users row. `RETURNING (xmax = 0) AS inserted` lets us
+      // gate the `user.invited_accepted` outbox event so a recovery re-run
+      // doesn't re-fire the welcome consumer.
+      const upsertResult = await tx
+        .insert(users)
+        .values({
+          orgId: row.orgId,
+          email: row.email,
+          firstName,
+          lastName,
+          role: row.role,
+          keycloakId: kcUserId,
+        })
+        .onConflictDoUpdate({
+          target: [users.orgId, users.email],
+          set: {
+            firstName,
+            lastName,
+            keycloakId: kcUserId,
+            // Don't downgrade an existing user's role on recovery — the
+            // invitation may carry a stale role from before an admin
+            // promoted them through another path.
+            role: row.role,
+            updatedAt: new Date(),
+          },
+        })
+        .returning({ id: users.id, inserted: sql<boolean>`(xmax = 0)` });
+      // biome-ignore lint/style/noNonNullAssertion: insert/upsert returning() yields one row
+      const u = upsertResult[0]!;
+      const userWasInserted = u.inserted === true;
+
+      // Mark accepted and gate outbox emission on the actual flip — a
+      // recovery re-run lands here with `acceptedAt` already set above
+      // (no, the FOR UPDATE filter rejected it) so this UPDATE always
+      // moves a row, but the user-side dedup is still important.
+      await tx
+        .update(invitations)
+        .set({ acceptedAt: new Date() })
+        .where(eq(invitations.id, row.invitationId));
+
+      const eventsToEmit: Array<{
+        tenantId: string;
+        type: string;
+        payload: Record<string, unknown>;
+      }> = [
+        {
+          tenantId: row.orgId,
+          type: "invitation.accepted",
+          payload: {
+            tenantId: row.orgId,
+            invitationId: row.invitationId,
+            userId: u.id,
+            role: row.role,
+          },
+        },
+      ];
+      if (userWasInserted) {
+        eventsToEmit.push({
+          tenantId: row.orgId,
+          type: "user.invited_accepted",
+          payload: {
+            tenantId: row.orgId,
+            userId: u.id,
+            role: row.role,
+            firstAdmin: false,
+          },
+        });
+      }
+      await tx.insert(outboxEvents).values(eventsToEmit);
+
+      await tx.insert(auditLogs).values({
+        orgId: row.orgId,
+        userId: u.id,
+        action: "invitation.accepted",
+        resourceType: "invitation",
+        resourceId: row.invitationId,
+        newValues: { role: row.role, userId: u.id },
+        ipHash: input.ipHash,
+        userAgent: input.userAgent,
+      });
+
+      return {
+        ok: true as const,
+        tenantId: row.orgId,
+        userId: u.id,
+        slug: row.tenantSlug,
+      };
+    });
+  } catch (err) {
+    if (err instanceof KeycloakUserExistsError) {
+      log.warn({ event: "team_invite.kc_user_exists" }, "accept rejected — KC user already exists");
+      return { ok: false };
+    }
+    throw err;
+  }
+}
+
+// ─── Pre-flight visibility for the route ────────────────────────────────────
+
+/**
+ * Look up an invitation by id without tenant context — used by the route
+ * to assert the row exists in the same tenant as the authenticated
+ * org_admin before touching anything. Returns null when the row doesn't
+ * exist or doesn't belong to the caller's tenant.
+ */
+export async function getTeamInvitationForOrg(
+  orgId: string,
+  invitationId: string,
+): Promise<{ id: string; email: string; role: InviteRole; acceptedAt: Date | null } | null> {
+  return withTenantContext(orgId, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: invitations.id,
+        email: invitations.email,
+        role: invitations.role,
+        acceptedAt: invitations.acceptedAt,
+      })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.id, invitationId),
+          eq(invitations.orgId, orgId),
+          eq(invitations.purpose, "team_invite"),
+        ),
+      )
+      .limit(1);
+    if (!row) return null;
+    return {
+      id: row.id,
+      email: row.email,
+      role: row.role as InviteRole,
+      acceptedAt: row.acceptedAt,
+    };
+  });
+}

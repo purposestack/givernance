@@ -255,13 +255,15 @@ describe("Invitation routes", () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it("POST /v1/invitations/:token/accept returns 404 for invalid token", async () => {
+  it("POST /v1/invitations/:token/accept returns 410 generic for unknown token", async () => {
+    // SEC-6: every accept failure mode (unknown / expired / already used /
+    // hijack) collapses to a single 410 to remove the enumeration oracle.
     const res = await app.inject({
       method: "POST",
       url: "/v1/invitations/00000000-0000-0000-0000-000000000000/accept",
-      payload: { firstName: "Jane", lastName: "Doe" },
+      payload: { firstName: "Jane", lastName: "Doe", password: "long-enough-password-1" },
     });
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(410);
   });
 });
 

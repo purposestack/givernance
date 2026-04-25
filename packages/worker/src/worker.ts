@@ -16,6 +16,10 @@ import {
   type SignupEmailJobPayload,
 } from "./processors/signup-email.js";
 import { processStripeWebhook } from "./processors/stripe-webhook.js";
+import {
+  processTeamInviteEmail,
+  type TeamInviteEmailJobPayload,
+} from "./processors/team-invite-email.js";
 import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
 
 /** Create a fresh ioredis connection — BullMQ requires separate connections for Queue vs Worker */
@@ -131,6 +135,25 @@ async function processDomainEvent(job: Job): Promise<void> {
     // `not_found` / `already_accepted` are terminal no-ops (old token rotated,
     // or user already verified) — do not throw, the outbox event is done.
     log.info({ invitationId: emailPayload.invitationId, ...result }, "Signup email dispatched");
+    return;
+  }
+
+  if (
+    type === "invitation.created" ||
+    type === "invitation.resent" ||
+    type === "tenant.first_admin_invited"
+  ) {
+    const invitationId = payload.invitationId as string;
+    const inviterUserId = typeof payload.inviterUserId === "string" ? payload.inviterUserId : null;
+    const country = typeof payload.country === "string" ? payload.country : undefined;
+    const emailPayload: TeamInviteEmailJobPayload = {
+      tenantId,
+      invitationId,
+      inviterUserId,
+      country,
+    };
+    const result = await processTeamInviteEmail(emailPayload);
+    log.info({ invitationId, eventType: type, ...result }, "Team-invite email dispatched");
     return;
   }
 
