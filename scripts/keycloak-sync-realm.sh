@@ -96,6 +96,37 @@ else
   log "User profile already permissive — no change."
 fi
 
+# 1.b Reconcile the realm-level `passwordPolicy`. The realm JSON declares
+#     `length(12) and notUsername` to match the API-side `minLength: 12` and
+#     prevent a future direct-admin path from setting trivial passwords.
+#     Two reasons to reconcile at runtime as well:
+#       - `--import-realm` skips fields on existing realms (IGNORE_EXISTING),
+#         so the JSON change alone never reaches a dev's running container.
+#       - The PR #143 review caught a JS-template-literal accident
+#         (`notUsername(undefined)`) that landed in the imported realm and
+#         silently degraded the policy. Reconciling here means the policy
+#         state on disk is the source of truth even when the import was
+#         lossy or the operator hand-edited it via the admin console.
+DESIRED_PASSWORD_POLICY="${KEYCLOAK_PASSWORD_POLICY:-length(12) and notUsername}"
+realm_repr=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}")
+patched_realm=$(printf '%s' "$realm_repr" | DESIRED="$DESIRED_PASSWORD_POLICY" python3 -c '
+import json, os, sys
+d = json.load(sys.stdin)
+desired = os.environ["DESIRED"]
+changed = d.get("passwordPolicy") != desired
+d["passwordPolicy"] = desired
+print(json.dumps({"changed": changed, "realm": d}))
+')
+if printf '%s' "$patched_realm" | python3 -c 'import json,sys;sys.exit(0 if json.load(sys.stdin)["changed"] else 1)'; then
+  new_realm=$(printf '%s' "$patched_realm" | python3 -c 'import json,sys;print(json.dumps(json.load(sys.stdin)["realm"]))')
+  curl -sS -o /dev/null -w 'realm passwordPolicy update: HTTP %{http_code}\n' \
+    -X PUT "${KC_URL}/admin/realms/${REALM}" \
+    "${auth[@]}" -H "Content-Type: application/json" -d "$new_realm"
+  log "Reconciled passwordPolicy on realm '${REALM}' to '${DESIRED_PASSWORD_POLICY}'."
+else
+  log "passwordPolicy already matches '${DESIRED_PASSWORD_POLICY}' — no change."
+fi
+
 # 2. Ensure the `organization` client scope is the single home for all
 #    org-related claims (`org_id`, `role`, `organization` membership), then
 #    attach it to `givernance-web` (default) and `admin-cli` (optional).

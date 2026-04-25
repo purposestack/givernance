@@ -494,6 +494,18 @@ describe("POST /v1/public/signup/resend", () => {
       org_id: [tenantHealed?.id],
       role: ["org_admin"],
     });
+
+    // Outbox dedup: the recovery pass must NOT re-emit `tenant.verified` or
+    // `user.jit_provisioned`. Without the `tenantWasFlipped` + `(xmax = 0)`
+    // gates in service.ts, every recovery would re-fire welcome emails and
+    // billing trial starts — exactly the regression a future "simplify the
+    // gating" refactor would silently introduce.
+    const dedupCounts = await db.execute<{ type: string; count: string }>(
+      sql`SELECT type, count(*)::text AS count FROM outbox_events WHERE tenant_id = ${tenantHealed?.id} AND type IN ('tenant.verified','user.jit_provisioned') GROUP BY type`,
+    );
+    const counts = new Map(dedupCounts.rows.map((r) => [r.type, Number(r.count)]));
+    expect(counts.get("tenant.verified")).toBe(1);
+    expect(counts.get("user.jit_provisioned")).toBe(1);
   });
 
   it("does NOT re-emit a token for a fully-provisioned tenant (user already has keycloak_id)", async () => {
@@ -551,6 +563,53 @@ describe("POST /v1/public/signup/resend", () => {
         .where(eq(invitations.email, email))
     )[0]?.token;
     expect(tokenAfter).toBe(tokenBefore);
+  });
+
+  // Pins the per-email rate-limit gate that the route relies on to defend a
+  // single inbox against botnet-driven resend amplification (SEC-10). The
+  // beforeEach hook clears `signup:resend:*` Redis keys between tests, but
+  // does NOT clear them between calls within a test — so this test fires
+  // four sequential resends in the same window and asserts the outbox stays
+  // capped at three. A regression that flipped `acceptResendForEmail`'s
+  // `hits <= 3` to `hits <= 30` (or the Fastify per-IP cap loosening) would
+  // produce a fourth `tenant.signup_verification_resent` row and trip this.
+  it("caps outbox emission at 3 per email per hour (rate-limit exhaustion)", async () => {
+    const slugR = registerSlug("resend-cap");
+    const email = `admin+${slugR}@example.org`;
+    await app.inject({
+      method: "POST",
+      url: "/v1/public/signup",
+      headers: { "x-captcha-token": "test-token" },
+      payload: {
+        orgName: "Cap NGO",
+        slug: slugR,
+        firstName: "C",
+        lastName: "A",
+        email,
+      },
+    });
+
+    const codes: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/public/signup/resend",
+        payload: { email },
+      });
+      codes.push(res.statusCode);
+    }
+    // The first three are unambiguously accepted (silent 204). The fourth is
+    // either silently dropped by the per-email gate (still 204) or rejected
+    // by the per-IP Fastify limit (429) — both code paths must produce zero
+    // additional outbox emissions, which is what the count assertion below
+    // actually pins.
+    expect(codes.slice(0, 3)).toEqual([204, 204, 204]);
+
+    const [tenantRow] = await db.select().from(tenants).where(eq(tenants.slug, slugR));
+    const resentRows = await db.execute<{ count: string }>(
+      sql`SELECT count(*)::text AS count FROM outbox_events WHERE tenant_id = ${tenantRow?.id} AND type = 'tenant.signup_verification_resent'`,
+    );
+    expect(Number(resentRows.rows[0]?.count)).toBe(3);
   });
 });
 
