@@ -40,6 +40,13 @@
  *    `tenants_keycloak_org_id_uuid_chk` CHECK constraint).
  *  - SEC-7: outbox payloads never carry the raw token; the email worker
  *    looks it up by invitation id inside its own trust boundary.
+ *
+ * Known caveat (shared with signup/service.ts, tracked there as the
+ * compensating-delete follow-up): if KC operations succeed but the DB tx
+ * rolls back, the resulting KC artefacts orphan with no compensating
+ * delete. The recovery half-states above are designed to absorb the next
+ * accept attempt; a long-running orphan is best resolved by a periodic
+ * KC-vs-DB reconciliation job.
  */
 
 import { randomUUID } from "node:crypto";
@@ -67,6 +74,42 @@ const INVITATION_TTL_DAYS = 7;
 const RESEND_TTL_DAYS = INVITATION_TTL_DAYS;
 
 export type InviteRole = "org_admin" | "user" | "viewer";
+
+/**
+ * Recover the tenant's country from the original
+ * `tenant.signup_verification_requested` outbox event so the worker picks the
+ * right EN/FR template for invitation emails. There is no `tenants.country`
+ * column today (issue #145 review F1 / QA-F1) — until one lands, this is the
+ * single durable source of truth. Mirror of `signup/service.ts`'s
+ * recovery-path lookup. Returns undefined for enterprise tenants seeded via
+ * super-admin (no signup event) and for self-serve tenants that predate
+ * country tracking; the worker falls back to its EN default.
+ */
+async function lookupTenantCountry(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  tenantId: string,
+): Promise<string | undefined> {
+  const [originalEvent] = await tx
+    .select({ payload: outboxEvents.payload })
+    .from(outboxEvents)
+    .where(
+      and(
+        eq(outboxEvents.tenantId, tenantId),
+        eq(outboxEvents.type, "tenant.signup_verification_requested"),
+      ),
+    )
+    .orderBy(sql`${outboxEvents.createdAt} ASC`)
+    .limit(1);
+  if (
+    typeof originalEvent?.payload === "object" &&
+    originalEvent.payload !== null &&
+    "country" in originalEvent.payload &&
+    typeof originalEvent.payload.country === "string"
+  ) {
+    return originalEvent.payload.country;
+  }
+  return undefined;
+}
 
 // ─── Create ─────────────────────────────────────────────────────────────────
 
@@ -117,6 +160,13 @@ export async function createTeamInvitation(
 
   // Pre-flight: is this email already a member of the tenant? `users` is
   // FORCE RLS so this lookup must run inside the tenant context.
+  //
+  // This pre-flight runs in a DIFFERENT tx from the actual insert below.
+  // A concurrent admin inserting a `users` row for the same `(org_id, email)`
+  // between the two txs could slip past this check — but the worst case is
+  // a redundant invitation row, since the accept-path upsert is idempotent
+  // on `(users.org_id, users.email)`. Treating this as a UX hint, not an
+  // authorisation gate (data review F-A).
   const existingUser = await withTenantContext(input.orgId, async (tx) => {
     const [row] = await tx
       .select({ id: users.id })
@@ -186,7 +236,10 @@ export async function createTeamInvitation(
     const invite = row!;
 
     // SEC-7: never put the raw token in the outbox; the worker looks it up
-    // by invitation id inside its own trust boundary.
+    // by invitation id inside its own trust boundary. `country` is recovered
+    // from the original signup event so the worker picks the right EN/FR
+    // template (QA-F1).
+    const country = await lookupTenantCountry(tx, input.orgId);
     await tx.insert(outboxEvents).values({
       tenantId: input.orgId,
       type: "invitation.created",
@@ -197,6 +250,7 @@ export async function createTeamInvitation(
         role: invite.role,
         inviterUserId: inviter?.id ?? null,
         expiresAt: invite.expiresAt.toISOString(),
+        ...(country ? { country } : {}),
       },
     });
 
@@ -442,6 +496,7 @@ export async function resendTeamInvitation(
       .where(and(eq(users.keycloakId, input.actorKeycloakId), eq(users.orgId, input.orgId)))
       .limit(1);
 
+    const country = await lookupTenantCountry(tx, input.orgId);
     await tx.insert(outboxEvents).values({
       tenantId: input.orgId,
       type: "invitation.resent",
@@ -452,6 +507,7 @@ export async function resendTeamInvitation(
         role: row.role,
         inviterUserId: actor?.id ?? null,
         expiresAt: expiresAt.toISOString(),
+        ...(country ? { country } : {}),
       },
     });
 
@@ -527,9 +583,12 @@ export async function acceptTeamInvitation(
     // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: mirrors verifySignup — pending-accept + two recovery half-states + outbox dedup must stay inside one tx for atomicity. Splitting is tracked as the same overnight follow-up.
     return await systemDb.transaction(async (tx) => {
       // FOR UPDATE so concurrent accepts serialise on the invitation row.
-      // The token IS the security boundary on this unauthenticated route;
-      // anything that doesn't match here returns a generic 410 (no
-      // status-code enumeration oracle).
+      // Under READ COMMITTED, a second waiter's SELECT FOR UPDATE re-reads
+      // the row after the first commits, so the JS-side `acceptedAt` check
+      // below correctly observes the post-commit state. The token IS the
+      // security boundary on this unauthenticated route; anything that
+      // doesn't match here returns a generic 410 (no status-code
+      // enumeration oracle). (Data review F-C.)
       const [row] = await tx
         .select({
           invitationId: invitations.id,
@@ -599,11 +658,17 @@ export async function acceptTeamInvitation(
       }
 
       // Hijack discriminator — see header comment. Read DB state before
-      // any KC call.
+      // any KC call. Email match uses lower(...) on both sides as
+      // defence-in-depth: `invitations.email` is normalised lowercase at
+      // INSERT (createTeamInvitation, signup()), but `users.email` has no
+      // schema-level case-folding constraint, so a historical mixed-case
+      // import or manual support write could otherwise miss the match
+      // and fall through to the createUser path → 409 → spurious 410.
+      // (Data review F-E.)
       const [existingUserRow] = await tx
         .select({ keycloakId: users.keycloakId })
         .from(users)
-        .where(and(eq(users.orgId, row.orgId), eq(users.email, row.email)))
+        .where(and(eq(users.orgId, row.orgId), sql`lower(${users.email}) = lower(${row.email})`))
         .limit(1);
       const existingKcId = existingUserRow?.keycloakId ?? null;
 

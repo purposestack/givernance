@@ -1,10 +1,10 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, RefreshCw, Trash2, UserPlus, Users } from "lucide-react";
+import { MoreHorizontal, RefreshCw, Trash2, Users } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { type FormEvent, useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -24,20 +24,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatDate } from "@/lib/format";
-import type { Invitation, InvitationRole, InvitationStatus } from "@/models/invitation";
+import type { Invitation, InvitationStatus } from "@/models/invitation";
 import { InvitationService } from "@/services/InvitationService";
 
 interface MembersTableProps {
@@ -45,8 +36,6 @@ interface MembersTableProps {
   pagination: DataTablePagination;
   canManageMembers: boolean;
 }
-
-const ROLE_VALUES: readonly InvitationRole[] = ["user", "org_admin", "viewer"];
 
 const STATUS_VARIANT: Record<InvitationStatus, "success" | "info" | "warning"> = {
   accepted: "success",
@@ -60,7 +49,6 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
   const searchParams = useSearchParams();
   const locale = useLocale();
   const t = useTranslations("settings.members");
-  const [inviteOpen, setInviteOpen] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<Invitation | null>(null);
   const [isMutating, setIsMutating] = useState(false);
 
@@ -168,7 +156,6 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
                 if (!canResend && !canRevoke) return null;
                 return (
                   <RowActions
-                    invitation={row.original}
                     onResend={canResend ? () => void onResend(row.original) : undefined}
                     onRevoke={canRevoke ? () => setRevokeTarget(row.original) : undefined}
                     disabled={isMutating}
@@ -187,15 +174,6 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
 
   return (
     <>
-      {canManageMembers ? (
-        <div className="flex justify-end">
-          <Button variant="primary" size="sm" onClick={() => setInviteOpen(true)}>
-            <UserPlus size={16} aria-hidden="true" />
-            {t("actions.invite")}
-          </Button>
-        </div>
-      ) : null}
-
       <DataTable
         columns={columns}
         data={invitations}
@@ -205,8 +183,6 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
           <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />
         }
       />
-
-      <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} />
 
       <Dialog open={revokeTarget !== null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
         <DialogContent>
@@ -237,7 +213,6 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
 }
 
 interface RowActionsProps {
-  invitation: Invitation;
   onResend: (() => void) | undefined;
   onRevoke: (() => void) | undefined;
   disabled: boolean;
@@ -247,7 +222,6 @@ interface RowActionsProps {
 }
 
 function RowActions({
-  invitation: _invitation,
   onResend,
   onRevoke,
   disabled,
@@ -283,135 +257,5 @@ function RowActions({
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-// ─── Invite dialog ──────────────────────────────────────────────────────────
-
-interface InviteDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
-
-function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
-  const router = useRouter();
-  const t = useTranslations("settings.members");
-  const emailId = useId();
-  const roleId = useId();
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<InvitationRole>("user");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const reset = useCallback(() => {
-    setEmail("");
-    setRole("user");
-    setError(null);
-  }, []);
-
-  const handleClose = useCallback(
-    (next: boolean) => {
-      onOpenChange(next);
-      if (!next) reset();
-    },
-    [onOpenChange, reset],
-  );
-
-  const onSubmit = useCallback(
-    async (e: FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      const trimmed = email.trim();
-      if (trimmed.length === 0) {
-        setError(t("invite.errors.emailRequired"));
-        return;
-      }
-      setSubmitting(true);
-      setError(null);
-      try {
-        await InvitationService.createInvitation(createClientApiClient(), {
-          email: trimmed,
-          role,
-        });
-        toast.success(t("success.invited", { email: trimmed }));
-        handleClose(false);
-        router.refresh();
-      } catch (err) {
-        if (!(err instanceof ApiProblem)) console.error("members.invite failed", err);
-        if (err instanceof ApiProblem && err.detail) {
-          setError(err.detail);
-        } else {
-          setError(t("invite.errors.generic"));
-        }
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [email, handleClose, role, router, t],
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("invite.title")}</DialogTitle>
-          <DialogDescription>{t("invite.description")}</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4" noValidate>
-          {error ? (
-            <div
-              role="alert"
-              aria-live="polite"
-              className="rounded-lg border border-error-border bg-error-container p-3 text-sm text-on-error-container"
-            >
-              {error}
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <Label htmlFor={emailId} required>
-              {t("invite.fields.email")}
-            </Label>
-            <Input
-              id={emailId}
-              type="email"
-              autoComplete="email"
-              required
-              maxLength={255}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={t("invite.fields.emailPlaceholder")}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={roleId} required>
-              {t("invite.fields.role")}
-            </Label>
-            <Select value={role} onValueChange={(v) => setRole(v as InvitationRole)}>
-              <SelectTrigger id={roleId}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ROLE_VALUES.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {t(`roles.${r}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-text-muted">{t(`invite.roleHints.${role}`)}</p>
-          </div>
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => handleClose(false)} disabled={submitting}>
-              {t("invite.actions.cancel")}
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? t("invite.actions.submitting") : t("invite.actions.submit")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

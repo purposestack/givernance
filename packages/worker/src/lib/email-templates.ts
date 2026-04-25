@@ -44,6 +44,18 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Strip CR/LF from values that flow into the SMTP `Subject` header. Nodemailer
+ * folds CR/LF in headers by default, so this is defence-in-depth — a future
+ * MTA swap (raw `sendmail`, a managed transport that doesn't sanitise) would
+ * otherwise let an operator-controlled `tenants.name` or `users.first_name`
+ * inject a `\nBcc:` line and silently fork every email. (Security review of
+ * PR #148, finding F1.)
+ */
+function sanitiseSubjectField(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").slice(0, 200);
+}
+
 const ROLE_LABELS: Record<"en" | "fr", Record<string, string>> = {
   en: {
     org_admin: "organisation admin",
@@ -66,10 +78,11 @@ export function renderSignupVerifyEmail(input: SignupVerifyTemplateInput): Rende
   const expires = input.expiresAt.toUTCString();
   const safeName = escapeHtml(input.tenantName);
   const safeUrl = escapeHtml(input.verifyUrl);
+  const subjectTenantName = sanitiseSubjectField(input.tenantName);
 
   if (locale === "fr") {
     return {
-      subject: `Confirmez votre espace ${input.tenantName} sur Givernance`,
+      subject: `Confirmez votre espace ${subjectTenantName} sur Givernance`,
       text: [
         `Bienvenue sur Givernance !`,
         ``,
@@ -93,7 +106,7 @@ export function renderSignupVerifyEmail(input: SignupVerifyTemplateInput): Rende
   }
 
   return {
-    subject: `Confirm your Givernance workspace "${input.tenantName}"`,
+    subject: `Confirm your Givernance workspace "${subjectTenantName}"`,
     text: [
       `Welcome to Givernance!`,
       ``,
@@ -128,12 +141,15 @@ export function renderTeamInviteEmail(input: TeamInviteTemplateInput): RenderedE
   const safeName = escapeHtml(input.tenantName);
   const safeUrl = escapeHtml(input.acceptUrl);
   const safeRole = escapeHtml(roleLabel(locale, input.role));
+  // Subject is interpolated raw, so strip CR/LF defensively — see
+  // sanitiseSubjectField docblock for rationale.
+  const subjectTenantName = sanitiseSubjectField(input.tenantName);
 
   if (locale === "fr") {
     const inviter = input.inviterName ? escapeHtml(input.inviterName) : "Un·e collègue";
-    const subjectInviter = input.inviterName ?? "Un·e collègue";
+    const subjectInviter = sanitiseSubjectField(input.inviterName ?? "Un·e collègue");
     return {
-      subject: `${subjectInviter} vous invite à rejoindre ${input.tenantName} sur Givernance`,
+      subject: `${subjectInviter} vous invite à rejoindre ${subjectTenantName} sur Givernance`,
       text: [
         `${subjectInviter} vous invite à rejoindre l'espace "${input.tenantName}" sur Givernance avec le rôle ${roleLabel(locale, input.role)}.`,
         ``,
@@ -157,9 +173,9 @@ export function renderTeamInviteEmail(input: TeamInviteTemplateInput): RenderedE
   }
 
   const inviter = input.inviterName ? escapeHtml(input.inviterName) : "A colleague";
-  const subjectInviter = input.inviterName ?? "A colleague";
+  const subjectInviter = sanitiseSubjectField(input.inviterName ?? "A colleague");
   return {
-    subject: `${subjectInviter} invited you to join ${input.tenantName} on Givernance`,
+    subject: `${subjectInviter} invited you to join ${subjectTenantName} on Givernance`,
     text: [
       `${subjectInviter} invited you to join the workspace "${input.tenantName}" on Givernance as a ${roleLabel(locale, input.role)}.`,
       ``,

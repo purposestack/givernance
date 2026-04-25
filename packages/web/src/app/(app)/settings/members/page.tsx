@@ -1,10 +1,13 @@
+import { Users } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { SettingsNavigation } from "@/components/settings/settings-navigation";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
 import { InvitationService } from "@/services/InvitationService";
 
+import { InviteAction } from "./invite-action";
 import { MembersTable } from "./members-table";
 
 const DEFAULT_PER_PAGE = 20;
@@ -27,7 +30,9 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
  * Lists every team invitation (pending / accepted / expired) for the
  * current tenant and lets org_admins invite new teammates, resend pending
  * invitations, or revoke them. Non-admins see the data without the action
- * affordances.
+ * affordances. The "Invite teammate" CTA lives in the page header (mirrors
+ * the funds page convention) so the empty-state card can render clean
+ * without table chrome.
  */
 export default async function MembersPage({ searchParams }: MembersPageProps) {
   const auth = await requireAuth();
@@ -43,24 +48,33 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
   const result = await InvitationService.listInvitations(client, { page, perPage });
 
   const total = result.pagination.total;
+  const hasAny = total > 0;
 
   return (
     <>
       <PageHeader
         title={t("title")}
-        description={total > 0 ? t("subtitleWithCount", { count: total }) : t("subtitleEmpty")}
+        description={hasAny ? t("subtitleWithCount", { count: total }) : t("subtitleEmpty")}
         breadcrumbs={[
           { label: tSettings("breadcrumbRoot"), href: "/dashboard" },
           { label: tSettings("title"), href: "/settings" },
           { label: t("title") },
         ]}
+        actions={canManageMembers ? <InviteAction /> : null}
       />
       <SettingsNavigation />
-      <MembersTable
-        invitations={result.data}
-        pagination={result.pagination}
-        canManageMembers={canManageMembers}
-      />
+
+      {hasAny ? (
+        <MembersTable
+          invitations={result.data}
+          pagination={result.pagination}
+          canManageMembers={canManageMembers}
+        />
+      ) : (
+        <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+          <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />
+        </div>
+      )}
     </>
   );
 }

@@ -779,4 +779,206 @@ describe("POST /v1/invitations/:token/accept", () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it("happy path with role=org_admin promotes the invitee to second org_admin (AC #9)", async () => {
+    const f = await makeFixture();
+    const email = `secondadmin+${f.slug}@example.org`;
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email, role: "org_admin" },
+    });
+    expect(create.statusCode).toBe(201);
+    const created = create.json<{ data: { id: string } }>().data;
+    const tokenRows = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.id, created.id));
+    const token = tokenRows[0]?.token ?? "";
+
+    const accept = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${token}/accept`,
+      payload: {
+        firstName: "Second",
+        lastName: "Admin",
+        password: "long-enough-password-1",
+      },
+    });
+    expect(accept.statusCode).toBe(201);
+
+    const [user] = await db
+      .select({ role: users.role, keycloakId: users.keycloakId })
+      .from(users)
+      .where(and(eq(users.orgId, f.orgId), eq(users.email, email.toLowerCase())));
+    expect(user?.role).toBe("org_admin");
+    expect(user?.keycloakId).toBeTruthy();
+
+    // KC attribute payload must reflect the invitation's role, not the
+    // inviter's — otherwise the realm mapper would emit the wrong JWT
+    // claim and the invitee would land without admin access.
+    const createUserCall = kcCreateUser.mock.calls[0]?.[0];
+    expect(createUserCall?.attributes?.role).toEqual(["org_admin"]);
+    expect(kcAttachUserToOrg).toHaveBeenCalledTimes(1);
+  });
+
+  it("after resend, the OLD token returns 410 (token rotation kills the old link) (AC #7)", async () => {
+    const f = await makeFixture();
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email: `rotation+${f.slug}@example.org` },
+    });
+    const created = create.json<{ data: { id: string } }>().data;
+    const before = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.id, created.id));
+    const oldToken = before[0]?.token ?? "";
+
+    const resend = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${created.id}/resend`,
+      headers: authHeader(f.inviterToken),
+    });
+    expect(resend.statusCode).toBe(204);
+
+    // The old token must now be dead.
+    const oldAccept = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${oldToken}/accept`,
+      payload: { firstName: "X", lastName: "Y", password: "long-enough-password-1" },
+    });
+    expect(oldAccept.statusCode).toBe(410);
+
+    // The new token must still be live.
+    const after = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.id, created.id));
+    const newToken = after[0]?.token ?? "";
+    expect(newToken).not.toBe(oldToken);
+
+    const newAccept = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${newToken}/accept`,
+      payload: { firstName: "X", lastName: "Y", password: "long-enough-password-1" },
+    });
+    expect(newAccept.statusCode).toBe(201);
+  });
+
+  it("after revoke, accept with the deleted token returns generic 410 (AC #6)", async () => {
+    const f = await makeFixture();
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email: `revoke-then-accept+${f.slug}@example.org` },
+    });
+    const created = create.json<{ data: { id: string } }>().data;
+    const tokenRows = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.id, created.id));
+    const token = tokenRows[0]?.token ?? "";
+
+    const revoke = await app.inject({
+      method: "DELETE",
+      url: `/v1/invitations/${created.id}`,
+      headers: authHeader(f.inviterToken),
+    });
+    expect(revoke.statusCode).toBe(204);
+
+    const accept = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${token}/accept`,
+      payload: { firstName: "X", lastName: "Y", password: "long-enough-password-1" },
+    });
+    expect(accept.statusCode).toBe(410);
+    // No KC user was created for the dead-token attempt.
+    expect(kcCreateUser).not.toHaveBeenCalled();
+  });
+
+  it("emits country in invitation.created when the tenant has a recorded signup country (QA-F1)", async () => {
+    const f = await makeFixture();
+
+    // Seed an original signup_verification_requested event the way self-
+    // serve signup() would have. The team-invite create path looks this up
+    // to drive EN/FR template selection.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.insert(outboxEvents).values({
+        tenantId: f.orgId,
+        type: "tenant.signup_verification_requested",
+        payload: { tenantId: f.orgId, country: "FR" },
+      });
+    });
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email: `fr+${f.slug}@example.org` },
+    });
+    expect(create.statusCode).toBe(201);
+
+    const { rows } = await db.execute<{ payload: { country?: string } }>(
+      sql`SELECT payload FROM outbox_events WHERE tenant_id = ${f.orgId} AND type = 'invitation.created' LIMIT 1`,
+    );
+    expect(rows[0]?.payload?.country).toBe("FR");
+  });
+
+  // ─── Cross-tenant isolation ───────────────────────────────────────────
+
+  it("org_admin in tenant A cannot revoke / resend / read an invitation from tenant B (SEC-F2)", async () => {
+    const fA = await makeFixture();
+    const fB = await makeFixture();
+
+    // Create an invitation in tenant B.
+    const createB = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(fB.inviterToken),
+      payload: { email: `bb+${fB.slug}@example.org` },
+    });
+    expect(createB.statusCode).toBe(201);
+    const inviteB = createB.json<{ data: { id: string } }>().data;
+
+    // Tenant A admin cannot revoke B's invitation by id.
+    const revoke = await app.inject({
+      method: "DELETE",
+      url: `/v1/invitations/${inviteB.id}`,
+      headers: authHeader(fA.inviterToken),
+    });
+    expect(revoke.statusCode).toBe(404);
+
+    // Tenant A admin cannot resend B's invitation by id.
+    const resend = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${inviteB.id}/resend`,
+      headers: authHeader(fA.inviterToken),
+    });
+    expect(resend.statusCode).toBe(404);
+
+    // Tenant A admin's list does not include B's invitation.
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/invitations",
+      headers: authHeader(fA.inviterToken),
+    });
+    expect(list.statusCode).toBe(200);
+    const listBody = list.json<{ data: Array<{ id: string }> }>();
+    expect(listBody.data.find((row) => row.id === inviteB.id)).toBeUndefined();
+
+    // Tenant B's invitation row is untouched.
+    const [stillThere] = await db
+      .select({ id: invitations.id, acceptedAt: invitations.acceptedAt })
+      .from(invitations)
+      .where(eq(invitations.id, inviteB.id));
+    expect(stillThere).toBeDefined();
+    expect(stillThere?.acceptedAt).toBeNull();
+  });
 });
