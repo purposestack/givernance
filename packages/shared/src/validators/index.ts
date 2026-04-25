@@ -67,8 +67,35 @@ export const ConstituentCreateSchema = Type.Object({
   tags: Type.Optional(Type.Array(Type.String())),
 });
 
-/** Schema for updating a constituent (all fields optional) */
-export const ConstituentUpdateSchema = Type.Partial(ConstituentCreateSchema);
+/**
+ * Schema for updating a constituent.
+ *
+ * Convention: optional fields accept `null` on UPDATE to mean "clear this
+ * field to NULL in the DB" (vs `undefined` / omitted = "leave alone"). This
+ * lets the form distinguish "user didn't touch the field" from "user
+ * intentionally cleared a previously-set value" — e.g. removing a phone
+ * number from a constituent. The CREATE schema keeps Optional<String>
+ * because there's nothing to clear yet.
+ */
+export const ConstituentUpdateSchema = Type.Object({
+  firstName: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+  lastName: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+  // Null variants FIRST in every nullable Union — see same convention in the
+  // API route (`packages/api/src/modules/constituents/routes.ts`): ajv with
+  // coerceTypes coerces runtime `null` to `""` if String comes first.
+  email: Type.Optional(Type.Union([Type.Null(), Type.String({ format: "email", maxLength: 255 })])),
+  phone: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 50 })])),
+  type: Type.Optional(
+    Type.Union([
+      Type.Literal("donor"),
+      Type.Literal("volunteer"),
+      Type.Literal("member"),
+      Type.Literal("beneficiary"),
+      Type.Literal("partner"),
+    ]),
+  ),
+  tags: Type.Optional(Type.Array(Type.String())),
+});
 
 /** Schema for a fund allocation within a donation */
 export const DonationAllocationSchema = Type.Object({

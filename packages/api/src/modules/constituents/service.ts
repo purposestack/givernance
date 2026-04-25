@@ -17,8 +17,12 @@ export interface ListConstituentsQuery {
 export interface ConstituentInput {
   firstName: string;
   lastName: string;
-  email?: string;
-  phone?: string;
+  // `null` on update = explicit clear (drizzle's `.set({email: null})`
+  // generates `SET email = NULL`). `undefined` = leave alone. The route
+  // boundary accepts both per the convention in
+  // `packages/shared/src/validators/index.ts` (ConstituentUpdateSchema).
+  email?: string | null;
+  phone?: string | null;
   type?: string;
   tags?: string[];
 }

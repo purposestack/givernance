@@ -108,7 +108,7 @@ export function ConstituentForm(props: ConstituentFormProps) {
       if (mode === "create") {
         const created = await ConstituentService.createConstituent(
           createClientApiClient(),
-          toApiPayload(values),
+          toApiPayload(values, "create"),
         );
         toast.success(t("success.created"));
         router.push(`/constituents/${created.id}`);
@@ -117,13 +117,23 @@ export function ConstituentForm(props: ConstituentFormProps) {
         const updated = await ConstituentService.updateConstituent(
           createClientApiClient(),
           props.constituent.id,
-          toApiPayload(values),
+          toApiPayload(values, "edit"),
         );
         toast.success(t("success.updated"));
         router.push(`/constituents/${updated.id}`);
         router.refresh();
       }
     } catch (err) {
+      // The form maps API problems to inline field errors and falls back to
+      // a generic toast for everything else — but used to swallow non-API
+      // errors (e.g. a TypeError in `toApiPayload`) without any console
+      // breadcrumb, leaving operators staring at "Something went wrong"
+      // with nothing to grep. Log non-ApiProblem errors so the next
+      // silent-failure regression is one DevTools tab away.
+      if (!(err instanceof ApiProblem)) {
+        // biome-ignore lint/suspicious/noConsole: intentional breadcrumb for unexpected client-side failures
+        console.error("ConstituentForm submit failed (unexpected error):", err);
+      }
       handleApiError(err, form, values, setDuplicateState, {
         validation: t("errors.validation"),
         generic: t("errors.generic"),
@@ -141,7 +151,7 @@ export function ConstituentForm(props: ConstituentFormProps) {
     try {
       const created = await ConstituentService.createConstituent(
         createClientApiClient(),
-        toApiPayload(values),
+        toApiPayload(values, "create"),
         { force: true },
       );
       toast.success(t("success.created"));
@@ -372,13 +382,32 @@ function DuplicateDialog({
   );
 }
 
-function toApiPayload(values: ConstituentFormValues): ConstituentCreateInput {
+/**
+ * Build the API payload from form values.
+ *
+ * Edit vs create matters for empty optional fields:
+ * - **create**: empty email/phone → `undefined` (omitted from request →
+ *   server never tries to set them; column gets the default NULL).
+ * - **edit**: empty email/phone → `null` (sent as explicit clear → server
+ *   maps to `SET email = NULL`). Without this, the client's `toRequestBody`
+ *   would drop the key and the user couldn't ever delete a previously-set
+ *   value through the UI.
+ *
+ * The resolver upstream (`buildResolver`) already trims and normalises
+ * empty optionals to `undefined` for validation, but the runtime values
+ * passed to this function may still be undefined — `?.` guards them.
+ */
+function toApiPayload(
+  values: ConstituentFormValues,
+  mode: "create" | "edit",
+): ConstituentCreateInput {
+  const emptyOptional = mode === "edit" ? null : undefined;
   return {
     type: values.type,
-    firstName: values.firstName.trim(),
-    lastName: values.lastName.trim(),
-    email: values.email.trim() || undefined,
-    phone: values.phone.trim() || undefined,
+    firstName: values.firstName?.trim() ?? "",
+    lastName: values.lastName?.trim() ?? "",
+    email: values.email?.trim() || emptyOptional,
+    phone: values.phone?.trim() || emptyOptional,
   };
 }
 
