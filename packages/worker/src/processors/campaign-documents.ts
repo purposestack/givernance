@@ -138,6 +138,7 @@ export async function processGenerateCampaignDocuments(
   log.info({ campaignId, constituentCount: constituentIds.length }, "Campaign documents job start");
   job.log(`Generating campaign documents for campaign ${campaignId} (org: ${orgId})`);
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: per-constituent loop with inline status branching (already-generated, AI failure, partial success). The per-row error handling has to live next to the row to keep the audit trail correct.
   return withWorkerContext(orgId, async (tx) => {
     const [campaign] = await tx
       .select()

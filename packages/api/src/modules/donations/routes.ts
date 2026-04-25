@@ -259,6 +259,7 @@ export async function donationRoutes(app: FastifyInstance) {
         response: { 201: DataResponse(DonationResponse), ...ErrorResponses },
       },
     },
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: donation create handler walks auth → idempotency → validation → allocation sum → service call → 201/409/422 mapping. Each branch is needed and the linear flow is easier to audit than a split.
     async (request, reply) => {
       const t = resolveTranslations(request);
       const orgId = request.auth?.orgId;

@@ -492,6 +492,7 @@ export async function verifySignup(
     // context to set before the SELECT — the app role would have RLS hide
     // the invitation row and we'd return ok:false for every valid token.
     // The unguessable token IS the security boundary here.
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: verifySignup orchestrates pending-verify + two recovery half-states inside one tx. Long-tx split is tracked as the overnight follow-up referenced in PR #143.
     return await systemDb.transaction(async (tx) => {
       // FOR UPDATE so concurrent verifies serialise on the invitation row
       // (ENG-9). If the invitation doesn't match, the caller gets a generic

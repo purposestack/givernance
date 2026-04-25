@@ -270,7 +270,6 @@ export function DonationForm(props: DonationFormProps) {
       // generic "Something went wrong" toast. ApiProblem is handled by
       // handleApiError below so no need to log it twice.
       if (!(err instanceof ApiProblem)) {
-        // biome-ignore lint/suspicious/noConsole: intentional breadcrumb for unexpected client-side failures
         console.error("DonationForm submit failed (unexpected error):", err);
       }
       handleApiError(err, form, {
