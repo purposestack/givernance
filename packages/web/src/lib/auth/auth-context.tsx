@@ -63,7 +63,14 @@ async function fetchMe(): Promise<UserProfile> {
   if (!res.ok) {
     throw new Error(`Failed to fetch user profile: ${res.status}`);
   }
-  return res.json() as Promise<UserProfile>;
+  // The API wraps every response in `{ data: ... }` (see DataResponse schema
+  // in packages/api/src/lib/schemas.ts). Without unwrapping `.data` here,
+  // every field on `UserProfile` lands as undefined — including `orgName`,
+  // which the sidebar reads to display the active org. The server-side
+  // fetcher in `(app)/layout.tsx` already handles this correctly; this
+  // brings the client-side fetcher into line.
+  const body = (await res.json()) as { data: Record<string, unknown> };
+  return body.data as unknown as UserProfile;
 }
 
 /**
