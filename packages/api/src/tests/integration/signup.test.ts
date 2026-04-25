@@ -44,19 +44,34 @@ const kcCreateUser = vi.fn<KeycloakAdminClient["createUser"]>(async (input) => (
   id: `kc-${input.email}-${randomUUID().slice(0, 8)}`,
   created: true,
 }));
-const fakeKeycloakAdmin: KeycloakAdminClient = {
-  createOrganization: vi.fn(async () => {
-    throw new Error("not implemented in stub");
+const kcCreateOrganization = vi.fn<KeycloakAdminClient["createOrganization"]>(
+  async ({ name, alias, attributes }) => ({
+    // Real Keycloak returns a UUID here, and `tenants_keycloak_org_id_uuid_chk`
+    // enforces that shape — the stub MUST return a UUID, not a debug-friendly
+    // alias-based string, or the verify INSERT/UPDATE chokes on the check.
+    id: randomUUID(),
+    name,
+    alias,
+    attributes,
   }),
+);
+const kcAttachUserToOrg = vi.fn<KeycloakAdminClient["attachUserToOrg"]>(async () => {});
+const kcGetOrganizationByAlias = vi.fn<KeycloakAdminClient["getOrganizationByAlias"]>(
+  async () => null,
+);
+const fakeKeycloakAdmin: KeycloakAdminClient = {
+  createOrganization: kcCreateOrganization,
   getOrganization: vi.fn(async () => null),
+  getOrganizationByAlias: kcGetOrganizationByAlias,
   deleteOrganization: vi.fn(async () => {}),
   addOrgDomain: vi.fn(async () => {}),
-  attachUserToOrg: vi.fn(async () => {}),
+  attachUserToOrg: kcAttachUserToOrg,
   sendInvitation: vi.fn(async () => {}),
   bindIdpToOrganization: vi.fn(async () => {}),
   createUser: kcCreateUser,
   getUserByEmail: vi.fn(async () => null),
   resetUserPassword: vi.fn(async () => {}),
+  setUserAttributes: vi.fn(async () => {}),
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
   _circuitState: () => "closed",
@@ -85,8 +100,11 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  // Reset the KC stub spy so per-test assertions on call counts are clean.
+  // Reset the KC stub spies so per-test assertions on call counts are clean.
   kcCreateUser.mockClear();
+  kcCreateOrganization.mockClear();
+  kcAttachUserToOrg.mockClear();
+  kcGetOrganizationByAlias.mockClear();
   // Clear any rate-limiter + per-email signup counters from Redis so the
   // 5/hour limits don't poison successive tests. Scoped deletes only — a
   // full `flushdb` would destroy unrelated test fixtures (ENG-3).
@@ -486,6 +504,11 @@ describe("POST /v1/public/signup/verify", () => {
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
     expect(tenant?.status).toBe("active");
     expect(tenant?.verifiedAt).not.toBeNull();
+    // Verify must also bind the new Keycloak Organization id onto the tenant
+    // row — without it, the realm's organization-membership mapper has nothing
+    // to look up and the JWT lacks the `org_id`/`organization` claims that the
+    // web `/api/auth/callback` requires.
+    expect(tenant?.keycloakOrgId).toBeTruthy();
 
     const [user] = await db.select().from(users).where(eq(users.id, body.data.userId));
     expect(user?.email).toBe(email);
@@ -504,8 +527,8 @@ describe("POST /v1/public/signup/verify", () => {
     expect(inv?.acceptedAt).not.toBeNull();
   });
 
-  it("provisions the Keycloak user with the chosen password + email already verified", async () => {
-    const { email, token } = await createSignup("verify-kc-call");
+  it("provisions the Keycloak Organization, user, attributes, and member attach", async () => {
+    const { tenantId, email, token } = await createSignup("verify-kc-call");
     const res = await app.inject({
       method: "POST",
       url: "/v1/public/signup/verify",
@@ -517,6 +540,12 @@ describe("POST /v1/public/signup/verify", () => {
       },
     });
     expect(res.statusCode).toBe(201);
+
+    // Organization first — the user attach + attribute steps both depend on it.
+    expect(kcCreateOrganization).toHaveBeenCalledTimes(1);
+    const orgCall = kcCreateOrganization.mock.calls[0]?.[0];
+    expect(orgCall?.attributes?.org_id).toEqual([tenantId]);
+
     expect(kcCreateUser).toHaveBeenCalledTimes(1);
     expect(kcCreateUser).toHaveBeenCalledWith({
       email,
@@ -526,7 +555,52 @@ describe("POST /v1/public/signup/verify", () => {
       // The verify token is the email-ownership proof — Keycloak should NOT
       // ask for another round of verification.
       emailVerified: true,
+      // The user-attribute mapper turns these into the `org_id` and `role`
+      // JWT claims the web callback hard-requires.
+      attributes: { org_id: [tenantId], role: ["org_admin"] },
     });
+
+    // Member attach binds the user to the org so the `organization`
+    // membership claim can be emitted on subsequent logins.
+    expect(kcAttachUserToOrg).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers from a 409 on createOrganization by looking up by alias (no orphan re-create)", async () => {
+    const { tenantId, token } = await createSignup("verify-org-409");
+
+    // Simulate the recovery state: the org was created in a previous attempt
+    // but the keycloak_org_id never landed on the tenant row (DB rollback /
+    // network glitch). The next createOrganization 409s; verify must fall
+    // back to getOrganizationByAlias and stitch things up.
+    kcCreateOrganization.mockRejectedValueOnce(
+      new (await import("../../lib/keycloak-admin.js")).KeycloakAdminError(
+        "alias taken",
+        409,
+        "/organizations",
+      ),
+    );
+    const recoveredOrgId = randomUUID();
+    kcGetOrganizationByAlias.mockResolvedValueOnce({
+      id: recoveredOrgId,
+      name: "irrelevant",
+      alias: "verify-org-409",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup/verify",
+      payload: {
+        token,
+        firstName: "Org",
+        lastName: "Recovered",
+        password: TEST_PASSWORD,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+
+    expect(kcGetOrganizationByAlias).toHaveBeenCalledTimes(1);
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+    expect(tenant?.keycloakOrgId).toBe(recoveredOrgId);
   });
 
   it("rejects when the password is shorter than the minimum length (validation 400)", async () => {

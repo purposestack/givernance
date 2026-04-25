@@ -86,6 +86,13 @@ export interface CreateUserInput {
   /** Cleartext password — sent over TLS to the Keycloak Admin API; not logged. */
   password: string;
   emailVerified?: boolean;
+  /**
+   * Realm-user profile attributes set at creation time. Keycloak emits
+   * configured ones (e.g. `org_id`, `role`) into the access/ID/userinfo token
+   * via `oidc-usermodel-attribute-mapper` on the `organization` client scope —
+   * see `scripts/keycloak-sync-realm.sh`.
+   */
+  attributes?: Record<string, string[]>;
 }
 
 export class KeycloakAdminError extends Error {
@@ -177,6 +184,19 @@ export interface KeycloakAdminClient {
   getUserByEmail(email: string): Promise<KeycloakUser | null>;
   /** Replace a user's password with a new non-temporary credential. */
   resetUserPassword(userId: string, password: string): Promise<void>;
+  /**
+   * Merge the given attributes onto the user (GET-then-PUT so we don't
+   * clobber existing fields). Used by the signup verify flow to set
+   * `org_id` / `role` on a freshly-created or recovered user so the
+   * `oidc-usermodel-attribute-mapper` emits the matching JWT claims.
+   */
+  setUserAttributes(userId: string, attributes: Record<string, string[]>): Promise<void>;
+  /**
+   * Look up an Organization by its alias (the canonical slug we use). Returns
+   * null when no exact match is found. Keycloak's `/organizations?search=`
+   * matches as a substring so we filter the response client-side to be safe.
+   */
+  getOrganizationByAlias(alias: string): Promise<KeycloakOrganization | null>;
 
   // Identity Providers (KC 24+)
   createIdentityProvider(idp: KeycloakIdentityProvider): Promise<void>;
@@ -539,7 +559,7 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
       await adminRequest<void>("POST", `/organizations/${e(orgId)}/identity-providers`, { alias });
     },
 
-    createUser: async ({ email, firstName, lastName, password, emailVerified }) => {
+    createUser: async ({ email, firstName, lastName, password, emailVerified, attributes }) => {
       const normalisedEmail = email.trim().toLowerCase();
       try {
         const out = await adminRequest<KeycloakUser & { __locationHeader?: string }>(
@@ -553,6 +573,7 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
             enabled: true,
             emailVerified: emailVerified ?? false,
             credentials: [{ type: "password", value: password, temporary: false }],
+            ...(attributes ? { attributes } : {}),
           },
         );
         if (!out) {
@@ -596,6 +617,19 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
             value: password,
             temporary: false,
           });
+          // Attributes (e.g. org_id) skipped at create time because the user
+          // already existed — patch them in now via the GET-then-PUT helper so
+          // the JWT mappers have something to read.
+          if (attributes) {
+            const current = await adminRequest<
+              KeycloakUser & { attributes?: Record<string, string[]> }
+            >("GET", `/users/${e(match.id)}`);
+            const merged = { ...(current?.attributes ?? {}), ...attributes };
+            await adminRequest<void>("PUT", `/users/${e(match.id)}`, {
+              ...current,
+              attributes: merged,
+            });
+          }
           return { id: match.id, created: false };
         }
         throw err;
@@ -617,6 +651,35 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
         value: password,
         temporary: false,
       });
+    },
+
+    setUserAttributes: async (userId, attributes) => {
+      // Keycloak's PUT /users/{id} replaces the user representation. GET
+      // first to preserve fields we don't own (e.g. firstName, email,
+      // emailVerified), then merge attributes and PUT the full body.
+      const current = await adminRequest<KeycloakUser & { attributes?: Record<string, string[]> }>(
+        "GET",
+        `/users/${e(userId)}`,
+      );
+      if (!current) {
+        throw new KeycloakAdminError(`User ${userId} not found`, 404, `/users/${userId}`);
+      }
+      const merged = { ...(current.attributes ?? {}), ...attributes };
+      await adminRequest<void>("PUT", `/users/${e(userId)}`, {
+        ...current,
+        attributes: merged,
+      });
+    },
+
+    getOrganizationByAlias: async (alias) => {
+      const normalised = alias.trim().toLowerCase();
+      const rows = await adminRequest<KeycloakOrganization[]>(
+        "GET",
+        `/organizations?search=${e(normalised)}`,
+      );
+      // `search` is substring-match on Keycloak's side. Filter to exact alias
+      // so a tenant named `acme` doesn't collide with `acme-foundation`.
+      return rows?.find((o) => o.alias?.toLowerCase() === normalised) ?? null;
     },
 
     createIdentityProvider: async (idp) => {
