@@ -13,8 +13,27 @@ const pool = new pg.Pool({
   max: 20,
 });
 
-/** Drizzle ORM instance with typed schema */
+/**
+ * Owner-role pool — connects as `givernance` (BYPASSRLS), used for system
+ * operations that originate from unauthenticated requests and therefore have
+ * no `app.current_organization_id` to set. The most common case is validating
+ * an unguessable token (signup/verify, signup/resend) before the caller
+ * could possibly know the tenant id. The token IS the security boundary
+ * here, not RLS — using the app role would silently return zero rows.
+ *
+ * Do NOT use this for anything that runs on behalf of an authenticated user;
+ * those paths must keep going through `db` so RLS isolates tenants.
+ */
+const systemPool = new pg.Pool({
+  connectionString: env.DATABASE_URL,
+  max: 5,
+});
+
+/** Drizzle ORM instance with typed schema (app role — RLS enforced) */
 export const db = drizzle(pool, { schema });
+
+/** Drizzle ORM instance bound to the owner role — bypasses RLS. See `systemPool` above. */
+export const systemDb = drizzle(systemPool, { schema });
 
 /**
  * Execute a callback within a Drizzle transaction that has RLS tenant context set.

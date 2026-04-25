@@ -463,3 +463,56 @@ describe("cleanupUnverifiedTenants", () => {
     expect(check).toBeDefined();
   });
 });
+
+// ─── Regression: app-role RLS visibility on signup-verification rows ─────────
+//
+// The verify / resend / lookup / cleanup paths run BEFORE the request has a
+// known org id, so they can't `set_config('app.current_organization_id', …)`
+// before reading. Under the runtime app role (`givernance_app`, NOBYPASSRLS)
+// those reads return zero rows because `invitations` and `tenant_domains`
+// have FORCE RLS — every valid token would look "invalid or already used".
+// This test directly probes the RLS plane to lock the behaviour in place;
+// the fix is to use the owner-role `systemDb` for those system operations.
+describe("RLS visibility (regression for systemDb usage)", () => {
+  it("the runtime app role cannot SELECT signup invitations without org context", async () => {
+    // Skip when no separate app-role connection is configured (the local test
+    // setup falls back to the owner role). Locally `pnpm dev` and CI both
+    // provide a `givernance_app` role; this guard keeps things forgiving.
+    const appUrl = process.env.DATABASE_URL_APP_TEST;
+    if (!appUrl) return;
+
+    const { Pool } = await import("pg");
+    const appPool = new Pool({ connectionString: appUrl, max: 2 });
+    try {
+      // Seed an invitation we can look up.
+      const s = registerSlug("rls-canary");
+      const [tenant] = await db
+        .insert(tenants)
+        .values({ name: "RLS Canary", slug: s, status: "provisional", createdVia: "self_serve" })
+        .returning({ id: tenants.id });
+      if (!tenant) throw new Error("seed failed");
+      const token = randomUUID();
+      await db.insert(invitations).values({
+        orgId: tenant.id,
+        email: `rls+${s}@example.org`,
+        role: "org_admin",
+        token,
+        purpose: "signup_verification",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+
+      // Same query as verifySignup — under the app role, RLS hides the row.
+      const blocked = await appPool.query(
+        `SELECT i.id FROM invitations i
+           JOIN tenants t ON i.org_id = t.id
+          WHERE i.token = $1
+            AND i.purpose = 'signup_verification'
+            AND t.created_via = 'self_serve'`,
+        [token],
+      );
+      expect(blocked.rowCount).toBe(0);
+    } finally {
+      await appPool.end();
+    }
+  });
+});
