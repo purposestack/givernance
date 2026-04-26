@@ -1210,7 +1210,7 @@ describe("POST /v1/invitations/:token/accept", () => {
 // — the same shape the accept endpoint enforces.
 
 describe("GET /v1/invitations/:token/probe", () => {
-  it("returns 204 for a valid pending unexpired team-invite token", async () => {
+  it("returns 200 + tenantDefaultLocale for a valid pending unexpired team-invite token (issue #153)", async () => {
     const f = await makeFixture();
     const create = await app.inject({
       method: "POST",
@@ -1316,5 +1316,93 @@ describe("GET /v1/invitations/:token/probe", () => {
       url: `/v1/invitations/${token}/probe`,
     });
     expect(probe.statusCode).toBe(410);
+  });
+
+  it("every 410 failure path returns the SAME body (anti-enumeration regression test, QA review F-Q3)", async () => {
+    // Hit each documented 410 path and assert the response body is
+    // byte-identical. If any future change leaks a discriminator (a
+    // different `detail`, `title`, or `type` per failure mode), this
+    // test fails — preserving SEC-6's "no enumeration oracle" stance.
+    const f = await makeFixture();
+
+    // Path 1 — unknown token.
+    const unknown = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${randomUUID()}/probe`,
+    });
+
+    // Path 2 — accepted token.
+    const acceptedCreate = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email: `accepted+${f.slug}@example.org`, role: "user" },
+    });
+    expect(acceptedCreate.statusCode).toBe(201);
+    const [acceptedRow] = await db
+      .select({ id: invitations.id, token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.id, acceptedCreate.json<{ data: { id: string } }>().data.id));
+    if (!acceptedRow) throw new Error("seed failure: accepted invitation row not found");
+    await db
+      .update(invitations)
+      .set({ acceptedAt: new Date() })
+      .where(eq(invitations.id, acceptedRow.id));
+    const accepted = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${acceptedRow.token}/probe`,
+    });
+
+    // Path 3 — expired token.
+    const expiredId = randomUUID();
+    const expiredToken = randomUUID();
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.insert(invitations).values({
+        id: expiredId,
+        orgId: f.orgId,
+        email: `expired+${f.slug}@example.org`,
+        role: "user",
+        token: expiredToken,
+        purpose: "team_invite",
+        expiresAt: new Date(Date.now() - 60_000),
+      });
+    });
+    const expired = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${expiredToken}/probe`,
+    });
+
+    // Path 4 — wrong purpose (signup_verification row).
+    const wrongPurposeId = randomUUID();
+    const wrongPurposeToken = randomUUID();
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.insert(invitations).values({
+        id: wrongPurposeId,
+        orgId: f.orgId,
+        email: `wrong-purpose+${f.slug}@example.org`,
+        role: "org_admin",
+        token: wrongPurposeToken,
+        purpose: "signup_verification",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+    });
+    const wrongPurpose = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${wrongPurposeToken}/probe`,
+    });
+
+    const responses = [unknown, accepted, expired, wrongPurpose];
+    for (const r of responses) {
+      expect(r.statusCode).toBe(410);
+    }
+    // The body shape is the RFC 9457 problem detail; assert each field
+    // matches across all four paths so a future regression that adds a
+    // discriminator would fail loud.
+    const bodies = responses.map((r) => r.json() as Record<string, unknown>);
+    expect(new Set(bodies.map((b) => b.title)).size).toBe(1);
+    expect(new Set(bodies.map((b) => b.detail)).size).toBe(1);
+    expect(new Set(bodies.map((b) => b.status)).size).toBe(1);
   });
 });

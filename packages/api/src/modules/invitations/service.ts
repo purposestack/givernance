@@ -789,9 +789,16 @@ export async function acceptTeamInvitation(
           role: row.role,
           keycloakId: kcUserId,
           // Issue #153: write the personal locale only on first INSERT.
-          // The recovery branch (UPDATE) leaves any existing `users.locale`
-          // alone — clobbering a previously-chosen preference on a
-          // half-state retry would surprise the user.
+          // The recovery branch (UPDATE) below explicitly omits `locale`
+          // from the SET clause, which has two intended consequences:
+          //   1. A user who already chose a personal locale earlier and
+          //      hits the recovery path keeps their preference (we never
+          //      clobber a chosen value).
+          //   2. A recovery-state user with `locale = NULL` cannot set
+          //      their personal preference via the accept form — they
+          //      must use the (future) /settings/profile switcher
+          //      (issue #159) instead.
+          // Both behaviours are deliberate; security review F-S2.
           locale: personalLocale,
         })
         .onConflictDoUpdate({

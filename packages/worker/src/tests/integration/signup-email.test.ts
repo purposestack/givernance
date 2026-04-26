@@ -50,7 +50,7 @@ beforeAll(async () => {
     })
     .onConflictDoNothing();
 
-  // French-locale tenant — same fixture with country='FR' on the job.
+  // French-locale tenant — same fixture with locale='fr' on the job (issue #153).
   await db.execute(
     sql`INSERT INTO tenants (id, name, slug, status, created_via)
         VALUES (${ORG_ID_FR}, 'Assoc Demo', ${`signup-email-fr-${randomUUID().slice(0, 8)}`}, 'provisional', 'self_serve')
