@@ -23,7 +23,7 @@ describe("FirstAdminCard", () => {
 
     await waitFor(() => {
       expect(mockApiClient.post).toHaveBeenCalledWith(
-        "/v1/superadmin/tenants/tenant-1/invite-first-admin",
+        "/v1/superadmin/tenants/tenant-1/first-admin-invitations",
         { email: "first@example.org" },
       );
     });
@@ -61,15 +61,19 @@ describe("FirstAdminCard", () => {
     await user.click(screen.getByRole("button", { name: "Resend" }));
     await waitFor(() => {
       expect(mockApiClient.post).toHaveBeenCalledWith(
-        "/v1/superadmin/tenants/tenant-1/invite-first-admin/inv-1/resend",
+        "/v1/superadmin/tenants/tenant-1/first-admin-invitations/inv-1/resend",
       );
     });
     expect(mockToast.success).toHaveBeenCalledWith("Invitation re-sent.");
 
+    // First click opens the AlertDialog (confirmation step added per PR #154
+    // UX review M1); the dialog's destructive button fires the DELETE.
     await user.click(screen.getByRole("button", { name: "Cancel invitation" }));
+    const confirmButtons = await screen.findAllByRole("button", { name: "Cancel invitation" });
+    await user.click(confirmButtons[confirmButtons.length - 1]);
     await waitFor(() => {
       expect(mockApiClient.delete).toHaveBeenCalledWith(
-        "/v1/superadmin/tenants/tenant-1/invite-first-admin/inv-1",
+        "/v1/superadmin/tenants/tenant-1/first-admin-invitations/inv-1",
       );
     });
     expect(mockToast.success).toHaveBeenCalledWith("Invitation cancelled.");

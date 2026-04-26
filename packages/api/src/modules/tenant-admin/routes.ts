@@ -8,7 +8,9 @@
  *  - `PATCH /v1/superadmin/tenants/:id/idp`                — super-admin, rotate/patch config.
  *  - `DELETE /v1/superadmin/tenants/:id/idp`               — super-admin.
  *  - `POST /v1/superadmin/tenants/:id/lifecycle`           — super-admin, suspend/archive/activate.
- *  - `POST /v1/superadmin/tenants/:id/invite-first-admin`  — super-admin, seed first user.
+ *  - `POST   /v1/superadmin/tenants/:id/first-admin-invitations`              — super-admin, seed first user.
+ *  - `POST   /v1/superadmin/tenants/:id/first-admin-invitations/:iid/resend`  — super-admin, rotate token.
+ *  - `DELETE /v1/superadmin/tenants/:id/first-admin-invitations/:iid`         — super-admin, revoke.
  *  - `POST /v1/tenants/:id/domains`                   — super_admin OR owning org_admin.
  *  - `POST /v1/tenants/:id/domains/:domain/verify`    — same auth.
  *  - `DELETE /v1/tenants/:id/domains/:domain`         — same auth.
@@ -495,9 +497,15 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** POST /v1/superadmin/tenants/:id/invite-first-admin — seed the first enterprise user. */
+  /**
+   * POST /v1/superadmin/tenants/:id/first-admin-invitations — seed the first
+   * enterprise user. Modelled as a collection-create to keep the URL
+   * structure REST-clean (so the resend / cancel routes below can be true
+   * sub-resource paths rather than action verbs with children — review
+   * MEDIUM finding on PR #154).
+   */
   app.post(
-    "/superadmin/tenants/:id/invite-first-admin",
+    "/superadmin/tenants/:id/first-admin-invitations",
     {
       preHandler: requireSuperAdmin,
       schema: {
@@ -521,6 +529,10 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
       });
       if (!res.ok) {
         if (res.error === "already_accepted") {
+          request.log.info(
+            { event: "tenant.first_admin_invite_rejected", reason: res.error, tenantId: id },
+            "rejected — already accepted",
+          );
           return reply
             .status(409)
             .send(
@@ -531,8 +543,16 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
               ),
             );
         }
+        request.log.info(
+          { event: "tenant.first_admin_invite_rejected", reason: res.error, tenantId: id },
+          "rejected — tenant not found",
+        );
         return reply.status(404).send(problemDetail(404, "Not Found", "Tenant not found."));
       }
+      request.log.info(
+        { event: "tenant.first_admin_invited", tenantId: id, invitationId: res.invitationId },
+        "first-admin invitation created",
+      );
       return reply.status(201).send({
         data: {
           invitationId: res.invitationId,
@@ -544,13 +564,16 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
   );
 
   /**
-   * POST /v1/superadmin/tenants/:id/invite-first-admin/:invitationId/resend
+   * POST /v1/superadmin/tenants/:id/first-admin-invitations/:invitationId/resend
+   *
    * Rotate the token + expiry on a pending first-admin invitation. Returns
-   * the fresh token so the operator can copy a fallback link until the
-   * email worker (#145) ships.
+   * the fresh token (200 + body, deviating from the team-invite 204) so
+   * the operator can copy a fallback link until the email worker (#145)
+   * ships. Status code is 200 — no resource is created (the row stays;
+   * only the token + expiry mutate) and we deliberately need a body.
    */
   app.post(
-    "/superadmin/tenants/:id/invite-first-admin/:invitationId/resend",
+    "/superadmin/tenants/:id/first-admin-invitations/:invitationId/resend",
     {
       preHandler: requireSuperAdmin,
       config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
@@ -572,6 +595,15 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
         audit: auditFromRequest(request),
       });
       if (!res.ok) {
+        request.log.info(
+          {
+            event: "tenant.first_admin_invite_resend_rejected",
+            reason: res.error,
+            tenantId: id,
+            invitationId,
+          },
+          "resend rejected",
+        );
         if (res.error === "already_accepted") {
           return reply
             .status(409)
@@ -579,6 +611,14 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
         }
         return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
       }
+      request.log.info(
+        {
+          event: "tenant.first_admin_invite_resent",
+          tenantId: id,
+          invitationId: res.invitationId,
+        },
+        "first-admin invitation resent",
+      );
       return reply.status(200).send({
         data: {
           invitationId: res.invitationId,
@@ -589,9 +629,9 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** DELETE /v1/superadmin/tenants/:id/invite-first-admin/:invitationId — revoke. */
+  /** DELETE /v1/superadmin/tenants/:id/first-admin-invitations/:invitationId — revoke. */
   app.delete(
-    "/superadmin/tenants/:id/invite-first-admin/:invitationId",
+    "/superadmin/tenants/:id/first-admin-invitations/:invitationId",
     {
       preHandler: requireSuperAdmin,
       schema: {
@@ -612,6 +652,15 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
         audit: auditFromRequest(request),
       });
       if (!res.ok) {
+        request.log.info(
+          {
+            event: "tenant.first_admin_invite_revoke_rejected",
+            reason: res.error,
+            tenantId: id,
+            invitationId,
+          },
+          "revoke rejected",
+        );
         if (res.error === "already_accepted") {
           return reply
             .status(409)
@@ -625,6 +674,10 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
         }
         return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
       }
+      request.log.info(
+        { event: "tenant.first_admin_invite_revoked", tenantId: id, invitationId },
+        "first-admin invitation revoked",
+      );
       return reply.status(204).send();
     },
   );

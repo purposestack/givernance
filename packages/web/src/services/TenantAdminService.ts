@@ -139,7 +139,7 @@ export async function inviteFirstAdmin(
 ): Promise<InviteFirstAdminResult> {
   const api = createClientApiClient();
   const res = await api.post<{ data: InviteFirstAdminResult }>(
-    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/invite-first-admin`,
+    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/first-admin-invitations`,
     { email: email.trim().toLowerCase() },
   );
   return res.data;
@@ -151,7 +151,7 @@ export async function resendFirstAdminInvitation(
 ): Promise<InviteFirstAdminResult> {
   const api = createClientApiClient();
   const res = await api.post<{ data: InviteFirstAdminResult }>(
-    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/invite-first-admin/${encodeURIComponent(
+    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/first-admin-invitations/${encodeURIComponent(
       invitationId,
     )}/resend`,
   );
@@ -164,7 +164,7 @@ export async function cancelFirstAdminInvitation(
 ): Promise<void> {
   const api = createClientApiClient();
   await api.delete<void>(
-    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/invite-first-admin/${encodeURIComponent(
+    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/first-admin-invitations/${encodeURIComponent(
       invitationId,
     )}`,
   );

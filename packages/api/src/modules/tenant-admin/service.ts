@@ -1076,6 +1076,9 @@ export async function resendFirstEnterpriseInvitation(input: {
       .set({ token: newToken, expiresAt })
       .where(eq(invitations.id, input.invitationId));
 
+    // Outbox emits the same event type as the initial invite so the email
+    // worker (#145) routes both to the same template; the audit action
+    // below uses a distinct verb so audit queries can tell them apart.
     await tx.insert(outboxEvents).values({
       tenantId: input.orgId,
       type: "tenant.first_admin_invited",
@@ -1089,7 +1092,7 @@ export async function resendFirstEnterpriseInvitation(input: {
     await tx.insert(auditLogs).values({
       orgId: input.orgId,
       userId: input.audit.actorUserId,
-      action: "tenant.first_admin_invited",
+      action: "tenant.first_admin_invite_resent",
       resourceType: "invitation",
       resourceId: row.id,
       newValues: { rotated: true, role: "org_admin" },
