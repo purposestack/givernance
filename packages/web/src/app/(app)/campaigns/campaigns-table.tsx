@@ -1,17 +1,37 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Megaphone } from "lucide-react";
+import { Megaphone, MoreHorizontal, Pencil, XCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "@/components/ui/toast";
+import { ApiProblem } from "@/lib/api";
+import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Campaign, CampaignStats, CampaignStatus, CampaignType } from "@/models/campaign";
+import { CampaignService } from "@/services/CampaignService";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
 
@@ -38,6 +58,12 @@ const CAMPAIGN_STATUSES = new Set<CampaignStatus>(["draft", "active", "closed"])
 interface CampaignsTableProps {
   campaigns: CampaignWithStats[];
   pagination: DataTablePagination;
+  /**
+   * `Close` is `requireOrgAdmin` server-side; when `false`, the row's
+   * dropdown only shows Edit. Mirrors the donations + members + constituents
+   * shortcut pattern.
+   */
+  canManageAdminActions: boolean;
 }
 
 function isCampaignType(value: string): value is CampaignType {
@@ -48,12 +74,18 @@ function isCampaignStatus(value: string): value is CampaignStatus {
   return CAMPAIGN_STATUSES.has(value as CampaignStatus);
 }
 
-export function CampaignsTable({ campaigns, pagination }: CampaignsTableProps) {
+export function CampaignsTable({
+  campaigns,
+  pagination,
+  canManageAdminActions,
+}: CampaignsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const locale = useLocale();
   const t = useTranslations("campaigns");
+  const [closeTarget, setCloseTarget] = useState<Campaign | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -68,6 +100,26 @@ export function CampaignsTable({ campaigns, pagination }: CampaignsTableProps) {
     },
     [pathname, router, searchParams],
   );
+
+  const confirmClose = useCallback(async () => {
+    if (!closeTarget) return;
+    setIsClosing(true);
+    try {
+      await CampaignService.closeCampaign(createClientApiClient(), closeTarget.id);
+      toast.success(t("success.closed"));
+      setCloseTarget(null);
+      router.refresh();
+    } catch (err) {
+      if (!(err instanceof ApiProblem)) console.error("campaigns.close failed", err);
+      const message =
+        err instanceof ApiProblem
+          ? (err.detail ?? err.title ?? t("errors.closeGeneric"))
+          : t("errors.closeGeneric");
+      toast.error(message);
+    } finally {
+      setIsClosing(false);
+    }
+  }, [closeTarget, router, t]);
 
   const columns = useMemo<ColumnDef<CampaignWithStats>[]>(
     () => [
@@ -163,26 +215,133 @@ export function CampaignsTable({ campaigns, pagination }: CampaignsTableProps) {
           </span>
         ),
       },
+      {
+        id: "actions",
+        header: () => <span className="sr-only">{t("columns.actions")}</span>,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const campaign = row.original.campaign;
+          const canClose =
+            canManageAdminActions && (campaign.status === "draft" || campaign.status === "active");
+          return (
+            <CampaignRowActions
+              campaign={campaign}
+              canClose={canClose}
+              onClose={() => setCloseTarget(campaign)}
+              menuLabel={t("actions.menu", { name: campaign.name })}
+              editLabel={t("actions.edit")}
+              closeLabel={t("actions.close")}
+            />
+          );
+        },
+      },
     ],
-    [t, locale],
+    [canManageAdminActions, t, locale],
   );
 
   return (
-    <div className="transition-opacity duration-normal">
-      <DataTable
-        columns={columns}
-        data={campaigns}
-        pagination={pagination}
-        onPageChange={navigateToPage}
-        onRowClick={(row) => router.push(`/campaigns/${row.original.campaign.id}`)}
-        emptyState={
-          <EmptyState
-            icon={Megaphone}
-            title={t("empty.title")}
-            description={t("empty.description")}
-          />
-        }
-      />
-    </div>
+    <>
+      <div className="transition-opacity duration-normal">
+        <DataTable
+          columns={columns}
+          data={campaigns}
+          pagination={pagination}
+          onPageChange={navigateToPage}
+          onRowClick={(row) => router.push(`/campaigns/${row.original.campaign.id}`)}
+          emptyState={
+            <EmptyState
+              icon={Megaphone}
+              title={t("empty.title")}
+              description={t("empty.description")}
+            />
+          }
+        />
+      </div>
+
+      <AlertDialog
+        open={closeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setCloseTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("closeDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {closeTarget
+                ? t("closeDialog.description", { name: closeTarget.name })
+                : t("closeDialog.descriptionFallback")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="ghost" disabled={isClosing}>
+                {t("closeDialog.cancel")}
+              </Button>
+            </AlertDialogCancel>
+            <Button variant="destructive" disabled={isClosing} onClick={() => void confirmClose()}>
+              {isClosing ? t("closeDialog.closing") : t("closeDialog.confirm")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+interface CampaignRowActionsProps {
+  campaign: Campaign;
+  canClose: boolean;
+  onClose: () => void;
+  menuLabel: string;
+  editLabel: string;
+  closeLabel: string;
+}
+
+function CampaignRowActions({
+  campaign,
+  canClose,
+  onClose,
+  menuLabel,
+  editLabel,
+  closeLabel,
+}: CampaignRowActionsProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={menuLabel}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <MoreHorizontal size={16} aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+        <DropdownMenuItem asChild>
+          <Link
+            href={`/campaigns/${campaign.id}/edit`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Pencil size={16} aria-hidden="true" />
+            {editLabel}
+          </Link>
+        </DropdownMenuItem>
+        {canClose ? (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onClose();
+            }}
+            className="text-error focus:text-error"
+          >
+            <XCircle size={16} aria-hidden="true" />
+            {closeLabel}
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
