@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { mockApiClient, mockRouter, mockToast } from "@/tests/mocks";
@@ -69,8 +69,8 @@ describe("FirstAdminCard", () => {
     // First click opens the AlertDialog (confirmation step added per PR #154
     // UX review M1); the dialog's destructive button fires the DELETE.
     await user.click(screen.getByRole("button", { name: "Cancel invitation" }));
-    const confirmButtons = await screen.findAllByRole("button", { name: "Cancel invitation" });
-    await user.click(confirmButtons[confirmButtons.length - 1]);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel invitation" }));
     await waitFor(() => {
       expect(mockApiClient.delete).toHaveBeenCalledWith(
         "/v1/superadmin/tenants/tenant-1/first-admin-invitations/inv-1",
