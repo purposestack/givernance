@@ -592,6 +592,7 @@
       "email": "Email",
       "role": "Rôle",
       "status": "Statut",
+      "invitedBy": "Invité·e par",
       "createdAt": "Invité·e le",
       "actions": "Actions"
     },

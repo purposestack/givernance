@@ -309,6 +309,55 @@ describe("GET /v1/invitations", () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it("joins invitedById to users and returns invitedByName, null-safe (issue #151)", async () => {
+    const f = await makeFixture();
+
+    // 1. Invitation created via the create endpoint — invitedById resolves
+    //    to the inviter fixture, so invitedByName must be "Inviter Admin".
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email: `with-inviter+${f.slug}@example.org`, role: "user" },
+    });
+    expect(create.statusCode).toBe(201);
+
+    // 2. Direct insert with invitedById = null — mirrors the super-admin
+    //    seeding path (`inviteFirstEnterpriseUser`). invitedByName must be
+    //    null without the join nuking the row.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.insert(invitations).values({
+        orgId: f.orgId,
+        email: `null-inviter+${f.slug}@example.org`,
+        role: "user",
+        purpose: "team_invite",
+        invitedById: null,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+    });
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+    });
+    expect(list.statusCode).toBe(200);
+    const body = list.json<{
+      data: Array<{ email: string; invitedById: string | null; invitedByName: string | null }>;
+    }>();
+
+    const withInviter = body.data.find((row) => row.email.startsWith("with-inviter+"));
+    expect(withInviter).toBeDefined();
+    expect(withInviter?.invitedById).toBe(f.inviterUserId);
+    expect(withInviter?.invitedByName).toBe("Inviter Admin");
+
+    const nullInviter = body.data.find((row) => row.email.startsWith("null-inviter+"));
+    expect(nullInviter).toBeDefined();
+    expect(nullInviter?.invitedById).toBeNull();
+    expect(nullInviter?.invitedByName).toBeNull();
+  });
 });
 
 // ─── Resend ─────────────────────────────────────────────────────────────────

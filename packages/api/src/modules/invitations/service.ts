@@ -288,6 +288,12 @@ export interface InvitationSummary {
   email: string;
   role: InviteRole;
   invitedById: string | null;
+  /**
+   * Display name of the inviter ("First Last"), or null when the inviter
+   * row no longer exists (FK is `ON DELETE SET NULL`) or the invitation
+   * was created by the super-admin seeding path with `invitedById = null`.
+   */
+  invitedByName: string | null;
   acceptedAt: Date | null;
   expiresAt: Date;
   createdAt: Date;
@@ -317,6 +323,13 @@ export async function listTeamInvitations(
 
   const now = new Date();
   return withTenantContext(input.orgId, async (tx) => {
+    // Left join to `users` so the members page can show "Invited by Alice"
+    // without a second round-trip. `invited_by_id` is nullable (super-admin
+    // seeding path leaves it null) and the FK is `ON DELETE SET NULL`, so
+    // the join must tolerate both a missing FK and a deleted inviter — left
+    // join + null-safe formatting below covers both cases. Both tables are
+    // scoped to the same tenant via FORCE RLS, so the join is naturally
+    // tenant-scoped under `withTenantContext`.
     const rows = await tx
       .select({
         id: invitations.id,
@@ -324,11 +337,14 @@ export async function listTeamInvitations(
         email: invitations.email,
         role: invitations.role,
         invitedById: invitations.invitedById,
+        inviterFirstName: users.firstName,
+        inviterLastName: users.lastName,
         acceptedAt: invitations.acceptedAt,
         expiresAt: invitations.expiresAt,
         createdAt: invitations.createdAt,
       })
       .from(invitations)
+      .leftJoin(users, eq(users.id, invitations.invitedById))
       .where(and(eq(invitations.orgId, input.orgId), eq(invitations.purpose, "team_invite")))
       .orderBy(desc(invitations.createdAt))
       .limit(perPage)
@@ -340,15 +356,28 @@ export async function listTeamInvitations(
       .where(and(eq(invitations.orgId, input.orgId), eq(invitations.purpose, "team_invite")));
     const total = Number(totalRows[0]?.total ?? 0);
 
-    const data: InvitationSummary[] = rows.map((r) => ({
-      ...r,
-      role: r.role as InviteRole,
-      status: r.acceptedAt
-        ? ("accepted" as const)
-        : r.expiresAt < now
-          ? ("expired" as const)
-          : ("pending" as const),
-    }));
+    const data: InvitationSummary[] = rows.map((r) => {
+      const inviterName =
+        r.inviterFirstName || r.inviterLastName
+          ? `${r.inviterFirstName ?? ""} ${r.inviterLastName ?? ""}`.trim()
+          : null;
+      return {
+        id: r.id,
+        orgId: r.orgId,
+        email: r.email,
+        role: r.role as InviteRole,
+        invitedById: r.invitedById,
+        invitedByName: inviterName,
+        acceptedAt: r.acceptedAt,
+        expiresAt: r.expiresAt,
+        createdAt: r.createdAt,
+        status: r.acceptedAt
+          ? ("accepted" as const)
+          : r.expiresAt < now
+            ? ("expired" as const)
+            : ("pending" as const),
+      };
+    });
 
     return {
       data,
