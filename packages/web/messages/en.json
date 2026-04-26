@@ -510,7 +510,7 @@
           "pending": {
             "description": "Invited {email} on {date}.",
             "expiresAt": "Link expires {date}.",
-            "resendHint": "The invite link is no longer in this session. Use Resend to mint a fresh link you can copy."
+            "resendHint": "We don't keep the previous invite link. Click Resend to issue a fresh one — the original link stays valid for the recipient until then."
           },
           "expired": {
             "description": "The invitation for {email} expired on {date}. Resend to mint a fresh link."
@@ -521,6 +521,12 @@
           "badges": {
             "pending": "Pending",
             "expired": "Expired"
+          },
+          "cancelDialog": {
+            "title": "Cancel first-admin invitation?",
+            "description": "Cancel the invitation for {email}? The link will stop working immediately and the recipient will not be able to accept it.",
+            "keep": "Keep invitation",
+            "confirm": "Cancel invitation"
           },
           "fields": {
             "email": "Email",
@@ -541,7 +547,7 @@
             "label": "Invite link",
             "copy": "Copy link",
             "copied": "Copied",
-            "hint": "Share this link until the email worker is wired up."
+            "hint": "Send this link to the new admin via your usual channel."
           },
           "success": {
             "invited": "Invitation sent to {email}.",

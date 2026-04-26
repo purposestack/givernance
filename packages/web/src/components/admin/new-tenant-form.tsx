@@ -123,33 +123,23 @@ export function NewTenantForm() {
       return;
     }
 
-    // Optional: pair the create with a first-admin invite. Per issue #147
-    // we deliberately do NOT roll the tenant back if the invite call fails;
-    // the operator is routed to the detail page where the FirstAdminCard
-    // surfaces the failure and lets them retry.
     const firstAdminEmail = values.firstAdminEmail.trim();
-    if (firstAdminEmail.length > 0) {
-      try {
-        const invite = await inviteFirstAdmin(createdTenantId, firstAdminEmail);
-        toast.success(t("success"));
-        const params = new URLSearchParams({ inviteToken: invite.invitationToken });
-        router.push(`/admin/tenants/${createdTenantId}?${params.toString()}`);
-        router.refresh();
-        return;
-      } catch (error) {
-        toast.error(t("errors.inviteFailed"));
+    const successMessage = t("success");
+    const inviteFailedMessage = t("errors.inviteFailed");
+    await maybePairWithFirstAdminInvite({
+      tenantId: createdTenantId,
+      firstAdminEmail,
+      onAnyOutcome: () => router.refresh(),
+      onSuccess: () => {
+        toast.success(successMessage);
+        router.push(`/admin/tenants/${createdTenantId}`);
+      },
+      onInviteFailure: () => {
+        toast.error(inviteFailedMessage);
         const params = new URLSearchParams({ inviteFailed: "1" });
         router.push(`/admin/tenants/${createdTenantId}?${params.toString()}`);
-        router.refresh();
-        // Tag the unused error for noUnusedLocals in strict TS configs.
-        void error;
-        return;
-      }
-    }
-
-    toast.success(t("success"));
-    router.push(`/admin/tenants/${createdTenantId}`);
-    router.refresh();
+      },
+    });
   }
 
   const isSubmitting = form.formState.isSubmitting;
@@ -292,6 +282,71 @@ interface ErrorCopy {
 // Note: `inviteFailed` is surfaced via toast at the call site, not via form
 // errors — the tenant has already been created by the time we reach that
 // branch, so the operator's next step is the detail page, not the form.
+
+/**
+ * Hand off a freshly-minted first-admin token to the detail page via
+ * `sessionStorage` (PR #154 review HIGH — keeps tokens out of URLs / referer
+ * / browser history). Exported alongside its reader so both ends use the
+ * same key shape.
+ */
+const FIRST_ADMIN_TOKEN_STASH_KEY_PREFIX = "givernance.firstAdminToken.";
+
+function stashFreshFirstAdminToken(tenantId: string, token: string): void {
+  try {
+    sessionStorage.setItem(`${FIRST_ADMIN_TOKEN_STASH_KEY_PREFIX}${tenantId}`, token);
+  } catch {
+    // Storage disabled (Safari private mode, hardened browsers); silently
+    // skip — the operator can hit Resend on the detail page to mint a
+    // fresh link.
+  }
+}
+
+/**
+ * Optional create-time pairing: if the operator filled in the first-admin
+ * email field, fire `inviteFirstAdmin` after the tenant create succeeds.
+ * Per issue #147 the tenant is NEVER rolled back on invite failure — the
+ * operator is routed to the detail page where the FirstAdminCard surfaces
+ * the failure inline and lets them retry.
+ *
+ * Token-handoff (PR #154 review HIGH): the raw token is the sole credential
+ * on the public accept route, so we stash it in `sessionStorage` rather
+ * than push it through the URL bar / referer / browser history.
+ * `inviteFailed=1` stays in the URL because it's a non-sensitive boolean.
+ */
+async function maybePairWithFirstAdminInvite(input: {
+  tenantId: string;
+  firstAdminEmail: string;
+  onAnyOutcome: () => void;
+  onSuccess: () => void;
+  onInviteFailure: () => void;
+}): Promise<void> {
+  const { tenantId, firstAdminEmail, onAnyOutcome, onSuccess, onInviteFailure } = input;
+  if (firstAdminEmail.length === 0) {
+    onSuccess();
+    onAnyOutcome();
+    return;
+  }
+  try {
+    const invite = await inviteFirstAdmin(tenantId, firstAdminEmail);
+    stashFreshFirstAdminToken(tenantId, invite.invitationToken);
+    onSuccess();
+  } catch {
+    onInviteFailure();
+  } finally {
+    onAnyOutcome();
+  }
+}
+
+export function readAndClearStashedFirstAdminToken(tenantId: string): string | null {
+  try {
+    const key = `${FIRST_ADMIN_TOKEN_STASH_KEY_PREFIX}${tenantId}`;
+    const value = sessionStorage.getItem(key);
+    if (value) sessionStorage.removeItem(key);
+    return value;
+  } catch {
+    return null;
+  }
+}
 
 function handleApiError(
   error: unknown,

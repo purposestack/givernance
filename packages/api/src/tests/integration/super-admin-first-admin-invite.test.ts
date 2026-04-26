@@ -86,14 +86,14 @@ afterEach(async () => {
   fixtureSlugs.clear();
 });
 
-describe("POST /v1/superadmin/tenants/:id/invite-first-admin", () => {
+describe("POST /v1/superadmin/tenants/:id/first-admin-invitations", () => {
   it("creates a first-admin invitation and returns the raw token", async () => {
     const f = await makeFixture();
     const email = `first-admin+${f.slug}@example.org`;
 
     const res = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       headers: authHeader(f.superAdminToken),
       payload: { email },
     });
@@ -133,7 +133,7 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin", () => {
     const f = await makeFixture();
     const res = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${randomUUID()}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${randomUUID()}/first-admin-invitations`,
       headers: authHeader(f.superAdminToken),
       payload: { email: "anyone@example.org" },
     });
@@ -144,7 +144,7 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin", () => {
     const f = await makeFixture();
     const create = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       headers: authHeader(f.superAdminToken),
       payload: { email: `accepted+${f.slug}@example.org` },
     });
@@ -158,7 +158,7 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin", () => {
 
     const second = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       headers: authHeader(f.superAdminToken),
       payload: { email: `accepted+${f.slug}@example.org` },
     });
@@ -169,7 +169,7 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin", () => {
     const f = await makeFixture();
     const res = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       payload: { email: "anyone@example.org" },
     });
     expect(res.statusCode).toBe(401);
@@ -185,7 +185,7 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin", () => {
     });
     const res = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       headers: authHeader(orgAdminToken),
       payload: { email: "anyone@example.org" },
     });
@@ -193,12 +193,12 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin", () => {
   });
 });
 
-describe("POST /v1/superadmin/tenants/:id/invite-first-admin/:invitationId/resend", () => {
+describe("POST /v1/superadmin/tenants/:id/first-admin-invitations/:invitationId/resend", () => {
   it("rotates the token, re-emits the outbox event, and returns the fresh token", async () => {
     const f = await makeFixture();
     const create = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       headers: authHeader(f.superAdminToken),
       payload: { email: `resend+${f.slug}@example.org` },
     });
@@ -209,7 +209,7 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin/:invitationId/resen
 
     const resend = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin/${invitationId}/resend`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations/${invitationId}/resend`,
       headers: authHeader(f.superAdminToken),
     });
     expect(resend.statusCode).toBe(200);
@@ -228,7 +228,7 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin/:invitationId/resen
     const f = await makeFixture();
     const res = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin/${randomUUID()}/resend`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations/${randomUUID()}/resend`,
       headers: authHeader(f.superAdminToken),
     });
     expect(res.statusCode).toBe(404);
@@ -238,7 +238,7 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin/:invitationId/resen
     const f = await makeFixture();
     const create = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       headers: authHeader(f.superAdminToken),
       payload: { email: `accepted-resend+${f.slug}@example.org` },
     });
@@ -249,19 +249,19 @@ describe("POST /v1/superadmin/tenants/:id/invite-first-admin/:invitationId/resen
 
     const res = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin/${invitationId}/resend`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations/${invitationId}/resend`,
       headers: authHeader(f.superAdminToken),
     });
     expect(res.statusCode).toBe(409);
   });
 });
 
-describe("DELETE /v1/superadmin/tenants/:id/invite-first-admin/:invitationId", () => {
+describe("DELETE /v1/superadmin/tenants/:id/first-admin-invitations/:invitationId", () => {
   it("hard-deletes a pending invitation", async () => {
     const f = await makeFixture();
     const create = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       headers: authHeader(f.superAdminToken),
       payload: { email: `cancel+${f.slug}@example.org` },
     });
@@ -271,7 +271,7 @@ describe("DELETE /v1/superadmin/tenants/:id/invite-first-admin/:invitationId", (
 
     const cancel = await app.inject({
       method: "DELETE",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin/${invitationId}`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations/${invitationId}`,
       headers: authHeader(f.superAdminToken),
     });
     expect(cancel.statusCode).toBe(204);
@@ -286,7 +286,7 @@ describe("DELETE /v1/superadmin/tenants/:id/invite-first-admin/:invitationId", (
     const f = await makeFixture();
     const res = await app.inject({
       method: "DELETE",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin/${randomUUID()}`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations/${randomUUID()}`,
       headers: authHeader(f.superAdminToken),
     });
     expect(res.statusCode).toBe(404);
@@ -296,7 +296,7 @@ describe("DELETE /v1/superadmin/tenants/:id/invite-first-admin/:invitationId", (
     const f = await makeFixture();
     const create = await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       headers: authHeader(f.superAdminToken),
       payload: { email: `cancel-accepted+${f.slug}@example.org` },
     });
@@ -307,10 +307,71 @@ describe("DELETE /v1/superadmin/tenants/:id/invite-first-admin/:invitationId", (
 
     const res = await app.inject({
       method: "DELETE",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin/${invitationId}`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations/${invitationId}`,
       headers: authHeader(f.superAdminToken),
     });
     expect(res.statusCode).toBe(409);
+  });
+});
+
+// Cross-tenant scoping regression — review MEDIUM finding on PR #154.
+// Both `resendFirstEnterpriseInvitation` and `revokeFirstEnterpriseInvitation`
+// match on `(invitations.id, invitations.orgId)`; this asserts that passing
+// the WRONG tenant id alongside a real invitation id 404s instead of acting
+// on the foreign row. Otherwise a super-admin (or compromised session)
+// could rotate / revoke invitations across tenants by id-guessing.
+describe("Cross-tenant scoping", () => {
+  it("resend 404s when :id is not the owning tenant", async () => {
+    const owner = await makeFixture();
+    const intruder = await makeFixture();
+    const create = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/tenants/${owner.orgId}/first-admin-invitations`,
+      headers: authHeader(owner.superAdminToken),
+      payload: { email: `cross-tenant-resend+${owner.slug}@example.org` },
+    });
+    const { invitationId } = create.json<{
+      data: { invitationId: string };
+    }>().data;
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/tenants/${intruder.orgId}/first-admin-invitations/${invitationId}/resend`,
+      headers: authHeader(intruder.superAdminToken),
+    });
+    expect(res.statusCode).toBe(404);
+
+    // The owner's row is untouched.
+    const { rows } = await db.execute<{ token: string }>(
+      sql`SELECT token FROM invitations WHERE id = ${invitationId}`,
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it("revoke 404s when :id is not the owning tenant", async () => {
+    const owner = await makeFixture();
+    const intruder = await makeFixture();
+    const create = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/tenants/${owner.orgId}/first-admin-invitations`,
+      headers: authHeader(owner.superAdminToken),
+      payload: { email: `cross-tenant-revoke+${owner.slug}@example.org` },
+    });
+    const { invitationId } = create.json<{
+      data: { invitationId: string };
+    }>().data;
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/superadmin/tenants/${intruder.orgId}/first-admin-invitations/${invitationId}`,
+      headers: authHeader(intruder.superAdminToken),
+    });
+    expect(res.statusCode).toBe(404);
+
+    const { rows } = await db.execute<{ id: string }>(
+      sql`SELECT id FROM invitations WHERE id = ${invitationId}`,
+    );
+    expect(rows).toHaveLength(1);
   });
 });
 
@@ -320,7 +381,7 @@ describe("GET /v1/superadmin/tenants/:id/detail (firstAdminInvitation surface)",
     const email = `detail+${f.slug}@example.org`;
     await app.inject({
       method: "POST",
-      url: `/v1/superadmin/tenants/${f.orgId}/invite-first-admin`,
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
       headers: authHeader(f.superAdminToken),
       payload: { email },
     });

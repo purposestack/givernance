@@ -50,7 +50,10 @@ export default async function TenantDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ inviteToken?: string; inviteFailed?: string }>;
+  // `inviteToken` is intentionally NOT in this shape — the new-tenant form
+  // hands the freshly-minted token to the FirstAdminCard via sessionStorage
+  // so it never lives in the URL bar / referer / browser history.
+  searchParams: Promise<{ inviteFailed?: string }>;
 }) {
   const { id } = await params;
   const search = await searchParams;
@@ -232,16 +235,36 @@ export default async function TenantDetailPage({
         </div>
       </header>
 
-      <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
-
-      <FirstAdminCard
-        tenantId={tenant.id}
-        invitation={firstAdminInvitation}
-        initialFreshToken={search.inviteToken}
-        initialError={
-          search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
-        }
-      />
+      {/*
+       * Card-vs-lifecycle ordering (PR #154 UX review L3): when the tenant
+       * has no users and no first-admin invitation yet, seeding the first
+       * admin is the operator's primary next action — float it above
+       * Suspend/Archive. Once the tenant has users or an active invitation
+       * on file, lifecycle controls take precedence.
+       */}
+      {firstAdminInvitation === null && users.length === 0 ? (
+        <>
+          <FirstAdminCard
+            tenantId={tenant.id}
+            invitation={firstAdminInvitation}
+            initialError={
+              search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
+            }
+          />
+          <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
+        </>
+      ) : (
+        <>
+          <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
+          <FirstAdminCard
+            tenantId={tenant.id}
+            invitation={firstAdminInvitation}
+            initialError={
+              search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
+            }
+          />
+        </>
+      )}
 
       <TenantDetailTabs
         overview={overview}

@@ -510,7 +510,7 @@
           "pending": {
             "description": "{email} invité·e le {date}.",
             "expiresAt": "Le lien expire le {date}.",
-            "resendHint": "Le lien d’invitation n’est plus disponible dans cette session. Utilisez Renvoyer pour générer un nouveau lien à copier."
+            "resendHint": "Le précédent lien d’invitation n’est plus conservé. Cliquez sur Renvoyer pour en générer un nouveau — le lien d’origine reste valable pour la personne invitée jusque-là."
           },
           "expired": {
             "description": "L’invitation pour {email} a expiré le {date}. Renvoyez pour générer un nouveau lien."
@@ -521,6 +521,12 @@
           "badges": {
             "pending": "En attente",
             "expired": "Expirée"
+          },
+          "cancelDialog": {
+            "title": "Annuler l’invitation du premier admin ?",
+            "description": "Annuler l’invitation pour {email} ? Le lien cessera immédiatement de fonctionner et la personne invitée ne pourra plus l’accepter.",
+            "keep": "Conserver l’invitation",
+            "confirm": "Annuler l’invitation"
           },
           "fields": {
             "email": "Email",
@@ -541,7 +547,7 @@
             "label": "Lien d’invitation",
             "copy": "Copier le lien",
             "copied": "Copié",
-            "hint": "Partagez ce lien jusqu’à ce que le worker email soit câblé."
+            "hint": "Envoyez ce lien à la nouvelle personne admin via votre canal habituel."
           },
           "success": {
             "invited": "Invitation envoyée à {email}.",
