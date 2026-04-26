@@ -1,10 +1,10 @@
 "use client";
 
-import { CheckCircle2, LogIn, TriangleAlert } from "lucide-react";
+import { CheckCircle2, LogIn, LogOut, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type FormEvent, Suspense, useCallback, useId, useState } from "react";
+import { type FormEvent, Suspense, useCallback, useEffect, useId, useState } from "react";
 import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,37 @@ import { Label } from "@/components/ui/label";
 import { acceptInvitation } from "@/services/InvitationService";
 
 const PASSWORD_MIN_LENGTH = 12;
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
+
+interface SignedInUser {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+type SessionProbe =
+  | { status: "checking" }
+  | { status: "anonymous" }
+  | { status: "signed_in"; user: SignedInUser };
+
+/**
+ * One-shot probe of `/v1/users/me` to detect whether the invitee landed on
+ * this page while another user is still signed in (e.g. a multi-tenant
+ * teammate clicking the link from their email while logged into a sibling
+ * tenant — see PR #154 follow-up). The `(auth)` route group deliberately
+ * doesn't mount `AuthProvider`, so we do the probe inline here.
+ */
+async function probeSession(): Promise<SessionProbe> {
+  try {
+    const res = await fetch(`${API_URL}/v1/users/me`, { credentials: "include" });
+    if (!res.ok) return { status: "anonymous" };
+    const body = (await res.json()) as { data?: SignedInUser };
+    if (!body.data?.email) return { status: "anonymous" };
+    return { status: "signed_in", user: body.data };
+  } catch {
+    return { status: "anonymous" };
+  }
+}
 
 type ValidationKey = "invalid" | "namesRequired" | "passwordTooShort" | "passwordMismatch";
 
@@ -64,6 +95,22 @@ function AcceptContent() {
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "done">("idle");
   const [error, setError] = useState<string | undefined>();
+  const [session, setSession] = useState<SessionProbe>({ status: "checking" });
+
+  // Session-detection probe (PR #154 follow-up). Held off the form render
+  // until we know whether another user is already signed in — otherwise an
+  // invitee could fill the form, hit the login redirect, and silently bounce
+  // back into the previous user's session.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    void probeSession().then((next) => {
+      if (!cancelled) setSession(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const handleSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
@@ -137,6 +184,60 @@ function AcceptContent() {
         <div className="flex items-center justify-center text-xs text-text-muted">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
+      </AuthCard>
+    );
+  }
+
+  if (session.status === "checking") {
+    return (
+      <AuthCard>
+        <AuthLogo />
+        <div className="flex items-center justify-center py-6">
+          <span
+            role="status"
+            aria-label={t("sessionCheck.checking")}
+            className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"
+          />
+        </div>
+      </AuthCard>
+    );
+  }
+
+  if (session.status === "signed_in") {
+    const returnTo = `/invite/accept?token=${encodeURIComponent(token)}`;
+    const displayName =
+      session.user.firstName || session.user.lastName
+        ? [session.user.firstName, session.user.lastName].filter(Boolean).join(" ")
+        : session.user.email;
+    return (
+      <AuthCard>
+        <AuthLogo />
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary-50 text-primary">
+          <LogOut className="h-6 w-6" aria-hidden="true" />
+        </div>
+        <h1 className="mb-2 text-center font-heading text-xl text-text">
+          {t("sessionCheck.title")}
+        </h1>
+        <p className="mb-2 text-center text-sm text-text-secondary">
+          {t("sessionCheck.signedInAs", { name: displayName, email: session.user.email })}
+        </p>
+        <p className="mb-6 text-center text-sm text-text-secondary">{t("sessionCheck.body")}</p>
+        <form method="POST" action="/api/auth/logout" className="space-y-3">
+          <input type="hidden" name="return_to" value={returnTo} />
+          <button
+            type="submit"
+            className="inline-flex h-[var(--btn-height-lg)] w-full items-center justify-center gap-2 rounded-button bg-primary px-8 font-body text-base font-medium text-on-primary transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <LogOut className="h-4 w-4" aria-hidden="true" />
+            {t("sessionCheck.signOutAndContinue")}
+          </button>
+        </form>
+        <Link
+          href="/dashboard"
+          className="mt-3 inline-flex h-[var(--btn-height-md)] w-full items-center justify-center rounded-button border border-outline-variant bg-surface px-6 text-sm font-medium text-text"
+        >
+          {t("sessionCheck.keepCurrent")}
+        </Link>
       </AuthCard>
     );
   }

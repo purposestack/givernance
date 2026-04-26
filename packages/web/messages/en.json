@@ -203,6 +203,14 @@
         "passwordMismatch": "The two passwords don't match.",
         "rateLimited": "Too many attempts. Please try again in a few minutes.",
         "generic": "We couldn't accept this invitation. Please retry or ask the inviter to resend."
+      },
+      "sessionCheck": {
+        "checking": "Checking your session…",
+        "title": "Sign out to accept this invitation",
+        "signedInAs": "You're currently signed in as {name} ({email}).",
+        "body": "Accepting an invitation creates a new sign-in for the invited email. Sign out first so the next sign-in lands on the right account.",
+        "signOutAndContinue": "Sign out and continue",
+        "keepCurrent": "Stay signed in"
       }
     },
     "selectOrganization": {
