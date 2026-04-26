@@ -982,3 +982,116 @@ describe("POST /v1/invitations/:token/accept", () => {
     expect(stillThere?.acceptedAt).toBeNull();
   });
 });
+
+// ─── Public probe (PR #154 follow-up) ────────────────────────────────────────
+//
+// `GET /v1/invitations/:token/probe` is the side-effect-free check the
+// /invite/accept page hits on load to short-circuit dead links to the
+// terminal screen. Anti-enumeration: every failure mode collapses to 410
+// — the same shape the accept endpoint enforces.
+
+describe("GET /v1/invitations/:token/probe", () => {
+  it("returns 204 for a valid pending unexpired team-invite token", async () => {
+    const f = await makeFixture();
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email: `probe-valid+${f.slug}@example.org`, role: "user" },
+    });
+    expect(create.statusCode).toBe(201);
+    // Look up the freshly-minted token (not returned by the create endpoint).
+    const [row] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.id, create.json<{ data: { id: string } }>().data.id));
+    expect(row?.token).toBeDefined();
+
+    const probe = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${row?.token}/probe`,
+    });
+    expect(probe.statusCode).toBe(204);
+  });
+
+  it("returns 410 when the invitation has been accepted", async () => {
+    const f = await makeFixture();
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email: `probe-accepted+${f.slug}@example.org`, role: "user" },
+    });
+    const id = create.json<{ data: { id: string } }>().data.id;
+    const [row] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.id, id));
+    await db.execute(sql`UPDATE invitations SET accepted_at = now() WHERE id = ${id}`);
+
+    const probe = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${row?.token}/probe`,
+    });
+    expect(probe.statusCode).toBe(410);
+  });
+
+  it("returns 410 when the invitation has expired", async () => {
+    const f = await makeFixture();
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email: `probe-expired+${f.slug}@example.org`, role: "user" },
+    });
+    const id = create.json<{ data: { id: string } }>().data.id;
+    const [row] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.id, id));
+    await db.execute(
+      sql`UPDATE invitations SET expires_at = now() - interval '1 minute' WHERE id = ${id}`,
+    );
+
+    const probe = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${row?.token}/probe`,
+    });
+    expect(probe.statusCode).toBe(410);
+  });
+
+  it("returns 410 for an unknown token (no enumeration)", async () => {
+    const probe = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${randomUUID()}/probe`,
+    });
+    expect(probe.statusCode).toBe(410);
+  });
+
+  it("returns 410 for a row whose purpose is not team_invite", async () => {
+    // Insert a `signup_verification` row directly so the probe finds
+    // a row by token but rejects it on purpose. Anti-enumeration shape:
+    // same 410 as a wholly missing row, no discriminator.
+    const f = await makeFixture();
+    const id = randomUUID();
+    const token = randomUUID();
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.insert(invitations).values({
+        id,
+        orgId: f.orgId,
+        email: `signup+${f.slug}@example.org`,
+        role: "org_admin",
+        token,
+        purpose: "signup_verification",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+    });
+
+    const probe = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${token}/probe`,
+    });
+    expect(probe.statusCode).toBe(410);
+  });
+});

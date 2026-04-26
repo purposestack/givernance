@@ -9,7 +9,7 @@ import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { acceptInvitation } from "@/services/InvitationService";
+import { acceptInvitation, probeInvitation } from "@/services/InvitationService";
 
 const PASSWORD_MIN_LENGTH = 12;
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
@@ -95,17 +95,42 @@ function AcceptContent() {
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "done">("idle");
   const [error, setError] = useState<string | undefined>();
+  // `expired` (HTTP 410) is a terminal kind — the form below it is useless
+  // because retyping won't make a revoked / consumed token valid again. We
+  // discriminate on it so the UI can render a dedicated error screen with
+  // a back-to-login affordance instead of leaving the invitee staring at
+  // an unrecoverable form.
+  const [errorKind, setErrorKind] = useState<
+    "validation" | "expired" | "rateLimited" | "generic" | undefined
+  >();
   const [session, setSession] = useState<SessionProbe>({ status: "checking" });
+  // Token probe runs in parallel with the session probe (PR #154 follow-up)
+  // so a dead invitation link short-circuits to the terminal screen on page
+  // load, before the invitee fills out a 4-field form they can't submit.
+  // Network-side failures collapse to "valid" — the post-submit terminal
+  // screen still catches a bad token, so we'd rather render the form than
+  // false-positive an outage as "your link is dead".
+  type TokenProbeState = "checking" | "valid" | "invalid";
+  const [tokenProbe, setTokenProbe] = useState<TokenProbeState>("checking");
 
-  // Session-detection probe (PR #154 follow-up). Held off the form render
-  // until we know whether another user is already signed in — otherwise an
-  // invitee could fill the form, hit the login redirect, and silently bounce
-  // back into the previous user's session.
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
+    // Both probes are independent — fire in parallel.
     void probeSession().then((next) => {
       if (!cancelled) setSession(next);
+    });
+    void probeInvitation(token).then((result) => {
+      if (cancelled) return;
+      if (result === "valid" || result === "rate_limited") {
+        // Treat rate-limited like valid — the user can still attempt the
+        // submit; the accept endpoint has its own rate limit and will 410
+        // for real if the token is bad. Surfacing "rate-limited" as a
+        // terminal error here would cause spurious blocks.
+        setTokenProbe("valid");
+      } else {
+        setTokenProbe("invalid");
+      }
     });
     return () => {
       cancelled = true;
@@ -123,11 +148,13 @@ function AcceptContent() {
         passwordConfirm,
       });
       if (validation) {
+        setErrorKind("validation");
         setError(t(`errors.${validation}`, { min: PASSWORD_MIN_LENGTH }));
         return;
       }
       setStatus("submitting");
       setError(undefined);
+      setErrorKind(undefined);
       const res = await acceptInvitation(token, firstName.trim(), lastName.trim(), password);
       if (res.ok) {
         setStatus("done");
@@ -148,6 +175,7 @@ function AcceptContent() {
       setStatus("idle");
       const errorKey =
         res.status === 410 ? "expired" : res.status === 429 ? "rateLimited" : "generic";
+      setErrorKind(errorKey);
       setError(t(`errors.${errorKey}`));
     },
     [token, firstName, lastName, password, passwordConfirm, t],
@@ -188,7 +216,38 @@ function AcceptContent() {
     );
   }
 
-  if (session.status === "checking") {
+  // Terminal-error screen — the token is unusable. Two ways to land here:
+  //   1. The on-load probe rejected the token (`tokenProbe === "invalid"`).
+  //   2. The accept POST returned 410 (`errorKind === "expired"`) — race
+  //      between the probe and the submit, or the operator revoked the
+  //      invite mid-flow.
+  // Either way: retyping won't make the token valid, so we replace the
+  // form with a dedicated screen pointing the invitee at sign-in.
+  // Recoverable errors (rate-limited, generic) still render inline above
+  // the form so the invitee can retry.
+  if (tokenProbe === "invalid" || errorKind === "expired") {
+    return (
+      <AuthCard>
+        <AuthLogo />
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error-container text-on-error-container">
+          <TriangleAlert className="h-6 w-6" aria-hidden="true" />
+        </div>
+        <h1 className="mb-2 text-center font-heading text-xl text-text">{t("errorTitle")}</h1>
+        <p className="mb-6 text-center text-sm text-text-secondary">{t("errors.expired")}</p>
+        <Link
+          href="/login"
+          className="inline-flex h-[var(--btn-height-md)] w-full items-center justify-center rounded-button bg-primary px-6 text-sm font-medium text-on-primary"
+        >
+          {t("backToLogin")}
+        </Link>
+      </AuthCard>
+    );
+  }
+
+  // Combined loading state: hold off the form / signed-in prompt until both
+  // probes resolve. Otherwise the signed-in prompt could flash before the
+  // token-probe lands and we'd swap it for the terminal screen — jarring.
+  if (session.status === "checking" || tokenProbe === "checking") {
     return (
       <AuthCard>
         <AuthLogo />
