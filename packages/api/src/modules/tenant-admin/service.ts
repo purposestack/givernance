@@ -6,6 +6,23 @@
  * so the Keycloak Admin API call and the DB state land atomically from the
  * caller's perspective. Keycloak failures throw `KeycloakAdminError` which the
  * route handler maps to 502/503.
+ *
+ * ─── Cross-tenant scope invariant ──────────────────────────────────────────
+ * Functions in this module that take a free-form `orgId` parameter (e.g.
+ * `getTenantDetail`, `listRecentAudit`, `inviteFirstEnterpriseUser`,
+ * `resendFirstEnterpriseInvitation`, `revokeFirstEnterpriseInvitation`,
+ * `getFirstAdminInvitation`, `transitionTenantStatus`, `claimDomain`,
+ * `verifyDomain`, `revokeDomain`, `provisionIdp`, `deleteIdp`) deliberately
+ * scope their RLS GUC to that argument so a super-admin can act on any
+ * tenant. They MUST only ever be called from `requireSuperAdmin`-guarded
+ * routes (or `requireSuperAdminOrOwnOrgAdmin` for the domain-CRUD subset
+ * which validates `orgId` against the caller's JWT claim before delegating).
+ *
+ * Wiring any of these to an `requireOrgAdmin` route would let a malicious
+ * org_admin pass another tenant's `orgId` in the URL and bypass RLS — the
+ * GUC would be set from the URL, not from the JWT. RLS is preserved as a
+ * load-bearing layer for tenant-scoped routes precisely because those
+ * routes set the GUC from `request.auth.orgId` instead.
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
@@ -752,33 +769,46 @@ export async function getTenantDetail(orgId: string): Promise<{
     .limit(1);
   if (!tenant) return null;
 
-  const [domainRows, userRows, firstAdminInvitation] = await Promise.all([
-    db
-      .select({
-        id: tenantDomains.id,
-        domain: tenantDomains.domain,
-        state: tenantDomains.state,
-        dnsTxtValue: tenantDomains.dnsTxtValue,
-        verifiedAt: tenantDomains.verifiedAt,
-        createdAt: tenantDomains.createdAt,
-      })
-      .from(tenantDomains)
-      .where(eq(tenantDomains.orgId, orgId)),
-    db
-      .select({
-        id: users.id,
-        email: users.email,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        role: users.role,
-        firstAdmin: users.firstAdmin,
-        provisionalUntil: users.provisionalUntil,
-        lastVisitedAt: users.lastVisitedAt,
-      })
-      .from(users)
-      .where(eq(users.orgId, orgId)),
-    getFirstAdminInvitation(orgId),
-  ]);
+  // `users`, `invitations`, and `tenant_domains` all run with FORCE RLS.
+  // `db` here is the `givernance_app` (NOBYPASSRLS) pool, so without a
+  // `set_config('app.current_organization_id', ...)` first these queries
+  // silently return zero rows — exactly what super-admin operators saw on
+  // the detail page (PR #154 follow-up). Wrapping all three reads in one
+  // `withTenantContext` pins the GUC to the txn's connection and avoids
+  // round-tripping the pool four times for a single detail render.
+  const [domainRows, userRows, firstAdminInvitation] = await withTenantContext(
+    orgId,
+    async (tx) => {
+      const [d, u, inv] = await Promise.all([
+        tx
+          .select({
+            id: tenantDomains.id,
+            domain: tenantDomains.domain,
+            state: tenantDomains.state,
+            dnsTxtValue: tenantDomains.dnsTxtValue,
+            verifiedAt: tenantDomains.verifiedAt,
+            createdAt: tenantDomains.createdAt,
+          })
+          .from(tenantDomains)
+          .where(eq(tenantDomains.orgId, orgId)),
+        tx
+          .select({
+            id: users.id,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            role: users.role,
+            firstAdmin: users.firstAdmin,
+            provisionalUntil: users.provisionalUntil,
+            lastVisitedAt: users.lastVisitedAt,
+          })
+          .from(users)
+          .where(eq(users.orgId, orgId)),
+        loadFirstAdminInvitation(tx, orgId),
+      ]);
+      return [d, u, inv] as const;
+    },
+  );
 
   return {
     tenant: {
@@ -826,28 +856,38 @@ export async function getFirstAdminInvitation(
   orgId: string,
 ): Promise<FirstAdminInvitationSummary | null> {
   if (!isUuid(orgId)) return null;
+  return withTenantContext(orgId, (tx) => loadFirstAdminInvitation(tx, orgId));
+}
 
-  const [row] = await withTenantContext(orgId, async (tx) =>
-    tx
-      .select({
-        id: invitations.id,
-        email: invitations.email,
-        expiresAt: invitations.expiresAt,
-        acceptedAt: invitations.acceptedAt,
-        createdAt: invitations.createdAt,
-      })
-      .from(invitations)
-      .where(
-        and(
-          eq(invitations.orgId, orgId),
-          eq(invitations.purpose, "team_invite"),
-          eq(invitations.role, "org_admin"),
-          isNull(invitations.invitedById),
-        ),
-      )
-      .orderBy(desc(invitations.createdAt))
-      .limit(1),
-  );
+/**
+ * tx-accepting helper so the caller can compose this lookup with sibling
+ * RLS-scoped queries inside a single `withTenantContext` (see
+ * `getTenantDetail`). Same shape as the public `getFirstAdminInvitation`,
+ * minus the per-call transaction.
+ */
+async function loadFirstAdminInvitation(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+): Promise<FirstAdminInvitationSummary | null> {
+  const [row] = await tx
+    .select({
+      id: invitations.id,
+      email: invitations.email,
+      expiresAt: invitations.expiresAt,
+      acceptedAt: invitations.acceptedAt,
+      createdAt: invitations.createdAt,
+    })
+    .from(invitations)
+    .where(
+      and(
+        eq(invitations.orgId, orgId),
+        eq(invitations.purpose, "team_invite"),
+        eq(invitations.role, "org_admin"),
+        isNull(invitations.invitedById),
+      ),
+    )
+    .orderBy(desc(invitations.createdAt))
+    .limit(1);
   if (!row) return null;
 
   const now = new Date();
@@ -934,21 +974,26 @@ export async function transitionTenantStatus(input: {
 
 export async function listRecentAudit(orgId: string, limit = 50) {
   if (!isUuid(orgId)) return [];
-  const rows = await db
-    .select({
-      id: auditLogs.id,
-      action: auditLogs.action,
-      resourceType: auditLogs.resourceType,
-      resourceId: auditLogs.resourceId,
-      userId: auditLogs.userId,
-      newValues: auditLogs.newValues,
-      oldValues: auditLogs.oldValues,
-      createdAt: auditLogs.createdAt,
-    })
-    .from(auditLogs)
-    .where(eq(auditLogs.orgId, orgId))
-    .orderBy(sql`${auditLogs.createdAt} DESC`)
-    .limit(limit);
+  // `audit_logs` is FORCE RLS — must run inside `withTenantContext` so the
+  // `givernance_app` role's RLS policy resolves the tenant GUC. Same fix as
+  // `getTenantDetail` (PR #154 follow-up).
+  const rows = await withTenantContext(orgId, (tx) =>
+    tx
+      .select({
+        id: auditLogs.id,
+        action: auditLogs.action,
+        resourceType: auditLogs.resourceType,
+        resourceId: auditLogs.resourceId,
+        userId: auditLogs.userId,
+        newValues: auditLogs.newValues,
+        oldValues: auditLogs.oldValues,
+        createdAt: auditLogs.createdAt,
+      })
+      .from(auditLogs)
+      .where(eq(auditLogs.orgId, orgId))
+      .orderBy(sql`${auditLogs.createdAt} DESC`)
+      .limit(limit),
+  );
   return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
 }
 

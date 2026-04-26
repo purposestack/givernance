@@ -418,4 +418,37 @@ describe("GET /v1/superadmin/tenants/:id/detail (firstAdminInvitation surface)",
       res.json<{ data: { firstAdminInvitation: unknown } }>().data.firstAdminInvitation,
     ).toBeNull();
   });
+
+  // Regression for the RLS-silently-empty-list bug surfaced during PR #154
+  // QA: `users`, `tenant_domains`, and `audit_logs` are FORCE RLS, and the
+  // detail query runs as the `givernance_app` role. Without `withTenantContext`
+  // setting `app.current_organization_id`, the policy's
+  // `org_id = current_setting(...)::uuid` clause evaluates against `NULL` and
+  // every row is filtered out — a super-admin saw zero users for every
+  // tenant on the detail page.
+  it("returns the tenant's users (RLS GUC scoped via withTenantContext)", async () => {
+    const f = await makeFixture();
+    const userId = randomUUID();
+    await db.execute(
+      sql`INSERT INTO users (id, org_id, email, first_name, last_name, role, keycloak_id)
+          VALUES (${userId}, ${f.orgId}, ${`member+${f.slug}@example.org`}, 'Member', 'One', 'org_admin', ${`kc-member-${f.slug}`})`,
+    );
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/superadmin/tenants/${f.orgId}/detail`,
+      headers: authHeader(f.superAdminToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: {
+        users: Array<{ email: string; role: string }>;
+      };
+    }>();
+    expect(body.data.users).toHaveLength(1);
+    expect(body.data.users[0]).toMatchObject({
+      email: `member+${f.slug}@example.org`,
+      role: "org_admin",
+    });
+  });
 });
