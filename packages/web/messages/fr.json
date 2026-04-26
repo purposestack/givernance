@@ -1128,10 +1128,12 @@
         "chartSummary": "Montant collecté : {raised}, pour un coût de {cost}. ROI : {roi}.",
         "chartSummaryUnavailable": "Montant collecté : {raised}, pour un coût de {cost}. ROI indisponible."
       },
+      "statusCard": {
+        "readOnlyTitle": "Statut de la campagne"
+      },
       "actions": {
         "title": "Actions de statut",
         "description": "Faites passer cette campagne entre les états brouillon, active et clôturée.",
-        "descriptionReadOnly": "Statut actuel de la campagne — seul·e un·e administrateur·trice peut le modifier.",
         "readOnly": "Seul·e un·e administrateur·trice de l'organisation peut modifier le statut d'une campagne.",
         "back": "Retour aux campagnes",
         "edit": "Modifier",

@@ -300,13 +300,29 @@ async function CostBreakdownCard({
 async function StatusCard({ campaign, canManage }: { campaign: Campaign; canManage: boolean }) {
   const t = await getTranslations("campaigns.detail");
 
+  // For non-admins the card is informational, not actionable — show the
+  // current status badge with a single read-only note so we don't end up
+  // with a redundant "Status actions" title + duplicate description copy
+  // around buttons that aren't there.
+  if (!canManage) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("statusCard.readOnlyTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <StatusBadge status={campaign.status} />
+          <p className="text-sm text-on-surface-variant">{t("actions.readOnly")}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>{t("actions.title")}</CardTitle>
-        <CardDescription>
-          {canManage ? t("actions.description") : t("actions.descriptionReadOnly")}
-        </CardDescription>
+        <CardDescription>{t("actions.description")}</CardDescription>
       </CardHeader>
       <CampaignStatusActions
         campaignId={campaign.id}

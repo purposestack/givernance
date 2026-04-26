@@ -1128,10 +1128,12 @@
         "chartSummary": "Raised {raised} against a cost of {cost}. ROI: {roi}.",
         "chartSummaryUnavailable": "Raised {raised} against a cost of {cost}. ROI unavailable."
       },
+      "statusCard": {
+        "readOnlyTitle": "Campaign status"
+      },
       "actions": {
         "title": "Status actions",
         "description": "Move this campaign between draft, active, and closed states.",
-        "descriptionReadOnly": "Current campaign status — only an organisation admin can change it.",
         "readOnly": "Only an organisation admin can change a campaign's status.",
         "back": "Back to campaigns",
         "edit": "Edit",
