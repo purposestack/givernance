@@ -322,11 +322,18 @@ export async function constituentRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Soft-delete a constituent */
+  /**
+   * Soft-delete a constituent.
+   *
+   * Admin-only: deletion (even soft) is destructive enough that a non-admin
+   * staff member shouldn't be able to scrub a record everyone else relies on
+   * for fundraising history and GDPR audit. Operational write actions
+   * (create / update) stay open to the `user` role.
+   */
   app.delete(
     "/constituents/:id",
     {
-      preHandler: requireAuth,
+      preHandler: requireOrgAdmin,
       schema: {
         tags: ["Constituents"],
         params: IdParams,
