@@ -81,7 +81,8 @@ async function fetchDonationsOrEmpty(
 }
 
 export default async function ConstituentDetailPage({ params, searchParams }: DetailPageProps) {
-  await requireAuth();
+  const auth = await requireAuth();
+  const canManageAdminActions = auth.roles.includes("org_admin");
   const { id } = await params;
   const sp = await searchParams;
 
@@ -124,6 +125,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
         })}
         typeLabel={resolveTypeLabel(constituent.type, tType)}
         typeVariant={TYPE_VARIANTS[String(constituent.type)] ?? "neutral"}
+        canManageAdminActions={canManageAdminActions}
         labels={{
           ariaLabel: t("profile.ariaLabel"),
           email: t("profile.email"),
@@ -240,6 +242,7 @@ function ProfileCard({
   memberSinceLabel,
   typeLabel,
   typeVariant,
+  canManageAdminActions,
   labels,
 }: {
   constituent: Constituent;
@@ -247,6 +250,7 @@ function ProfileCard({
   memberSinceLabel: string;
   typeLabel: string;
   typeVariant: BadgeVariant;
+  canManageAdminActions: boolean;
   labels: ProfileLabels;
 }) {
   return (
@@ -288,7 +292,11 @@ function ProfileCard({
         </dl>
       </div>
 
-      <ProfileActions constituentId={constituent.id} labels={labels} />
+      <ProfileActions
+        constituentId={constituent.id}
+        canManageAdminActions={canManageAdminActions}
+        labels={labels}
+      />
     </section>
   );
 }
@@ -321,9 +329,18 @@ function ContactLink({ href, children }: { href: string; children: string }) {
 
 function ProfileActions({
   constituentId,
+  canManageAdminActions,
   labels,
 }: {
   constituentId: string;
+  /**
+   * Merge (`POST /v1/constituents/:id/merge`) and Delete
+   * (`DELETE /v1/constituents/:id`) both require `org_admin` server-side.
+   * Hide the affordances for non-admins so they don't see buttons that
+   * would 403 once wired up. Edit / Export GDPR stay visible — they're
+   * either operational writes (Edit) or open to all roles (export stub).
+   */
+  canManageAdminActions: boolean;
   labels: ProfileLabels;
 }) {
   return (
@@ -334,18 +351,22 @@ function ProfileActions({
           {labels.edit}
         </Link>
       </Button>
-      <Button variant="secondary" size="sm" disabled>
-        <GitMerge size={16} aria-hidden="true" />
-        {labels.merge}
-      </Button>
+      {canManageAdminActions ? (
+        <Button variant="secondary" size="sm" disabled>
+          <GitMerge size={16} aria-hidden="true" />
+          {labels.merge}
+        </Button>
+      ) : null}
       <Button variant="secondary" size="sm" disabled>
         <Download size={16} aria-hidden="true" />
         {labels.exportGdpr}
       </Button>
-      <Button variant="destructive" size="sm" disabled>
-        <Trash2 size={16} aria-hidden="true" />
-        {labels.delete}
-      </Button>
+      {canManageAdminActions ? (
+        <Button variant="destructive" size="sm" disabled>
+          <Trash2 size={16} aria-hidden="true" />
+          {labels.delete}
+        </Button>
+      ) : null}
     </div>
   );
 }

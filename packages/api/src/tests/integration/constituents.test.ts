@@ -423,6 +423,16 @@ describe("Constituents unauthenticated access", () => {
     });
     expect(res.statusCode).toBe(401);
   });
+
+  it("DELETE /v1/constituents/:id requires org_admin (returns 403 for user role)", async () => {
+    const userToken = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/constituents/00000000-0000-0000-0000-000000000001",
+      headers: authHeader(userToken),
+    });
+    expect(res.statusCode).toBe(403);
+  });
 });
 
 // ─── Duplicate Detection ──────────────────────────────────────────────────────
