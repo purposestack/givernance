@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { CheckCircle2, LogIn, LogOut, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -9,6 +10,13 @@ import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { acceptInvitation, probeInvitation } from "@/services/InvitationService";
 
 const PASSWORD_MIN_LENGTH = 12;
@@ -112,6 +120,13 @@ function AcceptContent() {
   // false-positive an outage as "your link is dead".
   type TokenProbeState = "checking" | "valid" | "invalid";
   const [tokenProbe, setTokenProbe] = useState<TokenProbeState>("checking");
+  // Issue #153: locale picker state. Pre-selected from the probe response's
+  // `tenantDefaultLocale`; the user can flip before submit. The accept
+  // service persists `users.locale` only when the chosen value differs from
+  // the tenant default (server-side decision in acceptTeamInvitation).
+  const [tenantDefaultLocale, setTenantDefaultLocale] = useState<Locale>(APP_DEFAULT_LOCALE);
+  const [selectedLocale, setSelectedLocale] = useState<Locale>(APP_DEFAULT_LOCALE);
+  const localeFieldId = useId();
 
   useEffect(() => {
     if (!token) return;
@@ -122,12 +137,16 @@ function AcceptContent() {
     });
     void probeInvitation(token).then((result) => {
       if (cancelled) return;
-      if (result === "valid" || result === "rate_limited") {
+      if (result.kind === "valid" || result.kind === "rate_limited") {
         // Treat rate-limited like valid — the user can still attempt the
         // submit; the accept endpoint has its own rate limit and will 410
         // for real if the token is bad. Surfacing "rate-limited" as a
         // terminal error here would cause spurious blocks.
         setTokenProbe("valid");
+        if (result.kind === "valid") {
+          setTenantDefaultLocale(result.tenantDefaultLocale);
+          setSelectedLocale(result.tenantDefaultLocale);
+        }
       } else {
         setTokenProbe("invalid");
       }
@@ -155,7 +174,13 @@ function AcceptContent() {
       setStatus("submitting");
       setError(undefined);
       setErrorKind(undefined);
-      const res = await acceptInvitation(token, firstName.trim(), lastName.trim(), password);
+      const res = await acceptInvitation(
+        token,
+        firstName.trim(),
+        lastName.trim(),
+        password,
+        selectedLocale,
+      );
       if (res.ok) {
         setStatus("done");
         // Redirect to Keycloak login. The API has already attached us as
@@ -178,7 +203,7 @@ function AcceptContent() {
       setErrorKind(errorKey);
       setError(t(`errors.${errorKey}`));
     },
-    [token, firstName, lastName, password, passwordConfirm, t],
+    [token, firstName, lastName, password, passwordConfirm, selectedLocale, t],
   );
 
   if (!token) {
@@ -350,6 +375,36 @@ function AcceptContent() {
               maxLength={255}
             />
           </div>
+        </div>
+
+        {/*
+         * Issue #153 — locale picker. Pre-selected from the probe's
+         * `tenantDefaultLocale`; the API persists `users.locale` only when
+         * the chosen value differs (so accepting the default keeps you
+         * tracking future tenant-default changes).
+         */}
+        <div>
+          <Label htmlFor={localeFieldId}>{t("fields.locale")}</Label>
+          <Select
+            value={selectedLocale}
+            onValueChange={(value) => setSelectedLocale(value as Locale)}
+          >
+            <SelectTrigger id={localeFieldId}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SUPPORTED_LOCALES.map((locale) => (
+                <SelectItem key={locale} value={locale}>
+                  {t(`locales.${locale}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedLocale === tenantDefaultLocale ? (
+            <p className="mt-1 text-xs text-text-muted">{t("localeHint.matchesTenantDefault")}</p>
+          ) : (
+            <p className="mt-1 text-xs text-text-muted">{t("localeHint.personalOverride")}</p>
+          )}
         </div>
 
         <div>

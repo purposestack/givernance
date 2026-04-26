@@ -116,6 +116,7 @@ describe("processTeamInviteEmail", () => {
       tenantId: ORG_ID,
       invitationId: INVITATION_ID,
       inviterUserId: INVITER_USER_ID,
+      locale: "en",
     };
 
     const result = await processTeamInviteEmail(payload, { sender });
@@ -134,7 +135,7 @@ describe("processTeamInviteEmail", () => {
   it("falls back to a generic inviter when inviterUserId is null", async () => {
     const sender = makeSender();
     await processTeamInviteEmail(
-      { tenantId: ORG_ID, invitationId: INVITATION_ID, inviterUserId: null },
+      { tenantId: ORG_ID, invitationId: INVITATION_ID, inviterUserId: null, locale: "en" },
       { sender },
     );
     const call = sender.send.mock.calls[0]?.[0];
@@ -144,14 +145,14 @@ describe("processTeamInviteEmail", () => {
     expect(call.subject).toContain("A colleague");
   });
 
-  it("picks the French template when country=FR", async () => {
+  it("picks the French template when locale=fr", async () => {
     const sender = makeSender();
     await processTeamInviteEmail(
       {
         tenantId: ORG_ID_FR,
         invitationId: INVITATION_ID_FR,
         inviterUserId: null,
-        country: "FR",
+        locale: "fr",
       },
       { sender },
     );
@@ -166,7 +167,7 @@ describe("processTeamInviteEmail", () => {
   it("no-ops on an already-accepted invitation", async () => {
     const sender = makeSender();
     const result = await processTeamInviteEmail(
-      { tenantId: ORG_ID_ACCEPTED, invitationId: INVITATION_ID_ACCEPTED },
+      { tenantId: ORG_ID_ACCEPTED, invitationId: INVITATION_ID_ACCEPTED, locale: "en" },
       { sender },
     );
     expect(result).toEqual({ sent: false, reason: "already_accepted" });
@@ -176,7 +177,7 @@ describe("processTeamInviteEmail", () => {
   it("no-ops when the invitation id does not match the tenant", async () => {
     const sender = makeSender();
     const result = await processTeamInviteEmail(
-      { tenantId: ORG_ID, invitationId: randomUUID() },
+      { tenantId: ORG_ID, invitationId: randomUUID(), locale: "en" },
       { sender },
     );
     expect(result).toEqual({ sent: false, reason: "not_found" });

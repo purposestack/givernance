@@ -1,17 +1,23 @@
 /**
  * Email templates for signup verification + team invitations.
  *
- * Bilingual (EN/FR) — Givernance's initial markets. Picks FR when the
- * tenant's country is France, defaults to English otherwise. Keep the
- * HTML intentionally tiny and table-free-safe so Mailpit / most inbox
- * clients render it sensibly; we're not trying to be MJML here.
+ * Bilingual (EN/FR) — Givernance's initial markets. Picks the language
+ * directly from the job payload's `locale` field (BCP-47), resolved
+ * upstream by the API via the 3-layer chain
+ * `users.locale ?? tenants.default_locale ?? APP_DEFAULT_LOCALE`
+ * (issue #153 / ADR-015 amendment). Keep the HTML intentionally tiny and
+ * table-free-safe so Mailpit / most inbox clients render it sensibly;
+ * we're not trying to be MJML here.
  */
+
+import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
 
 export interface SignupVerifyTemplateInput {
   tenantName: string;
   verifyUrl: string;
   expiresAt: Date;
-  country?: string | null;
+  /** BCP-47 locale resolved at enqueue time. Source of truth for template. */
+  locale: Locale;
 }
 
 export interface TeamInviteTemplateInput {
@@ -22,7 +28,8 @@ export interface TeamInviteTemplateInput {
   role: string;
   acceptUrl: string;
   expiresAt: Date;
-  country?: string | null;
+  /** BCP-47 locale resolved at enqueue time. Source of truth for template. */
+  locale: Locale;
 }
 
 export interface RenderedEmail {
@@ -31,8 +38,15 @@ export interface RenderedEmail {
   text: string;
 }
 
-function pickLocale(country?: string | null): "en" | "fr" {
-  return country?.toUpperCase() === "FR" ? "fr" : "en";
+/**
+ * Defensive coercion — payloads from the wire are unknown-shaped JSON, so
+ * even though the API stamps a typed Locale on every event today, a stray
+ * legacy job (pre-issue-#153) that only carries `country` flows in here
+ * via the worker dispatcher's transitional fallback. Never throw — fall
+ * back to the app default and let the email send rather than retry-loop.
+ */
+export function ensureLocale(value: unknown): Locale {
+  return isSupportedLocale(value) ? value : APP_DEFAULT_LOCALE;
 }
 
 function escapeHtml(value: string): string {
@@ -56,7 +70,7 @@ function sanitiseSubjectField(value: string): string {
   return value.replace(/[\r\n]+/g, " ").slice(0, 200);
 }
 
-const ROLE_LABELS: Record<"en" | "fr", Record<string, string>> = {
+const ROLE_LABELS: Record<Locale, Record<string, string>> = {
   en: {
     org_admin: "organisation admin",
     user: "team member",
@@ -69,12 +83,12 @@ const ROLE_LABELS: Record<"en" | "fr", Record<string, string>> = {
   },
 };
 
-function roleLabel(locale: "en" | "fr", role: string): string {
+function roleLabel(locale: Locale, role: string): string {
   return ROLE_LABELS[locale][role] ?? role;
 }
 
 export function renderSignupVerifyEmail(input: SignupVerifyTemplateInput): RenderedEmail {
-  const locale = pickLocale(input.country);
+  const locale = input.locale;
   const expires = input.expiresAt.toUTCString();
   const safeName = escapeHtml(input.tenantName);
   const safeUrl = escapeHtml(input.verifyUrl);
@@ -136,7 +150,7 @@ export function renderSignupVerifyEmail(input: SignupVerifyTemplateInput): Rende
  * sees a personal name rather than a generic "Someone invited you".
  */
 export function renderTeamInviteEmail(input: TeamInviteTemplateInput): RenderedEmail {
-  const locale = pickLocale(input.country);
+  const locale = input.locale;
   const expires = input.expiresAt.toUTCString();
   const safeName = escapeHtml(input.tenantName);
   const safeUrl = escapeHtml(input.acceptUrl);

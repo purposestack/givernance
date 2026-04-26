@@ -17,6 +17,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { defaultCaptchaVerifier } from "../../lib/captcha.js";
@@ -39,6 +40,10 @@ const SignupBody = Type.Object({
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
   email: Type.String({ format: "email", maxLength: 255 }),
   country: Type.Optional(Type.String({ maxLength: 2 })),
+  // Issue #153: optional BCP-47 locale picked at signup. The service falls
+  // back to country-derived default when omitted, so the form can ship the
+  // picker as a follow-up without breaking the API contract.
+  locale: Type.Optional(Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)))),
 });
 
 const CaptchaHeader = Type.Object({
@@ -142,6 +147,7 @@ export async function signupRoutes(app: FastifyInstance) {
         lastName: string;
         email: string;
         country?: string;
+        locale?: "en" | "fr";
       };
       const headers = request.headers as { "x-captcha-token"?: string };
 

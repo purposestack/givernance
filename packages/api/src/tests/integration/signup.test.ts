@@ -177,6 +177,12 @@ describe("POST /v1/public/signup", () => {
     expect(tenant?.createdVia).toBe("self_serve");
     expect(tenant?.verifiedAt).toBeNull();
     expect(tenant?.slug).toBe(slugA);
+    // Issue #153: country + default_locale are written onto the tenants
+    // row at signup so the worker can read them directly without walking
+    // the outbox. country=FR derives default_locale='fr' via the same
+    // rule the migration backfill uses.
+    expect(tenant?.country).toBe("FR");
+    expect(tenant?.defaultLocale).toBe("fr");
 
     const [invite] = await db
       .select()
@@ -186,12 +192,64 @@ describe("POST /v1/public/signup", () => {
     expect(invite?.role).toBe("org_admin");
     expect(invite?.acceptedAt).toBeNull();
 
-    const { rows: events } = await db.execute<{ type: string }>(
-      sql`SELECT type FROM outbox_events WHERE tenant_id = ${body.data.tenantId} ORDER BY created_at ASC`,
+    const { rows: events } = await db.execute<{ type: string; payload: { locale?: string } }>(
+      sql`SELECT type, payload FROM outbox_events WHERE tenant_id = ${body.data.tenantId} ORDER BY created_at ASC`,
     );
     const types = events.map((r) => r.type);
     expect(types).toContain("tenant.self_signup_started");
     expect(types).toContain("tenant.signup_verification_requested");
+    // Issue #153: the verification-requested payload carries the resolved
+    // BCP-47 `locale` so the worker doesn't infer it from country.
+    const verifyEvent = events.find((e) => e.type === "tenant.signup_verification_requested");
+    expect(verifyEvent?.payload?.locale).toBe("fr");
+  });
+
+  it("derives default_locale='en' for non-FR signup country (issue #153)", async () => {
+    const slugBE = registerSlug("be-locale");
+    const email = `admin+${slugBE}@example.org`;
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup",
+      headers: { "x-captcha-token": "test-token" },
+      payload: {
+        orgName: "Belgian NGO",
+        slug: slugBE,
+        firstName: "Bel",
+        lastName: "Admin",
+        email,
+        country: "BE",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json<{ data: { tenantId: string } }>();
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, body.data.tenantId));
+    expect(tenant?.country).toBe("BE");
+    expect(tenant?.defaultLocale).toBe("en");
+  });
+
+  it("honours an explicit locale that disagrees with the country (issue #153)", async () => {
+    const slugX = registerSlug("explicit-locale");
+    const email = `admin+${slugX}@example.org`;
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/public/signup",
+      headers: { "x-captcha-token": "test-token" },
+      payload: {
+        orgName: "Wallonia Association",
+        slug: slugX,
+        firstName: "Wal",
+        lastName: "Admin",
+        email,
+        country: "BE",
+        // BE-Wallonia case: country is BE but the org wants French UI.
+        locale: "fr",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json<{ data: { tenantId: string } }>();
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, body.data.tenantId));
+    expect(tenant?.country).toBe("BE");
+    expect(tenant?.defaultLocale).toBe("fr");
   });
 
   it("rejects a reserved slug with 422", async () => {

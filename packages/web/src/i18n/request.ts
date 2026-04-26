@@ -1,16 +1,19 @@
+import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
 import { cookies, headers } from "next/headers";
 import { getRequestConfig } from "next-intl/server";
 
 /**
  * Supported locales — ADR-015: fr (default), en for Phase 2.
  * Add 'de', 'nl' in Phase 3, 'ar' in Phase 4+.
+ *
+ * Issue #153: the supported set + default come from
+ * `@givernance/shared/i18n` so the API CHECK constraints, the worker
+ * email selector, and this resolver cannot drift from each other.
  */
-const SUPPORTED_LOCALES = ["fr", "en"] as const;
-type Locale = (typeof SUPPORTED_LOCALES)[number];
-const DEFAULT_LOCALE: Locale = "fr";
+const DEFAULT_LOCALE: Locale = APP_DEFAULT_LOCALE;
 
 function isValidLocale(value: unknown): value is Locale {
-  return SUPPORTED_LOCALES.includes(value as Locale);
+  return isSupportedLocale(value);
 }
 
 /**

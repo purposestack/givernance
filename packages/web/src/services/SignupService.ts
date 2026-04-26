@@ -19,6 +19,11 @@ export interface SignupPayload {
   lastName: string;
   email: string;
   country?: string;
+  /**
+   * BCP-47 locale picked at signup (issue #153). Optional — the API
+   * derives a default from country when omitted.
+   */
+  locale?: "en" | "fr";
   captchaToken?: string;
 }
 
@@ -73,6 +78,7 @@ export async function submitSignup(
         lastName: payload.lastName,
         email: payload.email,
         country: payload.country,
+        locale: payload.locale,
       }),
     });
   } catch {

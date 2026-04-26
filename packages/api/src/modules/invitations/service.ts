@@ -51,6 +51,7 @@
 
 import { randomUUID } from "node:crypto";
 import { PINO_REDACT_PATHS } from "@givernance/shared/constants";
+import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
 import { auditLogs, invitations, outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import pino from "pino";
@@ -76,39 +77,46 @@ const RESEND_TTL_DAYS = INVITATION_TTL_DAYS;
 export type InviteRole = "org_admin" | "user" | "viewer";
 
 /**
- * Recover the tenant's country from the original
- * `tenant.signup_verification_requested` outbox event so the worker picks the
- * right EN/FR template for invitation emails. There is no `tenants.country`
- * column today (issue #145 review F1 / QA-F1) — until one lands, this is the
- * single durable source of truth. Mirror of `signup/service.ts`'s
- * recovery-path lookup. Returns undefined for enterprise tenants seeded via
- * super-admin (no signup event) and for self-serve tenants that predate
- * country tracking; the worker falls back to its EN default.
+ * Resolve the BCP-47 locale to stamp on a team-invite email job (issue #153).
+ *
+ * Implements the 3-layer resolution chain from ADR-015 amendment:
+ *
+ *   1. `users.locale` (per-recipient personal preference) — looked up by
+ *      `(orgId, email)` in case the invitee already exists as a member of
+ *      this tenant under another role (re-invite scenarios).
+ *   2. `tenants.default_locale` (organisation default) — populated at
+ *      tenant create time and migration-backfilled, NOT NULL.
+ *   3. `APP_DEFAULT_LOCALE` ('fr', per ADR-015) — only reached if a column
+ *      check is bypassed by a future schema change; defensive floor.
+ *
+ * Email match uses `lower()` on both sides for the same defence-in-depth
+ * reason as the accept-flow hijack discriminator: `users.email` has no
+ * schema-level case-folding constraint and a historical mixed-case row
+ * shouldn't silently miss the per-user override.
  */
-async function lookupTenantCountry(
+async function resolveInviteeLocale(
   tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
   tenantId: string,
-): Promise<string | undefined> {
-  const [originalEvent] = await tx
-    .select({ payload: outboxEvents.payload })
-    .from(outboxEvents)
-    .where(
-      and(
-        eq(outboxEvents.tenantId, tenantId),
-        eq(outboxEvents.type, "tenant.signup_verification_requested"),
-      ),
-    )
-    .orderBy(sql`${outboxEvents.createdAt} ASC`)
+  email: string,
+): Promise<{ locale: Locale; tenantDefaultLocale: Locale }> {
+  const [tenantRow] = await tx
+    .select({ defaultLocale: tenants.defaultLocale })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
     .limit(1);
-  if (
-    typeof originalEvent?.payload === "object" &&
-    originalEvent.payload !== null &&
-    "country" in originalEvent.payload &&
-    typeof originalEvent.payload.country === "string"
-  ) {
-    return originalEvent.payload.country;
-  }
-  return undefined;
+  const tenantDefaultLocale: Locale = isSupportedLocale(tenantRow?.defaultLocale)
+    ? tenantRow.defaultLocale
+    : APP_DEFAULT_LOCALE;
+
+  const [userRow] = await tx
+    .select({ locale: users.locale })
+    .from(users)
+    .where(and(eq(users.orgId, tenantId), sql`lower(${users.email}) = lower(${email})`))
+    .limit(1);
+
+  const personalLocale = userRow?.locale;
+  const locale: Locale = isSupportedLocale(personalLocale) ? personalLocale : tenantDefaultLocale;
+  return { locale, tenantDefaultLocale };
 }
 
 // ─── Create ─────────────────────────────────────────────────────────────────
@@ -236,10 +244,13 @@ export async function createTeamInvitation(
     const invite = row!;
 
     // SEC-7: never put the raw token in the outbox; the worker looks it up
-    // by invitation id inside its own trust boundary. `country` is recovered
-    // from the original signup event so the worker picks the right EN/FR
-    // template (QA-F1).
-    const country = await lookupTenantCountry(tx, input.orgId);
+    // by invitation id inside its own trust boundary. Issue #153: stamp
+    // `locale` (BCP-47) resolved from the 3-layer chain so the worker
+    // picks the right template without reading other rows. The chain
+    // checks `users.locale` first (re-invite of an existing teammate
+    // honours their stored preference) and falls back to the tenant
+    // default — see `resolveInviteeLocale`.
+    const { locale } = await resolveInviteeLocale(tx, input.orgId, invite.email);
     await tx.insert(outboxEvents).values({
       tenantId: input.orgId,
       type: "invitation.created",
@@ -250,7 +261,7 @@ export async function createTeamInvitation(
         role: invite.role,
         inviterUserId: inviter?.id ?? null,
         expiresAt: invite.expiresAt.toISOString(),
-        ...(country ? { country } : {}),
+        locale,
       },
     });
 
@@ -525,7 +536,7 @@ export async function resendTeamInvitation(
       .where(and(eq(users.keycloakId, input.actorKeycloakId), eq(users.orgId, input.orgId)))
       .limit(1);
 
-    const country = await lookupTenantCountry(tx, input.orgId);
+    const { locale } = await resolveInviteeLocale(tx, input.orgId, row.email);
     await tx.insert(outboxEvents).values({
       tenantId: input.orgId,
       type: "invitation.resent",
@@ -536,7 +547,7 @@ export async function resendTeamInvitation(
         role: row.role,
         inviterUserId: actor?.id ?? null,
         expiresAt: expiresAt.toISOString(),
-        ...(country ? { country } : {}),
+        locale,
       },
     });
 
@@ -567,6 +578,13 @@ export interface AcceptInvitationInput {
    * route boundary; never logged.
    */
   password: string;
+  /**
+   * Optional BCP-47 locale picked at acceptance time (issue #153). Only
+   * persisted to `users.locale` when it differs from the tenant's
+   * `default_locale` — accepting the default leaves `users.locale` NULL
+   * so subsequent tenant-default changes still apply to this user.
+   */
+  locale?: Locale;
   ipHash?: string;
   userAgent?: string;
 }
@@ -629,6 +647,10 @@ export async function acceptTeamInvitation(
           tenantName: tenants.name,
           tenantSlug: tenants.slug,
           keycloakOrgId: tenants.keycloakOrgId,
+          // Issue #153: read default_locale here so we can decide whether
+          // to persist `users.locale` (only when the invitee picked
+          // something different from the tenant's default).
+          tenantDefaultLocale: tenants.defaultLocale,
         })
         .from(invitations)
         .innerJoin(tenants, eq(invitations.orgId, tenants.id))
@@ -639,6 +661,18 @@ export async function acceptTeamInvitation(
       if (!row || row.acceptedAt || row.expiresAt < new Date()) {
         return { ok: false } as const;
       }
+
+      // Only persist a personal override when the invitee picked a value
+      // *different* from the tenant default. Accepting the default leaves
+      // `users.locale = NULL` so subsequent tenant-default changes carry
+      // through automatically. (Issue #153.)
+      const tenantDefaultLocale: Locale = isSupportedLocale(row.tenantDefaultLocale)
+        ? row.tenantDefaultLocale
+        : APP_DEFAULT_LOCALE;
+      const personalLocale: Locale | null =
+        input.locale && isSupportedLocale(input.locale) && input.locale !== tenantDefaultLocale
+          ? input.locale
+          : null;
 
       // Resolve the KC admin client now that we know the row is valid —
       // the singleton throws if KEYCLOAK_ADMIN_CLIENT_SECRET is unset, so
@@ -754,6 +788,11 @@ export async function acceptTeamInvitation(
           lastName,
           role: row.role,
           keycloakId: kcUserId,
+          // Issue #153: write the personal locale only on first INSERT.
+          // The recovery branch (UPDATE) leaves any existing `users.locale`
+          // alone — clobbering a previously-chosen preference on a
+          // half-state retry would surprise the user.
+          locale: personalLocale,
         })
         .onConflictDoUpdate({
           target: [users.orgId, users.email],
@@ -881,17 +920,29 @@ export async function getTeamInvitationForOrg(
 // ─── Public probe (PR #154 follow-up) ──────────────────────────────────────
 
 /**
+ * Result of `probeTeamInvitation`. Either the token is valid and we hand
+ * back the tenant's `default_locale` so the accept form can pre-select
+ * the right value (issue #153), or the probe fails — the route maps
+ * `null` to a generic 410. (We deliberately don't expose any other
+ * tenant identifiers here; the slug/name leak via the post-accept
+ * redirect already, but the probe response stays minimal.)
+ */
+export type ProbeTeamInvitationResult = { ok: true; tenantDefaultLocale: Locale } | null;
+
+/**
  * Public, side-effect-free check that a token is currently acceptable.
  *
  * The /invite/accept page calls this on load so an invitee with a dead
  * link is shown the terminal error screen immediately, rather than
- * filling out a 4-field form to discover the same thing on submit.
+ * filling out a 4-field form to discover the same thing on submit. The
+ * response also carries the tenant's `default_locale` so the form can
+ * pre-select the right locale picker option (issue #153).
  *
- * Anti-enumeration: the route translates `false` into a generic 410, so
+ * Anti-enumeration: the route translates `null` into a generic 410, so
  * "wrong token" / "already accepted" / "expired" / "wrong purpose" all
- * collapse to the same response. The boolean we return here is *only*
- * inspected by the route handler — never serialised. Same shape the
- * accept endpoint enforces (cf. `acceptTeamInvitation`).
+ * collapse to the same response. Only the success branch is serialised
+ * to the caller. Same shape the accept endpoint enforces (cf.
+ * `acceptTeamInvitation`).
  *
  * Owner-role connection (`systemDb`) because the caller is unauthenticated
  * and there's no tenant context to set on the app role. The token IS the
@@ -901,22 +952,27 @@ export async function getTeamInvitationForOrg(
  * resend / revoke before the user submits — the post-submit terminal
  * screen on the page handles that case.
  */
-export async function probeTeamInvitation(token: string): Promise<boolean> {
+export async function probeTeamInvitation(token: string): Promise<ProbeTeamInvitationResult> {
   // Cheap shape guard — the route schema also rejects malformed tokens
   // with a 400, but a defensive check here keeps the function safe to
   // call from anywhere without leaking error shape.
-  if (typeof token !== "string" || token.length === 0) return false;
+  if (typeof token !== "string" || token.length === 0) return null;
 
   const [row] = await systemDb
     .select({
       acceptedAt: invitations.acceptedAt,
       expiresAt: invitations.expiresAt,
+      tenantDefaultLocale: tenants.defaultLocale,
     })
     .from(invitations)
+    .innerJoin(tenants, eq(invitations.orgId, tenants.id))
     .where(and(eq(invitations.token, token), eq(invitations.purpose, "team_invite")))
     .limit(1);
-  if (!row) return false;
-  if (row.acceptedAt) return false;
-  if (row.expiresAt < new Date()) return false;
-  return true;
+  if (!row) return null;
+  if (row.acceptedAt) return null;
+  if (row.expiresAt < new Date()) return null;
+  const tenantDefaultLocale: Locale = isSupportedLocale(row.tenantDefaultLocale)
+    ? row.tenantDefaultLocale
+    : APP_DEFAULT_LOCALE;
+  return { ok: true, tenantDefaultLocale };
 }

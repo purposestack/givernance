@@ -103,7 +103,12 @@
         "lastName": "Last name",
         "email": "Professional email",
         "country": "Country (ISO-2)",
+        "locale": "Workspace language",
         "legalType": "Legal form"
+      },
+      "locales": {
+        "fr": "French",
+        "en": "English"
       },
       "legalTypes": {
         "association": "Association (loi 1901)",
@@ -190,9 +195,18 @@
       "fields": {
         "firstName": "First name",
         "lastName": "Last name",
+        "locale": "Your language",
         "password": "Choose a password",
         "passwordHint": "At least {min} characters. You'll use this to sign in on the next screen.",
         "passwordConfirm": "Confirm password"
+      },
+      "locales": {
+        "fr": "French",
+        "en": "English"
+      },
+      "localeHint": {
+        "matchesTenantDefault": "Using the workspace's default language. Change it any time from your profile.",
+        "personalOverride": "Saving this as your personal preference for this workspace."
       },
       "errors": {
         "invalid": "This invitation link is invalid.",

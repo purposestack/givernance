@@ -13,6 +13,7 @@
  */
 
 import { isReservedSlug, validateTenantDomain } from "@givernance/shared/constants";
+import { type Locale, localeFromCountry, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import Link from "next/link";
@@ -56,6 +57,12 @@ interface SignupFormValues {
   lastName: string;
   email: string;
   country: string;
+  /**
+   * BCP-47 locale for the new tenant (issue #153). Default derived from
+   * `country` so e.g. an FR signup pre-selects French; the user can flip
+   * to EN before submit. Mirrors the backend `localeFromCountry` rule.
+   */
+  locale: Locale;
   legalType: LegalType;
   consent: boolean;
 }
@@ -104,6 +111,7 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
       lastName: "",
       email: "",
       country: defaultCountry,
+      locale: localeFromCountry(defaultCountry),
       legalType: "association",
       consent: false,
     },
@@ -211,6 +219,7 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
         lastName: values.lastName.trim(),
         email: values.email.trim().toLowerCase(),
         country: values.country,
+        locale: values.locale,
         captchaToken,
       });
 
@@ -470,6 +479,41 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
                       }
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/*
+             * Issue #153 — locale picker. Default derived from `country` at
+             * mount via `localeFromCountry`; the user can flip it before
+             * submit. The API stores the chosen value as
+             * `tenants.default_locale` and the picker labels update when
+             * the user re-renders the form in another locale.
+             */}
+            <FormField
+              control={form.control}
+              name="locale"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("fields.locale")}</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => field.onChange(value as Locale)}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {SUPPORTED_LOCALES.map((locale) => (
+                        <SelectItem key={locale} value={locale}>
+                          {t(`locales.${locale}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

@@ -16,6 +16,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireOrgAdmin } from "../../lib/guards.js";
@@ -37,6 +38,8 @@ import {
   resendTeamInvitation,
   revokeTeamInvitation,
 } from "./service.js";
+
+const LocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)));
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
@@ -60,6 +63,12 @@ const AcceptInvitationBody = Type.Object({
    * the frontend (matches the signup verify endpoint).
    */
   password: Type.String({ minLength: 12, maxLength: 128 }),
+  /**
+   * Optional BCP-47 locale picked at acceptance (issue #153). Persisted
+   * to `users.locale` only when it differs from the tenant's
+   * `default_locale`; accepting the default leaves `users.locale` NULL.
+   */
+  locale: Type.Optional(LocaleSchema),
 });
 
 const TokenParams = Type.Object({ token: UuidSchema });
@@ -96,6 +105,15 @@ const InvitationListItem = Type.Object({
 const AcceptResponse = Type.Object({
   /** Tenant slug — drives the post-accept Keycloak login `?hint=` param. */
   slug: Type.String(),
+});
+
+/**
+ * Probe success response. Carries the tenant's `default_locale` so the
+ * accept form can pre-select the right locale picker option (issue #153).
+ * Failure paths still collapse to a generic 410 — anti-enumeration.
+ */
+const ProbeResponse = Type.Object({
+  tenantDefaultLocale: LocaleSchema,
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -332,7 +350,12 @@ export async function invitationRoutes(app: FastifyInstance) {
         tags: ["Invitations"],
         params: TokenParams,
         response: {
-          204: Type.Null(),
+          // Issue #153: response moved from 204 → 200 with a body so the
+          // accept form can read the tenant's default_locale on page load.
+          // The web client treats both 200 (with body) and 204 (legacy) as
+          // "valid" so a stale browser cache during deploy doesn't break;
+          // see InvitationService.probeInvitation.
+          200: DataResponse(ProbeResponse),
           410: ProblemDetailSchema,
           ...ErrorResponses,
         },
@@ -341,8 +364,8 @@ export async function invitationRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { token } = request.params as { token: string };
-      const ok = await probeTeamInvitation(token);
-      if (!ok) {
+      const result = await probeTeamInvitation(token);
+      if (!result) {
         request.log.info({ event: "team_invite.probe_rejected" }, "probe rejected");
         return reply
           .status(410)
@@ -354,7 +377,9 @@ export async function invitationRoutes(app: FastifyInstance) {
             ),
           );
       }
-      return reply.status(204).send();
+      return reply.status(200).send({
+        data: { tenantDefaultLocale: result.tenantDefaultLocale },
+      });
     },
   );
 
@@ -387,6 +412,7 @@ export async function invitationRoutes(app: FastifyInstance) {
         firstName: string;
         lastName: string;
         password: string;
+        locale?: "en" | "fr";
       };
 
       const result = await acceptTeamInvitation({
@@ -394,6 +420,7 @@ export async function invitationRoutes(app: FastifyInstance) {
         firstName: body.firstName,
         lastName: body.lastName,
         password: body.password,
+        locale: body.locale,
         ipHash: hashIp(clientIp(request)),
         userAgent: userAgent(request),
       });

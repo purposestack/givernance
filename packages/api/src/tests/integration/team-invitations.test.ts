@@ -77,8 +77,10 @@ interface Fixture {
 
 const fixtureSlugs = new Set<string>();
 
-async function makeFixture(opts: { withKcOrgId?: boolean } = {}): Promise<Fixture> {
-  const { withKcOrgId = true } = opts;
+async function makeFixture(
+  opts: { withKcOrgId?: boolean; defaultLocale?: "en" | "fr" } = {},
+): Promise<Fixture> {
+  const { withKcOrgId = true, defaultLocale = "fr" } = opts;
   const orgId = randomUUID();
   const inviterUserId = randomUUID();
   const inviterKeycloakId = `kc-inviter-${randomUUID().slice(0, 8)}`;
@@ -87,8 +89,8 @@ async function makeFixture(opts: { withKcOrgId?: boolean } = {}): Promise<Fixtur
   fixtureSlugs.add(slug);
 
   await db.execute(
-    sql`INSERT INTO tenants (id, name, slug, status, created_via, keycloak_org_id)
-        VALUES (${orgId}, ${`Team Invite Test ${slug}`}, ${slug}, 'active', 'enterprise', ${withKcOrgId ? keycloakOrgId : null})`,
+    sql`INSERT INTO tenants (id, name, slug, status, created_via, keycloak_org_id, default_locale)
+        VALUES (${orgId}, ${`Team Invite Test ${slug}`}, ${slug}, 'active', 'enterprise', ${withKcOrgId ? keycloakOrgId : null}, ${defaultLocale})`,
   );
 
   // Inviter user — required for the create endpoint to resolve `invitedById`
@@ -951,33 +953,201 @@ describe("POST /v1/invitations/:token/accept", () => {
     expect(kcCreateUser).not.toHaveBeenCalled();
   });
 
-  it("emits country in invitation.created when the tenant has a recorded signup country (QA-F1)", async () => {
-    const f = await makeFixture();
+  // ─── Issue #153 — locale resolution (4-cell matrix) ───────────────────────
+  //
+  // The dispatcher resolves the recipient's locale at enqueue time as
+  // `users.locale ?? tenants.default_locale`, then stamps it on the outbox
+  // payload. Cover all four cells:
+  //   tenant=fr, user=NULL → fr   tenant=fr, user=en → en
+  //   tenant=en, user=NULL → en   tenant=en, user=fr → fr
+  describe.each([
+    { tenantDefault: "fr" as const, existingUserLocale: null, expected: "fr" as const },
+    { tenantDefault: "fr" as const, existingUserLocale: "en" as const, expected: "en" as const },
+    { tenantDefault: "en" as const, existingUserLocale: null, expected: "en" as const },
+    { tenantDefault: "en" as const, existingUserLocale: "fr" as const, expected: "fr" as const },
+  ])("stamps locale=$expected on invitation.created when tenant.default_locale=$tenantDefault and users.locale=$existingUserLocale", ({
+    tenantDefault,
+    existingUserLocale,
+    expected,
+  }) => {
+    it("resolves invitee.locale ?? tenant.default_locale", async () => {
+      const f = await makeFixture({ defaultLocale: tenantDefault });
+      const email = `matrix-${randomUUID().slice(0, 6)}+${f.slug}@example.org`;
 
-    // Seed an original signup_verification_requested event the way self-
-    // serve signup() would have. The team-invite create path looks this up
-    // to drive EN/FR template selection.
-    await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
-      await tx.insert(outboxEvents).values({
-        tenantId: f.orgId,
-        type: "tenant.signup_verification_requested",
-        payload: { tenantId: f.orgId, country: "FR" },
-      });
+      // Seed a `users` row to model the case where the invitee already
+      // exists as a member (re-invite) so the per-user override layer is
+      // actually exercised. The `locale` column carries the personal
+      // preference.
+      if (existingUserLocale !== null) {
+        await db.transaction(async (tx) => {
+          await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+          await tx.insert(users).values({
+            orgId: f.orgId,
+            email,
+            firstName: "Existing",
+            lastName: "Member",
+            role: "user",
+            locale: existingUserLocale,
+          });
+        });
+      }
+
+      // The create path's pre-flight rejects existing-member invites with
+      // 409 (UX hint). Skip it for the override cells by enqueueing a
+      // resend instead — same outbox-stamping code path.
+      let invitationId: string;
+      if (existingUserLocale !== null) {
+        // Insert a pending invitation directly so we can hit resend.
+        const id = randomUUID();
+        await db.transaction(async (tx) => {
+          await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+          await tx.insert(invitations).values({
+            id,
+            orgId: f.orgId,
+            email,
+            role: "user",
+            purpose: "team_invite",
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          });
+        });
+        const resend = await app.inject({
+          method: "POST",
+          url: `/v1/invitations/${id}/resend`,
+          headers: authHeader(f.inviterToken),
+        });
+        expect(resend.statusCode).toBe(204);
+        invitationId = id;
+      } else {
+        const create = await app.inject({
+          method: "POST",
+          url: "/v1/invitations",
+          headers: authHeader(f.inviterToken),
+          payload: { email },
+        });
+        expect(create.statusCode).toBe(201);
+        const json = create.json() as { data: { id: string } };
+        invitationId = json.data.id;
+      }
+
+      const eventType = existingUserLocale !== null ? "invitation.resent" : "invitation.created";
+      const { rows } = await db.execute<{ payload: { locale?: string } }>(
+        sql`SELECT payload FROM outbox_events
+              WHERE tenant_id = ${f.orgId}
+                AND type = ${eventType}
+                AND payload->>'invitationId' = ${invitationId}
+              ORDER BY created_at DESC LIMIT 1`,
+      );
+      expect(rows[0]?.payload?.locale).toBe(expected);
     });
+  });
 
+  it("acceptTeamInvitation persists users.locale only when chosen value differs from tenant default", async () => {
+    const f = await makeFixture({ defaultLocale: "fr" });
+    const email = `accept-locale-${randomUUID().slice(0, 6)}+${f.slug}@example.org`;
     const create = await app.inject({
       method: "POST",
       url: "/v1/invitations",
       headers: authHeader(f.inviterToken),
-      payload: { email: `fr+${f.slug}@example.org` },
+      payload: { email, role: "user" },
     });
     expect(create.statusCode).toBe(201);
 
-    const { rows } = await db.execute<{ payload: { country?: string } }>(
-      sql`SELECT payload FROM outbox_events WHERE tenant_id = ${f.orgId} AND type = 'invitation.created' LIMIT 1`,
-    );
-    expect(rows[0]?.payload?.country).toBe("FR");
+    const [invitation] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(and(eq(invitations.orgId, f.orgId), eq(invitations.email, email)))
+      .limit(1);
+    const token = invitation?.token;
+    expect(token).toBeDefined();
+
+    // Accept with a value that DIFFERS from tenant default → users.locale persists.
+    const accept = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${token}/accept`,
+      payload: {
+        firstName: "Anna",
+        lastName: "Override",
+        password: "long-enough-password-12",
+        locale: "en",
+      },
+    });
+    expect(accept.statusCode).toBe(201);
+
+    const [persisted] = await db
+      .select({ locale: users.locale })
+      .from(users)
+      .where(and(eq(users.orgId, f.orgId), eq(users.email, email)))
+      .limit(1);
+    expect(persisted?.locale).toBe("en");
+  });
+
+  it("acceptTeamInvitation leaves users.locale NULL when chosen value matches tenant default", async () => {
+    const f = await makeFixture({ defaultLocale: "fr" });
+    const email = `accept-default-${randomUUID().slice(0, 6)}+${f.slug}@example.org`;
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email, role: "user" },
+    });
+    expect(create.statusCode).toBe(201);
+
+    const [invitation] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(and(eq(invitations.orgId, f.orgId), eq(invitations.email, email)))
+      .limit(1);
+    const token = invitation?.token;
+    expect(token).toBeDefined();
+
+    // Accept with the SAME value as tenant default → users.locale stays NULL,
+    // so a future tenant-default change carries through to this user.
+    const accept = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${token}/accept`,
+      payload: {
+        firstName: "Anna",
+        lastName: "Default",
+        password: "long-enough-password-12",
+        locale: "fr",
+      },
+    });
+    expect(accept.statusCode).toBe(201);
+
+    const [persisted] = await db
+      .select({ locale: users.locale })
+      .from(users)
+      .where(and(eq(users.orgId, f.orgId), eq(users.email, email)))
+      .limit(1);
+    expect(persisted?.locale).toBeNull();
+  });
+
+  it("probe response carries the tenant's default_locale (issue #153)", async () => {
+    const f = await makeFixture({ defaultLocale: "fr" });
+    const email = `probe-locale-${randomUUID().slice(0, 6)}+${f.slug}@example.org`;
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email, role: "user" },
+    });
+    expect(create.statusCode).toBe(201);
+
+    const [invitation] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(and(eq(invitations.orgId, f.orgId), eq(invitations.email, email)))
+      .limit(1);
+    const token = invitation?.token;
+    expect(token).toBeDefined();
+
+    const probe = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${token}/probe`,
+    });
+    expect(probe.statusCode).toBe(200);
+    const body = probe.json() as { data: { tenantDefaultLocale: string } };
+    expect(body.data.tenantDefaultLocale).toBe("fr");
   });
 
   // ─── Cross-tenant isolation ───────────────────────────────────────────
@@ -1060,7 +1230,11 @@ describe("GET /v1/invitations/:token/probe", () => {
       method: "GET",
       url: `/v1/invitations/${row?.token}/probe`,
     });
-    expect(probe.statusCode).toBe(204);
+    // Issue #153: probe success response moved from 204 → 200 with body so
+    // the accept form can pre-select the right locale picker option.
+    expect(probe.statusCode).toBe(200);
+    const body = probe.json() as { data: { tenantDefaultLocale: string } };
+    expect(body.data.tenantDefaultLocale).toMatch(/^(en|fr)$/);
   });
 
   it("returns 410 when the invitation has been accepted", async () => {
