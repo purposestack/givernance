@@ -15,6 +15,32 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
   }
 }
 
+/**
+ * Guard: require write access — accepts `org_admin` and `user`, blocks
+ * `viewer`. Use on operational write endpoints (create / update of
+ * fundraising data) where viewers should stay read-only but staff in the
+ * `user` role need parity with admins. For destructive admin actions
+ * (delete, status transitions, settings) use `requireOrgAdmin` instead.
+ */
+export async function requireWrite(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.auth?.userId) {
+    return reply.status(401).send({
+      type: "https://httpproblems.com/http-status/401",
+      title: "Unauthorized",
+      status: 401,
+      detail: "Authentication required",
+    });
+  }
+  if (request.auth.role !== "org_admin" && request.auth.role !== "user") {
+    return reply.status(403).send({
+      type: "https://httpproblems.com/http-status/403",
+      title: "Forbidden",
+      status: 403,
+      detail: "write access required",
+    });
+  }
+}
+
 /** Guard: require org_admin role */
 export async function requireOrgAdmin(request: FastifyRequest, reply: FastifyReply) {
   if (!request.auth?.userId) {

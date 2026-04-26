@@ -965,4 +965,66 @@ describe("Campaigns RBAC — non-admin forbidden", () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it("POST /v1/campaigns with viewer role returns 403", async () => {
+    const token = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Viewer attempt", type: "digital" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("user role can create + update operational fields on a campaign", async () => {
+    // Symmetric with create: if a user can POST, they can PATCH. The
+    // earlier asymmetry (PATCH was admin-only while POST was not) had
+    // them dead-ended once the campaign existed. (Reported on PR #148.)
+    const token = signToken(app, { role: "user" });
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "User-created campaign", type: "digital" },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const created = createRes.json<{ data: { id: string } }>().data;
+
+    const patchRes = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${created.id}`,
+      headers: authHeader(token),
+      payload: { name: "User-edited campaign", operationalCostCents: 15000 },
+    });
+    expect(patchRes.statusCode).toBe(200);
+    const updated = patchRes.json<{ data: { name: string; operationalCostCents: number } }>().data;
+    expect(updated.name).toBe("User-edited campaign");
+    expect(updated.operationalCostCents).toBe(15000);
+  });
+
+  it("user role attempting to change status returns 403 (status stays admin-only)", async () => {
+    // Field-level gate: even though `user` can PATCH operational fields,
+    // status transitions still go through the org_admin-only path. The
+    // StatusActions buttons are already hidden for non-admins on the web,
+    // but a direct API caller hits the same wall.
+    const adminToken = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(adminToken),
+      payload: { name: "Admin-created campaign for status guard", type: "digital" },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const created = createRes.json<{ data: { id: string } }>().data;
+
+    const userToken = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${created.id}`,
+      headers: authHeader(userToken),
+      payload: { status: "active" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
 });
