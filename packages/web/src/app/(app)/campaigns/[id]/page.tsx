@@ -152,7 +152,7 @@ export default async function CampaignDetailPage({
       <div className="grid gap-6 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
         <aside className="space-y-6">
           <StatsCard campaign={campaign} stats={stats} roiMetrics={roiMetrics} locale={locale} />
-          <StatusCard campaign={campaign} />
+          <StatusCard campaign={campaign} canManage={auth.roles.includes("org_admin")} />
         </aside>
         <div className="space-y-6">
           <CampaignRoiChart
@@ -297,16 +297,22 @@ async function CostBreakdownCard({
   );
 }
 
-async function StatusCard({ campaign }: { campaign: Campaign }) {
+async function StatusCard({ campaign, canManage }: { campaign: Campaign; canManage: boolean }) {
   const t = await getTranslations("campaigns.detail");
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>{t("actions.title")}</CardTitle>
-        <CardDescription>{t("actions.description")}</CardDescription>
+        <CardDescription>
+          {canManage ? t("actions.description") : t("actions.descriptionReadOnly")}
+        </CardDescription>
       </CardHeader>
-      <CampaignStatusActions campaignId={campaign.id} status={campaign.status} />
+      <CampaignStatusActions
+        campaignId={campaign.id}
+        status={campaign.status}
+        canManage={canManage}
+      />
     </Card>
   );
 }
