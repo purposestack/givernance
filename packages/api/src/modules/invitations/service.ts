@@ -848,3 +848,46 @@ export async function getTeamInvitationForOrg(
     };
   });
 }
+
+// ─── Public probe (PR #154 follow-up) ──────────────────────────────────────
+
+/**
+ * Public, side-effect-free check that a token is currently acceptable.
+ *
+ * The /invite/accept page calls this on load so an invitee with a dead
+ * link is shown the terminal error screen immediately, rather than
+ * filling out a 4-field form to discover the same thing on submit.
+ *
+ * Anti-enumeration: the route translates `false` into a generic 410, so
+ * "wrong token" / "already accepted" / "expired" / "wrong purpose" all
+ * collapse to the same response. The boolean we return here is *only*
+ * inspected by the route handler — never serialised. Same shape the
+ * accept endpoint enforces (cf. `acceptTeamInvitation`).
+ *
+ * Owner-role connection (`systemDb`) because the caller is unauthenticated
+ * and there's no tenant context to set on the app role. The token IS the
+ * security boundary; RLS adds no value here.
+ *
+ * Note: a token that probes "valid" can still race a concurrent accept /
+ * resend / revoke before the user submits — the post-submit terminal
+ * screen on the page handles that case.
+ */
+export async function probeTeamInvitation(token: string): Promise<boolean> {
+  // Cheap shape guard — the route schema also rejects malformed tokens
+  // with a 400, but a defensive check here keeps the function safe to
+  // call from anywhere without leaking error shape.
+  if (typeof token !== "string" || token.length === 0) return false;
+
+  const [row] = await systemDb
+    .select({
+      acceptedAt: invitations.acceptedAt,
+      expiresAt: invitations.expiresAt,
+    })
+    .from(invitations)
+    .where(and(eq(invitations.token, token), eq(invitations.purpose, "team_invite")))
+    .limit(1);
+  if (!row) return false;
+  if (row.acceptedAt) return false;
+  if (row.expiresAt < new Date()) return false;
+  return true;
+}

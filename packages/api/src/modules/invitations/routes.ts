@@ -1,10 +1,11 @@
 /**
  * Team invitation routes (issue #145).
  *
- * - `POST   /v1/invitations`              — org_admin creates an invite
- * - `GET    /v1/invitations`              — org_admin lists pending/accepted
- * - `POST   /v1/invitations/:id/resend`   — rotate token, re-emit email
- * - `DELETE /v1/invitations/:id`          — revoke a pending invite
+ * - `POST   /v1/invitations`               — org_admin creates an invite
+ * - `GET    /v1/invitations`               — org_admin lists pending/accepted
+ * - `POST   /v1/invitations/:id/resend`    — rotate token, re-emit email
+ * - `DELETE /v1/invitations/:id`           — revoke a pending invite
+ * - `GET    /v1/invitations/:token/probe`  — public, side-effect-free check
  * - `POST   /v1/invitations/:token/accept` — public, token = credential
  *
  * The accept endpoint mirrors the structural twin in `signup/routes.ts`:
@@ -32,6 +33,7 @@ import {
   acceptTeamInvitation,
   createTeamInvitation,
   listTeamInvitations,
+  probeTeamInvitation,
   resendTeamInvitation,
   revokeTeamInvitation,
 } from "./service.js";
@@ -296,6 +298,55 @@ export async function invitationRoutes(app: FastifyInstance) {
           );
       }
 
+      return reply.status(204).send();
+    },
+  );
+
+  /**
+   * GET /v1/invitations/:token/probe — public side-effect-free token check.
+   *
+   * Returns `204` if the token is valid + pending + unexpired, `410` for
+   * everything else. Used by the /invite/accept page to short-circuit dead
+   * links to the terminal error screen on page load (PR #154 follow-up).
+   *
+   * Anti-enumeration: every failure mode collapses to the same 410 the
+   * accept endpoint uses — no information about whether the row exists,
+   * was accepted, expired, or has the wrong purpose leaks back.
+   *
+   * Rate-limited tighter than accept (30 req / 15min per IP) because this
+   * is read-only and bot-friendly: a generous limit would let an attacker
+   * brute-force UUIDs cheaply. Client-side, the probe is invoked exactly
+   * once per page load; legitimate humans never hit the cap.
+   */
+  app.get(
+    "/invitations/:token/probe",
+    {
+      schema: {
+        tags: ["Invitations"],
+        params: TokenParams,
+        response: {
+          204: Type.Null(),
+          410: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+      config: { rateLimit: { max: 30, timeWindow: "15 minutes" } },
+    },
+    async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const ok = await probeTeamInvitation(token);
+      if (!ok) {
+        request.log.info({ event: "team_invite.probe_rejected" }, "probe rejected");
+        return reply
+          .status(410)
+          .send(
+            problemDetail(
+              410,
+              "Invitation expired",
+              "This invitation link is invalid or has already been used. Ask the person who invited you to send a new one.",
+            ),
+          );
+      }
       return reply.status(204).send();
     },
   );

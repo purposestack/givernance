@@ -51,6 +51,35 @@ export const InvitationService = {
 
 const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
+/**
+ * Side-effect-free probe for the /invite/accept page (PR #154 follow-up).
+ *
+ * Hits `GET /v1/invitations/:token/probe` which returns 204 if the token
+ * is currently acceptable, 410 otherwise (anti-enumeration shape — every
+ * failure mode is collapsed by the API). On a network error we fall
+ * through to "valid" so the form still renders; the post-submit terminal
+ * screen catches the bad-token case as a fallback.
+ */
+export type InvitationProbeResult = "valid" | "invalid" | "rate_limited";
+
+export async function probeInvitation(token: string): Promise<InvitationProbeResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${PUBLIC_API_URL}/v1/invitations/${encodeURIComponent(token)}/probe`, {
+      method: "GET",
+      credentials: "omit",
+      headers: { Accept: "application/json" },
+    });
+  } catch {
+    // Network-side failure: don't block the form. The post-submit terminal
+    // screen will catch a bad token if the user reaches that point.
+    return "valid";
+  }
+  if (res.status === 204) return "valid";
+  if (res.status === 429) return "rate_limited";
+  return "invalid";
+}
+
 export interface AcceptInvitationSuccess {
   /** Tenant slug — drives the post-accept Keycloak login `?hint=` param. */
   slug: string;
