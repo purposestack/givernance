@@ -90,13 +90,17 @@ export function Sidebar({
   isSuperAdmin: isSuperAdminProp,
 }: SidebarProps) {
   const pathname = usePathname();
-  const { user, hasRole, logout } = useAuth();
+  const { user, hasRole, hasAppRole, logout } = useAuth();
   const t = useTranslations("appShell.sidebar");
   const tAdmin = useTranslations("appShell.sidebar.admin");
   // Prefer the SSR-resolved flag; fall back to client-side role check so
   // callers that haven't threaded the prop still get the correct behaviour
   // (just with a brief post-hydration pop-in).
   const isSuperAdmin = isSuperAdminProp ?? hasRole("super_admin");
+  // `/settings/*` is org_admin-only at the route level (see settings layout
+  // guard). Hide the dropdown link for everyone else so they don't dead-end
+  // on a 404.
+  const canManageOrgSettings = hasAppRole("org_admin");
   const canSwitchOrganization = typeof membershipCount !== "number" || membershipCount > 1;
 
   const initials = user
@@ -249,11 +253,13 @@ export function Sidebar({
                   </Link>
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuItem asChild>
-                <Link href="/settings" onClick={handleMobileClose}>
-                  {t("workspaceSettings")}
-                </Link>
-              </DropdownMenuItem>
+              {canManageOrgSettings ? (
+                <DropdownMenuItem asChild>
+                  <Link href="/settings" onClick={handleMobileClose}>
+                    {t("workspaceSettings")}
+                  </Link>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuSeparator />
               <DropdownMenuLabel>{user?.email ?? t("userPlaceholder")}</DropdownMenuLabel>
               <DropdownMenuItem onSelect={logout}>

@@ -19,7 +19,7 @@ interface TopbarProps {
  * Matches dashboard.html mockup: breadcrumb left, search center, actions right.
  */
 export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: TopbarProps) {
-  const { user } = useAuth();
+  const { user, hasAppRole } = useAuth();
   const t = useTranslations("appShell.topbar");
 
   const initials = user
@@ -27,6 +27,12 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
     : "?";
 
   const displayName = user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() : "";
+  // The avatar links to `/settings`, which is org_admin-only. For non-admins
+  // render an informational (non-clickable) badge instead so they don't
+  // dead-end on a 404. A dedicated profile page is out of scope here.
+  const canManageOrgSettings = hasAppRole("org_admin");
+  const avatarClasses =
+    "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
 
   return (
     <header className="sticky top-0 z-[var(--z-sticky)] flex h-[var(--topbar-height)] items-center gap-4 border-b border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-[var(--content-padding)] backdrop-blur-xl">
@@ -76,14 +82,25 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
           />
         </button>
 
-        <Link
-          href="/settings"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          title={displayName}
-          aria-label={t("profileOf", { name: displayName })}
-        >
-          {initials}
-        </Link>
+        {canManageOrgSettings ? (
+          <Link
+            href="/settings"
+            className={avatarClasses}
+            title={displayName}
+            aria-label={t("profileOf", { name: displayName })}
+          >
+            {initials}
+          </Link>
+        ) : (
+          <span
+            role="img"
+            className={avatarClasses}
+            title={displayName}
+            aria-label={t("profileOf", { name: displayName })}
+          >
+            {initials}
+          </span>
+        )}
       </div>
     </header>
   );
