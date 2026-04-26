@@ -8,7 +8,7 @@
  * route handler maps to 502/503.
  */
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   auditLogs,
   invitations,
@@ -20,7 +20,7 @@ import {
   users,
 } from "@givernance/shared/schema";
 import { validateTenantSlug } from "@givernance/shared/validators";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
 import {
   createSystemTxtResolver,
@@ -700,6 +700,15 @@ export async function listTenantsForAdmin(filters: {
   }));
 }
 
+export interface FirstAdminInvitationSummary {
+  id: string;
+  email: string;
+  status: "pending" | "accepted" | "expired";
+  expiresAt: string;
+  acceptedAt: string | null;
+  createdAt: string;
+}
+
 export async function getTenantDetail(orgId: string): Promise<{
   tenant: TenantSummary;
   domains: Array<{
@@ -720,6 +729,7 @@ export async function getTenantDetail(orgId: string): Promise<{
     provisionalUntil: string | null;
     lastVisitedAt: string | null;
   }>;
+  firstAdminInvitation: FirstAdminInvitationSummary | null;
 } | null> {
   if (!isUuid(orgId)) return null;
 
@@ -742,7 +752,7 @@ export async function getTenantDetail(orgId: string): Promise<{
     .limit(1);
   if (!tenant) return null;
 
-  const [domainRows, userRows] = await Promise.all([
+  const [domainRows, userRows, firstAdminInvitation] = await Promise.all([
     db
       .select({
         id: tenantDomains.id,
@@ -767,6 +777,7 @@ export async function getTenantDetail(orgId: string): Promise<{
       })
       .from(users)
       .where(eq(users.orgId, orgId)),
+    getFirstAdminInvitation(orgId),
   ]);
 
   return {
@@ -794,6 +805,65 @@ export async function getTenantDetail(orgId: string): Promise<{
       provisionalUntil: u.provisionalUntil?.toISOString() ?? null,
       lastVisitedAt: u.lastVisitedAt?.toISOString() ?? null,
     })),
+    firstAdminInvitation,
+  };
+}
+
+/**
+ * Latest super-admin-seeded first-admin invitation for the tenant, or null.
+ *
+ * Discriminator: `purpose='team_invite' AND role='org_admin' AND
+ * invitedById IS NULL`. The null `invitedById` is what distinguishes the
+ * super-admin-seeded path from a regular org_admin team-invite — the latter
+ * always resolves the inviter's `users.id` before insert.
+ *
+ * Returns the most recent row regardless of state so the detail-page card
+ * can render pending / accepted / expired uniformly. The token is never
+ * returned: it's a one-time secret surfaced only on the create / resend
+ * 201/200 responses.
+ */
+export async function getFirstAdminInvitation(
+  orgId: string,
+): Promise<FirstAdminInvitationSummary | null> {
+  if (!isUuid(orgId)) return null;
+
+  const [row] = await withTenantContext(orgId, async (tx) =>
+    tx
+      .select({
+        id: invitations.id,
+        email: invitations.email,
+        expiresAt: invitations.expiresAt,
+        acceptedAt: invitations.acceptedAt,
+        createdAt: invitations.createdAt,
+      })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.orgId, orgId),
+          eq(invitations.purpose, "team_invite"),
+          eq(invitations.role, "org_admin"),
+          isNull(invitations.invitedById),
+        ),
+      )
+      .orderBy(desc(invitations.createdAt))
+      .limit(1),
+  );
+  if (!row) return null;
+
+  const now = new Date();
+  const status: FirstAdminInvitationSummary["status"] = row.acceptedAt
+    ? "accepted"
+    : row.expiresAt < now
+      ? "expired"
+      : "pending";
+
+  return {
+    id: row.id,
+    email: row.email,
+    status,
+    expiresAt: row.expiresAt.toISOString(),
+    acceptedAt: row.acceptedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -884,11 +954,16 @@ export async function listRecentAudit(orgId: string, limit = 50) {
 
 // ─── Invite first enterprise user helper (super-admin) ─────────────────────
 
+const FIRST_ADMIN_INVITATION_TTL_DAYS = 7;
+
 export async function inviteFirstEnterpriseUser(input: {
   orgId: string;
   email: string;
   audit: AuditContext;
-}): Promise<{ ok: true; token: string } | { ok: false; error: "tenant_not_found" }> {
+}): Promise<
+  | { ok: true; invitationId: string; token: string; expiresAt: Date }
+  | { ok: false; error: "tenant_not_found" | "already_accepted" }
+> {
   if (!isUuid(input.orgId)) return { ok: false, error: "tenant_not_found" };
   const [tenant] = await db
     .select({ id: tenants.id })
@@ -897,7 +972,16 @@ export async function inviteFirstEnterpriseUser(input: {
     .limit(1);
   if (!tenant) return { ok: false, error: "tenant_not_found" };
 
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const existing = await getFirstAdminInvitation(input.orgId);
+  if (existing && existing.status === "accepted") {
+    // Re-inviting after the first-admin already accepted would silently
+    // create a second org_admin with no audit hint. The detail-page card
+    // hides the "Send invitation" CTA in this state, so the only callers
+    // hitting this path are direct API users — surface the conflict.
+    return { ok: false, error: "already_accepted" };
+  }
+
+  const expiresAt = new Date(Date.now() + FIRST_ADMIN_INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
   const result = await withTenantContext(input.orgId, async (tx) => {
     const [row] = await tx
       .insert(invitations)
@@ -908,17 +992,174 @@ export async function inviteFirstEnterpriseUser(input: {
         purpose: "team_invite",
         expiresAt,
       })
-      .returning({ id: invitations.id, token: invitations.token });
+      .returning({
+        id: invitations.id,
+        token: invitations.token,
+        expiresAt: invitations.expiresAt,
+      });
 
     await tx.insert(outboxEvents).values({
       tenantId: input.orgId,
       type: "tenant.first_admin_invited",
       payload: { tenantId: input.orgId, invitationId: row?.id },
     });
+
+    await tx.insert(auditLogs).values({
+      orgId: input.orgId,
+      userId: input.audit.actorUserId,
+      action: "tenant.first_admin_invited",
+      resourceType: "invitation",
+      resourceId: row?.id ?? null,
+      newValues: { role: "org_admin", purpose: "team_invite" },
+      ipHash: input.audit.ipHash,
+      userAgent: input.audit.userAgent,
+    });
+
     return row;
   });
   // biome-ignore lint/style/noNonNullAssertion: returning() yields one row
-  return { ok: true, token: result!.token };
+  const r = result!;
+  return { ok: true, invitationId: r.id, token: r.token, expiresAt: r.expiresAt };
+}
+
+// ─── Resend / revoke first-admin invitation (super-admin) ──────────────────
+
+/**
+ * Rotate the token + expiry on a pending first-admin invitation and
+ * re-emit `tenant.first_admin_invited`. Returns the fresh token so the
+ * super-admin can copy a fallback link before the worker (#145) ships.
+ *
+ * The discriminator `invitedById IS NULL` keeps this scoped to super-
+ * admin-seeded invitations only — a regular org_admin team-invite has its
+ * inviter resolved at create time and is managed via `/v1/invitations/...`.
+ */
+export async function resendFirstEnterpriseInvitation(input: {
+  orgId: string;
+  invitationId: string;
+  audit: AuditContext;
+}): Promise<
+  | { ok: true; invitationId: string; token: string; expiresAt: Date }
+  | { ok: false; error: "not_found" | "already_accepted" }
+> {
+  if (!isUuid(input.orgId) || !isUuid(input.invitationId)) {
+    return { ok: false, error: "not_found" };
+  }
+
+  return withTenantContext(input.orgId, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: invitations.id,
+        acceptedAt: invitations.acceptedAt,
+      })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.id, input.invitationId),
+          eq(invitations.orgId, input.orgId),
+          eq(invitations.purpose, "team_invite"),
+          eq(invitations.role, "org_admin"),
+          isNull(invitations.invitedById),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return { ok: false as const, error: "not_found" as const };
+    if (row.acceptedAt) {
+      return { ok: false as const, error: "already_accepted" as const };
+    }
+
+    const newToken = randomUUID();
+    const expiresAt = new Date(Date.now() + FIRST_ADMIN_INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+    await tx
+      .update(invitations)
+      .set({ token: newToken, expiresAt })
+      .where(eq(invitations.id, input.invitationId));
+
+    await tx.insert(outboxEvents).values({
+      tenantId: input.orgId,
+      type: "tenant.first_admin_invited",
+      payload: {
+        tenantId: input.orgId,
+        invitationId: row.id,
+        resent: true,
+      },
+    });
+
+    await tx.insert(auditLogs).values({
+      orgId: input.orgId,
+      userId: input.audit.actorUserId,
+      action: "tenant.first_admin_invited",
+      resourceType: "invitation",
+      resourceId: row.id,
+      newValues: { rotated: true, role: "org_admin" },
+      ipHash: input.audit.ipHash,
+      userAgent: input.audit.userAgent,
+    });
+
+    return {
+      ok: true as const,
+      invitationId: row.id,
+      token: newToken,
+      expiresAt,
+    };
+  });
+}
+
+/**
+ * Hard-delete a pending first-admin invitation. The token is invalidated
+ * by the row deletion — accept attempts fall through to the route's generic
+ * 410 (no enumeration oracle). Mirrors the `revokeTeamInvitation` choice
+ * documented in `invitations/service.ts`: soft-delete would require every
+ * accept lookup to add another WHERE filter.
+ */
+export async function revokeFirstEnterpriseInvitation(input: {
+  orgId: string;
+  invitationId: string;
+  audit: AuditContext;
+}): Promise<{ ok: true } | { ok: false; error: "not_found" | "already_accepted" }> {
+  if (!isUuid(input.orgId) || !isUuid(input.invitationId)) {
+    return { ok: false, error: "not_found" };
+  }
+
+  return withTenantContext(input.orgId, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: invitations.id,
+        acceptedAt: invitations.acceptedAt,
+      })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.id, input.invitationId),
+          eq(invitations.orgId, input.orgId),
+          eq(invitations.purpose, "team_invite"),
+          eq(invitations.role, "org_admin"),
+          isNull(invitations.invitedById),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return { ok: false as const, error: "not_found" as const };
+    if (row.acceptedAt) {
+      return { ok: false as const, error: "already_accepted" as const };
+    }
+
+    await tx.delete(invitations).where(eq(invitations.id, input.invitationId));
+
+    await tx.insert(auditLogs).values({
+      orgId: input.orgId,
+      userId: input.audit.actorUserId,
+      action: "tenant.first_admin_invitation_revoked",
+      resourceType: "invitation",
+      resourceId: input.invitationId,
+      newValues: { revoked: true },
+      ipHash: input.audit.ipHash,
+      userAgent: input.audit.userAgent,
+    });
+
+    return { ok: true as const };
+  });
 }
 
 // ─── Error helpers ──────────────────────────────────────────────────────────

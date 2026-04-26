@@ -1,5 +1,14 @@
 import { createClientApiClient } from "@/lib/api/client-browser";
 
+export interface AdminFirstAdminInvitation {
+  id: string;
+  email: string;
+  status: "pending" | "accepted" | "expired";
+  expiresAt: string;
+  acceptedAt: string | null;
+  createdAt: string;
+}
+
 export interface AdminTenantSummary {
   id: string;
   name: string;
@@ -50,6 +59,7 @@ export interface AdminTenantDetail {
   domains: AdminTenantDomain[];
   users: AdminTenantUser[];
   recentAudit: AdminTenantAuditEntry[];
+  firstAdminInvitation: AdminFirstAdminInvitation | null;
 }
 
 export interface AdminTenantListResponse {
@@ -101,4 +111,61 @@ export async function createEnterpriseTenant(
     input,
   );
   return res.data;
+}
+
+// ─── First-admin invitation (super-admin) ──────────────────────────────────
+
+export interface InviteFirstAdminResult {
+  invitationId: string;
+  invitationToken: string;
+  expiresAt: string;
+}
+
+/**
+ * Build the URL the invitee uses to accept their invitation. Surfaced as
+ * the copy-link fallback on the FirstAdminCard until the email worker
+ * (#145) ships. Mirrors the host-resolution policy from `new-tenant-form`
+ * so white-label deployments don't surface `givernance.app/`.
+ */
+export function buildInviteAcceptUrl(token: string): string {
+  const raw = process.env.NEXT_PUBLIC_APP_URL;
+  const base = raw && raw.length > 0 ? raw.replace(/\/$/, "") : "";
+  return `${base}/invite/accept?token=${encodeURIComponent(token)}`;
+}
+
+export async function inviteFirstAdmin(
+  tenantId: string,
+  email: string,
+): Promise<InviteFirstAdminResult> {
+  const api = createClientApiClient();
+  const res = await api.post<{ data: InviteFirstAdminResult }>(
+    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/invite-first-admin`,
+    { email: email.trim().toLowerCase() },
+  );
+  return res.data;
+}
+
+export async function resendFirstAdminInvitation(
+  tenantId: string,
+  invitationId: string,
+): Promise<InviteFirstAdminResult> {
+  const api = createClientApiClient();
+  const res = await api.post<{ data: InviteFirstAdminResult }>(
+    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/invite-first-admin/${encodeURIComponent(
+      invitationId,
+    )}/resend`,
+  );
+  return res.data;
+}
+
+export async function cancelFirstAdminInvitation(
+  tenantId: string,
+  invitationId: string,
+): Promise<void> {
+  const api = createClientApiClient();
+  await api.delete<void>(
+    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/invite-first-admin/${encodeURIComponent(
+      invitationId,
+    )}`,
+  );
 }
