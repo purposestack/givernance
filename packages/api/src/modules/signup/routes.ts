@@ -39,7 +39,13 @@ const SignupBody = Type.Object({
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
   email: Type.String({ format: "email", maxLength: 255 }),
-  country: Type.Optional(Type.String({ maxLength: 2 })),
+  // ISO-3166-1 alpha-2. The `pattern` here mirrors the
+  // `tenants_country_alpha2_chk` CHECK constraint (post-uppercase) so a bad
+  // shape returns a generic 400 from the schema validator instead of
+  // bubbling a 23514 to a 500 — preserves the SEC-5 "no enumeration oracle"
+  // posture, since malformed inputs always 400 with the same error shape.
+  // (Issue #153 / PR #158 security review.)
+  country: Type.Optional(Type.String({ pattern: "^[A-Za-z]{2}$" })),
   // Issue #153: optional BCP-47 locale picked at signup. The service falls
   // back to country-derived default when omitted, so the form can ship the
   // picker as a follow-up without breaking the API contract.

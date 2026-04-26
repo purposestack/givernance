@@ -944,6 +944,8 @@ effective_locale = user.locale ?? tenant.default_locale ?? APP_DEFAULT_LOCALE ('
 
 #### Schema changes (migration 0027_locale_resolution)
 
+All three columns are **new** in this migration — `country` previously existed only as an outbox-payload field (never as a row column).
+
 | Column | Type | Constraint |
 |---|---|---|
 | `tenants.country` | `varchar(2)` NULL | `country IS NULL OR country ~ '^[A-Z]{2}$'` |

@@ -120,12 +120,20 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
   const orgNameValue = form.watch("orgName");
   const slugValue = form.watch("slug");
   const emailValue = form.watch("email");
+  const countryValue = form.watch("country");
 
   const [slugDirty, setSlugDirty] = useState(false);
   const [slugState, setSlugState] = useState<SlugState>({ kind: "idle" });
   const [captchaToken, setCaptchaToken] = useState<string | undefined>();
   const [emailHint, setEmailHint] = useState<string | undefined>();
   const [focusErrorSummary, setFocusErrorSummary] = useState(0);
+  // Issue #153: track whether the user has manually picked a locale so
+  // the country→locale auto-derive only fires while the picker is
+  // "untouched". Once the user opens the dropdown and picks a value,
+  // changing country never touches their explicit choice (platform
+  // review F-P5). Initial state matches the form's initial locale =
+  // localeFromCountry(defaultCountry).
+  const [localeDirty, setLocaleDirty] = useState(false);
 
   // FE-5: expose the captcha-token setter on a known global so the external
   // hCaptcha script can call us on `onVerify`. Script-injection lands with
@@ -175,6 +183,18 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
     }
     setSlugState({ kind: "idle" });
   }, [slugValue]);
+
+  // Issue #153: keep the locale picker in sync with country changes until
+  // the user explicitly picks a locale. Removes the surprising "I changed
+  // country to DE but the picker still says French" UX flagged in PR #158
+  // platform review (F-P5).
+  useEffect(() => {
+    if (localeDirty) return;
+    const nextLocale = localeFromCountry(countryValue);
+    if (form.getValues("locale") !== nextLocale) {
+      form.setValue("locale", nextLocale, { shouldDirty: false, shouldValidate: false });
+    }
+  }, [countryValue, form, localeDirty]);
 
   useEffect(() => {
     if (!emailValue.includes("@")) {
@@ -499,7 +519,12 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
                   <FormLabel>{t("fields.locale")}</FormLabel>
                   <Select
                     value={field.value}
-                    onValueChange={(value) => field.onChange(value as Locale)}
+                    onValueChange={(value) => {
+                      // Once the user picks explicitly, country changes
+                      // stop overwriting the locale (issue #153 / F-P5).
+                      setLocaleDirty(true);
+                      field.onChange(value as Locale);
+                    }}
                   >
                     <FormControl>
                       <SelectTrigger>

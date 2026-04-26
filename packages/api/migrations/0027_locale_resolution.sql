@@ -34,6 +34,10 @@ DECLARE
   populated_country INTEGER;
 BEGIN
   WITH latest_signup_event AS (
+    -- DISTINCT ON requires the second sort key (`oe.id DESC`) to break ties
+    -- when two rows share a `created_at` value — possible when a signup +
+    -- resend happen inside the same transaction (data review F-A1). With
+    -- only `created_at DESC`, the picked row is implementation-defined.
     SELECT DISTINCT ON (oe.tenant_id)
       oe.tenant_id,
       oe.payload->>'country' AS country
@@ -44,13 +48,17 @@ BEGIN
       )
       AND oe.payload ? 'country'
       AND jsonb_typeof(oe.payload->'country') = 'string'
-    ORDER BY oe.tenant_id, oe.created_at DESC
+    ORDER BY oe.tenant_id, oe.created_at DESC, oe.id DESC
   )
   UPDATE "tenants" t
     SET "country" = upper(lse.country)
     FROM latest_signup_event lse
     WHERE t."id" = lse.tenant_id
-      AND lse.country ~ '^[A-Za-z]{2}$';
+      -- Match the CHECK constraint exactly. We `upper()` first to absorb
+      -- the historical mixed-case payloads and normalise to ASCII upper,
+      -- then validate. Symmetric with the post-PR INSERT path which also
+      -- normalises before the CHECK fires.
+      AND upper(lse.country) ~ '^[A-Z]{2}$';
   GET DIAGNOSTICS populated_country = ROW_COUNT;
   IF populated_country > 0 THEN
     RAISE NOTICE 'Issue #153: backfilled tenants.country for % rows from outbox payloads', populated_country;
