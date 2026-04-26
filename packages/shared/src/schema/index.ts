@@ -20,6 +20,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { Locale } from "../i18n/locales.js";
 
 // ─── Receipt Enums ──────────────────────────────────────────────────────────
 
@@ -118,6 +119,26 @@ export const tenants = pgTable(
     /** Convenience pointer to the tenant's verified primary domain — denormalised; source of truth is `tenant_domains`. */
     primaryDomain: varchar("primary_domain", { length: 255 }),
     baseCurrency: varchar("base_currency", { length: 3 }).notNull().default("EUR"),
+    /**
+     * ISO-3166-1 alpha-2 (FR, BE, DE, …) — captured at signup. Drives
+     * legal/jurisdiction logic (currency hint, fiscal receipts, future
+     * GDPR data-residency reads). NOT used for email-language selection;
+     * that's `default_locale`. Issue #153.
+     */
+    country: varchar("country", { length: 2 }),
+    /**
+     * BCP-47 default locale for this tenant — every member with
+     * `users.locale = NULL` follows this value. The 2nd layer in the
+     * 3-layer chain (`user.locale ?? tenant.default_locale ??
+     * APP_DEFAULT_LOCALE`). NOT NULL with a `'fr'` floor (ADR-015 +
+     * issue #153 amendment). The migration's CHECK constraint enforces
+     * the supported set; keep this in lockstep with `SUPPORTED_LOCALES`
+     * in `@givernance/shared/i18n`.
+     */
+    defaultLocale: varchar("default_locale", { length: 10 })
+      .notNull()
+      .default("fr")
+      .$type<Locale>(),
     stripeAccountId: varchar("stripe_account_id", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -150,6 +171,14 @@ export const users = pgTable(
     provisionalUntil: timestamp("provisional_until", { withTimezone: true }),
     /** Last time this user picked this tenant in the org switcher — drives the picker default (ADR-016 / doc 22 §6.3). */
     lastVisitedAt: timestamp("last_visited_at", { withTimezone: true }),
+    /**
+     * BCP-47 personal locale override — the 1st layer in the 3-layer
+     * chain. NULL means "follow my tenant's default" so subsequent
+     * tenant-default changes apply automatically. The invitation-accept
+     * service sets this only when the invitee explicitly picks a value
+     * different from the tenant default at acceptance time (issue #153).
+     */
+    locale: varchar("locale", { length: 10 }).$type<Locale>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

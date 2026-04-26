@@ -103,7 +103,12 @@
         "lastName": "Nom",
         "email": "Email professionnel",
         "country": "Pays (ISO-2)",
+        "locale": "Langue de l'espace",
         "legalType": "Forme juridique"
+      },
+      "locales": {
+        "fr": "Français",
+        "en": "Anglais"
       },
       "legalTypes": {
         "association": "Association loi 1901",
@@ -190,9 +195,18 @@
       "fields": {
         "firstName": "Prénom",
         "lastName": "Nom",
+        "locale": "Votre langue",
         "password": "Choisissez un mot de passe",
         "passwordHint": "Au moins {min} caractères. Vous l'utiliserez à l'écran suivant pour vous connecter.",
         "passwordConfirm": "Confirmez le mot de passe"
+      },
+      "locales": {
+        "fr": "Français",
+        "en": "Anglais"
+      },
+      "localeHint": {
+        "matchesTenantDefault": "Utilise la langue par défaut de l'espace. Vous pouvez la modifier à tout moment depuis votre profil.",
+        "personalOverride": "Enregistré comme votre préférence personnelle pour cet espace."
       },
       "errors": {
         "invalid": "Ce lien d'invitation n'est pas valide.",

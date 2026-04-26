@@ -1,3 +1,4 @@
+import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
 import type { ApiClient } from "@/lib/api";
 import type {
   Invitation,
@@ -54,13 +55,22 @@ const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 /**
  * Side-effect-free probe for the /invite/accept page (PR #154 follow-up).
  *
- * Hits `GET /v1/invitations/:token/probe` which returns 204 if the token
- * is currently acceptable, 410 otherwise (anti-enumeration shape — every
- * failure mode is collapsed by the API). On a network error we fall
- * through to "valid" so the form still renders; the post-submit terminal
- * screen catches the bad-token case as a fallback.
+ * Hits `GET /v1/invitations/:token/probe`. Issue #153 changed the success
+ * response from 204 to 200 with `{ tenantDefaultLocale }` so the accept
+ * form can pre-select the right locale picker option without a second
+ * round-trip. We still treat 204 as valid for one transitional release in
+ * case a stale browser hits a freshly-deployed API (or vice versa); in
+ * that case `tenantDefaultLocale` falls back to APP_DEFAULT_LOCALE.
+ *
+ * Anti-enumeration: 410 covers every failure mode (wrong token / accepted
+ * / expired / wrong purpose) — collapsed by the API. On a network error
+ * we render the form anyway; the post-submit terminal screen catches a
+ * bad-token case as a fallback.
  */
-export type InvitationProbeResult = "valid" | "invalid" | "rate_limited";
+export type InvitationProbeResult =
+  | { kind: "valid"; tenantDefaultLocale: Locale }
+  | { kind: "invalid" }
+  | { kind: "rate_limited" };
 
 export async function probeInvitation(token: string): Promise<InvitationProbeResult> {
   let res: Response;
@@ -73,11 +83,24 @@ export async function probeInvitation(token: string): Promise<InvitationProbeRes
   } catch {
     // Network-side failure: don't block the form. The post-submit terminal
     // screen will catch a bad token if the user reaches that point.
-    return "valid";
+    return { kind: "valid", tenantDefaultLocale: APP_DEFAULT_LOCALE };
   }
-  if (res.status === 204) return "valid";
-  if (res.status === 429) return "rate_limited";
-  return "invalid";
+  if (res.status === 200) {
+    try {
+      const json = (await res.json()) as { data?: { tenantDefaultLocale?: unknown } };
+      const candidate = json.data?.tenantDefaultLocale;
+      const tenantDefaultLocale: Locale = isSupportedLocale(candidate)
+        ? candidate
+        : APP_DEFAULT_LOCALE;
+      return { kind: "valid", tenantDefaultLocale };
+    } catch {
+      return { kind: "valid", tenantDefaultLocale: APP_DEFAULT_LOCALE };
+    }
+  }
+  // 204 is the legacy shape — kept for transitional compat across deploy.
+  if (res.status === 204) return { kind: "valid", tenantDefaultLocale: APP_DEFAULT_LOCALE };
+  if (res.status === 429) return { kind: "rate_limited" };
+  return { kind: "invalid" };
 }
 
 export interface AcceptInvitationSuccess {
@@ -94,6 +117,7 @@ export async function acceptInvitation(
   firstName: string,
   lastName: string,
   password: string,
+  locale: Locale | undefined,
 ): Promise<AcceptInvitationResult> {
   let res: Response;
   try {
@@ -103,7 +127,7 @@ export async function acceptInvitation(
       method: "POST",
       credentials: "omit",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ firstName, lastName, password }),
+      body: JSON.stringify({ firstName, lastName, password, locale }),
     });
   } catch {
     return { ok: false, status: 0 };

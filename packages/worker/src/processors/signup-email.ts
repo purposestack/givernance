@@ -9,19 +9,25 @@
  * inside the same trust boundary as the SMTP relay.
  */
 
+import type { Locale } from "@givernance/shared/i18n";
 import { invitations, tenants } from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
 import { env } from "../env.js";
 import { db } from "../lib/db.js";
 import { defaultEmailSender, type EmailSender } from "../lib/email.js";
-import { renderSignupVerifyEmail } from "../lib/email-templates.js";
+import { ensureLocale, renderSignupVerifyEmail } from "../lib/email-templates.js";
 
 export interface SignupEmailJobPayload {
   tenantId: string;
   invitationId: string;
   expiresAt: string;
-  /** Optional ISO-3166-1 alpha-2 — drives EN/FR template selection. */
-  country?: string;
+  /**
+   * BCP-47 locale resolved at enqueue time (issue #153). The worker
+   * trusts this value and does not infer locale from country. The
+   * dispatcher fills it for us — see `worker.ts` for the legacy-payload
+   * fallback that handles in-flight jobs from before issue #153 shipped.
+   */
+  locale: Locale;
 }
 
 export interface SignupEmailDeps {
@@ -74,7 +80,7 @@ export async function processSignupVerificationEmail(
     tenantName: row.tenantName,
     verifyUrl,
     expiresAt: new Date(payload.expiresAt),
-    country: payload.country,
+    locale: ensureLocale(payload.locale),
   });
 
   await sender.send({

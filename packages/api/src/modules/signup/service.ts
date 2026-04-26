@@ -56,6 +56,12 @@
 import { randomUUID } from "node:crypto";
 import { isPersonalEmailDomain, PINO_REDACT_PATHS } from "@givernance/shared/constants";
 import {
+  APP_DEFAULT_LOCALE,
+  isSupportedLocale,
+  type Locale,
+  localeFromCountry,
+} from "@givernance/shared/i18n";
+import {
   auditLogs,
   invitations,
   outboxEvents,
@@ -115,6 +121,13 @@ export interface SignupInput {
   lastName: string;
   email: string;
   country?: string;
+  /**
+   * Optional BCP-47 locale picked at signup. When omitted, derived from
+   * `country` via the same FR→fr / else-→en rule the migration backfill
+   * uses (`localeFromCountry`), so signup-form behaviour and migration
+   * backfill agree on what the new tenant gets. Issue #153.
+   */
+  locale?: Locale;
   ipHash?: string;
   userAgent?: string;
 }
@@ -212,6 +225,18 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
   const token = generateVerificationToken();
   const expiresAt = new Date(Date.now() + VERIFICATION_TTL_HOURS * 60 * 60 * 1000);
 
+  // Issue #153: persist country + default_locale on the tenant row so the
+  // worker no longer has to walk the outbox to recover them. `country` is
+  // normalised to upper-case to match the CHECK constraint
+  // (`tenants_country_alpha2_chk`). `default_locale` defaults to whatever
+  // the form picked, falling back to the country-derived default (same
+  // rule the migration backfill uses), and finally to APP_DEFAULT_LOCALE.
+  const normalisedCountry = input.country?.trim().toUpperCase() || undefined;
+  const defaultLocale: Locale =
+    input.locale && isSupportedLocale(input.locale)
+      ? input.locale
+      : localeFromCountry(normalisedCountry);
+
   try {
     const result = await db.transaction(async (tx) => {
       const [tenant] = await tx
@@ -221,6 +246,8 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
           slug: canonicalSlug,
           status: "provisional" as TenantStatus,
           createdVia: "self_serve",
+          country: normalisedCountry ?? null,
+          defaultLocale,
         })
         .returning({ id: tenants.id });
 
@@ -251,7 +278,7 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
             tenantId: t.id,
             slug: canonicalSlug,
             emailDomain: parsedEmail.domain,
-            country: input.country,
+            country: normalisedCountry,
           },
         },
         {
@@ -263,7 +290,12 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
             tenantId: t.id,
             invitationId,
             expiresAt: expiresAt.toISOString(),
-            country: input.country,
+            // Issue #153: `locale` is the authoritative field the worker reads.
+            // `country` is kept for one transitional release so in-flight jobs
+            // emitted before the worker upgrade still resolve a locale via the
+            // worker-side fallback; remove after the queue has drained.
+            locale: defaultLocale,
+            country: normalisedCountry,
           },
         },
       ]);
@@ -277,7 +309,8 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
         newValues: {
           slug: canonicalSlug,
           emailDomain: parsedEmail.domain,
-          country: input.country,
+          country: normalisedCountry,
+          defaultLocale,
         },
         ipHash: input.ipHash,
         userAgent: input.userAgent,
@@ -350,6 +383,13 @@ export async function resendVerification(email: string): Promise<ResendResult> {
     .select({
       tenantId: tenants.id,
       status: tenants.status,
+      // Issue #153: read country + default_locale directly from the row so
+      // the resend payload can stamp the right `locale` without walking the
+      // outbox. Both columns are populated at signup time (or backfilled by
+      // migration 0027) so a NULL here only happens for legacy archived
+      // tenants the resend wouldn't match anyway.
+      country: tenants.country,
+      defaultLocale: tenants.defaultLocale,
       invitationId: invitations.id,
       invitationToken: invitations.token,
       expiresAt: invitations.expiresAt,
@@ -388,30 +428,14 @@ export async function resendVerification(email: string): Promise<ResendResult> {
   const row = rows[0];
   if (!row) return { ok: false };
 
-  // Recover the original signup country so the worker picks the right
-  // EN/FR template on resend. The `country` was emitted on the initial
-  // `tenant.signup_verification_requested` payload (signup() emits it);
-  // pull it from there rather than adding a schema column. Returns
-  // undefined for tenants seeded before country was tracked or for
-  // payloads that omitted it — worker falls back to its EN default.
-  const [originalEvent] = await systemDb
-    .select({ payload: outboxEvents.payload })
-    .from(outboxEvents)
-    .where(
-      and(
-        eq(outboxEvents.tenantId, row.tenantId),
-        eq(outboxEvents.type, "tenant.signup_verification_requested"),
-      ),
-    )
-    .orderBy(sql`${outboxEvents.createdAt} ASC`)
-    .limit(1);
-  const originalCountry =
-    typeof originalEvent?.payload === "object" &&
-    originalEvent.payload !== null &&
-    "country" in originalEvent.payload &&
-    typeof originalEvent.payload.country === "string"
-      ? originalEvent.payload.country
-      : undefined;
+  // Issue #153: `tenants.default_locale` is the durable source of truth for
+  // template selection — `lookupTenantCountry`'s outbox-walking helper has
+  // been removed. There's no signed-up user yet at this point in the flow
+  // (the verify form hasn't been submitted), so the per-user locale layer
+  // doesn't apply; the tenant default is the right value to stamp.
+  const localeForResend: Locale = isSupportedLocale(row.defaultLocale)
+    ? row.defaultLocale
+    : APP_DEFAULT_LOCALE;
 
   const newToken = generateVerificationToken();
   const expiresAt = new Date(Date.now() + VERIFICATION_TTL_HOURS * 60 * 60 * 1000);
@@ -435,7 +459,11 @@ export async function resendVerification(email: string): Promise<ResendResult> {
         tenantId: row.tenantId,
         invitationId: row.invitationId,
         expiresAt: expiresAt.toISOString(),
-        ...(originalCountry ? { country: originalCountry } : {}),
+        // `locale` is authoritative; `country` is kept for one transitional
+        // release so jobs already on the queue continue to render correctly
+        // before the worker upgrade lands.
+        locale: localeForResend,
+        ...(row.country ? { country: row.country } : {}),
       },
     });
   });

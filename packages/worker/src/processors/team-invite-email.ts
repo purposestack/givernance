@@ -14,20 +14,25 @@
  * no-ops so a stale event after a token rotation doesn't retry forever.
  */
 
+import type { Locale } from "@givernance/shared/i18n";
 import { invitations, tenants, users } from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
 import { env } from "../env.js";
 import { db } from "../lib/db.js";
 import { defaultEmailSender, type EmailSender } from "../lib/email.js";
-import { renderTeamInviteEmail } from "../lib/email-templates.js";
+import { ensureLocale, renderTeamInviteEmail } from "../lib/email-templates.js";
 
 export interface TeamInviteEmailJobPayload {
   tenantId: string;
   invitationId: string;
   /** UUID of the inviting `users` row, or null when seeded by super-admin. */
   inviterUserId?: string | null;
-  /** ISO-3166-1 alpha-2 — drives EN/FR template selection. Optional. */
-  country?: string;
+  /**
+   * BCP-47 locale resolved at enqueue time from the 3-layer chain
+   * `users.locale ?? tenants.default_locale ?? APP_DEFAULT_LOCALE`
+   * (issue #153). Source of truth — no country inference here.
+   */
+  locale: Locale;
 }
 
 export interface TeamInviteEmailDeps {
@@ -86,7 +91,7 @@ export async function processTeamInviteEmail(
     role: row.role,
     acceptUrl,
     expiresAt: row.expiresAt,
-    country: payload.country,
+    locale: ensureLocale(payload.locale),
   });
 
   await sender.send({

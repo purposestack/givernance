@@ -1,5 +1,6 @@
 /** BullMQ Worker entry point — registers all job processors */
 
+import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
 import { QUEUE_NAMES, TENANT_LIFECYCLE_JOBS } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
@@ -56,6 +57,38 @@ async function scheduleRepeatableJobs() {
       removeOnFail: { count: 50 },
     },
   );
+}
+
+/**
+ * Resolve the BCP-47 `locale` an email job should render in.
+ *
+ * The API stamps `locale` on every signup/invitation outbox payload (see
+ * issue #153). For one transitional release we also accept the legacy
+ * `country` field so jobs already enqueued before the upgrade still
+ * render correctly: the same FR→fr / else-→en mapping the prior worker
+ * used. Once the queue has drained post-deploy, the country branch can
+ * be removed in a follow-up cleanup.
+ *
+ * Returns `APP_DEFAULT_LOCALE` ('fr') if the payload carries neither —
+ * the email still goes out, the user just sees the app's default
+ * language. We log a warn so SRE can spot legacy producers, but do not
+ * throw (the worker would retry until the attempt budget is exhausted
+ * and the email would never land).
+ */
+function resolvePayloadLocale(
+  payload: Record<string, unknown>,
+  log: ReturnType<typeof jobLogger>,
+): Locale {
+  if (isSupportedLocale(payload.locale)) return payload.locale;
+  if (typeof payload.country === "string" && payload.country.trim().length > 0) {
+    log.warn(
+      { country: payload.country },
+      "Email job carries legacy `country` only; falling back to country-derived locale (issue #153 transitional)",
+    );
+    return payload.country.toUpperCase() === "FR" ? "fr" : "en";
+  }
+  log.warn({}, "Email job carries no `locale` or `country`; falling back to APP_DEFAULT_LOCALE");
+  return APP_DEFAULT_LOCALE;
 }
 
 /**
@@ -129,7 +162,7 @@ async function processDomainEvent(job: Job): Promise<void> {
       tenantId,
       invitationId: payload.invitationId as string,
       expiresAt: payload.expiresAt as string,
-      country: typeof payload.country === "string" ? payload.country : undefined,
+      locale: resolvePayloadLocale(payload, log),
     };
     const result = await processSignupVerificationEmail(emailPayload);
     // `not_found` / `already_accepted` are terminal no-ops (old token rotated,
@@ -145,12 +178,11 @@ async function processDomainEvent(job: Job): Promise<void> {
   ) {
     const invitationId = payload.invitationId as string;
     const inviterUserId = typeof payload.inviterUserId === "string" ? payload.inviterUserId : null;
-    const country = typeof payload.country === "string" ? payload.country : undefined;
     const emailPayload: TeamInviteEmailJobPayload = {
       tenantId,
       invitationId,
       inviterUserId,
-      country,
+      locale: resolvePayloadLocale(payload, log),
     };
     const result = await processTeamInviteEmail(emailPayload);
     log.info({ invitationId, eventType: type, ...result }, "Team-invite email dispatched");

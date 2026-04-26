@@ -10,7 +10,8 @@
     "./events": "./src/events/index.ts",
     "./jobs": "./src/jobs/index.ts",
     "./validators": "./src/validators/index.ts",
-    "./constants": "./src/constants/index.ts"
+    "./constants": "./src/constants/index.ts",
+    "./i18n": "./src/i18n/locales.ts"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",

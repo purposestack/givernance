@@ -26,6 +26,7 @@
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
+import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
 import {
   auditLogs,
   invitations,
@@ -1011,11 +1012,23 @@ export async function inviteFirstEnterpriseUser(input: {
 > {
   if (!isUuid(input.orgId)) return { ok: false, error: "tenant_not_found" };
   const [tenant] = await db
-    .select({ id: tenants.id })
+    .select({
+      id: tenants.id,
+      // Issue #153: read default_locale so the outbox payload can stamp
+      // `locale` for the worker. Enterprise-seeded tenants land here right
+      // after `createEnterpriseTenant`, which sets a default_locale via
+      // the migration column DEFAULT ('fr') — so this is never NULL on a
+      // post-migration row.
+      defaultLocale: tenants.defaultLocale,
+    })
     .from(tenants)
     .where(eq(tenants.id, input.orgId))
     .limit(1);
   if (!tenant) return { ok: false, error: "tenant_not_found" };
+
+  const tenantLocale: Locale = isSupportedLocale(tenant.defaultLocale)
+    ? tenant.defaultLocale
+    : APP_DEFAULT_LOCALE;
 
   const existing = await getFirstAdminInvitation(input.orgId);
   if (existing && existing.status === "accepted") {
@@ -1046,7 +1059,10 @@ export async function inviteFirstEnterpriseUser(input: {
     await tx.insert(outboxEvents).values({
       tenantId: input.orgId,
       type: "tenant.first_admin_invited",
-      payload: { tenantId: input.orgId, invitationId: row?.id },
+      // Issue #153: stamp `locale` (BCP-47) for the worker. There's no
+      // user row yet (the invitee hasn't accepted) so the per-user layer
+      // doesn't apply — the tenant default is the right value.
+      payload: { tenantId: input.orgId, invitationId: row?.id, locale: tenantLocale },
     });
 
     await tx.insert(auditLogs).values({
@@ -1095,8 +1111,13 @@ export async function resendFirstEnterpriseInvitation(input: {
       .select({
         id: invitations.id,
         acceptedAt: invitations.acceptedAt,
+        // Issue #153: read tenant.default_locale so the resend payload can
+        // stamp `locale` for the worker (no per-user override yet — invitee
+        // hasn't accepted).
+        defaultLocale: tenants.defaultLocale,
       })
       .from(invitations)
+      .innerJoin(tenants, eq(invitations.orgId, tenants.id))
       .where(
         and(
           eq(invitations.id, input.invitationId),
@@ -1115,6 +1136,9 @@ export async function resendFirstEnterpriseInvitation(input: {
 
     const newToken = randomUUID();
     const expiresAt = new Date(Date.now() + FIRST_ADMIN_INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
+    const tenantLocale: Locale = isSupportedLocale(row.defaultLocale)
+      ? row.defaultLocale
+      : APP_DEFAULT_LOCALE;
 
     await tx
       .update(invitations)
@@ -1131,6 +1155,7 @@ export async function resendFirstEnterpriseInvitation(input: {
         tenantId: input.orgId,
         invitationId: row.id,
         resent: true,
+        locale: tenantLocale,
       },
     });
 

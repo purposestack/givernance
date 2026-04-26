@@ -112,6 +112,7 @@ describe("processSignupVerificationEmail", () => {
       tenantId: ORG_ID,
       invitationId: INVITATION_ID,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      locale: "en",
     };
 
     const result = await processSignupVerificationEmail(payload, { sender });
@@ -128,14 +129,14 @@ describe("processSignupVerificationEmail", () => {
     expect(call.text).toContain(`/signup/verify?token=${INVITATION_TOKEN}`);
   });
 
-  it("picks French templates when country=FR", async () => {
+  it("picks French templates when locale=fr", async () => {
     const sender = makeSender();
     await processSignupVerificationEmail(
       {
         tenantId: ORG_ID_FR,
         invitationId: INVITATION_ID_FR,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        country: "FR",
+        locale: "fr",
       },
       { sender },
     );
@@ -155,6 +156,7 @@ describe("processSignupVerificationEmail", () => {
         tenantId: ORG_ID_ACCEPTED,
         invitationId: INVITATION_ID_ACCEPTED,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        locale: "en",
       },
       { sender },
     );
@@ -170,6 +172,7 @@ describe("processSignupVerificationEmail", () => {
         tenantId: ORG_ID,
         invitationId: randomUUID(),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        locale: "en",
       },
       { sender },
     );
