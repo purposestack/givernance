@@ -39,8 +39,12 @@ export class ApiClient {
   constructor(config: ApiClientConfig) {
     // Strip trailing slash for consistent URL joining
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
+    // `Content-Type: application/json` is set conditionally per-request
+    // (only when a body is present) — Fastify's content-type parser rejects
+    // requests that advertise JSON but send no body (e.g. bodiless DELETE
+    // / resend POSTs) with a 400. Keeping it out of the defaults avoids
+    // the silent breakage that surfaced on PR #154's resend / revoke flows.
     this.defaultHeaders = {
-      "Content-Type": "application/json",
       Accept: "application/json",
       ...config.defaultHeaders,
     };
@@ -74,7 +78,11 @@ export class ApiClient {
     options?: RequestOptions,
   ): Promise<T> {
     const url = this.buildUrl(path, options?.params);
-    const headers = { ...this.defaultHeaders, ...options?.headers };
+    const headers: Record<string, string> = {
+      ...this.defaultHeaders,
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...options?.headers,
+    };
 
     let response: Response;
     try {
