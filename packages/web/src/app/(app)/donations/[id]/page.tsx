@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -69,6 +69,12 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
               <Link href="/donations">
                 <ArrowLeft size={16} aria-hidden="true" />
                 {t("actions.back")}
+              </Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href={`/donations/${donation.id}/edit`}>
+                <Pencil size={16} aria-hidden="true" />
+                {t("actions.edit")}
               </Link>
             </Button>
             <ReceiptPreviewButton donationId={donation.id} />

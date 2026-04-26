@@ -28,7 +28,8 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
 }
 
 export default async function CampaignsPage({ searchParams }: CampaignsPageProps) {
-  await requireAuth();
+  const auth = await requireAuth();
+  const canManageAdminActions = auth.roles.includes("org_admin");
   const params = await searchParams;
   const t = await getTranslations("campaigns");
 
@@ -78,7 +79,11 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
       />
 
       {hasAny ? (
-        <CampaignsTable campaigns={campaignsWithStats} pagination={result.pagination} />
+        <CampaignsTable
+          campaigns={campaignsWithStats}
+          pagination={result.pagination}
+          canManageAdminActions={canManageAdminActions}
+        />
       ) : (
         <div className="rounded-2xl bg-surface-container-lowest shadow-card">
           <EmptyState icon={Megaphone} title={t("empty.title")} description={t("empty.seedHint")} />

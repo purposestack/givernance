@@ -894,6 +894,7 @@
       },
       "actions": {
         "back": "Retour aux dons",
+        "edit": "Modifier",
         "previewReceipt": "Aperçu du reçu",
         "generatingReceipt": "Génération du reçu…"
       },
@@ -918,7 +919,8 @@
       "name": "Nom",
       "type": "Type",
       "email": "Email",
-      "lastDonation": "Dernier don"
+      "lastDonation": "Dernier don",
+      "actions": "Actions"
     },
     "types": {
       "donor": "Donateur",
@@ -928,7 +930,24 @@
       "partner": "Partenaire"
     },
     "actions": {
-      "new": "Nouveau constituant"
+      "new": "Nouveau constituant",
+      "menu": "Ouvrir les actions pour {name}",
+      "edit": "Modifier",
+      "delete": "Supprimer"
+    },
+    "deleteDialog": {
+      "title": "Supprimer le constituant",
+      "description": "Supprimer {name} ? Il/elle ne figurera plus dans les listes ni les rapports. Les dons passés sont conservés pour l'audit.",
+      "descriptionFallback": "Supprimer ce constituant ? Il/elle ne figurera plus dans les listes ni les rapports. Les dons passés sont conservés pour l'audit.",
+      "cancel": "Annuler",
+      "confirm": "Supprimer le constituant",
+      "deleting": "Suppression…"
+    },
+    "success": {
+      "deleted": "Constituant supprimé."
+    },
+    "errors": {
+      "deleteGeneric": "Impossible de supprimer ce constituant. Veuillez réessayer."
     }
   },
   "campaigns": {
@@ -946,7 +965,8 @@
       "type": "Type",
       "status": "Statut",
       "progress": "Progression",
-      "date": "Date"
+      "date": "Date",
+      "actions": "Actions"
     },
     "status": {
       "draft": "Brouillon",
@@ -959,7 +979,24 @@
       "digital": "Digital"
     },
     "actions": {
-      "new": "Nouvelle campagne"
+      "new": "Nouvelle campagne",
+      "menu": "Ouvrir les actions pour {name}",
+      "edit": "Modifier",
+      "close": "Clôturer la campagne"
+    },
+    "closeDialog": {
+      "title": "Clôturer la campagne",
+      "description": "Clôturer {name} ? Les dons rattachés restent accessibles, mais aucun nouveau don ne pourra être enregistré.",
+      "descriptionFallback": "Clôturer cette campagne ? Les dons rattachés restent accessibles, mais aucun nouveau don ne pourra être enregistré.",
+      "cancel": "Annuler",
+      "confirm": "Clôturer la campagne",
+      "closing": "Clôture…"
+    },
+    "success": {
+      "closed": "Campagne clôturée."
+    },
+    "errors": {
+      "closeGeneric": "Impossible de clôturer cette campagne. Veuillez réessayer."
     },
     "noGoal": "Aucun objectif",
     "progressAria": "{raised} collectés sur {goal}",

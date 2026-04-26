@@ -894,6 +894,7 @@
       },
       "actions": {
         "back": "Back to donations",
+        "edit": "Edit",
         "previewReceipt": "Receipt preview",
         "generatingReceipt": "Generating receipt…"
       },
@@ -918,7 +919,8 @@
       "name": "Name",
       "type": "Type",
       "email": "Email",
-      "lastDonation": "Last donation"
+      "lastDonation": "Last donation",
+      "actions": "Actions"
     },
     "types": {
       "donor": "Donor",
@@ -928,7 +930,24 @@
       "partner": "Partner"
     },
     "actions": {
-      "new": "New constituent"
+      "new": "New constituent",
+      "menu": "Open actions for {name}",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "deleteDialog": {
+      "title": "Delete constituent",
+      "description": "Delete {name}? They will be removed from lists and reports. Past donations are kept for audit.",
+      "descriptionFallback": "Delete this constituent? They will be removed from lists and reports. Past donations are kept for audit.",
+      "cancel": "Cancel",
+      "confirm": "Delete constituent",
+      "deleting": "Deleting…"
+    },
+    "success": {
+      "deleted": "Constituent deleted."
+    },
+    "errors": {
+      "deleteGeneric": "Could not delete this constituent. Please try again."
     }
   },
   "campaigns": {
@@ -946,7 +965,8 @@
       "type": "Type",
       "status": "Status",
       "progress": "Progress",
-      "date": "Date"
+      "date": "Date",
+      "actions": "Actions"
     },
     "status": {
       "draft": "Draft",
@@ -959,7 +979,24 @@
       "digital": "Digital"
     },
     "actions": {
-      "new": "New Campaign"
+      "new": "New Campaign",
+      "menu": "Open actions for {name}",
+      "edit": "Edit",
+      "close": "Close campaign"
+    },
+    "closeDialog": {
+      "title": "Close campaign",
+      "description": "Close {name}? Donations linked to it stay accessible but no new ones can be recorded.",
+      "descriptionFallback": "Close this campaign? Donations linked to it stay accessible but no new ones can be recorded.",
+      "cancel": "Cancel",
+      "confirm": "Close campaign",
+      "closing": "Closing…"
+    },
+    "success": {
+      "closed": "Campaign closed."
+    },
+    "errors": {
+      "closeGeneric": "Could not close this campaign. Please try again."
     },
     "noGoal": "No goal",
     "progressAria": "{raised} raised of {goal}",

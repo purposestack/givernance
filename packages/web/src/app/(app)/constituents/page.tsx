@@ -29,7 +29,8 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
 }
 
 export default async function ConstituentsPage({ searchParams }: ConstituentsPageProps) {
-  await requireAuth();
+  const auth = await requireAuth();
+  const canManageAdminActions = auth.roles.includes("org_admin");
   const params = await searchParams;
   const t = await getTranslations("constituents");
 
@@ -78,7 +79,11 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
       />
 
       {hasAny ? (
-        <ConstituentsTable constituents={result.data} pagination={result.pagination} />
+        <ConstituentsTable
+          constituents={result.data}
+          pagination={result.pagination}
+          canManageAdminActions={canManageAdminActions}
+        />
       ) : (
         <div className="rounded-2xl bg-surface-container-lowest shadow-card">
           <EmptyState icon={Users} title={t("empty.title")} description={t("empty.seedHint")} />

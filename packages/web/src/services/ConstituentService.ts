@@ -95,6 +95,18 @@ export const ConstituentService = {
     );
     return mapConstituent(response.data);
   },
+
+  /**
+   * Soft-delete a constituent. The API returns the soft-deleted row
+   * (with `deletedAt` populated). org_admin-only — surfaces 403 to non-
+   * admins via `ApiProblem`.
+   */
+  async deleteConstituent(client: ApiClient, id: string): Promise<Constituent> {
+    const response = await client.delete<ConstituentDetailResponse>(
+      `/v1/constituents/${encodeURIComponent(id)}`,
+    );
+    return mapConstituent(response.data);
+  },
 };
 
 function mapConstituent(raw: Constituent): Constituent {
