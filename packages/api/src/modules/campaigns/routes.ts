@@ -8,7 +8,7 @@ import {
 import { MULTI_CURRENCY_VALUES } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
+import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import {
   DataArrayResponse,
   DataArrayResponseNoPagination,
@@ -174,7 +174,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     "/campaigns",
     {
       config: { idempotency: { routeKey: "POST:/v1/campaigns" } },
-      preHandler: requireAuth,
+      preHandler: requireWrite,
       schema: {
         tags: ["Campaigns"],
         body: CampaignCreateBody,
@@ -247,11 +247,23 @@ export async function campaignRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Update a campaign (partial update) */
+  /**
+   * Update a campaign (partial update).
+   *
+   * Operational fields (`name`, `type`, `defaultCurrency`, `parentId`,
+   * `operationalCostCents`, `fundIds`) are write-tier — `org_admin` AND
+   * `user` can edit them, mirroring the create endpoint's gate.
+   *
+   * `status` transitions stay admin-only (the StatusActions buttons in
+   * the web detail card are already hidden for non-admins). We enforce
+   * that here at the field level: if the body contains `status` and the
+   * caller isn't `org_admin`, return 403 — anyone bypassing the UI to
+   * call PATCH directly hits the same wall as the dedicated close endpoint.
+   */
   app.patch(
     "/campaigns/:id",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: requireWrite,
       schema: {
         tags: ["Campaigns"],
         params: IdParams,
@@ -280,6 +292,14 @@ export async function campaignRoutes(app: FastifyInstance) {
         operationalCostCents?: number | null;
         fundIds?: string[];
       };
+
+      if (body.status !== undefined && request.auth?.role !== "org_admin") {
+        return reply
+          .status(403)
+          .send(
+            problemDetail(403, "Forbidden", "Only an org admin can change a campaign's status."),
+          );
+      }
 
       try {
         const updated = await updateCampaign(orgId, id, body, userId);
