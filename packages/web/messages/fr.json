@@ -895,6 +895,7 @@
       "actions": {
         "back": "Retour aux dons",
         "edit": "Modifier",
+        "delete": "Supprimer",
         "previewReceipt": "Aperçu du reçu",
         "generatingReceipt": "Génération du reçu…"
       },

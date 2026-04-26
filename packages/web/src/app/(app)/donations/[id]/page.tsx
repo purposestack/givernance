@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { DeleteDonationButton } from "@/components/donations/delete-donation-button";
 import { ReceiptPreviewButton } from "@/components/donations/receipt-preview-button";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -78,6 +79,10 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
               </Link>
             </Button>
             <ReceiptPreviewButton donationId={donation.id} />
+            <DeleteDonationButton
+              donationId={donation.id}
+              donorName={donationDetailDonorName(donation) || null}
+            />
           </>
         }
       />
