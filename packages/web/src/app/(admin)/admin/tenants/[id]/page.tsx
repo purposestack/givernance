@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import { FirstAdminCard } from "@/components/admin/first-admin-card";
 import {
   formatAdminDate,
   formatTenantUserName,
@@ -44,9 +45,17 @@ function tenantStatusLabel(
   return status;
 }
 
-export default async function TenantDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TenantDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ inviteToken?: string; inviteFailed?: string }>;
+}) {
   const { id } = await params;
+  const search = await searchParams;
   const t = await getTranslations("admin.tenants.detail");
+  const tFirstAdmin = await getTranslations("admin.tenants.detail.firstAdmin");
   const api = await createServerApiClient();
 
   let detail: AdminTenantDetailResponse["data"] | null = null;
@@ -61,7 +70,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
 
   if (!detail) notFound();
 
-  const { tenant, domains, users, recentAudit } = detail;
+  const { tenant, domains, users, recentAudit, firstAdminInvitation } = detail;
 
   const overview = (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -224,6 +233,15 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
       </header>
 
       <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
+
+      <FirstAdminCard
+        tenantId={tenant.id}
+        invitation={firstAdminInvitation}
+        initialFreshToken={search.inviteToken}
+        initialError={
+          search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
+        }
+      />
 
       <TenantDetailTabs
         overview={overview}

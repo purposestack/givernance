@@ -41,7 +41,9 @@ import {
   listRecentAudit,
   listTenantsForAdmin,
   provisionIdp,
+  resendFirstEnterpriseInvitation,
   revokeDomain,
+  revokeFirstEnterpriseInvitation,
   transitionTenantStatus,
   verifyDomain,
 } from "./service.js";
@@ -141,6 +143,21 @@ const TenantDetailResponse = Type.Object({
       createdAt: Type.String(),
     }),
   ),
+  firstAdminInvitation: Type.Union([
+    Type.Object({
+      id: UuidSchema,
+      email: Type.String(),
+      status: Type.Union([
+        Type.Literal("pending"),
+        Type.Literal("accepted"),
+        Type.Literal("expired"),
+      ]),
+      expiresAt: Type.String(),
+      acceptedAt: Type.Union([Type.String(), Type.Null()]),
+      createdAt: Type.String(),
+    }),
+    Type.Null(),
+  ]),
 });
 
 const OidcConfigSchema = Type.Object({
@@ -183,7 +200,14 @@ const InviteFirstAdminBody = Type.Object({
 });
 
 const InviteFirstAdminResponse = Type.Object({
+  invitationId: UuidSchema,
   invitationToken: Type.String(),
+  expiresAt: Type.String(),
+});
+
+const FirstAdminInvitationParams = Type.Object({
+  id: UuidSchema,
+  invitationId: UuidSchema,
 });
 
 // ─── Audit helpers ──────────────────────────────────────────────────────────
@@ -482,6 +506,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
         body: InviteFirstAdminBody,
         response: {
           201: DataResponse(InviteFirstAdminResponse),
+          409: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -495,9 +520,112 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
         audit: auditFromRequest(request),
       });
       if (!res.ok) {
+        if (res.error === "already_accepted") {
+          return reply
+            .status(409)
+            .send(
+              problemDetail(
+                409,
+                "Conflict",
+                "A first admin has already been provisioned for this tenant.",
+              ),
+            );
+        }
         return reply.status(404).send(problemDetail(404, "Not Found", "Tenant not found."));
       }
-      return reply.status(201).send({ data: { invitationToken: res.token } });
+      return reply.status(201).send({
+        data: {
+          invitationId: res.invitationId,
+          invitationToken: res.token,
+          expiresAt: res.expiresAt.toISOString(),
+        },
+      });
+    },
+  );
+
+  /**
+   * POST /v1/superadmin/tenants/:id/invite-first-admin/:invitationId/resend
+   * Rotate the token + expiry on a pending first-admin invitation. Returns
+   * the fresh token so the operator can copy a fallback link until the
+   * email worker (#145) ships.
+   */
+  app.post(
+    "/superadmin/tenants/:id/invite-first-admin/:invitationId/resend",
+    {
+      preHandler: requireSuperAdmin,
+      config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
+      schema: {
+        tags: ["Tenant Admin"],
+        params: FirstAdminInvitationParams,
+        response: {
+          200: DataResponse(InviteFirstAdminResponse),
+          409: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id, invitationId } = request.params as { id: string; invitationId: string };
+      const res = await resendFirstEnterpriseInvitation({
+        orgId: id,
+        invitationId,
+        audit: auditFromRequest(request),
+      });
+      if (!res.ok) {
+        if (res.error === "already_accepted") {
+          return reply
+            .status(409)
+            .send(problemDetail(409, "Conflict", "This invitation has already been accepted."));
+        }
+        return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
+      }
+      return reply.status(200).send({
+        data: {
+          invitationId: res.invitationId,
+          invitationToken: res.token,
+          expiresAt: res.expiresAt.toISOString(),
+        },
+      });
+    },
+  );
+
+  /** DELETE /v1/superadmin/tenants/:id/invite-first-admin/:invitationId — revoke. */
+  app.delete(
+    "/superadmin/tenants/:id/invite-first-admin/:invitationId",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Tenant Admin"],
+        params: FirstAdminInvitationParams,
+        response: {
+          204: Type.Null(),
+          409: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id, invitationId } = request.params as { id: string; invitationId: string };
+      const res = await revokeFirstEnterpriseInvitation({
+        orgId: id,
+        invitationId,
+        audit: auditFromRequest(request),
+      });
+      if (!res.ok) {
+        if (res.error === "already_accepted") {
+          return reply
+            .status(409)
+            .send(
+              problemDetail(
+                409,
+                "Conflict",
+                "This invitation has already been accepted and cannot be revoked.",
+              ),
+            );
+        }
+        return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
+      }
+      return reply.status(204).send();
     },
   );
 

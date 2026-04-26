@@ -21,11 +21,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
-import { createEnterpriseTenant } from "@/services/TenantAdminService";
+import { createEnterpriseTenant, inviteFirstAdmin } from "@/services/TenantAdminService";
 
 interface NewTenantFormValues {
   name: string;
   slug: string;
+  firstAdminEmail: string;
 }
 
 /** Host prefix shown before the slug input. MOCKUP-9 (PR #135 review):
@@ -75,6 +76,7 @@ export function NewTenantForm() {
     defaultValues: {
       name: "",
       slug: "",
+      firstAdminEmail: "",
     },
   });
 
@@ -103,15 +105,14 @@ export function NewTenantForm() {
       return;
     }
 
+    let createdTenantId: string;
     try {
       const res = await createEnterpriseTenant({
         name: values.name.trim(),
         slug: slugCheck.slug,
         plan: "enterprise",
       });
-      toast.success(t("success"));
-      router.push(`/admin/tenants/${res.tenantId}`);
-      router.refresh();
+      createdTenantId = res.tenantId;
     } catch (error) {
       handleApiError(error, form, {
         slugTaken: t("errors.slugTaken"),
@@ -119,7 +120,36 @@ export function NewTenantForm() {
         upstream: t("errors.upstream"),
         generic: t("errors.generic"),
       });
+      return;
     }
+
+    // Optional: pair the create with a first-admin invite. Per issue #147
+    // we deliberately do NOT roll the tenant back if the invite call fails;
+    // the operator is routed to the detail page where the FirstAdminCard
+    // surfaces the failure and lets them retry.
+    const firstAdminEmail = values.firstAdminEmail.trim();
+    if (firstAdminEmail.length > 0) {
+      try {
+        const invite = await inviteFirstAdmin(createdTenantId, firstAdminEmail);
+        toast.success(t("success"));
+        const params = new URLSearchParams({ inviteToken: invite.invitationToken });
+        router.push(`/admin/tenants/${createdTenantId}?${params.toString()}`);
+        router.refresh();
+        return;
+      } catch (error) {
+        toast.error(t("errors.inviteFailed"));
+        const params = new URLSearchParams({ inviteFailed: "1" });
+        router.push(`/admin/tenants/${createdTenantId}?${params.toString()}`);
+        router.refresh();
+        // Tag the unused error for noUnusedLocals in strict TS configs.
+        void error;
+        return;
+      }
+    }
+
+    toast.success(t("success"));
+    router.push(`/admin/tenants/${createdTenantId}`);
+    router.refresh();
   }
 
   const isSubmitting = form.formState.isSubmitting;
@@ -195,6 +225,43 @@ export function NewTenantForm() {
           />
         </FormSection>
 
+        <FormSection
+          title={t("sections.firstAdmin.title")}
+          description={t("sections.firstAdmin.description")}
+        >
+          <FormField
+            control={form.control}
+            name="firstAdminEmail"
+            rules={{
+              validate: (value) => {
+                const trimmed = value.trim();
+                if (trimmed.length === 0) return true;
+                if (trimmed.length > 255) return t("errors.firstAdminEmailTooLong");
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+                  return t("errors.firstAdminEmailInvalid");
+                }
+                return true;
+              },
+            }}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t("fields.firstAdminEmail")}</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="email"
+                    autoComplete="off"
+                    placeholder={t("fields.firstAdminEmailPlaceholder")}
+                    maxLength={255}
+                  />
+                </FormControl>
+                <FormDescription>{t("fields.firstAdminEmailHint")}</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </FormSection>
+
         <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
           {/* UX-1 (review): announced to AT via role="alert" so screen-reader users
               are notified on upstream/502 without relying on the toast. */}
@@ -221,6 +288,10 @@ interface ErrorCopy {
   upstream: string;
   generic: string;
 }
+
+// Note: `inviteFailed` is surfaced via toast at the call site, not via form
+// errors — the tenant has already been created by the time we reach that
+// branch, so the operator's next step is the detail page, not the form.
 
 function handleApiError(
   error: unknown,
