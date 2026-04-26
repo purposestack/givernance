@@ -203,6 +203,14 @@
         "passwordMismatch": "Les deux mots de passe ne correspondent pas.",
         "rateLimited": "Trop de tentatives. Réessayez dans quelques minutes.",
         "generic": "Nous n'avons pas pu accepter cette invitation. Réessayez ou demandez un nouvel envoi."
+      },
+      "sessionCheck": {
+        "checking": "Vérification de votre session…",
+        "title": "Déconnectez-vous pour accepter cette invitation",
+        "signedInAs": "Vous êtes actuellement connecté·e en tant que {name} ({email}).",
+        "body": "Accepter une invitation crée une nouvelle session pour l'adresse invitée. Déconnectez-vous d'abord pour que la prochaine connexion ouvre le bon compte.",
+        "signOutAndContinue": "Se déconnecter et continuer",
+        "keepCurrent": "Rester connecté·e"
       }
     },
     "selectOrganization": {
