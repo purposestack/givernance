@@ -134,6 +134,20 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
         ),
       },
       {
+        id: "invitedBy",
+        accessorKey: "invitedByName",
+        header: () => t("columns.invitedBy"),
+        enableSorting: false,
+        // Hidden on narrow viewports — the table already overflows on mobile
+        // and "Invited by" is the lowest-priority column for triage.
+        meta: { className: "hidden md:table-cell" },
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-on-surface-variant">
+            {row.original.invitedByName ?? "—"}
+          </span>
+        ),
+      },
+      {
         id: "createdAt",
         accessorKey: "createdAt",
         header: () => t("columns.createdAt"),

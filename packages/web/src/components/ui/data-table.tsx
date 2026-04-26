@@ -68,11 +68,13 @@ function HeaderCell<TData>({ header, padding }: HeaderCellProps<TData>) {
   const isSortable = header.column.getCanSort();
   const sortDirection = header.column.getIsSorted();
   const content = flexRender(header.column.columnDef.header, header.getContext());
+  const metaClassName = (header.column.columnDef.meta as { className?: string } | undefined)
+    ?.className;
 
   return (
     <th
       scope="col"
-      className={cn("px-5 font-medium", padding)}
+      className={cn("px-5 font-medium", padding, metaClassName)}
       aria-sort={sortDirectionAriaValue(sortDirection)}
     >
       {isSortable ? (
@@ -210,14 +212,23 @@ export function DataTable<TData>({
                     onRowClick && "cursor-pointer",
                   )}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      className={cn("px-5 text-sm text-on-surface align-middle", rowPadding)}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const metaClassName = (
+                      cell.column.columnDef.meta as { className?: string } | undefined
+                    )?.className;
+                    return (
+                      <td
+                        key={cell.id}
+                        className={cn(
+                          "px-5 text-sm text-on-surface align-middle",
+                          rowPadding,
+                          metaClassName,
+                        )}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             ) : (

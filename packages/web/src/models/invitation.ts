@@ -9,6 +9,12 @@ export interface Invitation {
   email: string;
   role: InvitationRole;
   invitedById: string | null;
+  /**
+   * Display name of the inviter ("First Last"). Null when the inviter row
+   * was deleted or the invitation came from the super-admin seeding path.
+   * Only populated by the list endpoint; the create endpoint omits it.
+   */
+  invitedByName?: string | null;
   acceptedAt: string | null;
   expiresAt: string;
   createdAt: string;

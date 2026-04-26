@@ -81,6 +81,12 @@ const InvitationListItem = Type.Object({
   email: Type.String(),
   role: RoleSchema,
   invitedById: Type.Union([Type.Null(), UuidSchema]),
+  /**
+   * Display name of the inviter ("First Last"). Null when the inviter
+   * row was deleted (FK ON DELETE SET NULL) or when the invitation was
+   * created by the super-admin seeding path with `invitedById = null`.
+   */
+  invitedByName: Type.Union([Type.Null(), Type.String()]),
   acceptedAt: Type.Union([Type.Null(), Type.String()]),
   expiresAt: Type.String(),
   createdAt: Type.String(),
@@ -200,6 +206,7 @@ export async function invitationRoutes(app: FastifyInstance) {
       return reply.status(200).send({
         data: result.data.map((row) => ({
           ...serializeInvitation(row),
+          invitedByName: row.invitedByName,
           status: row.status,
         })),
         pagination: result.pagination,
