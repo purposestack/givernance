@@ -11,7 +11,8 @@ servers:
       - <%= ENV["STAGING_VPS_IP"] %>
     cmd: pnpm --filter @givernance/web run start
     proxy:
-      host: staging.givernance.org
+      hosts: 
+        - staging.givernance.org
       healthcheck:
         path: /
   api:
@@ -19,7 +20,8 @@ servers:
       - <%= ENV["STAGING_VPS_IP"] %>
     cmd: pnpm --filter @givernance/api run start
     proxy:
-      host: api.staging.givernance.org
+      hosts: 
+        - api.staging.givernance.org
       healthcheck:
         path: /healthz
   worker:
@@ -109,7 +111,8 @@ accessories:
     host: <%= ENV["STAGING_VPS_IP"] %>
     port: "8080:8080"
     proxy:
-      host: auth.staging.givernance.org
+      hosts: 
+        - auth.staging.givernance.org
       app_port: 8080
     env:
       clear:
