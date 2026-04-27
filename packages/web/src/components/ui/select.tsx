@@ -76,7 +76,11 @@ export const SelectContent = forwardRef<
       ref={ref}
       position={position}
       className={cn(
-        "relative z-[var(--z-overlay)] max-h-96 min-w-[8rem] overflow-hidden",
+        // `z-popover` (35) sits above `z-modal` (30) so the dropdown
+        // appears in front of a containing Dialog overlay — the original
+        // `z-overlay` (20) value rendered the content BEHIND the modal,
+        // hiding the options. (Issue #153 follow-up.)
+        "relative z-[var(--z-popover)] max-h-96 min-w-[8rem] overflow-hidden",
         "bg-surface-container-lowest text-on-surface",
         "border border-outline-variant rounded-[var(--radius-md)]",
         "shadow-elevated",

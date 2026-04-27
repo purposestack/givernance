@@ -310,6 +310,13 @@
   --z-sticky: 10;
   --z-overlay: 20;
   --z-modal: 30;
+  /* Popovers / Selects / Dropdowns rendered via Portal must sit ABOVE
+     dialogs so they remain visible when triggered from inside a modal.
+     Issue #153 follow-up: an invite dialog with two stacked Selects
+     was opening the dropdown content behind the dialog overlay,
+     making it unselectable. Toasts stay above popovers so a save-error
+     toast fires in front of an open dropdown. */
+  --z-popover: 35;
   --z-toast: 40;
   --z-tooltip: 50;
 
