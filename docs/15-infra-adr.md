@@ -1246,3 +1246,38 @@ Worker jobs retry up to 3× with exponential backoff. After attempts exhaust, Bu
 ---
 
 *This document is curated to show only active architectural decisions. Superseded decisions are removed for clarity.*
+
+## ADR 12: Staging Low-Cost / Guérilla via Kamal
+
+**Date:** 2026-04-27
+**Status:** Accepted
+
+### Context
+L'environnement de production suit une architecture distribuée et résiliente, s'appuyant sur des services managés (Neon/Postgres, Upstash/Redis, S3/AWS) avec des coûts incompressibles associés. Pour la phase de développement et de validation (Staging), répliquer cette architecture à l'identique engendrerait des coûts disproportionnés par rapport à l'usage réel (tests de QA, validation des PR, environnements éphémères).
+
+Nous avons besoin d'un environnement de staging fonctionnel, automatisé et ISO-fonctionnel avec la production, mais avec une empreinte financière drastiquement réduite.
+
+### Decision
+**Mise en place d'une architecture "Staging Low-Cost / Guérilla" sur une VM unique, déployée via Kamal.**
+
+- **Outil de Déploiement :** Utilisation de Kamal (anciennement MRSK) pour orchestrer les conteneurs Docker via SSH.
+- **Infrastructure :** Une seule machine virtuelle (VPS) abordable (ex: Hetzner, DigitalOcean) au lieu d'un cluster ou de services managés.
+- **Registry :** GitHub Container Registry (GHCR) pour stocker les images de manière transparente avec GitHub Actions.
+- **Accessoires Locaux (Conteneurs) :** Au lieu des services managés, nous faisons tourner des conteneurs "accessories" via Kamal sur la même machine :
+  - `postgres` (Base de données)
+  - `redis` (Cache et queues)
+  - `minio` (Stockage objet compatible S3)
+  - `keycloak` (Gestion de l'identité)
+
+### Consequences
+- **Avantages :** 
+  - Réduction drastique des coûts d'infrastructure pour le staging.
+  - Déploiement très rapide et reproductible via GitHub Actions (déclencheur `workflow_dispatch` et `push` sur la branche `staging`).
+  - L'intégration CI/CD passe les bonnes variables d'environnement (`STAGING_VPS_IP`) dynamiquement.
+- **Inconvénients :** 
+  - L'environnement de staging dévie de la production au niveau de la gestion de l'état (Single Point of Failure, pas de haute disponibilité, stockage sur volume local plutôt que S3 natif).
+  - Nécessite la configuration de MinIO au lieu de S3 direct.
+  - Les données ne sont pas garanties en cas de perte de la VM (mais acceptable pour du staging).
+
+### Revisit Criteria
+Si les tests de charge en staging nécessitent plus de ressources, ou si les différences d'infrastructure (MinIO vs AWS S3, Postgres local vs Neon) causent trop de faux-positifs dans les tests de validation, nous reconsidérerons l'utilisation partielle de services managés.
