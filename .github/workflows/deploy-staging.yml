@@ -59,6 +59,9 @@ jobs:
           KEYCLOAK_ADMIN_CLIENT_SECRET=$KC_CLIENT_SECRET
           EOF
 
+      - name: Release Deploy Lock
+        run: kamal lock release -c config/deploy-staging.yml || true
+
       - name: Deploy with Kamal
         run: kamal setup -c config/deploy-staging.yml
 
