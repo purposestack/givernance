@@ -76,7 +76,7 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
                 {hasGoal ? (
                   <Metric
                     label={t("metrics.goal")}
-                    value={formatCurrency(page.goalAmountCents, locale)}
+                    value={formatCurrency(page.goalAmountCents!, locale)}
                   />
                 ) : null}
                 <Metric label={t("metrics.trust")} value={t("metrics.trustValue")} />

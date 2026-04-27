@@ -90,7 +90,7 @@ export async function probeInvitation(token: string): Promise<InvitationProbeRes
   } catch {
     // Network-side failure: don't block the form. The post-submit terminal
     // screen will catch a bad token if the user reaches that point.
-    return { kind: "valid", defaultLocale: APP_DEFAULT_LOCALE };
+    return { kind: "valid", defaultLocale: APP_DEFAULT_LOCALE, firstName: null, lastName: null };
   }
   if (res.status === 200) {
     try {
