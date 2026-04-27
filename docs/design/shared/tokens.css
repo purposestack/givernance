@@ -14,16 +14,16 @@
      ======================================================================= */
 
   /* ── Backgrounds ── */
-  --color-background:               #fff8f0;
-  --color-surface:                   #fff8f0;
+  --color-background:               #f0eee9;
+  --color-surface:                   #f0eee9;
   --color-surface-container-lowest:  #ffffff;
-  --color-surface-container-low:     #f9f3ea;
-  --color-surface-container:         #f4ede4;
-  --color-surface-container-high:    #eee7de;
-  --color-surface-container-highest: #e8e2d9;
-  --color-surface-variant:           #e8e2d9;
-  --color-surface-dim:               #dfd9d0;
-  --color-surface-bright:            #fff8f0;
+  --color-surface-container-low:     #f5f3ef;
+  --color-surface-container:         #ebe8e2;
+  --color-surface-container-high:    #e1ded7;
+  --color-surface-container-highest: #d7d4cc;
+  --color-surface-variant:           #d7d4cc;
+  --color-surface-dim:               #d0cdc5;
+  --color-surface-bright:            #f0eee9;
 
   /* ── Primary green ── */
   --color-primary:                 #096447;

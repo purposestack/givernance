@@ -7,16 +7,16 @@
  */
 @theme {
   /* ── Colors — Material You warm palette ── */
-  --color-background: #fff8f0;
-  --color-surface: #fff8f0;
+  --color-background: #f0eee9;
+  --color-surface: #f0eee9;
   --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f9f3ea;
-  --color-surface-container: #f4ede4;
-  --color-surface-container-high: #eee7de;
-  --color-surface-container-highest: #e8e2d9;
-  --color-surface-variant: #e8e2d9;
-  --color-surface-dim: #dfd9d0;
-  --color-surface-bright: #fff8f0;
+  --color-surface-container-low: #f5f3ef;
+  --color-surface-container: #ebe8e2;
+  --color-surface-container-high: #e1ded7;
+  --color-surface-container-highest: #d7d4cc;
+  --color-surface-variant: #e1ded7;
+  --color-surface-dim: #d0cdc5;
+  --color-surface-bright: #f0eee9;
 
   --color-primary: #096447;
   --color-primary-container: #2e7d5e;
@@ -46,15 +46,15 @@
   --color-on-tertiary-fixed: #2f1500;
   --color-on-tertiary-fixed-variant: #6e3900;
 
-  --color-on-surface: #1e1b16;
-  --color-on-surface-variant: #3f4943;
-  --color-on-background: #1e1b16;
+  --color-on-surface: #1c1b1a;
+  --color-on-surface-variant: #42403e;
+  --color-on-background: #1c1b1a;
 
-  --color-outline: #6f7a73;
-  --color-outline-variant: #bec9c1;
+  --color-outline: #72706e;
+  --color-outline-variant: #c3c1bc;
 
-  --color-inverse-surface: #33302a;
-  --color-inverse-on-surface: #f7f0e7;
+  --color-inverse-surface: #302f2e;
+  --color-inverse-on-surface: #f2f0eb;
   --color-error: #ba1a1a;
   --color-on-error: #ffffff;
   --color-error-container: #ffdad6;
@@ -90,8 +90,8 @@
   --color-neutral-400: var(--color-outline-variant);
   --color-neutral-500: var(--color-outline);
   --color-neutral-600: var(--color-on-surface-variant);
-  --color-neutral-700: #33302a;
-  --color-neutral-800: #262320;
+  --color-neutral-700: #302f2e;
+  --color-neutral-800: #242322;
   --color-neutral-900: var(--color-on-surface);
 
   /* ── Status: green ── */
@@ -133,7 +133,7 @@
 
   /* ── Navy ── */
   --color-navy: var(--color-inverse-surface);
-  --color-navy-light: #33302a;
+  --color-navy-light: #302f2e;
   --color-navy-50: var(--color-surface-container-low);
 
   /* ── Semantic status ── */
