@@ -260,7 +260,11 @@ export async function proxy(request: NextRequest) {
   if (isProtected(pathname) && !jwt) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(loginUrl);
+    const redirectResponse = NextResponse.redirect(loginUrl);
+    if (!refreshedSession && refreshToken) {
+      clearSessionCookies(redirectResponse);
+    }
+    return redirectResponse;
   }
 
   const response = NextResponse.next({
@@ -272,9 +276,6 @@ export async function proxy(request: NextRequest) {
     ensureCsrfCookie(request, response, jwt);
   }
 
-  if (!refreshedSession && refreshToken && !jwt && isProtected(pathname)) {
-    clearSessionCookies(response);
-  }
   return response;
 }
 
