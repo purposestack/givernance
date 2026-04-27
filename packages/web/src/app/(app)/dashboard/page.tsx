@@ -1,4 +1,14 @@
-import { Banknote, CalendarClock, CheckCircle2, Circle, Lightbulb, Megaphone, Plus, Timer, Users } from "lucide-react";
+import {
+  Banknote,
+  CalendarClock,
+  CheckCircle2,
+  Circle,
+  Lightbulb,
+  Megaphone,
+  Plus,
+  Timer,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
@@ -284,7 +294,9 @@ function StatCard({
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-on-surface-variant">{label}</p>
         {Icon ? (
-          <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorStyles[color]}`}>
+          <div
+            className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorStyles[color]}`}
+          >
             <Icon size={20} aria-hidden="true" />
           </div>
         ) : null}
@@ -371,7 +383,10 @@ function CampaignProgressItem({
         </span>
       </div>
       <div className="mt-4 h-2 overflow-hidden rounded-md bg-surface-container">
-        <div className="h-full rounded-md bg-secondary transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
+        <div
+          className="h-full rounded-md bg-secondary transition-all duration-500 ease-out"
+          style={{ width: `${progress}%` }}
+        />
       </div>
       <p className="mt-2 text-xs text-on-surface-variant">
         {goalCents > 0
