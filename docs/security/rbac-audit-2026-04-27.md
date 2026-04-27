@@ -94,9 +94,9 @@ Frontend permission map
 | disputes | PATCH `/v1/admin/disputes/:id` | `modules/disputes/routes.ts:178` | `requireSuperAdmin` | Resolution. |
 | donations | GET `/v1/donations` | `modules/donations/routes.ts:170` | `requireAuth` | Paginated list with filters. |
 | donations | GET `/v1/donations/:id` | `modules/donations/routes.ts:214` | `requireAuth` | Detail with allocations. |
-| donations | POST `/v1/donations` | `modules/donations/routes.ts:251` | `requireAuth` | Idempotency-keyed manual donation. **Gap.** |
-| donations | PATCH `/v1/donations/:id` | `modules/donations/routes.ts:327` | `requireAuth` | Update. **Gap.** |
-| donations | DELETE `/v1/donations/:id` | `modules/donations/routes.ts:385` | `requireAuth` | Delete. **Gap.** |
+| donations | POST `/v1/donations` | `modules/donations/routes.ts:251` | `requireWrite` (#176) | Idempotency-keyed manual donation. |
+| donations | PATCH `/v1/donations/:id` | `modules/donations/routes.ts:327` | `requireWrite` (#176) | Update. |
+| donations | DELETE `/v1/donations/:id` | `modules/donations/routes.ts:385` | `requireOrgAdmin` (#176) | Delete; admin-only — accounting + audit + GDPR. |
 | donations | GET `/v1/donations/:id/receipt` | `modules/donations/routes.ts:422` | `requireAuth` | Presigned S3 URL for tax receipt. |
 | funds | GET `/v1/funds` | `modules/funds/routes.ts:54` | `requireAuth` | List. |
 | funds | POST `/v1/funds` | `modules/funds/routes.ts:80` | `requireOrgAdmin` | Create. |
@@ -113,7 +113,7 @@ Frontend permission map
 | invitations | POST `/v1/invitations/:token/accept` | `modules/invitations/routes.ts:419` | none (rate-limited) | Public accept; token IS the credential. |
 | payments | POST `/v1/admin/stripe-connect` | `modules/payments/routes.ts:30` | `requireOrgAdmin` | Stripe Connect onboarding. |
 | payments | POST `/v1/donations/stripe-webhook` | `modules/payments/routes.ts:81` | none (signature-verified, rate-limited) | Stripe webhook; signature is the credential. |
-| pledges | POST `/v1/pledges` | `modules/pledges/routes.ts:76` | `requireAuth` | Idempotency-keyed pledge create. **Gap.** |
+| pledges | POST `/v1/pledges` | `modules/pledges/routes.ts:76` | `requireWrite` (#177) | Idempotency-keyed pledge create. |
 | pledges | GET `/v1/pledges/:id/installments` | `modules/pledges/routes.ts:114` | `requireAuth` | List installments. |
 | public | GET `/v1/campaigns/:id/public-page` | `modules/public/routes.ts:61` | `requireOrgAdmin` | Admin fetch of public-page config. |
 | public | GET `/v1/public/campaigns/:id/page` | `modules/public/routes.ts:95` | none | Published page config — public. |

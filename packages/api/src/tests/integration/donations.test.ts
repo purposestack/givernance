@@ -651,6 +651,11 @@ describe("Donations viewer-role enforcement (issue #176)", () => {
       },
     });
     expect(res.statusCode).toBe(403);
+    // Lock the wire format: today guards send `application/json` carrying an
+    // RFC 9457-shaped body. The accept-both regex catches a future tightening
+    // to `application/problem+json` AND a regression to plain-string error
+    // bodies (which would drop the JSON content-type entirely).
+    expect(res.headers["content-type"]).toMatch(/^application\/(problem\+)?json/);
     const body = res.json<{ type: string; title: string; status: number; detail: string }>();
     expect(body.type).toBe("https://httpproblems.com/http-status/403");
     expect(body.title).toBe("Forbidden");
@@ -788,6 +793,46 @@ describe("Donations viewer-role enforcement (issue #176)", () => {
     expect(res.statusCode).toBe(200);
   });
 
+  // SOC observability lock: viewer-403 attempts MUST land in audit_logs so a
+  // dashboard can surface "viewer probing write endpoints". A future change
+  // that skips audit emission on 4xx (perf optimisation, PII concerns) would
+  // silently kill the SOC signal for RBAC denials. Catch it here.
+  it("POST /v1/donations 403 still emits an audit_logs row (SOC observability)", async () => {
+    const before = await db.execute(
+      sql`SELECT count(*)::int AS c FROM audit_logs
+          WHERE org_id = ${ORG_A} AND action = 'POST:/v1/donations'`,
+    );
+    const beforeCount = (before.rows[0] as { c: number }).c;
+
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(viewerToken),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1000,
+        currency: "EUR",
+        paymentMethod: "cash",
+        paymentRef: `AUDIT-LOCK-${Date.now()}`,
+      },
+    });
+    expect(res.statusCode).toBe(403);
+
+    // Audit hook fires on `onResponse`, which is async after `inject` resolves.
+    // Poll briefly so we don't depend on lifecycle internals.
+    let afterCount = beforeCount;
+    for (let attempt = 0; attempt < 10 && afterCount === beforeCount; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const after = await db.execute(
+        sql`SELECT count(*)::int AS c FROM audit_logs
+            WHERE org_id = ${ORG_A} AND action = 'POST:/v1/donations'`,
+      );
+      afterCount = (after.rows[0] as { c: number }).c;
+    }
+    expect(afterCount).toBe(beforeCount + 1);
+  });
+
   // Sanity: tightening writes mustn't over-block reads. If a future change
   // mass-replaces `requireAuth` → `requireWrite` on GET endpoints, this test
   // catches it for donations.
@@ -843,6 +888,7 @@ describe("Pledges viewer-role enforcement (issue #177)", () => {
       },
     });
     expect(res.statusCode).toBe(403);
+    expect(res.headers["content-type"]).toMatch(/^application\/(problem\+)?json/);
     const body = res.json<{ type: string; title: string; status: number; detail: string }>();
     expect(body.type).toBe("https://httpproblems.com/http-status/403");
     expect(body.title).toBe("Forbidden");

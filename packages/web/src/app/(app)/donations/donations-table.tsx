@@ -165,8 +165,8 @@ export function DonationsTable({
           return <Badge variant={RECEIPT_VARIANTS[status]}>{t(`receiptStatus.${status}`)}</Badge>;
         },
       },
-      // Drop the actions column entirely for viewers (no Edit, no Delete) so
-      // we don't render an `sr-only` "Actions" header above empty cells.
+      // Drop the actions column entirely when no row action is available,
+      // so we don't render an `sr-only` "Actions" header above empty cells.
       // Mirrors the constituents-table pattern from PR #170.
       ...(canWrite || canDelete
         ? [

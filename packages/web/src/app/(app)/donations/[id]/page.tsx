@@ -43,7 +43,7 @@ async function fetchDonationOrNotFound(id: string): Promise<DonationDetail> {
 export default async function DonationDetailPage({ params }: DonationDetailPageProps) {
   const auth = await requireAuth();
   const canWrite = hasPermission(auth, "write");
-  const canDelete = auth.roles.includes("org_admin");
+  const canDelete = hasPermission(auth, "admin");
   const { id } = await params;
   const donation = await fetchDonationOrNotFound(id);
 

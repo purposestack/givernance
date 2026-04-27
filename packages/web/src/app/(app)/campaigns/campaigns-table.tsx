@@ -59,6 +59,11 @@ interface CampaignsTableProps {
   campaigns: CampaignWithStats[];
   pagination: DataTablePagination;
   /**
+   * Viewer cannot Edit — `/campaigns/[id]/edit` is `requirePermission("write")`
+   * and would 404. Hide the row's Edit affordance to avoid a dead-end.
+   */
+  canWrite: boolean;
+  /**
    * `Close` is `requireOrgAdmin` server-side; when `false`, the row's
    * dropdown only shows Edit. Mirrors the donations + members + constituents
    * shortcut pattern.
@@ -77,6 +82,7 @@ function isCampaignStatus(value: string): value is CampaignStatus {
 export function CampaignsTable({
   campaigns,
   pagination,
+  canWrite,
   canManageAdminActions,
 }: CampaignsTableProps) {
   const router = useRouter();
@@ -215,28 +221,37 @@ export function CampaignsTable({
           </span>
         ),
       },
-      {
-        id: "actions",
-        header: () => <span className="sr-only">{t("columns.actions")}</span>,
-        enableSorting: false,
-        cell: ({ row }) => {
-          const campaign = row.original.campaign;
-          const canClose =
-            canManageAdminActions && (campaign.status === "draft" || campaign.status === "active");
-          return (
-            <CampaignRowActions
-              campaign={campaign}
-              canClose={canClose}
-              onClose={() => setCloseTarget(campaign)}
-              menuLabel={t("actions.menu", { name: campaign.name })}
-              editLabel={t("actions.edit")}
-              closeLabel={t("actions.close")}
-            />
-          );
-        },
-      },
+      // Drop the actions column entirely when no row action is available
+      // (viewer with no write access AND no admin actions). Mirrors the
+      // donations + constituents tables.
+      ...(canWrite || canManageAdminActions
+        ? [
+            {
+              id: "actions",
+              header: () => <span className="sr-only">{t("columns.actions")}</span>,
+              enableSorting: false,
+              cell: ({ row }: { row: { original: CampaignWithStats } }) => {
+                const campaign = row.original.campaign;
+                const canClose =
+                  canManageAdminActions &&
+                  (campaign.status === "draft" || campaign.status === "active");
+                return (
+                  <CampaignRowActions
+                    campaign={campaign}
+                    canEdit={canWrite}
+                    canClose={canClose}
+                    onClose={() => setCloseTarget(campaign)}
+                    menuLabel={t("actions.menu", { name: campaign.name })}
+                    editLabel={t("actions.edit")}
+                    closeLabel={t("actions.close")}
+                  />
+                );
+              },
+            } satisfies ColumnDef<CampaignWithStats>,
+          ]
+        : []),
     ],
-    [canManageAdminActions, t, locale],
+    [canManageAdminActions, canWrite, t, locale],
   );
 
   return (
@@ -291,6 +306,7 @@ export function CampaignsTable({
 
 interface CampaignRowActionsProps {
   campaign: Campaign;
+  canEdit: boolean;
   canClose: boolean;
   onClose: () => void;
   menuLabel: string;
@@ -300,12 +316,16 @@ interface CampaignRowActionsProps {
 
 function CampaignRowActions({
   campaign,
+  canEdit,
   canClose,
   onClose,
   menuLabel,
   editLabel,
   closeLabel,
 }: CampaignRowActionsProps) {
+  if (!canEdit && !canClose) {
+    return null;
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -319,15 +339,17 @@ function CampaignRowActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-        <DropdownMenuItem asChild>
-          <Link
-            href={`/campaigns/${campaign.id}/edit`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Pencil size={16} aria-hidden="true" />
-            {editLabel}
-          </Link>
-        </DropdownMenuItem>
+        {canEdit ? (
+          <DropdownMenuItem asChild>
+            <Link
+              href={`/campaigns/${campaign.id}/edit`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Pencil size={16} aria-hidden="true" />
+              {editLabel}
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         {canClose ? (
           <DropdownMenuItem
             onSelect={(event) => {
