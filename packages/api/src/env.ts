@@ -93,7 +93,7 @@ if (process.env.NODE_ENV === "production" && !value.KEYCLOAK_ADMIN_CLIENT_SECRET
 }
 
 const adminUrl = value.KEYCLOAK_ADMIN_URL ?? value.KEYCLOAK_URL;
-const isLocalHost = /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$|\/)/i.test(adminUrl);
+const isLocalHost = /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0|givernance-keycloak)(:|$|\/)/i.test(adminUrl);
 if (process.env.NODE_ENV === "production" && !adminUrl.startsWith("https://") && !isLocalHost) {
   console.error(
     `[api] Keycloak admin URL must be HTTPS in production (got '${adminUrl}') — client-credentials over cleartext leaks the admin secret.`,
