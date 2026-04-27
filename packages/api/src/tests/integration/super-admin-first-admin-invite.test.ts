@@ -191,6 +191,74 @@ describe("POST /v1/superadmin/tenants/:id/first-admin-invitations", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  // ─── Per-invitation locale (issue #153 follow-up) ─────────────────────────
+
+  it("super-admin pre-pick persists on invitations.locale and stamps the outbox payload", async () => {
+    const f = await makeFixture();
+    const email = `locale-pick+${f.slug}@example.org`;
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
+      headers: authHeader(f.superAdminToken),
+      payload: { email, locale: "en" },
+    });
+    expect(res.statusCode).toBe(201);
+    const { invitationId } = res.json<{ data: { invitationId: string } }>().data;
+
+    const { rows: inv } = await db.execute<{ locale: string | null }>(
+      sql`SELECT locale FROM invitations WHERE id = ${invitationId}`,
+    );
+    expect(inv[0]?.locale).toBe("en");
+
+    const { rows: events } = await db.execute<{ payload: { locale?: string } }>(
+      sql`SELECT payload FROM outbox_events
+          WHERE tenant_id = ${f.orgId}
+            AND type = 'tenant.first_admin_invited'
+            AND payload->>'invitationId' = ${invitationId}
+          LIMIT 1`,
+    );
+    expect(events[0]?.payload?.locale).toBe("en");
+  });
+
+  it("omitting locale leaves invitations.locale NULL and falls back to tenant default", async () => {
+    const f = await makeFixture();
+    const email = `locale-default+${f.slug}@example.org`;
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
+      headers: authHeader(f.superAdminToken),
+      payload: { email },
+    });
+    expect(res.statusCode).toBe(201);
+    const { invitationId } = res.json<{ data: { invitationId: string } }>().data;
+
+    const { rows: inv } = await db.execute<{ locale: string | null }>(
+      sql`SELECT locale FROM invitations WHERE id = ${invitationId}`,
+    );
+    expect(inv[0]?.locale).toBeNull();
+
+    const { rows: events } = await db.execute<{ payload: { locale?: string } }>(
+      sql`SELECT payload FROM outbox_events
+          WHERE tenant_id = ${f.orgId}
+            AND type = 'tenant.first_admin_invited'
+            AND payload->>'invitationId' = ${invitationId}
+          LIMIT 1`,
+    );
+    // Tenant default is 'fr' (column DEFAULT for enterprise tenants).
+    expect(events[0]?.payload?.locale).toBe("fr");
+  });
+
+  it("rejects an unsupported locale with 400", async () => {
+    const f = await makeFixture();
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
+      headers: authHeader(f.superAdminToken),
+      payload: { email: `bad-locale+${f.slug}@example.org`, locale: "de" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 describe("POST /v1/superadmin/tenants/:id/first-admin-invitations/:invitationId/resend", () => {
@@ -222,6 +290,44 @@ describe("POST /v1/superadmin/tenants/:id/first-admin-invitations/:invitationId/
       sql`SELECT type FROM outbox_events WHERE tenant_id = ${f.orgId}`,
     );
     expect(events.filter((e) => e.type === "tenant.first_admin_invited")).toHaveLength(2);
+  });
+
+  it("resend propagates the stored invitations.locale (issue #153 follow-up)", async () => {
+    // Tenant default is fr; super-admin pre-picked en at create time.
+    // Resend should re-emit with locale='en', not flip back to the
+    // tenant default — resend semantics is "redeliver the same content
+    // with a fresh token", not "re-pick the language".
+    const f = await makeFixture();
+    const create = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations`,
+      headers: authHeader(f.superAdminToken),
+      payload: { email: `resend-locale+${f.slug}@example.org`, locale: "en" },
+    });
+    expect(create.statusCode).toBe(201);
+    const { invitationId } = create.json<{ data: { invitationId: string } }>().data;
+
+    const resend = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/tenants/${f.orgId}/first-admin-invitations/${invitationId}/resend`,
+      headers: authHeader(f.superAdminToken),
+    });
+    expect(resend.statusCode).toBe(200);
+
+    // Two outbox events for this invitation; the resent one carries
+    // resent:true and the stored locale.
+    const { rows } = await db.execute<{ payload: { resent?: boolean; locale?: string } }>(
+      sql`SELECT payload FROM outbox_events
+          WHERE tenant_id = ${f.orgId}
+            AND type = 'tenant.first_admin_invited'
+            AND payload->>'invitationId' = ${invitationId}
+          ORDER BY created_at ASC`,
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.payload?.resent).toBeUndefined();
+    expect(rows[0]?.payload?.locale).toBe("en");
+    expect(rows[1]?.payload?.resent).toBe(true);
+    expect(rows[1]?.payload?.locale).toBe("en");
   });
 
   it("returns 404 for an unknown invitation id", async () => {

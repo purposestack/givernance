@@ -16,15 +16,20 @@ describe("FirstAdminCard", () => {
       },
     });
 
-    render(<FirstAdminCard tenantId="tenant-1" invitation={null} />);
+    render(<FirstAdminCard tenantId="tenant-1" tenantDefaultLocale="fr" invitation={null} />);
 
     await user.type(screen.getByLabelText(/Email/), "first@example.org");
     await user.click(screen.getByRole("button", { name: "Send invitation" }));
 
     await waitFor(() => {
+      // `locale: null` is the wire shape for "follow tenant default"
+      // (issue #153 follow-up) — the picker's FOLLOW_TENANT sentinel
+      // maps to null on submit. The API treats null and field-omitted
+      // identically (both fall back to `tenants.default_locale`); we
+      // assert null here because that's what the form sends.
       expect(mockApiClient.post).toHaveBeenCalledWith(
         "/v1/superadmin/tenants/tenant-1/first-admin-invitations",
-        { email: "first@example.org" },
+        { email: "first@example.org", locale: null },
       );
     });
     expect(mockToast.success).toHaveBeenCalledWith("Invitation sent to first@example.org.");
@@ -45,6 +50,7 @@ describe("FirstAdminCard", () => {
     render(
       <FirstAdminCard
         tenantId="tenant-1"
+        tenantDefaultLocale="fr"
         invitation={{
           id: "inv-1",
           email: "pending@example.org",
@@ -89,12 +95,19 @@ describe("FirstAdminCard", () => {
       createdAt: "2026-04-26T00:00:00.000Z",
     };
 
-    const { unmount } = render(<FirstAdminCard tenantId="tenant-1" invitation={invitation} />);
+    const { unmount } = render(
+      <FirstAdminCard tenantId="tenant-1" tenantDefaultLocale="fr" invitation={invitation} />,
+    );
     expect(screen.queryByRole("button", { name: "Copy link" })).not.toBeInTheDocument();
     unmount();
 
     render(
-      <FirstAdminCard tenantId="tenant-1" invitation={invitation} initialFreshToken="tok-123" />,
+      <FirstAdminCard
+        tenantId="tenant-1"
+        tenantDefaultLocale="fr"
+        invitation={invitation}
+        initialFreshToken="tok-123"
+      />,
     );
     expect(screen.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
   });
@@ -103,6 +116,7 @@ describe("FirstAdminCard", () => {
     render(
       <FirstAdminCard
         tenantId="tenant-1"
+        tenantDefaultLocale="fr"
         invitation={{
           id: "inv-1",
           email: "accepted@example.org",
@@ -133,7 +147,7 @@ describe("FirstAdminCard", () => {
       }),
     );
 
-    render(<FirstAdminCard tenantId="tenant-1" invitation={null} />);
+    render(<FirstAdminCard tenantId="tenant-1" tenantDefaultLocale="fr" invitation={null} />);
     await user.type(screen.getByLabelText(/Email/), "dup@example.org");
     await user.click(screen.getByRole("button", { name: "Send invitation" }));
 
