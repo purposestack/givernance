@@ -9,7 +9,7 @@ servers:
   web:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
-    cmd: PORT=3000 pnpm --filter @givernance/web run start
+    cmd: pnpm --filter @givernance/web run start
     proxy:
       host: staging.givernance.org
       healthcheck:
@@ -17,7 +17,7 @@ servers:
   api:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
-    cmd: PORT=3000 pnpm --filter @givernance/api run start
+    cmd: pnpm --filter @givernance/api run start
     proxy:
       host: api.staging.givernance.org
       healthcheck:
@@ -42,6 +42,7 @@ registry:
 env:
   clear:
     NODE_ENV: production
+    PORT: 3000
     DB_HOST: givernance-postgres
     REDIS_HOST: givernance-redis
     MINIO_ENDPOINT: givernance-minio
