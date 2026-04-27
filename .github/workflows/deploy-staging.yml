@@ -65,7 +65,7 @@ jobs:
       - name: Print failed API container logs
         if: failure()
         run: |
-          kamal server exec -c config/deploy-staging.yml "docker ps -a --filter name=givernance-api --format '{{.Names}}' | xargs -r docker logs --tail 100" || true
+          kamal server exec -c config/deploy-staging.yml "docker ps -a --filter name=givernance-api -q | head -n 1 | xargs -I {} docker logs --tail 100 {}" || true
 
       - name: Run DB Migrations
         run: kamal app exec -c config/deploy-staging.yml --reuse "pnpm --filter @givernance/api run db:migrate"
