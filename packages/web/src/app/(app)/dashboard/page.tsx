@@ -33,16 +33,10 @@ interface CampaignWithStats {
  */
 export default async function DashboardPage() {
   const auth = await requireAuth();
-  /**
-   * Hide all three Quick Actions for `viewer` — not just the constituents
-   * one. The donations CTA links to `/donations/new`, whose `POST /v1/donations`
-   * is still `requireAuth` server-side (issue #176, audit row API-4) and
-   * would today let a viewer succeed at recording a manual donation. Hiding
-   * the section is therefore a real protective measure, not just affordance
-   * polish, until #176 lands. The campaigns CTA is a dead-end (campaigns API
-   * is already `requireWrite`), but bundling it keeps the section coherent —
-   * splitting "+ Donation hidden, + Campaign visible" would be confusing.
-   */
+  // Quick Actions are write-only affordances — all three CTAs link to
+  // `requireWrite`-gated POST endpoints (constituents in PR #170, donations
+  // in #176, campaigns already correct), so hiding them for `viewer` matches
+  // the API surface exactly.
   const canWrite = hasPermission(auth, "write");
   const t = (await getTranslations("dashboard")) as unknown as DashboardT;
   const locale = await getLocale();

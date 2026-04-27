@@ -5,7 +5,7 @@ import { CampaignForm } from "@/components/campaigns/campaign-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import type { Campaign } from "@/models/campaign";
 import { CampaignService } from "@/services/CampaignService";
 
@@ -26,7 +26,7 @@ async function fetchCampaignOrNotFound(id: string): Promise<Campaign> {
 }
 
 export default async function EditCampaignPage({ params }: EditCampaignPageProps) {
-  await requireAuth();
+  await requirePermission("write");
   const { id } = await params;
   const campaign = await fetchCampaignOrNotFound(id);
 

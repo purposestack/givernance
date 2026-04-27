@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import type { DonationListResponse } from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
 
@@ -42,7 +42,9 @@ function parseUuid(value: string | string[] | undefined): string | undefined {
 }
 
 export default async function DonationsPage({ searchParams }: DonationsPageProps) {
-  await requireAuth();
+  const auth = await requireAuth();
+  const canWrite = hasPermission(auth, "write");
+  const canDelete = auth.roles.includes("org_admin");
   const params = await searchParams;
   const t = await getTranslations("donations");
 
@@ -87,19 +89,26 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
         }
         breadcrumbs={[{ label: t("breadcrumbRoot"), href: "/dashboard" }, { label: t("title") }]}
         actions={
-          <Button asChild variant="primary" size="sm">
-            <Link href="/donations/new">
-              <Plus size={16} aria-hidden="true" />
-              {t("actions.new")}
-            </Link>
-          </Button>
+          canWrite ? (
+            <Button asChild variant="primary" size="sm">
+              <Link href="/donations/new">
+                <Plus size={16} aria-hidden="true" />
+                {t("actions.new")}
+              </Link>
+            </Button>
+          ) : null
         }
       />
 
       <DonationsFilters dateFrom={dateFrom ?? ""} dateTo={dateTo ?? ""} />
 
       {hasAny ? (
-        <DonationsTable donations={result.data} pagination={result.pagination} />
+        <DonationsTable
+          donations={result.data}
+          pagination={result.pagination}
+          canWrite={canWrite}
+          canDelete={canDelete}
+        />
       ) : (
         <div className="rounded-2xl bg-surface-container-lowest shadow-card">
           <EmptyState icon={Gift} title={t("empty.title")} description={t("empty.seedHint")} />

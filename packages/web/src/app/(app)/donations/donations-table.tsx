@@ -44,9 +44,16 @@ const RECEIPT_VARIANTS: Record<ReceiptStatus, BadgeVariant> = {
 interface DonationsTableProps {
   donations: DonationListRow[];
   pagination: DataTablePagination;
+  canWrite: boolean;
+  canDelete: boolean;
 }
 
-export function DonationsTable({ donations, pagination }: DonationsTableProps) {
+export function DonationsTable({
+  donations,
+  pagination,
+  canWrite,
+  canDelete,
+}: DonationsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -158,24 +165,33 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
           return <Badge variant={RECEIPT_VARIANTS[status]}>{t(`receiptStatus.${status}`)}</Badge>;
         },
       },
-      {
-        id: "actions",
-        header: () => <span className="sr-only">{t("columns.actions")}</span>,
-        enableSorting: false,
-        cell: ({ row }) => (
-          <DonationActions
-            donation={row.original}
-            onDelete={() => setDonationToDelete(row.original)}
-            menuLabel={t("actions.menu", {
-              name: donationDonorName(row.original) ?? t("anonymousDonor"),
-            })}
-            editLabel={t("actions.edit")}
-            deleteLabel={t("actions.delete")}
-          />
-        ),
-      },
+      // Drop the actions column entirely for viewers (no Edit, no Delete) so
+      // we don't render an `sr-only` "Actions" header above empty cells.
+      // Mirrors the constituents-table pattern from PR #170.
+      ...(canWrite || canDelete
+        ? [
+            {
+              id: "actions",
+              header: () => <span className="sr-only">{t("columns.actions")}</span>,
+              enableSorting: false,
+              cell: ({ row }: { row: { original: DonationListRow } }) => (
+                <DonationActions
+                  donation={row.original}
+                  canEdit={canWrite}
+                  canDelete={canDelete}
+                  onDelete={() => setDonationToDelete(row.original)}
+                  menuLabel={t("actions.menu", {
+                    name: donationDonorName(row.original) ?? t("anonymousDonor"),
+                  })}
+                  editLabel={t("actions.edit")}
+                  deleteLabel={t("actions.delete")}
+                />
+              ),
+            } satisfies ColumnDef<DonationListRow>,
+          ]
+        : []),
     ],
-    [locale, t],
+    [canDelete, canWrite, locale, t],
   );
 
   return (
@@ -234,6 +250,8 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
 
 interface DonationActionsProps {
   donation: DonationListRow;
+  canEdit: boolean;
+  canDelete: boolean;
   onDelete: () => void;
   menuLabel: string;
   editLabel: string;
@@ -242,11 +260,16 @@ interface DonationActionsProps {
 
 function DonationActions({
   donation,
+  canEdit,
+  canDelete,
   onDelete,
   menuLabel,
   editLabel,
   deleteLabel,
 }: DonationActionsProps) {
+  if (!canEdit && !canDelete) {
+    return null;
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -260,26 +283,30 @@ function DonationActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-        <DropdownMenuItem asChild>
-          <Link
-            href={`/donations/${donation.id}/edit`}
-            onClick={(event) => event.stopPropagation()}
+        {canEdit ? (
+          <DropdownMenuItem asChild>
+            <Link
+              href={`/donations/${donation.id}/edit`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Pencil size={16} aria-hidden="true" />
+              {editLabel}
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
+        {canDelete ? (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onDelete();
+            }}
+            className="text-error focus:text-error"
           >
-            <Pencil size={16} aria-hidden="true" />
-            {editLabel}
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onDelete();
-          }}
-          className="text-error focus:text-error"
-        >
-          <Trash2 size={16} aria-hidden="true" />
-          {deleteLabel}
-        </DropdownMenuItem>
+            <Trash2 size={16} aria-hidden="true" />
+            {deleteLabel}
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

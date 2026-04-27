@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { DonationAllocation, DonationDetail } from "@/models/donation";
 import { donationDetailDonorName } from "@/models/donation";
@@ -41,7 +41,9 @@ async function fetchDonationOrNotFound(id: string): Promise<DonationDetail> {
 }
 
 export default async function DonationDetailPage({ params }: DonationDetailPageProps) {
-  await requireAuth();
+  const auth = await requireAuth();
+  const canWrite = hasPermission(auth, "write");
+  const canDelete = auth.roles.includes("org_admin");
   const { id } = await params;
   const donation = await fetchDonationOrNotFound(id);
 
@@ -72,17 +74,21 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
                 {t("actions.back")}
               </Link>
             </Button>
-            <Button asChild size="sm">
-              <Link href={`/donations/${donation.id}/edit`}>
-                <Pencil size={16} aria-hidden="true" />
-                {t("actions.edit")}
-              </Link>
-            </Button>
+            {canWrite ? (
+              <Button asChild size="sm">
+                <Link href={`/donations/${donation.id}/edit`}>
+                  <Pencil size={16} aria-hidden="true" />
+                  {t("actions.edit")}
+                </Link>
+              </Button>
+            ) : null}
             <ReceiptPreviewButton donationId={donation.id} />
-            <DeleteDonationButton
-              donationId={donation.id}
-              donorName={donationDetailDonorName(donation) || null}
-            />
+            {canDelete ? (
+              <DeleteDonationButton
+                donationId={donation.id}
+                donorName={donationDetailDonorName(donation) || null}
+              />
+            ) : null}
           </>
         }
       />

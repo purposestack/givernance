@@ -353,10 +353,10 @@ Severity legend repeated for clarity:
 | API-1 | constituents | `POST /v1/constituents` | `requireAuth` → `requireWrite` | **High** | Original symptom of issue #162. **Fixed in this PR.** |
 | API-2 | constituents | `PUT /v1/constituents/:id` | `requireAuth` → `requireWrite` | **High** | Viewer can update any constituent. **Fixed in this PR.** |
 | API-3 | constituents | `GET /v1/constituents/duplicates/search` | `requireAuth` → `requireWrite` | Medium | Viewer can fuzzy-search PII pre-flight. **Fixed in this PR.** |
-| API-4 | donations | `POST /v1/donations` | `requireAuth` → `requireWrite` | **High** | Viewer can record manual donations — financial write. |
-| API-5 | donations | `PATCH /v1/donations/:id` | `requireAuth` → `requireWrite` | **High** | Viewer can edit financial history. |
-| API-6 | donations | `DELETE /v1/donations/:id` | `requireAuth` → `requireOrgAdmin` | **High** | Viewer (and any non-admin) can delete donations — accounting + audit + GDPR risk. |
-| API-7 | pledges | `POST /v1/pledges` | `requireAuth` → `requireWrite` | **High** | Viewer can create recurring-giving commitments. |
+| API-4 | donations | `POST /v1/donations` | `requireAuth` → `requireWrite` | **High** | Viewer can record manual donations — financial write. **Fixed in #176.** |
+| API-5 | donations | `PATCH /v1/donations/:id` | `requireAuth` → `requireWrite` | **High** | Viewer can edit financial history. **Fixed in #176.** |
+| API-6 | donations | `DELETE /v1/donations/:id` | `requireAuth` → `requireOrgAdmin` | **High** | Viewer (and any non-admin) can delete donations — accounting + audit + GDPR risk. **Fixed in #176.** |
+| API-7 | pledges | `POST /v1/pledges` | `requireAuth` → `requireWrite` | **High** | Viewer can create recurring-giving commitments. **Fixed in #177.** |
 
 #### Frontend gaps
 
@@ -366,30 +366,32 @@ Severity legend repeated for clarity:
 | FE-2 | `/constituents/new` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reached the form. **Fixed in this PR.** |
 | FE-3 | `/constituents/[id]` | hide "Edit" for `viewer` | Low | Dead-end CTA. **Fixed in this PR.** |
 | FE-4 | `/constituents/[id]/edit` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reached the form. **Fixed in this PR.** |
-| FE-5 | `/donations` (list) | hide "+ New" for `viewer` | Low | Dead-end CTA once API-4 lands. |
-| FE-6 | `/donations/new` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reaches the form; submit will 403 once API-4 lands. |
-| FE-7 | `/donations/[id]` | hide "Edit"+"Delete" for `viewer` (Delete: hide unless `org_admin` once API-6 lands) | Low | Dead-end buttons. |
-| FE-8 | `/donations/[id]/edit` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reaches the form. |
-| FE-9 | `/campaigns` (list) | hide "+ New" for `viewer` | Low | Dead-end CTA — `POST /v1/campaigns` already requires `requireWrite` (so submit would 403 today). |
-| FE-10 | `/campaigns/new` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reaches the form even though API rejects submission. |
-| FE-11 | `/campaigns/[id]` | hide "Edit" for `viewer` | Low | Dead-end CTA. |
-| FE-12 | `/campaigns/[id]/edit` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reaches the form even though API rejects PATCH. |
+| FE-5 | `/donations` (list) | hide "+ New" for `viewer` | Low | Dead-end CTA once API-4 lands. **Fixed in #176.** |
+| FE-6 | `/donations/new` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reaches the form; submit will 403 once API-4 lands. **Fixed in #176.** |
+| FE-7 | `/donations/[id]` | hide "Edit"+"Delete" for `viewer` (Delete: hide unless `org_admin` once API-6 lands) | Low | Dead-end buttons. **Fixed in #176.** |
+| FE-8 | `/donations/[id]/edit` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reaches the form. **Fixed in #176.** |
+| FE-9 | `/campaigns` (list) | hide "+ New" for `viewer` | Low | Dead-end CTA — `POST /v1/campaigns` already requires `requireWrite` (so submit would 403 today). **Fixed in #178.** |
+| FE-10 | `/campaigns/new` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reaches the form even though API rejects submission. **Fixed in #178.** |
+| FE-11 | `/campaigns/[id]` | hide "Edit" for `viewer` | Low | Dead-end CTA. **Fixed in #178.** |
+| FE-12 | `/campaigns/[id]/edit` | `requireAuth()` → `requirePermission("write")` | Medium | Viewer reaches the form even though API rejects PATCH. **Fixed in #178.** |
 
-Total gaps: **7 API rows + 12 frontend rows = 19**, of which **7 are
-already fixed in this PR** (API-1 through -3, FE-1 through -4).
+Total gaps: **7 API rows + 12 frontend rows = 19**, **all fixed**: API-1
+through -3 + FE-1 through -4 in PR #170 (constituents); API-4 through -6
++ FE-5 through -8 in #176 (donations); API-7 in #177 (pledges); FE-9
+through -12 in #178 (campaigns frontend).
 
 ### C.2 — Severity breakdown
 
-| Severity | Count | Already fixed in this PR | Outstanding |
-|---|---|---|---|
-| High | 6 | 2 | 4 |
-| Medium | 8 | 2 | 6 |
-| Low | 5 | 3 | 2 (the donations FE list/detail rows track API-4..6) |
+| Severity | Count | Fixed in #170 (constituents) | Fixed in #176 / #177 / #178 (this PR) | Outstanding |
+|---|---|---|---|---|
+| High | 6 | 2 | 4 (API-4..6 in #176, API-7 in #177) | 0 |
+| Medium | 8 | 2 | 6 (FE-6, FE-8 in #176; FE-10, FE-12 in #178; mixed) | 0 |
+| Low | 5 | 3 | 2 | 0 |
 
-The four outstanding **High** items (API-4, -5, -6, -7) are all
-financial-write endpoints that today permit `viewer` to record / edit /
-delete donations and create pledges. These are the priority for the
-follow-up issues below.
+All Phase 1 RBAC gaps are now closed. The four originally-outstanding
+**High** rows (API-4..7) — viewer creating / editing / deleting donations
+and creating pledges — landed in #176 and #177. Frontend affordance
+hiding for donations and campaigns landed in #176 and #178.
 
 ### C.3 — Follow-up issue plan
 
