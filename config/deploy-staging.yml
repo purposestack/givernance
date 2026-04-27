@@ -101,7 +101,7 @@ accessories:
       - data/minio:/data
     cmd: server /data --console-address ":9001"
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: quay.io/keycloak/keycloak:26.1
     host: <%= ENV["STAGING_VPS_IP"] %>
     proxy:
       host: auth.staging.givernance.org
