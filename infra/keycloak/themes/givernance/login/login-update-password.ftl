@@ -10,10 +10,10 @@
 
   <#elseif section = "form">
     <form id="kc-passwd-update-form" class="gv-form"
-          action="${url.loginAction?html}" method="post">
+          action="${url.loginAction}" method="post">
 
       <#-- Hidden username for password-manager association -->
-      <input type="text" id="username" name="username" value="${username?html}"
+      <input type="text" id="username" name="username" value="${username}"
              readonly autocomplete="username"
              style="display:none;position:absolute;left:-9999px;">
 
