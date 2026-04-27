@@ -13,7 +13,7 @@
 
   <#elseif section = "form">
     <form id="kc-reset-password-form" class="gv-form"
-          action="${url.loginAction?html}" method="post">
+          action="${url.loginAction}" method="post">
 
       <div class="gv-field">
         <label for="username" class="gv-label">
@@ -30,7 +30,7 @@
           name="username"
           type="text"
           class="gv-input<#if messagesPerField.existsError('username')> gv-input--error</#if>"
-          value="${(auth.attemptedUsername!'')?html}"
+          value="${(auth.attemptedUsername!'')}"
           autofocus
           autocomplete="email"
           tabindex="1"
@@ -47,7 +47,7 @@
         ${msg("doSubmit")}
       </button>
 
-      <a class="gv-link" href="${url.loginUrl?html}"
+      <a class="gv-link" href="${url.loginUrl}"
          style="display:block;text-align:center;margin-top:4px;font-size:0.8125rem;">
         ${msg("backToLogin")}
       </a>

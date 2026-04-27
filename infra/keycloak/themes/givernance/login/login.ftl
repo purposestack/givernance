@@ -13,7 +13,7 @@
 
   <#elseif section = "form">
     <form id="kc-form-login" class="gv-form"
-          action="${url.loginAction?html}" method="post">
+          action="${url.loginAction}" method="post">
 
       <#-- Username / email field -->
       <div class="gv-field">
@@ -31,7 +31,7 @@
           name="username"
           type="text"
           class="gv-input<#if messagesPerField.existsError('username','password')> gv-input--error</#if>"
-          value="${(login.username!'')?html}"
+          value="${(login.username!'')}"
           autofocus
           autocomplete="username"
           tabindex="1"
@@ -50,7 +50,7 @@
         <div class="gv-label-row">
           <label for="password" class="gv-label">${msg("password")}</label>
           <#if realm.resetPasswordAllowed>
-            <a class="gv-link gv-link--small" href="${url.loginResetCredentialsUrl?html}" tabindex="5">
+            <a class="gv-link gv-link--small" href="${url.loginResetCredentialsUrl}" tabindex="5">
               ${msg("doForgotPassword")}
             </a>
           </#if>
@@ -104,7 +104,7 @@
 
       <#-- Hidden credential selector (for multi-credential flows) -->
       <input type="hidden" id="id-hidden-input" name="credentialId"
-             <#if auth.selectedCredential?has_content>value="${auth.selectedCredential?html}"</#if>>
+             <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>>
 
       <#-- Submit -->
       <button type="submit" class="gv-btn gv-btn--primary"
@@ -134,10 +134,10 @@
         Ou continuer avec
       </p>
       <#list social.providers as p>
-        <a href="${p.loginUrl?html}" id="social-${p.alias?html}"
+        <a href="${p.loginUrl}" id="social-${p.alias}"
            class="gv-btn gv-btn--secondary" style="margin-bottom:8px;" rel="nofollow">
           <#if p.iconClasses??>
-            <i class="${p.iconClasses?html}" aria-hidden="true" style="margin-right:8px;"></i>
+            <i class="${p.iconClasses}" aria-hidden="true" style="margin-right:8px;"></i>
           </#if>
           ${p.displayName!p.alias}
         </a>
