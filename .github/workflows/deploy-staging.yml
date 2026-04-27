@@ -33,3 +33,9 @@ jobs:
 
       - name: Deploy with Kamal
         run: kamal deploy
+
+      - name: Run DB Migrations
+        run: kamal app exec --reuse "pnpm --filter @givernance/api run db:migrate"
+
+      - name: Run DB Seed
+        run: kamal app exec --reuse "pnpm --filter @givernance/api run db:seed"
