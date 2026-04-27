@@ -236,6 +236,7 @@ export function DonationForm(props: DonationFormProps) {
 
   async function onSubmit(values: DonationFormValues) {
     form.clearErrors("root");
+    form.clearErrors("allocations");
 
     if (!values.constituentId) {
       form.setError("constituentId", { type: "manual", message: t("errors.constituentRequired") });
@@ -243,6 +244,17 @@ export function DonationForm(props: DonationFormProps) {
     }
     if (!values.amountCents || values.amountCents <= 0) {
       form.setError("amountCents", { type: "manual", message: t("errors.amountInvalid") });
+      return;
+    }
+    if (
+      !validateAllocationEntries(values, form, {
+        incomplete: t("errors.allocationIncomplete"),
+        fundRequired: t("errors.allocationFundRequired"),
+        amountRequired: t("errors.allocationAmountRequired"),
+        duplicateFund: t("errors.allocationDuplicateFund"),
+        sumMismatch: t("errors.allocationSumMismatch"),
+      })
+    ) {
       return;
     }
 
@@ -501,7 +513,18 @@ export function DonationForm(props: DonationFormProps) {
                                 form.formState.errors.allocations?.[index]?.fundId,
                               )}
                             >
-                              <SelectValue placeholder={t("fields.allocationFundPlaceholder")} />
+                              <span
+                                className={cn(
+                                  "truncate",
+                                  !field.value && "text-text-muted",
+                                )}
+                              >
+                                {resolveFundLabel(
+                                  field.value,
+                                  fundOptions,
+                                  t("fields.allocationFundPlaceholder"),
+                                )}
+                              </span>
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="__none__">
@@ -874,6 +897,41 @@ function normalizeAllocations(allocations: AllocationFormValue[]): DonationAlloc
     }));
 }
 
+interface AllocationValidationMessages {
+  incomplete: string;
+  fundRequired: string;
+  amountRequired: string;
+  duplicateFund: string;
+  sumMismatch: string;
+}
+
+export interface AllocationValidationIssue {
+  rootMessage: string;
+  fieldErrors: Array<{
+    index: number;
+    field: "fundId" | "amountCents";
+    message: string;
+  }>;
+}
+
+function validateAllocationEntries(
+  values: DonationFormValues,
+  form: UseFormReturn<DonationFormValues>,
+  messages: AllocationValidationMessages,
+): boolean {
+  const issue = inspectAllocationEntries(values, messages, form.formState.dirtyFields.allocations);
+  if (!issue) return true;
+
+  issue.fieldErrors.forEach((fieldError) => {
+    form.setError(`allocations.${fieldError.index}.${fieldError.field}`, {
+      type: "manual",
+      message: fieldError.message,
+    });
+  });
+  form.setError("root", { type: "manual", message: issue.rootMessage });
+  return false;
+}
+
 interface ErrorMessages {
   allocationSumMismatch: string;
   validation: string;
@@ -901,4 +959,71 @@ function handleApiError(
     return;
   }
   form.setError("root", { type: "server", message: messages.generic });
+}
+
+export function inspectAllocationEntries(
+  values: Pick<DonationFormValues, "allocations" | "amountCents">,
+  messages: AllocationValidationMessages,
+  dirtyAllocations?: Array<Partial<Record<keyof AllocationFormValue, boolean>> | undefined>,
+): AllocationValidationIssue | null {
+  const allocations = values.allocations ?? [];
+  const fieldErrors: AllocationValidationIssue["fieldErrors"] = [];
+  let completeSum = 0;
+  let rootMessage: string | null = null;
+  const seenFundIds = new Set<string>();
+
+  allocations.forEach((allocation, index) => {
+    const fundId = allocation.fundId.trim();
+    const amount = allocation.amountCents;
+    const hasFund = fundId !== "";
+    const hasAmount = amount !== null && amount > 0;
+    const dirtyAllocation = dirtyAllocations?.[index];
+    const hasAnyValue =
+      hasFund ||
+      amount !== null ||
+      dirtyAllocation?.fundId === true ||
+      dirtyAllocation?.amountCents === true;
+
+    if (!hasAnyValue) {
+      return;
+    }
+
+    if (!hasFund) {
+      rootMessage = messages.incomplete;
+      fieldErrors.push({ index, field: "fundId", message: messages.fundRequired });
+    }
+
+    if (!hasAmount) {
+      rootMessage = messages.incomplete;
+      fieldErrors.push({ index, field: "amountCents", message: messages.amountRequired });
+    }
+
+    if (!hasFund || !hasAmount) {
+      return;
+    }
+
+    if (seenFundIds.has(fundId)) {
+      rootMessage = messages.duplicateFund;
+      fieldErrors.push({ index, field: "fundId", message: messages.duplicateFund });
+      return;
+    }
+
+    seenFundIds.add(fundId);
+    completeSum += amount;
+  });
+
+  if (rootMessage) {
+    return { rootMessage, fieldErrors };
+  }
+
+  if (completeSum > 0 && completeSum !== (values.amountCents ?? 0)) {
+    return { rootMessage: messages.sumMismatch, fieldErrors: [] };
+  }
+
+  return null;
+}
+
+export function resolveFundLabel(value: string, funds: Fund[], placeholder: string): string {
+  if (!value) return placeholder;
+  return funds.find((fund) => fund.id === value)?.name ?? value;
 }

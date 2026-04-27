@@ -49,6 +49,7 @@ export interface DonationListQuery {
 export interface DonationAllocation {
   id: string;
   fundId: string;
+  fundName: string;
   amountCents: number;
 }
 

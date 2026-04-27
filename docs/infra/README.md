@@ -133,7 +133,7 @@ You should see the web on `http://localhost:3000`, the API on `http://localhost:
 
 ### Keycloak JWT verification
 
-The web now stores the raw Keycloak access token in `givernance_jwt`. Both the Next.js server guards and the Fastify API verify that token against the realm JWKS (`KEYCLOAK_JWKS_URL`) and enforce the configured issuer (`KEYCLOAK_ISSUER`).
+The web now stores the raw Keycloak access token in `givernance_jwt` and the refresh token in `givernance_refresh_token`. The Next.js proxy renews the access token automatically when it is close to expiry, so browser sessions follow the Keycloak refresh-session TTL instead of the short access-token TTL. Both the Next.js server guards and the Fastify API still verify the access token against the realm JWKS (`KEYCLOAK_JWKS_URL`) and enforce the configured issuer (`KEYCLOAK_ISSUER`).
 
 The seeded realm ships:
 

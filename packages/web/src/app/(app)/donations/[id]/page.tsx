@@ -200,7 +200,7 @@ async function AllocationsCard({
             const percent = Math.round((allocation.amountCents / total) * 100);
             return (
               <TableRow key={allocation.id}>
-                <TableCell className="font-mono text-xs">{allocation.fundId}</TableCell>
+                <TableCell>{allocation.fundName || allocation.fundId}</TableCell>
                 <TableCell className="text-right font-mono tabular-nums">
                   {formatCurrency(allocation.amountCents, locale, donation.currency)}
                 </TableCell>

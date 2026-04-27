@@ -10,6 +10,8 @@ import {
   OIDC_NONCE_COOKIE,
   OIDC_STATE_COOKIE,
   OIDC_VERIFIER_COOKIE,
+  REFRESH_TOKEN_COOKIE_NAME,
+  resolveSessionMaxAge,
   requireClientSecret,
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
@@ -116,6 +118,7 @@ export async function GET(request: NextRequest) {
       id_token?: string;
       refresh_token?: string;
       expires_in?: number;
+      refresh_expires_in?: number;
     };
 
     try {
@@ -132,7 +135,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(loginUrl.toString());
     }
 
-    const sessionMaxAge = tokens.expires_in ?? 8 * 60 * 60;
+    const sessionMaxAge = resolveSessionMaxAge(tokens);
 
     // Clean up OIDC flow cookies and store the verified Keycloak access token directly.
     cleanup();
@@ -140,6 +143,9 @@ export async function GET(request: NextRequest) {
     jar.set(getCsrfCookieName(), crypto.randomUUID(), buildCsrfCookieOptions(sessionMaxAge));
     if (tokens.id_token) {
       jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(sessionMaxAge));
+    }
+    if (tokens.refresh_token) {
+      jar.set(REFRESH_TOKEN_COOKIE_NAME, tokens.refresh_token, jwtCookieOptions(sessionMaxAge));
     }
 
     // FE-2: send every newly-authenticated user through `/select-organization`.

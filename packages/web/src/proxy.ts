@@ -1,13 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  decodeJwtExp,
+  ID_TOKEN_COOKIE_NAME,
+  JWT_COOKIE_NAME,
+  jwtCookieOptions,
+  REFRESH_TOKEN_COOKIE_NAME,
+  resolveSessionMaxAge,
+  shouldRefreshToken,
+} from "@/lib/auth/session";
 
-/**
- * JWT cookie name — must match the value in lib/auth/keycloak.ts.
- * Duplicated here because proxy runs in the Edge runtime and cannot
- * import from "server-only" modules.
- */
-const JWT_COOKIE_NAME = "givernance_jwt";
 const CSRF_COOKIE_NAME = "csrf-token";
-const CSRF_COOKIE_MAX_AGE_S = 8 * 60 * 60;
+const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? "http://localhost:8080";
+const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM ?? "givernance";
+const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID ?? "givernance-web";
+const KEYCLOAK_CLIENT_SECRET =
+  process.env.KEYCLOAK_CLIENT_SECRET ||
+  process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_SECRET ||
+  "ci-test-secret-do-not-use-in-production";
+const TOKEN_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
 
 /**
  * Route prefixes that require authentication.
@@ -58,7 +68,12 @@ function buildRequestHeaders(request: NextRequest, jwt?: string) {
   return requestHeaders;
 }
 
-function ensureCsrfCookie(request: NextRequest, response: NextResponse, jwt?: string) {
+function ensureCsrfCookie(
+  request: NextRequest,
+  response: NextResponse,
+  jwt?: string,
+  maxAge?: number,
+) {
   if (!jwt || request.cookies.get(CSRF_COOKIE_NAME)?.value) {
     return;
   }
@@ -68,13 +83,146 @@ function ensureCsrfCookie(request: NextRequest, response: NextResponse, jwt?: st
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
     path: "/",
-    maxAge: CSRF_COOKIE_MAX_AGE_S,
+    maxAge: maxAge ?? jwtCookieOptions().maxAge,
   });
 }
 
-export function proxy(request: NextRequest) {
+function upsertCookieHeader(
+  request: NextRequest,
+  updates: Record<string, string | undefined>,
+): string | undefined {
+  const cookies = new Map(request.cookies.getAll().map((cookie) => [cookie.name, cookie.value]));
+  for (const [name, value] of Object.entries(updates)) {
+    if (value === undefined) {
+      cookies.delete(name);
+    } else {
+      cookies.set(name, value);
+    }
+  }
+
+  if (cookies.size === 0) return undefined;
+  return Array.from(cookies.entries())
+    .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
+    .join("; ");
+}
+
+function buildRequestHeadersWithCookies(
+  request: NextRequest,
+  jwt: string | undefined,
+  cookieHeader: string | undefined,
+) {
+  const headers = buildRequestHeaders(request, jwt);
+  if (cookieHeader) {
+    headers.set("cookie", cookieHeader);
+  }
+  return headers;
+}
+
+interface RefreshedSession {
+  accessToken: string;
+  idToken?: string;
+  refreshToken?: string;
+  sessionMaxAge: number;
+}
+
+async function refreshSession(refreshToken: string): Promise<RefreshedSession | null> {
+  try {
+    const response = await fetch(TOKEN_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: KEYCLOAK_CLIENT_ID,
+        client_secret: KEYCLOAK_CLIENT_SECRET,
+        refresh_token: refreshToken,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const tokens = (await response.json()) as {
+      access_token?: string;
+      id_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+      refresh_expires_in?: number;
+    };
+
+    if (!tokens.access_token) {
+      return null;
+    }
+
+    return {
+      accessToken: tokens.access_token,
+      idToken: tokens.id_token,
+      refreshToken: tokens.refresh_token,
+      sessionMaxAge: resolveSessionMaxAge(tokens),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearSessionCookies(response: NextResponse) {
+  response.cookies.delete(JWT_COOKIE_NAME);
+  response.cookies.delete(ID_TOKEN_COOKIE_NAME);
+  response.cookies.delete(REFRESH_TOKEN_COOKIE_NAME);
+  response.cookies.delete(CSRF_COOKIE_NAME);
+}
+
+function applyRefreshedSession(response: NextResponse, request: NextRequest, session: RefreshedSession) {
+  response.cookies.set(JWT_COOKIE_NAME, session.accessToken, jwtCookieOptions(session.sessionMaxAge));
+  if (session.idToken) {
+    response.cookies.set(ID_TOKEN_COOKIE_NAME, session.idToken, jwtCookieOptions(session.sessionMaxAge));
+  }
+  if (session.refreshToken) {
+    response.cookies.set(
+      REFRESH_TOKEN_COOKIE_NAME,
+      session.refreshToken,
+      jwtCookieOptions(session.sessionMaxAge),
+    );
+  }
+
+  const csrfToken = request.cookies.get(CSRF_COOKIE_NAME)?.value ?? mintCsrfToken();
+  response.cookies.set(CSRF_COOKIE_NAME, csrfToken, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: session.sessionMaxAge,
+  });
+}
+
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const jwt = request.cookies.get(JWT_COOKIE_NAME)?.value;
+  let jwt = request.cookies.get(JWT_COOKIE_NAME)?.value;
+  const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)?.value;
+  let refreshedSession: RefreshedSession | null = null;
+  let cookieHeader = request.headers.get("cookie") ?? undefined;
+
+  if (refreshToken && shouldRefreshToken(jwt)) {
+    refreshedSession = await refreshSession(refreshToken);
+    if (refreshedSession) {
+      jwt = refreshedSession.accessToken;
+      cookieHeader = upsertCookieHeader(request, {
+        [JWT_COOKIE_NAME]: refreshedSession.accessToken,
+        ...(refreshedSession.idToken ? { [ID_TOKEN_COOKIE_NAME]: refreshedSession.idToken } : {}),
+        ...(refreshedSession.refreshToken
+          ? { [REFRESH_TOKEN_COOKIE_NAME]: refreshedSession.refreshToken }
+          : {}),
+      });
+    } else if ((decodeJwtExp(jwt ?? "") ?? 0) <= Math.floor(Date.now() / 1000)) {
+      jwt = undefined;
+      cookieHeader = upsertCookieHeader(request, {
+        [JWT_COOKIE_NAME]: undefined,
+        [ID_TOKEN_COOKIE_NAME]: undefined,
+        [REFRESH_TOKEN_COOKIE_NAME]: undefined,
+        [CSRF_COOKIE_NAME]: undefined,
+      });
+    }
+  }
 
   // Allow public routes — but redirect logged-in users away from /login and /signup
   if (isPublic(pathname)) {
@@ -85,8 +233,14 @@ export function proxy(request: NextRequest) {
       // them to /dashboard.
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
-    const response = NextResponse.next({ request: { headers: buildRequestHeaders(request, jwt) } });
-    ensureCsrfCookie(request, response, jwt);
+    const response = NextResponse.next({
+      request: { headers: buildRequestHeadersWithCookies(request, jwt, cookieHeader) },
+    });
+    if (refreshedSession) {
+      applyRefreshedSession(response, request, refreshedSession);
+    } else {
+      ensureCsrfCookie(request, response, jwt);
+    }
     return response;
   }
 
@@ -97,8 +251,18 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const response = NextResponse.next({ request: { headers: buildRequestHeaders(request, jwt) } });
-  ensureCsrfCookie(request, response, jwt);
+  const response = NextResponse.next({
+    request: { headers: buildRequestHeadersWithCookies(request, jwt, cookieHeader) },
+  });
+  if (refreshedSession) {
+    applyRefreshedSession(response, request, refreshedSession);
+  } else {
+    ensureCsrfCookie(request, response, jwt);
+  }
+
+  if (!refreshedSession && refreshToken && !jwt && isProtected(pathname)) {
+    clearSessionCookies(response);
+  }
   return response;
 }
 

@@ -7,6 +7,7 @@ import {
   JWT_COOKIE_NAME,
   KEYCLOAK_CLIENT_ID,
   LOGOUT_ENDPOINT,
+  REFRESH_TOKEN_COOKIE_NAME,
 } from "@/lib/auth/keycloak";
 
 /**
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
   const idToken = jar.get(ID_TOKEN_COOKIE_NAME)?.value;
   jar.delete(JWT_COOKIE_NAME);
   jar.delete(ID_TOKEN_COOKIE_NAME);
+  jar.delete(REFRESH_TOKEN_COOKIE_NAME);
   jar.delete(getCsrfCookieName());
 
   const postLogoutRedirectUri = await resolvePostLogoutRedirectUri(request);
