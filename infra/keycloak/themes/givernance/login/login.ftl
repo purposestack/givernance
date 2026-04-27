@@ -67,7 +67,7 @@
           >
           <button type="button" class="gv-password-toggle"
                   onclick="toggleGvPassword()"
-                  aria-label="Afficher ou masquer le mot de passe"
+                  aria-label="Show or hide password"
                   tabindex="6">
             <svg class="gv-eye-icon" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2"
@@ -131,7 +131,7 @@
     <#-- Social / identity provider buttons -->
     <#if realm.password && social.providers??>
       <p style="margin-bottom:12px;font-size:0.8125rem;text-align:center;">
-        Ou continuer avec
+        Or continue with
       </p>
       <#list social.providers as p>
         <a href="${p.loginUrl}" id="social-${p.alias}"
