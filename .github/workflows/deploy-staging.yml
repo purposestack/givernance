@@ -31,6 +31,19 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
 
+      - name: Setup Kamal Secrets
+        run: |
+          mkdir -p .kamal
+          cat <<EOF > .kamal/secrets
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD || 'staging_postgres_123' }}
+          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD || 'staging_redis_123' }}
+          MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD || 'staging_minio_123' }}
+          KEYCLOAK_ADMIN_PASSWORD=${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }}
+          SESSION_SECRET=${{ secrets.SESSION_SECRET || 'staging_session_secret_123' }}
+          KC_DB_PASSWORD=${{ secrets.KC_DB_PASSWORD || 'staging_postgres_123' }}
+          EOF
+
       - name: Deploy with Kamal
         run: kamal deploy -c config/deploy-staging.yml
 
