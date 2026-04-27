@@ -1,4 +1,4 @@
-import { CalendarClock, CheckCircle2, Circle, Lightbulb, Plus } from "lucide-react";
+import { Banknote, CalendarClock, CheckCircle2, Circle, Lightbulb, Megaphone, Plus, Timer, Users } from "lucide-react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
@@ -85,21 +85,29 @@ export default async function DashboardPage() {
           value={formatCurrency(totalRaisedCents, locale, primaryCurrency)}
           description={t("stats.totalRaisedHint")}
           valueClassName="font-mono"
+          icon={Banknote}
+          color="primary"
         />
         <StatCard
           label={t("stats.activeCampaigns")}
           value={formatNumber(activeCampaignCount, locale)}
           description={t("stats.activeCampaignsHint")}
+          icon={Megaphone}
+          color="secondary"
         />
         <StatCard
           label={t("stats.donors")}
           value={formatNumber(donorResult?.pagination.total ?? 0, locale)}
           description={t("stats.newDonorsThisMonth", { count: newDonorsThisMonth })}
+          icon={Users}
+          color="tertiary"
         />
         <StatCard
           label={t("stats.grantDeadlines")}
           value={t("stats.noGrantDeadlinesValue")}
           description={t("stats.noGrantDeadlinesHint")}
+          icon={Timer}
+          color="neutral"
         />
       </section>
 
@@ -254,15 +262,33 @@ function StatCard({
   value,
   description,
   valueClassName,
+  icon: Icon,
+  color = "primary",
 }: {
   label: string;
   value: string;
   description: string;
   valueClassName?: string;
+  icon?: React.ElementType;
+  color?: "primary" | "secondary" | "tertiary" | "neutral";
 }) {
+  const colorStyles = {
+    primary: "bg-primary-fixed text-on-primary-fixed-variant",
+    secondary: "bg-secondary-fixed text-on-secondary-fixed-variant",
+    tertiary: "bg-tertiary-fixed text-on-tertiary-fixed-variant",
+    neutral: "bg-surface-container text-on-surface-variant",
+  };
+
   return (
-    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card">
-      <p className="text-sm font-medium text-on-surface-variant">{label}</p>
+    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card hover:border-primary/20 hover:shadow-card-hover transition-all">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-on-surface-variant">{label}</p>
+        {Icon ? (
+          <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorStyles[color]}`}>
+            <Icon size={20} aria-hidden="true" />
+          </div>
+        ) : null}
+      </div>
       <p
         className={`mt-3 font-heading text-4xl font-normal leading-tight text-on-surface ${valueClassName ?? ""}`.trim()}
       >
@@ -304,9 +330,11 @@ function DonationFeedItem({
 
 function QuickAction({ href, label }: { href: string; label: string }) {
   return (
-    <Button asChild variant="secondary" className="justify-start">
+    <Button asChild variant="secondary" className="group justify-start">
       <Link href={href}>
-        <Plus size={16} aria-hidden="true" />
+        <div className="mr-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary-50 text-primary transition-colors group-hover:bg-primary group-hover:text-on-primary">
+          <Plus size={14} aria-hidden="true" />
+        </div>
         {label}
       </Link>
     </Button>
@@ -329,7 +357,7 @@ function CampaignProgressItem({
   const translate = t as unknown as DashboardTranslate;
 
   return (
-    <article className="rounded-2xl border border-outline-variant/60 p-4 sm:p-5">
+    <article className="rounded-2xl border border-outline-variant/60 p-4 sm:p-5 transition-colors hover:border-primary/30">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-on-surface">{campaign.name}</h3>
@@ -343,7 +371,7 @@ function CampaignProgressItem({
         </span>
       </div>
       <div className="mt-4 h-2 overflow-hidden rounded-md bg-surface-container">
-        <div className="h-full rounded-md bg-primary" style={{ width: `${progress}%` }} />
+        <div className="h-full rounded-md bg-secondary transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
       </div>
       <p className="mt-2 text-xs text-on-surface-variant">
         {goalCents > 0
