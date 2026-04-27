@@ -513,12 +513,7 @@ export function DonationForm(props: DonationFormProps) {
                                 form.formState.errors.allocations?.[index]?.fundId,
                               )}
                             >
-                              <span
-                                className={cn(
-                                  "truncate",
-                                  !field.value && "text-text-muted",
-                                )}
-                              >
+                              <span className={cn("truncate", !field.value && "text-text-muted")}>
                                 {resolveFundLabel(
                                   field.value,
                                   fundOptions,

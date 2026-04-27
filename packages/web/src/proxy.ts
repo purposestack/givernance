@@ -172,10 +172,22 @@ function clearSessionCookies(response: NextResponse) {
   response.cookies.delete(CSRF_COOKIE_NAME);
 }
 
-function applyRefreshedSession(response: NextResponse, request: NextRequest, session: RefreshedSession) {
-  response.cookies.set(JWT_COOKIE_NAME, session.accessToken, jwtCookieOptions(session.sessionMaxAge));
+function applyRefreshedSession(
+  response: NextResponse,
+  request: NextRequest,
+  session: RefreshedSession,
+) {
+  response.cookies.set(
+    JWT_COOKIE_NAME,
+    session.accessToken,
+    jwtCookieOptions(session.sessionMaxAge),
+  );
   if (session.idToken) {
-    response.cookies.set(ID_TOKEN_COOKIE_NAME, session.idToken, jwtCookieOptions(session.sessionMaxAge));
+    response.cookies.set(
+      ID_TOKEN_COOKIE_NAME,
+      session.idToken,
+      jwtCookieOptions(session.sessionMaxAge),
+    );
   }
   if (session.refreshToken) {
     response.cookies.set(

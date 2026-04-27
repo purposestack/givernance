@@ -11,8 +11,8 @@ import {
   OIDC_STATE_COOKIE,
   OIDC_VERIFIER_COOKIE,
   REFRESH_TOKEN_COOKIE_NAME,
-  resolveSessionMaxAge,
   requireClientSecret,
+  resolveSessionMaxAge,
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
 import { verifyKeycloakJwt } from "@/lib/auth/verify-keycloak-jwt";
