@@ -27,7 +27,7 @@
       </p>
       <p style="font-size:0.8125rem;color:#6f7a73;line-height:1.6;">
         ${msg("emailVerifyInstruction3")}
-        <a class="gv-link" href="${url.loginAction?html}">
+        <a class="gv-link" href="${url.loginAction}">
           ${msg("emailVerifyInstruction3link")}
         </a>
       </p>

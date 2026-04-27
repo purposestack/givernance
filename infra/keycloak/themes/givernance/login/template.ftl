@@ -70,8 +70,8 @@
     <#-- Logo / brand -->
     <div class="gv-auth-header">
       <#if gvOrgLogoUrl?has_content>
-        <img src="${gvOrgLogoUrl?html}" alt="${gvOrgName?html}" class="gv-org-logo">
-        <p class="gv-org-name">${gvOrgName?html}</p>
+        <img src="${gvOrgLogoUrl}" alt="${gvOrgName}" class="gv-org-logo">
+        <p class="gv-org-name">${gvOrgName}</p>
       <#else>
         <div class="gv-brand-logo">
           <svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg"
@@ -95,7 +95,7 @@
           <span class="gv-brand-name">Givernance</span>
         </div>
         <#if organization?? && gvOrgName != "Givernance">
-          <p class="gv-org-name">${gvOrgName?html}</p>
+          <p class="gv-org-name">${gvOrgName}</p>
         </#if>
       </#if>
     </div>
