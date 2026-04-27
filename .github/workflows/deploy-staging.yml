@@ -37,14 +37,26 @@ jobs:
       - name: Setup Kamal Secrets
         run: |
           mkdir -p .kamal
+          PG_PASS="${{ secrets.POSTGRES_PASSWORD || 'staging_postgres_123' }}"
+          REDIS_PASS="${{ secrets.REDIS_PASSWORD || 'staging_redis_123' }}"
+          MINIO_PASS="${{ secrets.MINIO_ROOT_PASSWORD || 'staging_minio_123' }}"
+          KC_PASS="${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }}"
+          KC_CLIENT_SECRET="${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET || 'staging_keycloak_client_secret_123' }}"
+          SESSION_SEC="${{ secrets.SESSION_SECRET || 'staging_session_secret_123' }}"
+
           cat <<EOF > .kamal/secrets
           GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD || 'staging_postgres_123' }}
-          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD || 'staging_redis_123' }}
-          MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD || 'staging_minio_123' }}
-          KEYCLOAK_ADMIN_PASSWORD=${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }}
-          SESSION_SECRET=${{ secrets.SESSION_SECRET || 'staging_session_secret_123' }}
-          KC_DB_PASSWORD=${{ secrets.KC_DB_PASSWORD || 'staging_postgres_123' }}
+          POSTGRES_PASSWORD=$PG_PASS
+          REDIS_PASSWORD=$REDIS_PASS
+          MINIO_ROOT_PASSWORD=$MINIO_PASS
+          KEYCLOAK_ADMIN_PASSWORD=$KC_PASS
+          SESSION_SECRET=$SESSION_SEC
+          KC_DB_PASSWORD=$PG_PASS
+          DATABASE_URL=postgres://givernance:$PG_PASS@givernance-postgres:5432/givernance_staging
+          DATABASE_URL_APP=postgres://givernance:$PG_PASS@givernance-postgres:5432/givernance_staging
+          REDIS_URL=redis://:$REDIS_PASS@givernance-redis:6379
+          S3_SECRET_ACCESS_KEY=$MINIO_PASS
+          KEYCLOAK_ADMIN_CLIENT_SECRET=$KC_CLIENT_SECRET
           EOF
 
       - name: Deploy with Kamal
