@@ -106,10 +106,6 @@
         "locale": "Langue de l'espace",
         "legalType": "Forme juridique"
       },
-      "locales": {
-        "fr": "Français",
-        "en": "Anglais"
-      },
       "legalTypes": {
         "association": "Association loi 1901",
         "fondation": "Fondation",
@@ -199,10 +195,6 @@
         "password": "Choisissez un mot de passe",
         "passwordHint": "Au moins {min} caractères. Vous l'utiliserez à l'écran suivant pour vous connecter.",
         "passwordConfirm": "Confirmez le mot de passe"
-      },
-      "locales": {
-        "fr": "Français",
-        "en": "Anglais"
       },
       "localeHint": {
         "matchesTenantDefault": "Utilise la langue par défaut de l'espace. Vous pouvez la modifier à tout moment depuis votre profil.",
@@ -770,10 +762,6 @@
       "defaultLocale": "Langue par défaut",
       "defaultLocaleHint": "Langue par défaut pour les membres qui n'ont pas défini de préférence personnelle. Les membres ayant une langue personnelle conservent leur choix."
     },
-    "locales": {
-      "fr": "Français",
-      "en": "Anglais"
-    },
     "actions": {
       "save": "Enregistrer les paramètres",
       "saving": "Enregistrement…"
@@ -814,10 +802,6 @@
           "followsTenant": "Vous suivrez la langue par défaut de votre organisation. Si un administrateur la change, vous suivrez automatiquement la nouvelle valeur.",
           "personalOverride": "Enregistré comme votre préférence personnelle. Les changements de langue par défaut de l'organisation ne vous affecteront pas tant que vous ne revenez pas en arrière."
         }
-      },
-      "locales": {
-        "fr": "Français",
-        "en": "Anglais"
       },
       "actions": {
         "save": "Enregistrer la préférence",

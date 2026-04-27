@@ -106,10 +106,6 @@
         "locale": "Workspace language",
         "legalType": "Legal form"
       },
-      "locales": {
-        "fr": "French",
-        "en": "English"
-      },
       "legalTypes": {
         "association": "Association (loi 1901)",
         "fondation": "Foundation",
@@ -199,10 +195,6 @@
         "password": "Choose a password",
         "passwordHint": "At least {min} characters. You'll use this to sign in on the next screen.",
         "passwordConfirm": "Confirm password"
-      },
-      "locales": {
-        "fr": "French",
-        "en": "English"
       },
       "localeHint": {
         "matchesTenantDefault": "Using the workspace's default language. Change it any time from your profile.",
@@ -770,10 +762,6 @@
       "defaultLocale": "Default language",
       "defaultLocaleHint": "Default language for members who haven't set a personal preference. Members with a personal language keep their choice."
     },
-    "locales": {
-      "fr": "French",
-      "en": "English"
-    },
     "actions": {
       "save": "Save settings",
       "saving": "Saving…"
@@ -814,10 +802,6 @@
           "followsTenant": "You will follow your organisation's default language. If an admin changes it later, you will follow the new default automatically.",
           "personalOverride": "Saved as your personal preference. Organisation default changes will not affect you until you switch back."
         }
-      },
-      "locales": {
-        "fr": "French",
-        "en": "English"
       },
       "actions": {
         "save": "Save preference",

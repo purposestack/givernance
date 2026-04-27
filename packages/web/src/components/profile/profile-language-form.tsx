@@ -1,6 +1,6 @@
 "use client";
 
-import { type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import { LOCALE_NATIVE_NAMES, type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -108,14 +108,22 @@ export function ProfileLanguageForm({ initial }: ProfileLanguageFormProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                {/*
+                 * Endonyms — each language name is shown in its own script
+                 * (e.g. "Français" is always "Français" regardless of the
+                 * current app locale). The "Use organisation default ({locale})"
+                 * parenthetical does the same so a user who can't read the
+                 * current UI language can still recognise what they would
+                 * inherit. Rationale in LOCALE_NATIVE_NAMES docblock.
+                 */}
                 <SelectItem value={FOLLOW_TENANT}>
                   {t("fields.followTenant", {
-                    locale: t(`locales.${tenantDefaultLocale}`),
+                    locale: LOCALE_NATIVE_NAMES[tenantDefaultLocale],
                   })}
                 </SelectItem>
                 {SUPPORTED_LOCALES.map((locale) => (
                   <SelectItem key={locale} value={locale}>
-                    {t(`locales.${locale}`)}
+                    {LOCALE_NATIVE_NAMES[locale]}
                   </SelectItem>
                 ))}
               </SelectContent>

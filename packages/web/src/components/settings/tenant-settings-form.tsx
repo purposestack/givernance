@@ -1,6 +1,6 @@
 "use client";
 
-import { type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import { LOCALE_NATIVE_NAMES, type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -175,8 +175,11 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
                 </SelectTrigger>
                 <SelectContent>
                   {SUPPORTED_LOCALES.map((locale) => (
+                    // Endonym — name in its own script so the picker
+                    // stays readable even when the app is in a language
+                    // the org_admin doesn't speak.
                     <SelectItem key={locale} value={locale}>
-                      {t(`locales.${locale}`)}
+                      {LOCALE_NATIVE_NAMES[locale]}
                     </SelectItem>
                   ))}
                 </SelectContent>
