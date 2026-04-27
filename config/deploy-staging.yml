@@ -10,10 +10,6 @@ servers:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
     cmd: pnpm --filter @givernance/web run start
-    proxy:
-      host: staging.givernance.org
-      healthcheck:
-        path: /
   api:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
@@ -29,7 +25,10 @@ servers:
 
 proxy:
   ssl: true
+  host: staging.givernance.org
   app_port: 3000
+  healthcheck:
+    path: /
 
 # Credentials for your image host.
 registry:
