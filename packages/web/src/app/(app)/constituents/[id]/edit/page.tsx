@@ -5,7 +5,7 @@ import { ConstituentForm } from "@/components/constituents/constituent-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { type Constituent, fullName } from "@/models/constituent";
 import { ConstituentService } from "@/services/ConstituentService";
 
@@ -26,7 +26,7 @@ async function fetchConstituentOrNotFound(id: string): Promise<Constituent> {
 }
 
 export default async function EditConstituentPage({ params }: EditConstituentPageProps) {
-  await requireAuth();
+  await requirePermission("write");
   const { id } = await params;
   const constituent = await fetchConstituentOrNotFound(id);
 

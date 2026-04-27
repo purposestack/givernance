@@ -435,6 +435,100 @@ describe("Constituents unauthenticated access", () => {
   });
 });
 
+// ─── Viewer-role write blocking (issue #162) ───────────────────────────────
+//
+// Regression coverage for the original symptom: a `viewer` JWT should never
+// be able to mutate constituent state, nor surface duplicate-search results
+// (the search is a pre-flight to create — useless to a role that can't
+// follow through).
+
+describe("Constituents viewer-role enforcement (issue #162)", () => {
+  it("POST /v1/constituents returns 403 for viewer role", async () => {
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(viewerToken),
+      payload: {
+        firstName: "Viewer",
+        lastName: "Blocked",
+        type: "donor",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("PUT /v1/constituents/:id returns 403 for viewer role", async () => {
+    // Seed via admin so a target row exists.
+    const tokenA = signToken(app);
+    const seed = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenA),
+      payload: { firstName: "ViewerTarget", lastName: "Untouched", type: "donor" },
+    });
+    const targetId = seed.json<{ data: { id: string } }>().data.id;
+
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "PUT",
+      url: `/v1/constituents/${targetId}`,
+      headers: authHeader(viewerToken),
+      payload: { firstName: "Hacked" },
+    });
+    expect(res.statusCode).toBe(403);
+
+    // Sanity: the row was not touched.
+    const check = await app.inject({
+      method: "GET",
+      url: `/v1/constituents/${targetId}`,
+      headers: authHeader(tokenA),
+    });
+    expect(check.json<{ data: { firstName: string } }>().data.firstName).toBe("ViewerTarget");
+  });
+
+  it("GET /v1/constituents/duplicates/search returns 403 for viewer role", async () => {
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/duplicates/search?firstName=Anyone&lastName=Anywhere",
+      headers: authHeader(viewerToken),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("DELETE /v1/constituents/:id returns 403 for viewer role", async () => {
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/constituents/00000000-0000-0000-0000-000000000001",
+      headers: authHeader(viewerToken),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("GET /v1/constituents stays accessible to viewer (read-only)", async () => {
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents",
+      headers: authHeader(viewerToken),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("user role can still POST /v1/constituents (parity with org_admin)", async () => {
+    const userToken = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(userToken),
+      payload: { firstName: "User", lastName: "Allowed", type: "donor" },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+});
+
 // ─── Duplicate Detection ──────────────────────────────────────────────────────
 
 describe("Constituents duplicate detection", () => {
