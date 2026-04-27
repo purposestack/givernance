@@ -22,6 +22,28 @@ export const SUPPORTED_LOCALES = ["fr", "en"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
 /**
+ * Endonyms — each language's name written in its own script. Used by every
+ * locale picker in the app (signup form, invite-accept, /profile,
+ * /settings tenant default).
+ *
+ * Why the locale name is **not** translated through next-intl: if a user
+ * accidentally picks a language they don't read (say Chinese in a future
+ * Phase), translating "French" / "English" through `t("locales.fr")`
+ * would leave them looking at "法语" / "英语" with no way to recognise
+ * which one to pick to recover. Showing every name in its own writing
+ * system means users always recognise their language, regardless of
+ * the current app locale.
+ *
+ * Standard pattern — same approach used by Google, Microsoft, Wikipedia,
+ * macOS / iOS / Android language pickers. Matches BCP-47 native-name
+ * conventions.
+ */
+export const LOCALE_NATIVE_NAMES: Record<Locale, string> = {
+  en: "English",
+  fr: "Français",
+};
+
+/**
  * Application default locale — the floor in the 3-layer resolution chain
  * `user.locale ?? tenant.default_locale ?? APP_DEFAULT_LOCALE`. Per
  * ADR-015 (French-first, primary market is French NPOs). Tenants land

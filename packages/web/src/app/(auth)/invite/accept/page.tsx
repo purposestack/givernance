@@ -1,6 +1,11 @@
 "use client";
 
-import { APP_DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import {
+  APP_DEFAULT_LOCALE,
+  LOCALE_NATIVE_NAMES,
+  type Locale,
+  SUPPORTED_LOCALES,
+} from "@givernance/shared/i18n";
 import { CheckCircle2, LogIn, LogOut, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -403,8 +408,10 @@ function AcceptContent() {
             </SelectTrigger>
             <SelectContent>
               {SUPPORTED_LOCALES.map((locale) => (
+                // Endonym — name in its own script so the picker stays
+                // self-readable across locales.
                 <SelectItem key={locale} value={locale}>
-                  {t(`locales.${locale}`)}
+                  {LOCALE_NATIVE_NAMES[locale]}
                 </SelectItem>
               ))}
             </SelectContent>

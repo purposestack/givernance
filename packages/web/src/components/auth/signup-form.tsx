@@ -13,7 +13,12 @@
  */
 
 import { isReservedSlug, validateTenantDomain } from "@givernance/shared/constants";
-import { type Locale, localeFromCountry, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import {
+  LOCALE_NATIVE_NAMES,
+  type Locale,
+  localeFromCountry,
+  SUPPORTED_LOCALES,
+} from "@givernance/shared/i18n";
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import Link from "next/link";
@@ -540,8 +545,11 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
                     </FormControl>
                     <SelectContent>
                       {SUPPORTED_LOCALES.map((locale) => (
+                        // Endonym — each name in its own script so the
+                        // picker is always self-readable. See
+                        // LOCALE_NATIVE_NAMES docblock for rationale.
                         <SelectItem key={locale} value={locale}>
-                          {t(`locales.${locale}`)}
+                          {LOCALE_NATIVE_NAMES[locale]}
                         </SelectItem>
                       ))}
                     </SelectContent>
