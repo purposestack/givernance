@@ -1,0 +1,96 @@
+# Name of your application. Used to uniquely configure containers.
+service: givernance
+
+# Name of the container image.
+image: purposestack/givernance
+
+# Deploy to these servers.
+servers:
+  web:
+    hosts:
+      - <%= ENV["STAGING_VPS_IP"] %>
+    labels:
+      traefik.http.routers.givernance-web.rule: Host(`staging.givernance.com`)
+  api:
+    hosts:
+      - <%= ENV["STAGING_VPS_IP"] %>
+    labels:
+      traefik.http.routers.givernance-api.rule: Host(`api.staging.givernance.com`)
+  worker:
+    hosts:
+      - <%= ENV["STAGING_VPS_IP"] %>
+
+# Credentials for your image host.
+registry:
+  server: ghcr.io
+  username: <%= ENV["GITHUB_ACTOR"] %>
+  password:
+    - GITHUB_TOKEN
+
+# Inject ENV variables into containers (secrets come from .env).
+# Remember to run `kamal env push` after making changes!
+env:
+  clear:
+    NODE_ENV: production
+    DB_HOST: givernance-postgres
+    REDIS_HOST: givernance-redis
+    MINIO_ENDPOINT: givernance-minio
+    KEYCLOAK_URL: http://givernance-keycloak:8080
+  secret:
+    - POSTGRES_PASSWORD
+    - REDIS_PASSWORD
+    - MINIO_ROOT_PASSWORD
+    - KEYCLOAK_ADMIN_PASSWORD
+    - SESSION_SECRET
+
+# Configure builder setup.
+builder:
+  arch: amd64
+  # dockerfile: Dockerfile
+
+# Use accessories for external services
+accessories:
+  postgres:
+    image: postgres:16
+    host: <%= ENV["STAGING_VPS_IP"] %>
+    port: 5432
+    env:
+      clear:
+        POSTGRES_USER: givernance
+        POSTGRES_DB: givernance_staging
+      secret:
+        - POSTGRES_PASSWORD
+    directories:
+      - data/postgres:/var/lib/postgresql/data
+  redis:
+    image: redis:7
+    host: <%= ENV["STAGING_VPS_IP"] %>
+    port: 6379
+    directories:
+      - data/redis:/data
+  minio:
+    image: minio/minio:latest
+    host: <%= ENV["STAGING_VPS_IP"] %>
+    port: 9000
+    env:
+      clear:
+        MINIO_ROOT_USER: admin
+      secret:
+        - MINIO_ROOT_PASSWORD
+    directories:
+      - data/minio:/data
+    cmd: server /data --console-address ":9001"
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    host: <%= ENV["STAGING_VPS_IP"] %>
+    port: 8080
+    env:
+      clear:
+        KC_DB: postgres
+        KC_DB_URL: jdbc:postgresql://givernance-postgres:5432/givernance_staging
+        KC_DB_USERNAME: givernance
+        KEYCLOAK_ADMIN: admin
+      secret:
+        - KC_DB_PASSWORD: POSTGRES_PASSWORD
+        - KEYCLOAK_ADMIN_PASSWORD
+    cmd: start-dev
