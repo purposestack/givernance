@@ -62,6 +62,12 @@ jobs:
       - name: Deploy with Kamal
         run: kamal setup -c config/deploy-staging.yml
 
+      - name: Print failed API container logs
+        if: failure()
+        run: |
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} 'docker ps -a --filter name=givernance-api --format "{{.Names}}" | xargs -r docker logs --tail 100' || true
+          ssh -o StrictHostKeyChecking=no git@${{ secrets.STAGING_VPS_IP }} 'docker ps -a --filter name=givernance-api --format "{{.Names}}" | xargs -r docker logs --tail 100' || true
+
       - name: Run DB Migrations
         run: kamal app exec -c config/deploy-staging.yml --reuse "pnpm --filter @givernance/api run db:migrate"
 
