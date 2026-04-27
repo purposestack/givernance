@@ -33,8 +33,13 @@
   </#if>
 </#if>
 
+<#-- locale is null when internationalizationEnabled=false in the realm,
+     or in certain non-interactive Keycloak flows. Guard every access. -->
+<#assign currentLang = "fr">
+<#if locale??><#assign currentLang = locale.currentLanguageTag!"fr"></#if>
+
 <!DOCTYPE html>
-<html lang="${locale.currentLanguageTag}" dir="ltr">
+<html lang="${currentLang}" dir="ltr">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
@@ -56,12 +61,12 @@
 <div class="gv-auth-page">
   <div class="gv-auth-card">
 
-    <#-- Locale picker (when multiple locales are configured) -->
-    <#if locale.supported?size gt 1>
+    <#-- Locale picker (only when i18n is enabled and multiple locales exist) -->
+    <#if locale?? && locale.supported?? && (locale.supported?size > 1)>
       <div class="gv-locale-picker">
         <select class="gv-locale-select" onchange="window.location.href=this.value" aria-label="Language">
           <#list locale.supported as l>
-            <option value="${l.url}" <#if l.active>selected</#if>>${l.label}</option>
+            <option value="${l.url}">${l.label}</option>
           </#list>
         </select>
       </div>
