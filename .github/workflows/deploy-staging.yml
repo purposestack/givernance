@@ -59,11 +59,11 @@ jobs:
           KEYCLOAK_ADMIN_CLIENT_SECRET=$KC_CLIENT_SECRET
           EOF
 
-      - name: Reboot Keycloak
-        run: kamal accessory reboot keycloak -c config/deploy-staging.yml
-
       - name: Release Deploy Lock
         run: kamal lock release -c config/deploy-staging.yml || true
+
+      - name: Reboot Keycloak
+        run: kamal accessory reboot keycloak -c config/deploy-staging.yml
 
       - name: Deploy with Kamal
         run: kamal setup -c config/deploy-staging.yml
