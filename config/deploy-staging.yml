@@ -11,8 +11,7 @@ servers:
       - <%= ENV["STAGING_VPS_IP"] %>
     cmd: pnpm --filter @givernance/web run start
     proxy:
-      hosts: 
-        - staging.givernance.org
+      host: staging.givernance.org
       healthcheck:
         path: /
   api:
@@ -20,10 +19,26 @@ servers:
       - <%= ENV["STAGING_VPS_IP"] %>
     cmd: pnpm --filter @givernance/api run start
     proxy:
-      hosts: 
-        - api.staging.givernance.org
+      host: api.staging.givernance.org
       healthcheck:
         path: /healthz
+  auth:
+    hosts:
+      - <%= ENV["STAGING_VPS_IP"] %>
+    image: quay.io/keycloak/keycloak:24.0
+    proxy:
+      host: auth.staging.givernance.org
+      app_port: 8080
+    env:
+      clear:
+        KC_DB: postgres
+        KC_DB_URL: jdbc:postgresql://givernance-postgres:5432/givernance_staging
+        KC_DB_USERNAME: givernance
+        KEYCLOAK_ADMIN: admin
+      secret:
+        - KC_DB_PASSWORD
+        - KEYCLOAK_ADMIN_PASSWORD
+    cmd: start-dev
   worker:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
@@ -31,10 +46,6 @@ servers:
 
 proxy:
   ssl: true
-  hosts:
-    - staging.givernance.org
-    - api.staging.givernance.org
-    - auth.staging.givernance.org
   app_port: 3000
 
 # Credentials for your image host.
@@ -106,21 +117,3 @@ accessories:
     directories:
       - data/minio:/data
     cmd: server /data --console-address ":9001"
-  keycloak:
-    image: quay.io/keycloak/keycloak:24.0
-    host: <%= ENV["STAGING_VPS_IP"] %>
-    port: "8080:8080"
-    proxy:
-      hosts: 
-        - auth.staging.givernance.org
-      app_port: 8080
-    env:
-      clear:
-        KC_DB: postgres
-        KC_DB_URL: jdbc:postgresql://givernance-postgres:5432/givernance_staging
-        KC_DB_USERNAME: givernance
-        KEYCLOAK_ADMIN: admin
-      secret:
-        - KC_DB_PASSWORD
-        - KEYCLOAK_ADMIN_PASSWORD
-    cmd: start-dev
