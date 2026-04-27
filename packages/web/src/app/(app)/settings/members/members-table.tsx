@@ -1,10 +1,10 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, RefreshCw, Trash2, Users } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { MoreHorizontal, Pencil, Trash2, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useId, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -18,103 +18,117 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
+import { DataTable } from "@/components/ui/data-table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatDate } from "@/lib/format";
-import type { Invitation, InvitationStatus } from "@/models/invitation";
-import { InvitationService } from "@/services/InvitationService";
+import type { Member, MemberRole } from "@/models/member";
+import { MemberService } from "@/services/MemberService";
+
+const ROLE_VALUES: readonly MemberRole[] = ["user", "org_admin", "viewer"];
 
 interface MembersTableProps {
-  invitations: Invitation[];
-  pagination: DataTablePagination;
+  members: Member[];
   canManageMembers: boolean;
+  /**
+   * Keycloak `sub` of the caller — used to identify the caller's own row so
+   * the role Select can be locked (the API still enforces the
+   * `cannot_self_demote` 422; the UI lock is polish).
+   */
+  currentUserKeycloakId: string;
 }
 
-const STATUS_VARIANT: Record<InvitationStatus, "success" | "info" | "warning"> = {
-  accepted: "success",
-  pending: "info",
-  expired: "warning",
-};
-
-export function MembersTable({ invitations, pagination, canManageMembers }: MembersTableProps) {
+/**
+ * Members table — accepted teammates on the current tenant. Lists
+ * `users` rows from `GET /v1/users` and offers an Edit affordance per
+ * row that opens the same-shape dialog as the invite form (firstName /
+ * lastName / role). The role Select on the caller's own row is hidden
+ * with a tooltip explaining "you can't change your own role" (issue
+ * #161 — the API gate is the durable enforcement).
+ */
+export function MembersTable({
+  members,
+  canManageMembers,
+  currentUserKeycloakId,
+}: MembersTableProps) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const locale = useLocale();
   const t = useTranslations("settings.members");
-  const [revokeTarget, setRevokeTarget] = useState<Invitation | null>(null);
+  const [editTarget, setEditTarget] = useState<Member | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
   const [isMutating, setIsMutating] = useState(false);
 
-  const navigateToPage = useCallback(
-    (page: number) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (page <= 1) params.delete("page");
-      else params.set("page", String(page));
-      const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
-    },
-    [pathname, router, searchParams],
-  );
-
-  const onResend = useCallback(
-    async (invitation: Invitation) => {
-      setIsMutating(true);
-      try {
-        await InvitationService.resendInvitation(createClientApiClient(), invitation.id);
-        toast.success(t("success.resent"));
-        router.refresh();
-      } catch (err) {
-        if (!(err instanceof ApiProblem)) console.error("members.resend failed", err);
-        const message =
-          err instanceof ApiProblem
-            ? (err.detail ?? err.title ?? t("errors.resendGeneric"))
-            : t("errors.resendGeneric");
-        toast.error(message);
-      } finally {
-        setIsMutating(false);
-      }
-    },
-    [router, t],
-  );
-
-  const confirmRevoke = useCallback(async () => {
-    if (!revokeTarget) return;
+  const confirmRemove = useCallback(async () => {
+    if (!removeTarget) return;
     setIsMutating(true);
     try {
-      await InvitationService.revokeInvitation(createClientApiClient(), revokeTarget.id);
-      toast.success(t("success.revoked"));
-      setRevokeTarget(null);
+      await MemberService.removeMember(createClientApiClient(), removeTarget.id);
+      toast.success(t("success.memberRemoved"));
+      setRemoveTarget(null);
       router.refresh();
     } catch (err) {
-      if (!(err instanceof ApiProblem)) console.error("members.revoke failed", err);
+      if (!(err instanceof ApiProblem)) console.error("members.remove failed", err);
       const message =
         err instanceof ApiProblem
-          ? (err.detail ?? err.title ?? t("errors.revokeGeneric"))
-          : t("errors.revokeGeneric");
+          ? (err.detail ?? err.title ?? t("errors.removeGeneric"))
+          : t("errors.removeGeneric");
       toast.error(message);
     } finally {
       setIsMutating(false);
     }
-  }, [revokeTarget, router, t]);
+  }, [removeTarget, router, t]);
 
-  const columns = useMemo<ColumnDef<Invitation>[]>(
-    () => [
+  const columns = useMemo<ColumnDef<Member>[]>(() => {
+    const base: ColumnDef<Member>[] = [
+      {
+        id: "name",
+        header: () => t("columns.name"),
+        enableSorting: false,
+        cell: ({ row }) => {
+          const isSelf = row.original.keycloakId === currentUserKeycloakId;
+          const fullName = `${row.original.firstName} ${row.original.lastName}`.trim();
+          return (
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-on-surface">{fullName || "—"}</span>
+              {isSelf ? (
+                <Badge variant="neutral" className="text-[0.625rem] uppercase">
+                  {t("editDialog.fields.youBadge")}
+                </Badge>
+              ) : null}
+            </div>
+          );
+        },
+      },
       {
         id: "email",
         accessorKey: "email",
         header: () => t("columns.email"),
         enableSorting: false,
-        cell: ({ row }) => (
-          <span className="font-medium text-on-surface">{row.original.email}</span>
-        ),
+        cell: ({ row }) => <span className="text-on-surface-variant">{row.original.email}</span>,
       },
       {
         id: "role",
@@ -124,106 +138,90 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
         cell: ({ row }) => <Badge variant="neutral">{t(`roles.${row.original.role}`)}</Badge>,
       },
       {
-        id: "status",
-        accessorKey: "status",
-        header: () => t("columns.status"),
-        enableSorting: false,
-        cell: ({ row }) => (
-          <Badge variant={STATUS_VARIANT[row.original.status]}>
-            {t(`statuses.${row.original.status}`)}
-          </Badge>
-        ),
-      },
-      {
-        id: "invitedBy",
-        accessorKey: "invitedByName",
-        header: () => t("columns.invitedBy"),
-        enableSorting: false,
-        // Hidden on narrow viewports — the table already overflows on mobile
-        // and "Invited by" is the lowest-priority column for triage.
-        meta: { className: "hidden md:table-cell" },
-        cell: ({ row }) => (
-          <span className="whitespace-nowrap text-on-surface-variant">
-            {row.original.invitedByName ?? "—"}
-          </span>
-        ),
-      },
-      {
-        id: "createdAt",
+        id: "joinedAt",
         accessorKey: "createdAt",
-        header: () => t("columns.createdAt"),
+        header: () => t("columns.joinedAt"),
         enableSorting: false,
+        meta: { className: "hidden md:table-cell" },
         cell: ({ row }) => (
           <span className="whitespace-nowrap text-on-surface-variant">
             {formatDate(row.original.createdAt, locale, "short")}
           </span>
         ),
       },
-      ...(canManageMembers
-        ? [
-            {
-              id: "actions",
-              header: () => <span className="sr-only">{t("columns.actions")}</span>,
-              enableSorting: false,
-              cell: ({ row }: { row: { original: Invitation } }) => {
-                const canResend = row.original.status !== "accepted";
-                const canRevoke = row.original.status !== "accepted";
-                if (!canResend && !canRevoke) return null;
-                return (
-                  <RowActions
-                    onResend={canResend ? () => void onResend(row.original) : undefined}
-                    onRevoke={canRevoke ? () => setRevokeTarget(row.original) : undefined}
-                    disabled={isMutating}
-                    resendLabel={t("actions.resend")}
-                    revokeLabel={t("actions.revoke")}
-                    menuLabel={t("actions.menu", { email: row.original.email })}
-                  />
-                );
-              },
-            } satisfies ColumnDef<Invitation>,
-          ]
-        : []),
-    ],
-    [canManageMembers, isMutating, locale, onResend, t],
-  );
+    ];
+
+    if (!canManageMembers) return base;
+
+    base.push({
+      id: "actions",
+      header: () => <span className="sr-only">{t("columns.actions")}</span>,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <RowActions
+          onEdit={() => setEditTarget(row.original)}
+          onRemove={() => setRemoveTarget(row.original)}
+          disabled={isMutating}
+          editLabel={t("actions.edit")}
+          removeLabel={t("actions.remove")}
+          menuLabel={t("actions.menu", { email: row.original.email })}
+        />
+      ),
+    });
+    return base;
+  }, [canManageMembers, currentUserKeycloakId, isMutating, locale, t]);
 
   return (
     <>
       <DataTable
         columns={columns}
-        data={invitations}
-        pagination={pagination}
-        onPageChange={navigateToPage}
+        data={members}
         emptyState={
-          <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />
+          <EmptyState
+            icon={Users}
+            title={t("membersSection.empty.title")}
+            description={t("membersSection.empty.description")}
+          />
         }
       />
 
+      {editTarget ? (
+        <EditMemberDialog
+          target={editTarget}
+          isSelf={editTarget.keycloakId === currentUserKeycloakId}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => {
+            setEditTarget(null);
+            router.refresh();
+          }}
+        />
+      ) : null}
+
       <AlertDialog
-        open={revokeTarget !== null}
-        onOpenChange={(open) => !open && setRevokeTarget(null)}
+        open={removeTarget !== null}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("revokeDialog.title")}</AlertDialogTitle>
+            <AlertDialogTitle>{t("removeDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {revokeTarget
-                ? t("revokeDialog.description", { email: revokeTarget.email })
-                : t("revokeDialog.descriptionFallback")}
+              {removeTarget
+                ? t("removeDialog.description", { email: removeTarget.email })
+                : t("removeDialog.descriptionFallback")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel asChild>
               <Button variant="ghost" disabled={isMutating}>
-                {t("revokeDialog.cancel")}
+                {t("removeDialog.cancel")}
               </Button>
             </AlertDialogCancel>
             <Button
               variant="destructive"
-              onClick={() => void confirmRevoke()}
+              onClick={() => void confirmRemove()}
               disabled={isMutating}
             >
-              {isMutating ? t("revokeDialog.revoking") : t("revokeDialog.confirm")}
+              {isMutating ? t("removeDialog.removing") : t("removeDialog.confirm")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -233,20 +231,20 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
 }
 
 interface RowActionsProps {
-  onResend: (() => void) | undefined;
-  onRevoke: (() => void) | undefined;
+  onEdit: () => void;
+  onRemove: () => void;
   disabled: boolean;
-  resendLabel: string;
-  revokeLabel: string;
+  editLabel: string;
+  removeLabel: string;
   menuLabel: string;
 }
 
 function RowActions({
-  onResend,
-  onRevoke,
+  onEdit,
+  onRemove,
   disabled,
-  resendLabel,
-  revokeLabel,
+  editLabel,
+  removeLabel,
   menuLabel,
 }: RowActionsProps) {
   return (
@@ -263,19 +261,187 @@ function RowActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {onResend ? (
-          <DropdownMenuItem onSelect={onResend}>
-            <RefreshCw size={16} aria-hidden="true" />
-            {resendLabel}
-          </DropdownMenuItem>
-        ) : null}
-        {onRevoke ? (
-          <DropdownMenuItem onSelect={onRevoke} className="text-error focus:text-error">
-            <Trash2 size={16} aria-hidden="true" />
-            {revokeLabel}
-          </DropdownMenuItem>
-        ) : null}
+        <DropdownMenuItem onSelect={onEdit}>
+          <Pencil size={16} aria-hidden="true" />
+          {editLabel}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onRemove} className="text-error focus:text-error">
+          <Trash2 size={16} aria-hidden="true" />
+          {removeLabel}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// ─── Edit dialog ────────────────────────────────────────────────────────────
+
+interface EditMemberDialogProps {
+  target: Member;
+  isSelf: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+/**
+ * Controlled edit dialog — same field shape as the invite dialog so the two
+ * codepaths stay visually aligned. Submits a partial PATCH carrying only
+ * fields that actually changed; an unchanged form returns a "no changes"
+ * inline error rather than a no-op API call.
+ *
+ * Self-edit lock: when `isSelf`, the role Select is hidden (the API still
+ * enforces `cannot_self_demote` as the durable gate). The 422 from the
+ * server maps to a targeted `selfDemote` error code so the message is
+ * actionable rather than a generic toast.
+ */
+function EditMemberDialog({ target, isSelf, onClose, onSaved }: EditMemberDialogProps) {
+  const t = useTranslations("settings.members");
+  const firstNameId = useId();
+  const lastNameId = useId();
+  const roleId = useId();
+  const [firstName, setFirstName] = useState(target.firstName);
+  const [lastName, setLastName] = useState(target.lastName);
+  const [role, setRole] = useState<MemberRole>(target.role);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = useCallback(
+    async (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const trimmedFirst = firstName.trim();
+      const trimmedLast = lastName.trim();
+
+      const patch: { firstName?: string; lastName?: string; role?: MemberRole } = {};
+      if (trimmedFirst !== target.firstName) patch.firstName = trimmedFirst;
+      if (trimmedLast !== target.lastName) patch.lastName = trimmedLast;
+      if (!isSelf && role !== target.role) patch.role = role;
+
+      if (Object.keys(patch).length === 0) {
+        setError(t("editDialog.errors.noChanges"));
+        return;
+      }
+
+      setSubmitting(true);
+      setError(null);
+      try {
+        await MemberService.updateMember(createClientApiClient(), target.id, patch);
+        toast.success(t("success.memberUpdated"));
+        onSaved();
+      } catch (err) {
+        if (!(err instanceof ApiProblem)) console.error("members.update failed", err);
+        // Server emits `code: cannot_self_demote` as an RFC 9457 extension
+        // member on the 422 path so we can render a targeted message rather
+        // than rely on string-matching the human-readable `detail`.
+        const code =
+          err instanceof ApiProblem && typeof err.extensions.code === "string"
+            ? err.extensions.code
+            : undefined;
+        if (code === "cannot_self_demote") {
+          setError(t("editDialog.errors.selfDemote"));
+        } else if (err instanceof ApiProblem && err.detail) {
+          setError(err.detail);
+        } else {
+          setError(t("editDialog.errors.generic"));
+        }
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [
+      firstName,
+      isSelf,
+      lastName,
+      onSaved,
+      role,
+      t,
+      target.firstName,
+      target.id,
+      target.lastName,
+      target.role,
+    ],
+  );
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("editDialog.title")}</DialogTitle>
+          <DialogDescription>
+            {t("editDialog.description", { email: target.email })}
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+          {error ? (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="rounded-lg border border-error-border bg-error-container p-3 text-sm text-on-error-container"
+            >
+              {error}
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <Label htmlFor={firstNameId}>{t("editDialog.fields.firstName")}</Label>
+            <Input
+              id={firstNameId}
+              autoComplete="given-name"
+              maxLength={255}
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={lastNameId}>{t("editDialog.fields.lastName")}</Label>
+            <Input
+              id={lastNameId}
+              autoComplete="family-name"
+              maxLength={255}
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
+          </div>
+
+          {/*
+           * Self-edit lock: hide the role Select on the caller's own row.
+           * The API enforces `cannot_self_demote` as the durable gate; this
+           * is polish so the admin doesn't accidentally pick "user" and
+           * get a 422 toast.
+           */}
+          {isSelf ? (
+            <p className="rounded-lg border border-outline-variant bg-surface-container p-3 text-sm text-on-surface-variant">
+              {t("editDialog.fields.selfRoleLockHint")}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor={roleId}>{t("editDialog.fields.role")}</Label>
+              <Select value={role} onValueChange={(v) => setRole(v as MemberRole)}>
+                <SelectTrigger id={roleId}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLE_VALUES.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {t(`roles.${r}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-text-muted">{t(`invite.roleHints.${role}`)}</p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={onClose} disabled={submitting}>
+              {t("editDialog.actions.cancel")}
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? t("editDialog.actions.submitting") : t("editDialog.actions.submit")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

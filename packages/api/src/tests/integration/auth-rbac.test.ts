@@ -220,12 +220,14 @@ describe("User routes", () => {
     expect(res.json()).toHaveProperty("data");
   });
 
-  it("PATCH /v1/users/:id/role — viewer cannot update roles (403)", async () => {
-    const viewerToken = signToken(app, { role: "user" });
+  it("PATCH /v1/users/:id — non-admin (user role) cannot update other members (403)", async () => {
+    // Issue #161: combined PATCH replaces the legacy `/role` sub-route.
+    // Non-admins still hit `requireOrgAdmin` and get 403.
+    const userToken = signToken(app, { role: "user" });
     const res = await app.inject({
       method: "PATCH",
-      url: "/v1/users/00000000-0000-0000-0000-000000000000/role",
-      headers: authHeader(viewerToken),
+      url: "/v1/users/00000000-0000-0000-0000-000000000000",
+      headers: authHeader(userToken),
       payload: { role: "org_admin" },
     });
     expect(res.statusCode).toBe(403);

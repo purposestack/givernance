@@ -59,6 +59,10 @@ const fakeKeycloakAdmin: KeycloakAdminClient = {
   getUserByEmail: vi.fn(async () => null),
   resetUserPassword: kcResetUserPassword,
   setUserAttributes: kcSetUserAttributes,
+  // Stubbed for parity with the production interface — issue #161 added
+  // updateUser for the team-member PATCH endpoint; the invitation flow
+  // never calls it (firstName/lastName arrive at createUser time).
+  updateUser: vi.fn(async () => {}),
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
   _circuitState: () => "closed",
