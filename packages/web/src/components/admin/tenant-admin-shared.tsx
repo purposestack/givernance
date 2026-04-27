@@ -67,3 +67,27 @@ export function TenantVerificationBadge({
     <Badge variant="warning">{pendingLabel}</Badge>
   );
 }
+
+export function TenantOwnershipBadge({
+  createdVia,
+  ownershipConfirmedAt,
+  confirmedLabel,
+  pendingLabel,
+  notApplicableLabel,
+}: {
+  createdVia: string;
+  ownershipConfirmedAt: string | null;
+  confirmedLabel: string;
+  pendingLabel: string;
+  notApplicableLabel: string;
+}) {
+  const normalized = normalizeToken(createdVia);
+  if (normalized !== "self_serve") {
+    return <Badge variant="neutral">{notApplicableLabel}</Badge>;
+  }
+  return ownershipConfirmedAt ? (
+    <Badge variant="success">{confirmedLabel}</Badge>
+  ) : (
+    <Badge variant="warning">{pendingLabel}</Badge>
+  );
+}

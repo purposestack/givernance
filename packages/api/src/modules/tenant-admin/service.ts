@@ -38,7 +38,7 @@ import {
   users,
 } from "@givernance/shared/schema";
 import { validateTenantSlug } from "@givernance/shared/validators";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
 import {
   createSystemTxtResolver,
@@ -660,6 +660,7 @@ export interface TenantSummary {
   status: string;
   createdVia: string;
   verifiedAt: string | null;
+  ownershipConfirmedAt: string | null;
   primaryDomain: string | null;
   keycloakOrgId: string | null;
   /**
@@ -673,10 +674,67 @@ export interface TenantSummary {
   updatedAt: string;
 }
 
+export type TenantListSortField =
+  | "name"
+  | "status"
+  | "plan"
+  | "primaryDomain"
+  | "createdVia"
+  | "ownershipConfirmedAt"
+  | "createdAt"
+  | "updatedAt";
+
+export type TenantListSortOrder = "asc" | "desc";
+
+const TENANT_SORT_FIELDS = new Set<TenantListSortField>([
+  "name",
+  "status",
+  "plan",
+  "primaryDomain",
+  "createdVia",
+  "ownershipConfirmedAt",
+  "createdAt",
+  "updatedAt",
+]);
+
+function normalizeTenantSortField(value: string | undefined): TenantListSortField {
+  if (value && TENANT_SORT_FIELDS.has(value as TenantListSortField)) {
+    return value as TenantListSortField;
+  }
+  return "createdAt";
+}
+
+function normalizeTenantSortOrder(value: string | undefined): TenantListSortOrder {
+  return value === "asc" ? "asc" : "desc";
+}
+
+function tenantOrderBy(
+  sort: TenantListSortField,
+  order: TenantListSortOrder,
+): ReturnType<typeof asc>[] {
+  const sortDirection = order === "asc" ? asc : desc;
+  if (sort === "name") return [sortDirection(sql`lower(${tenants.name})`), asc(tenants.id)];
+  if (sort === "status") return [sortDirection(sql`lower(${tenants.status})`), asc(tenants.id)];
+  if (sort === "plan") return [sortDirection(sql`lower(${tenants.plan})`), asc(tenants.id)];
+  if (sort === "primaryDomain") {
+    return [sortDirection(sql`coalesce(lower(${tenants.primaryDomain}), '')`), asc(tenants.id)];
+  }
+  if (sort === "createdVia") {
+    return [sortDirection(sql`lower(${tenants.createdVia})`), asc(tenants.id)];
+  }
+  if (sort === "ownershipConfirmedAt") {
+    return [sortDirection(tenants.ownershipConfirmedAt), asc(tenants.id)];
+  }
+  if (sort === "updatedAt") return [sortDirection(tenants.updatedAt), asc(tenants.id)];
+  return [sortDirection(tenants.createdAt), asc(tenants.id)];
+}
+
 export async function listTenantsForAdmin(filters: {
   status?: string;
   createdVia?: string;
   q?: string;
+  sort?: string;
+  order?: string;
 }): Promise<TenantSummary[]> {
   const conditions = [];
   if (filters.status) conditions.push(eq(tenants.status, filters.status as TenantStatus));
@@ -691,6 +749,8 @@ export async function listTenantsForAdmin(filters: {
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const sort = normalizeTenantSortField(filters.sort);
+  const order = normalizeTenantSortOrder(filters.order);
   const rows = await db
     .select({
       id: tenants.id,
@@ -700,6 +760,7 @@ export async function listTenantsForAdmin(filters: {
       status: tenants.status,
       createdVia: tenants.createdVia,
       verifiedAt: tenants.verifiedAt,
+      ownershipConfirmedAt: tenants.ownershipConfirmedAt,
       primaryDomain: tenants.primaryDomain,
       keycloakOrgId: tenants.keycloakOrgId,
       defaultLocale: tenants.defaultLocale,
@@ -708,7 +769,7 @@ export async function listTenantsForAdmin(filters: {
     })
     .from(tenants)
     .where(where ?? sql`true`)
-    .orderBy(sql`${tenants.createdAt} DESC`)
+    .orderBy(...tenantOrderBy(sort, order))
     .limit(200);
 
   return rows.map((r) => ({
@@ -719,6 +780,7 @@ export async function listTenantsForAdmin(filters: {
     status: r.status,
     createdVia: r.createdVia,
     verifiedAt: r.verifiedAt?.toISOString() ?? null,
+    ownershipConfirmedAt: r.ownershipConfirmedAt?.toISOString() ?? null,
     primaryDomain: r.primaryDomain,
     keycloakOrgId: r.keycloakOrgId,
     defaultLocale: r.defaultLocale,
@@ -769,6 +831,7 @@ export async function getTenantDetail(orgId: string): Promise<{
       status: tenants.status,
       createdVia: tenants.createdVia,
       verifiedAt: tenants.verifiedAt,
+      ownershipConfirmedAt: tenants.ownershipConfirmedAt,
       primaryDomain: tenants.primaryDomain,
       keycloakOrgId: tenants.keycloakOrgId,
       defaultLocale: tenants.defaultLocale,
@@ -825,6 +888,7 @@ export async function getTenantDetail(orgId: string): Promise<{
     tenant: {
       ...tenant,
       verifiedAt: tenant.verifiedAt?.toISOString() ?? null,
+      ownershipConfirmedAt: tenant.ownershipConfirmedAt?.toISOString() ?? null,
       createdAt: tenant.createdAt.toISOString(),
       updatedAt: tenant.updatedAt.toISOString(),
     },
@@ -916,6 +980,53 @@ async function loadFirstAdminInvitation(
     acceptedAt: row.acceptedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+export async function confirmTenantOwnership(
+  orgId: string,
+  audit: AuditContext,
+): Promise<
+  | { ok: true; ownershipConfirmedAt: string }
+  | { ok: false; error: "tenant_not_found" | "invalid_track" }
+> {
+  if (!isUuid(orgId)) return { ok: false, error: "tenant_not_found" };
+
+  const [tenant] = await db
+    .select({
+      id: tenants.id,
+      createdVia: tenants.createdVia,
+      ownershipConfirmedAt: tenants.ownershipConfirmedAt,
+    })
+    .from(tenants)
+    .where(eq(tenants.id, orgId))
+    .limit(1);
+  if (!tenant) return { ok: false, error: "tenant_not_found" };
+  if (tenant.createdVia !== "self_serve") return { ok: false, error: "invalid_track" };
+  if (tenant.ownershipConfirmedAt) {
+    return { ok: true, ownershipConfirmedAt: tenant.ownershipConfirmedAt.toISOString() };
+  }
+
+  const confirmedAt = await db.transaction(async (tx) => {
+    const now = new Date();
+    await tx.update(tenants).set({ ownershipConfirmedAt: now }).where(eq(tenants.id, orgId));
+
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${orgId}, true)`);
+    await tx.insert(auditLogs).values({
+      orgId,
+      userId: audit.actorUserId,
+      action: "tenant.ownership_confirmed",
+      resourceType: "tenant",
+      resourceId: orgId,
+      newValues: { ownershipConfirmedAt: now.toISOString() },
+      oldValues: { ownershipConfirmedAt: null },
+      ipHash: audit.ipHash,
+      userAgent: audit.userAgent,
+    });
+
+    return now;
+  });
+
+  return { ok: true, ownershipConfirmedAt: confirmedAt.toISOString() };
 }
 
 // ─── Lifecycle transitions ──────────────────────────────────────────────────

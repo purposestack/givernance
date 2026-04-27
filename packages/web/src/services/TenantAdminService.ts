@@ -18,6 +18,7 @@ export interface AdminTenantSummary {
   status: string;
   createdVia: string;
   verifiedAt: string | null;
+  ownershipConfirmedAt: string | null;
   primaryDomain: string | null;
   keycloakOrgId: string | null;
   /**
@@ -78,6 +79,16 @@ export interface AdminTenantDetailResponse {
 }
 
 export type TenantLifecycleAction = "suspend" | "archive" | "activate";
+export type AdminTenantSortField =
+  | "name"
+  | "status"
+  | "plan"
+  | "primaryDomain"
+  | "createdVia"
+  | "ownershipConfirmedAt"
+  | "createdAt"
+  | "updatedAt";
+export type AdminTenantSortOrder = "asc" | "desc";
 
 export async function triggerTenantLifecycle(
   tenantId: string,
@@ -91,6 +102,15 @@ export async function triggerTenantLifecycle(
       action,
       reason: reason?.trim() ? reason.trim() : undefined,
     },
+  );
+}
+
+export async function confirmTenantOwnership(
+  tenantId: string,
+): Promise<{ ownershipConfirmedAt: string }> {
+  const api = createClientApiClient();
+  return api.post<{ ownershipConfirmedAt: string }>(
+    `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/confirm-ownership`,
   );
 }
 

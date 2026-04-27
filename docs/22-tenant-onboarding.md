@@ -21,6 +21,7 @@ Designing for only one of these segments is a known failure mode (documented in 
 | **Tenant** | A row in `tenants` with its own `org_id`; the RLS boundary for all tenant-scoped data. |
 | **Organization** | Business-facing synonym for tenant. Keycloak 26's first-class `Organization` entity maps 1:1 to a Givernance tenant. |
 | **Track** | How a tenant came into existence: `self_serve` / `enterprise` / `invitation`. Stored as `tenants.created_via`. Drives UI affordances but not data access. |
+| **Ownership confirmation** | Back-office-only confirmation that a self-serve tenant's workspace ownership has been reviewed by the Givernance team. Stored as `tenants.ownership_confirmed_at`. Does not gate end-user access. |
 | **Tenant domain** | A DNS domain claimed by a tenant (e.g., `croix-rouge.fr`). Verified via DNS TXT. Used for Home IdP Discovery. Optional. |
 | **IdP binding** | A per-tenant OIDC/SAML identity provider (Entra, Okta, Google Workspace) registered in the shared Keycloak realm and bound to the tenant's Keycloak Organization. |
 | **Provisional admin** | The first user of a self-serve tenant; holds `org_admin` role for a 7-day grace period during which other verified members can dispute. |
@@ -124,6 +125,7 @@ ALTER TABLE tenants
   ADD COLUMN created_via      VARCHAR(32) NOT NULL DEFAULT 'enterprise'
       CHECK (created_via IN ('self_serve','enterprise','invitation')),
   ADD COLUMN verified_at      TIMESTAMPTZ,
+  ADD COLUMN ownership_confirmed_at TIMESTAMPTZ,
   ADD COLUMN keycloak_org_id  TEXT,            -- Keycloak Organization id
   ADD COLUMN primary_domain   VARCHAR(255);
 ```
@@ -190,6 +192,7 @@ All new endpoints respect the RLS 3-role pattern:
 | `POST /v1/public/signup/verify` | Anonymous | Complete the Keycloak Required Action from the email link |
 | `GET /v1/public/tenants/lookup?email=…` | Anonymous | Return `{ hasExistingTenant, hint }` for the login flow; used by Home IdP Discovery hint + "join your existing org" nudge |
 | `POST /v1/admin/tenants` | `super_admin` | Enterprise-track tenant creation; returns DNS TXT to publish |
+| `POST /v1/superadmin/tenants/:id/confirm-ownership` | `super_admin` | Mark a self-serve tenant as ownership-reviewed in the back office, without changing tenant access |
 | `POST /v1/admin/tenants/:id/provision-idp` | `super_admin` | Create + bind the tenant's OIDC/SAML IdP via Keycloak Admin API |
 | `POST /v1/tenants/:id/domains` | `org_admin` | Claim a domain on an existing tenant |
 | `POST /v1/tenants/:id/domains/:domain/verify` | `org_admin` | Trigger DNS TXT lookup and transition to `verified` |

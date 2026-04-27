@@ -114,6 +114,12 @@ export const tenants = pgTable(
       .$type<TenantCreatedVia>(),
     /** Email verification timestamp for self-serve signup; NULL until the first admin verifies. */
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    /**
+     * Back-office ownership confirmation timestamp for self-serve tenants.
+     * This is distinct from `verifiedAt`: the user keeps access after signup
+     * verification, while super-admins confirm the workspace's ownership later.
+     */
+    ownershipConfirmedAt: timestamp("ownership_confirmed_at", { withTimezone: true }),
     /** Keycloak 26 Organization id (UUID) bound to this tenant; enforced by CHECK in migration 0021. */
     keycloakOrgId: varchar("keycloak_org_id", { length: 64 }),
     /** Convenience pointer to the tenant's verified primary domain — denormalised; source of truth is `tenant_domains`. */

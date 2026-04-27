@@ -363,7 +363,7 @@
     "tenants": {
       "list": {
         "title": "Tenant management",
-        "subtitle": "Inspect every enterprise tenant and drill into lifecycle state, domains, users, and recent audit events.",
+        "subtitle": "Inspect every self-serve, enterprise, and invitation tenant, and manage lifecycle state, ownership review, domains, users, and recent audit events.",
         "createCta": "+ New enterprise tenant",
         "columns": {
           "name": "Tenant",
@@ -371,6 +371,8 @@
           "plan": "Plan",
           "primaryDomain": "Primary domain",
           "createdVia": "Created via",
+          "ownership": "Ownership",
+          "createdAt": "Created at",
           "updatedAt": "Last updated"
         },
         "statuses": {
@@ -378,9 +380,10 @@
           "suspended": "Suspended",
           "archived": "Archived"
         },
-        "verification": {
-          "verified": "Verified",
-          "pending": "Pending"
+        "ownership": {
+          "confirmed": "Ownership confirmed",
+          "pending": "Ownership pending",
+          "notApplicable": "N/A"
         },
         "empty": {
           "title": "No tenants found",
@@ -454,9 +457,17 @@
           "suspended": "Suspended",
           "archived": "Archived"
         },
-        "verification": {
-          "verified": "Verified",
-          "pending": "Pending"
+        "ownership": {
+          "confirmed": "Ownership confirmed",
+          "pending": "Ownership pending confirmation",
+          "notApplicable": "N/A",
+          "title": "Ownership confirmation",
+          "pendingHelp": "This self-serve tenant stays available to its users. Confirm ownership here after the back-office review.",
+          "confirmedHelp": "Ownership for this self-serve tenant has already been confirmed from the back office.",
+          "action": "Confirm ownership",
+          "submitting": "Confirming…",
+          "success": "Ownership confirmed.",
+          "error": "Could not confirm ownership. Please retry."
         },
         "tabs": {
           "overview": "Overview",
@@ -473,6 +484,7 @@
             "keycloakOrgId": "Keycloak org ID",
             "createdAt": "Created at",
             "updatedAt": "Updated at",
+            "ownershipConfirmedAt": "Ownership confirmed at",
             "verifiedAt": "Verified at"
           }
         },

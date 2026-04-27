@@ -363,7 +363,7 @@
     "tenants": {
       "list": {
         "title": "Gestion des tenants",
-        "subtitle": "Consultez l’ensemble des tenants enterprise et accédez à leur cycle de vie, domaines, utilisateurs et audit récent.",
+        "subtitle": "Consultez l’ensemble des tenants self-serve, enterprise et invitation, et pilotez leur cycle de vie, ownership, domaines, utilisateurs et audit récent.",
         "createCta": "+ Nouveau tenant enterprise",
         "columns": {
           "name": "Tenant",
@@ -371,6 +371,8 @@
           "plan": "Plan",
           "primaryDomain": "Domaine principal",
           "createdVia": "Créé via",
+          "ownership": "Ownership",
+          "createdAt": "Créé le",
           "updatedAt": "Dernière mise à jour"
         },
         "statuses": {
@@ -378,9 +380,10 @@
           "suspended": "Suspendu",
           "archived": "Archivé"
         },
-        "verification": {
-          "verified": "Vérifié",
-          "pending": "En attente"
+        "ownership": {
+          "confirmed": "Ownership confirmé",
+          "pending": "Ownership à confirmer",
+          "notApplicable": "Sans objet"
         },
         "empty": {
           "title": "Aucun tenant",
@@ -454,9 +457,17 @@
           "suspended": "Suspendu",
           "archived": "Archivé"
         },
-        "verification": {
-          "verified": "Vérifié",
-          "pending": "En attente"
+        "ownership": {
+          "confirmed": "Ownership confirmé",
+          "pending": "Ownership à confirmer",
+          "notApplicable": "Sans objet",
+          "title": "Confirmation d'ownership",
+          "pendingHelp": "Ce tenant self-serve reste accessible à ses utilisateurs. Confirmez l'ownership ici après revue back-office.",
+          "confirmedHelp": "L'ownership de ce tenant self-serve a été confirmé depuis le back-office.",
+          "action": "Confirmer l'ownership",
+          "submitting": "Confirmation…",
+          "success": "Ownership confirmé.",
+          "error": "Impossible de confirmer l'ownership. Veuillez réessayer."
         },
         "tabs": {
           "overview": "Vue d’ensemble",
@@ -473,6 +484,7 @@
             "keycloakOrgId": "ID org Keycloak",
             "createdAt": "Créé le",
             "updatedAt": "Mis à jour le",
+            "ownershipConfirmedAt": "Ownership confirmé le",
             "verifiedAt": "Vérifié le"
           }
         },
