@@ -107,6 +107,8 @@ accessories:
       host: auth.staging.givernance.org
       ssl: true
       app_port: 8080
+      healthcheck:
+        path: /health/ready
     env:
       clear:
         KC_DB: postgres
@@ -117,6 +119,7 @@ accessories:
         KC_PROXY_HEADERS: xforwarded
         KC_HOSTNAME_STRICT: "false"
         KC_HTTP_ENABLED: "true"
+        KC_HEALTH_ENABLED: "true"
       secret:
         - KC_DB_PASSWORD
         - KEYCLOAK_ADMIN_PASSWORD
