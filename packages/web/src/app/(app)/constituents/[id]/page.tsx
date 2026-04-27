@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { type Constituent, fullName, initials } from "@/models/constituent";
 import type { Donation, DonationListResponse } from "@/models/donation";
@@ -83,7 +83,7 @@ async function fetchDonationsOrEmpty(
 export default async function ConstituentDetailPage({ params, searchParams }: DetailPageProps) {
   const auth = await requireAuth();
   const canManageAdminActions = auth.roles.includes("org_admin");
-  const canWrite = auth.roles.includes("org_admin") || auth.roles.includes("user");
+  const canWrite = hasPermission(auth, "write");
   const { id } = await params;
   const sp = await searchParams;
 

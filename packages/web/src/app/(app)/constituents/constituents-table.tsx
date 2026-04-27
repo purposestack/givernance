@@ -168,22 +168,29 @@ export function ConstituentsTable({
         enableSorting: false,
         cell: () => <span className="text-on-surface-variant">—</span>,
       },
-      {
-        id: "actions",
-        header: () => <span className="sr-only">{t("columns.actions")}</span>,
-        enableSorting: false,
-        cell: ({ row }) => (
-          <ConstituentRowActions
-            constituent={row.original}
-            canEdit={canWrite}
-            canDelete={canManageAdminActions}
-            onDelete={() => setDeleteTarget(row.original)}
-            menuLabel={t("actions.menu", { name: fullName(row.original) })}
-            editLabel={t("actions.edit")}
-            deleteLabel={t("actions.delete")}
-          />
-        ),
-      },
+      // For viewers (no Edit, no Delete) we drop the column entirely — keeping
+      // it would render an `sr-only` "Actions" header above empty cells, a
+      // small a11y nuisance and a wasted column on info-dense screens.
+      ...(canWrite || canManageAdminActions
+        ? [
+            {
+              id: "actions",
+              header: () => <span className="sr-only">{t("columns.actions")}</span>,
+              enableSorting: false,
+              cell: ({ row }: { row: { original: Constituent } }) => (
+                <ConstituentRowActions
+                  constituent={row.original}
+                  canEdit={canWrite}
+                  canDelete={canManageAdminActions}
+                  onDelete={() => setDeleteTarget(row.original)}
+                  menuLabel={t("actions.menu", { name: fullName(row.original) })}
+                  editLabel={t("actions.edit")}
+                  deleteLabel={t("actions.delete")}
+                />
+              ),
+            } satisfies ColumnDef<Constituent>,
+          ]
+        : []),
     ],
     [canManageAdminActions, canWrite, t, tType],
   );

@@ -443,7 +443,7 @@ describe("Constituents unauthenticated access", () => {
 // follow through).
 
 describe("Constituents viewer-role enforcement (issue #162)", () => {
-  it("POST /v1/constituents returns 403 for viewer role", async () => {
+  it("POST /v1/constituents returns 403 for viewer role with RFC 9457 problem body", async () => {
     const viewerToken = signToken(app, { role: "viewer" });
     const res = await app.inject({
       method: "POST",
@@ -456,6 +456,14 @@ describe("Constituents viewer-role enforcement (issue #162)", () => {
       },
     });
     expect(res.statusCode).toBe(403);
+    // Lock the RFC 9457 body shape on at least one viewer-403 path so a
+    // future regression that returns `{ error: "..." }` (or strips the
+    // `type` URI) breaks here, not in unrelated SDK / web parsing.
+    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    expect(body.type).toBe("https://httpproblems.com/http-status/403");
+    expect(body.title).toBe("Forbidden");
+    expect(body.status).toBe(403);
+    expect(body.detail).toMatch(/write access required/i);
   });
 
   it("PUT /v1/constituents/:id returns 403 for viewer role", async () => {
@@ -526,6 +534,59 @@ describe("Constituents viewer-role enforcement (issue #162)", () => {
       payload: { firstName: "User", lastName: "Allowed", type: "donor" },
     });
     expect(res.statusCode).toBe(201);
+  });
+
+  it("user role can still PUT /v1/constituents/:id", async () => {
+    // Seed via admin so a target exists, then update as `user`.
+    const tokenA = signToken(app);
+    const seed = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenA),
+      payload: { firstName: "UserPut", lastName: "Target", type: "donor" },
+    });
+    const id = seed.json<{ data: { id: string } }>().data.id;
+
+    const userToken = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "PUT",
+      url: `/v1/constituents/${id}`,
+      headers: authHeader(userToken),
+      payload: { firstName: "Edited" },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("user role can still GET /v1/constituents/duplicates/search", async () => {
+    const userToken = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/duplicates/search?firstName=Anyone&lastName=Anywhere",
+      headers: authHeader(userToken),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  // Sanity: tightening writes mustn't over-block reads. If a future change
+  // mass-replaces `requireAuth` → `requireWrite` (an easy mistake in the
+  // donations follow-up #176), this test will catch it for constituents.
+  it("GET /v1/constituents/:id stays accessible to viewer (read-only)", async () => {
+    const tokenA = signToken(app);
+    const seed = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenA),
+      payload: { firstName: "ReadMe", lastName: "AsViewer", type: "donor" },
+    });
+    const id = seed.json<{ data: { id: string } }>().data.id;
+
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/constituents/${id}`,
+      headers: authHeader(viewerToken),
+    });
+    expect(res.statusCode).toBe(200);
   });
 });
 

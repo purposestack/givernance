@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import type { Campaign, CampaignStats } from "@/models/campaign";
 import type { ConstituentListResponse } from "@/models/constituent";
@@ -33,7 +33,17 @@ interface CampaignWithStats {
  */
 export default async function DashboardPage() {
   const auth = await requireAuth();
-  const canWrite = auth.roles.includes("org_admin") || auth.roles.includes("user");
+  /**
+   * Hide all three Quick Actions for `viewer` — not just the constituents
+   * one. The donations CTA links to `/donations/new`, whose `POST /v1/donations`
+   * is still `requireAuth` server-side (issue #176, audit row API-4) and
+   * would today let a viewer succeed at recording a manual donation. Hiding
+   * the section is therefore a real protective measure, not just affordance
+   * polish, until #176 lands. The campaigns CTA is a dead-end (campaigns API
+   * is already `requireWrite`), but bundling it keeps the section coherent —
+   * splitting "+ Donation hidden, + Campaign visible" would be confusing.
+   */
+  const canWrite = hasPermission(auth, "write");
   const t = (await getTranslations("dashboard")) as unknown as DashboardT;
   const locale = await getLocale();
   const client = await createServerApiClient();

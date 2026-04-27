@@ -1,10 +1,23 @@
 import "server-only";
 
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { JWT_COOKIE_NAME } from "./keycloak";
 import { verifyKeycloakJwt } from "./verify-keycloak-jwt";
+
+/**
+ * Single source of truth for which application roles satisfy each permission
+ * tier. Mirrors the API-side `requireAuth` / `requireWrite` / `requireOrgAdmin`
+ * guards in `packages/api/src/lib/guards.ts` — keep both maps in sync. Any
+ * future role change (e.g. adding `finance_viewer`) lands here once.
+ */
+export type Permission = "admin" | "write" | "read";
+const PERMISSION_ROLES: Record<Permission, readonly string[]> = {
+  admin: ["org_admin"],
+  write: ["org_admin", "user"],
+  read: ["org_admin", "user", "viewer"],
+};
 
 /** Impersonation metadata extracted from JWT claims (doc/19-impersonation.md). */
 export interface ImpersonationInfo {
@@ -92,27 +105,35 @@ export async function requireRole(role: string): Promise<ServerAuthContext> {
 }
 
 /**
- * Require a specific application permission in a Server Component.
- * Maps application roles to permission sets.
+ * Non-redirecting permission check for conditional rendering inside a
+ * Server Component (e.g. hiding a "+ New" CTA from a `viewer`). For route
+ * protection, use `requirePermission` which redirects/404s instead.
  *
- * Permission hierarchy: org_admin > user > viewer
+ * Sourced from the same `PERMISSION_ROLES` table as `requirePermission`
+ * so the affordance gating and the route gate cannot drift apart.
  */
-export async function requirePermission(
-  permission: "admin" | "write" | "read",
-): Promise<ServerAuthContext> {
+export function hasPermission(auth: ServerAuthContext, permission: Permission): boolean {
+  const allowed = PERMISSION_ROLES[permission];
+  return auth.roles.some((r) => allowed.includes(r));
+}
+
+/**
+ * Require a specific application permission in a Server Component.
+ *
+ * - Unauthenticated → redirect to `/login` (handled by `requireAuth`).
+ * - Authenticated but lacks the permission → `notFound()`. We do NOT redirect
+ *   to `/login` because the user IS logged in — bouncing them to the login
+ *   form would either loop (their cookie is valid) or mislead them into
+ *   thinking the session expired. 404 mirrors the API-side `requireSuperAdmin`
+ *   anti-disclosure pattern in `packages/api/src/lib/guards.ts:74-91`.
+ *
+ * Permission hierarchy: org_admin > user > viewer.
+ */
+export async function requirePermission(permission: Permission): Promise<ServerAuthContext> {
   const auth = await requireAuth();
 
-  const permissionMap: Record<string, string[]> = {
-    admin: ["org_admin"],
-    write: ["org_admin", "user"],
-    read: ["org_admin", "user", "viewer"],
-  };
-
-  const allowedRoles = permissionMap[permission] ?? [];
-  const hasPermission = auth.roles.some((r) => allowedRoles.includes(r));
-
-  if (!hasPermission) {
-    redirect("/login");
+  if (!hasPermission(auth, permission)) {
+    notFound();
   }
 
   return auth;

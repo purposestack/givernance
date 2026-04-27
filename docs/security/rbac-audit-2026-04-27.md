@@ -36,6 +36,12 @@
 4. For each row produced a target guard, then derived the gap list and
    severity classification using the legend in §C.
 
+> **Convention.** Line numbers in Table A1 point at the
+> `app.<verb>(...)` registration call, not at the `preHandler:` line.
+> The `preHandler` is the first option in the route options object,
+> typically 2-5 lines below the cited line. A `grep -n preHandler` on
+> the cited file at the cited line will find the actual guard.
+
 ## Guard primitive cheat-sheet
 
 | Guard | Allowed roles | Typical use |
@@ -392,31 +398,13 @@ intentionally omitted; the orchestrator will create the issues below
 via `gh issue create`. One issue per module — multiple rows roll up
 into a single PR.)
 
-- **Donations RBAC tightening**
-  *Title*: `feat(security): tighten donations RBAC — viewer cannot
-  write or delete donations`
-  *Body*: API-4/-5/-6 plus FE-5/-6/-7/-8. Writes go to `requireWrite`,
-  delete to `requireOrgAdmin`; web pages mirror via `requirePermission`
-  + hide affordances. Includes integration tests asserting 403 for
-  `viewer` on each verb.
+- **Donations RBAC tightening** — issue [#176](https://github.com/purposestack/givernance/issues/176)
   *Rows covered*: API-4, API-5, API-6, FE-5, FE-6, FE-7, FE-8.
 
-- **Pledges RBAC tightening**
-  *Title*: `feat(security): pledges create requires write tier`
-  *Body*: API-7 — `POST /v1/pledges` lifts to `requireWrite`. No web
-  page exists today, so this is API-only. Integration test:
-  `viewer → 403`, `user → 201`. Note that `GET /v1/pledges/:id/installments`
-  stays at `requireAuth` (read).
+- **Pledges RBAC tightening** — issue [#177](https://github.com/purposestack/givernance/issues/177)
   *Rows covered*: API-7.
 
-- **Campaigns frontend permission alignment**
-  *Title*: `feat(security): hide write affordances from viewer on
-  campaigns pages`
-  *Body*: API guards on campaigns are already correct; the gap is purely
-  in the web layer. Lift `/campaigns/new` and `/campaigns/[id]/edit`
-  to `requirePermission("write")`, gate "+ New" CTA on the campaigns
-  list, and hide the Edit button on the campaign detail page for
-  `viewer`. No API change.
+- **Campaigns frontend permission alignment** — issue [#178](https://github.com/purposestack/givernance/issues/178)
   *Rows covered*: FE-9, FE-10, FE-11, FE-12.
 
 (Constituents has no follow-up issue — its 7 rows are all in this PR.)
