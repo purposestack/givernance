@@ -1,0 +1,542 @@
+/*
+ * Givernance — Keycloak Login Theme
+ * Design tokens mirror packages/web/src/app/globals.css (Material You warm palette).
+ * Per-org overrides are injected via <style> in template.ftl from Organization attributes.
+ */
+
+/* @import must be first — before any rules (CSS spec). */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@600&display=swap');
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design tokens ── */
+:root {
+  /* Primary — overridable per org via template.ftl */
+  --gv-primary:       #096447;
+  --gv-primary-hover: #005138;
+  --gv-primary-ring:  rgba(9, 100, 71, 0.25);
+
+  /* Surface */
+  --gv-bg:            #fff8f0;
+  --gv-surface:       #ffffff;
+  --gv-surface-low:   #f9f3ea;
+  --gv-surface-high:  #eee7de;
+
+  /* Text */
+  --gv-text:          #1e1b16;
+  --gv-text-secondary:#3f4943;
+  --gv-text-muted:    #6f7a73;
+
+  /* Border */
+  --gv-border:        #bec9c1;
+  --gv-border-light:  rgba(190, 201, 193, 0.35);
+
+  /* Status */
+  --gv-error:         #ba1a1a;
+  --gv-error-bg:      #ffdad6;
+  --gv-error-border:  rgba(186, 26, 26, 0.20);
+  --gv-warning:       #864700;
+  --gv-warning-bg:    #ffdcc3;
+  --gv-info:          #2e79a6;
+  --gv-info-bg:       #e0f2fe;
+  --gv-success:       #16a34a;
+  --gv-success-bg:    #dcfce7;
+
+  /* Geometry */
+  --gv-radius-input:  8px;
+  --gv-radius-btn:    8px;
+  --gv-radius-card:   24px;
+
+  /* Motion */
+  --gv-ease:          cubic-bezier(0.16, 1, 0.3, 1);
+  --gv-dur:           150ms;
+}
+
+/* ── Typography ── */
+html { font-size: 16px; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--gv-text);
+  background-color: var(--gv-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100dvh;
+}
+
+/* ── Page layout ── */
+.gv-auth-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 24px 16px 48px;
+  gap: 24px;
+}
+
+/* ── Card ── */
+.gv-auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--gv-surface);
+  border-radius: var(--gv-radius-card);
+  padding: 40px;
+  box-shadow: 0 0 0 1px rgba(190, 201, 193, 0.15), 0 4px 16px rgba(9, 100, 71, 0.08);
+}
+
+/* ── Header: logo + brand ── */
+.gv-auth-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.gv-brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gv-logo-svg {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.gv-brand-name {
+  font-family: 'Newsreader', Georgia, serif;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--gv-text);
+  letter-spacing: -0.02em;
+}
+
+/* Custom org logo (if logo_url attribute is set) */
+.gv-org-logo {
+  max-height: 48px;
+  max-width: 180px;
+  object-fit: contain;
+}
+
+.gv-org-name {
+  font-size: 0.8125rem;
+  color: var(--gv-text-muted);
+  margin-top: 4px;
+}
+
+/* ── Page title ── */
+.gv-auth-title {
+  font-family: 'Newsreader', Georgia, serif;
+  font-size: 1.375rem;
+  font-weight: 600;
+  color: var(--gv-text);
+  text-align: center;
+  margin-bottom: 24px;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+/* ── Flash messages ── */
+.gv-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin-bottom: 20px;
+  border: 1px solid transparent;
+}
+
+.gv-message--error {
+  background: var(--gv-error-bg);
+  border-color: var(--gv-error-border);
+  color: var(--gv-error);
+}
+
+.gv-message--warning {
+  background: var(--gv-warning-bg);
+  border-color: rgba(134, 71, 0, 0.18);
+  color: var(--gv-warning);
+}
+
+.gv-message--info {
+  background: var(--gv-info-bg);
+  border-color: rgba(46, 121, 166, 0.18);
+  color: var(--gv-info);
+}
+
+.gv-message--success {
+  background: var(--gv-success-bg);
+  border-color: rgba(22, 163, 74, 0.18);
+  color: var(--gv-success);
+}
+
+/* ── Form ── */
+.gv-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Label row (label + forgot-password link) ── */
+.gv-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gv-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--gv-text);
+  line-height: 1.4;
+}
+
+/* ── Input ── */
+.gv-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--gv-text);
+  background: var(--gv-surface);
+  border: 1px solid var(--gv-border);
+  border-radius: var(--gv-radius-input);
+  outline: none;
+  transition: border-color var(--gv-dur) var(--gv-ease),
+              box-shadow var(--gv-dur) var(--gv-ease);
+}
+
+.gv-input::placeholder { color: var(--gv-text-muted); }
+
+.gv-input:hover {
+  border-color: var(--gv-text-secondary);
+}
+
+.gv-input:focus {
+  border-color: var(--gv-primary);
+  box-shadow: 0 0 0 3px var(--gv-primary-ring);
+}
+
+.gv-input--error {
+  border-color: var(--gv-error);
+}
+
+.gv-input--error:focus {
+  box-shadow: 0 0 0 3px rgba(186, 26, 26, 0.18);
+}
+
+.gv-field-error {
+  font-size: 0.75rem;
+  color: var(--gv-error);
+  line-height: 1.4;
+}
+
+/* ── Password field with show/hide toggle ── */
+.gv-password-wrapper {
+  position: relative;
+}
+
+.gv-password-wrapper .gv-input {
+  padding-right: 40px;
+}
+
+.gv-password-toggle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--gv-text-muted);
+  border-radius: 0 var(--gv-radius-input) var(--gv-radius-input) 0;
+  transition: color var(--gv-dur) var(--gv-ease);
+}
+
+.gv-password-toggle:hover { color: var(--gv-text); }
+
+.gv-eye-icon {
+  width: 18px;
+  height: 18px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Checkbox ── */
+.gv-checkbox-row {
+  margin-top: -4px;
+}
+
+.gv-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--gv-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.gv-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--gv-border);
+  border-radius: 4px;
+  flex-shrink: 0;
+  accent-color: var(--gv-primary);
+  cursor: pointer;
+}
+
+/* ── Buttons ── */
+.gv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  padding: 0 20px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--gv-radius-btn);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--gv-dur) var(--gv-ease),
+              box-shadow var(--gv-dur) var(--gv-ease),
+              transform var(--gv-dur) var(--gv-ease);
+  outline: none;
+  margin-top: 4px;
+}
+
+.gv-btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--gv-surface), 0 0 0 4px var(--gv-primary);
+}
+
+.gv-btn:active { transform: translateY(1px); }
+
+.gv-btn--primary {
+  background: var(--gv-primary);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(9, 100, 71, 0.15), 0 1px 2px rgba(9, 100, 71, 0.10);
+}
+
+.gv-btn--primary:hover {
+  background: var(--gv-primary-hover);
+  box-shadow: 0 4px 16px rgba(9, 100, 71, 0.20);
+}
+
+.gv-btn--secondary {
+  background: var(--gv-surface);
+  color: var(--gv-text);
+  border: 1px solid var(--gv-border);
+}
+
+.gv-btn--secondary:hover {
+  background: var(--gv-surface-low);
+}
+
+/* ── Link ── */
+.gv-link {
+  color: var(--gv-primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity var(--gv-dur) var(--gv-ease);
+}
+
+.gv-link:hover { opacity: 0.75; text-decoration: underline; }
+
+.gv-link--small { font-size: 0.8125rem; }
+
+/* ── Info section (below form) ── */
+.gv-auth-info {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--gv-border-light);
+  font-size: 0.8125rem;
+  color: var(--gv-text-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.gv-auth-info a {
+  color: var(--gv-primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.gv-auth-info a:hover { text-decoration: underline; }
+
+/* ── Verify email illustration ── */
+.gv-verify-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(9, 100, 71, 0.08);
+  margin: 0 auto 20px;
+  color: var(--gv-primary);
+}
+
+.gv-verify-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* ── Error page ── */
+.gv-error-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--gv-error-bg);
+  margin: 0 auto 20px;
+  color: var(--gv-error);
+}
+
+.gv-error-detail {
+  font-size: 0.8125rem;
+  color: var(--gv-text-muted);
+  text-align: center;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+/* ── Footer ── */
+.gv-auth-footer {
+  font-size: 0.75rem;
+  color: var(--gv-text-muted);
+  text-align: center;
+}
+
+/* ── Locale picker ── */
+.gv-locale-picker {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.gv-locale-select {
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--gv-text-muted);
+  background: transparent;
+  border: 1px solid var(--gv-border-light);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  outline: none;
+}
+
+.gv-locale-select:focus {
+  border-color: var(--gv-primary);
+}
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+  .gv-auth-card {
+    padding: 28px 20px;
+    border-radius: 16px;
+  }
+
+  .gv-brand-name { font-size: 1.5rem; }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Fallback styles for inherited Keycloak templates (login-reset-password.ftl, etc.)
+ * that are not overridden in this theme. These pages use Keycloak's HTML structure
+ * but PatternFly is not loaded, so we style native elements directly.
+ */
+form { display: flex; flex-direction: column; gap: 20px; }
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"] {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--gv-text);
+  background: var(--gv-surface);
+  border: 1px solid var(--gv-border);
+  border-radius: var(--gv-radius-input);
+  outline: none;
+  transition: border-color var(--gv-dur) var(--gv-ease),
+              box-shadow var(--gv-dur) var(--gv-ease);
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus {
+  border-color: var(--gv-primary);
+  box-shadow: 0 0 0 3px var(--gv-primary-ring);
+}
+
+input[type="submit"],
+button[type="submit"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  padding: 0 20px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--gv-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--gv-radius-btn);
+  cursor: pointer;
+  transition: background var(--gv-dur) var(--gv-ease);
+}
+
+input[type="submit"]:hover,
+button[type="submit"]:hover {
+  background: var(--gv-primary-hover);
+}
+
+label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--gv-text);
+  margin-bottom: 6px;
+}
+
+a { color: var(--gv-primary); }

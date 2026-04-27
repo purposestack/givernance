@@ -1,6 +1,10 @@
 {
   "realm": "givernance",
   "enabled": true,
+  "loginTheme": "givernance",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["en", "fr"],
+  "defaultLocale": "en",
   "sslRequired": "none",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
@@ -69,7 +73,9 @@
       "description": "Seeded platform organization for the super-admin user (ADR-016 / issue #114). org_id attribute pins the platform tenant UUID (00000000-0000-0000-0000-0000000000a1) so it matches the tenants row seeded in the application DB. NEVER store secrets in organization attributes — Keycloak 26's oidc-organization-membership-mapper emits every attribute to every token on the default scopes.",
       "redirectUrl": "",
       "attributes": {
-        "org_id": ["00000000-0000-0000-0000-0000000000a1"]
+        "org_id": ["00000000-0000-0000-0000-0000000000a1"],
+        "theme_primary_color": ["#096447"],
+        "logo_url": [""]
       },
       "domains": [
         { "name": "platform.givernance.invalid", "verified": true }
@@ -77,6 +83,21 @@
       "members": [
         { "username": "admin@givernance.org", "membershipType": "UNMANAGED" }
       ]
+    },
+    {
+      "name": "Association Démo",
+      "alias": "demo-asso",
+      "description": "Seed organization for local dev — demonstrates per-org theming with a custom primary color (indigo). Access via kc_org=demo-asso in the authorization request, or prefix the app URL with the demo-asso subdomain.",
+      "redirectUrl": "",
+      "attributes": {
+        "org_id": ["00000000-0000-0000-0000-0000000000a2"],
+        "theme_primary_color": ["#1a56db"],
+        "logo_url": [""]
+      },
+      "domains": [
+        { "name": "demo-asso.givernance.invalid", "verified": true }
+      ],
+      "members": []
     }
   ],
   "roles": {
