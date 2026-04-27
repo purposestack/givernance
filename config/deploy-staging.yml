@@ -108,7 +108,7 @@ accessories:
       ssl: true
       app_port: 8080
       healthcheck:
-        path: /health/ready
+        path: /realms/master/.well-known/openid-configuration
     env:
       clear:
         KC_DB: postgres
@@ -120,7 +120,6 @@ accessories:
         KC_HOSTNAME_STRICT: "false"
         KC_HTTP_ENABLED: "true"
         KC_HEALTH_ENABLED: "true"
-        KC_HTTP_MANAGEMENT_PORT: "8080"
       secret:
         - KC_DB_PASSWORD
         - KEYCLOAK_ADMIN_PASSWORD
