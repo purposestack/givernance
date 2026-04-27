@@ -625,13 +625,31 @@
     "members": {
       "title": "Members",
       "subtitleEmpty": "Invite teammates to join your workspace.",
-      "subtitleWithCount": "{count, plural, one {# invitation on file} other {# invitations on file}}",
+      "subtitleWithCount": "{count, plural, one {# member on file} other {# members on file}}",
+      "membersSection": {
+        "title": "Active members",
+        "description": "Teammates who've accepted their invitation. Edit their name or role from the row menu.",
+        "empty": {
+          "title": "No active members yet",
+          "description": "Members will appear here once they accept their invitation."
+        }
+      },
+      "invitationsSection": {
+        "title": "Invitations",
+        "description": "Outstanding invitations — pending, expired, or already accepted.",
+        "empty": {
+          "title": "No invitations yet",
+          "description": "Invite a teammate to give them access to this workspace."
+        }
+      },
       "columns": {
+        "name": "Name",
         "email": "Email",
         "role": "Role",
         "status": "Status",
         "invitedBy": "Invited by",
         "createdAt": "Invited",
+        "joinedAt": "Joined",
         "actions": "Actions"
       },
       "roles": {
@@ -648,11 +666,42 @@
         "invite": "Invite teammate",
         "menu": "Open actions for {email}",
         "resend": "Resend invitation",
-        "revoke": "Revoke invitation"
+        "revoke": "Revoke invitation",
+        "edit": "Edit member",
+        "remove": "Remove member"
       },
       "empty": {
-        "title": "No invitations yet",
+        "title": "No teammates yet",
         "description": "Invite a teammate to give them access to this workspace."
+      },
+      "editDialog": {
+        "title": "Edit member",
+        "description": "Update {email}'s display name and role. Changes apply immediately and are reflected in the audit log.",
+        "fields": {
+          "firstName": "First name",
+          "lastName": "Last name",
+          "role": "Role",
+          "selfRoleLockHint": "You can't change your own role — ask another admin.",
+          "youBadge": "you"
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "submit": "Save changes",
+          "submitting": "Saving…"
+        },
+        "errors": {
+          "noChanges": "Change at least one field before saving.",
+          "selfDemote": "An org_admin can't demote their own role below admin.",
+          "generic": "Couldn't save the changes. Please try again."
+        }
+      },
+      "removeDialog": {
+        "title": "Remove member",
+        "description": "Remove {email} from this workspace? They'll lose access immediately.",
+        "descriptionFallback": "Remove this member from this workspace? They'll lose access immediately.",
+        "cancel": "Cancel",
+        "confirm": "Remove member",
+        "removing": "Removing…"
       },
       "invite": {
         "title": "Invite a teammate",
@@ -695,11 +744,14 @@
       "success": {
         "invited": "Invitation sent to {email}.",
         "resent": "Invitation re-sent.",
-        "revoked": "Invitation revoked."
+        "revoked": "Invitation revoked.",
+        "memberUpdated": "Member updated.",
+        "memberRemoved": "Member removed."
       },
       "errors": {
         "resendGeneric": "Couldn't resend the invitation. Please try again.",
-        "revokeGeneric": "Couldn't revoke the invitation. Please try again."
+        "revokeGeneric": "Couldn't revoke the invitation. Please try again.",
+        "removeGeneric": "Couldn't remove the member. Please try again."
       }
     },
     "funds": {
@@ -1524,6 +1576,7 @@
   },
   "dataTable": {
     "rangeSummary": "Showing {start}–{end} of {total}",
+    "countSummary": "{count, plural, one {# result} other {# results}}",
     "emptySummary": "No results",
     "pageOf": "Page {page} of {totalPages}",
     "previousPage": "Previous page",

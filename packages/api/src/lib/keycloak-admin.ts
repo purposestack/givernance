@@ -211,6 +211,21 @@ export interface KeycloakAdminClient {
    */
   setUserAttributes(userId: string, attributes: Record<string, string[]>): Promise<void>;
   /**
+   * Update a realm user's profile fields (firstName / lastName) — issue #161.
+   *
+   * GET-then-PUT so unlisted fields (email, attributes, credentials,
+   * emailVerified) are preserved exactly as Keycloak holds them. Only the
+   * explicitly provided keys are overwritten; passing `{ firstName: "Ada" }`
+   * leaves `lastName` untouched. Both keys are optional; calling with both
+   * undefined is a no-op.
+   *
+   * The mutation lands on Keycloak's `users` table AND on JWT claims via
+   * the `given_name` / `family_name` mappers, so the next access token
+   * issued by Keycloak carries the new display name (no force-logout
+   * needed; existing tokens are stale until they refresh).
+   */
+  updateUser(userId: string, fields: { firstName?: string; lastName?: string }): Promise<void>;
+  /**
    * Look up an Organization by its alias (the canonical slug we use). Returns
    * null when no exact match is found. Keycloak's `/organizations?search=`
    * matches as a substring so we filter the response client-side to be safe.
@@ -670,6 +685,27 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
       await adminRequest<void>("PUT", `/users/${e(userId)}`, {
         ...current,
         attributes: merged,
+      });
+    },
+
+    updateUser: async (userId, fields) => {
+      // No-op when the caller passes nothing — saves a Keycloak round-trip
+      // for the (firstName? + lastName? both omitted) case.
+      if (fields.firstName === undefined && fields.lastName === undefined) return;
+      const current = await adminRequest<KeycloakUser & { attributes?: Record<string, string[]> }>(
+        "GET",
+        `/users/${e(userId)}`,
+      );
+      if (!current) {
+        throw new KeycloakAdminError(`User ${userId} not found`, 404, `/users/${userId}`);
+      }
+      // PUT replaces the full representation, so we spread `current` and
+      // overlay only the keys the caller explicitly asked to change. This
+      // matches the same GET-then-PUT pattern as `setUserAttributes`.
+      await adminRequest<void>("PUT", `/users/${e(userId)}`, {
+        ...current,
+        ...(fields.firstName !== undefined ? { firstName: fields.firstName } : {}),
+        ...(fields.lastName !== undefined ? { lastName: fields.lastName } : {}),
       });
     },
 

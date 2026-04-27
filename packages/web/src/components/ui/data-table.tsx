@@ -38,12 +38,19 @@ export interface DataTableProps<TData> {
   onRowClick?: (row: import("@tanstack/react-table").Row<TData>) => void;
   columns: ColumnDef<TData, unknown>[];
   data: TData[];
-  pagination: DataTablePagination;
+  /**
+   * Pagination metadata. Omit for inherently unpaginated lists (e.g.
+   * `/v1/users` returns the full members array — issue #161). When omitted,
+   * the table hides the range summary and the prev/next footer; the data
+   * is rendered as-is.
+   */
+  pagination?: DataTablePagination;
   /**
    * Navigate to a new page — the DataTable is stateless about transport,
-   * the caller wires this to router.push / searchParams updates.
+   * the caller wires this to router.push / searchParams updates. Required
+   * when `pagination` is provided; ignored otherwise.
    */
-  onPageChange: (page: number) => void;
+  onPageChange?: (page: number) => void;
   sorting?: SortingState;
   onSortingChange?: (sorting: SortingState) => void;
   emptyState?: React.ReactNode;
@@ -102,6 +109,7 @@ function HeaderCell<TData>({ header, padding }: HeaderCellProps<TData>) {
   );
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: DataTable hosts the (paginated | unpaginated) × (rows | empty) matrix inline. Splitting into branches hides the row-summary / pagination dispatch.
 export function DataTable<TData>({
   onRowClick,
   columns,
@@ -134,15 +142,18 @@ export function DataTable<TData>({
     getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
     manualPagination: true,
     manualSorting,
-    pageCount: pagination.totalPages,
+    pageCount: pagination?.totalPages ?? 1,
   });
 
   const hasRows = data.length > 0;
   const rowPadding = densityClasses[density].row;
   const headerPadding = densityClasses[density].header;
 
-  const rangeStart = hasRows ? (pagination.page - 1) * pagination.perPage + 1 : 0;
-  const rangeEnd = hasRows ? Math.min(pagination.page * pagination.perPage, pagination.total) : 0;
+  const rangeStart = hasRows && pagination ? (pagination.page - 1) * pagination.perPage + 1 : 0;
+  const rangeEnd =
+    hasRows && pagination
+      ? Math.min(pagination.page * pagination.perPage, pagination.total)
+      : data.length;
 
   return (
     <div
@@ -154,11 +165,13 @@ export function DataTable<TData>({
       <div className="flex flex-col gap-3 border-b border-outline-variant px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-on-surface-variant">
           {hasRows
-            ? t("rangeSummary", {
-                start: rangeStart,
-                end: rangeEnd,
-                total: pagination.total,
-              })
+            ? pagination
+              ? t("rangeSummary", {
+                  start: rangeStart,
+                  end: rangeEnd,
+                  total: pagination.total,
+                })
+              : t("countSummary", { count: data.length })
             : t("emptySummary")}
         </div>
         <div
@@ -253,7 +266,7 @@ export function DataTable<TData>({
         </table>
       </div>
 
-      {hasRows ? (
+      {hasRows && pagination && onPageChange ? (
         <div className="flex flex-col gap-3 border-t border-outline-variant px-5 py-3 text-sm text-on-surface-variant sm:flex-row sm:items-center sm:justify-between">
           <span>
             {t("pageOf", { page: pagination.page, totalPages: Math.max(pagination.totalPages, 1) })}

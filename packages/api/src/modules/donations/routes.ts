@@ -251,7 +251,9 @@ export async function donationRoutes(app: FastifyInstance) {
   app.post(
     "/donations",
     {
-      config: { idempotency: { routeKey: "POST:/v1/donations" } },
+      // Issue #181: `minRole` mirrors the route's RBAC guard so the
+      // idempotency replay path doesn't short-circuit `requireWrite`.
+      config: { idempotency: { routeKey: "POST:/v1/donations", minRole: "write" } },
       preHandler: requireWrite,
       schema: {
         tags: ["Donations"],

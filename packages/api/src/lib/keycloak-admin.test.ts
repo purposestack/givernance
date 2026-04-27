@@ -637,6 +637,70 @@ describe("setUserAttributes", () => {
   });
 });
 
+describe("updateUser", () => {
+  it("GETs the user, overlays firstName/lastName, PUTs the full body back (preserves email/attributes)", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() =>
+      okJson({
+        id: "user-uuid",
+        email: "alice@example.org",
+        firstName: "Alice",
+        lastName: "Anderson",
+        emailVerified: true,
+        attributes: { org_id: ["tenant-uuid"], role: ["user"] },
+      }),
+    );
+    h.enqueue(() => noContent());
+
+    await h.client.updateUser("user-uuid", { firstName: "Allison", lastName: "Anderson-Garcia" });
+
+    const get = h.calls[1];
+    const put = h.calls[2];
+    expect(get?.init.method ?? "GET").toBe("GET");
+    expect(get?.url).toBe("http://kc.test/admin/realms/givernance/users/user-uuid");
+    expect(put?.init.method).toBe("PUT");
+    expect(put?.url).toBe("http://kc.test/admin/realms/givernance/users/user-uuid");
+    const body = JSON.parse(String(put?.init.body));
+    expect(body.firstName).toBe("Allison");
+    expect(body.lastName).toBe("Anderson-Garcia");
+    // Email + attributes untouched (only firstName/lastName change).
+    expect(body.email).toBe("alice@example.org");
+    expect(body.attributes).toEqual({ org_id: ["tenant-uuid"], role: ["user"] });
+  });
+
+  it("is a no-op when both firstName and lastName are undefined", async () => {
+    const h = makeHarness();
+    // Only the token call should fire — no GET, no PUT.
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+
+    await h.client.updateUser("user-uuid", {});
+
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it("preserves the field the caller didn't touch", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(() =>
+      okJson({
+        id: "user-uuid",
+        email: "bob@example.org",
+        firstName: "Bob",
+        lastName: "Smith",
+      }),
+    );
+    h.enqueue(() => noContent());
+
+    await h.client.updateUser("user-uuid", { firstName: "Robert" });
+
+    const put = h.calls[2];
+    const body = JSON.parse(String(put?.init.body));
+    expect(body.firstName).toBe("Robert");
+    expect(body.lastName).toBe("Smith");
+  });
+});
+
 describe("getOrganizationByAlias", () => {
   it("GETs /organizations?search=alias and returns the EXACT-alias match (filters substring matches client-side)", async () => {
     const h = makeHarness();

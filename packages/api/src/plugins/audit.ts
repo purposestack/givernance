@@ -83,6 +83,12 @@ async function audit(app: FastifyInstance) {
         userId: request.auth.userId,
         actorId: request.auth.act?.sub ?? null,
         orgId: request.auth.orgId,
+        // Issue #182: structured RBAC denial discriminator. Set by the guard
+        // primitives in `lib/guards.ts` on the denial branch; absent for
+        // successful requests and for non-RBAC denials (CSRF, validation,
+        // tenant-scoping). SOC dashboards filter on `rbacDenial.guard` to
+        // separate RBAC probing from the other 403 sources.
+        ...(request.rbacDenial ? { rbacDenial: request.rbacDenial } : {}),
       },
       "audit",
     );

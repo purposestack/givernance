@@ -472,6 +472,50 @@ focused review instead of being slipped in as a security fix.
 
 ---
 
+## Defense-in-depth — idempotency replay (issue #181)
+
+The idempotency plugin
+([`packages/api/src/plugins/idempotency.ts`](../../packages/api/src/plugins/idempotency.ts))
+registers its cache lookup as a **global** `app.addHook("preHandler", …)`,
+which `fastify-plugin` hoists ABOVE any route-level
+`preHandler: requireWrite / requireOrgAdmin`. Without compensation, a cache
+hit serves a stored 2xx envelope before the route's RBAC guard ever runs —
+a viewer JWT replaying an admin's `Idempotency-Key` would receive the
+cached donor-PII payload that `requireWrite` should have rejected.
+
+**Mitigation.** The route's idempotency `config` carries an explicit
+`minRole: "write" | "admin"` that mirrors the route's own RBAC guard:
+
+| Route | `minRole` | Mirrors guard |
+|---|---|---|
+| `POST /v1/donations` | `write` | `requireWrite` |
+| `POST /v1/pledges` | `write` | `requireWrite` |
+| `POST /v1/campaigns` | `write` | `requireWrite` |
+| `POST /v1/campaigns/:id/documents` | `admin` | `requireOrgAdmin` |
+
+The plugin checks `minRole` at the top of the preHandler — BEFORE touching
+Redis — so a viewer (or any role that fails the check) never reaches the
+cache at all. The 403 carries the same `rbacDenial` discriminator as the
+standalone guards (issue #182) so SOC dashboards keyed off `rbacDenial.guard`
+see the replay-path denial without any extra wiring.
+
+**Severity classification.** Medium (defense-in-depth). The exploit is
+constrained today because (a) the cache key is namespaced by
+`<orgId>:<routeKey>:<clientKey>` so the attacker must already be a member
+of the same tenant, and (b) `Idempotency-Key` values are typically opaque
+random UUIDs that are hard to guess. But the audit promises "every write
+must be `requireWrite`" and the replay path violated that contract
+silently — `minRole` makes the contract enforced rather than implied.
+
+**Coverage.** A test per affected route asserts that a viewer (or `user` for
+the admin-only route) gets 403 with the RFC 9457 body shape, NOT the cached
+envelope. See
+[`packages/api/src/tests/integration/idempotency-rbac.test.ts`](../../packages/api/src/tests/integration/idempotency-rbac.test.ts).
+Adding a future idempotency-keyed route MUST set `minRole` whenever the
+route also installs an RBAC guard.
+
+---
+
 ## Appendix — How to keep this matrix honest
 
 When adding a new route or page, the author should:
