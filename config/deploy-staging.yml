@@ -105,6 +105,7 @@ accessories:
     host: <%= ENV["STAGING_VPS_IP"] %>
     proxy:
       host: auth.staging.givernance.org
+      ssl: true
       app_port: 8080
     env:
       clear:
