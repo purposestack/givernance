@@ -346,6 +346,25 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Radix popper portal: hoist the wrapper to popover-tier ──
+   Radix portals every popper-positioned component (DropdownMenu, Popover,
+   Select, ContextMenu, Tooltip…) into a wrapper div whose inline style is
+   `z-index: auto` + `will-change: transform`. That makes the wrapper its
+   own stacking context but at effective z-index 0 — so the inner Content's
+   `z-[var(--z-popover)]` (35) only beats siblings INSIDE that wrapper, not
+   anything outside it. A popover triggered from inside the sidebar
+   (`--z-sticky: 10`) therefore renders behind the sidebar despite the
+   token hierarchy saying otherwise.
+
+   `!important` is required because Radix sets the inline `z-index: auto`
+   directly; a plain rule loses to the inline style. Tooltips also collapse
+   to popover-tier here — DOM order keeps them above popovers in practice
+   (you hover after opening), and we can add a `:has([data-radix-tooltip-
+   content])` carve-out if a real regression surfaces. */
+[data-radix-popper-content-wrapper] {
+  z-index: var(--z-popover) !important;
+}
+
 /* ── Respect reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   *,
