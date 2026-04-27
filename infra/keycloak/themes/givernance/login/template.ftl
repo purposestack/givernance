@@ -35,8 +35,8 @@
 
 <#-- locale is null when internationalizationEnabled=false in the realm,
      or in certain non-interactive Keycloak flows. Guard every access. -->
-<#assign currentLang = "fr">
-<#if locale??><#assign currentLang = locale.currentLanguageTag!"fr"></#if>
+<#assign currentLang = "en">
+<#if locale??><#assign currentLang = locale.currentLanguageTag!"en"></#if>
 
 <!DOCTYPE html>
 <html lang="${currentLang}" dir="ltr">
@@ -61,12 +61,20 @@
 <div class="gv-auth-page">
   <div class="gv-auth-card">
 
-    <#-- Locale picker (only when i18n is enabled and multiple locales exist) -->
+    <#-- Locale picker (only when i18n is enabled and multiple locales exist).
+         Uses a <select> with id + name (required to silence the browser
+         accessibility warning). The selected option is determined by comparing
+         l.languageTag to the current language tag so the dropdown always
+         reflects the active locale. Navigation via window.location.href
+         follows l.url — Keycloak sets the KEYCLOAK_LOCALE cookie and redirects
+         back to the same auth page with the new locale active. -->
     <#if locale?? && locale.supported?? && (locale.supported?size > 1)>
       <div class="gv-locale-picker">
-        <select class="gv-locale-select" onchange="window.location.href=this.value" aria-label="Language">
+        <select id="kc-locale-select" name="locale" class="gv-locale-select"
+                aria-label="${msg('selectLocale')!'Language'}"
+                onchange="window.location.href=this.value;">
           <#list locale.supported as l>
-            <option value="${l.url}">${l.label}</option>
+            <option value="${l.url}"<#if (l.languageTag!'') == currentLang> selected</#if>>${l.label}</option>
           </#list>
         </select>
       </div>
@@ -128,7 +136,7 @@
   </div>
 
   <footer class="gv-auth-footer">
-    Propuls&eacute; par <strong>Givernance</strong>
+    Powered by <strong>Givernance</strong>
   </footer>
 </div>
 

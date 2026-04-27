@@ -4,7 +4,7 @@
   "loginTheme": "givernance",
   "internationalizationEnabled": true,
   "supportedLocales": ["en", "fr"],
-  "defaultLocale": "fr",
+  "defaultLocale": "en",
   "sslRequired": "none",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
