@@ -57,6 +57,9 @@ services:
     command: start-dev --import-realm
     volumes:
       - ./infra/keycloak/realm-givernance.json:/opt/keycloak/data/import/realm-givernance.json:ro
+      # Givernance custom login theme (Approach A — FreeMarker + CSS design tokens).
+      # Keycloak resolves themes from /opt/keycloak/themes/<name>/ at startup.
+      - ./infra/keycloak/themes:/opt/keycloak/themes:ro
     depends_on:
       postgres:
         condition: service_healthy
