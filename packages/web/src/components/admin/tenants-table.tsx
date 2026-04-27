@@ -155,11 +155,7 @@ export function TenantsTable({ tenants, sort, order }: TenantsTableProps) {
         cell: ({ row }) => (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="justify-center"
-              >
+              <Button variant="ghost" size="sm" className="justify-center">
                 <MoreHorizontal size={16} aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>

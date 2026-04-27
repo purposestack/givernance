@@ -8,9 +8,6 @@ import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -20,6 +17,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -174,7 +174,10 @@ export function FundsTable({ funds, pagination, canManageFunds }: FundsTableProp
           />
         }
       />
-      <AlertDialog open={fundToDelete !== null} onOpenChange={(open) => !open && setFundToDelete(null)}>
+      <AlertDialog
+        open={fundToDelete !== null}
+        onOpenChange={(open) => !open && setFundToDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("deleteDialog.title")}</AlertDialogTitle>

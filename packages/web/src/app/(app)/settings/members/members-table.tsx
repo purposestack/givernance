@@ -7,9 +7,6 @@ import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -19,6 +16,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -199,7 +199,10 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
         }
       />
 
-      <AlertDialog open={revokeTarget !== null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
+      <AlertDialog
+        open={revokeTarget !== null}
+        onOpenChange={(open) => !open && setRevokeTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("revokeDialog.title")}</AlertDialogTitle>
