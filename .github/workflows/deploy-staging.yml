@@ -63,7 +63,10 @@ jobs:
         run: kamal lock release -c config/deploy-staging.yml || true
 
       - name: Reboot Keycloak
-        run: kamal accessory reboot keycloak -c config/deploy-staging.yml
+        run: |
+          kamal server exec -c config/deploy-staging.yml "docker rm -f givernance-keycloak || true"
+          kamal server exec -c config/deploy-staging.yml "docker exec kamal-proxy kamal-proxy remove givernance-keycloak || true"
+          kamal accessory boot keycloak -c config/deploy-staging.yml
 
       - name: Deploy with Kamal
         run: kamal setup -c config/deploy-staging.yml
