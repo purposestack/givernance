@@ -71,6 +71,10 @@ jobs:
       - name: Deploy with Kamal
         run: kamal setup -c config/deploy-staging.yml
 
+      - name: Print failed Keycloak container logs
+        if: failure()
+        run: |
+          kamal server exec -c config/deploy-staging.yml "docker logs givernance-keycloak | tail -n 100" || true
       - name: Print failed API container logs
         if: failure()
         run: |
