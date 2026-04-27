@@ -1,5 +1,6 @@
 "use client";
 
+import { LOCALE_NATIVE_NAMES, type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
@@ -25,6 +26,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import {
@@ -36,8 +44,23 @@ import {
   resendFirstAdminInvitation,
 } from "@/services/TenantAdminService";
 
+/**
+ * Sentinel for the locale Select meaning "no admin override — fall back
+ * to `tenants.default_locale`". Maps to `null` on the wire. Issue #153
+ * follow-up.
+ */
+const FOLLOW_TENANT = "__follow_tenant__" as const;
+type FirstAdminLocaleChoice = Locale | typeof FOLLOW_TENANT;
+
 interface FirstAdminCardProps {
   tenantId: string;
+  /**
+   * Tenant's `default_locale`, used to label the locale picker's
+   * "Use workspace default ({locale})" option (the "follow tenant"
+   * sentinel) so the super-admin sees what they'd inherit by default.
+   * Issue #153 follow-up.
+   */
+  tenantDefaultLocale: Locale;
   invitation: AdminFirstAdminInvitation | null;
   /**
    * Token returned by the create-with-first-admin form. Test-only injection
@@ -52,6 +75,7 @@ interface FirstAdminCardProps {
 
 interface InviteFormValues {
   email: string;
+  locale: FirstAdminLocaleChoice;
 }
 
 /**
@@ -85,6 +109,7 @@ function middleTruncate(value: string, head = 32, tail = 12): string {
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: state-machine card with empty / pending / expired / accepted branches; splitting into sub-components would scatter the i18n + handler context. Tracked in PR #154 for refactor if it grows further.
 export function FirstAdminCard({
   tenantId,
+  tenantDefaultLocale,
   invitation,
   initialFreshToken,
   initialError,
@@ -100,7 +125,7 @@ export function FirstAdminCard({
 
   const form = useForm<InviteFormValues>({
     mode: "onBlur",
-    defaultValues: { email: "" },
+    defaultValues: { email: "", locale: FOLLOW_TENANT },
   });
 
   // One-shot handoff from the new-tenant form. Reading + clearing here keeps
@@ -133,9 +158,11 @@ export function FirstAdminCard({
     setPending("send");
     setBusyAnnouncement(t("actions.sending"));
     try {
-      const result = await inviteFirstAdmin(tenantId, values.email);
+      // FOLLOW_TENANT → null (fall back to tenant default).
+      const localeForApi: Locale | null = values.locale === FOLLOW_TENANT ? null : values.locale;
+      const result = await inviteFirstAdmin(tenantId, values.email, localeForApi);
       handleFreshToken(result, t("success.invited", { email: values.email }));
-      form.reset({ email: "" });
+      form.reset({ email: "", locale: FOLLOW_TENANT });
       router.refresh();
     } catch (error) {
       handleApiFailure(error);
@@ -252,6 +279,45 @@ export function FirstAdminCard({
                       maxLength={255}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {/*
+             * Issue #153 follow-up — locale picker. Default
+             * "follow tenant default" labelled with the tenant's actual
+             * default endonym so the super-admin sees what they'd
+             * inherit. Picking explicitly overrides for this invitee
+             * only (persisted on `invitations.locale`).
+             */}
+            <FormField
+              control={form.control}
+              name="locale"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("fields.locale")}</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => field.onChange(value as FirstAdminLocaleChoice)}
+                  >
+                    <FormControl>
+                      <SelectTrigger aria-label={t("fields.locale")}>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value={FOLLOW_TENANT}>
+                        {t("fields.localeFollowTenant", {
+                          locale: LOCALE_NATIVE_NAMES[tenantDefaultLocale],
+                        })}
+                      </SelectItem>
+                      {SUPPORTED_LOCALES.map((locale) => (
+                        <SelectItem key={locale} value={locale}>
+                          {LOCALE_NATIVE_NAMES[locale]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

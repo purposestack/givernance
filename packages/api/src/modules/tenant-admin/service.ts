@@ -662,6 +662,13 @@ export interface TenantSummary {
   verifiedAt: string | null;
   primaryDomain: string | null;
   keycloakOrgId: string | null;
+  /**
+   * Tenant's default locale (BCP-47). The super-admin first-admin invite
+   * picker uses this to label its "Use workspace default ({locale})"
+   * option, and to know what to fall back to when the invitation locale
+   * is NULL. Issue #153 follow-up.
+   */
+  defaultLocale: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -695,6 +702,7 @@ export async function listTenantsForAdmin(filters: {
       verifiedAt: tenants.verifiedAt,
       primaryDomain: tenants.primaryDomain,
       keycloakOrgId: tenants.keycloakOrgId,
+      defaultLocale: tenants.defaultLocale,
       createdAt: tenants.createdAt,
       updatedAt: tenants.updatedAt,
     })
@@ -713,6 +721,7 @@ export async function listTenantsForAdmin(filters: {
     verifiedAt: r.verifiedAt?.toISOString() ?? null,
     primaryDomain: r.primaryDomain,
     keycloakOrgId: r.keycloakOrgId,
+    defaultLocale: r.defaultLocale,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   }));
@@ -762,6 +771,7 @@ export async function getTenantDetail(orgId: string): Promise<{
       verifiedAt: tenants.verifiedAt,
       primaryDomain: tenants.primaryDomain,
       keycloakOrgId: tenants.keycloakOrgId,
+      defaultLocale: tenants.defaultLocale,
       createdAt: tenants.createdAt,
       updatedAt: tenants.updatedAt,
     })
@@ -1005,6 +1015,14 @@ const FIRST_ADMIN_INVITATION_TTL_DAYS = 7;
 export async function inviteFirstEnterpriseUser(input: {
   orgId: string;
   email: string;
+  /**
+   * Optional super-admin pre-pick of the welcome-email language (issue
+   * #153 follow-up). Persisted on `invitations.locale`. When NULL the
+   * resolution chain falls back to `tenants.default_locale`. Mirrors
+   * the org_admin invite contract so both flows share the same
+   * `invitations.locale` semantics.
+   */
+  locale?: Locale | null;
   audit: AuditContext;
 }): Promise<
   | { ok: true; invitationId: string; token: string; expiresAt: Date }
@@ -1030,6 +1048,14 @@ export async function inviteFirstEnterpriseUser(input: {
     ? tenant.defaultLocale
     : APP_DEFAULT_LOCALE;
 
+  // Issue #153 follow-up: super-admin's per-invitation pick takes
+  // precedence over the tenant default. NULL = "no override" → falls
+  // back to tenant default. There's no per-user layer to consider
+  // (the invitee doesn't exist yet) — same semantics as the org_admin
+  // path's `resolveInviteeLocale` minus the `users.locale` lookup.
+  const adminPickedLocale: Locale | null = isSupportedLocale(input.locale) ? input.locale : null;
+  const effectiveLocale: Locale = adminPickedLocale ?? tenantLocale;
+
   const existing = await getFirstAdminInvitation(input.orgId);
   if (existing && existing.status === "accepted") {
     // Re-inviting after the first-admin already accepted would silently
@@ -1049,6 +1075,7 @@ export async function inviteFirstEnterpriseUser(input: {
         role: "org_admin",
         purpose: "team_invite",
         expiresAt,
+        locale: adminPickedLocale,
       })
       .returning({
         id: invitations.id,
@@ -1061,8 +1088,8 @@ export async function inviteFirstEnterpriseUser(input: {
       type: "tenant.first_admin_invited",
       // Issue #153: stamp `locale` (BCP-47) for the worker. There's no
       // user row yet (the invitee hasn't accepted) so the per-user layer
-      // doesn't apply — the tenant default is the right value.
-      payload: { tenantId: input.orgId, invitationId: row?.id, locale: tenantLocale },
+      // doesn't apply — the chain reduces to admin pick → tenant default.
+      payload: { tenantId: input.orgId, invitationId: row?.id, locale: effectiveLocale },
     });
 
     await tx.insert(auditLogs).values({
@@ -1111,9 +1138,12 @@ export async function resendFirstEnterpriseInvitation(input: {
       .select({
         id: invitations.id,
         acceptedAt: invitations.acceptedAt,
-        // Issue #153: read tenant.default_locale so the resend payload can
-        // stamp `locale` for the worker (no per-user override yet — invitee
-        // hasn't accepted).
+        // Issue #153 follow-up: read both the stored invitation locale
+        // (super-admin's create-time pick) and the tenant default. The
+        // resend stamps the same `effectiveLocale` the original invite
+        // did — resend semantics is "redeliver the same content with a
+        // fresh token", not "re-pick the language".
+        invitationLocale: invitations.locale,
         defaultLocale: tenants.defaultLocale,
       })
       .from(invitations)
@@ -1139,6 +1169,10 @@ export async function resendFirstEnterpriseInvitation(input: {
     const tenantLocale: Locale = isSupportedLocale(row.defaultLocale)
       ? row.defaultLocale
       : APP_DEFAULT_LOCALE;
+    const adminPickedLocale: Locale | null = isSupportedLocale(row.invitationLocale)
+      ? row.invitationLocale
+      : null;
+    const effectiveLocale: Locale = adminPickedLocale ?? tenantLocale;
 
     await tx
       .update(invitations)
@@ -1155,7 +1189,7 @@ export async function resendFirstEnterpriseInvitation(input: {
         tenantId: input.orgId,
         invitationId: row.id,
         resent: true,
-        locale: tenantLocale,
+        locale: effectiveLocale,
       },
     });
 

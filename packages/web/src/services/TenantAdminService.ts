@@ -1,3 +1,4 @@
+import type { Locale } from "@givernance/shared/i18n";
 import { createClientApiClient } from "@/lib/api/client-browser";
 
 export interface AdminFirstAdminInvitation {
@@ -19,6 +20,12 @@ export interface AdminTenantSummary {
   verifiedAt: string | null;
   primaryDomain: string | null;
   keycloakOrgId: string | null;
+  /**
+   * BCP-47 default locale for users in this tenant. The first-admin
+   * invite picker labels its "Use workspace default ({locale})" option
+   * from this value. Issue #153 follow-up.
+   */
+  defaultLocale: Locale;
   createdAt: string;
   updatedAt: string;
 }
@@ -136,11 +143,20 @@ export function buildInviteAcceptUrl(token: string): string {
 export async function inviteFirstAdmin(
   tenantId: string,
   email: string,
+  /**
+   * Optional super-admin pre-pick of the welcome-email language.
+   * `null` is sent on the wire to mean "follow the tenant default";
+   * `undefined` is omitted from the request entirely (default behaviour
+   * — same fallback). Issue #153 follow-up.
+   */
+  locale: Locale | null | undefined = undefined,
 ): Promise<InviteFirstAdminResult> {
   const api = createClientApiClient();
+  const body: Record<string, unknown> = { email: email.trim().toLowerCase() };
+  if (locale !== undefined) body.locale = locale;
   const res = await api.post<{ data: InviteFirstAdminResult }>(
     `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/first-admin-invitations`,
-    { email: email.trim().toLowerCase() },
+    body,
   );
   return res.data;
 }

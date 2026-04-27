@@ -23,6 +23,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireSuperAdmin, requireSuperAdminOrOwnOrgAdmin } from "../../lib/guards.js";
@@ -89,6 +90,11 @@ const VerifyDomainResponse = Type.Object({
   state: Type.Literal("verified"),
 });
 
+// Reused below for `defaultLocale` on TenantSummarySchema and the
+// optional `locale` on InviteFirstAdminBody. Mirror of
+// `SUPPORTED_LOCALES` in @givernance/shared/i18n.
+const FirstAdminLocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)));
+
 const TenantSummarySchema = Type.Object({
   id: UuidSchema,
   name: Type.String(),
@@ -99,6 +105,7 @@ const TenantSummarySchema = Type.Object({
   verifiedAt: Type.Union([Type.String(), Type.Null()]),
   primaryDomain: Type.Union([Type.String(), Type.Null()]),
   keycloakOrgId: Type.Union([Type.String(), Type.Null()]),
+  defaultLocale: FirstAdminLocaleSchema,
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -199,6 +206,14 @@ const LifecycleResponse = Type.Object({
 
 const InviteFirstAdminBody = Type.Object({
   email: Type.String({ format: "email", maxLength: 255 }),
+  /**
+   * Optional BCP-47 locale picked by the super-admin at create time
+   * (issue #153 follow-up). When set, persists on `invitations.locale`,
+   * the welcome email is rendered in that language, and the
+   * accept-form's picker pre-selects it. Omit / null → falls back to
+   * `tenants.default_locale`. Mirrors the org_admin invite contract.
+   */
+  locale: Type.Optional(Type.Union([FirstAdminLocaleSchema, Type.Null()])),
 });
 
 const InviteFirstAdminResponse = Type.Object({
@@ -521,10 +536,11 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const body = request.body as { email: string };
+      const body = request.body as { email: string; locale?: "en" | "fr" | null };
       const res = await inviteFirstEnterpriseUser({
         orgId: id,
         email: body.email,
+        locale: body.locale ?? null,
         audit: auditFromRequest(request),
       });
       if (!res.ok) {

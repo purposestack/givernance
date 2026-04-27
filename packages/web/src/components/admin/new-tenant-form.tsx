@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  APP_DEFAULT_LOCALE,
+  LOCALE_NATIVE_NAMES,
+  type Locale,
+  SUPPORTED_LOCALES,
+} from "@givernance/shared/i18n";
 import { validateTenantSlug } from "@givernance/shared/validators";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,14 +25,33 @@ import {
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createEnterpriseTenant, inviteFirstAdmin } from "@/services/TenantAdminService";
+
+/**
+ * Sentinel for the locale Select meaning "no admin override — fall back
+ * to `tenants.default_locale`". A new enterprise tenant lands with
+ * `default_locale = 'fr'` (the column DEFAULT) so the FOLLOW_TENANT
+ * label shows "Use workspace default (Français)" by convention; if the
+ * super-admin needs a non-FR default they can change it from
+ * `/settings` after the tenant exists.
+ */
+const FOLLOW_TENANT = "__follow_tenant__" as const;
+type FirstAdminLocaleChoice = Locale | typeof FOLLOW_TENANT;
 
 interface NewTenantFormValues {
   name: string;
   slug: string;
   firstAdminEmail: string;
+  firstAdminLocale: FirstAdminLocaleChoice;
 }
 
 /** Host prefix shown before the slug input. MOCKUP-9 (PR #135 review):
@@ -77,6 +102,7 @@ export function NewTenantForm() {
       name: "",
       slug: "",
       firstAdminEmail: "",
+      firstAdminLocale: FOLLOW_TENANT,
     },
   });
 
@@ -126,9 +152,13 @@ export function NewTenantForm() {
     const firstAdminEmail = values.firstAdminEmail.trim();
     const successMessage = t("success");
     const inviteFailedMessage = t("errors.inviteFailed");
+    // FOLLOW_TENANT → null on the wire (fall back to tenant default).
+    const firstAdminLocale: Locale | null =
+      values.firstAdminLocale === FOLLOW_TENANT ? null : values.firstAdminLocale;
     await maybePairWithFirstAdminInvite({
       tenantId: createdTenantId,
       firstAdminEmail,
+      firstAdminLocale,
       onAnyOutcome: () => router.refresh(),
       onSuccess: () => {
         toast.success(successMessage);
@@ -250,6 +280,49 @@ export function NewTenantForm() {
               </FormItem>
             )}
           />
+
+          {/*
+           * Issue #153 follow-up — first-admin invitation locale.
+           * Default "follow tenant default" — the new enterprise tenant
+           * lands with `default_locale = 'fr'` (column DEFAULT) so the
+           * sentinel option labels show "Use workspace default
+           * (Français)". A super-admin onboarding a non-French
+           * association picks the explicit option here so the very
+           * first email lands in the right language.
+           */}
+          <FormField
+            control={form.control}
+            name="firstAdminLocale"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t("fields.firstAdminLocale")}</FormLabel>
+                <Select
+                  value={field.value}
+                  onValueChange={(value) => field.onChange(value as FirstAdminLocaleChoice)}
+                >
+                  <FormControl>
+                    <SelectTrigger aria-label={t("fields.firstAdminLocale")}>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value={FOLLOW_TENANT}>
+                      {t("fields.firstAdminLocaleFollowTenant", {
+                        locale: LOCALE_NATIVE_NAMES[APP_DEFAULT_LOCALE],
+                      })}
+                    </SelectItem>
+                    {SUPPORTED_LOCALES.map((locale) => (
+                      <SelectItem key={locale} value={locale}>
+                        {LOCALE_NATIVE_NAMES[locale]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription>{t("fields.firstAdminLocaleHint")}</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </FormSection>
 
         <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
@@ -316,18 +389,21 @@ function stashFreshFirstAdminToken(tenantId: string, token: string): void {
 async function maybePairWithFirstAdminInvite(input: {
   tenantId: string;
   firstAdminEmail: string;
+  /** `null` = follow tenant default; `'en' | 'fr'` = explicit pre-pick. */
+  firstAdminLocale: Locale | null;
   onAnyOutcome: () => void;
   onSuccess: () => void;
   onInviteFailure: () => void;
 }): Promise<void> {
-  const { tenantId, firstAdminEmail, onAnyOutcome, onSuccess, onInviteFailure } = input;
+  const { tenantId, firstAdminEmail, firstAdminLocale, onAnyOutcome, onSuccess, onInviteFailure } =
+    input;
   if (firstAdminEmail.length === 0) {
     onSuccess();
     onAnyOutcome();
     return;
   }
   try {
-    const invite = await inviteFirstAdmin(tenantId, firstAdminEmail);
+    const invite = await inviteFirstAdmin(tenantId, firstAdminEmail, firstAdminLocale);
     stashFreshFirstAdminToken(tenantId, invite.invitationToken);
     onSuccess();
   } catch {

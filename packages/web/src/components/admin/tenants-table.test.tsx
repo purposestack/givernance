@@ -22,6 +22,7 @@ describe("TenantsTable", () => {
             verifiedAt: "2026-04-20T10:00:00.000Z",
             primaryDomain: "acme.org",
             keycloakOrgId: "kc-acme",
+            defaultLocale: "fr",
             createdAt: "2026-04-10T10:00:00.000Z",
             updatedAt: "2026-04-21T10:00:00.000Z",
           },

@@ -246,6 +246,7 @@ export default async function TenantDetailPage({
         <>
           <FirstAdminCard
             tenantId={tenant.id}
+            tenantDefaultLocale={tenant.defaultLocale}
             invitation={firstAdminInvitation}
             initialError={
               search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
@@ -258,6 +259,7 @@ export default async function TenantDetailPage({
           <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
           <FirstAdminCard
             tenantId={tenant.id}
+            tenantDefaultLocale={tenant.defaultLocale}
             invitation={firstAdminInvitation}
             initialError={
               search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
