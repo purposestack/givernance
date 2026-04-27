@@ -29,7 +29,13 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
-import { lookupTenantForEmail, resendVerification, signup, verifySignup } from "./service.js";
+import {
+  lookupTenantForEmail,
+  openDomainDispute,
+  resendVerification,
+  signup,
+  verifySignup,
+} from "./service.js";
 
 // ─── Request / response shapes ──────────────────────────────────────────────
 
@@ -77,6 +83,17 @@ const VerifyBody = Type.Object({
 const SignupResponse = Type.Object({
   tenantId: UuidSchema,
   email: Type.String(),
+});
+
+const DisputeBody = Type.Object({
+  email: Type.String({ format: "email", maxLength: 255 }),
+  firstName: Type.String({ minLength: 1, maxLength: 255 }),
+  lastName: Type.String({ minLength: 1, maxLength: 255 }),
+  reason: Type.Optional(Type.String({ maxLength: 2000 })),
+});
+
+const DisputeResponse = Type.Object({
+  disputeId: UuidSchema,
 });
 
 // Web only consumes `slug` from this response (drives the post-verify
@@ -207,6 +224,84 @@ export async function signupRoutes(app: FastifyInstance) {
           tenantId: result.tenantId,
           email: result.email,
         },
+      });
+    },
+  );
+
+  /** POST /v1/public/signup/dispute — file a dispute for a claimed domain. */
+  app.post(
+    "/public/signup/dispute",
+    {
+      config: { rateLimit: { max: 5, timeWindow: "1 hour" } },
+      schema: {
+        tags: ["Public Signup"],
+        body: DisputeBody,
+        headers: CaptchaHeader,
+        response: {
+          201: DataResponse(DisputeResponse),
+          400: ProblemDetailSchema,
+          409: ProblemDetailSchema,
+          429: Type.Any(),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as {
+        email: string;
+        firstName: string;
+        lastName: string;
+        reason?: string;
+      };
+      const headers = request.headers as { "x-captcha-token"?: string };
+
+      const captcha = await defaultCaptchaVerifier.verify(
+        headers["x-captcha-token"],
+        clientIp(request),
+      );
+      if (!captcha.ok) {
+        request.log.warn({ reason: captcha.reason }, "signup_dispute.captcha_rejected");
+        return reply
+          .status(400)
+          .send(problemDetail(400, "Dispute rejected", "Dispute could not be submitted."));
+      }
+
+      const ipHash = hashIp(clientIp(request));
+      const userAgent =
+        typeof request.headers["user-agent"] === "string"
+          ? request.headers["user-agent"].slice(0, 512)
+          : undefined;
+
+      const result = await openDomainDispute({ ...body, ipHash, userAgent });
+
+      if (!result.ok) {
+        if (result.error === "no_conflict" || result.error === "invalid_email") {
+          return reply
+            .status(404)
+            .send(
+              problemDetail(
+                404,
+                "No conflict",
+                "This domain is not currently claimed or the email is invalid.",
+              ),
+            );
+        }
+        if (result.error === "already_disputed") {
+          return reply
+            .status(409)
+            .send(
+              problemDetail(
+                409,
+                "Already disputed",
+                "A dispute has already been filed for this email.",
+              ),
+            );
+        }
+        return reply.status(400).send(problemDetail(400, "Error", "Could not open dispute"));
+      }
+
+      return reply.status(201).send({
+        data: { disputeId: result.disputeId },
       });
     },
   );

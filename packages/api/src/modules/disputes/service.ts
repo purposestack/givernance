@@ -16,7 +16,9 @@ import {
   auditLogs,
   outboxEvents,
   type TenantAdminDisputeResolution,
+  type TenantDisputeState,
   tenantAdminDisputes,
+  tenantDisputes,
   tenants,
   users,
 } from "@givernance/shared/schema";
@@ -429,6 +431,121 @@ export async function getDispute(id: string): Promise<DisputeRow | null> {
   if (!isUuid(id)) return null;
   const list = await listDisputes({});
   return list.find((r) => r.id === id) ?? null;
+}
+
+// ─── External Domain Disputes ───────────────────────────────────────────────
+
+export interface DomainDisputeRow {
+  id: string;
+  orgId: string;
+  orgSlug: string;
+  orgName: string;
+  claimerEmail: string;
+  claimerFirstName: string | null;
+  claimerLastName: string | null;
+  reason: string | null;
+  state: string;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export async function listDomainDisputes(filter: { open?: boolean }): Promise<DomainDisputeRow[]> {
+  const whereCondition = filter.open ? eq(tenantDisputes.state, "open") : undefined;
+  const rows = await db
+    .select({
+      id: tenantDisputes.id,
+      orgId: tenantDisputes.orgId,
+      orgSlug: tenants.slug,
+      orgName: tenants.name,
+      claimerEmail: tenantDisputes.claimerEmail,
+      claimerFirstName: tenantDisputes.claimerFirstName,
+      claimerLastName: tenantDisputes.claimerLastName,
+      reason: tenantDisputes.reason,
+      state: tenantDisputes.state,
+      resolvedAt: tenantDisputes.resolvedAt,
+      createdAt: tenantDisputes.createdAt,
+    })
+    .from(tenantDisputes)
+    .innerJoin(tenants, eq(tenantDisputes.orgId, tenants.id))
+    .where(whereCondition ?? sql`true`)
+    .orderBy(sql`${tenantDisputes.createdAt} DESC`)
+    .limit(200);
+
+  return rows.map((r) => ({
+    id: r.id,
+    orgId: r.orgId,
+    orgSlug: r.orgSlug,
+    orgName: r.orgName,
+    claimerEmail: r.claimerEmail,
+    claimerFirstName: r.claimerFirstName,
+    claimerLastName: r.claimerLastName,
+    reason: r.reason,
+    state: r.state,
+    resolvedAt: r.resolvedAt?.toISOString() ?? null,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export async function getDomainDispute(id: string): Promise<DomainDisputeRow | null> {
+  if (!isUuid(id)) return null;
+  const list = await listDomainDisputes({});
+  return list.find((r) => r.id === id) ?? null;
+}
+
+export interface ResolveDomainDisputeInput {
+  disputeId: string;
+  state: TenantDisputeState;
+  resolverUserKeycloakSub: string;
+  audit: {
+    ipHash?: string;
+    userAgent?: string;
+  };
+}
+
+export async function resolveDomainDispute(
+  input: ResolveDomainDisputeInput,
+): Promise<{ ok: boolean; state?: string }> {
+  if (!isUuid(input.disputeId)) return { ok: false };
+
+  const [dispute] = await db
+    .select({ id: tenantDisputes.id, orgId: tenantDisputes.orgId, state: tenantDisputes.state })
+    .from(tenantDisputes)
+    .where(eq(tenantDisputes.id, input.disputeId))
+    .limit(1);
+
+  if (!dispute || dispute.state !== "open") return { ok: false };
+
+  const [resolverUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.keycloakId, input.resolverUserKeycloakSub))
+    .limit(1);
+  const resolverUserId = resolverUser?.id ?? null;
+
+  await withTenantContext(dispute.orgId, async (tx) => {
+    await tx
+      .update(tenantDisputes)
+      .set({
+        state: input.state,
+        resolvedAt: new Date(),
+        resolvedBy: resolverUserId,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantDisputes.id, dispute.id));
+
+    await tx.insert(auditLogs).values({
+      orgId: dispute.orgId,
+      userId: resolverUserId,
+      action: `tenant.domain_dispute_${input.state}`,
+      resourceType: "tenant_dispute",
+      resourceId: dispute.id,
+      newValues: { state: input.state },
+      ipHash: input.audit.ipHash,
+      userAgent: input.audit.userAgent,
+    });
+  });
+
+  return { ok: true, state: input.state };
 }
 
 // ─── Expire job: clear provisional_until past the grace window ──────────────

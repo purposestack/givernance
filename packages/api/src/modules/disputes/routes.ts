@@ -20,7 +20,15 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
-import { getDispute, listDisputes, openDispute, resolveDispute } from "./service.js";
+import {
+  getDispute,
+  getDomainDispute,
+  listDisputes,
+  listDomainDisputes,
+  openDispute,
+  resolveDispute,
+  resolveDomainDispute,
+} from "./service.js";
 
 const TenantOrgIdParams = Type.Object({ orgId: UuidSchema });
 const DisputeIdParams = Type.Object({ id: UuidSchema });
@@ -56,6 +64,32 @@ const DisputeResolveBody = Type.Object({
 
 const DisputeResolveResponse = Type.Object({
   resolution: Type.String(),
+});
+
+const DomainDisputeRowSchema = Type.Object({
+  id: UuidSchema,
+  orgId: UuidSchema,
+  orgSlug: Type.String(),
+  orgName: Type.String(),
+  claimerEmail: Type.String(),
+  claimerFirstName: Type.Union([Type.String(), Type.Null()]),
+  claimerLastName: Type.Union([Type.String(), Type.Null()]),
+  reason: Type.Union([Type.String(), Type.Null()]),
+  state: Type.String(),
+  resolvedAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+
+const DomainDisputeResolveBody = Type.Object({
+  state: Type.Union([
+    Type.Literal("resolved_kept"),
+    Type.Literal("resolved_transferred"),
+    Type.Literal("rejected"),
+  ]),
+});
+
+const DomainDisputeResolveResponse = Type.Object({
+  state: Type.String(),
 });
 
 function hashIp(ip: string | undefined): string | undefined {
@@ -214,6 +248,92 @@ export async function disputeRoutes(app: FastifyInstance) {
       }
 
       return reply.send({ data: { resolution: res.resolution } });
+    },
+  );
+
+  /** GET /v1/admin/domain-disputes — super-admin domain triage queue. */
+  app.get(
+    "/admin/domain-disputes",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Disputes"],
+        querystring: DisputeListQuery,
+        response: {
+          200: DataArrayResponseNoPagination(DomainDisputeRowSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const query = request.query as { open?: boolean };
+      const rows = await listDomainDisputes({ open: query.open });
+      return reply.send({ data: rows });
+    },
+  );
+
+  /** GET /v1/admin/domain-disputes/:id — super-admin domain detail. */
+  app.get(
+    "/admin/domain-disputes/:id",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Disputes"],
+        params: DisputeIdParams,
+        response: {
+          200: DataResponse(DomainDisputeRowSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const row = await getDomainDispute(id);
+      if (!row)
+        return reply.status(404).send(problemDetail(404, "Not Found", "Domain dispute not found."));
+      return reply.send({ data: row });
+    },
+  );
+
+  /** PATCH /v1/admin/domain-disputes/:id — super-admin domain resolution. */
+  app.patch(
+    "/admin/domain-disputes/:id",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Disputes"],
+        params: DisputeIdParams,
+        body: DomainDisputeResolveBody,
+        response: {
+          200: DataResponse(DomainDisputeResolveResponse),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const body = request.body as { state: "resolved_kept" | "resolved_transferred" | "rejected" };
+      const authClaims = request.auth;
+      if (!authClaims) {
+        return reply
+          .status(401)
+          .send(problemDetail(401, "Unauthorized", "Authentication required."));
+      }
+
+      const res = await resolveDomainDispute({
+        disputeId: id,
+        state: body.state,
+        resolverUserKeycloakSub: authClaims.userId,
+        audit: audit(request),
+      });
+
+      if (!res.ok) {
+        return reply
+          .status(400)
+          .send(problemDetail(400, "Cannot resolve", "Could not resolve domain dispute."));
+      }
+
+      return reply.send({ data: { state: res.state } });
     },
   );
 }
