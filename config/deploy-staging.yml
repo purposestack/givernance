@@ -115,6 +115,8 @@ accessories:
         KEYCLOAK_ADMIN: admin
         KC_HOSTNAME: auth.staging.givernance.org
         KC_PROXY_HEADERS: xforwarded
+        KC_HOSTNAME_STRICT: "false"
+        KC_HTTP_ENABLED: "true"
       secret:
         - KC_DB_PASSWORD
         - KEYCLOAK_ADMIN_PASSWORD
