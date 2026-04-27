@@ -1,3 +1,4 @@
+import { isSupportedLocale } from "@givernance/shared/i18n";
 import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import {
@@ -82,8 +83,24 @@ export async function GET(request: NextRequest) {
     params.set("kc_org", orgAlias);
   }
 
-  // Store OIDC flow params in httpOnly cookies for validation in callback
+  // Drive the Keycloak login page language from the app's selected locale.
+  // Priority: ?locale query param (set by the /login page picker) → NEXT_LOCALE
+  // cookie (persisted preference). Keycloak sets its own KEYCLOAK_LOCALE cookie
+  // from this hint, so the user never sees a second language picker on the
+  // credentials page.
   const jar = await cookies();
+  const localeParam = new URL(request.url).searchParams.get("locale");
+  const cookieLocale = jar.get("NEXT_LOCALE")?.value;
+  const kcLocale = isSupportedLocale(localeParam)
+    ? localeParam
+    : isSupportedLocale(cookieLocale)
+      ? cookieLocale
+      : null;
+  if (kcLocale) {
+    params.set("kc_locale", kcLocale);
+  }
+
+  // Store OIDC flow params in httpOnly cookies for validation in callback
   const opts = oidcFlowCookieOptions();
   jar.set(OIDC_STATE_COOKIE, state, opts);
   jar.set(OIDC_VERIFIER_COOKIE, codeVerifier, opts);

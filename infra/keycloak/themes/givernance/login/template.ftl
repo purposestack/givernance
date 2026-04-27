@@ -61,25 +61,6 @@
 <div class="gv-auth-page">
   <div class="gv-auth-card">
 
-    <#-- Locale picker (only when i18n is enabled and multiple locales exist).
-         Uses a <select> with id + name (required to silence the browser
-         accessibility warning). The selected option is determined by comparing
-         l.languageTag to the current language tag so the dropdown always
-         reflects the active locale. Navigation via window.location.href
-         follows l.url — Keycloak sets the KEYCLOAK_LOCALE cookie and redirects
-         back to the same auth page with the new locale active. -->
-    <#if locale?? && locale.supported?? && (locale.supported?size > 1)>
-      <div class="gv-locale-picker">
-        <select id="kc-locale-select" name="locale" class="gv-locale-select"
-                aria-label="${msg('selectLocale')!'Language'}"
-                onchange="window.location.href=this.value;">
-          <#list locale.supported as l>
-            <option value="${l.url}"<#if (l.languageTag!'') == currentLang> selected</#if>>${l.label}</option>
-          </#list>
-        </select>
-      </div>
-    </#if>
-
     <#-- Logo / brand -->
     <div class="gv-auth-header">
       <#if gvOrgLogoUrl?has_content>
@@ -145,6 +126,32 @@
   <#list scripts as script>
     <script src="${script}" type="text/javascript"></script>
   </#list>
+</#if>
+
+<#-- Auto-apply kc_locale hint from URL.
+     The app passes kc_locale=<lang> in the OIDC auth URL so Keycloak picks
+     up the user's language selection. Keycloak forwards the param to the
+     login-actions URL, but in KC 26 the KEYCLOAK_LOCALE cookie takes
+     precedence over the URL param during page rendering — so a stale cookie
+     overrides the hint. This script detects the mismatch and navigates to
+     the Keycloak locale-switch URL (l.url) for the requested locale, which
+     updates the cookie and re-renders the page correctly. One redirect at
+     most — after the switch, kc_locale matches currentLang and the guard
+     short-circuits. -->
+<#if locale?? && locale.supported?? && (locale.supported?size > 1)>
+<script>
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var requested = params.get('kc_locale');
+    if (!requested || requested === '${currentLang?js_string}') return;
+    <#list locale.supported as l>
+    if ('${(l.languageTag!'')?js_string}' === requested) {
+      window.location.replace('${l.url?js_string?no_esc}');
+      return;
+    }
+    </#list>
+  }());
+</script>
 </#if>
 
 </body>
