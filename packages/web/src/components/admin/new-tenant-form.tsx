@@ -51,6 +51,8 @@ interface NewTenantFormValues {
   name: string;
   slug: string;
   firstAdminEmail: string;
+  firstAdminFirstName: string;
+  firstAdminLastName: string;
   firstAdminLocale: FirstAdminLocaleChoice;
 }
 
@@ -102,6 +104,8 @@ export function NewTenantForm() {
       name: "",
       slug: "",
       firstAdminEmail: "",
+      firstAdminFirstName: "",
+      firstAdminLastName: "",
       firstAdminLocale: FOLLOW_TENANT,
     },
   });
@@ -150,6 +154,8 @@ export function NewTenantForm() {
     }
 
     const firstAdminEmail = values.firstAdminEmail.trim();
+    const firstAdminFirstName = values.firstAdminFirstName.trim();
+    const firstAdminLastName = values.firstAdminLastName.trim();
     const successMessage = t("success");
     const inviteFailedMessage = t("errors.inviteFailed");
     // FOLLOW_TENANT → null on the wire (fall back to tenant default).
@@ -158,6 +164,8 @@ export function NewTenantForm() {
     await maybePairWithFirstAdminInvite({
       tenantId: createdTenantId,
       firstAdminEmail,
+      firstAdminFirstName,
+      firstAdminLastName,
       firstAdminLocale,
       onAnyOutcome: () => router.refresh(),
       onSuccess: () => {
@@ -249,6 +257,52 @@ export function NewTenantForm() {
           title={t("sections.firstAdmin.title")}
           description={t("sections.firstAdmin.description")}
         >
+          <FormField
+            control={form.control}
+            name="firstAdminFirstName"
+            rules={{
+              maxLength: { value: 255, message: t("errors.firstAdminNameTooLong") },
+            }}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t("fields.firstAdminFirstName")}</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    autoComplete="given-name"
+                    placeholder={t("fields.firstAdminFirstNamePlaceholder")}
+                    maxLength={255}
+                  />
+                </FormControl>
+                <FormDescription>{t("fields.firstAdminNameHint")}</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="firstAdminLastName"
+            rules={{
+              maxLength: { value: 255, message: t("errors.firstAdminNameTooLong") },
+            }}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t("fields.firstAdminLastName")}</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    autoComplete="family-name"
+                    placeholder={t("fields.firstAdminLastNamePlaceholder")}
+                    maxLength={255}
+                  />
+                </FormControl>
+                <FormDescription>{t("fields.firstAdminNameHint")}</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
           <FormField
             control={form.control}
             name="firstAdminEmail"
@@ -389,21 +443,37 @@ function stashFreshFirstAdminToken(tenantId: string, token: string): void {
 async function maybePairWithFirstAdminInvite(input: {
   tenantId: string;
   firstAdminEmail: string;
+  firstAdminFirstName: string;
+  firstAdminLastName: string;
   /** `null` = follow tenant default; `'en' | 'fr'` = explicit pre-pick. */
   firstAdminLocale: Locale | null;
   onAnyOutcome: () => void;
   onSuccess: () => void;
   onInviteFailure: () => void;
 }): Promise<void> {
-  const { tenantId, firstAdminEmail, firstAdminLocale, onAnyOutcome, onSuccess, onInviteFailure } =
-    input;
+  const {
+    tenantId,
+    firstAdminEmail,
+    firstAdminFirstName,
+    firstAdminLastName,
+    firstAdminLocale,
+    onAnyOutcome,
+    onSuccess,
+    onInviteFailure,
+  } = input;
   if (firstAdminEmail.length === 0) {
     onSuccess();
     onAnyOutcome();
     return;
   }
   try {
-    const invite = await inviteFirstAdmin(tenantId, firstAdminEmail, firstAdminLocale);
+    const invite = await inviteFirstAdmin(
+      tenantId,
+      firstAdminEmail,
+      firstAdminLocale,
+      firstAdminFirstName,
+      firstAdminLastName,
+    );
     stashFreshFirstAdminToken(tenantId, invite.invitationToken);
     onSuccess();
   } catch {
@@ -432,12 +502,10 @@ function handleApiError(
   if (error instanceof ApiProblem) {
     if (error.status === 409) {
       form.setError("slug", { type: "server", message: copy.slugTaken });
-      toast.error(copy.slugTaken);
       return;
     }
     if (error.status === 422) {
       form.setError("slug", { type: "server", message: copy.slugSyntax });
-      toast.error(copy.slugSyntax);
       return;
     }
     if (error.status === 502) {

@@ -206,6 +206,8 @@ const LifecycleResponse = Type.Object({
 
 const InviteFirstAdminBody = Type.Object({
   email: Type.String({ format: "email", maxLength: 255 }),
+  firstName: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+  lastName: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
   /**
    * Optional BCP-47 locale picked by the super-admin at create time
    * (issue #153 follow-up). When set, persists on `invitations.locale`,
@@ -536,10 +538,17 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const body = request.body as { email: string; locale?: "en" | "fr" | null };
+      const body = request.body as {
+        email: string;
+        firstName?: string;
+        lastName?: string;
+        locale?: "en" | "fr" | null;
+      };
       const res = await inviteFirstEnterpriseUser({
         orgId: id,
         email: body.email,
+        firstName: body.firstName,
+        lastName: body.lastName,
         locale: body.locale ?? null,
         audit: auditFromRequest(request),
       });

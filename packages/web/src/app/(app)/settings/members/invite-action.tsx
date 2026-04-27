@@ -60,10 +60,14 @@ export function InviteAction({ tenantDefaultLocale }: InviteActionProps) {
   const router = useRouter();
   const t = useTranslations("settings.members");
   const emailId = useId();
+  const firstNameId = useId();
+  const lastNameId = useId();
   const roleId = useId();
   const localeId = useId();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<InvitationRole>("user");
   // Default to "follow tenant" so the existing one-click invite behaviour
   // is preserved — admins who don't care about per-invitee language don't
@@ -75,6 +79,8 @@ export function InviteAction({ tenantDefaultLocale }: InviteActionProps) {
 
   const reset = useCallback(() => {
     setEmail("");
+    setFirstName("");
+    setLastName("");
     setRole("user");
     setLocaleChoice(FOLLOW_TENANT);
     setError(null);
@@ -101,6 +107,8 @@ export function InviteAction({ tenantDefaultLocale }: InviteActionProps) {
       try {
         await InvitationService.createInvitation(createClientApiClient(), {
           email: trimmed,
+          firstName,
+          lastName,
           role,
           // FOLLOW_TENANT → null on the wire; the API persists NULL on
           // `invitations.locale` and the resolver falls through to
@@ -121,7 +129,7 @@ export function InviteAction({ tenantDefaultLocale }: InviteActionProps) {
         setSubmitting(false);
       }
     },
-    [email, handleClose, localeChoice, role, router, t],
+    [email, firstName, handleClose, lastName, localeChoice, role, router, t],
   );
 
   return (
@@ -147,6 +155,30 @@ export function InviteAction({ tenantDefaultLocale }: InviteActionProps) {
                 {error}
               </div>
             ) : null}
+
+            <div className="space-y-2">
+              <Label htmlFor={firstNameId}>{t("invite.fields.firstName")}</Label>
+              <Input
+                id={firstNameId}
+                autoComplete="given-name"
+                maxLength={255}
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder={t("invite.fields.firstNamePlaceholder")}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor={lastNameId}>{t("invite.fields.lastName")}</Label>
+              <Input
+                id={lastNameId}
+                autoComplete="family-name"
+                maxLength={255}
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder={t("invite.fields.lastNamePlaceholder")}
+              />
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor={emailId} required>

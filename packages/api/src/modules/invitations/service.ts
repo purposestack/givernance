@@ -140,6 +140,8 @@ async function resolveInviteeLocale(
 export interface CreateInvitationInput {
   orgId: string;
   email: string;
+  firstName?: string;
+  lastName?: string;
   role?: InviteRole;
   /**
    * Optional BCP-47 locale picked by the inviting org_admin (issue #153
@@ -159,6 +161,8 @@ export interface CreateInvitationResult {
   id: string;
   orgId: string;
   email: string;
+  firstName: string | null;
+  lastName: string | null;
   role: InviteRole;
   invitedById: string | null;
   acceptedAt: Date | null;
@@ -188,6 +192,8 @@ export async function createTeamInvitation(
   { ok: true; data: CreateInvitationResult } | { ok: false; error: CreateInvitationError }
 > {
   const normalisedEmail = input.email.trim().toLowerCase();
+  const firstName = normalizeOptionalInvitationName(input.firstName);
+  const lastName = normalizeOptionalInvitationName(input.lastName);
   const role: InviteRole = input.role ?? "user";
 
   // Pre-flight: is this email already a member of the tenant? `users` is
@@ -251,6 +257,8 @@ export async function createTeamInvitation(
       .values({
         orgId: input.orgId,
         email: normalisedEmail,
+        firstName,
+        lastName,
         role,
         invitedById: inviter?.id ?? null,
         purpose: "team_invite",
@@ -261,6 +269,8 @@ export async function createTeamInvitation(
         id: invitations.id,
         orgId: invitations.orgId,
         email: invitations.email,
+        firstName: invitations.firstName,
+        lastName: invitations.lastName,
         role: invitations.role,
         invitedById: invitations.invitedById,
         acceptedAt: invitations.acceptedAt,
@@ -983,7 +993,12 @@ export async function getTeamInvitationForOrg(
  * (if any) is honoured here so the invitee opens the form already in
  * the right language without an extra click.
  */
-export type ProbeTeamInvitationResult = { ok: true; defaultLocale: Locale } | null;
+export type ProbeTeamInvitationResult = {
+  ok: true;
+  defaultLocale: Locale;
+  firstName: string | null;
+  lastName: string | null;
+} | null;
 
 /**
  * Public, side-effect-free check that a token is currently acceptable.
@@ -1019,6 +1034,8 @@ export async function probeTeamInvitation(token: string): Promise<ProbeTeamInvit
       acceptedAt: invitations.acceptedAt,
       expiresAt: invitations.expiresAt,
       invitationLocale: invitations.locale,
+      firstName: invitations.firstName,
+      lastName: invitations.lastName,
       tenantDefaultLocale: tenants.defaultLocale,
     })
     .from(invitations)
@@ -1037,5 +1054,16 @@ export async function probeTeamInvitation(token: string): Promise<ProbeTeamInvit
   const defaultLocale: Locale = isSupportedLocale(row.invitationLocale)
     ? row.invitationLocale
     : tenantDefaultLocale;
-  return { ok: true, defaultLocale };
+  return {
+    ok: true,
+    defaultLocale,
+    firstName: row.firstName?.trim() || null,
+    lastName: row.lastName?.trim() || null,
+  };
+}
+
+function normalizeOptionalInvitationName(value: string | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }

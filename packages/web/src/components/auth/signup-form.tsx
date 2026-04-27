@@ -386,7 +386,7 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
               render={({ field }) => (
                 <FormItem>
                   <FormLabel required>{t("fields.slug")}</FormLabel>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="flex flex-col gap-2">
                     <span className="shrink-0 text-sm text-text-muted">givernance.app/</span>
                     <FormControl>
                       <Input

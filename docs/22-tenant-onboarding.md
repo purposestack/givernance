@@ -107,10 +107,11 @@ The NPO's users then follow the JIT flow (same as §2.4 of `docs/21-authenticati
 
 Existing invitations flow (see [`packages/api/src/modules/invitations/routes.ts`](../packages/api/src/modules/invitations/routes.ts)) is extended:
 
-1. `org_admin` invites an email from **Settings → Team**.
+1. `org_admin` invites an email from **Settings → Team** and can optionally seed first name / last name on the invitation.
 2. Invitation email carries a Keycloak-hosted accept link; invitee authenticates via the tenant's bound IdP (if any) or the realm's local authenticator (magic link / password).
-3. On successful auth, JIT-provisions a `users` row in the target tenant with the role specified on the invitation.
-4. If the invitee is already in a Keycloak Organization, they now belong to **two** (or more) — the Org picker handles that.
+3. The accept screen pre-fills those seeded names while still letting the invitee edit them before submit.
+4. On successful auth, JIT-provisions a `users` row in the target tenant with the role specified on the invitation.
+5. If the invitee is already in a Keycloak Organization, they now belong to **two** (or more) — the Org picker handles that.
 
 ## 4. Data model additions
 

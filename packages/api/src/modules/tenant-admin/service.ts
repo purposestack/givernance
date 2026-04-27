@@ -1015,6 +1015,8 @@ const FIRST_ADMIN_INVITATION_TTL_DAYS = 7;
 export async function inviteFirstEnterpriseUser(input: {
   orgId: string;
   email: string;
+  firstName?: string;
+  lastName?: string;
   /**
    * Optional super-admin pre-pick of the welcome-email language (issue
    * #153 follow-up). Persisted on `invitations.locale`. When NULL the
@@ -1029,6 +1031,8 @@ export async function inviteFirstEnterpriseUser(input: {
   | { ok: false; error: "tenant_not_found" | "already_accepted" }
 > {
   if (!isUuid(input.orgId)) return { ok: false, error: "tenant_not_found" };
+  const firstName = normalizeOptionalInvitationName(input.firstName);
+  const lastName = normalizeOptionalInvitationName(input.lastName);
   const [tenant] = await db
     .select({
       id: tenants.id,
@@ -1072,6 +1076,8 @@ export async function inviteFirstEnterpriseUser(input: {
       .values({
         orgId: input.orgId,
         email: input.email.trim().toLowerCase(),
+        firstName,
+        lastName,
         role: "org_admin",
         purpose: "team_invite",
         expiresAt,
@@ -1108,6 +1114,12 @@ export async function inviteFirstEnterpriseUser(input: {
   // biome-ignore lint/style/noNonNullAssertion: returning() yields one row
   const r = result!;
   return { ok: true, invitationId: r.id, token: r.token, expiresAt: r.expiresAt };
+}
+
+function normalizeOptionalInvitationName(value: string | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 // ─── Resend / revoke first-admin invitation (super-admin) ──────────────────

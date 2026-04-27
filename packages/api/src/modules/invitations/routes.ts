@@ -51,6 +51,8 @@ const RoleSchema = Type.Union([
 
 const CreateInvitationBody = Type.Object({
   email: Type.String({ format: "email", maxLength: 255 }),
+  firstName: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+  lastName: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
   role: Type.Optional(RoleSchema),
   /**
    * Optional BCP-47 locale picked by the inviting org_admin. When set,
@@ -123,6 +125,8 @@ const AcceptResponse = Type.Object({
  */
 const ProbeResponse = Type.Object({
   defaultLocale: LocaleSchema,
+  firstName: Type.Union([Type.String(), Type.Null()]),
+  lastName: Type.Union([Type.String(), Type.Null()]),
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -186,6 +190,8 @@ export async function invitationRoutes(app: FastifyInstance) {
       const orgId = request.auth?.orgId as string;
       const body = request.body as {
         email: string;
+        firstName?: string;
+        lastName?: string;
         role?: "org_admin" | "user" | "viewer";
         locale?: "en" | "fr" | null;
       };
@@ -193,6 +199,8 @@ export async function invitationRoutes(app: FastifyInstance) {
       const result = await createTeamInvitation({
         orgId,
         email: body.email,
+        firstName: body.firstName,
+        lastName: body.lastName,
         role: body.role,
         locale: body.locale ?? null,
         inviterKeycloakId: userId,
@@ -392,7 +400,11 @@ export async function invitationRoutes(app: FastifyInstance) {
           );
       }
       return reply.status(200).send({
-        data: { defaultLocale: result.defaultLocale },
+        data: {
+          defaultLocale: result.defaultLocale,
+          firstName: result.firstName,
+          lastName: result.lastName,
+        },
       });
     },
   );
