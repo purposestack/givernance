@@ -150,9 +150,13 @@ export async function inviteFirstAdmin(
    * — same fallback). Issue #153 follow-up.
    */
   locale: Locale | null | undefined = undefined,
+  firstName?: string,
+  lastName?: string,
 ): Promise<InviteFirstAdminResult> {
   const api = createClientApiClient();
   const body: Record<string, unknown> = { email: email.trim().toLowerCase() };
+  if (firstName?.trim()) body.firstName = firstName.trim();
+  if (lastName?.trim()) body.lastName = lastName.trim();
   if (locale !== undefined) body.locale = locale;
   const res = await api.post<{ data: InviteFirstAdminResult }>(
     `/v1/superadmin/tenants/${encodeURIComponent(tenantId)}/first-admin-invitations`,

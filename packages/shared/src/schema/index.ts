@@ -213,6 +213,13 @@ export const invitations = pgTable(
     role: userRoleEnum("role").notNull().default("user"),
     token: uuid("token").notNull().defaultRandom().unique(),
     invitedById: uuid("invited_by_id").references(() => users.id, { onDelete: "set null" }),
+    /**
+     * Optional invitee profile seed captured at invite time. Used to
+     * pre-fill the public accept form while still letting the invitee
+     * edit the values before account creation.
+     */
+    firstName: varchar("first_name", { length: 255 }),
+    lastName: varchar("last_name", { length: 255 }),
     purpose: varchar("purpose", { length: 32 })
       .notNull()
       .default("team_invite")

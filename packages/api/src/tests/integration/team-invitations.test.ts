@@ -1150,6 +1150,35 @@ describe("POST /v1/invitations/:token/accept", () => {
     expect(body.data.defaultLocale).toBe("fr");
   });
 
+  it("probe response carries invite-time first and last name when provided", async () => {
+    const f = await makeFixture({ defaultLocale: "fr" });
+    const email = `probe-prefill-${randomUUID().slice(0, 6)}+${f.slug}@example.org`;
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email, role: "user", firstName: "Alice", lastName: "Martin" },
+    });
+    expect(create.statusCode).toBe(201);
+
+    const [invitation] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(and(eq(invitations.orgId, f.orgId), eq(invitations.email, email)))
+      .limit(1);
+
+    const probe = await app.inject({
+      method: "GET",
+      url: `/v1/invitations/${invitation?.token}/probe`,
+    });
+    expect(probe.statusCode).toBe(200);
+    const body = probe.json() as {
+      data: { defaultLocale: string; firstName: string | null; lastName: string | null };
+    };
+    expect(body.data.firstName).toBe("Alice");
+    expect(body.data.lastName).toBe("Martin");
+  });
+
   // ─── Per-invitation locale (admin pre-pick) — issue #153 follow-up ────
 
   it("POST /v1/invitations { locale } persists invitations.locale and stamps the email payload", async () => {

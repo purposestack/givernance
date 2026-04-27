@@ -104,6 +104,8 @@ function AcceptContent() {
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [firstNameDirty, setFirstNameDirty] = useState(false);
+  const [lastNameDirty, setLastNameDirty] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "done">("idle");
@@ -155,6 +157,8 @@ function AcceptContent() {
         if (result.kind === "valid") {
           setInvitationDefaultLocale(result.defaultLocale);
           setSelectedLocale(result.defaultLocale);
+          if (!firstNameDirty && result.firstName) setFirstName(result.firstName);
+          if (!lastNameDirty && result.lastName) setLastName(result.lastName);
         }
       } else {
         setTokenProbe("invalid");
@@ -163,7 +167,7 @@ function AcceptContent() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [firstNameDirty, lastNameDirty, token]);
 
   const handleSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
@@ -375,7 +379,10 @@ function AcceptContent() {
               autoComplete="given-name"
               required
               value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
+              onChange={(e) => {
+                setFirstNameDirty(true);
+                setFirstName(e.target.value);
+              }}
               maxLength={255}
             />
           </div>
@@ -389,7 +396,10 @@ function AcceptContent() {
               autoComplete="family-name"
               required
               value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
+              onChange={(e) => {
+                setLastNameDirty(true);
+                setLastName(e.target.value);
+              }}
               maxLength={255}
             />
           </div>

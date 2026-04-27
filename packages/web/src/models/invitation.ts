@@ -34,6 +34,8 @@ export interface InvitationListResponse {
 
 export interface InvitationCreateInput {
   email: string;
+  firstName?: string;
+  lastName?: string;
   role?: InvitationRole;
   /**
    * Optional BCP-47 locale picked by the inviting org_admin. When set,

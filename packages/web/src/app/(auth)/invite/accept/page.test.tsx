@@ -118,6 +118,30 @@ describe("InviteAcceptPage — session-detection prompt", () => {
 });
 
 describe("InviteAcceptPage — token probe (PR #154 follow-up)", () => {
+  it("pre-fills first and last name from the invitation probe while keeping them editable", async () => {
+    const user = userEvent.setup();
+    stubRoutedFetch({
+      probe: () =>
+        new Response(
+          JSON.stringify({
+            data: { defaultLocale: "fr", firstName: "Alice", lastName: "Martin" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    });
+
+    render(<InviteAcceptPage />);
+
+    const firstName = await screen.findByLabelText(/First name/);
+    const lastName = screen.getByLabelText(/Last name/);
+    expect(firstName).toHaveValue("Alice");
+    expect(lastName).toHaveValue("Martin");
+
+    await user.clear(firstName);
+    await user.type(firstName, "Alicia");
+    expect(firstName).toHaveValue("Alicia");
+  });
+
   it("short-circuits to the terminal screen when the probe returns 410", async () => {
     stubRoutedFetch({
       probe: () =>

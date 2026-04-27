@@ -32,6 +32,7 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
     const page = await CampaignPublicPageService.getPublishedCampaignPublicPage(client, id);
     const colorPrimary = page.colorPrimary ?? DEFAULT_THEME_COLOR;
     const onPrimary = getReadableTextColor(colorPrimary);
+    const hasGoal = page.goalAmountCents !== null && page.goalAmountCents > 0;
 
     return (
       <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(9,100,71,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
@@ -69,15 +70,15 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
                 </p>
               </div>
 
-              <div className="grid gap-4 border-t border-outline-variant px-5 py-5 sm:grid-cols-2 sm:px-8 sm:py-6 lg:px-10 lg:py-8">
-                <Metric
-                  label={t("metrics.goal")}
-                  value={
-                    page.goalAmountCents !== null
-                      ? formatCurrency(page.goalAmountCents, locale)
-                      : t("metrics.goalFallback")
-                  }
-                />
+              <div
+                className={`grid gap-4 border-t border-outline-variant px-5 py-5 sm:px-8 sm:py-6 lg:px-10 lg:py-8 ${hasGoal ? "sm:grid-cols-2" : ""}`}
+              >
+                {hasGoal ? (
+                  <Metric
+                    label={t("metrics.goal")}
+                    value={formatCurrency(page.goalAmountCents, locale)}
+                  />
+                ) : null}
                 <Metric label={t("metrics.trust")} value={t("metrics.trustValue")} />
               </div>
             </section>

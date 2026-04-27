@@ -31,6 +31,8 @@ export const InvitationService = {
 
   async createInvitation(client: ApiClient, input: InvitationCreateInput): Promise<Invitation> {
     const body: Record<string, unknown> = { email: input.email };
+    if (input.firstName?.trim()) body.firstName = input.firstName.trim();
+    if (input.lastName?.trim()) body.lastName = input.lastName.trim();
     if (input.role) body.role = input.role;
     // `null` is a meaningful value here ("admin chose tenant default") —
     // forward it explicitly. `undefined` is omitted from the request.
@@ -73,7 +75,7 @@ const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
  * bad-token case as a fallback.
  */
 export type InvitationProbeResult =
-  | { kind: "valid"; defaultLocale: Locale }
+  | { kind: "valid"; defaultLocale: Locale; firstName: string | null; lastName: string | null }
   | { kind: "invalid" }
   | { kind: "rate_limited" };
 
@@ -93,19 +95,36 @@ export async function probeInvitation(token: string): Promise<InvitationProbeRes
   if (res.status === 200) {
     try {
       const json = (await res.json()) as {
-        data?: { defaultLocale?: unknown; tenantDefaultLocale?: unknown };
+        data?: {
+          defaultLocale?: unknown;
+          tenantDefaultLocale?: unknown;
+          firstName?: unknown;
+          lastName?: unknown;
+        };
       };
       // Prefer the new field; fall back to the legacy `tenantDefaultLocale`
       // for one transitional release if a stale API is in flight.
       const candidate = json.data?.defaultLocale ?? json.data?.tenantDefaultLocale;
       const defaultLocale: Locale = isSupportedLocale(candidate) ? candidate : APP_DEFAULT_LOCALE;
-      return { kind: "valid", defaultLocale };
+      return {
+        kind: "valid",
+        defaultLocale,
+        firstName: typeof json.data?.firstName === "string" ? json.data.firstName : null,
+        lastName: typeof json.data?.lastName === "string" ? json.data.lastName : null,
+      };
     } catch {
-      return { kind: "valid", defaultLocale: APP_DEFAULT_LOCALE };
+      return {
+        kind: "valid",
+        defaultLocale: APP_DEFAULT_LOCALE,
+        firstName: null,
+        lastName: null,
+      };
     }
   }
   // 204 is the legacy shape — kept for transitional compat across deploy.
-  if (res.status === 204) return { kind: "valid", defaultLocale: APP_DEFAULT_LOCALE };
+  if (res.status === 204) {
+    return { kind: "valid", defaultLocale: APP_DEFAULT_LOCALE, firstName: null, lastName: null };
+  }
   if (res.status === 429) return { kind: "rate_limited" };
   return { kind: "invalid" };
 }
