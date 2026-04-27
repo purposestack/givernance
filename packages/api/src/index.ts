@@ -12,6 +12,7 @@ async function main() {
     await server.listen({ port: PORT, host: HOST });
     server.log.info(`Givernance API listening on ${HOST}:${PORT}`);
   } catch (err) {
+    console.error("FATAL ERROR ON STARTUP:", err);
     server.log.error(err);
     process.exit(1);
   }
