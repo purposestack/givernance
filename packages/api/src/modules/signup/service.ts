@@ -66,6 +66,7 @@ import {
   invitations,
   outboxEvents,
   type TenantStatus,
+  tenantDisputes,
   tenantDomains,
   tenants,
   users,
@@ -854,6 +855,102 @@ export async function lookupTenantForEmail(email: string): Promise<TenantLookupR
     return { hasExistingTenant: true, hint: "contact_admin" };
   }
   return { hasExistingTenant: false, hint: "create_new" };
+}
+
+// ─── Domain Dispute ──────────────────────────────────────────────────────────
+
+export type OpenDomainDisputeResult =
+  | { ok: true; disputeId: string }
+  | { ok: false; error: "no_conflict" | "invalid_email" | "already_disputed" };
+
+export interface OpenDomainDisputeInput {
+  email: string;
+  firstName: string;
+  lastName: string;
+  reason?: string;
+  ipHash?: string;
+  userAgent?: string;
+}
+
+export async function openDomainDispute(
+  input: OpenDomainDisputeInput,
+): Promise<OpenDomainDisputeResult> {
+  const parsed = splitEmail(input.email);
+  if (!parsed || isPersonalEmailDomain(parsed.domain)) {
+    return { ok: false, error: "invalid_email" };
+  }
+
+  // Find the tenant claiming this domain
+  const [claimed] = await systemDb
+    .select({ orgId: tenantDomains.orgId })
+    .from(tenantDomains)
+    .where(and(eq(tenantDomains.domain, parsed.domain), eq(tenantDomains.state, "verified")))
+    .limit(1);
+
+  if (!claimed) {
+    return { ok: false, error: "no_conflict" };
+  }
+
+  // Ensure this email hasn't already opened a dispute for this org
+  const [existingDispute] = await systemDb
+    .select({ id: tenantDisputes.id })
+    .from(tenantDisputes)
+    .where(
+      and(
+        eq(tenantDisputes.orgId, claimed.orgId),
+        eq(tenantDisputes.claimerEmail, input.email.trim().toLowerCase()),
+      ),
+    )
+    .limit(1);
+
+  if (existingDispute) {
+    return { ok: false, error: "already_disputed" };
+  }
+
+  const disputeId = await systemDb.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(tenantDisputes)
+      .values({
+        orgId: claimed.orgId,
+        claimerEmail: input.email.trim().toLowerCase(),
+        claimerFirstName: input.firstName.trim(),
+        claimerLastName: input.lastName.trim(),
+        reason: input.reason ?? null,
+      })
+      .returning({ id: tenantDisputes.id });
+
+    // biome-ignore lint/style/noNonNullAssertion: returning() yields one row
+    const d = row!;
+
+    await tx.insert(outboxEvents).values({
+      tenantId: claimed.orgId,
+      type: "tenant.domain_disputed",
+      payload: {
+        tenantId: claimed.orgId,
+        disputeId: d.id,
+        domain: parsed.domain,
+        claimerEmail: input.email.trim().toLowerCase(),
+      },
+    });
+
+    await tx.insert(auditLogs).values({
+      orgId: claimed.orgId,
+      userId: null,
+      action: "tenant.domain_disputed",
+      resourceType: "tenant_dispute",
+      resourceId: d.id,
+      newValues: {
+        claimerEmail: input.email.trim().toLowerCase(),
+        domain: parsed.domain,
+      },
+      ipHash: input.ipHash,
+      userAgent: input.userAgent,
+    });
+
+    return d.id;
+  });
+
+  return { ok: true, disputeId };
 }
 
 // ─── Cleanup: unverified provisional tenants ────────────────────────────────

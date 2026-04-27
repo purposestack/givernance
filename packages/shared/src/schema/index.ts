@@ -86,6 +86,14 @@ export type TenantStatus = (typeof TENANT_STATUS_VALUES)[number];
 export const TENANT_CREATED_VIA_VALUES = ["self_serve", "enterprise", "invitation"] as const;
 export type TenantCreatedVia = (typeof TENANT_CREATED_VIA_VALUES)[number];
 
+export const TENANT_DISPUTE_STATE_VALUES = [
+  "open",
+  "resolved_kept",
+  "resolved_transferred",
+  "rejected",
+] as const;
+export type TenantDisputeState = (typeof TENANT_DISPUTE_STATE_VALUES)[number];
+
 export const TENANT_DOMAIN_STATE_VALUES = ["pending_dns", "verified", "revoked"] as const;
 export type TenantDomainState = (typeof TENANT_DOMAIN_STATE_VALUES)[number];
 
@@ -311,6 +319,34 @@ export const tenantAdminDisputes = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("tenant_admin_disputes_org_id_idx").on(table.orgId)],
+);
+
+// ─── External Domain Disputes ───────────────────────────────────────────────
+
+/**
+ * Dispute log for external users claiming an already registered domain.
+ */
+export const tenantDisputes = pgTable(
+  "tenant_disputes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    claimerEmail: varchar("claimer_email", { length: 255 }).notNull(),
+    claimerFirstName: varchar("claimer_first_name", { length: 255 }),
+    claimerLastName: varchar("claimer_last_name", { length: 255 }),
+    reason: varchar("reason", { length: 2000 }),
+    state: varchar("state", { length: 32 }).notNull().default("open").$type<TenantDisputeState>(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("tenant_disputes_org_id_idx").on(table.orgId),
+    index("tenant_disputes_state_idx").on(table.state),
+  ],
 );
 
 // ─── Audit Logs ───────────────────────────────────────────────────────────────

@@ -320,8 +320,13 @@
         "resolutions": {
           "kept": "Maintenu",
           "replaced": "Remplacé",
-          "escalated_to_support": "Escaladé"
-        }
+          "escalated_to_support": "Escaladé",
+          "resolved_kept": "Domaine conservé",
+          "resolved_transferred": "Domaine transféré",
+          "rejected": "Rejeté"
+        },
+        "domainSectionTitle": "Litiges de domaine ({count})",
+        "emptyDomain": "Aucun litige de domaine."
       },
       "detail": {
         "title": "Litige — {name}",

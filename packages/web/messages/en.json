@@ -320,8 +320,13 @@
         "resolutions": {
           "kept": "Kept",
           "replaced": "Replaced",
-          "escalated_to_support": "Escalated"
-        }
+          "escalated_to_support": "Escalated",
+          "resolved_kept": "Domain Kept",
+          "resolved_transferred": "Domain Transferred",
+          "rejected": "Rejected"
+        },
+        "domainSectionTitle": "Domain Disputes ({count})",
+        "emptyDomain": "No domain disputes open."
       },
       "detail": {
         "title": "Dispute — {name}",
