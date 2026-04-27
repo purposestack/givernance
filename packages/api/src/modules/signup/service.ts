@@ -48,9 +48,7 @@
  *  - PR #143 review: KC org-adoption requires `org_id` attribute match;
  *    KC user-create 409 fails loud (no silent takeover); outbox events
  *    gated on actual state changes (no duplicate `tenant.verified` or
- *    `user.jit_provisioned` on recovery re-runs); resend payload
- *    carries `country` recovered from the original requested-event for
- *    EN/FR template selection.
+ *    `user.jit_provisioned` on recovery re-runs).
  */
 
 import { randomUUID } from "node:crypto";
@@ -291,12 +289,7 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
             tenantId: t.id,
             invitationId,
             expiresAt: expiresAt.toISOString(),
-            // Issue #153: `locale` is the authoritative field the worker reads.
-            // `country` is kept for one transitional release so in-flight jobs
-            // emitted before the worker upgrade still resolve a locale via the
-            // worker-side fallback; remove after the queue has drained.
             locale: defaultLocale,
-            country: normalisedCountry,
           },
         },
       ]);
@@ -384,12 +377,11 @@ export async function resendVerification(email: string): Promise<ResendResult> {
     .select({
       tenantId: tenants.id,
       status: tenants.status,
-      // Issue #153: read country + default_locale directly from the row so
-      // the resend payload can stamp the right `locale` without walking the
-      // outbox. Both columns are populated at signup time (or backfilled by
-      // migration 0027) so a NULL here only happens for legacy archived
-      // tenants the resend wouldn't match anyway.
-      country: tenants.country,
+      // Issue #153: read default_locale directly from the row so the resend
+      // payload can stamp the right `locale` without walking the outbox.
+      // Populated at signup time (or backfilled by migration 0027) so a NULL
+      // here only happens for legacy archived tenants the resend wouldn't
+      // match anyway.
       defaultLocale: tenants.defaultLocale,
       invitationId: invitations.id,
       invitationToken: invitations.token,
@@ -460,11 +452,7 @@ export async function resendVerification(email: string): Promise<ResendResult> {
         tenantId: row.tenantId,
         invitationId: row.invitationId,
         expiresAt: expiresAt.toISOString(),
-        // `locale` is authoritative; `country` is kept for one transitional
-        // release so jobs already on the queue continue to render correctly
-        // before the worker upgrade lands.
         locale: localeForResend,
-        ...(row.country ? { country: row.country } : {}),
       },
     });
   });
