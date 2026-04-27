@@ -43,7 +43,7 @@ export const DropdownMenuSubContent = forwardRef<
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      "z-[var(--z-overlay)] min-w-[12rem] overflow-hidden p-1.5",
+      "z-[var(--z-popover)] min-w-[12rem] overflow-hidden p-1.5",
       "bg-surface-container-lowest text-on-surface",
       "border border-outline-variant rounded-[var(--radius-md)] shadow-elevated",
       "data-[state=open]:animate-in data-[state=closed]:animate-out",
@@ -64,7 +64,7 @@ export const DropdownMenuContent = forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-[var(--z-overlay)] min-w-[12rem] overflow-hidden p-1.5",
+        "z-[var(--z-popover)] min-w-[12rem] overflow-hidden p-1.5",
         "bg-surface-container-lowest text-on-surface",
         "border border-outline-variant rounded-[var(--radius-md)] shadow-elevated",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",

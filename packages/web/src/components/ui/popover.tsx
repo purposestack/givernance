@@ -19,7 +19,7 @@ export const PopoverContent = forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "z-[var(--z-overlay)] w-72 p-4",
+        "z-[var(--z-popover)] w-72 p-4",
         "bg-surface-container-lowest text-on-surface",
         "border border-outline-variant rounded-[var(--radius-md)]",
         "shadow-elevated outline-none",
