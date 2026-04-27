@@ -50,6 +50,7 @@ env:
     S3_ENDPOINT: http://givernance-minio:9000
     S3_ACCESS_KEY_ID: admin
     KEYCLOAK_URL: https://auth.staging.givernance.org
+    KEYCLOAK_INTERNAL_URL: http://givernance-keycloak:8080
   secret:
     - POSTGRES_PASSWORD
     - REDIS_PASSWORD

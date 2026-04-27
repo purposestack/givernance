@@ -15,8 +15,10 @@ export interface KeycloakJwtClaims {
 }
 
 const KEYCLOAK_ISSUER = env.KEYCLOAK_ISSUER ?? `${env.KEYCLOAK_URL}/realms/${env.KEYCLOAK_REALM}`;
+const KEYCLOAK_INTERNAL_BASE = env.KEYCLOAK_INTERNAL_URL ?? env.KEYCLOAK_URL;
 const KEYCLOAK_JWKS_URL =
-  env.KEYCLOAK_JWKS_URL ?? `${KEYCLOAK_ISSUER}/protocol/openid-connect/certs`;
+  env.KEYCLOAK_JWKS_URL ??
+  `${KEYCLOAK_INTERNAL_BASE}/realms/${env.KEYCLOAK_REALM}/protocol/openid-connect/certs`;
 
 const keycloakJwks = createRemoteJWKSet(new URL(KEYCLOAK_JWKS_URL));
 

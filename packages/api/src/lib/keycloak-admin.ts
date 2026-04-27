@@ -721,7 +721,7 @@ export function keycloakAdmin(): KeycloakAdminClient {
     );
   }
   singleton = createKeycloakAdminClient({
-    baseUrl: env.KEYCLOAK_ADMIN_URL ?? env.KEYCLOAK_URL,
+    baseUrl: env.KEYCLOAK_ADMIN_URL ?? env.KEYCLOAK_INTERNAL_URL ?? env.KEYCLOAK_URL,
     realm: env.KEYCLOAK_REALM,
     clientId: env.KEYCLOAK_ADMIN_CLIENT_ID,
     clientSecret: env.KEYCLOAK_ADMIN_CLIENT_SECRET,

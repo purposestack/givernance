@@ -16,12 +16,14 @@ import {
  */
 
 export const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? "http://localhost:8080";
+export const KEYCLOAK_INTERNAL_URL = process.env.KEYCLOAK_INTERNAL_URL ?? KEYCLOAK_URL;
 export const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM ?? "givernance";
 export const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID ?? "givernance-web";
 export const KEYCLOAK_ISSUER =
   process.env.KEYCLOAK_ISSUER ?? `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}`;
 export const KEYCLOAK_JWKS_URL =
-  process.env.KEYCLOAK_JWKS_URL ?? `${KEYCLOAK_ISSUER}/protocol/openid-connect/certs`;
+  process.env.KEYCLOAK_JWKS_URL ??
+  `${KEYCLOAK_INTERNAL_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/certs`;
 export const KEYCLOAK_CLIENT_SECRET =
   process.env.KEYCLOAK_CLIENT_SECRET ||
   process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_SECRET ||
@@ -42,7 +44,7 @@ export function requireClientSecret(): string {
 
 /** Keycloak OpenID Connect endpoints. */
 export const AUTH_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth`;
-export const TOKEN_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
+export const TOKEN_ENDPOINT = `${KEYCLOAK_INTERNAL_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
 export const LOGOUT_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/logout`;
 
 export {

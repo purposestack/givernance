@@ -33,8 +33,10 @@ const EnvSchema = Type.Object({
   S3_RECEIPTS_BUCKET: Type.String({ minLength: 1, default: "receipts" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
-  /** Keycloak base URL used to derive issuer and JWKS endpoint */
+  /** Keycloak base URL used to derive issuer (public) */
   KEYCLOAK_URL: Type.String({ minLength: 1, default: "http://localhost:8080" }),
+  /** Keycloak internal URL used for server-to-server calls */
+  KEYCLOAK_INTERNAL_URL: Type.Optional(Type.String({ minLength: 1 })),
   /** Keycloak realm used to derive issuer and JWKS endpoint */
   KEYCLOAK_REALM: Type.String({ minLength: 1, default: "givernance" }),
   /** Optional explicit issuer override */
@@ -92,8 +94,9 @@ if (process.env.NODE_ENV === "production" && !value.KEYCLOAK_ADMIN_CLIENT_SECRET
   process.exit(1);
 }
 
-const adminUrl = value.KEYCLOAK_ADMIN_URL ?? value.KEYCLOAK_URL;
-const isLocalHost = /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0|givernance-keycloak)(:|$|\/)/i.test(adminUrl);
+const adminUrl = value.KEYCLOAK_ADMIN_URL ?? value.KEYCLOAK_INTERNAL_URL ?? value.KEYCLOAK_URL;
+const isLocalHost =
+  /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0|givernance-keycloak)(:|$|\/)/i.test(adminUrl);
 if (process.env.NODE_ENV === "production" && !adminUrl.startsWith("https://") && !isLocalHost) {
   console.error(
     `[api] Keycloak admin URL must be HTTPS in production (got '${adminUrl}') — client-credentials over cleartext leaks the admin secret.`,
