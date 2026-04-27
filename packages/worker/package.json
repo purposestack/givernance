@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsup src/worker.ts --format esm",
+    "build": "tsup",
     "dev": "tsx watch --env-file=../../.env src/worker.ts",
     "start": "node dist/worker.js",
     "test": "vitest run --passWithNoTests",
