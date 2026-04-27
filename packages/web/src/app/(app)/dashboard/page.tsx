@@ -293,7 +293,7 @@ function StatCard({
   };
 
   return (
-    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card hover:border-primary/20 hover:shadow-card-hover transition-all">
+    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-on-surface-variant">{label}</p>
         {Icon ? (
@@ -370,7 +370,7 @@ function CampaignProgressItem({
   const translate = t as unknown as DashboardTranslate;
 
   return (
-    <article className="rounded-2xl border border-outline-variant/60 p-4 sm:p-5 transition-colors hover:border-primary/30">
+    <article className="rounded-2xl border border-outline-variant/60 p-4 sm:p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-on-surface">{campaign.name}</h3>

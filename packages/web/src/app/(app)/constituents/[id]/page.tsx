@@ -493,7 +493,7 @@ function TimelineTab({
         {lastDonation ? (
           <TimelineItem
             icon={<FileText size={16} />}
-            iconClassName="bg-primary-50 text-primary"
+            iconClassName="bg-primary-fixed text-on-primary-fixed-variant"
             title={labels.lastDonation(
               formatCurrency(lastDonation.amountCents, locale, lastDonation.currency),
             )}
@@ -502,7 +502,7 @@ function TimelineTab({
         ) : null}
         <TimelineItem
           icon={<Mail size={16} />}
-          iconClassName="bg-sky-50 text-sky-text"
+          iconClassName="bg-secondary-fixed text-on-secondary-fixed-variant"
           title={labels.profileCreated}
           meta={formatDate(constituent.createdAt, locale)}
         />

@@ -12,10 +12,10 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        success: "bg-primary-50 text-primary",
-        warning: "bg-warning-light text-warning-text",
+        success: "bg-primary-fixed text-on-primary-fixed-variant",
+        warning: "bg-tertiary-fixed text-on-tertiary-fixed-variant",
         error: "bg-error-container text-on-error-container",
-        info: "bg-sky-50 text-sky-text",
+        info: "bg-secondary-fixed text-on-secondary-fixed-variant",
         neutral: "bg-surface-container-highest text-on-surface-variant",
       },
       shape: {
