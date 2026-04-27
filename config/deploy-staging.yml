@@ -22,23 +22,6 @@ servers:
       host: api.staging.givernance.org
       healthcheck:
         path: /healthz
-  auth:
-    hosts:
-      - <%= ENV["STAGING_VPS_IP"] %>
-    image: quay.io/keycloak/keycloak:24.0
-    proxy:
-      host: auth.staging.givernance.org
-      app_port: 8080
-    env:
-      clear:
-        KC_DB: postgres
-        KC_DB_URL: jdbc:postgresql://givernance-postgres:5432/givernance_staging
-        KC_DB_USERNAME: givernance
-        KEYCLOAK_ADMIN: admin
-      secret:
-        - KC_DB_PASSWORD
-        - KEYCLOAK_ADMIN_PASSWORD
-    cmd: start-dev
   worker:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
@@ -117,3 +100,19 @@ accessories:
     directories:
       - data/minio:/data
     cmd: server /data --console-address ":9001"
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    host: <%= ENV["STAGING_VPS_IP"] %>
+    proxy:
+      host: auth.staging.givernance.org
+      app_port: 8080
+    env:
+      clear:
+        KC_DB: postgres
+        KC_DB_URL: jdbc:postgresql://givernance-postgres:5432/givernance_staging
+        KC_DB_USERNAME: givernance
+        KEYCLOAK_ADMIN: admin
+      secret:
+        - KC_DB_PASSWORD
+        - KEYCLOAK_ADMIN_PASSWORD
+    cmd: start-dev
