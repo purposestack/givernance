@@ -123,4 +123,6 @@ accessories:
       secret:
         - KC_DB_PASSWORD
         - KEYCLOAK_ADMIN_PASSWORD
-    cmd: start-dev
+    files:
+      - infra/keycloak/realm-givernance.json:/opt/keycloak/data/import/realm.json
+    cmd: start-dev --import-realm
