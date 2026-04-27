@@ -233,6 +233,51 @@ Several JSONB columns across the schema require special GDPR handling because th
 | AI actions | ai.suggestion_generated, ai.action_executed, ai.action_blocked, ai.guard_denied | Yes | Yes (info for generated/executed, warn for blocked/denied) |
 | Migration | migration.started, migration.batch_loaded, migration.validation_error, migration.completed | Yes | Yes |
 
+### 7.2.1 RBAC denial discriminator (issue #182)
+
+Every guard primitive in [`packages/api/src/lib/guards.ts`](../packages/api/src/lib/guards.ts) (`requireAuth`, `requireWrite`, `requireOrgAdmin`, `requireSuperAdmin`, `requireSuperAdminOrOwnOrgAdmin`) emits a structured `rbac denial` warning **before** sending the 403/404 response and lifts the same discriminator onto the request via `request.rbacDenial`. The audit plugin's `onResponse` line picks up `request.rbacDenial` so a mutating-request audit row carries the denial reason without a second log lookup.
+
+Shape:
+
+```json
+{
+  "level": 40,
+  "msg": "rbac denial",
+  "rbacDenial": {
+    "guard": "requireWrite",          // requireAuth | requireWrite | requireOrgAdmin | requireSuperAdmin | requireSuperAdminOrOwnOrgAdmin
+    "requiredRole": "user|org_admin", // human-readable required role; null for the unauthenticated branch
+    "actualRole": "viewer"            // role on the JWT (null if unauthenticated)
+  }
+}
+```
+
+**LogQL — alert when a viewer probes write endpoints:**
+
+```logql
+{service="givernance-api"} | json
+  | rbacDenial_guard="requireWrite"
+  | rbacDenial_actualRole="viewer"
+```
+
+**LogQL — count RBAC denials per guard over the last 1h** (Grafana single-stat / time-series panel):
+
+```logql
+sum by (rbacDenial_guard) (
+  count_over_time(
+    {service="givernance-api"} | json | __error__="" | rbacDenial_guard != ""[1h]
+  )
+)
+```
+
+**LogQL — surface the audit-line variant** (mutating requests, includes `userId` / `orgId`):
+
+```logql
+{service="givernance-api"} | json
+  | msg="audit" | rbacDenial_guard != ""
+```
+
+The discriminator is **only** populated on RBAC denials. CSRF, validation, and tenant-scoping denials all currently land as 403 with no `rbacDenial` field — those are out of scope for this query and tracked as separate concerns.
+
 ### 7.3 Audit log schema
 
 See Log Analyst agent for full Drizzle schema. Key design decisions:

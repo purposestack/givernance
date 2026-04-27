@@ -173,7 +173,9 @@ export async function campaignRoutes(app: FastifyInstance) {
   app.post(
     "/campaigns",
     {
-      config: { idempotency: { routeKey: "POST:/v1/campaigns" } },
+      // Issue #181: `minRole` mirrors `requireWrite` so the idempotency
+      // replay branch enforces the same role check the guard would.
+      config: { idempotency: { routeKey: "POST:/v1/campaigns", minRole: "write" } },
       preHandler: requireWrite,
       schema: {
         tags: ["Campaigns"],
@@ -435,7 +437,13 @@ export async function campaignRoutes(app: FastifyInstance) {
   app.post(
     "/campaigns/:id/documents",
     {
-      config: { idempotency: { routeKey: "POST:/v1/campaigns/:id/documents" } },
+      // Issue #181: `minRole: admin` mirrors `requireOrgAdmin` so the
+      // idempotency replay branch enforces the same role check the guard
+      // would (this route is the only `requireOrgAdmin`-gated idempotent
+      // POST in the codebase today).
+      config: {
+        idempotency: { routeKey: "POST:/v1/campaigns/:id/documents", minRole: "admin" },
+      },
       preHandler: requireOrgAdmin,
       schema: {
         tags: ["Campaigns"],

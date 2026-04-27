@@ -67,18 +67,55 @@ interface CachedResponse {
  */
 const REPLAYED_HEADERS = ["location", "etag", "content-type", "retry-after"];
 
+/**
+ * Issue #181 — minimum role required to replay (or fresh-execute) an
+ * idempotency-keyed request. The plugin runs as a global preHandler that
+ * `fastify-plugin` hoists ABOVE route-level `preHandler: requireWrite`, so a
+ * cache hit short-circuits the route's RBAC guard and serves a cached 2xx
+ * envelope to a viewer. Carrying `minRole` on the route's idempotency config
+ * lets the replay branch perform the same role check the route guard would
+ * have, without restructuring Fastify's hook ordering.
+ *
+ * Mapping mirrors `lib/guards.ts`:
+ *   • "write" → `org_admin` or `user` (matches `requireWrite`)
+ *   • "admin" → `org_admin` only      (matches `requireOrgAdmin`)
+ *
+ * Routes without `minRole` skip the replay-time check, preserving today's
+ * behaviour for any future read-only or already-public idempotency-keyed
+ * endpoint that has no RBAC guard to bypass.
+ */
+export type IdempotencyMinRole = "write" | "admin";
+
 declare module "fastify" {
   interface FastifyContextConfig {
     /** Set by `addIdempotency(app, { routes: [...] })`. */
     idempotency?: {
       /** Stable identifier for this route so the cache key doesn't collide. */
       routeKey: string;
+      /**
+       * Minimum role the caller must hold for the plugin to serve a cached
+       * response (or to allow the request to reach the handler at all).
+       * Mirrors the route's own RBAC guard so the replay path doesn't
+       * silently bypass it. Issue #181.
+       */
+      minRole?: IdempotencyMinRole;
     };
   }
   interface FastifyRequest {
     /** Populated after `preHandler`; `onSend` reads this to know where to cache. */
     idempotencyCacheKey?: string | null;
   }
+}
+
+/**
+ * Mirror of `requireWrite` / `requireOrgAdmin` for the idempotency replay
+ * branch (issue #181). Returns true when the JWT role satisfies `minRole`.
+ */
+function roleSatisfies(role: string | undefined, minRole: IdempotencyMinRole): boolean {
+  if (!role) return false;
+  if (minRole === "admin") return role === "org_admin";
+  // "write" → org_admin OR user; viewer is the only role this rejects today.
+  return role === "org_admin" || role === "user";
 }
 
 function buildKey(orgId: string, routeKey: string, clientKey: string): string {
@@ -98,6 +135,38 @@ async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
 
     const orgId = request.auth?.orgId;
     if (!orgId) return; // unauthenticated routes handle their own dedup (e.g. public/donate uses Stripe's)
+
+    // Issue #181 — re-enforce the route's role guard on the idempotency
+    // replay branch BEFORE we touch Redis. Because `fastify-plugin` hoists
+    // this hook above the route's `preHandler: requireWrite`, a cache hit
+    // would otherwise serve a stored 2xx envelope to a viewer that the route
+    // guard would have rejected. Failing fast here also avoids leaking the
+    // existence of a cache entry under a guessed `Idempotency-Key`.
+    if (idemConfig.minRole && !roleSatisfies(request.auth?.role, idemConfig.minRole)) {
+      // Lift the same discriminator the standalone guards emit (issue #182)
+      // so SOC dashboards filtering on `rbacDenial.guard` see this path too.
+      const guardName =
+        idemConfig.minRole === "admin" ? "requireOrgAdmin" : ("requireWrite" as const);
+      const requiredRole = idemConfig.minRole === "admin" ? "org_admin" : "user|org_admin";
+      request.rbacDenial = {
+        guard: guardName,
+        requiredRole,
+        actualRole: request.auth?.role ?? null,
+      };
+      request.log.warn(
+        { rbacDenial: request.rbacDenial, idempotency: { replay: true } },
+        "rbac denial",
+      );
+      return reply
+        .status(403)
+        .send(
+          problemDetail(
+            403,
+            "Forbidden",
+            idemConfig.minRole === "admin" ? "org_admin role required" : "Write access required",
+          ),
+        );
+    }
 
     const cacheKey = buildKey(orgId, idemConfig.routeKey, clientKey);
     request.idempotencyCacheKey = cacheKey;
