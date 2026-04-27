@@ -22,10 +22,8 @@ export interface SignupEmailJobPayload {
   invitationId: string;
   expiresAt: string;
   /**
-   * BCP-47 locale resolved at enqueue time (issue #153). The worker
-   * trusts this value and does not infer locale from country. The
-   * dispatcher fills it for us — see `worker.ts` for the legacy-payload
-   * fallback that handles in-flight jobs from before issue #153 shipped.
+   * BCP-47 locale resolved at enqueue time (issue #153). The dispatcher
+   * fills it from the outbox payload via `resolvePayloadLocale`.
    */
   locale: Locale;
 }

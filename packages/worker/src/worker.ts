@@ -134,7 +134,7 @@ async function processDomainEvent(job: Job): Promise<void> {
       tenantId,
       invitationId: payload.invitationId as string,
       expiresAt: payload.expiresAt as string,
-      locale: resolvePayloadLocale(payload, log),
+      locale: resolvePayloadLocale(payload),
     };
     const result = await processSignupVerificationEmail(emailPayload);
     // `not_found` / `already_accepted` are terminal no-ops (old token rotated,
@@ -154,7 +154,7 @@ async function processDomainEvent(job: Job): Promise<void> {
       tenantId,
       invitationId,
       inviterUserId,
-      locale: resolvePayloadLocale(payload, log),
+      locale: resolvePayloadLocale(payload),
     };
     const result = await processTeamInviteEmail(emailPayload);
     log.info({ invitationId, eventType: type, ...result }, "Team-invite email dispatched");
