@@ -14,16 +14,16 @@
      ======================================================================= */
 
   /* ── Backgrounds ── */
-  --color-background:               #f0eee9;
-  --color-surface:                   #f0eee9;
+  --color-background:                #fcfbf9;
+  --color-surface:                   #fcfbf9;
   --color-surface-container-lowest:  #ffffff;
-  --color-surface-container-low:     #f5f3ef;
-  --color-surface-container:         #ebe8e2;
-  --color-surface-container-high:    #e1ded7;
-  --color-surface-container-highest: #d7d4cc;
-  --color-surface-variant:           #d7d4cc;
-  --color-surface-dim:               #d0cdc5;
-  --color-surface-bright:            #f0eee9;
+  --color-surface-container-low:     #f9f8f6;
+  --color-surface-container:         #f2f0ec;
+  --color-surface-container-high:    #ebe8e2;
+  --color-surface-container-highest: #e4e0d9;
+  --color-surface-variant:           #e4e0d9;
+  --color-surface-dim:               #dedbd4;
+  --color-surface-bright:            #fcfbf9;
 
   /* ── Primary green ── */
   --color-primary:                 #096447;
@@ -167,10 +167,10 @@
   --color-ai-text:   var(--color-primary);
 
   /* ── Sidebar ── */
-  --color-sidebar-bg:             #f8fafc;
+  --color-sidebar-bg:             #ffffff;
   --color-sidebar-text:           var(--color-on-surface);
   --color-sidebar-text-active:    var(--color-primary);
-  --color-sidebar-item-active-bg: #edf2f7;
+  --color-sidebar-item-active-bg: #f4f7f6;
   --color-sidebar-section:        #64748b;
 
   /* =======================================================================
@@ -321,9 +321,9 @@
   --sidebar-width-sm:  240px;
   --sidebar-collapsed: 64px;
   --topbar-height:     80px;
-  --topbar-bg:         rgba(248, 250, 252, 0.85);
-  --topbar-border:     rgba(148, 163, 184, 0.15);
-  --sidebar-bg:        #f8fafc;
+  --topbar-bg:         rgba(252, 251, 249, 0.85);
+  --topbar-border:     rgba(148, 163, 184, 0.10);
+  --sidebar-bg:        #ffffff;
   --content-padding:   40px;
   --content-max:       1280px;
   --form-max:          800px;
