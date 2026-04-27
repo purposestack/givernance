@@ -63,12 +63,19 @@ interface ConstituentsTableProps {
    * shortcut pattern.
    */
   canManageAdminActions: boolean;
+  /**
+   * `false` for the `viewer` role — Edit is gated to write-capable roles
+   * server-side (`PUT /v1/constituents/:id` is `requireWrite`), so we hide
+   * the row dropdown entirely when no action is available.
+   */
+  canWrite: boolean;
 }
 
 export function ConstituentsTable({
   constituents,
   pagination,
   canManageAdminActions,
+  canWrite,
 }: ConstituentsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -168,6 +175,7 @@ export function ConstituentsTable({
         cell: ({ row }) => (
           <ConstituentRowActions
             constituent={row.original}
+            canEdit={canWrite}
             canDelete={canManageAdminActions}
             onDelete={() => setDeleteTarget(row.original)}
             menuLabel={t("actions.menu", { name: fullName(row.original) })}
@@ -177,7 +185,7 @@ export function ConstituentsTable({
         ),
       },
     ],
-    [canManageAdminActions, t, tType],
+    [canManageAdminActions, canWrite, t, tType],
   );
 
   return (
@@ -236,6 +244,7 @@ export function ConstituentsTable({
 
 interface ConstituentRowActionsProps {
   constituent: Constituent;
+  canEdit: boolean;
   canDelete: boolean;
   onDelete: () => void;
   menuLabel: string;
@@ -245,12 +254,16 @@ interface ConstituentRowActionsProps {
 
 function ConstituentRowActions({
   constituent,
+  canEdit,
   canDelete,
   onDelete,
   menuLabel,
   editLabel,
   deleteLabel,
 }: ConstituentRowActionsProps) {
+  if (!canEdit && !canDelete) {
+    return null;
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -264,15 +277,17 @@ function ConstituentRowActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-        <DropdownMenuItem asChild>
-          <Link
-            href={`/constituents/${constituent.id}/edit`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Pencil size={16} aria-hidden="true" />
-            {editLabel}
-          </Link>
-        </DropdownMenuItem>
+        {canEdit ? (
+          <DropdownMenuItem asChild>
+            <Link
+              href={`/constituents/${constituent.id}/edit`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Pencil size={16} aria-hidden="true" />
+              {editLabel}
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         {canDelete ? (
           <DropdownMenuItem
             onSelect={(event) => {

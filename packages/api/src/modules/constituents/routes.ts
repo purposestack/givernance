@@ -2,7 +2,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
+import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import {
   DataArrayResponse,
   DataArrayResponseNoPagination,
@@ -203,11 +203,19 @@ export async function constituentRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Search for potential duplicate constituents */
+  /**
+   * Search for potential duplicate constituents.
+   *
+   * Gated to write-capable roles even though the verb is GET: the endpoint is
+   * a pre-flight to `POST /v1/constituents`, not a general directory lookup.
+   * Surfacing fuzzy-matched PII (name + email) to a `viewer` who can never
+   * complete the create flow has no use case, so we treat it as a soft-PII
+   * leak and require `requireWrite`.
+   */
   app.get(
     "/constituents/duplicates/search",
     {
-      preHandler: requireAuth,
+      preHandler: requireWrite,
       schema: {
         tags: ["Constituents"],
         querystring: DuplicateSearchQuery,
@@ -233,7 +241,7 @@ export async function constituentRoutes(app: FastifyInstance) {
   app.post(
     "/constituents",
     {
-      preHandler: requireAuth,
+      preHandler: requireWrite,
       schema: {
         tags: ["Constituents"],
         body: ConstituentCreateBody,
@@ -287,7 +295,7 @@ export async function constituentRoutes(app: FastifyInstance) {
   app.put(
     "/constituents/:id",
     {
-      preHandler: requireAuth,
+      preHandler: requireWrite,
       schema: {
         tags: ["Constituents"],
         params: IdParams,

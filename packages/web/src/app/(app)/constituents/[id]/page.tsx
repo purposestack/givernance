@@ -83,6 +83,7 @@ async function fetchDonationsOrEmpty(
 export default async function ConstituentDetailPage({ params, searchParams }: DetailPageProps) {
   const auth = await requireAuth();
   const canManageAdminActions = auth.roles.includes("org_admin");
+  const canWrite = auth.roles.includes("org_admin") || auth.roles.includes("user");
   const { id } = await params;
   const sp = await searchParams;
 
@@ -126,6 +127,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
         typeLabel={resolveTypeLabel(constituent.type, tType)}
         typeVariant={TYPE_VARIANTS[String(constituent.type)] ?? "neutral"}
         canManageAdminActions={canManageAdminActions}
+        canWrite={canWrite}
         labels={{
           ariaLabel: t("profile.ariaLabel"),
           email: t("profile.email"),
@@ -243,6 +245,7 @@ function ProfileCard({
   typeLabel,
   typeVariant,
   canManageAdminActions,
+  canWrite,
   labels,
 }: {
   constituent: Constituent;
@@ -251,6 +254,7 @@ function ProfileCard({
   typeLabel: string;
   typeVariant: BadgeVariant;
   canManageAdminActions: boolean;
+  canWrite: boolean;
   labels: ProfileLabels;
 }) {
   return (
@@ -295,6 +299,7 @@ function ProfileCard({
       <ProfileActions
         constituentId={constituent.id}
         canManageAdminActions={canManageAdminActions}
+        canWrite={canWrite}
         labels={labels}
       />
     </section>
@@ -330,6 +335,7 @@ function ContactLink({ href, children }: { href: string; children: string }) {
 function ProfileActions({
   constituentId,
   canManageAdminActions,
+  canWrite,
   labels,
 }: {
   constituentId: string;
@@ -337,20 +343,28 @@ function ProfileActions({
    * Merge (`POST /v1/constituents/:id/merge`) and Delete
    * (`DELETE /v1/constituents/:id`) both require `org_admin` server-side.
    * Hide the affordances for non-admins so they don't see buttons that
-   * would 403 once wired up. Edit / Export GDPR stay visible — they're
-   * either operational writes (Edit) or open to all roles (export stub).
+   * would 403 once wired up.
    */
   canManageAdminActions: boolean;
+  /**
+   * `false` for the `viewer` role — Edit (`PUT /v1/constituents/:id`) is
+   * `requireWrite` server-side. Hide the button so viewers land on a
+   * read-only profile view rather than a CTA that would 403. Export GDPR
+   * stays visible because it's a read-side stub.
+   */
+  canWrite: boolean;
   labels: ProfileLabels;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 md:shrink-0">
-      <Button asChild variant="primary" size="sm">
-        <Link href={`/constituents/${constituentId}/edit`}>
-          <Pencil size={16} aria-hidden="true" />
-          {labels.edit}
-        </Link>
-      </Button>
+      {canWrite ? (
+        <Button asChild variant="primary" size="sm">
+          <Link href={`/constituents/${constituentId}/edit`}>
+            <Pencil size={16} aria-hidden="true" />
+            {labels.edit}
+          </Link>
+        </Button>
+      ) : null}
       {canManageAdminActions ? (
         <Button variant="secondary" size="sm" disabled>
           <GitMerge size={16} aria-hidden="true" />

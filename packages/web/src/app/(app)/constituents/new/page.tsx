@@ -2,10 +2,10 @@ import { getTranslations } from "next-intl/server";
 
 import { ConstituentForm } from "@/components/constituents/constituent-form";
 import { PageHeader } from "@/components/shared/page-header";
-import { requireAuth } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 
 export default async function NewConstituentPage() {
-  await requireAuth();
+  await requirePermission("write");
   const t = await getTranslations("constituentForm");
   const tConstituents = await getTranslations("constituents");
 

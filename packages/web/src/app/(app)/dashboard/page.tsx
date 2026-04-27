@@ -33,6 +33,7 @@ interface CampaignWithStats {
  */
 export default async function DashboardPage() {
   const auth = await requireAuth();
+  const canWrite = auth.roles.includes("org_admin") || auth.roles.includes("user");
   const t = (await getTranslations("dashboard")) as unknown as DashboardT;
   const locale = await getLocale();
   const client = await createServerApiClient();
@@ -126,17 +127,19 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
-          <SectionHeader
-            title={t("quickActions.title")}
-            description={t("quickActions.description")}
-          />
-          <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <QuickAction href="/donations/new" label={t("quickActions.newDonation")} />
-            <QuickAction href="/constituents/new" label={t("quickActions.newConstituent")} />
-            <QuickAction href="/campaigns/new" label={t("quickActions.newCampaign")} />
-          </div>
-        </section>
+        {canWrite ? (
+          <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+            <SectionHeader
+              title={t("quickActions.title")}
+              description={t("quickActions.description")}
+            />
+            <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <QuickAction href="/donations/new" label={t("quickActions.newDonation")} />
+              <QuickAction href="/constituents/new" label={t("quickActions.newConstituent")} />
+              <QuickAction href="/campaigns/new" label={t("quickActions.newCampaign")} />
+            </div>
+          </section>
+        ) : null}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
