@@ -44,7 +44,7 @@ function parseUuid(value: string | string[] | undefined): string | undefined {
 export default async function DonationsPage({ searchParams }: DonationsPageProps) {
   const auth = await requireAuth();
   const canWrite = hasPermission(auth, "write");
-  const canDelete = auth.roles.includes("org_admin");
+  const canDelete = hasPermission(auth, "admin");
   const params = await searchParams;
   const t = await getTranslations("donations");
 

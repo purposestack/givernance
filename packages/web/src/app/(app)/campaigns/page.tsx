@@ -85,6 +85,7 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
         <CampaignsTable
           campaigns={campaignsWithStats}
           pagination={result.pagination}
+          canWrite={canWrite}
           canManageAdminActions={canManageAdminActions}
         />
       ) : (
