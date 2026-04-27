@@ -139,6 +139,20 @@ Current topology:
 
 When proposing a new service or Compose change that needs Postgres storage (e.g., adding Mailpit with a durable store, a second IdP, a workflow engine, an analytics sidecar), **do not reuse `givernance` or `givernance_keycloak`** — add a new logical DB + role in `infra/postgres/init/`, document it in the "Databases" table of `docs/infra/README.md`, and reference ADR-017. Co-locating is rejected in PR review. Rationale, rejected alternatives, and revisit criteria are in [`docs/15-infra-adr.md` → ADR-017](docs/15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db).
 
+### 🛑 Closing multiple issues in one PR
+
+**Never use a comma-separated list or the `fix` / `fixes` keyword to close multiple issues from a PR description.** GitHub's auto-close behavior is unreliable on this repo for those forms — only some of the referenced issues actually close at merge time.
+
+Instead, write one `close` directive **per line**, with one issue number per directive:
+
+```
+close #161
+close #181
+close #182
+```
+
+Apply this in `gh pr create` / `gh pr edit` bodies, in commit messages that close issues, and in any PR template. Use `close` (not `closes`, not `fix`, not `fixes`).
+
 ### 🛑 No secrets in Keycloak Organization attributes (issue #114)
 
 **Never put secrets, API keys, billing tokens, or any sensitive data into a Keycloak Organization's `attributes` map.** The `organization` client scope (attached as default to `givernance-web` and as optional to `admin-cli`) carries an `oidc-organization-membership-mapper` configured with `addOrganizationAttributes=true`, which emits every organization attribute into every access, ID, and introspection token for members of that org. Any secret stashed there will leak to the browser and every downstream service that sees the JWT.

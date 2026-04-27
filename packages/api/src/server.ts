@@ -1,11 +1,13 @@
 /** Fastify app factory — registers all plugins and routes */
 
+import { Writable } from "node:stream";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { PINO_REDACT_PATHS } from "@givernance/shared/constants";
-import Fastify, { type FastifyError } from "fastify";
+import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
+import pino from "pino";
 import { env } from "./env.js";
 import { redis } from "./lib/redis.js";
 import { PROBLEM_JSON, problemDetail } from "./lib/schemas.js";
@@ -31,8 +33,56 @@ import { auditPlugin } from "./plugins/audit.js";
 import { authPlugin } from "./plugins/auth.js";
 import { idempotencyPlugin } from "./plugins/idempotency.js";
 
+/**
+ * Optional overrides — currently used by integration tests to inject a
+ * pino destination stream so log lines (e.g. `rbacDenial` warnings, audit
+ * lines) can be asserted against. Production callers pass nothing.
+ */
+export interface CreateServerOpts {
+  /**
+   * Test-only: provide a callback that receives every emitted Pino JSON
+   * line synchronously. Wires up a custom `loggerInstance` whose
+   * destination forwards each write to the callback so the test can build
+   * its own buffer without fighting Pino's async / sonic-boom default.
+   * Issue #182 (rbac-denial-logs).
+   */
+  onLogLine?: (line: string) => void;
+}
+
 /** Create and configure the Fastify server instance */
-export async function createServer() {
+export async function createServer(opts: CreateServerOpts = {}): Promise<FastifyInstance> {
+  const loggerOpts = {
+    level: env.LOG_LEVEL,
+    base: { service: "givernance-api", env: process.env.NODE_ENV },
+    redact: [...PINO_REDACT_PATHS],
+  };
+
+  // When `opts.onLogLine` is supplied, build a Pino instance against a
+  // synchronous in-memory destination instead of stdout. Using
+  // `loggerInstance` (rather than `logger.stream`) is the path that gives
+  // us a guaranteed-sync write — Pino's default sonic-boom destination
+  // batches writes asynchronously, which races the `await app.inject()`
+  // boundary and made the rbac-denial log tests flaky on a PassThrough.
+  let loggerInstance: pino.Logger | undefined;
+  if (opts.onLogLine) {
+    const writable = new Writable({
+      write(chunk, _enc, cb) {
+        opts.onLogLine?.(chunk.toString("utf8"));
+        cb();
+      },
+    });
+    // Test setup pins `LOG_LEVEL=silent` to keep CI noise down; force the
+    // capture path to `info` so the rbac-denial discriminator (warn) AND
+    // the audit plugin's `info` line both reach the destination, since
+    // issue #182 requires asserting `rbacDenial` on both.
+    loggerInstance = pino({ ...loggerOpts, level: "info" }, writable);
+  }
+
+  // Cast back to the default-generic FastifyInstance — passing a concrete
+  // pino instance via `loggerInstance` narrows Fastify's logger generic to
+  // `pino.Logger`, which then breaks every callsite that holds the result
+  // as `FastifyInstance` (no generics). The runtime behaviour is identical;
+  // only the type leak is suppressed.
   const app = Fastify({
     // Trust proxy headers (X-Forwarded-For, X-Real-IP) so rate-limit keying
     // and `ipHash` use the real client IP instead of the LB's internal IP
@@ -40,12 +90,8 @@ export async function createServer() {
     // tighten this to an explicit CIDR via env (`TRUST_PROXY`) if the LB is
     // on a fixed subnet.
     trustProxy: process.env.TRUST_PROXY ?? true,
-    logger: {
-      level: env.LOG_LEVEL,
-      base: { service: "givernance-api", env: process.env.NODE_ENV },
-      redact: [...PINO_REDACT_PATHS],
-    },
-  });
+    ...(loggerInstance ? { loggerInstance } : { logger: loggerOpts }),
+  }) as unknown as FastifyInstance;
 
   // --- Core plugins ---
   await app.register(cors, {

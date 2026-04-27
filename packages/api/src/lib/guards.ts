@@ -3,9 +3,56 @@
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
+/**
+ * Structured discriminator written by every RBAC guard before sending its
+ * 403/404 (issue #182). Lifts the response onto a request-scoped property so
+ * the audit plugin's `onResponse` log line can include the guard name +
+ * required/actual role. SOC dashboards filter on `rbacDenial.guard` to
+ * separate RBAC denials from CSRF / validation / tenant-scoping denials,
+ * which all currently land as 403 with no other discriminator.
+ */
+export interface RbacDenial {
+  /** Guard primitive that emitted the denial. */
+  guard:
+    | "requireAuth"
+    | "requireWrite"
+    | "requireOrgAdmin"
+    | "requireSuperAdmin"
+    | "requireSuperAdminOrOwnOrgAdmin";
+  /** Logical role the guard required. `null` for the unauthenticated branch. */
+  requiredRole: string | null;
+  /** Actual application role on the JWT, if present. */
+  actualRole: string | null;
+}
+
+declare module "fastify" {
+  interface FastifyRequest {
+    /**
+     * Populated by RBAC guards on the denial path. Picked up by the audit
+     * plugin's `onResponse` log line for SOC observability (issue #182).
+     */
+    rbacDenial?: RbacDenial;
+  }
+}
+
+/**
+ * Emit a structured `rbac denial` warning AND attach the discriminator to
+ * the request so the audit plugin's `onResponse` line carries it. Centralising
+ * here keeps the five guards below identical in shape.
+ */
+function recordRbacDenial(request: FastifyRequest, denial: RbacDenial) {
+  request.rbacDenial = denial;
+  request.log.warn({ rbacDenial: denial }, "rbac denial");
+}
+
 /** Guard: require valid JWT (any authenticated user) */
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   if (!request.auth?.userId) {
+    recordRbacDenial(request, {
+      guard: "requireAuth",
+      requiredRole: null,
+      actualRole: null,
+    });
     return reply.status(401).send({
       type: "https://httpproblems.com/http-status/401",
       title: "Unauthorized",
@@ -24,6 +71,11 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
  */
 export async function requireWrite(request: FastifyRequest, reply: FastifyReply) {
   if (!request.auth?.userId) {
+    recordRbacDenial(request, {
+      guard: "requireWrite",
+      requiredRole: "user|org_admin",
+      actualRole: null,
+    });
     return reply.status(401).send({
       type: "https://httpproblems.com/http-status/401",
       title: "Unauthorized",
@@ -32,6 +84,11 @@ export async function requireWrite(request: FastifyRequest, reply: FastifyReply)
     });
   }
   if (request.auth.role !== "org_admin" && request.auth.role !== "user") {
+    recordRbacDenial(request, {
+      guard: "requireWrite",
+      requiredRole: "user|org_admin",
+      actualRole: request.auth.role ?? null,
+    });
     return reply.status(403).send({
       type: "https://httpproblems.com/http-status/403",
       title: "Forbidden",
@@ -44,6 +101,11 @@ export async function requireWrite(request: FastifyRequest, reply: FastifyReply)
 /** Guard: require org_admin role */
 export async function requireOrgAdmin(request: FastifyRequest, reply: FastifyReply) {
   if (!request.auth?.userId) {
+    recordRbacDenial(request, {
+      guard: "requireOrgAdmin",
+      requiredRole: "org_admin",
+      actualRole: null,
+    });
     return reply.status(401).send({
       type: "https://httpproblems.com/http-status/401",
       title: "Unauthorized",
@@ -52,6 +114,11 @@ export async function requireOrgAdmin(request: FastifyRequest, reply: FastifyRep
     });
   }
   if (request.auth.role !== "org_admin") {
+    recordRbacDenial(request, {
+      guard: "requireOrgAdmin",
+      requiredRole: "org_admin",
+      actualRole: request.auth.role ?? null,
+    });
     return reply.status(403).send({
       type: "https://httpproblems.com/http-status/403",
       title: "Forbidden",
@@ -73,6 +140,11 @@ export async function requireOrgAdmin(request: FastifyRequest, reply: FastifyRep
  */
 export async function requireSuperAdmin(request: FastifyRequest, reply: FastifyReply) {
   if (!request.auth?.userId) {
+    recordRbacDenial(request, {
+      guard: "requireSuperAdmin",
+      requiredRole: "super_admin",
+      actualRole: null,
+    });
     return reply.status(401).send({
       type: "https://httpproblems.com/http-status/401",
       title: "Unauthorized",
@@ -81,6 +153,11 @@ export async function requireSuperAdmin(request: FastifyRequest, reply: FastifyR
     });
   }
   if (!request.auth.roles.includes("super_admin")) {
+    recordRbacDenial(request, {
+      guard: "requireSuperAdmin",
+      requiredRole: "super_admin",
+      actualRole: request.auth.role ?? null,
+    });
     return reply.status(404).send({
       type: "https://httpproblems.com/http-status/404",
       title: "Not Found",
@@ -93,6 +170,11 @@ export async function requireSuperAdmin(request: FastifyRequest, reply: FastifyR
 /** Guard: require super_admin, or org_admin accessing their own tenant-scoped admin route */
 export async function requireSuperAdminOrOwnOrgAdmin(request: FastifyRequest, reply: FastifyReply) {
   if (!request.auth?.userId) {
+    recordRbacDenial(request, {
+      guard: "requireSuperAdminOrOwnOrgAdmin",
+      requiredRole: "super_admin|org_admin(own)",
+      actualRole: null,
+    });
     return reply.status(401).send({
       type: "https://httpproblems.com/http-status/401",
       title: "Unauthorized",
@@ -114,6 +196,11 @@ export async function requireSuperAdminOrOwnOrgAdmin(request: FastifyRequest, re
     return;
   }
 
+  recordRbacDenial(request, {
+    guard: "requireSuperAdminOrOwnOrgAdmin",
+    requiredRole: "super_admin|org_admin(own)",
+    actualRole: request.auth.role ?? null,
+  });
   return reply.status(403).send({
     type: "https://httpproblems.com/http-status/403",
     title: "Forbidden",

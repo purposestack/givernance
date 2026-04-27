@@ -6,8 +6,10 @@ import { PageHeader } from "@/components/shared/page-header";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
 import { InvitationService } from "@/services/InvitationService";
+import { MemberService } from "@/services/MemberService";
 import { UserService } from "@/services/UserService";
 
+import { InvitationsTable } from "./invitations-table";
 import { InviteAction } from "./invite-action";
 import { MembersTable } from "./members-table";
 
@@ -28,12 +30,18 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
 /**
  * /settings/members — Members & invitations management.
  *
- * Lists every team invitation (pending / accepted / expired) for the
- * current tenant and lets org_admins invite new teammates, resend pending
- * invitations, or revoke them. Non-admins see the data without the action
- * affordances. The "Invite teammate" CTA lives in the page header (mirrors
- * the funds page convention) so the empty-state card can render clean
- * without table chrome.
+ * Issue #161 split the page into two stacked tables:
+ *
+ *   1. **Members** — accepted teammates from `GET /v1/users`. Org_admins
+ *      can edit each member's display name + role from a row-level dialog,
+ *      or remove them. The caller's own row hides the role Select (the
+ *      API still enforces `cannot_self_demote` as the durable gate).
+ *   2. **Invitations** — pending / accepted / expired invitations from
+ *      `GET /v1/invitations`. Resend / revoke affordances unchanged.
+ *
+ * Listing both is intentional: a "still pending" invitation has different
+ * affordances (resend, revoke) than an actual member (edit name/role,
+ * remove), so the previous mixed table conflated two domain objects.
  */
 export default async function MembersPage({ searchParams }: MembersPageProps) {
   const auth = await requireAuth();
@@ -46,23 +54,26 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
   const canManageMembers = auth.roles.includes("org_admin");
 
   const client = await createServerApiClient();
-  // Fetch the invite list and the current user's profile in parallel.
-  // The latter gives us `tenantDefaultLocale` so the invite dialog's
-  // locale picker can render "Use workspace default (Français)" with
-  // the right endonym in the hint, without a third round-trip.
-  const [result, me] = await Promise.all([
+  // Members are org_admin-gated server-side. For non-admins we deliberately
+  // skip the call (would 403) so the page still renders the invitations
+  // section, which any authenticated user can read.
+  const [invitationsResult, me, members] = await Promise.all([
     InvitationService.listInvitations(client, { page, perPage }),
     UserService.getMe(client),
+    canManageMembers ? MemberService.listMembers(client) : Promise.resolve([]),
   ]);
 
-  const total = result.pagination.total;
-  const hasAny = total > 0;
+  const invitationCount = invitationsResult.pagination.total;
+  const memberCount = members.length;
+  const totalCount = invitationCount + memberCount;
 
   return (
     <>
       <PageHeader
         title={t("title")}
-        description={hasAny ? t("subtitleWithCount", { count: total }) : t("subtitleEmpty")}
+        description={
+          totalCount > 0 ? t("subtitleWithCount", { count: memberCount }) : t("subtitleEmpty")
+        }
         breadcrumbs={[
           { label: tSettings("breadcrumbRoot"), href: "/dashboard" },
           { label: tSettings("title"), href: "/settings" },
@@ -74,17 +85,55 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
       />
       <SettingsNavigation />
 
-      {hasAny ? (
-        <MembersTable
-          invitations={result.data}
-          pagination={result.pagination}
-          canManageMembers={canManageMembers}
-        />
-      ) : (
-        <div className="rounded-2xl bg-surface-container-lowest shadow-card">
-          <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />
-        </div>
-      )}
+      {canManageMembers ? (
+        <section aria-labelledby="members-section-heading" className="space-y-3">
+          <header>
+            <h2 id="members-section-heading" className="text-lg font-semibold text-on-surface">
+              {t("membersSection.title")}
+            </h2>
+            <p className="text-sm text-on-surface-variant">{t("membersSection.description")}</p>
+          </header>
+          {memberCount > 0 ? (
+            <MembersTable
+              members={members}
+              canManageMembers={canManageMembers}
+              currentUserKeycloakId={auth.userId}
+            />
+          ) : (
+            <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+              <EmptyState
+                icon={Users}
+                title={t("membersSection.empty.title")}
+                description={t("membersSection.empty.description")}
+              />
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      <section aria-labelledby="invitations-section-heading" className="space-y-3">
+        <header>
+          <h2 id="invitations-section-heading" className="text-lg font-semibold text-on-surface">
+            {t("invitationsSection.title")}
+          </h2>
+          <p className="text-sm text-on-surface-variant">{t("invitationsSection.description")}</p>
+        </header>
+        {invitationCount > 0 ? (
+          <InvitationsTable
+            invitations={invitationsResult.data}
+            pagination={invitationsResult.pagination}
+            canManageMembers={canManageMembers}
+          />
+        ) : (
+          <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+            <EmptyState
+              icon={Users}
+              title={t("invitationsSection.empty.title")}
+              description={t("invitationsSection.empty.description")}
+            />
+          </div>
+        )}
+      </section>
     </>
   );
 }

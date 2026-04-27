@@ -75,6 +75,9 @@ function makeKcStub(overrides: Partial<KeycloakAdminClient> = {}): KeycloakAdmin
     getUserByEmail: async () => null,
     resetUserPassword: async () => {},
     setUserAttributes: async () => {},
+    // Issue #161 — production interface gained updateUser for the team-member
+    // PATCH endpoint. Stubbed for parity; this suite never exercises it.
+    updateUser: async () => {},
     getOrganizationByAlias: async () => null,
     createIdentityProvider: async () => {},
     deleteIdentityProvider: async () => {},

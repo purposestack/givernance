@@ -76,7 +76,9 @@ export async function pledgeRoutes(app: FastifyInstance) {
   app.post(
     "/pledges",
     {
-      config: { idempotency: { routeKey: "POST:/v1/pledges" } },
+      // Issue #181: `minRole` mirrors `requireWrite` so the idempotency
+      // replay branch enforces the same role check the guard would.
+      config: { idempotency: { routeKey: "POST:/v1/pledges", minRole: "write" } },
       preHandler: requireWrite,
       schema: {
         tags: ["Pledges"],
