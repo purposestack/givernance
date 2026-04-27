@@ -107,6 +107,10 @@ See [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) for
 - [docs/14-screen-inventory.md](docs/14-screen-inventory.md) — Complete inventory of the 86 screens
 - [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) — Conversational mode vision 2026-2028
 
+### Security & Compliance
+- [docs/06-security-compliance.md](docs/06-security-compliance.md) — Top-level security & GDPR specification
+- [docs/security/](docs/security/) — Periodic security audits and route-by-route guard matrices (e.g. [rbac-audit-2026-04-27.md](docs/security/rbac-audit-2026-04-27.md))
+
 ## Diagrams
 - diagrams/context.mmd
 - diagrams/container.mmd

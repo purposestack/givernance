@@ -55,6 +55,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 20-payment-strategy.md      — Payment systems: Stripe/Mollie/Mangopay comparison, ADR-010, PCI DSS, GDPR
 │   ├── vision/
 │   │   └── conversational-mode.md — Future conversational AI mode (2026-2028)
+│   ├── security/                  — Security audits & RBAC matrices (non-numbered, dated; e.g. rbac-audit-2026-04-27.md)
 │   └── design/                    — 86 interactive HTML mockups
 ├── diagrams/
 │   ├── context.mmd       — C4 system context

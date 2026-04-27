@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import type { ConstituentListResponse } from "@/models/constituent";
 import { ConstituentService } from "@/services/ConstituentService";
 
@@ -31,7 +31,7 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
 export default async function ConstituentsPage({ searchParams }: ConstituentsPageProps) {
   const auth = await requireAuth();
   const canManageAdminActions = auth.roles.includes("org_admin");
-  const canWrite = auth.roles.includes("org_admin") || auth.roles.includes("user");
+  const canWrite = hasPermission(auth, "write");
   const params = await searchParams;
   const t = await getTranslations("constituents");
 

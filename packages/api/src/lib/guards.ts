@@ -36,7 +36,7 @@ export async function requireWrite(request: FastifyRequest, reply: FastifyReply)
       type: "https://httpproblems.com/http-status/403",
       title: "Forbidden",
       status: 403,
-      detail: "write access required",
+      detail: "Write access required",
     });
   }
 }
