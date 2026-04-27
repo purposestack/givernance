@@ -109,6 +109,7 @@ accessories:
       app_port: 8080
       healthcheck:
         path: /health/ready
+        port: 9000
     env:
       clear:
         KC_DB: postgres
