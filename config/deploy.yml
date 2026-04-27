@@ -10,12 +10,12 @@ servers:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
     labels:
-      traefik.http.routers.givernance-web.rule: Host(`staging.givernance.com`)
+      traefik.http.routers.givernance-web.rule: Host(`staging.givernance.org`)
   api:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
     labels:
-      traefik.http.routers.givernance-api.rule: Host(`api.staging.givernance.com`)
+      traefik.http.routers.givernance-api.rule: Host(`api.staging.givernance.org`)
   worker:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
