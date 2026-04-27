@@ -12,13 +12,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -173,20 +174,22 @@ export function FundsTable({ funds, pagination, canManageFunds }: FundsTableProp
           />
         }
       />
-      <Dialog open={fundToDelete !== null} onOpenChange={(open) => !open && setFundToDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("deleteDialog.title")}</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={fundToDelete !== null} onOpenChange={(open) => !open && setFundToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("deleteDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
               {fundToDelete
                 ? t("deleteDialog.description", { name: fundToDelete.name })
                 : t("deleteDialog.descriptionFallback")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setFundToDelete(null)} disabled={isDeleting}>
-              {t("deleteDialog.cancel")}
-            </Button>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="ghost" disabled={isDeleting}>
+                {t("deleteDialog.cancel")}
+              </Button>
+            </AlertDialogCancel>
             <Button
               variant="destructive"
               onClick={() => void confirmDelete()}
@@ -194,9 +197,9 @@ export function FundsTable({ funds, pagination, canManageFunds }: FundsTableProp
             >
               {isDeleting ? t("deleteDialog.deleting") : t("deleteDialog.confirm")}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

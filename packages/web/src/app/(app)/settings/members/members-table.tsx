@@ -11,13 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -198,20 +199,22 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
         }
       />
 
-      <Dialog open={revokeTarget !== null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("revokeDialog.title")}</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={revokeTarget !== null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("revokeDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
               {revokeTarget
                 ? t("revokeDialog.description", { email: revokeTarget.email })
                 : t("revokeDialog.descriptionFallback")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setRevokeTarget(null)} disabled={isMutating}>
-              {t("revokeDialog.cancel")}
-            </Button>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="ghost" disabled={isMutating}>
+                {t("revokeDialog.cancel")}
+              </Button>
+            </AlertDialogCancel>
             <Button
               variant="destructive"
               onClick={() => void confirmRevoke()}
@@ -219,9 +222,9 @@ export function MembersTable({ invitations, pagination, canManageMembers }: Memb
             >
               {isMutating ? t("revokeDialog.revoking") : t("revokeDialog.confirm")}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

@@ -373,7 +373,8 @@
           "createdVia": "Created via",
           "ownership": "Ownership",
           "createdAt": "Created at",
-          "updatedAt": "Last updated"
+          "updatedAt": "Last updated",
+          "actions": "Actions"
         },
         "statuses": {
           "active": "Active",
@@ -388,6 +389,9 @@
         "empty": {
           "title": "No tenants found",
           "description": "Tenant records created through the super-admin onboarding flow will appear here."
+        },
+        "actions": {
+          "view": "View details"
         }
       },
       "new": {
@@ -604,207 +608,207 @@
     }
   },
   "settings": {
-  "title": "Settings",
-  "subtitle": "Manage organisation-level defaults and export tools.",
-  "breadcrumbRoot": "Dashboard",
-  "navigation": {
-    "label": "Organisation settings navigation",
-    "organization": "Organisation",
-    "members": "Members",
-    "funds": "Funds"
-  },
-  "members": {
-    "title": "Members",
-    "subtitleEmpty": "Invite teammates to join your workspace.",
-    "subtitleWithCount": "{count, plural, one {# invitation on file} other {# invitations on file}}",
-    "columns": {
-      "email": "Email",
-      "role": "Role",
-      "status": "Status",
-      "invitedBy": "Invited by",
-      "createdAt": "Invited",
-      "actions": "Actions"
+    "title": "Settings",
+    "subtitle": "Manage organisation-level defaults and export tools.",
+    "breadcrumbRoot": "Dashboard",
+    "navigation": {
+      "label": "Organisation settings navigation",
+      "organization": "Organisation",
+      "members": "Members",
+      "funds": "Funds"
     },
-    "roles": {
-      "org_admin": "Admin",
-      "user": "Member",
-      "viewer": "Viewer"
-    },
-    "statuses": {
-      "pending": "Pending",
-      "accepted": "Accepted",
-      "expired": "Expired"
-    },
-    "actions": {
-      "invite": "Invite teammate",
-      "menu": "Open actions for {email}",
-      "resend": "Resend invitation",
-      "revoke": "Revoke invitation"
-    },
-    "empty": {
-      "title": "No invitations yet",
-      "description": "Invite a teammate to give them access to this workspace."
-    },
-    "invite": {
-      "title": "Invite a teammate",
-      "description": "They'll receive an email with a link to join your workspace and choose their password.",
-      "fields": {
-        "firstName": "First name",
-        "firstNamePlaceholder": "Ada",
-        "lastName": "Last name",
-        "lastNamePlaceholder": "Lovelace",
-        "email": "Email address",
-        "emailPlaceholder": "teammate@example.org",
+    "members": {
+      "title": "Members",
+      "subtitleEmpty": "Invite teammates to join your workspace.",
+      "subtitleWithCount": "{count, plural, one {# invitation on file} other {# invitations on file}}",
+      "columns": {
+        "email": "Email",
         "role": "Role",
-        "locale": "Invitation language",
-        "localeFollowTenant": "Use workspace default ({locale})",
-        "localeHint": "The welcome email will be sent in this language. The invitee can change it before accepting."
+        "status": "Status",
+        "invitedBy": "Invited by",
+        "createdAt": "Invited",
+        "actions": "Actions"
       },
-      "roleHints": {
-        "org_admin": "Full access — can invite others, manage settings, and access all data.",
-        "user": "Can read and update operational data (constituents, donations, campaigns).",
-        "viewer": "Read-only access to operational data."
+      "roles": {
+        "org_admin": "Admin",
+        "user": "Member",
+        "viewer": "Viewer"
+      },
+      "statuses": {
+        "pending": "Pending",
+        "accepted": "Accepted",
+        "expired": "Expired"
       },
       "actions": {
-        "cancel": "Cancel",
-        "submit": "Send invitation",
-        "submitting": "Sending…"
+        "invite": "Invite teammate",
+        "menu": "Open actions for {email}",
+        "resend": "Resend invitation",
+        "revoke": "Revoke invitation"
       },
-      "errors": {
-        "emailRequired": "Email address is required.",
-        "generic": "Couldn't send the invitation. Please try again."
-      }
-    },
-    "revokeDialog": {
-      "title": "Revoke invitation",
-      "description": "Revoke the invitation for {email}? The link will stop working immediately.",
-      "descriptionFallback": "Revoke this invitation? The link will stop working immediately.",
-      "cancel": "Cancel",
-      "confirm": "Revoke invitation",
-      "revoking": "Revoking…"
-    },
-    "success": {
-      "invited": "Invitation sent to {email}.",
-      "resent": "Invitation re-sent.",
-      "revoked": "Invitation revoked."
-    },
-    "errors": {
-      "resendGeneric": "Couldn't resend the invitation. Please try again.",
-      "revokeGeneric": "Couldn't revoke the invitation. Please try again."
-    }
-  },
-  "funds": {
-    "settings": "Settings",
-    "title": "Funds",
-    "subtitleEmpty": "Create restricted and unrestricted funds that can be attached to campaigns and donations.",
-    "subtitleWithCount": "{count, plural, one {# fund configured} other {# funds configured}}",
-    "readOnly": "Only organisation admins can create funds.",
-    "descriptionEmpty": "No description",
-    "types": {
-      "restricted": "Restricted",
-      "unrestricted": "Unrestricted"
-    },
-    "columns": {
-      "name": "Fund",
-      "type": "Type",
-      "description": "Description",
-      "createdAt": "Created",
-      "actions": "Actions"
-    },
-    "actions": {
-      "new": "New fund",
-      "menu": "Open actions for {name}",
-      "edit": "Edit",
-      "delete": "Delete"
-    },
-    "empty": {
-      "title": "No funds yet",
-      "description": "Add your first fund to control which designations can be used in campaigns and donations."
-    },
-    "deleteDialog": {
-      "title": "Delete fund",
-      "description": "Delete {name}? This action cannot be undone.",
-      "descriptionFallback": "Delete this fund? This action cannot be undone.",
-      "cancel": "Cancel",
-      "confirm": "Delete fund",
-      "deleting": "Deleting…"
-    },
-    "errors": {
-      "deleteGeneric": "Something went wrong while deleting this fund. Please try again."
-    },
-    "success": {
-      "deleted": "Fund deleted."
-    },
-    "form": {
-      "createTitle": "Create fund",
-      "createSubtitle": "Add a restricted or unrestricted fund for campaign and donation allocation.",
-      "breadcrumbNew": "New fund",
-      "editTitle": "Edit fund",
-      "editSubtitle": "Update this fund for campaign and donation allocation.",
-      "breadcrumbEdit": "Edit fund",
-      "sections": {
-        "identity": {
-          "title": "Identity",
-          "description": "Core information used to label and classify the fund."
+      "empty": {
+        "title": "No invitations yet",
+        "description": "Invite a teammate to give them access to this workspace."
+      },
+      "invite": {
+        "title": "Invite a teammate",
+        "description": "They'll receive an email with a link to join your workspace and choose their password.",
+        "fields": {
+          "firstName": "First name",
+          "firstNamePlaceholder": "Ada",
+          "lastName": "Last name",
+          "lastNamePlaceholder": "Lovelace",
+          "email": "Email address",
+          "emailPlaceholder": "teammate@example.org",
+          "role": "Role",
+          "locale": "Invitation language",
+          "localeFollowTenant": "Use workspace default ({locale})",
+          "localeHint": "The welcome email will be sent in this language. The invitee can change it before accepting."
         },
-        "description": {
-          "title": "Description",
-          "description": "Optional context to explain when this fund should be used."
+        "roleHints": {
+          "org_admin": "Full access — can invite others, manage settings, and access all data.",
+          "user": "Can read and update operational data (constituents, donations, campaigns).",
+          "viewer": "Read-only access to operational data."
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "submit": "Send invitation",
+          "submitting": "Sending…"
+        },
+        "errors": {
+          "emailRequired": "Email address is required.",
+          "generic": "Couldn't send the invitation. Please try again."
         }
       },
-      "fields": {
-        "name": "Fund name",
-        "namePlaceholder": "Major donors restricted fund",
-        "nameHint": "Use a precise label that fundraising staff will recognize.",
-        "type": "Fund type",
-        "typeHint": "Restricted funds are for designated giving. Unrestricted funds can support general operations.",
-        "description": "Description",
-        "descriptionPlaceholder": "Explain the designation or internal use of this fund.",
-        "descriptionHint": "This is optional, but helpful when several funds sound similar."
-      },
-      "actions": {
+      "revokeDialog": {
+        "title": "Revoke invitation",
+        "description": "Revoke the invitation for {email}? The link will stop working immediately.",
+        "descriptionFallback": "Revoke this invitation? The link will stop working immediately.",
         "cancel": "Cancel",
-        "submitCreate": "Create fund",
-        "submitUpdate": "Save changes",
-        "submitting": "Saving…"
-      },
-      "errors": {
-        "nameRequired": "Fund name is required.",
-        "nameTooLong": "Fund name must be 255 characters or fewer.",
-        "descriptionTooLong": "Description must be 5000 characters or fewer.",
-        "generic": "Something went wrong while saving. Please try again."
+        "confirm": "Revoke invitation",
+        "revoking": "Revoking…"
       },
       "success": {
-        "created": "Fund created.",
-        "updated": "Fund updated."
+        "invited": "Invitation sent to {email}.",
+        "resent": "Invitation re-sent.",
+        "revoked": "Invitation revoked."
+      },
+      "errors": {
+        "resendGeneric": "Couldn't resend the invitation. Please try again.",
+        "revokeGeneric": "Couldn't revoke the invitation. Please try again."
       }
-    }
-  },
-  "tenant": {
-    "title": "Organisation settings",
-    "description": "Choose the tenant base currency and default language used for reporting and member emails.",
-    "readOnly": "Only organisation admins can update tenant settings.",
-    "fields": {
-      "baseCurrency": "Base currency",
-      "baseCurrencyPlaceholder": "Select a base currency",
-      "baseCurrencyHint": "This currency is used as the organisation reporting currency.",
-      "baseCurrencyHintWithName": "{name} will use this currency for converted totals and reports.",
-      "defaultLocale": "Default language",
-      "defaultLocaleHint": "Default language for members who haven't set a personal preference. Members with a personal language keep their choice."
     },
-    "actions": {
-      "save": "Save settings",
-      "saving": "Saving…"
+    "funds": {
+      "settings": "Settings",
+      "title": "Funds",
+      "subtitleEmpty": "Create restricted and unrestricted funds that can be attached to campaigns and donations.",
+      "subtitleWithCount": "{count, plural, one {# fund configured} other {# funds configured}}",
+      "readOnly": "Only organisation admins can create funds.",
+      "descriptionEmpty": "No description",
+      "types": {
+        "restricted": "Restricted",
+        "unrestricted": "Unrestricted"
+      },
+      "columns": {
+        "name": "Fund",
+        "type": "Type",
+        "description": "Description",
+        "createdAt": "Created",
+        "actions": "Actions"
+      },
+      "actions": {
+        "new": "New fund",
+        "menu": "Open actions for {name}",
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "empty": {
+        "title": "No funds yet",
+        "description": "Add your first fund to control which designations can be used in campaigns and donations."
+      },
+      "deleteDialog": {
+        "title": "Delete fund",
+        "description": "Delete {name}? This action cannot be undone.",
+        "descriptionFallback": "Delete this fund? This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete fund",
+        "deleting": "Deleting…"
+      },
+      "errors": {
+        "deleteGeneric": "Something went wrong while deleting this fund. Please try again."
+      },
+      "success": {
+        "deleted": "Fund deleted."
+      },
+      "form": {
+        "createTitle": "Create fund",
+        "createSubtitle": "Add a restricted or unrestricted fund for campaign and donation allocation.",
+        "breadcrumbNew": "New fund",
+        "editTitle": "Edit fund",
+        "editSubtitle": "Update this fund for campaign and donation allocation.",
+        "breadcrumbEdit": "Edit fund",
+        "sections": {
+          "identity": {
+            "title": "Identity",
+            "description": "Core information used to label and classify the fund."
+          },
+          "description": {
+            "title": "Description",
+            "description": "Optional context to explain when this fund should be used."
+          }
+        },
+        "fields": {
+          "name": "Fund name",
+          "namePlaceholder": "Major donors restricted fund",
+          "nameHint": "Use a precise label that fundraising staff will recognize.",
+          "type": "Fund type",
+          "typeHint": "Restricted funds are for designated giving. Unrestricted funds can support general operations.",
+          "description": "Description",
+          "descriptionPlaceholder": "Explain the designation or internal use of this fund.",
+          "descriptionHint": "This is optional, but helpful when several funds sound similar."
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "submitCreate": "Create fund",
+          "submitUpdate": "Save changes",
+          "submitting": "Saving…"
+        },
+        "errors": {
+          "nameRequired": "Fund name is required.",
+          "nameTooLong": "Fund name must be 255 characters or fewer.",
+          "descriptionTooLong": "Description must be 5000 characters or fewer.",
+          "generic": "Something went wrong while saving. Please try again."
+        },
+        "success": {
+          "created": "Fund created.",
+          "updated": "Fund updated."
+        }
+      }
     },
-    "errors": {
-      "load": "Unable to load organisation settings right now.",
-      "save": "Unable to save organisation settings right now."
+    "tenant": {
+      "title": "Organisation settings",
+      "description": "Choose the tenant base currency and default language used for reporting and member emails.",
+      "readOnly": "Only organisation admins can update tenant settings.",
+      "fields": {
+        "baseCurrency": "Base currency",
+        "baseCurrencyPlaceholder": "Select a base currency",
+        "baseCurrencyHint": "This currency is used as the organisation reporting currency.",
+        "baseCurrencyHintWithName": "{name} will use this currency for converted totals and reports.",
+        "defaultLocale": "Default language",
+        "defaultLocaleHint": "Default language for members who haven't set a personal preference. Members with a personal language keep their choice."
+      },
+      "actions": {
+        "save": "Save settings",
+        "saving": "Saving…"
+      },
+      "errors": {
+        "load": "Unable to load organisation settings right now.",
+        "save": "Unable to save organisation settings right now."
+      },
+      "success": {
+        "updated": "Organisation settings updated."
+      }
     },
-    "success": {
-      "updated": "Organisation settings updated."
-    }
-  },
-  "snapshot": {
+    "snapshot": {
       "badge": "ADM-001 MVP",
       "title": "Data export (GDPR / GL)",
       "description": "Download a JSON snapshot of the organisation data for portability, archival, or general-ledger handoff needs.",
@@ -1377,11 +1381,10 @@
         "lastNamePlaceholder": "Doe",
         "email": "Email",
         "emailPlaceholder": "jane.doe@example.org",
-    "amount": "Amount",
-    "amountPlaceholder": "50"
-    ,
-    "currency": "Currency"
-  },
+        "amount": "Amount",
+        "amountPlaceholder": "50",
+        "currency": "Currency"
+      },
       "actions": {
         "submit": "Continue to payment",
         "submitting": "Preparing…"
@@ -1392,9 +1395,9 @@
         "emailRequired": "Enter your email address.",
         "emailInvalid": "Enter a valid email address.",
         "amountRequired": "Enter a donation amount.",
-    "amountInvalid": "Amount must be at least 1.",
-    "generic": "Something went wrong while preparing payment. Please try again."
-  },
+        "amountInvalid": "Amount must be at least 1.",
+        "generic": "Something went wrong while preparing payment. Please try again."
+      },
       "success": {
         "intentCreated": "Your donation is ready. The Stripe payment step is the next integration.",
         "nextStepTitle": "Next step",

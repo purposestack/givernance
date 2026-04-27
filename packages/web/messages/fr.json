@@ -373,7 +373,8 @@
           "createdVia": "Créé via",
           "ownership": "Ownership",
           "createdAt": "Créé le",
-          "updatedAt": "Dernière mise à jour"
+          "updatedAt": "Dernière mise à jour",
+          "actions": "Actions"
         },
         "statuses": {
           "active": "Actif",
@@ -388,6 +389,9 @@
         "empty": {
           "title": "Aucun tenant",
           "description": "Les tenants créés via le parcours de super-admin apparaîtront ici."
+        },
+        "actions": {
+          "view": "Voir les détails"
         }
       },
       "new": {
@@ -604,207 +608,207 @@
     }
   },
   "settings": {
-  "title": "Paramètres",
-  "subtitle": "Gérez les paramètres de l'organisation et les outils d'export.",
-  "breadcrumbRoot": "Tableau de bord",
-  "navigation": {
-    "label": "Navigation des paramètres de l'organisation",
-    "organization": "Organisation",
-    "members": "Membres",
-    "funds": "Fonds"
-  },
-  "members": {
-    "title": "Membres",
-    "subtitleEmpty": "Invitez vos collègues à rejoindre votre espace.",
-    "subtitleWithCount": "{count, plural, one {# invitation enregistrée} other {# invitations enregistrées}}",
-    "columns": {
-      "email": "Email",
-      "role": "Rôle",
-      "status": "Statut",
-      "invitedBy": "Invité·e par",
-      "createdAt": "Invité·e le",
-      "actions": "Actions"
+    "title": "Paramètres",
+    "subtitle": "Gérez les paramètres de l'organisation et les outils d'export.",
+    "breadcrumbRoot": "Tableau de bord",
+    "navigation": {
+      "label": "Navigation des paramètres de l'organisation",
+      "organization": "Organisation",
+      "members": "Membres",
+      "funds": "Fonds"
     },
-    "roles": {
-      "org_admin": "Administrateur·trice",
-      "user": "Membre",
-      "viewer": "Lecteur·trice"
-    },
-    "statuses": {
-      "pending": "En attente",
-      "accepted": "Accepté·e",
-      "expired": "Expirée"
-    },
-    "actions": {
-      "invite": "Inviter un·e collègue",
-      "menu": "Ouvrir les actions pour {email}",
-      "resend": "Renvoyer l'invitation",
-      "revoke": "Révoquer l'invitation"
-    },
-    "empty": {
-      "title": "Aucune invitation",
-      "description": "Invitez un·e collègue pour lui donner accès à cet espace."
-    },
-    "invite": {
-      "title": "Inviter un·e collègue",
-      "description": "Ils·elles recevront un email avec un lien pour rejoindre l'espace et choisir leur mot de passe.",
-      "fields": {
-        "firstName": "Prénom",
-        "firstNamePlaceholder": "Ada",
-        "lastName": "Nom",
-        "lastNamePlaceholder": "Lovelace",
-        "email": "Adresse email",
-        "emailPlaceholder": "collegue@exemple.org",
+    "members": {
+      "title": "Membres",
+      "subtitleEmpty": "Invitez vos collègues à rejoindre votre espace.",
+      "subtitleWithCount": "{count, plural, one {# invitation enregistrée} other {# invitations enregistrées}}",
+      "columns": {
+        "email": "Email",
         "role": "Rôle",
-        "locale": "Langue de l'invitation",
-        "localeFollowTenant": "Utiliser la langue par défaut de l'espace ({locale})",
-        "localeHint": "L'email d'invitation sera envoyé dans cette langue. La personne invitée pourra la changer avant d'accepter."
+        "status": "Statut",
+        "invitedBy": "Invité·e par",
+        "createdAt": "Invité·e le",
+        "actions": "Actions"
       },
-      "roleHints": {
-        "org_admin": "Accès complet — peut inviter d'autres personnes, gérer les paramètres et accéder à toutes les données.",
-        "user": "Peut consulter et modifier les données opérationnelles (constituants, dons, campagnes).",
-        "viewer": "Accès en lecture seule aux données opérationnelles."
+      "roles": {
+        "org_admin": "Administration",
+        "user": "Membre",
+        "viewer": "Lecture"
+      },
+      "statuses": {
+        "pending": "En attente",
+        "accepted": "Accepté·e",
+        "expired": "Expirée"
       },
       "actions": {
-        "cancel": "Annuler",
-        "submit": "Envoyer l'invitation",
-        "submitting": "Envoi…"
+        "invite": "Inviter un·e collègue",
+        "menu": "Ouvrir les actions pour {email}",
+        "resend": "Renvoyer l'invitation",
+        "revoke": "Révoquer l'invitation"
       },
-      "errors": {
-        "emailRequired": "L'adresse email est requise.",
-        "generic": "Impossible d'envoyer l'invitation. Veuillez réessayer."
-      }
-    },
-    "revokeDialog": {
-      "title": "Révoquer l'invitation",
-      "description": "Révoquer l'invitation de {email} ? Le lien cessera immédiatement de fonctionner.",
-      "descriptionFallback": "Révoquer cette invitation ? Le lien cessera immédiatement de fonctionner.",
-      "cancel": "Annuler",
-      "confirm": "Révoquer l'invitation",
-      "revoking": "Révocation…"
-    },
-    "success": {
-      "invited": "Invitation envoyée à {email}.",
-      "resent": "Invitation renvoyée.",
-      "revoked": "Invitation révoquée."
-    },
-    "errors": {
-      "resendGeneric": "Impossible de renvoyer l'invitation. Veuillez réessayer.",
-      "revokeGeneric": "Impossible de révoquer l'invitation. Veuillez réessayer."
-    }
-  },
-  "funds": {
-    "settings": "Paramètres",
-    "title": "Fonds",
-    "subtitleEmpty": "Créez des fonds restreints ou non restreints pouvant être rattachés aux campagnes et aux dons.",
-    "subtitleWithCount": "{count, plural, one {# fonds configuré} other {# fonds configurés}}",
-    "readOnly": "Seuls les administrateurs de l'organisation peuvent créer des fonds.",
-    "descriptionEmpty": "Aucune description",
-    "types": {
-      "restricted": "Restreint",
-      "unrestricted": "Non restreint"
-    },
-    "columns": {
-      "name": "Fonds",
-      "type": "Type",
-      "description": "Description",
-      "createdAt": "Créé le",
-      "actions": "Actions"
-    },
-    "actions": {
-      "new": "Nouveau fonds",
-      "menu": "Ouvrir les actions pour {name}",
-      "edit": "Modifier",
-      "delete": "Supprimer"
-    },
-    "empty": {
-      "title": "Aucun fonds",
-      "description": "Ajoutez un premier fonds pour contrôler les affectations disponibles dans les campagnes et les dons."
-    },
-    "deleteDialog": {
-      "title": "Supprimer le fonds",
-      "description": "Supprimer {name} ? Cette action est irréversible.",
-      "descriptionFallback": "Supprimer ce fonds ? Cette action est irréversible.",
-      "cancel": "Annuler",
-      "confirm": "Supprimer le fonds",
-      "deleting": "Suppression…"
-    },
-    "errors": {
-      "deleteGeneric": "Une erreur est survenue pendant la suppression du fonds. Veuillez réessayer."
-    },
-    "success": {
-      "deleted": "Fonds supprimé."
-    },
-    "form": {
-      "createTitle": "Créer un fonds",
-      "createSubtitle": "Ajoutez un fonds restreint ou non restreint pour l’affectation des campagnes et des dons.",
-      "breadcrumbNew": "Nouveau fonds",
-      "editTitle": "Modifier le fonds",
-      "editSubtitle": "Mettez à jour ce fonds pour l’affectation des campagnes et des dons.",
-      "breadcrumbEdit": "Modifier le fonds",
-      "sections": {
-        "identity": {
-          "title": "Identité",
-          "description": "Informations principales utilisées pour nommer et classer le fonds."
+      "empty": {
+        "title": "Aucune invitation",
+        "description": "Invitez un·e collègue pour lui donner accès à cet espace."
+      },
+      "invite": {
+        "title": "Inviter un·e collègue",
+        "description": "Ils·elles recevront un email avec un lien pour rejoindre l'espace et choisir leur mot de passe.",
+        "fields": {
+          "firstName": "Prénom",
+          "firstNamePlaceholder": "Ada",
+          "lastName": "Nom",
+          "lastNamePlaceholder": "Lovelace",
+          "email": "Adresse email",
+          "emailPlaceholder": "collegue@exemple.org",
+          "role": "Rôle",
+          "locale": "Langue de l'invitation",
+          "localeFollowTenant": "Utiliser la langue par défaut de l'espace ({locale})",
+          "localeHint": "L'email d'invitation sera envoyé dans cette langue. La personne invitée pourra la changer avant d'accepter."
         },
-        "description": {
-          "title": "Description",
-          "description": "Contexte optionnel pour expliquer quand utiliser ce fonds."
+        "roleHints": {
+          "org_admin": "Accès complet — peut inviter d'autres personnes, gérer les paramètres et accéder à toutes les données.",
+          "user": "Peut consulter et modifier les données opérationnelles (constituants, dons, campagnes).",
+          "viewer": "Accès en lecture seule aux données opérationnelles."
+        },
+        "actions": {
+          "cancel": "Annuler",
+          "submit": "Envoyer l'invitation",
+          "submitting": "Envoi…"
+        },
+        "errors": {
+          "emailRequired": "L'adresse email est requise.",
+          "generic": "Impossible d'envoyer l'invitation. Veuillez réessayer."
         }
       },
-      "fields": {
-        "name": "Nom du fonds",
-        "namePlaceholder": "Fonds restreint grands donateurs",
-        "nameHint": "Utilisez un libellé précis reconnu par l’équipe fundraising.",
-        "type": "Type de fonds",
-        "typeHint": "Les fonds restreints servent aux dons fléchés. Les fonds non restreints peuvent financer les opérations générales.",
-        "description": "Description",
-        "descriptionPlaceholder": "Expliquez l’affectation ou l’usage interne de ce fonds.",
-        "descriptionHint": "Optionnel, mais utile quand plusieurs fonds se ressemblent."
-      },
-      "actions": {
+      "revokeDialog": {
+        "title": "Révoquer l'invitation",
+        "description": "Révoquer l'invitation de {email} ? Le lien cessera immédiatement de fonctionner.",
+        "descriptionFallback": "Révoquer cette invitation ? Le lien cessera immédiatement de fonctionner.",
         "cancel": "Annuler",
-        "submitCreate": "Créer le fonds",
-        "submitUpdate": "Enregistrer les modifications",
-        "submitting": "Enregistrement…"
-      },
-      "errors": {
-        "nameRequired": "Le nom du fonds est requis.",
-        "nameTooLong": "Le nom du fonds doit contenir au plus 255 caractères.",
-        "descriptionTooLong": "La description doit contenir au plus 5000 caractères.",
-        "generic": "Une erreur est survenue pendant l’enregistrement. Veuillez réessayer."
+        "confirm": "Révoquer l'invitation",
+        "revoking": "Révocation…"
       },
       "success": {
-        "created": "Fonds créé.",
-        "updated": "Fonds mis à jour."
+        "invited": "Invitation envoyée à {email}.",
+        "resent": "Invitation renvoyée.",
+        "revoked": "Invitation révoquée."
+      },
+      "errors": {
+        "resendGeneric": "Impossible de renvoyer l'invitation. Veuillez réessayer.",
+        "revokeGeneric": "Impossible de révoquer l'invitation. Veuillez réessayer."
       }
-    }
-  },
-  "tenant": {
-    "title": "Paramètres de l'organisation",
-    "description": "Choisissez la devise de base du tenant et la langue par défaut pour les emails envoyés aux membres.",
-    "readOnly": "Seuls les administrateurs de l'organisation peuvent modifier ces paramètres.",
-    "fields": {
-      "baseCurrency": "Devise de base",
-      "baseCurrencyPlaceholder": "Choisissez une devise de base",
-      "baseCurrencyHint": "Cette devise est utilisée comme devise de reporting de l'organisation.",
-      "baseCurrencyHintWithName": "{name} utilisera cette devise pour les montants convertis et les rapports.",
-      "defaultLocale": "Langue par défaut",
-      "defaultLocaleHint": "Langue par défaut pour les membres qui n'ont pas défini de préférence personnelle. Les membres ayant une langue personnelle conservent leur choix."
     },
-    "actions": {
-      "save": "Enregistrer les paramètres",
-      "saving": "Enregistrement…"
+    "funds": {
+      "settings": "Paramètres",
+      "title": "Fonds",
+      "subtitleEmpty": "Créez des fonds restreints ou non restreints pouvant être rattachés aux campagnes et aux dons.",
+      "subtitleWithCount": "{count, plural, one {# fonds configuré} other {# fonds configurés}}",
+      "readOnly": "Seuls les administrateurs de l'organisation peuvent créer des fonds.",
+      "descriptionEmpty": "Aucune description",
+      "types": {
+        "restricted": "Restreint",
+        "unrestricted": "Non restreint"
+      },
+      "columns": {
+        "name": "Fonds",
+        "type": "Type",
+        "description": "Description",
+        "createdAt": "Créé le",
+        "actions": "Actions"
+      },
+      "actions": {
+        "new": "Nouveau fonds",
+        "menu": "Ouvrir les actions pour {name}",
+        "edit": "Modifier",
+        "delete": "Supprimer"
+      },
+      "empty": {
+        "title": "Aucun fonds",
+        "description": "Ajoutez un premier fonds pour contrôler les affectations disponibles dans les campagnes et les dons."
+      },
+      "deleteDialog": {
+        "title": "Supprimer le fonds",
+        "description": "Supprimer {name} ? Cette action est irréversible.",
+        "descriptionFallback": "Supprimer ce fonds ? Cette action est irréversible.",
+        "cancel": "Annuler",
+        "confirm": "Supprimer le fonds",
+        "deleting": "Suppression…"
+      },
+      "errors": {
+        "deleteGeneric": "Une erreur est survenue pendant la suppression du fonds. Veuillez réessayer."
+      },
+      "success": {
+        "deleted": "Fonds supprimé."
+      },
+      "form": {
+        "createTitle": "Créer un fonds",
+        "createSubtitle": "Ajoutez un fonds restreint ou non restreint pour l’affectation des campagnes et des dons.",
+        "breadcrumbNew": "Nouveau fonds",
+        "editTitle": "Modifier le fonds",
+        "editSubtitle": "Mettez à jour ce fonds pour l’affectation des campagnes et des dons.",
+        "breadcrumbEdit": "Modifier le fonds",
+        "sections": {
+          "identity": {
+            "title": "Identité",
+            "description": "Informations principales utilisées pour nommer et classer le fonds."
+          },
+          "description": {
+            "title": "Description",
+            "description": "Contexte optionnel pour expliquer quand utiliser ce fonds."
+          }
+        },
+        "fields": {
+          "name": "Nom du fonds",
+          "namePlaceholder": "Fonds restreint grands donateurs",
+          "nameHint": "Utilisez un libellé précis reconnu par l’équipe fundraising.",
+          "type": "Type de fonds",
+          "typeHint": "Les fonds restreints servent aux dons fléchés. Les fonds non restreints peuvent financer les opérations générales.",
+          "description": "Description",
+          "descriptionPlaceholder": "Expliquez l’affectation ou l’usage interne de ce fonds.",
+          "descriptionHint": "Optionnel, mais utile quand plusieurs fonds se ressemblent."
+        },
+        "actions": {
+          "cancel": "Annuler",
+          "submitCreate": "Créer le fonds",
+          "submitUpdate": "Enregistrer les modifications",
+          "submitting": "Enregistrement…"
+        },
+        "errors": {
+          "nameRequired": "Le nom du fonds est requis.",
+          "nameTooLong": "Le nom du fonds doit contenir au plus 255 caractères.",
+          "descriptionTooLong": "La description doit contenir au plus 5000 caractères.",
+          "generic": "Une erreur est survenue pendant l’enregistrement. Veuillez réessayer."
+        },
+        "success": {
+          "created": "Fonds créé.",
+          "updated": "Fonds mis à jour."
+        }
+      }
     },
-    "errors": {
-      "load": "Impossible de charger les paramètres de l'organisation pour le moment.",
-      "save": "Impossible d'enregistrer les paramètres de l'organisation pour le moment."
+    "tenant": {
+      "title": "Paramètres de l'organisation",
+      "description": "Choisissez la devise de base du tenant et la langue par défaut pour les emails envoyés aux membres.",
+      "readOnly": "Seuls les administrateurs de l'organisation peuvent modifier ces paramètres.",
+      "fields": {
+        "baseCurrency": "Devise de base",
+        "baseCurrencyPlaceholder": "Choisissez une devise de base",
+        "baseCurrencyHint": "Cette devise est utilisée comme devise de reporting de l'organisation.",
+        "baseCurrencyHintWithName": "{name} utilisera cette devise pour les montants convertis et les rapports.",
+        "defaultLocale": "Langue par défaut",
+        "defaultLocaleHint": "Langue par défaut pour les membres qui n'ont pas défini de préférence personnelle. Les membres ayant une langue personnelle conservent leur choix."
+      },
+      "actions": {
+        "save": "Enregistrer les paramètres",
+        "saving": "Enregistrement…"
+      },
+      "errors": {
+        "load": "Impossible de charger les paramètres de l'organisation pour le moment.",
+        "save": "Impossible d'enregistrer les paramètres de l'organisation pour le moment."
+      },
+      "success": {
+        "updated": "Paramètres de l'organisation mis à jour."
+      }
     },
-    "success": {
-      "updated": "Paramètres de l'organisation mis à jour."
-    }
-  },
-  "snapshot": {
+    "snapshot": {
       "badge": "ADM-001 MVP",
       "title": "Export des données (RGPD / GL)",
       "description": "Téléchargez un snapshot JSON des données de l'organisation pour les besoins de portabilité, d'archivage ou de handoff comptable.",
@@ -1377,11 +1381,10 @@
         "lastNamePlaceholder": "Dupont",
         "email": "Email",
         "emailPlaceholder": "marie.dupont@exemple.org",
-    "amount": "Montant",
-    "amountPlaceholder": "50"
-    ,
-    "currency": "Devise"
-  },
+        "amount": "Montant",
+        "amountPlaceholder": "50",
+        "currency": "Devise"
+      },
       "actions": {
         "submit": "Continuer vers le paiement",
         "submitting": "Préparation…"
@@ -1392,9 +1395,9 @@
         "emailRequired": "Saisissez votre adresse e-mail.",
         "emailInvalid": "Saisissez une adresse e-mail valide.",
         "amountRequired": "Saisissez un montant de don.",
-    "amountInvalid": "Le montant doit être d'au moins 1.",
-    "generic": "Une erreur est survenue lors de la préparation du paiement. Réessayez."
-  },
+        "amountInvalid": "Le montant doit être d'au moins 1.",
+        "generic": "Une erreur est survenue lors de la préparation du paiement. Réessayez."
+      },
       "success": {
         "intentCreated": "Votre don est prêt. L'étape de paiement Stripe est la prochaine intégration.",
         "nextStepTitle": "Étape suivante",
