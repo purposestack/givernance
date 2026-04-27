@@ -10,14 +10,20 @@ servers:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
     cmd: pnpm --filter @givernance/web run start
-    labels:
-      traefik.http.routers.givernance-web.rule: Host(`staging.givernance.org`)
+    proxy:
+      host: staging.givernance.org
+      port: 3000
+      healthcheck:
+        path: /
   api:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
     cmd: pnpm --filter @givernance/api run start
-    labels:
-      traefik.http.routers.givernance-api.rule: Host(`api.staging.givernance.org`)
+    proxy:
+      host: api.staging.givernance.org
+      port: 4000
+      healthcheck:
+        path: /
   worker:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
