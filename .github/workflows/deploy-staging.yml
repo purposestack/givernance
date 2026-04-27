@@ -48,7 +48,7 @@ jobs:
           EOF
 
       - name: Deploy with Kamal
-        run: kamal deploy -c config/deploy-staging.yml
+        run: kamal setup -c config/deploy-staging.yml
 
       - name: Run DB Migrations
         run: kamal app exec -c config/deploy-staging.yml --reuse "pnpm --filter @givernance/api run db:migrate"
