@@ -94,6 +94,6 @@ accessories:
         KC_DB_USERNAME: givernance
         KEYCLOAK_ADMIN: admin
       secret:
-        - KC_DB_PASSWORD: POSTGRES_PASSWORD
+        - KC_DB_PASSWORD
         - KEYCLOAK_ADMIN_PASSWORD
     cmd: start-dev
