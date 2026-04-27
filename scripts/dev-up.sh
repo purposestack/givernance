@@ -132,7 +132,7 @@ existing_constituents=$(docker compose exec -T postgres psql \
 if [ "${existing_constituents}" = "0" ]; then
   echo ""
   echo "Seeding demo tenant (50 constituents / 5 campaigns / 100 donations)..."
-  pnpm --filter @givernance/api run db:seed
+  pnpm --filter @givernance/api run db:seed:local
 else
   echo ""
   echo "Skipping seed — demo tenant already has ${existing_constituents} constituents."
