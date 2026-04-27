@@ -7,16 +7,16 @@
  */
 @theme {
   /* ── Colors — Material You warm palette ── */
-  --color-background: #f0eee9;
-  --color-surface: #f0eee9;
+  --color-background: #fcfbf9;
+  --color-surface: #fcfbf9;
   --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f5f3ef;
-  --color-surface-container: #ebe8e2;
-  --color-surface-container-high: #e1ded7;
-  --color-surface-container-highest: #d7d4cc;
-  --color-surface-variant: #e1ded7;
-  --color-surface-dim: #d0cdc5;
-  --color-surface-bright: #f0eee9;
+  --color-surface-container-low: #f9f8f6;
+  --color-surface-container: #f2f0ec;
+  --color-surface-container-high: #ebe8e2;
+  --color-surface-container-highest: #e4e0d9;
+  --color-surface-variant: #e4e0d9;
+  --color-surface-dim: #dedbd4;
+  --color-surface-bright: #fcfbf9;
 
   --color-primary: #096447;
   --color-primary-container: #2e7d5e;
@@ -157,10 +157,10 @@
   --color-ai-text: var(--color-primary);
 
   /* ── Sidebar ── */
-  --color-sidebar-bg: #f8fafc; /* Powdered pastel / Cloud dancer airy white */
+  --color-sidebar-bg: #ffffff; /* Ultra light airy white */
   --color-sidebar-text: var(--color-on-surface);
   --color-sidebar-text-active: var(--color-primary);
-  --color-sidebar-item-active-bg: #edf2f7; /* Soft cool pastel grey */
+  --color-sidebar-item-active-bg: #f4f7f6; /* Soft subtle active tint */
   --color-sidebar-section: #64748b; /* Cooler muted text for sections */
 
   /* ── Primary tint scale ── */
@@ -292,8 +292,8 @@
   --sidebar-width-sm: 240px;
   --sidebar-collapsed: 64px;
   --topbar-height: 80px;
-  --topbar-bg: rgba(248, 250, 252, 0.85); /* Opalescent Cloud Dancer tint */
-  --topbar-border: rgba(148, 163, 184, 0.15); /* Cooler, lighter border */
+  --topbar-bg: rgba(252, 251, 249, 0.85); /* Ultra light translucent */
+  --topbar-border: rgba(148, 163, 184, 0.10); /* Cooler, lighter border */
   --content-padding: 40px;
   --content-max: 1280px;
   --form-max: 800px;
