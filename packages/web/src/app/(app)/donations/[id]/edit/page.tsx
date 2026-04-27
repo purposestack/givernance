@@ -5,7 +5,7 @@ import { DonationForm } from "@/components/donations/donation-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { type DonationDetail, donationDetailDonorName } from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
 
@@ -28,7 +28,7 @@ async function fetchDonationOrNotFound(id: string): Promise<DonationDetail> {
 }
 
 export default async function EditDonationPage({ params }: EditDonationPageProps) {
-  await requireAuth();
+  await requirePermission("write");
   const { id } = await params;
   const donation = await fetchDonationOrNotFound(id);
 

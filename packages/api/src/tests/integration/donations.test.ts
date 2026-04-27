@@ -625,3 +625,282 @@ describe("Pledges unauthenticated access", () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+// ─── Donations viewer-role enforcement (issue #176) ─────────────────────────
+//
+// Mirrors the constituents pattern from PR #170: viewer must hit 403 on every
+// write endpoint, user keeps parity with org_admin on POST/PATCH but is
+// blocked on DELETE (org_admin-only), and reads stay open to viewer so we
+// don't over-block. At least one viewer-403 path locks the RFC 9457 problem
+// body shape so a regression to `{ error }` or a stripped `type` URI breaks
+// here, not in unrelated SDK / web parsing.
+
+describe("Donations viewer-role enforcement (issue #176)", () => {
+  it("POST /v1/donations returns 403 for viewer with RFC 9457 problem body", async () => {
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(viewerToken),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1000,
+        currency: "EUR",
+        paymentMethod: "cash",
+        paymentRef: `VIEWER-BLOCK-${Date.now()}`,
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    expect(body.type).toBe("https://httpproblems.com/http-status/403");
+    expect(body.title).toBe("Forbidden");
+    expect(body.status).toBe(403);
+    expect(body.detail).toMatch(/write access required/i);
+  });
+
+  it("PATCH /v1/donations/:id returns 403 for viewer", async () => {
+    // Seed via admin so a target row exists.
+    const tokenA = signToken(app);
+    const seed = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 4200,
+        currency: "EUR",
+        paymentMethod: "cash",
+        paymentRef: `VIEWER-PATCH-SEED-${Date.now()}`,
+      },
+    });
+    const targetId = seed.json<{ data: { id: string } }>().data.id;
+
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/donations/${targetId}`,
+      headers: authHeader(viewerToken),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 9999,
+        currency: "EUR",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+
+    // Sanity: the row was not touched.
+    const check = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${targetId}`,
+      headers: authHeader(tokenA),
+    });
+    expect(check.json<{ data: { amountCents: number } }>().data.amountCents).toBe(4200);
+  });
+
+  it("DELETE /v1/donations/:id returns 403 for viewer", async () => {
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/donations/00000000-0000-0000-0000-000000000001",
+      headers: authHeader(viewerToken),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("DELETE /v1/donations/:id returns 403 for user role (org_admin only)", async () => {
+    const userToken = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/donations/00000000-0000-0000-0000-000000000001",
+      headers: authHeader(userToken),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("user role can still POST /v1/donations (parity with org_admin)", async () => {
+    const userToken = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(userToken),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 2500,
+        currency: "EUR",
+        paymentMethod: "cash",
+        paymentRef: `USER-POST-${Date.now()}`,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("user role can still PATCH /v1/donations/:id", async () => {
+    const tokenA = signToken(app);
+    const seed = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 3300,
+        currency: "EUR",
+        paymentMethod: "cash",
+        paymentRef: `USER-PATCH-SEED-${Date.now()}`,
+      },
+    });
+    const id = seed.json<{ data: { id: string } }>().data.id;
+
+    const userToken = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/donations/${id}`,
+      headers: authHeader(userToken),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 3400,
+        currency: "EUR",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("org_admin can DELETE /v1/donations/:id", async () => {
+    const tokenA = signToken(app);
+    const seed = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1100,
+        currency: "EUR",
+        paymentMethod: "cash",
+        paymentRef: `ADMIN-DELETE-${Date.now()}`,
+      },
+    });
+    const id = seed.json<{ data: { id: string } }>().data.id;
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/donations/${id}`,
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  // Sanity: tightening writes mustn't over-block reads. If a future change
+  // mass-replaces `requireAuth` → `requireWrite` on GET endpoints, this test
+  // catches it for donations.
+  it("GET /v1/donations stays accessible to viewer (read-only)", async () => {
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations",
+      headers: authHeader(viewerToken),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("GET /v1/donations/:id stays accessible to viewer (read-only)", async () => {
+    const tokenA = signToken(app);
+    const seed = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 600,
+        currency: "EUR",
+        paymentMethod: "cash",
+        paymentRef: `VIEWER-READ-${Date.now()}`,
+      },
+    });
+    const id = seed.json<{ data: { id: string } }>().data.id;
+
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${id}`,
+      headers: authHeader(viewerToken),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});
+
+// ─── Pledges viewer-role enforcement (issue #177) ───────────────────────────
+
+describe("Pledges viewer-role enforcement (issue #177)", () => {
+  it("POST /v1/pledges returns 403 for viewer with RFC 9457 problem body", async () => {
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/pledges",
+      headers: authHeader(viewerToken),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1000,
+        frequency: "monthly",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    expect(body.type).toBe("https://httpproblems.com/http-status/403");
+    expect(body.title).toBe("Forbidden");
+    expect(body.status).toBe(403);
+    expect(body.detail).toMatch(/write access required/i);
+  });
+
+  it("user role can still POST /v1/pledges", async () => {
+    const userToken = signToken(app, { role: "user" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/pledges",
+      headers: authHeader(userToken),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1500,
+        frequency: "monthly",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("org_admin can still POST /v1/pledges", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/pledges",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1800,
+        frequency: "yearly",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  // Sanity: read endpoint must stay open to viewer per audit Table B1.
+  it("GET /v1/pledges/:id/installments stays accessible to viewer", async () => {
+    const tokenA = signToken(app);
+    const seed = await app.inject({
+      method: "POST",
+      url: "/v1/pledges",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 700,
+        frequency: "monthly",
+      },
+    });
+    const pledgeId = seed.json<{ data: { id: string } }>().data.id;
+
+    const viewerToken = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/pledges/${pledgeId}/installments`,
+      headers: authHeader(viewerToken),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});

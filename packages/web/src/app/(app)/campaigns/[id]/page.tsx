@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requireAuth } from "@/lib/auth/guards";
+import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
 import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campaign";
 import type { DonationListResponse } from "@/models/donation";
@@ -77,6 +77,7 @@ export default async function CampaignDetailPage({
   searchParams,
 }: CampaignDetailPageProps) {
   const auth = await requireAuth();
+  const canWrite = hasPermission(auth, "write");
   const { id } = await params;
   const sp = await searchParams;
   const donationsPage = parsePositiveInt(sp.page, 1);
@@ -131,12 +132,14 @@ export default async function CampaignDetailPage({
                 {t("actions.back")}
               </Link>
             </Button>
-            <Button asChild size="sm">
-              <Link href={`/campaigns/${campaign.id}/edit`}>
-                <Pencil size={16} aria-hidden="true" />
-                {t("actions.edit")}
-              </Link>
-            </Button>
+            {canWrite ? (
+              <Button asChild size="sm">
+                <Link href={`/campaigns/${campaign.id}/edit`}>
+                  <Pencil size={16} aria-hidden="true" />
+                  {t("actions.edit")}
+                </Link>
+              </Button>
+            ) : null}
             {auth.roles.includes("org_admin") ? (
               <Button asChild variant="secondary" size="sm">
                 <Link href={`/campaigns/${campaign.id}/public-page`}>

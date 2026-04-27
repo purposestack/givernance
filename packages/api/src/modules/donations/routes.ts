@@ -2,7 +2,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../lib/guards.js";
+import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
 import { getReceiptPresignedUrl } from "../../lib/s3.js";
 import {
@@ -252,7 +252,7 @@ export async function donationRoutes(app: FastifyInstance) {
     "/donations",
     {
       config: { idempotency: { routeKey: "POST:/v1/donations" } },
-      preHandler: requireAuth,
+      preHandler: requireWrite,
       schema: {
         tags: ["Donations"],
         body: DonationCreateBody,
@@ -327,7 +327,7 @@ export async function donationRoutes(app: FastifyInstance) {
   app.patch(
     "/donations/:id",
     {
-      preHandler: requireAuth,
+      preHandler: requireWrite,
       schema: {
         tags: ["Donations"],
         params: IdParams,
@@ -385,7 +385,7 @@ export async function donationRoutes(app: FastifyInstance) {
   app.delete(
     "/donations/:id",
     {
-      preHandler: requireAuth,
+      preHandler: requireOrgAdmin,
       schema: {
         tags: ["Donations"],
         params: IdParams,

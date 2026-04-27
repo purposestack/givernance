@@ -2,7 +2,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../lib/guards.js";
+import { requireAuth, requireWrite } from "../../lib/guards.js";
 import {
   CurrencySchema,
   DataArrayResponseNoPagination,
@@ -77,7 +77,7 @@ export async function pledgeRoutes(app: FastifyInstance) {
     "/pledges",
     {
       config: { idempotency: { routeKey: "POST:/v1/pledges" } },
-      preHandler: requireAuth,
+      preHandler: requireWrite,
       schema: {
         tags: ["Pledges"],
         body: PledgeCreateBody,
