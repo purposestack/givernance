@@ -1,6 +1,14 @@
 import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
+import {
+  COOKIE_MAX_AGE_S,
+  ID_TOKEN_COOKIE_NAME,
+  JWT_COOKIE_NAME,
+  jwtCookieOptions,
+  REFRESH_TOKEN_COOKIE_NAME,
+  resolveSessionMaxAge,
+} from "./session";
 
 /**
  * Keycloak OIDC configuration — centralised for all auth API routes.
@@ -37,28 +45,14 @@ export const AUTH_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/
 export const TOKEN_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
 export const LOGOUT_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/logout`;
 
-/** JWT cookie name — consistent across middleware, layout, and API routes. */
-export const JWT_COOKIE_NAME = "givernance_jwt";
-
-/**
- * ID token cookie — needed as `id_token_hint` on the Keycloak end-session
- * endpoint so logout is silent (no "Are you sure?" prompt).
- */
-export const ID_TOKEN_COOKIE_NAME = "givernance_id_token";
-
-/** Max age for the JWT cookie — 8 hours (matches typical Keycloak session). */
-export const COOKIE_MAX_AGE_S = 8 * 60 * 60;
-
-/** Cookie attributes for the JWT — httpOnly + Secure + SameSite=Strict per ADR-011. */
-export function jwtCookieOptions(maxAge?: number) {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict" as const,
-    path: "/",
-    maxAge: maxAge ?? COOKIE_MAX_AGE_S,
-  };
-}
+export {
+  COOKIE_MAX_AGE_S,
+  ID_TOKEN_COOKIE_NAME,
+  JWT_COOKIE_NAME,
+  jwtCookieOptions,
+  REFRESH_TOKEN_COOKIE_NAME,
+  resolveSessionMaxAge,
+};
 
 /** Cookie options for short-lived OIDC flow params (state, code_verifier). 5 min TTL. */
 export function oidcFlowCookieOptions() {

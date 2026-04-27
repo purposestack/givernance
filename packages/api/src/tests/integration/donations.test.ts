@@ -213,13 +213,19 @@ describe("Donations CRUD", () => {
       data: {
         id: string;
         constituent: { firstName: string };
-        allocations: unknown[];
+        allocations: Array<{ fundId: string; fundName: string; amountCents: number }>;
       };
     }>();
     expect(body.data.id).toBe(donationId);
     expect(body.data.constituent).toBeTruthy();
     expect(body.data.constituent.firstName).toBe("Donor");
     expect(Array.isArray(body.data.allocations)).toBe(true);
+    if (body.data.allocations.length > 0) {
+      expect(body.data.allocations[0]).toMatchObject({
+        fundId: fundIdA,
+        fundName: "General Fund",
+      });
+    }
   });
 
   it("GET /v1/donations/:id returns 404 for non-existent ID", async () => {
@@ -282,14 +288,18 @@ describe("Donations CRUD", () => {
       data: {
         amountCents: number;
         paymentMethod: string | null;
-        allocations: Array<{ fundId: string; amountCents: number }>;
+        allocations: Array<{ fundId: string; fundName: string; amountCents: number }>;
       };
     }>().data;
 
     expect(detail.amountCents).toBe(7200);
     expect(detail.paymentMethod).toBe("wire");
     expect(detail.allocations).toHaveLength(1);
-    expect(detail.allocations[0]).toMatchObject({ fundId: fundIdA, amountCents: 7200 });
+    expect(detail.allocations[0]).toMatchObject({
+      fundId: fundIdA,
+      fundName: "General Fund",
+      amountCents: 7200,
+    });
   });
 
   it("PATCH /v1/donations/:id returns 422 when allocations do not match the amount", async () => {

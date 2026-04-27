@@ -163,14 +163,19 @@ Data residency is **not a per-tenant choice** in the onboarding flow. All SaaS t
 6. **Session Establishment**:
    - Next.js verifies the Keycloak access token against the realm JWKS and ensures the `org_id` claim is present before trusting it.
    - The raw Keycloak Access Token is saved in the `givernance_jwt` cookie (`httpOnly`, `Secure`, `SameSite=Strict`).
+   - The Keycloak Refresh Token is saved in the `givernance_refresh_token` cookie with the same attributes and is never exposed to browser JavaScript.
    - A secondary `csrf-token` cookie (non-httpOnly) is set for the browser to read.
    - The web app resolves the tenant from the signed JWT claims and redirects the browser to `https://<org_slug>.givernance.app/dashboard` (or `.org` where appropriate). If the user started locally with `?namespace=<tenant>`, the local redirect remains on `localhost` and preserves the namespace for routing only.
+7. **Silent Renewal On Activity**:
+   - The Next.js front-door `proxy.ts` inspects the JWT `exp` claim on each request.
+   - When the token is within a short grace window of expiry, the proxy exchanges the refresh token for a fresh access token server-side and rotates the auth cookies before forwarding the request.
+   - If the refresh fails and the access token is already expired, the cookies are cleared and the next protected navigation returns to `/login`.
 
 ## 4. Sign-Out Flow
 
 The sidebar footer hosts a `LogOut` icon button that triggers the sign-out. It submits a form POST (not `fetch`) so the browser can natively follow the cross-origin redirect to Keycloak's end-session endpoint.
 
-1. `POST /api/auth/logout` — clears both the `givernance_jwt` and `givernance_id_token` cookies, then 303-redirects to Keycloak's end-session URL with:
+1. `POST /api/auth/logout` — clears the `givernance_jwt`, `givernance_id_token`, and `givernance_refresh_token` cookies, then 303-redirects to Keycloak's end-session URL with:
    - `client_id=givernance-web`
    - `post_logout_redirect_uri=${APP_URL}/login`
    - `id_token_hint=<the id_token>` — suppresses Keycloak's "Do you want to log out?" confirmation page
@@ -180,14 +185,15 @@ The sidebar footer hosts a `LogOut` icon button that triggers the sign-out. It s
 
 > **Why `post.logout.redirect.uris` must be registered**: Keycloak 21+ requires the client to explicitly allow the `post_logout_redirect_uri`. The attribute is set in `infra/keycloak/realm-givernance.json`. Existing containers that already imported the realm need the attribute pushed via the admin API (`--import-realm` skips existing realms).
 
-**Limitation — stateless session**: the JWT is self-contained and verified by signature, so revoking the Keycloak session does NOT invalidate an already-issued access token until its 8h TTL expires. Back-channel logout with a Redis `sid` blocklist is tracked in [#76](https://github.com/purposestack/givernance/issues/76).
+**Limitation — stateless access token**: the JWT is still self-contained and verified by signature, so revoking the Keycloak session does NOT invalidate an already-issued access token immediately. Silent refresh reduces user-facing expiry interruptions, but instant revocation still requires server-side session invalidation / blocklisting. Back-channel logout with a Redis `sid` blocklist is tracked in [#76](https://github.com/purposestack/givernance/issues/76).
 
 ## 5. Cookies Set by the Flow
 
 | Cookie | Purpose | httpOnly | SameSite | Lifetime |
 |--------|---------|:--------:|:--------:|----------|
-| `givernance_jwt` | Access token used by web server components and sent to the API | Yes | Strict | 8h |
-| `givernance_id_token` | ID token kept only to pass as `id_token_hint` on logout | Yes | Strict | 8h |
+| `givernance_jwt` | Access token used by web server components and sent to the API | Yes | Strict | Keycloak `expires_in` (rotated on activity) |
+| `givernance_id_token` | ID token kept only to pass as `id_token_hint` on logout | Yes | Strict | Session lifetime |
+| `givernance_refresh_token` | Refresh token used only server-side for silent renewal | Yes | Strict | Keycloak `refresh_expires_in` |
 | `csrf-token` | Double-submit CSRF token (readable by JS via `<meta>`) | No | Strict | session |
 | `oidc_state`, `oidc_code_verifier`, `oidc_nonce` | Short-lived OIDC flow state | Yes | Lax | 5 min |
 

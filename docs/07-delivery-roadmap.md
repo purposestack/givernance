@@ -66,7 +66,7 @@ Grouping mechanism, reporting foundation, and the second fundraising channel (~2
 Frontend implementation of Sprints 1–3.
 
 - Constituents UI: list, detail, create, import CSV (issue #41)
-- Donations UI: list, new donation form, receipt preview (issue #41)
+- Donations UI: list, new donation form, receipt preview, fund allocations validated client/server-side with human-readable fund labels (issue #41)
 - Dashboard UI: key widgets — total raised, active campaigns, grant deadlines (issue #42)
 - Auth UI: SSO-only login page + back-office tenant provisioning (Spike [#80](https://github.com/purposestack/givernance/issues/80), issue #40). The former "5-step onboarding wizard" has been dropped — tenants are created by a Givernance Super Admin and user accounts are provisioned Just-In-Time on first SSO login (see `docs/21-authentication-sso.md` §2).
 

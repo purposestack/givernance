@@ -279,8 +279,14 @@ export async function getDonation(orgId: string, id: string) {
       .where(eq(constituents.id, donation.constituentId));
 
     const allocations = await tx
-      .select()
+      .select({
+        id: donationAllocations.id,
+        fundId: donationAllocations.fundId,
+        amountCents: donationAllocations.amountCents,
+        fundName: funds.name,
+      })
       .from(donationAllocations)
+      .innerJoin(funds, eq(funds.id, donationAllocations.fundId))
       .where(eq(donationAllocations.donationId, id));
 
     return { ...donation, constituent: constituent ?? null, allocations };

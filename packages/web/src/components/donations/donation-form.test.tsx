@@ -1,8 +1,20 @@
-import { DonationForm } from "@/components/donations/donation-form";
+import {
+  DonationForm,
+  inspectAllocationEntries,
+  resolveFundLabel,
+} from "@/components/donations/donation-form";
 import { CampaignService } from "@/services/CampaignService";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
-import { mockRouter, mockToast, render, screen, userEvent, waitFor } from "@/tests/test-utils";
+import {
+  mockApiClient,
+  mockRouter,
+  mockToast,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+} from "@/tests/test-utils";
 
 describe("DonationForm", () => {
   it("creates a donation after selecting a constituent and entering a valid amount", async () => {
@@ -30,7 +42,7 @@ describe("DonationForm", () => {
       ],
       pagination: { page: 1, perPage: 50, total: 1, totalPages: 1 },
     });
-    const createDonation = vi.spyOn(DonationService, "createDonation").mockResolvedValue({
+    vi.spyOn(DonationService, "createDonation").mockResolvedValue({
       id: "33333333-3333-4333-8333-333333333333",
       orgId: "org-1",
       constituentId: "22222222-2222-4222-8222-222222222222",
@@ -44,6 +56,10 @@ describe("DonationForm", () => {
       createdAt: "2026-04-22T00:00:00.000Z",
       updatedAt: "2026-04-22T00:00:00.000Z",
     });
+    mockApiClient.get.mockResolvedValue({
+      data: [],
+      pagination: { page: 1, perPage: 100, total: 0, totalPages: 0 },
+    });
 
     render(<DonationForm mode="create" />);
 
@@ -53,13 +69,12 @@ describe("DonationForm", () => {
     await waitFor(() => expect(ConstituentService.listConstituents).toHaveBeenCalled());
     await user.click(await screen.findByText("Ada Lovelace"));
 
-    const amountInput = screen.getByPlaceholderText("0.00");
-    await user.type(amountInput, "25,50");
+    await user.type(screen.getByPlaceholderText("0.00"), "25,50");
     await user.tab();
     await user.click(screen.getByRole("button", { name: "Save donation" }));
 
-    await waitFor(() => expect(createDonation).toHaveBeenCalled());
-    expect(createDonation).toHaveBeenCalledWith(
+    await waitFor(() => expect(DonationService.createDonation).toHaveBeenCalled());
+    expect(DonationService.createDonation).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         constituentId: "22222222-2222-4222-8222-222222222222",
@@ -79,7 +94,7 @@ describe("DonationForm", () => {
       data: [],
       pagination: { page: 1, perPage: 100, total: 0, totalPages: 0 },
     });
-    const updateDonation = vi.spyOn(DonationService, "updateDonation").mockResolvedValue({
+    vi.spyOn(DonationService, "updateDonation").mockResolvedValue({
       id: "33333333-3333-4333-8333-333333333333",
       orgId: "org-1",
       constituentId: "22222222-2222-4222-8222-222222222222",
@@ -92,6 +107,10 @@ describe("DonationForm", () => {
       fiscalYear: 2026,
       createdAt: "2026-04-22T00:00:00.000Z",
       updatedAt: "2026-04-23T00:00:00.000Z",
+    });
+    mockApiClient.get.mockResolvedValue({
+      data: [],
+      pagination: { page: 1, perPage: 100, total: 0, totalPages: 0 },
     });
 
     render(
@@ -129,8 +148,8 @@ describe("DonationForm", () => {
     await user.tab();
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    await waitFor(() => expect(updateDonation).toHaveBeenCalled());
-    expect(updateDonation).toHaveBeenCalledWith(
+    await waitFor(() => expect(DonationService.updateDonation).toHaveBeenCalled());
+    expect(DonationService.updateDonation).toHaveBeenCalledWith(
       expect.anything(),
       "33333333-3333-4333-8333-333333333333",
       expect.objectContaining({
@@ -142,5 +161,48 @@ describe("DonationForm", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Donation updated.");
     expect(mockRouter.push).toHaveBeenCalledWith("/donations/33333333-3333-4333-8333-333333333333");
     expect(mockRouter.refresh).toHaveBeenCalled();
+  });
+
+  it("flags incomplete allocation rows instead of dropping them silently", () => {
+    const issue = inspectAllocationEntries(
+      {
+        amountCents: 2500,
+        allocations: [{ fundId: "", amountCents: 1000 }],
+      },
+      {
+        incomplete: "Complete each allocation row before saving.",
+        fundRequired: "Select a fund for this allocation.",
+        amountRequired: "Enter an amount for this allocation.",
+        duplicateFund: "Each fund can only appear once per donation.",
+        sumMismatch: "Allocation amounts must sum to the donation total.",
+      },
+    );
+
+    expect(issue).toMatchObject({
+      rootMessage: "Complete each allocation row before saving.",
+      fieldErrors: [{ index: 0, field: "fundId", message: "Select a fund for this allocation." }],
+    });
+  });
+
+  it("resolves the fund name before falling back to the UUID", () => {
+    expect(
+      resolveFundLabel(
+        "44444444-4444-4444-8444-444444444444",
+        [
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            orgId: "org-1",
+            name: "Education Fund",
+            description: null,
+            type: "restricted",
+            createdAt: "2026-04-22T00:00:00.000Z",
+            updatedAt: "2026-04-22T00:00:00.000Z",
+          },
+        ],
+        "Select a fund",
+      ),
+    ).toBe("Education Fund");
+
+    expect(resolveFundLabel("missing-id", [], "Select a fund")).toBe("missing-id");
   });
 });

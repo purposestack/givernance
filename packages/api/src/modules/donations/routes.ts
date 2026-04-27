@@ -153,6 +153,7 @@ const DonationDetailResponse = Type.Object({
     Type.Object({
       id: UuidSchema,
       fundId: UuidSchema,
+      fundName: Type.String(),
       amountCents: Type.Integer(),
     }),
   ),
