@@ -122,18 +122,19 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
   const emailValue = form.watch("email");
   const countryValue = form.watch("country");
 
-  const [slugDirty, setSlugDirty] = useState(false);
+  // React Hook Form already tracks "the user has modified this field" via
+  // `formState.dirtyFields`. We don't shadow that with parallel `useState`
+  // flags — the auto-derive effects below read RHF's source of truth
+  // directly, so a missed `setXxxDirty(true)` call can't desynchronise.
+  // Both auto-derives (orgName→slug and country→locale) call setValue
+  // with `shouldDirty: false`, so RHF never marks them dirty on its own;
+  // only the user's `field.onChange` flips the flag. (PR #158 review.)
+  const slugDirty = Boolean(form.formState.dirtyFields.slug);
+  const localeDirty = Boolean(form.formState.dirtyFields.locale);
   const [slugState, setSlugState] = useState<SlugState>({ kind: "idle" });
   const [captchaToken, setCaptchaToken] = useState<string | undefined>();
   const [emailHint, setEmailHint] = useState<string | undefined>();
   const [focusErrorSummary, setFocusErrorSummary] = useState(0);
-  // Issue #153: track whether the user has manually picked a locale so
-  // the country→locale auto-derive only fires while the picker is
-  // "untouched". Once the user opens the dropdown and picks a value,
-  // changing country never touches their explicit choice (platform
-  // review F-P5). Initial state matches the form's initial locale =
-  // localeFromCountry(defaultCountry).
-  const [localeDirty, setLocaleDirty] = useState(false);
 
   // FE-5: expose the captcha-token setter on a known global so the external
   // hCaptcha script can call us on `onVerify`. Script-injection lands with
@@ -388,7 +389,9 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
                         maxLength={50}
                         pattern="^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$"
                         onChange={(event) => {
-                          setSlugDirty(true);
+                          // RHF marks the field dirty automatically via
+                          // field.onChange — `dirtyFields.slug` flips here,
+                          // which the auto-derive effect above reads.
                           field.onChange(event.target.value.toLowerCase());
                         }}
                       />
@@ -520,9 +523,13 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
                   <Select
                     value={field.value}
                     onValueChange={(value) => {
-                      // Once the user picks explicitly, country changes
-                      // stop overwriting the locale (issue #153 / F-P5).
-                      setLocaleDirty(true);
+                      // RHF flips `dirtyFields.locale` via field.onChange
+                      // when the picked value differs from the default.
+                      // The country→locale auto-derive effect reads that
+                      // flag directly. Note: clicking the same value as
+                      // the default doesn't count as expressing a
+                      // preference (auto-derive resumes on country change)
+                      // — that's deliberate per the PR #158 design discussion.
                       field.onChange(value as Locale);
                     }}
                   >
