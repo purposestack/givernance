@@ -628,7 +628,10 @@
       "fields": {
         "email": "Email address",
         "emailPlaceholder": "teammate@example.org",
-        "role": "Role"
+        "role": "Role",
+        "locale": "Invitation language",
+        "localeFollowTenant": "Use workspace default ({locale})",
+        "localeHint": "The welcome email will be sent in this language. The invitee can change it before accepting."
       },
       "roleHints": {
         "org_admin": "Full access — can invite others, manage settings, and access all data.",

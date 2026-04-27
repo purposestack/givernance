@@ -1,5 +1,6 @@
 "use client";
 
+import { LOCALE_NATIVE_NAMES, type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -32,25 +33,50 @@ import { InvitationService } from "@/services/InvitationService";
 const ROLE_VALUES: readonly InvitationRole[] = ["user", "org_admin", "viewer"];
 
 /**
+ * Sentinel value used by the locale Select to mean "no admin override —
+ * use the tenant default". Maps to `locale: null` at the API boundary,
+ * which leaves `invitations.locale` NULL and lets the chain fall back
+ * through to `tenants.default_locale`. (Issue #153 follow-up.)
+ */
+const FOLLOW_TENANT = "__follow_tenant__" as const;
+type LocaleChoice = Locale | typeof FOLLOW_TENANT;
+
+interface InviteActionProps {
+  /**
+   * Tenant's `default_locale`, used to label the picker's "Use workspace
+   * default ({locale endonym})" option so the admin can see the value
+   * they'd inherit by default. Issue #153 follow-up.
+   */
+  tenantDefaultLocale: Locale;
+}
+
+/**
  * "Invite teammate" page-header action. Holds its own dialog state so the
  * invitation flow is reachable both from the populated members table AND
  * from the empty-state card — the funds page convention is to put the
  * primary CTA in the header so the body content can render clean.
  */
-export function InviteAction() {
+export function InviteAction({ tenantDefaultLocale }: InviteActionProps) {
   const router = useRouter();
   const t = useTranslations("settings.members");
   const emailId = useId();
   const roleId = useId();
+  const localeId = useId();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<InvitationRole>("user");
+  // Default to "follow tenant" so the existing one-click invite behaviour
+  // is preserved — admins who don't care about per-invitee language don't
+  // see new friction. Picking explicitly is the additive case (issue #153
+  // follow-up: multi-language onboarding).
+  const [localeChoice, setLocaleChoice] = useState<LocaleChoice>(FOLLOW_TENANT);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reset = useCallback(() => {
     setEmail("");
     setRole("user");
+    setLocaleChoice(FOLLOW_TENANT);
     setError(null);
   }, []);
 
@@ -76,6 +102,10 @@ export function InviteAction() {
         await InvitationService.createInvitation(createClientApiClient(), {
           email: trimmed,
           role,
+          // FOLLOW_TENANT → null on the wire; the API persists NULL on
+          // `invitations.locale` and the resolver falls through to
+          // `tenants.default_locale`.
+          locale: localeChoice === FOLLOW_TENANT ? null : localeChoice,
         });
         toast.success(t("success.invited", { email: trimmed }));
         handleClose(false);
@@ -91,7 +121,7 @@ export function InviteAction() {
         setSubmitting(false);
       }
     },
-    [email, handleClose, role, router, t],
+    [email, handleClose, localeChoice, role, router, t],
   );
 
   return (
@@ -151,6 +181,39 @@ export function InviteAction() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-text-muted">{t(`invite.roleHints.${role}`)}</p>
+            </div>
+
+            {/*
+             * Issue #153 follow-up — per-invitation locale. Lets the
+             * admin pick the language for the welcome email + the
+             * accept-form picker default, anticipating multi-language
+             * onboarding (e.g. importing a CSV with mixed FR/EN
+             * board members).
+             */}
+            <div className="space-y-2">
+              <Label htmlFor={localeId}>{t("invite.fields.locale")}</Label>
+              <Select
+                value={localeChoice}
+                onValueChange={(v) => setLocaleChoice(v as LocaleChoice)}
+              >
+                <SelectTrigger id={localeId}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* Endonyms — see LOCALE_NATIVE_NAMES docblock. */}
+                  <SelectItem value={FOLLOW_TENANT}>
+                    {t("invite.fields.localeFollowTenant", {
+                      locale: LOCALE_NATIVE_NAMES[tenantDefaultLocale],
+                    })}
+                  </SelectItem>
+                  {SUPPORTED_LOCALES.map((locale) => (
+                    <SelectItem key={locale} value={locale}>
+                      {LOCALE_NATIVE_NAMES[locale]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-text-muted">{t("invite.fields.localeHint")}</p>
             </div>
 
             <DialogFooter>

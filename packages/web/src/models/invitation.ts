@@ -1,3 +1,4 @@
+import type { Locale } from "@givernance/shared/i18n";
 import type { Pagination } from "@/models/constituent";
 
 export type InvitationRole = "org_admin" | "user" | "viewer";
@@ -34,6 +35,13 @@ export interface InvitationListResponse {
 export interface InvitationCreateInput {
   email: string;
   role?: InvitationRole;
+  /**
+   * Optional BCP-47 locale picked by the inviting org_admin. When set,
+   * the welcome email goes out in this language and the accept-form
+   * locale picker pre-selects it. Omit / null = use the tenant default
+   * (issue #153 follow-up).
+   */
+  locale?: Locale | null;
 }
 
 export interface InvitationCreateResponse {

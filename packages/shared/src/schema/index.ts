@@ -219,6 +219,18 @@ export const invitations = pgTable(
       .$type<InvitationPurpose>(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    /**
+     * BCP-47 locale chosen by the inviting org_admin at create time
+     * (issue #153 follow-up). Drives the invitation email's language
+     * AND seeds the accept-form's locale picker default. NULL means
+     * "no admin override" — the recipient's email + accept-form fall
+     * back to `tenants.default_locale`.
+     *
+     * The invitation-time locale never overrides an existing
+     * `users.locale` (re-invite case): the user's personal preference
+     * is always the highest layer in the resolution chain.
+     */
+    locale: varchar("locale", { length: 10 }).$type<Locale>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

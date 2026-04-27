@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
 import { InvitationService } from "@/services/InvitationService";
+import { UserService } from "@/services/UserService";
 
 import { InviteAction } from "./invite-action";
 import { MembersTable } from "./members-table";
@@ -45,7 +46,14 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
   const canManageMembers = auth.roles.includes("org_admin");
 
   const client = await createServerApiClient();
-  const result = await InvitationService.listInvitations(client, { page, perPage });
+  // Fetch the invite list and the current user's profile in parallel.
+  // The latter gives us `tenantDefaultLocale` so the invite dialog's
+  // locale picker can render "Use workspace default (Français)" with
+  // the right endonym in the hint, without a third round-trip.
+  const [result, me] = await Promise.all([
+    InvitationService.listInvitations(client, { page, perPage }),
+    UserService.getMe(client),
+  ]);
 
   const total = result.pagination.total;
   const hasAny = total > 0;
@@ -60,7 +68,9 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
           { label: tSettings("title"), href: "/settings" },
           { label: t("title") },
         ]}
-        actions={canManageMembers ? <InviteAction /> : null}
+        actions={
+          canManageMembers ? <InviteAction tenantDefaultLocale={me.tenantDefaultLocale} /> : null
+        }
       />
       <SettingsNavigation />
 

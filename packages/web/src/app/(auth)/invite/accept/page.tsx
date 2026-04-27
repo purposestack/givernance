@@ -126,10 +126,14 @@ function AcceptContent() {
   type TokenProbeState = "checking" | "valid" | "invalid";
   const [tokenProbe, setTokenProbe] = useState<TokenProbeState>("checking");
   // Issue #153: locale picker state. Pre-selected from the probe response's
-  // `tenantDefaultLocale`; the user can flip before submit. The accept
-  // service persists `users.locale` only when the chosen value differs from
-  // the tenant default (server-side decision in acceptTeamInvitation).
-  const [tenantDefaultLocale, setTenantDefaultLocale] = useState<Locale>(APP_DEFAULT_LOCALE);
+  // `defaultLocale` — that's the invitation-aware default
+  // (`invitation.locale ?? tenant.default_locale`), so an admin who
+  // pre-picked a language for this invitee opens the form already in
+  // the right language. The user can still flip before submit. The
+  // accept service persists `users.locale` only when the chosen value
+  // differs from this invitation-aware default.
+  const [invitationDefaultLocale, setInvitationDefaultLocale] =
+    useState<Locale>(APP_DEFAULT_LOCALE);
   const [selectedLocale, setSelectedLocale] = useState<Locale>(APP_DEFAULT_LOCALE);
   const localeFieldId = useId();
 
@@ -149,8 +153,8 @@ function AcceptContent() {
         // terminal error here would cause spurious blocks.
         setTokenProbe("valid");
         if (result.kind === "valid") {
-          setTenantDefaultLocale(result.tenantDefaultLocale);
-          setSelectedLocale(result.tenantDefaultLocale);
+          setInvitationDefaultLocale(result.defaultLocale);
+          setSelectedLocale(result.defaultLocale);
         }
       } else {
         setTokenProbe("invalid");
@@ -393,9 +397,13 @@ function AcceptContent() {
 
         {/*
          * Issue #153 — locale picker. Pre-selected from the probe's
-         * `tenantDefaultLocale`; the API persists `users.locale` only when
-         * the chosen value differs (so accepting the default keeps you
-         * tracking future tenant-default changes).
+         * invitation-aware `defaultLocale` (`invitation.locale ??
+         * tenant.default_locale`), so an admin who pre-picked a language
+         * for this invitee opens the form already in the right language.
+         * The API persists `users.locale` only when the chosen value
+         * differs from this invitation-aware default — accepting it
+         * leaves the locale tracking the chain (admin pick / tenant
+         * default) for future changes.
          */}
         <div>
           <Label htmlFor={localeFieldId}>{t("fields.locale")}</Label>
@@ -416,7 +424,7 @@ function AcceptContent() {
               ))}
             </SelectContent>
           </Select>
-          {selectedLocale === tenantDefaultLocale ? (
+          {selectedLocale === invitationDefaultLocale ? (
             <p className="mt-1 text-xs text-text-muted">{t("localeHint.matchesTenantDefault")}</p>
           ) : (
             <p className="mt-1 text-xs text-text-muted">{t("localeHint.personalOverride")}</p>

@@ -79,26 +79,39 @@ export type InviteRole = "org_admin" | "user" | "viewer";
 /**
  * Resolve the BCP-47 locale to stamp on a team-invite email job (issue #153).
  *
- * Implements the 3-layer resolution chain from ADR-015 amendment:
+ * Implements the 4-layer resolution chain from ADR-015 amendment:
  *
  *   1. `users.locale` (per-recipient personal preference) — looked up by
  *      `(orgId, email)` in case the invitee already exists as a member of
- *      this tenant under another role (re-invite scenarios).
- *   2. `tenants.default_locale` (organisation default) — populated at
+ *      this tenant under another role (re-invite scenarios). Personal
+ *      preference always wins over the admin's choice on the new
+ *      invitation row.
+ *   2. `invitations.locale` (admin-chosen at create time) — set when the
+ *      org_admin pre-picked a language on the invite form so the
+ *      welcome email arrives in the right language out of the box and
+ *      the accept-form's picker pre-selects it.
+ *   3. `tenants.default_locale` (organisation default) — populated at
  *      tenant create time and migration-backfilled, NOT NULL.
- *   3. `APP_DEFAULT_LOCALE` ('fr', per ADR-015) — only reached if a column
+ *   4. `APP_DEFAULT_LOCALE` ('fr', per ADR-015) — only reached if a column
  *      check is bypassed by a future schema change; defensive floor.
  *
  * Email match uses `lower()` on both sides for the same defence-in-depth
  * reason as the accept-flow hijack discriminator: `users.email` has no
  * schema-level case-folding constraint and a historical mixed-case row
  * shouldn't silently miss the per-user override.
+ *
+ * `defaultLocale` in the return shape is the invitation-aware default —
+ * the value the accept form should pre-select (`invitation.locale ??
+ * tenant.default_locale`). Distinct from a hypothetical "always tenant"
+ * value because we want admin pre-selection to flow into the form
+ * picker too.
  */
 async function resolveInviteeLocale(
   tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
   tenantId: string,
   email: string,
-): Promise<{ locale: Locale; tenantDefaultLocale: Locale }> {
+  invitationLocale: Locale | null = null,
+): Promise<{ locale: Locale; defaultLocale: Locale; tenantDefaultLocale: Locale }> {
   const [tenantRow] = await tx
     .select({ defaultLocale: tenants.defaultLocale })
     .from(tenants)
@@ -108,6 +121,9 @@ async function resolveInviteeLocale(
     ? tenantRow.defaultLocale
     : APP_DEFAULT_LOCALE;
 
+  const adminPick: Locale | null = isSupportedLocale(invitationLocale) ? invitationLocale : null;
+  const defaultLocale: Locale = adminPick ?? tenantDefaultLocale;
+
   const [userRow] = await tx
     .select({ locale: users.locale })
     .from(users)
@@ -115,8 +131,8 @@ async function resolveInviteeLocale(
     .limit(1);
 
   const personalLocale = userRow?.locale;
-  const locale: Locale = isSupportedLocale(personalLocale) ? personalLocale : tenantDefaultLocale;
-  return { locale, tenantDefaultLocale };
+  const locale: Locale = isSupportedLocale(personalLocale) ? personalLocale : defaultLocale;
+  return { locale, defaultLocale, tenantDefaultLocale };
 }
 
 // ─── Create ─────────────────────────────────────────────────────────────────
@@ -125,6 +141,14 @@ export interface CreateInvitationInput {
   orgId: string;
   email: string;
   role?: InviteRole;
+  /**
+   * Optional BCP-47 locale picked by the inviting org_admin (issue #153
+   * follow-up). When set, the invitation row stores it, the welcome
+   * email is rendered in that language, and the accept-form's picker
+   * pre-selects it. NULL means "no admin override" — the email + form
+   * fall back to `tenants.default_locale`.
+   */
+  locale?: Locale | null;
   /** Keycloak `sub` of the inviting org_admin (resolved to a `users.id`). */
   inviterKeycloakId: string;
   ipHash?: string;
@@ -220,6 +244,8 @@ export async function createTeamInvitation(
       return { ok: false as const, error: { kind: "already_invited" as const } };
     }
 
+    const adminPickedLocale: Locale | null = isSupportedLocale(input.locale) ? input.locale : null;
+
     const [row] = await tx
       .insert(invitations)
       .values({
@@ -229,6 +255,7 @@ export async function createTeamInvitation(
         invitedById: inviter?.id ?? null,
         purpose: "team_invite",
         expiresAt,
+        locale: adminPickedLocale,
       })
       .returning({
         id: invitations.id,
@@ -245,12 +272,13 @@ export async function createTeamInvitation(
 
     // SEC-7: never put the raw token in the outbox; the worker looks it up
     // by invitation id inside its own trust boundary. Issue #153: stamp
-    // `locale` (BCP-47) resolved from the 3-layer chain so the worker
+    // `locale` (BCP-47) resolved from the 4-layer chain so the worker
     // picks the right template without reading other rows. The chain
     // checks `users.locale` first (re-invite of an existing teammate
-    // honours their stored preference) and falls back to the tenant
-    // default — see `resolveInviteeLocale`.
-    const { locale } = await resolveInviteeLocale(tx, input.orgId, invite.email);
+    // honours their stored preference), then `invitations.locale`
+    // (admin pre-pick), then the tenant default — see
+    // `resolveInviteeLocale`.
+    const { locale } = await resolveInviteeLocale(tx, input.orgId, invite.email, adminPickedLocale);
     await tx.insert(outboxEvents).values({
       tenantId: input.orgId,
       type: "invitation.created",
@@ -506,6 +534,11 @@ export async function resendTeamInvitation(
         acceptedAt: invitations.acceptedAt,
         email: invitations.email,
         role: invitations.role,
+        // Issue #153 follow-up: propagate the admin's create-time locale
+        // pick into the resend so re-deliveries stay in the same language
+        // — the resend semantics is "same content, fresh token", not
+        // "let the admin re-decide".
+        locale: invitations.locale,
       })
       .from(invitations)
       .where(
@@ -536,7 +569,8 @@ export async function resendTeamInvitation(
       .where(and(eq(users.keycloakId, input.actorKeycloakId), eq(users.orgId, input.orgId)))
       .limit(1);
 
-    const { locale } = await resolveInviteeLocale(tx, input.orgId, row.email);
+    const adminPickedLocale: Locale | null = isSupportedLocale(row.locale) ? row.locale : null;
+    const { locale } = await resolveInviteeLocale(tx, input.orgId, row.email, adminPickedLocale);
     await tx.insert(outboxEvents).values({
       tenantId: input.orgId,
       type: "invitation.resent",
@@ -644,12 +678,16 @@ export async function acceptTeamInvitation(
           role: invitations.role,
           expiresAt: invitations.expiresAt,
           acceptedAt: invitations.acceptedAt,
+          // Issue #153 follow-up: read the invitation's admin-chosen
+          // locale so the persistence rule can compare against the
+          // invitation-aware default rather than the bare tenant default.
+          invitationLocale: invitations.locale,
           tenantName: tenants.name,
           tenantSlug: tenants.slug,
           keycloakOrgId: tenants.keycloakOrgId,
           // Issue #153: read default_locale here so we can decide whether
           // to persist `users.locale` (only when the invitee picked
-          // something different from the tenant's default).
+          // something different from the invitation-aware default).
           tenantDefaultLocale: tenants.defaultLocale,
         })
         .from(invitations)
@@ -663,14 +701,20 @@ export async function acceptTeamInvitation(
       }
 
       // Only persist a personal override when the invitee picked a value
-      // *different* from the tenant default. Accepting the default leaves
-      // `users.locale = NULL` so subsequent tenant-default changes carry
-      // through automatically. (Issue #153.)
+      // *different* from the invitation-aware default. The default the
+      // invitee saw on the form was `invitation.locale ?? tenant.default_locale`
+      // (the picker's pre-selected value). Accepting that pre-selection
+      // means "no further override" — leave `users.locale` NULL and let
+      // the chain fall back through invitation/tenant. (Issue #153.)
       const tenantDefaultLocale: Locale = isSupportedLocale(row.tenantDefaultLocale)
         ? row.tenantDefaultLocale
         : APP_DEFAULT_LOCALE;
+      const adminPick: Locale | null = isSupportedLocale(row.invitationLocale)
+        ? row.invitationLocale
+        : null;
+      const effectiveDefault: Locale = adminPick ?? tenantDefaultLocale;
       const personalLocale: Locale | null =
-        input.locale && isSupportedLocale(input.locale) && input.locale !== tenantDefaultLocale
+        input.locale && isSupportedLocale(input.locale) && input.locale !== effectiveDefault
           ? input.locale
           : null;
 
@@ -928,13 +972,18 @@ export async function getTeamInvitationForOrg(
 
 /**
  * Result of `probeTeamInvitation`. Either the token is valid and we hand
- * back the tenant's `default_locale` so the accept form can pre-select
- * the right value (issue #153), or the probe fails — the route maps
- * `null` to a generic 410. (We deliberately don't expose any other
- * tenant identifiers here; the slug/name leak via the post-accept
+ * back the invitation-aware default locale so the accept form can
+ * pre-select the right value (issue #153), or the probe fails — the
+ * route maps `null` to a generic 410. (We deliberately don't expose any
+ * other tenant identifiers here; the slug/name leak via the post-accept
  * redirect already, but the probe response stays minimal.)
+ *
+ * `defaultLocale` is the value the form should pre-select:
+ * `invitation.locale ?? tenant.default_locale`. The admin's pre-pick
+ * (if any) is honoured here so the invitee opens the form already in
+ * the right language without an extra click.
  */
-export type ProbeTeamInvitationResult = { ok: true; tenantDefaultLocale: Locale } | null;
+export type ProbeTeamInvitationResult = { ok: true; defaultLocale: Locale } | null;
 
 /**
  * Public, side-effect-free check that a token is currently acceptable.
@@ -969,6 +1018,7 @@ export async function probeTeamInvitation(token: string): Promise<ProbeTeamInvit
     .select({
       acceptedAt: invitations.acceptedAt,
       expiresAt: invitations.expiresAt,
+      invitationLocale: invitations.locale,
       tenantDefaultLocale: tenants.defaultLocale,
     })
     .from(invitations)
@@ -981,5 +1031,11 @@ export async function probeTeamInvitation(token: string): Promise<ProbeTeamInvit
   const tenantDefaultLocale: Locale = isSupportedLocale(row.tenantDefaultLocale)
     ? row.tenantDefaultLocale
     : APP_DEFAULT_LOCALE;
-  return { ok: true, tenantDefaultLocale };
+  // Invitation-aware default: admin's pre-pick when set, else tenant
+  // default. This is what the accept form's locale picker should
+  // pre-select.
+  const defaultLocale: Locale = isSupportedLocale(row.invitationLocale)
+    ? row.invitationLocale
+    : tenantDefaultLocale;
+  return { ok: true, defaultLocale };
 }

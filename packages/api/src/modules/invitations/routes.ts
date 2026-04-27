@@ -52,6 +52,13 @@ const RoleSchema = Type.Union([
 const CreateInvitationBody = Type.Object({
   email: Type.String({ format: "email", maxLength: 255 }),
   role: Type.Optional(RoleSchema),
+  /**
+   * Optional BCP-47 locale picked by the inviting org_admin. When set,
+   * the welcome email is rendered in this language and the accept-form
+   * locale picker pre-selects it (issue #153 follow-up). Omit / null
+   * to fall back to the tenant default.
+   */
+  locale: Type.Optional(Type.Union([LocaleSchema, Type.Null()])),
 });
 
 const AcceptInvitationBody = Type.Object({
@@ -108,12 +115,14 @@ const AcceptResponse = Type.Object({
 });
 
 /**
- * Probe success response. Carries the tenant's `default_locale` so the
- * accept form can pre-select the right locale picker option (issue #153).
- * Failure paths still collapse to a generic 410 — anti-enumeration.
+ * Probe success response. Carries the invitation-aware default locale —
+ * `invitation.locale ?? tenant.default_locale` — so the accept form can
+ * pre-select the right picker option directly (issue #153, including
+ * the admin pre-pick from the follow-up). Failure paths still collapse
+ * to a generic 410 — anti-enumeration.
  */
 const ProbeResponse = Type.Object({
-  tenantDefaultLocale: LocaleSchema,
+  defaultLocale: LocaleSchema,
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -175,12 +184,17 @@ export async function invitationRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
-      const body = request.body as { email: string; role?: "org_admin" | "user" | "viewer" };
+      const body = request.body as {
+        email: string;
+        role?: "org_admin" | "user" | "viewer";
+        locale?: "en" | "fr" | null;
+      };
 
       const result = await createTeamInvitation({
         orgId,
         email: body.email,
         role: body.role,
+        locale: body.locale ?? null,
         inviterKeycloakId: userId,
         ipHash: hashIp(clientIp(request)),
         userAgent: userAgent(request),
@@ -378,7 +392,7 @@ export async function invitationRoutes(app: FastifyInstance) {
           );
       }
       return reply.status(200).send({
-        data: { tenantDefaultLocale: result.tenantDefaultLocale },
+        data: { defaultLocale: result.defaultLocale },
       });
     },
   );
