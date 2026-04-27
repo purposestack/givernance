@@ -6,12 +6,14 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm",
     "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx --env-file=../../.env scripts/seed.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "db:seed:local": "tsx --env-file=../../.env scripts/seed.ts",
     "db:seed:funds": "tsx --env-file=../../.env scripts/seed-funds.ts"
   },
   "dependencies": {

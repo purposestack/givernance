@@ -9,16 +9,21 @@ servers:
   web:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
+    port: 3000
+    cmd: pnpm --filter @givernance/web run start
     labels:
       traefik.http.routers.givernance-web.rule: Host(`staging.givernance.org`)
   api:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
+    port: 4000
+    cmd: pnpm --filter @givernance/api run start
     labels:
       traefik.http.routers.givernance-api.rule: Host(`api.staging.givernance.org`)
   worker:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
+    cmd: pnpm --filter @givernance/worker run start
 
 # Credentials for your image host.
 registry:
@@ -46,7 +51,7 @@ env:
 # Configure builder setup.
 builder:
   arch: amd64
-  # dockerfile: Dockerfile
+  dockerfile: Dockerfile
 
 # Use accessories for external services
 accessories:
