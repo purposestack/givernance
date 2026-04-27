@@ -4,6 +4,9 @@
  * Per-org overrides are injected via <style> in template.ftl from Organization attributes.
  */
 
+/* @import must be first — before any rules (CSS spec). */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@600&display=swap');
+
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -51,8 +54,6 @@
 }
 
 /* ── Typography ── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@600&display=swap');
-
 html { font-size: 16px; }
 
 body {
