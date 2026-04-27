@@ -760,13 +760,19 @@
   },
   "tenant": {
     "title": "Paramètres de l'organisation",
-    "description": "Choisissez la devise de base du tenant utilisée pour le reporting et les conversions.",
+    "description": "Choisissez la devise de base du tenant et la langue par défaut pour les emails envoyés aux membres.",
     "readOnly": "Seuls les administrateurs de l'organisation peuvent modifier ces paramètres.",
     "fields": {
       "baseCurrency": "Devise de base",
       "baseCurrencyPlaceholder": "Choisissez une devise de base",
       "baseCurrencyHint": "Cette devise est utilisée comme devise de reporting de l'organisation.",
-      "baseCurrencyHintWithName": "{name} utilisera cette devise pour les montants convertis et les rapports."
+      "baseCurrencyHintWithName": "{name} utilisera cette devise pour les montants convertis et les rapports.",
+      "defaultLocale": "Langue par défaut",
+      "defaultLocaleHint": "Langue par défaut pour les membres qui n'ont pas défini de préférence personnelle. Les membres ayant une langue personnelle conservent leur choix."
+    },
+    "locales": {
+      "fr": "Français",
+      "en": "Anglais"
     },
     "actions": {
       "save": "Enregistrer les paramètres",
@@ -792,6 +798,37 @@
       "errorGeneric": "Impossible de télécharger l'export pour le moment.",
       "errorProblem": "L'export a échoué (HTTP {status}).",
       "lastDownloaded": "Dernier téléchargement : {value}"
+    }
+  },
+  "profile": {
+    "title": "Mon profil",
+    "subtitle": "Gérez vos préférences personnelles pour cet espace.",
+    "breadcrumbRoot": "Tableau de bord",
+    "language": {
+      "title": "Langue",
+      "description": "Choisissez la langue utilisée pour l'application et les emails que vous recevez. C'est votre préférence personnelle — distincte de la langue par défaut de l'organisation.",
+      "fields": {
+        "locale": "Langue",
+        "followTenant": "Utiliser la langue par défaut de l'organisation ({locale})",
+        "localeHint": {
+          "followsTenant": "Vous suivrez la langue par défaut de votre organisation. Si un administrateur la change, vous suivrez automatiquement la nouvelle valeur.",
+          "personalOverride": "Enregistré comme votre préférence personnelle. Les changements de langue par défaut de l'organisation ne vous affecteront pas tant que vous ne revenez pas en arrière."
+        }
+      },
+      "locales": {
+        "fr": "Français",
+        "en": "Anglais"
+      },
+      "actions": {
+        "save": "Enregistrer la préférence",
+        "saving": "Enregistrement…"
+      },
+      "errors": {
+        "save": "Impossible d'enregistrer votre préférence pour le moment."
+      },
+      "success": {
+        "updated": "Préférence de langue mise à jour."
+      }
     }
   },
   "dashboard": {

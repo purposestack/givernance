@@ -13,6 +13,9 @@ const mockTenant = {
   plan: "starter",
   status: "active",
   baseCurrency: "EUR",
+  // Issue #153: response schema now exposes defaultLocale; mock must
+  // carry it so the response validator passes.
+  defaultLocale: "fr",
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };

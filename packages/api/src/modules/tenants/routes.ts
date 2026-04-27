@@ -1,5 +1,6 @@
 /** Tenant routes — platform-admin CRUD for organizations */
 
+import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { outboxEvents, tenants } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { eq, sql } from "drizzle-orm";
@@ -30,9 +31,18 @@ const TenantBaseCurrencySchema = Type.Union([
   Type.Literal("CHF"),
 ]);
 
+const TenantLocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)));
+
 const UpdateTenantBody = Type.Object(
   {
     baseCurrency: Type.Optional(TenantBaseCurrencySchema),
+    // Issue #153: org_admin updates the tenant default. The /v1/admin/tenants
+    // PUT is gated by `requireSuperAdminOrOwnOrgAdmin` so a regular user
+    // can't write to a tenant they don't admin. Changing this value does
+    // NOT mutate any user's `users.locale` — users with an explicit
+    // override keep their preference; users with NULL follow the new
+    // default on next read.
+    defaultLocale: Type.Optional(TenantLocaleSchema),
   },
   { minProperties: 1 },
 );
@@ -43,6 +53,7 @@ const TenantResponse = Type.Object({
   slug: Type.String(),
   plan: Type.String(),
   baseCurrency: TenantBaseCurrencySchema,
+  defaultLocale: TenantLocaleSchema,
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -145,11 +156,15 @@ export async function tenantRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { orgId } = request.params as { orgId: string };
-      const body = request.body as { baseCurrency?: "EUR" | "GBP" | "CHF" };
+      const body = request.body as {
+        baseCurrency?: "EUR" | "GBP" | "CHF";
+        defaultLocale?: "en" | "fr";
+      };
       const [updated] = await db
         .update(tenants)
         .set({
           ...(body.baseCurrency ? { baseCurrency: body.baseCurrency } : {}),
+          ...(body.defaultLocale ? { defaultLocale: body.defaultLocale } : {}),
           updatedAt: new Date(),
         })
         .where(eq(tenants.id, orgId))

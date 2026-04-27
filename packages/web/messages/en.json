@@ -760,13 +760,19 @@
   },
   "tenant": {
     "title": "Organisation settings",
-    "description": "Choose the tenant base currency used for reporting and currency conversions.",
+    "description": "Choose the tenant base currency and default language used for reporting and member emails.",
     "readOnly": "Only organisation admins can update tenant settings.",
     "fields": {
       "baseCurrency": "Base currency",
       "baseCurrencyPlaceholder": "Select a base currency",
       "baseCurrencyHint": "This currency is used as the organisation reporting currency.",
-      "baseCurrencyHintWithName": "{name} will use this currency for converted totals and reports."
+      "baseCurrencyHintWithName": "{name} will use this currency for converted totals and reports.",
+      "defaultLocale": "Default language",
+      "defaultLocaleHint": "Default language for members who haven't set a personal preference. Members with a personal language keep their choice."
+    },
+    "locales": {
+      "fr": "French",
+      "en": "English"
     },
     "actions": {
       "save": "Save settings",
@@ -792,6 +798,37 @@
       "errorGeneric": "Unable to download the export right now.",
       "errorProblem": "Export failed (HTTP {status}).",
       "lastDownloaded": "Last download: {value}"
+    }
+  },
+  "profile": {
+    "title": "My profile",
+    "subtitle": "Manage your personal preferences for this workspace.",
+    "breadcrumbRoot": "Dashboard",
+    "language": {
+      "title": "Language",
+      "description": "Choose the language used for the app and the emails you receive. This is your personal preference — separate from the organisation default.",
+      "fields": {
+        "locale": "Language",
+        "followTenant": "Use organisation default ({locale})",
+        "localeHint": {
+          "followsTenant": "You will follow your organisation's default language. If an admin changes it later, you will follow the new default automatically.",
+          "personalOverride": "Saved as your personal preference. Organisation default changes will not affect you until you switch back."
+        }
+      },
+      "locales": {
+        "fr": "French",
+        "en": "English"
+      },
+      "actions": {
+        "save": "Save preference",
+        "saving": "Saving…"
+      },
+      "errors": {
+        "save": "Unable to save your preference right now."
+      },
+      "success": {
+        "updated": "Language preference updated."
+      }
     }
   },
   "dashboard": {

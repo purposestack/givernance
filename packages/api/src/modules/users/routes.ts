@@ -1,6 +1,7 @@
 /** User routes — user profile and org-admin user management */
 
-import { outboxEvents, tenants, users } from "@givernance/shared/schema";
+import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import { auditLogs, outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -14,6 +15,18 @@ import {
   IdParams,
   UuidSchema,
 } from "../../lib/schemas.js";
+
+const UserLocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)));
+
+/**
+ * Body for `PATCH /v1/users/me` (issue #153). The single-field body keeps
+ * the contract minimal — there's no other personal preference exposed
+ * yet. Setting `locale: null` clears `users.locale` so the user reverts
+ * to inheriting the tenant's `default_locale`.
+ */
+const UpdateMeBody = Type.Object({
+  locale: Type.Union([UserLocaleSchema, Type.Null()]),
+});
 
 const CreateUserBody = Type.Object({
   email: Type.String({ format: "email" }),
@@ -44,6 +57,11 @@ const UserResponse = Type.Object({
  * Extended `/users/me` payload — includes onboarding-runtime fields
  * (`firstAdmin`, `provisionalUntil`, `orgSlug`) so the app shell can render
  * the provisional-admin banner without a second round-trip.
+ *
+ * Issue #153: `locale` is the user's personal override (NULL when they
+ * inherit the tenant default); `tenantDefaultLocale` is the tenant's
+ * `default_locale` so the profile UI can show "Use organisation default"
+ * with the actual default value as a hint without a second round-trip.
  */
 const MeResponse = Type.Object({
   id: UuidSchema,
@@ -55,6 +73,8 @@ const MeResponse = Type.Object({
   role: Type.String(),
   firstAdmin: Type.Boolean(),
   provisionalUntil: Type.Union([Type.String(), Type.Null()]),
+  locale: Type.Union([UserLocaleSchema, Type.Null()]),
+  tenantDefaultLocale: UserLocaleSchema,
   orgSlug: Type.String(),
   orgName: Type.String(),
   createdAt: Type.String(),
@@ -88,6 +108,8 @@ export async function userRoutes(app: FastifyInstance) {
             role: users.role,
             firstAdmin: users.firstAdmin,
             provisionalUntil: users.provisionalUntil,
+            locale: users.locale,
+            tenantDefaultLocale: tenants.defaultLocale,
             createdAt: users.createdAt,
             updatedAt: users.updatedAt,
             orgSlug: tenants.slug,
@@ -115,6 +137,112 @@ export async function userRoutes(app: FastifyInstance) {
           provisionalUntil: row.provisionalUntil?.toISOString() ?? null,
           createdAt: row.createdAt.toISOString(),
           updatedAt: row.updatedAt.toISOString(),
+        },
+      });
+    },
+  );
+
+  /**
+   * PATCH /v1/users/me — update the caller's personal preferences (issue #153).
+   *
+   * Currently exposes only `locale`; the body is shaped as an object so we
+   * can grow the surface (timezone, notification preferences, …) without
+   * breaking clients. `locale: null` clears `users.locale` so the user
+   * reverts to inheriting their tenant's `default_locale`.
+   *
+   * Auth: any authenticated user — this is the user's own row.
+   * Audit: emits `user.preferences_updated` with the field-level diff so a
+   * locale flip is reconstructable from the audit trail.
+   */
+  app.patch(
+    "/users/me",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["Users"],
+        body: UpdateMeBody,
+        response: { 200: DataResponse(MeResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const userId = request.auth?.userId as string;
+      const orgId = request.auth?.orgId as string;
+      const body = request.body as { locale: "en" | "fr" | null };
+
+      const result = await withTenantContext(orgId, async (tx) => {
+        // Read the existing locale so the audit `oldValues` carries the
+        // pre-update value. The same SELECT also resolves the application
+        // user id for the audit row's `userId` column.
+        const [existing] = await tx
+          .select({ id: users.id, locale: users.locale })
+          .from(users)
+          .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)))
+          .limit(1);
+        if (!existing) return null;
+
+        const [updated] = await tx
+          .update(users)
+          .set({ locale: body.locale, updatedAt: new Date() })
+          .where(eq(users.id, existing.id))
+          .returning({
+            id: users.id,
+            orgId: users.orgId,
+            keycloakId: users.keycloakId,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            role: users.role,
+            firstAdmin: users.firstAdmin,
+            provisionalUntil: users.provisionalUntil,
+            locale: users.locale,
+            createdAt: users.createdAt,
+            updatedAt: users.updatedAt,
+          });
+        if (!updated) return null;
+
+        await tx.insert(auditLogs).values({
+          orgId,
+          userId: existing.id,
+          action: "user.preferences_updated",
+          resourceType: "user",
+          resourceId: existing.id,
+          oldValues: { locale: existing.locale },
+          newValues: { locale: body.locale },
+        });
+
+        const [tenantRow] = await tx
+          .select({
+            slug: tenants.slug,
+            name: tenants.name,
+            defaultLocale: tenants.defaultLocale,
+          })
+          .from(tenants)
+          .where(eq(tenants.id, orgId))
+          .limit(1);
+        if (!tenantRow) return null;
+
+        return { user: updated, tenant: tenantRow };
+      });
+
+      if (!result) {
+        const t = resolveTranslations(request);
+        return reply.status(404).send({
+          type: "https://httpproblems.com/http-status/404",
+          title: "Not Found",
+          status: 404,
+          detail: t("errors.notFound", { resource: t("resources.user") }),
+        });
+      }
+
+      return reply.send({
+        data: {
+          ...result.user,
+          provisionalUntil: result.user.provisionalUntil?.toISOString() ?? null,
+          createdAt: result.user.createdAt.toISOString(),
+          updatedAt: result.user.updatedAt.toISOString(),
+          tenantDefaultLocale: result.tenant.defaultLocale,
+          orgSlug: result.tenant.slug,
+          orgName: result.tenant.name,
         },
       });
     },

@@ -1,5 +1,6 @@
 "use client";
 
+import { type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Lock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
@@ -37,6 +38,8 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
   const tenantOrgId = orgId;
   const [baseCurrency, setBaseCurrency] = useState<TenantCurrency>("EUR");
   const [initialCurrency, setInitialCurrency] = useState<TenantCurrency>("EUR");
+  const [defaultLocale, setDefaultLocale] = useState<Locale>("fr");
+  const [initialDefaultLocale, setInitialDefaultLocale] = useState<Locale>("fr");
   const [tenantName, setTenantName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,6 +60,8 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
         setTenantName(tenant.name);
         setBaseCurrency(tenant.baseCurrency);
         setInitialCurrency(tenant.baseCurrency);
+        setDefaultLocale(tenant.defaultLocale);
+        setInitialDefaultLocale(tenant.defaultLocale);
       } catch (error) {
         if (!active) return;
         setErrorMessage(resolveApiErrorMessage(error, t("errors.load")));
@@ -80,12 +85,17 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
     setErrorMessage(null);
 
     try {
-      const tenant = await TenantService.updateTenant(createClientApiClient(), tenantOrgId, {
-        baseCurrency,
-      });
+      // Send only the changed fields so a future audit on this PATCH
+      // surfaces just the operator's intent, not a no-op of every field.
+      const patch: { baseCurrency?: TenantCurrency; defaultLocale?: Locale } = {};
+      if (baseCurrency !== initialCurrency) patch.baseCurrency = baseCurrency;
+      if (defaultLocale !== initialDefaultLocale) patch.defaultLocale = defaultLocale;
+      const tenant = await TenantService.updateTenant(createClientApiClient(), tenantOrgId, patch);
       setTenantName(tenant.name);
       setBaseCurrency(tenant.baseCurrency);
       setInitialCurrency(tenant.baseCurrency);
+      setDefaultLocale(tenant.defaultLocale);
+      setInitialDefaultLocale(tenant.defaultLocale);
       toast.success(t("success.updated"));
     } catch (error) {
       const message = resolveApiErrorMessage(error, t("errors.save"));
@@ -96,7 +106,7 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
     }
   }
 
-  const isDirty = baseCurrency !== initialCurrency;
+  const isDirty = baseCurrency !== initialCurrency || defaultLocale !== initialDefaultLocale;
 
   return (
     <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
@@ -133,6 +143,38 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
                   ? t("fields.baseCurrencyHintWithName", { name: tenantName })
                   : t("fields.baseCurrencyHint")}
               </p>
+            </div>
+
+            {/*
+             * Issue #153 — tenant default locale. Changing this does NOT
+             * touch any user's `users.locale`: members with an explicit
+             * personal preference keep it; members with NULL follow the
+             * new default on next read.
+             */}
+            <div className="space-y-2">
+              <label
+                htmlFor="tenant-default-locale"
+                className="text-sm font-medium text-on-surface"
+              >
+                {t("fields.defaultLocale")}
+              </label>
+              <Select
+                value={defaultLocale}
+                onValueChange={(value) => setDefaultLocale(value as Locale)}
+                disabled={loading || saving}
+              >
+                <SelectTrigger id="tenant-default-locale" aria-label={t("fields.defaultLocale")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUPPORTED_LOCALES.map((locale) => (
+                    <SelectItem key={locale} value={locale}>
+                      {t(`locales.${locale}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-on-surface-variant">{t("fields.defaultLocaleHint")}</p>
             </div>
           </div>
 
