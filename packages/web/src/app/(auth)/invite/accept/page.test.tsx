@@ -158,7 +158,13 @@ describe("InviteAcceptPage — token probe (PR #154 follow-up)", () => {
     expect(await screen.findByRole("button", { name: /Join workspace/ })).toBeInTheDocument();
   });
 
-  it("terminal screen takes precedence over the signed-in prompt", async () => {
+  // Regression — PR #158 follow-up. PR #154's `052dd7a` had this the other
+  // way around (terminal-screen first), which meant a signed-in invitee
+  // landing on a dead token saw a "Back to sign in" link that no-op'd
+  // because they were still authenticated, bouncing them back into the
+  // previous user's session. Sign-out must take precedence so the link
+  // actually logs the invitee in cleanly after they re-land anonymously.
+  it("signed-in prompt takes precedence over the terminal screen", async () => {
     stubRoutedFetch({
       session: () =>
         new Response(JSON.stringify({ data: { email: "alice@example.org" } }), {
@@ -170,8 +176,8 @@ describe("InviteAcceptPage — token probe (PR #154 follow-up)", () => {
 
     render(<InviteAcceptPage />);
 
-    await screen.findByRole("link", { name: "Back to sign in" });
-    expect(screen.queryByRole("button", { name: "Sign out and continue" })).not.toBeInTheDocument();
+    await screen.findByRole("button", { name: "Sign out and continue" });
+    expect(screen.queryByRole("link", { name: "Back to sign in" })).not.toBeInTheDocument();
   });
 });
 

@@ -241,37 +241,9 @@ function AcceptContent() {
     );
   }
 
-  // Terminal-error screen — the token is unusable. Two ways to land here:
-  //   1. The on-load probe rejected the token (`tokenProbe === "invalid"`).
-  //   2. The accept POST returned 410 (`errorKind === "expired"`) — race
-  //      between the probe and the submit, or the operator revoked the
-  //      invite mid-flow.
-  // Either way: retyping won't make the token valid, so we replace the
-  // form with a dedicated screen pointing the invitee at sign-in.
-  // Recoverable errors (rate-limited, generic) still render inline above
-  // the form so the invitee can retry.
-  if (tokenProbe === "invalid" || errorKind === "expired") {
-    return (
-      <AuthCard>
-        <AuthLogo />
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error-container text-on-error-container">
-          <TriangleAlert className="h-6 w-6" aria-hidden="true" />
-        </div>
-        <h1 className="mb-2 text-center font-heading text-xl text-text">{t("errorTitle")}</h1>
-        <p className="mb-6 text-center text-sm text-text-secondary">{t("errors.expired")}</p>
-        <Link
-          href="/login"
-          className="inline-flex h-[var(--btn-height-md)] w-full items-center justify-center rounded-button bg-primary px-6 text-sm font-medium text-on-primary"
-        >
-          {t("backToLogin")}
-        </Link>
-      </AuthCard>
-    );
-  }
-
-  // Combined loading state: hold off the form / signed-in prompt until both
-  // probes resolve. Otherwise the signed-in prompt could flash before the
-  // token-probe lands and we'd swap it for the terminal screen — jarring.
+  // Combined loading state: hold off every other branch until both probes
+  // resolve. Otherwise the signed-in prompt could flash before the token
+  // probe lands (or vice-versa) — jarring.
   if (session.status === "checking" || tokenProbe === "checking") {
     return (
       <AuthCard>
@@ -287,6 +259,15 @@ function AcceptContent() {
     );
   }
 
+  // Sign-out prompt MUST take precedence over the terminal-error screen.
+  // If we render the terminal screen first, its "Back to sign in" link is
+  // a no-op for an already-authenticated invitee and they bounce back into
+  // the previous user's session — exactly the regression PR #154's fix
+  // (`5c13291`) was meant to prevent. Signing out first is never wasted:
+  // on a valid token the form needs an anonymous session to avoid the SSO
+  // re-attach on the post-accept login redirect; on an invalid token the
+  // terminal screen's back-to-login link only works once the invitee is
+  // anonymous.
   if (session.status === "signed_in") {
     const returnTo = `/invite/accept?token=${encodeURIComponent(token)}`;
     const displayName =
@@ -321,6 +302,34 @@ function AcceptContent() {
           className="mt-3 inline-flex h-[var(--btn-height-md)] w-full items-center justify-center rounded-button border border-outline-variant bg-surface px-6 text-sm font-medium text-text"
         >
           {t("sessionCheck.keepCurrent")}
+        </Link>
+      </AuthCard>
+    );
+  }
+
+  // Terminal-error screen — the token is unusable. Two ways to land here:
+  //   1. The on-load probe rejected the token (`tokenProbe === "invalid"`).
+  //   2. The accept POST returned 410 (`errorKind === "expired"`) — race
+  //      between the probe and the submit, or the operator revoked the
+  //      invite mid-flow.
+  // Either way: retyping won't make the token valid, so we replace the
+  // form with a dedicated screen pointing the invitee at sign-in. This
+  // intentionally renders AFTER the signed-in check above — see that
+  // block's comment for why.
+  if (tokenProbe === "invalid" || errorKind === "expired") {
+    return (
+      <AuthCard>
+        <AuthLogo />
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error-container text-on-error-container">
+          <TriangleAlert className="h-6 w-6" aria-hidden="true" />
+        </div>
+        <h1 className="mb-2 text-center font-heading text-xl text-text">{t("errorTitle")}</h1>
+        <p className="mb-6 text-center text-sm text-text-secondary">{t("errors.expired")}</p>
+        <Link
+          href="/login"
+          className="inline-flex h-[var(--btn-height-md)] w-full items-center justify-center rounded-button bg-primary px-6 text-sm font-medium text-on-primary"
+        >
+          {t("backToLogin")}
         </Link>
       </AuthCard>
     );
