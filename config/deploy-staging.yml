@@ -21,7 +21,7 @@ servers:
     proxy:
       host: api.staging.givernance.org
       healthcheck:
-        path: /
+        path: /healthz
   worker:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
