@@ -1,6 +1,7 @@
 "use client";
 
 import { type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -44,6 +45,7 @@ interface ProfileLanguageFormProps {
 
 export function ProfileLanguageForm({ initial }: ProfileLanguageFormProps) {
   const t = useTranslations("profile.language");
+  const router = useRouter();
   const [tenantDefaultLocale, setTenantDefaultLocale] = useState<Locale>(
     initial.tenantDefaultLocale,
   );
@@ -69,6 +71,12 @@ export function ProfileLanguageForm({ initial }: ProfileLanguageFormProps) {
       setInitialChoice(nextChoice);
       setTenantDefaultLocale(next.tenantDefaultLocale);
       toast.success(t("success.updated"));
+      // Issue #153: re-run the server components so next-intl re-resolves
+      // the locale from `/v1/users/me` and the UI re-renders in the new
+      // language without a hard refresh. Without this, the user sees the
+      // toast but the UI stays in the previous locale until the next
+      // navigation.
+      router.refresh();
     } catch (error) {
       const message = resolveApiErrorMessage(error, t("errors.save"));
       setErrorMessage(message);
