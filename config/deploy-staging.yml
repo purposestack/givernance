@@ -44,6 +44,9 @@ env:
     NODE_ENV: production
     PORT: 3000
     APP_URL: https://staging.givernance.org
+    NEXT_PUBLIC_APP_URL: https://staging.givernance.org
+    NEXT_PUBLIC_API_URL: https://api.staging.givernance.org
+    NEXT_PUBLIC_KEYCLOAK_URL: https://auth.staging.givernance.org
     S3_ENDPOINT: http://givernance-minio:9000
     S3_ACCESS_KEY_ID: admin
     KEYCLOAK_URL: http://givernance-keycloak:8080
@@ -99,7 +102,9 @@ accessories:
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     host: <%= ENV["STAGING_VPS_IP"] %>
-    port: 8080
+    port: "8080:8080"
+    labels:
+      traefik.http.routers.givernance-keycloak.rule: Host(`auth.staging.givernance.org`)
     env:
       clear:
         KC_DB: postgres
