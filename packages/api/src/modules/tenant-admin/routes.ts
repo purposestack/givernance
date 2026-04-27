@@ -37,6 +37,7 @@ import {
 } from "../../lib/schemas.js";
 import {
   claimDomain,
+  confirmTenantOwnership,
   createEnterpriseTenant,
   deleteIdp,
   getTenantDetail,
@@ -103,6 +104,7 @@ const TenantSummarySchema = Type.Object({
   status: Type.String(),
   createdVia: Type.String(),
   verifiedAt: Type.Union([Type.String(), Type.Null()]),
+  ownershipConfirmedAt: Type.Union([Type.String(), Type.Null()]),
   primaryDomain: Type.Union([Type.String(), Type.Null()]),
   keycloakOrgId: Type.Union([Type.String(), Type.Null()]),
   defaultLocale: FirstAdminLocaleSchema,
@@ -114,6 +116,23 @@ const TenantListQuery = Type.Object({
   status: Type.Optional(Type.String({ maxLength: 32 })),
   createdVia: Type.Optional(Type.String({ maxLength: 32 })),
   q: Type.Optional(Type.String({ maxLength: 255 })),
+  sort: Type.Optional(
+    Type.Union([
+      Type.Literal("name"),
+      Type.Literal("status"),
+      Type.Literal("plan"),
+      Type.Literal("primaryDomain"),
+      Type.Literal("createdVia"),
+      Type.Literal("ownershipConfirmedAt"),
+      Type.Literal("createdAt"),
+      Type.Literal("updatedAt"),
+    ]),
+  ),
+  order: Type.Optional(Type.Union([Type.Literal("asc"), Type.Literal("desc")])),
+});
+
+const ConfirmOwnershipResponse = Type.Object({
+  ownershipConfirmedAt: Type.String(),
 });
 
 const TenantDetailResponse = Type.Object({
@@ -331,6 +350,42 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
       const query = request.query as { status?: string; createdVia?: string; q?: string };
       const rows = await listTenantsForAdmin(query);
       return reply.send({ data: rows });
+    },
+  );
+
+  /** POST /v1/superadmin/tenants/:id/confirm-ownership — self-serve BO confirmation. */
+  app.post(
+    "/superadmin/tenants/:id/confirm-ownership",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Tenant Admin"],
+        params: OrgIdParams,
+        response: {
+          200: DataResponse(ConfirmOwnershipResponse),
+          409: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const res = await confirmTenantOwnership(id, auditFromRequest(request));
+      if (!res.ok) {
+        if (res.error === "tenant_not_found") {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Tenant not found."));
+        }
+        return reply
+          .status(409)
+          .send(
+            problemDetail(
+              409,
+              "Conflict",
+              "Only self-serve tenants can be confirmed from the back office.",
+            ),
+          );
+      }
+      return reply.send({ data: { ownershipConfirmedAt: res.ownershipConfirmedAt } });
     },
   );
 

@@ -93,6 +93,7 @@ ALTER TABLE tenants
     ADD COLUMN created_via     VARCHAR(32) NOT NULL DEFAULT 'enterprise'
         CHECK (created_via IN ('self_serve','enterprise','invitation')),
     ADD COLUMN verified_at     TIMESTAMPTZ,
+    ADD COLUMN ownership_confirmed_at TIMESTAMPTZ, -- BO-only review of self-serve ownership; no user-access impact
     ADD COLUMN keycloak_org_id TEXT,             -- Keycloak 26 Organization id (bound 1:1)
     ADD COLUMN primary_domain  VARCHAR(255);     -- convenience; source of truth = tenant_domains
 ```

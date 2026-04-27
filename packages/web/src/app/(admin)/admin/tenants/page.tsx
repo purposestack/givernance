@@ -4,17 +4,54 @@ import { getTranslations } from "next-intl/server";
 import { TenantsTable } from "@/components/admin/tenants-table";
 import { Button } from "@/components/ui/button";
 import { createServerApiClient } from "@/lib/api/client-server";
-import type { AdminTenantListResponse, AdminTenantSummary } from "@/services/TenantAdminService";
+import type {
+  AdminTenantListResponse,
+  AdminTenantSortField,
+  AdminTenantSortOrder,
+  AdminTenantSummary,
+} from "@/services/TenantAdminService";
 
 export const dynamic = "force-dynamic";
 
-export default async function TenantListPage() {
+const TENANT_SORT_FIELDS = new Set<AdminTenantSortField>([
+  "name",
+  "status",
+  "plan",
+  "primaryDomain",
+  "createdVia",
+  "ownershipConfirmedAt",
+  "createdAt",
+  "updatedAt",
+]);
+
+function normalizeSort(value: string | undefined): AdminTenantSortField {
+  if (value && TENANT_SORT_FIELDS.has(value as AdminTenantSortField)) {
+    return value as AdminTenantSortField;
+  }
+  return "createdAt";
+}
+
+function normalizeOrder(value: string | undefined): AdminTenantSortOrder {
+  return value === "asc" ? "asc" : "desc";
+}
+
+export default async function TenantListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string; order?: string }>;
+}) {
+  const search = await searchParams;
   const t = await getTranslations("admin.tenants.list");
   const api = await createServerApiClient();
+  const sort = normalizeSort(search.sort);
+  const order = normalizeOrder(search.order);
 
   let tenants: AdminTenantSummary[] = [];
   try {
-    const res = await api.get<AdminTenantListResponse>("/v1/superadmin/tenants");
+    const params = new URLSearchParams({ sort, order });
+    const res = await api.get<AdminTenantListResponse>(
+      `/v1/superadmin/tenants?${params.toString()}`,
+    );
     tenants = res.data;
   } catch {
     tenants = [];
@@ -32,7 +69,7 @@ export default async function TenantListPage() {
         </Button>
       </header>
 
-      <TenantsTable tenants={tenants} />
+      <TenantsTable tenants={tenants} sort={sort} order={order} />
     </div>
   );
 }

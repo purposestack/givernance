@@ -7,11 +7,12 @@ import {
   formatTenantUserName,
   normalizeTenantToken,
   renderJsonPreview,
+  TenantOwnershipBadge,
   TenantStatusBadge,
-  TenantVerificationBadge,
 } from "@/components/admin/tenant-admin-shared";
 import { TenantDetailTabs } from "@/components/admin/tenant-detail-tabs";
 import { TenantLifecycleActions } from "@/components/admin/tenant-lifecycle-actions";
+import { TenantOwnershipActions } from "@/components/admin/tenant-ownership-actions";
 import {
   Table,
   TableBody,
@@ -89,6 +90,10 @@ export default async function TenantDetailPage({
       <DetailCard
         label={t("overview.fields.updatedAt")}
         value={formatAdminDate(tenant.updatedAt)}
+      />
+      <DetailCard
+        label={t("overview.fields.ownershipConfirmedAt")}
+        value={tenant.ownershipConfirmedAt ? formatAdminDate(tenant.ownershipConfirmedAt) : "—"}
       />
       <DetailCard
         label={t("overview.fields.verifiedAt")}
@@ -226,10 +231,12 @@ export default async function TenantDetailPage({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <TenantStatusBadge status={tenant.status} label={tenantStatusLabel(t, tenant.status)} />
-            <TenantVerificationBadge
-              verifiedAt={tenant.verifiedAt}
-              verifiedLabel={t("verification.verified")}
-              pendingLabel={t("verification.pending")}
+            <TenantOwnershipBadge
+              createdVia={tenant.createdVia}
+              ownershipConfirmedAt={tenant.ownershipConfirmedAt}
+              confirmedLabel={t("ownership.confirmed")}
+              pendingLabel={t("ownership.pending")}
+              notApplicableLabel={t("ownership.notApplicable")}
             />
           </div>
         </div>
@@ -244,6 +251,11 @@ export default async function TenantDetailPage({
        */}
       {firstAdminInvitation === null && users.length === 0 ? (
         <>
+          <TenantOwnershipActions
+            tenantId={tenant.id}
+            createdVia={tenant.createdVia}
+            ownershipConfirmedAt={tenant.ownershipConfirmedAt}
+          />
           <FirstAdminCard
             tenantId={tenant.id}
             tenantDefaultLocale={tenant.defaultLocale}
@@ -256,6 +268,11 @@ export default async function TenantDetailPage({
         </>
       ) : (
         <>
+          <TenantOwnershipActions
+            tenantId={tenant.id}
+            createdVia={tenant.createdVia}
+            ownershipConfirmedAt={tenant.ownershipConfirmedAt}
+          />
           <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
           <FirstAdminCard
             tenantId={tenant.id}

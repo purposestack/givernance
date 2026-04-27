@@ -4,11 +4,20 @@ import {
   type ColumnDef,
   flexRender,
   getCoreRowModel,
+  getSortedRowModel,
   type Header,
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { ChevronLeft, ChevronRight, Rows2, Rows3 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Rows2,
+  Rows3,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -53,10 +62,10 @@ function sortDirectionAriaValue(sort: "asc" | "desc" | false) {
   return "none" as const;
 }
 
-function sortDirectionIndicator(sort: "asc" | "desc" | false) {
-  if (sort === "asc") return " ▲";
-  if (sort === "desc") return " ▼";
-  return "";
+function SortDirectionIndicator({ sort }: { sort: "asc" | "desc" | false }) {
+  if (sort === "asc") return <ArrowUp size={14} aria-hidden="true" />;
+  if (sort === "desc") return <ArrowDown size={14} aria-hidden="true" />;
+  return <ArrowUpDown size={14} aria-hidden="true" className="opacity-60" />;
 }
 
 interface HeaderCellProps<TData> {
@@ -84,7 +93,7 @@ function HeaderCell<TData>({ header, padding }: HeaderCellProps<TData>) {
           className="inline-flex items-center gap-1 hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           {content}
-          {sortDirectionIndicator(sortDirection)}
+          <SortDirectionIndicator sort={sortDirection} />
         </button>
       ) : (
         content
@@ -111,6 +120,7 @@ export function DataTable<TData>({
 
   const sorting = controlledSorting ?? internalSorting;
   const setSorting = onSortingChange ?? setInternalSorting;
+  const manualSorting = controlledSorting !== undefined || onSortingChange !== undefined;
 
   const table = useReactTable({
     data,
@@ -121,8 +131,9 @@ export function DataTable<TData>({
       setSorting(next);
     },
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
     manualPagination: true,
-    manualSorting: true,
+    manualSorting,
     pageCount: pagination.totalPages,
   });
 
