@@ -1,13 +1,21 @@
 "use client";
 
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
-import { Building2 } from "lucide-react";
+import { Building2, Eye, MoreHorizontal } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
+import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type {
   AdminTenantSortField,
   AdminTenantSortOrder,
@@ -139,6 +147,28 @@ export function TenantsTable({ tenants, sort, order }: TenantsTableProps) {
         header: () => t("columns.updatedAt"),
         enableSorting: true,
         cell: ({ row }) => formatAdminDate(row.original.updatedAt),
+      },
+      {
+        id: "actions",
+        header: () => <span className="sr-only">{t("columns.actions") || "Actions"}</span>,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="justify-center">
+                <MoreHorizontal size={16} aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/admin/tenants/${row.original.id}`}>
+                  <Eye size={16} aria-hidden="true" className="mr-2" />
+                  {t("actions.view") || "Voir les détails"}
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
       },
     ],
     [t],

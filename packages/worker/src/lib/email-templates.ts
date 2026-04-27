@@ -86,9 +86,9 @@ const ROLE_LABELS: Record<Locale, Record<string, string>> = {
     viewer: "viewer",
   },
   fr: {
-    org_admin: "administrateur·trice",
+    org_admin: "administration",
     user: "membre de l'équipe",
-    viewer: "lecteur·trice",
+    viewer: "lecture",
   },
 };
 
