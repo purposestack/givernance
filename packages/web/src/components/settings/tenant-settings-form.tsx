@@ -2,6 +2,7 @@
 
 import { type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Lock } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
@@ -35,6 +36,7 @@ interface TenantSettingsFormProps {
 
 export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFormProps) {
   const t = useTranslations("settings.tenant");
+  const router = useRouter();
   const tenantOrgId = orgId;
   const [baseCurrency, setBaseCurrency] = useState<TenantCurrency>("EUR");
   const [initialCurrency, setInitialCurrency] = useState<TenantCurrency>("EUR");
@@ -97,6 +99,11 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
       setDefaultLocale(tenant.defaultLocale);
       setInitialDefaultLocale(tenant.defaultLocale);
       toast.success(t("success.updated"));
+      // Issue #153: re-run server components so the new tenant default
+      // takes effect for users with `users.locale = NULL` without a
+      // manual reload. The org_admin themselves only sees a UI shift
+      // when they don't have a personal override.
+      router.refresh();
     } catch (error) {
       const message = resolveApiErrorMessage(error, t("errors.save"));
       setErrorMessage(message);
