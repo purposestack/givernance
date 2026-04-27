@@ -4,7 +4,7 @@
 -->
 <#import "template.ftl" as layout>
 <@layout.registrationLayout
-    displayMessage=!messagesPerField.hasAny("username","password")
+    displayMessage=!messagesPerField.existsError("username","password")
     displayInfo=realm.password && social.providers??;
     section>
 

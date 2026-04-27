@@ -5,7 +5,7 @@
 <#import "template.ftl" as layout>
 <@layout.registrationLayout
     displayInfo=true
-    displayMessage=!messagesPerField.hasAny("username");
+    displayMessage=!messagesPerField.existsError("username");
     section>
 
   <#if section = "header">
