@@ -628,7 +628,10 @@
       "fields": {
         "email": "Adresse email",
         "emailPlaceholder": "collegue@exemple.org",
-        "role": "Rôle"
+        "role": "Rôle",
+        "locale": "Langue de l'invitation",
+        "localeFollowTenant": "Utiliser la langue par défaut de l'espace ({locale})",
+        "localeHint": "L'email d'invitation sera envoyé dans cette langue. La personne invitée pourra la changer avant d'accepter."
       },
       "roleHints": {
         "org_admin": "Accès complet — peut inviter d'autres personnes, gérer les paramètres et accéder à toutes les données.",

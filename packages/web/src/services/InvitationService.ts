@@ -32,6 +32,9 @@ export const InvitationService = {
   async createInvitation(client: ApiClient, input: InvitationCreateInput): Promise<Invitation> {
     const body: Record<string, unknown> = { email: input.email };
     if (input.role) body.role = input.role;
+    // `null` is a meaningful value here ("admin chose tenant default") —
+    // forward it explicitly. `undefined` is omitted from the request.
+    if (input.locale !== undefined) body.locale = input.locale;
     const response = await client.post<InvitationCreateResponse>("/v1/invitations", body);
     // The create endpoint returns the row without a derived status; treat
     // it as pending — `acceptedAt` is null and `expiresAt` is in the future
@@ -56,11 +59,13 @@ const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
  * Side-effect-free probe for the /invite/accept page (PR #154 follow-up).
  *
  * Hits `GET /v1/invitations/:token/probe`. Issue #153 changed the success
- * response from 204 to 200 with `{ tenantDefaultLocale }` so the accept
- * form can pre-select the right locale picker option without a second
- * round-trip. We still treat 204 as valid for one transitional release in
- * case a stale browser hits a freshly-deployed API (or vice versa); in
- * that case `tenantDefaultLocale` falls back to APP_DEFAULT_LOCALE.
+ * response from 204 to 200 with `{ defaultLocale }` so the accept form
+ * can pre-select the right locale picker option without a second
+ * round-trip. The follow-up shipped per-invitation locale (admin
+ * pre-pick), so `defaultLocale` is now the *invitation-aware* default —
+ * `invitation.locale ?? tenant.default_locale`. We still treat 204 as
+ * valid for one transitional release in case a stale browser hits a
+ * freshly-deployed API; the fallback is `APP_DEFAULT_LOCALE`.
  *
  * Anti-enumeration: 410 covers every failure mode (wrong token / accepted
  * / expired / wrong purpose) — collapsed by the API. On a network error
@@ -68,7 +73,7 @@ const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
  * bad-token case as a fallback.
  */
 export type InvitationProbeResult =
-  | { kind: "valid"; tenantDefaultLocale: Locale }
+  | { kind: "valid"; defaultLocale: Locale }
   | { kind: "invalid" }
   | { kind: "rate_limited" };
 
@@ -83,22 +88,24 @@ export async function probeInvitation(token: string): Promise<InvitationProbeRes
   } catch {
     // Network-side failure: don't block the form. The post-submit terminal
     // screen will catch a bad token if the user reaches that point.
-    return { kind: "valid", tenantDefaultLocale: APP_DEFAULT_LOCALE };
+    return { kind: "valid", defaultLocale: APP_DEFAULT_LOCALE };
   }
   if (res.status === 200) {
     try {
-      const json = (await res.json()) as { data?: { tenantDefaultLocale?: unknown } };
-      const candidate = json.data?.tenantDefaultLocale;
-      const tenantDefaultLocale: Locale = isSupportedLocale(candidate)
-        ? candidate
-        : APP_DEFAULT_LOCALE;
-      return { kind: "valid", tenantDefaultLocale };
+      const json = (await res.json()) as {
+        data?: { defaultLocale?: unknown; tenantDefaultLocale?: unknown };
+      };
+      // Prefer the new field; fall back to the legacy `tenantDefaultLocale`
+      // for one transitional release if a stale API is in flight.
+      const candidate = json.data?.defaultLocale ?? json.data?.tenantDefaultLocale;
+      const defaultLocale: Locale = isSupportedLocale(candidate) ? candidate : APP_DEFAULT_LOCALE;
+      return { kind: "valid", defaultLocale };
     } catch {
-      return { kind: "valid", tenantDefaultLocale: APP_DEFAULT_LOCALE };
+      return { kind: "valid", defaultLocale: APP_DEFAULT_LOCALE };
     }
   }
   // 204 is the legacy shape — kept for transitional compat across deploy.
-  if (res.status === 204) return { kind: "valid", tenantDefaultLocale: APP_DEFAULT_LOCALE };
+  if (res.status === 204) return { kind: "valid", defaultLocale: APP_DEFAULT_LOCALE };
   if (res.status === 429) return { kind: "rate_limited" };
   return { kind: "invalid" };
 }
