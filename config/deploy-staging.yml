@@ -28,6 +28,11 @@ servers:
     cmd: pnpm --filter @givernance/worker run start
 
 proxy:
+  ssl: true
+  hosts:
+    - staging.givernance.org
+    - api.staging.givernance.org
+    - auth.staging.givernance.org
   app_port: 3000
 
 # Credentials for your image host.
