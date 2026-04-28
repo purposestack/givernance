@@ -20,9 +20,30 @@ export function getStripe(): Stripe {
 }
 
 /**
+ * Capabilities Givernance requests on every connected account. Without
+ * `card_payments`, `paymentIntents.create` errors with "You cannot create
+ * a charge on a connected account without the `card_payments` capability
+ * enabled." `transfers` is requested alongside so the account can receive
+ * funds via destination charges if we ever switch off the direct-charge
+ * model. SEPA Direct Debit (`sepa_debit_payments`) is intentionally
+ * out-of-scope for Phase 1 — see ADR-010 §11.
+ *
+ * Both keys are idempotent on Stripe's side: re-requesting an already-
+ * requested capability is a no-op, so the same shape covers both
+ * `accounts.create` (new accounts) and `accounts.update` (recovering
+ * accounts created before this fix landed — issue #192 follow-up).
+ */
+const REQUESTED_CAPABILITIES = {
+  card_payments: { requested: true },
+  transfers: { requested: true },
+} as const;
+
+/**
  * Create a Stripe Connect Account Link for onboarding.
  * Creates an Express connected account if the tenant doesn't have one yet,
- * then returns the onboarding URL.
+ * otherwise re-asserts the requested capabilities on the existing account
+ * so accounts created before the capability fix can be repaired by
+ * clicking "Re-open Stripe onboarding".
  */
 export async function startStripeOnboarding(
   orgId: string,
@@ -42,6 +63,7 @@ export async function startStripeOnboarding(
     const account = await stripe.accounts.create(
       {
         type: "express",
+        capabilities: REQUESTED_CAPABILITIES,
         metadata: { givernance_org_id: orgId },
       },
       { idempotencyKey: `acct-create-${orgId}` },
@@ -52,6 +74,11 @@ export async function startStripeOnboarding(
       .update(tenants)
       .set({ stripeAccountId: accountId, updatedAt: new Date() })
       .where(eq(tenants.id, orgId));
+  } else {
+    // Idempotent — Stripe ignores already-requested capabilities. This is
+    // the recovery path for accounts created before capabilities were
+    // requested at creation time.
+    await stripe.accounts.update(accountId, { capabilities: REQUESTED_CAPABILITIES });
   }
 
   const accountLink = await stripe.accountLinks.create(
