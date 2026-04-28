@@ -530,6 +530,20 @@ body {
 }
 
 /*
+ * Suppress KC-injected validation spans.
+ * The keycloak parent theme's js/login.js (and similar scripts) inject
+ * #input-error-{fieldname} spans with PatternFly classes independently of
+ * the FTL templates. Our FTL renders field errors via .gv-field-error; the
+ * KC duplicates must be hidden. theme.properties scripts= already clears the
+ * static scripts, but dynamic flow scripts may also inject these — belt-and-
+ * suspenders suppression via CSS covers both paths.
+ */
+.kc-feedback-text,
+[id^="input-error-"] {
+  display: none !important;
+}
+
+/*
  * Fallback styles for inherited Keycloak templates (login-reset-password.ftl, etc.)
  * that are not overridden in this theme. These pages use Keycloak's HTML structure
  * but PatternFly is not loaded, so we style native elements directly.

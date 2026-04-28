@@ -13,3 +13,6 @@ next-env.d.ts
 
 # TypeScript
 *.tsbuildinfo
+
+#claude
+.claude/worktrees
