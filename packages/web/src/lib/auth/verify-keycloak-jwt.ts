@@ -30,6 +30,14 @@ export async function verifyKeycloakJwt(token: string): Promise<KeycloakJwtPaylo
     throw new Error("Keycloak token missing required `sub` claim");
   }
 
+  // Keycloak 26 multi-tenancy map attributes to arrays.
+  if (Array.isArray(payload.org_id)) {
+    payload.org_id = payload.org_id[0];
+  }
+  if (Array.isArray(payload.role)) {
+    payload.role = payload.role[0];
+  }
+
   if (typeof payload.org_id !== "string" || payload.org_id.length === 0) {
     throw new Error("Keycloak token missing required `org_id` claim");
   }
