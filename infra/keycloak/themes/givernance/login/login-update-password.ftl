@@ -12,10 +12,13 @@
     <form id="kc-passwd-update-form" class="gv-form"
           action="${url.loginAction}" method="post">
 
-      <#-- Hidden username for password-manager association -->
+      <#-- Hidden username for password-manager association.
+           Positioned off-screen (not display:none) so password managers
+           can read the autocomplete hint; aria-hidden keeps it silent
+           to screen readers. -->
       <input type="text" id="username" name="username" value="${username}"
-             readonly autocomplete="username"
-             style="display:none;position:absolute;left:-9999px;">
+             readonly autocomplete="username" aria-hidden="true"
+             style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">
 
       <div class="gv-field">
         <label for="password-new" class="gv-label">${msg("passwordNew")}</label>
@@ -27,12 +30,11 @@
             class="gv-input<#if messagesPerField.existsError('password-new','password-confirm')> gv-input--error</#if>"
             autofocus
             autocomplete="new-password"
-            tabindex="1"
             aria-invalid="${messagesPerField.existsError('password-new','password-confirm')?string('true','false')}"
           >
           <button type="button" class="gv-password-toggle"
                   onclick="toggleGvPassword('password-new')"
-                  aria-label="Afficher le mot de passe" tabindex="5">
+                  aria-label="${msg('showPassword')}">
             <svg class="gv-eye-icon" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -57,12 +59,11 @@
             type="password"
             class="gv-input<#if messagesPerField.existsError('password-confirm')> gv-input--error</#if>"
             autocomplete="new-password"
-            tabindex="2"
             aria-invalid="${messagesPerField.existsError('password-confirm')?string('true','false')}"
           >
           <button type="button" class="gv-password-toggle"
                   onclick="toggleGvPassword('password-confirm')"
-                  aria-label="Afficher la confirmation" tabindex="6">
+                  aria-label="${msg('showPasswordConfirm')}">
             <svg class="gv-eye-icon" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -81,19 +82,17 @@
       <#if isAppInitiatedAction??>
         <div style="display:flex;gap:12px;">
           <button type="submit" class="gv-btn gv-btn--primary"
-                  id="kc-form-buttons" tabindex="3"
-                  style="flex:1;">
+                  id="kc-form-buttons" style="flex:1;">
             ${msg("doSubmit")}
           </button>
           <button type="submit" class="gv-btn gv-btn--secondary"
-                  id="cancelBtn" name="cancel-aia" value="true" tabindex="4"
-                  style="flex:1;">
+                  id="cancelBtn" name="cancel-aia" value="true" style="flex:1;">
             ${msg("doCancel")}
           </button>
         </div>
       <#else>
         <button type="submit" class="gv-btn gv-btn--primary"
-                id="kc-form-buttons" tabindex="3">
+                id="kc-form-buttons">
           ${msg("doSubmit")}
         </button>
       </#if>
@@ -102,7 +101,15 @@
     <script>
       function toggleGvPassword(id) {
         var input = document.getElementById(id);
-        input.type = input.type === 'password' ? 'text' : 'password';
+        var btn   = input.nextElementSibling;
+        var i18n  = window.gvI18n || {};
+        var isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        if (id === 'password-confirm') {
+          btn.setAttribute('aria-label', isPassword ? (i18n.hidePasswordConfirm || 'Hide') : (i18n.showPasswordConfirm || 'Show'));
+        } else {
+          btn.setAttribute('aria-label', isPassword ? (i18n.hidePassword || 'Hide') : (i18n.showPassword || 'Show'));
+        }
       }
     </script>
   </#if>

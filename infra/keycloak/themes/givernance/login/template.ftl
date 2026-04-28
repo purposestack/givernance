@@ -14,16 +14,18 @@
 <#macro registrationLayout bodyClass="" displayInfo=false displayMessage=true displayRequiredFields=false>
 
 <#-- Resolve per-org branding from Organization attributes (KC 26). -->
-<#assign gvPrimary      = "#096447">
-<#assign gvPrimaryHover = "#005138">
-<#assign gvOrgLogoUrl   = "">
-<#assign gvOrgName      = (realm.displayName)!"Givernance">
+<#assign gvPrimary    = "#096447">
+<#assign gvOrgLogoUrl = "">
+<#assign gvOrgName    = (realm.displayName)!"Givernance">
 <#if organization??>
   <#if (organization.attributes['theme_primary_color']![])?has_content>
-    <#assign gvPrimary      = organization.attributes['theme_primary_color']?first>
-    <#-- Darken slightly for hover: blend to #000 — approximated with a darker literal fallback. -->
-    <#-- Real per-org hover can be added via JS color-mix if needed. -->
-    <#assign gvPrimaryHover = gvPrimary>
+    <#assign rawColor = organization.attributes['theme_primary_color']?first>
+    <#-- C1: Validate against ^#[0-9a-fA-F]{6}$ to prevent CSS injection via
+         a malformed or adversarial Organization attribute. Fall back to the
+         default brand green if the value does not match. -->
+    <#if rawColor?matches("^#[0-9a-fA-F]{6}$")>
+      <#assign gvPrimary = rawColor>
+    </#if>
   </#if>
   <#if (organization.attributes['logo_url']![])?has_content>
     <#assign gvOrgLogoUrl = organization.attributes['logo_url']?first>
@@ -32,6 +34,9 @@
     <#assign gvOrgName = organization.name>
   </#if>
 </#if>
+<#-- M6: Compute hover color via CSS color-mix so per-org primary colors
+     darken correctly without a server-side color-math library. -->
+<#assign gvPrimaryHover = "color-mix(in srgb, " + gvPrimary + " 85%, black)">
 
 <#-- locale is null when internationalizationEnabled=false in the realm,
      or in certain non-interactive Keycloak flows. Guard every access. -->
@@ -63,8 +68,12 @@
 
     <#-- Logo / brand -->
     <div class="gv-auth-header">
-      <#if gvOrgLogoUrl?has_content>
-        <img src="${gvOrgLogoUrl}" alt="${gvOrgName}" class="gv-org-logo">
+      <#-- M1: Only render the logo when the URL starts with https:// to prevent
+           loading from arbitrary origins. Add referrerpolicy + crossorigin to
+           avoid leaking the Keycloak auth URL to the logo's origin server. -->
+      <#if gvOrgLogoUrl?has_content && gvOrgLogoUrl?starts_with("https://")>
+        <img src="${gvOrgLogoUrl}" alt="${gvOrgName}" class="gv-org-logo"
+             referrerpolicy="no-referrer" crossorigin="anonymous">
         <p class="gv-org-name">${gvOrgName}</p>
       <#else>
         <div class="gv-brand-logo">
@@ -116,6 +125,23 @@
 
   </div>
 
+  <#-- M8: Locale picker for direct KC flows (password-reset email links, etc.)
+       where the app's /login page — which normally drives the language via
+       kc_locale — is bypassed. The picker is also shown on the main login page
+       when the app controls the locale; the JS auto-switch below takes care of
+       applying the requested kc_locale before the picker is visible. -->
+  <#if locale?? && locale.supported?? && (locale.supported?size > 1)>
+    <div class="gv-locale-picker">
+      <select class="gv-locale-select"
+              onchange="window.location.href=this.value"
+              aria-label="${msg('selectLocale')}">
+        <#list locale.supported as l>
+          <option value="${l.url?no_esc}"<#if l.languageTag == currentLang> selected</#if>>${l.label}</option>
+        </#list>
+      </select>
+    </div>
+  </#if>
+
   <footer class="gv-auth-footer">
     Powered by <strong>Givernance</strong>
   </footer>
@@ -127,6 +153,18 @@
     <script src="${script}" type="text/javascript"></script>
   </#list>
 </#if>
+
+<#-- M7: i18n strings for client-side JS (password-show/hide toggles).
+     Injected from FreeMarker so the correct locale is used without hard-coding
+     French (or any other language) into the JS source. -->
+<script>
+  window.gvI18n = {
+    showPassword:        '${msg("showPassword")?js_string}',
+    hidePassword:        '${msg("hidePassword")?js_string}',
+    showPasswordConfirm: '${msg("showPasswordConfirm")?js_string}',
+    hidePasswordConfirm: '${msg("hidePasswordConfirm")?js_string}'
+  };
+</script>
 
 <#-- Auto-apply kc_locale hint from URL.
      The app passes kc_locale=<lang> in the OIDC auth URL so Keycloak picks

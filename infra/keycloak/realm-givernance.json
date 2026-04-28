@@ -80,8 +80,7 @@
       "redirectUrl": "",
       "attributes": {
         "org_id": ["00000000-0000-0000-0000-0000000000a1"],
-        "theme_primary_color": ["#096447"],
-        "logo_url": [""]
+        "theme_primary_color": ["#096447"]
       },
       "domains": [
         {
@@ -95,21 +94,6 @@
           "membershipType": "UNMANAGED"
         }
       ]
-    },
-    {
-      "name": "Association Démo",
-      "alias": "demo-asso",
-      "description": "Seed organization for local dev — demonstrates per-org theming with a custom primary color (indigo). Access via kc_org=demo-asso in the authorization request, or prefix the app URL with the demo-asso subdomain.",
-      "redirectUrl": "",
-      "attributes": {
-        "org_id": ["00000000-0000-0000-0000-0000000000a2"],
-        "theme_primary_color": ["#1a56db"],
-        "logo_url": [""]
-      },
-      "domains": [
-        { "name": "demo-asso.givernance.invalid", "verified": true }
-      ],
-      "members": []
     }
   ],
   "roles": {

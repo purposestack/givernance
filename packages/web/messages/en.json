@@ -26,6 +26,7 @@
       "securityHint": "Secured via your organisation's identity provider",
       "noAccount": "Don't have an account? <link>Request access</link>",
       "close": "Close",
+      "languageLabel": "Language",
       "errors": {
         "authFailed": "Authentication failed. Please try again.",
         "generic": "Something went wrong during sign-in. Please try again.",

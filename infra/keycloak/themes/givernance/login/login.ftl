@@ -34,7 +34,6 @@
           value="${(login.username!'')}"
           autofocus
           autocomplete="username"
-          tabindex="1"
           <#if usernameEditDisabled??>readonly</#if>
           aria-invalid="${messagesPerField.existsError('username','password')?string('true','false')}"
         >
@@ -50,7 +49,7 @@
         <div class="gv-label-row">
           <label for="password" class="gv-label">${msg("password")}</label>
           <#if realm.resetPasswordAllowed>
-            <a class="gv-link gv-link--small" href="${url.loginResetCredentialsUrl}" tabindex="5">
+            <a class="gv-link gv-link--small" href="${url.loginResetCredentialsUrl}">
               ${msg("doForgotPassword")}
             </a>
           </#if>
@@ -62,13 +61,11 @@
             type="password"
             class="gv-input<#if messagesPerField.existsError('username','password')> gv-input--error</#if>"
             autocomplete="current-password"
-            tabindex="2"
             aria-invalid="${messagesPerField.existsError('username','password')?string('true','false')}"
           >
           <button type="button" class="gv-password-toggle"
                   onclick="toggleGvPassword()"
-                  aria-label="Show or hide password"
-                  tabindex="6">
+                  aria-label="${msg('showPassword')}">
             <svg class="gv-eye-icon" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round"
@@ -95,7 +92,6 @@
               type="checkbox"
               class="gv-checkbox"
               <#if login.rememberMe??>checked</#if>
-              tabindex="3"
             >
             <span>${msg("rememberMe")}</span>
           </label>
@@ -108,7 +104,7 @@
 
       <#-- Submit -->
       <button type="submit" class="gv-btn gv-btn--primary"
-              id="kc-login" name="login" tabindex="4">
+              id="kc-login" name="login">
         ${msg("doLogIn")}
       </button>
     </form>
@@ -119,10 +115,10 @@
         var btn   = input.nextElementSibling;
         if (input.type === 'password') {
           input.type = 'text';
-          btn.setAttribute('aria-label', 'Masquer le mot de passe');
+          btn.setAttribute('aria-label', (window.gvI18n || {}).hidePassword || 'Hide password');
         } else {
           input.type = 'password';
-          btn.setAttribute('aria-label', 'Afficher le mot de passe');
+          btn.setAttribute('aria-label', (window.gvI18n || {}).showPassword || 'Show password');
         }
       }
     </script>

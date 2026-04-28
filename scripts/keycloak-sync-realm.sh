@@ -715,7 +715,61 @@ print(json.dumps(d))
     fi
   fi
 
-  # 5.b Ensure the seed user is a member of the platform Organization. We must
+  # 5.b Ensure the "demo-asso" dev-only Organization exists when running on
+  #     localhost. This org is intentionally absent from realm-givernance.json
+  #     (which is deployed to all environments) so staging/production realms
+  #     stay clean. The localhost guard means the sync script creates it
+  #     automatically for local dev without any extra steps.
+  DEMO_ORG_ALIAS="demo-asso"
+  DEMO_ORG_ID="00000000-0000-0000-0000-0000000000a2"
+  DEMO_ORG_NAME="Association D\u00e9mo"
+  DEMO_ORG_DOMAIN="demo-asso.givernance.invalid"
+  DEMO_ORG_PRIMARY_COLOR="#1a56db"
+
+  _is_localhost() {
+    local raw="${KC_URL##http://}"
+    raw="${raw##https://}"
+    local host="${raw%%:*}"
+    host="${host%%/*}"
+    case "$host" in
+      localhost|127.0.0.1|::1) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+
+  if _is_localhost; then
+    demo_org_kc_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/organizations?search=$(urlencode "$DEMO_ORG_ALIAS")" \
+      | ALIAS="$DEMO_ORG_ALIAS" python3 -c '
+import json, os, sys
+wanted = os.environ["ALIAS"]
+for o in json.load(sys.stdin):
+    if o.get("alias") == wanted:
+        print(o["id"])
+        break
+')
+    if [ -z "$demo_org_kc_id" ]; then
+      curl -sS -D - -o /dev/null \
+        -X POST "${KC_URL}/admin/realms/${REALM}/organizations" \
+        "${auth[@]}" -H "Content-Type: application/json" \
+        -d "{
+          \"name\":\"${DEMO_ORG_NAME}\",
+          \"alias\":\"${DEMO_ORG_ALIAS}\",
+          \"description\":\"Dev-only fixture organization (multi-tenant demo). Never synced to staging/production.\",
+          \"attributes\":{
+            \"org_id\":[\"${DEMO_ORG_ID}\"],
+            \"theme_primary_color\":[\"${DEMO_ORG_PRIMARY_COLOR}\"]
+          },
+          \"domains\":[{\"name\":\"${DEMO_ORG_DOMAIN}\",\"verified\":true}]
+        }" | head -5
+      log "Created dev-only '${DEMO_ORG_ALIAS}' Organization."
+    else
+      log "Dev org '${DEMO_ORG_ALIAS}' already exists (id=${demo_org_kc_id}) — no change."
+    fi
+  else
+    log "Not on localhost — skipping dev-only '${DEMO_ORG_ALIAS}' Organization."
+  fi
+
+  # 5.d Ensure the seed user is a member of the platform Organization. We must
   #     re-resolve user_id outside the section-3 conditional (it was scoped
   #     there) so this section runs independently.
   member_user_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users?username=$(urlencode "$SEED_USERNAME")&exact=true" \
