@@ -78,6 +78,14 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-givernance}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-givernance_dev}
+      # Server-side AES256 encryption requires KMS-equivalent backing on
+      # MinIO (Scaleway/AWS S3 don't — they manage SSE-S3 keys natively).
+      # Without this, every PDF upload from the worker errors with
+      # "NotImplemented: Server side encryption specified but KMS is not
+      # configured" since the code path uses `ServerSideEncryption: "AES256"`.
+      # Format: <key-name>:<base64-encoded-32-byte-secret>. Local-only
+      # throwaway value — never used in prod, where Scaleway handles KMS.
+      MINIO_KMS_SECRET_KEY: "givernance-kms-dev:cZvoSZTVWEOt2MK+fmq45uqxPT7gEC3btKU+2xFh0zk="
     command: server /data --console-address ":9001"
     volumes:
       - miniodata:/data
