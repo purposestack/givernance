@@ -196,20 +196,30 @@ export async function createTeamInvitation(
   const lastName = normalizeOptionalInvitationName(input.lastName);
   const role: InviteRole = input.role ?? "user";
 
-  // Pre-flight: is this email already a member of the tenant? `users` is
-  // FORCE RLS so this lookup must run inside the tenant context.
+  // Pre-flight: is this email already an ACTIVE member of the tenant?
+  // `users` is FORCE RLS so this lookup must run inside the tenant
+  // context. ADR-021 — the partial unique on `(org_id, email) WHERE
+  // deleted_at IS NULL` lets the same email be re-invited after a
+  // soft-delete, so the pre-flight MUST filter `deleted_at IS NULL` or
+  // it would 409 the rejoin path the new lifecycle was designed for.
   //
   // This pre-flight runs in a DIFFERENT tx from the actual insert below.
   // A concurrent admin inserting a `users` row for the same `(org_id, email)`
   // between the two txs could slip past this check — but the worst case is
   // a redundant invitation row, since the accept-path upsert is idempotent
-  // on `(users.org_id, users.email)`. Treating this as a UX hint, not an
+  // on the partial unique. Treating this as a UX hint, not an
   // authorisation gate (data review F-A).
   const existingUser = await withTenantContext(input.orgId, async (tx) => {
     const [row] = await tx
       .select({ id: users.id })
       .from(users)
-      .where(and(eq(users.orgId, input.orgId), sql`lower(${users.email}) = ${normalisedEmail}`))
+      .where(
+        and(
+          eq(users.orgId, input.orgId),
+          sql`lower(${users.email}) = ${normalisedEmail}`,
+          isNull(users.deletedAt),
+        ),
+      )
       .limit(1);
     return row;
   });

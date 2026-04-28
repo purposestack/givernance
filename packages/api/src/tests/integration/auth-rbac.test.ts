@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { blocklistUser } from "../../modules/session/service.js";
 import { createServer } from "../../server.js";
 import { authHeader, signToken } from "../helpers/auth.js";
 
@@ -306,5 +307,69 @@ describe("Audit routes", () => {
       page: 1,
       perPage: 20,
     });
+  });
+});
+
+// ─── Auth boundary (ADR-021) ────────────────────────────────────────────────
+
+describe("Auth boundary (ADR-021)", () => {
+  // No active `users` row resolves for the JWT's `(sub, org_id)`. The
+  // boundary closes the soft-delete + tenant-removal window: a token
+  // signed for a tenant the user no longer belongs to is rejected
+  // before any handler runs, instead of returning 200 with stale data.
+  it("rejects a token whose (sub, org_id) has no active users row (no_active_membership → 401)", async () => {
+    const tokenWithoutRow = signToken(app, {
+      sub: "00000000-0000-0000-0000-aaaaaaaaaaaa",
+      // ORG_A is seeded by ensureTestTenants but the synthetic sub has
+      // no users row in it.
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/users/me",
+      headers: authHeader(tokenWithoutRow),
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json<{ detail: string }>().detail).toBe("Account no longer active.");
+  });
+
+  // A JWT without an `org_id` claim is rejected upstream by
+  // `verifyKeycloakJwt` (every token in this Keycloak realm carries
+  // one — super_admin tokens too, since the realm mapper can't omit
+  // the claim). The auth plugin therefore sees this as `none` and
+  // `requireAuth` returns the generic "Authentication required."
+  // message, NOT a granular `no_org_claim` boundary 401. Pinning the
+  // actual surfaced behaviour here so a regression that returned 200
+  // with `request.auth.orgId === undefined` would fail loud, AND so
+  // ADR-021's discriminator list stays honest about what fires.
+  it("rejects a JWT without org_id at the verifier (401 'Authentication required')", async () => {
+    const tokenWithoutOrg = signToken(app, {
+      sub: "00000000-0000-0000-0000-dddddddddddd",
+      org_id: undefined,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/users/me",
+      headers: authHeader(tokenWithoutOrg),
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json<{ detail: string }>().detail).toBe("Authentication required");
+  });
+
+  // User-blocklist branch — the production hook called by DELETE
+  // /v1/users/:id. Asserts the boundary catches an outstanding token
+  // whose `sub` was just blocklisted, even though the JWT signature is
+  // still valid and a corresponding active users row could in theory
+  // still exist (the blocklist runs BEFORE the active-row check).
+  it("rejects a token whose sub is on the user blocklist (user_revoked → 401)", async () => {
+    const blockedSub = "00000000-0000-0000-0000-bbbbbbbbbbbb";
+    await blocklistUser(blockedSub, 60);
+    const blockedToken = signToken(app, { sub: blockedSub });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/users/me",
+      headers: authHeader(blockedToken),
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json<{ detail: string }>().detail).toBe("Account no longer active.");
   });
 });

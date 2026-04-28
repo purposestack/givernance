@@ -21,6 +21,7 @@ import {
   KeycloakUserExistsError,
 } from "../../lib/keycloak-admin.js";
 import { redis } from "../../lib/redis.js";
+import { isUserBlocklisted } from "../../modules/session/service.js";
 import { createServer } from "../../server.js";
 import { authHeader, signToken } from "../helpers/auth.js";
 
@@ -45,6 +46,7 @@ const kcGetOrganizationByAlias = vi.fn<KeycloakAdminClient["getOrganizationByAli
 );
 const kcResetUserPassword = vi.fn<KeycloakAdminClient["resetUserPassword"]>(async () => {});
 const kcSetUserAttributes = vi.fn<KeycloakAdminClient["setUserAttributes"]>(async () => {});
+const kcDeleteUser = vi.fn<KeycloakAdminClient["deleteUser"]>(async () => {});
 
 const fakeKeycloakAdmin: KeycloakAdminClient = {
   createOrganization: kcCreateOrganization,
@@ -63,10 +65,9 @@ const fakeKeycloakAdmin: KeycloakAdminClient = {
   // updateUser for the team-member PATCH endpoint; the invitation flow
   // never calls it (firstName/lastName arrive at createUser time).
   updateUser: vi.fn(async () => {}),
-  // ADR-021 — used by the `DELETE /v1/users/:id` cleanup path; team-
-  // invite tests don't exercise it directly but the stub must exist
-  // for type parity with the KeycloakAdminClient interface.
-  deleteUser: vi.fn(async () => {}),
+  // ADR-021 — used by the `DELETE /v1/users/:id` cleanup path. The
+  // soft-delete + rejoin tests below assert call counts on this stub.
+  deleteUser: kcDeleteUser,
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
   _circuitState: () => "closed",
@@ -141,6 +142,8 @@ beforeEach(async () => {
   kcGetOrganizationByAlias.mockClear();
   kcResetUserPassword.mockClear();
   kcSetUserAttributes.mockClear();
+  kcDeleteUser.mockClear();
+  kcDeleteUser.mockImplementation(async () => {});
   // Reset stub default behaviour each test — resetting the singleton wipes
   // mockImplementationOnce queues that earlier tests installed.
   kcCreateUser.mockImplementation(async (input) => ({
@@ -703,6 +706,116 @@ describe("POST /v1/invitations/:token/accept", () => {
     expect(kcCreateUser).not.toHaveBeenCalled();
     expect(kcResetUserPassword).toHaveBeenCalledTimes(1);
     expect(kcSetUserAttributes).toHaveBeenCalledTimes(1);
+  });
+
+  // ADR-021 path (3) — rejoin. End-to-end: invite + accept (member exists),
+  // soft-delete via DELETE /v1/users/:id (KC user is removed and the row is
+  // marked `deleted_at`), then re-invite the SAME email and accept again.
+  // The accept must UPDATE the soft-deleted row in place — same UUID,
+  // `deleted_at` cleared, fresh `keycloak_id` — and call `createUser` (NOT
+  // `resetUserPassword`, because the prior KC user is gone).
+  it("rejoins after soft-delete: same row id, deleted_at cleared, fresh KC user (path 3)", async () => {
+    const f = await makeFixture();
+    const email = `rejoin+${f.slug}@example.org`;
+
+    // 1. First invitation + accept
+    const create1 = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email, role: "user" },
+    });
+    expect(create1.statusCode).toBe(201);
+    const invId1 = create1.json<{ data: { id: string } }>().data.id;
+    const tok1 = (
+      await db
+        .select({ token: invitations.token })
+        .from(invitations)
+        .where(eq(invitations.id, invId1))
+    )[0]?.token;
+    expect(tok1).toBeTruthy();
+
+    const accept1 = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${tok1}/accept`,
+      payload: { firstName: "First", lastName: "Pass", password: "long-enough-password-1" },
+    });
+    expect(accept1.statusCode).toBe(201);
+
+    const [originalRow] = await db
+      .select({ id: users.id, keycloakId: users.keycloakId, deletedAt: users.deletedAt })
+      .from(users)
+      .where(and(eq(users.orgId, f.orgId), eq(users.email, email.toLowerCase())));
+    expect(originalRow).toBeDefined();
+    expect(originalRow?.keycloakId).toBeTruthy();
+    expect(originalRow?.deletedAt).toBeNull();
+    const originalId = originalRow?.id as string;
+    const originalKcId = originalRow?.keycloakId as string;
+
+    // 2. Soft-delete via DELETE /v1/users/:id — exercises the production
+    // path (NOT a direct DB write) so we also assert the cascade.
+    kcCreateUser.mockClear();
+    kcResetUserPassword.mockClear();
+    const deleteRes = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${originalId}`,
+      headers: authHeader(f.inviterToken),
+    });
+    expect(deleteRes.statusCode).toBe(200);
+
+    const [afterDelete] = await db
+      .select({ id: users.id, keycloakId: users.keycloakId, deletedAt: users.deletedAt })
+      .from(users)
+      .where(eq(users.id, originalId));
+    expect(afterDelete?.deletedAt).not.toBeNull();
+    expect(afterDelete?.keycloakId).toBeNull();
+    expect(kcDeleteUser).toHaveBeenCalledTimes(1);
+    expect(kcDeleteUser).toHaveBeenCalledWith(originalKcId);
+    expect(await isUserBlocklisted(originalKcId)).toBe(true);
+
+    // 3. Re-invite the same email — the partial unique
+    // `(org_id, email) WHERE deleted_at IS NULL` lets it through.
+    const create2 = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email, role: "user" },
+    });
+    expect(create2.statusCode).toBe(201);
+    const invId2 = create2.json<{ data: { id: string } }>().data.id;
+    const tok2 = (
+      await db
+        .select({ token: invitations.token })
+        .from(invitations)
+        .where(eq(invitations.id, invId2))
+    )[0]?.token;
+    expect(tok2).toBeTruthy();
+
+    // 4. Accept the new invitation — rejoin path.
+    const accept2 = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${tok2}/accept`,
+      payload: { firstName: "Second", lastName: "Pass", password: "long-enough-password-2" },
+    });
+    expect(accept2.statusCode).toBe(201);
+
+    // KC contract: rejoin always creates a fresh KC user (the prior one
+    // was deleted). resetUserPassword stays at zero.
+    expect(kcCreateUser).toHaveBeenCalledTimes(1);
+    expect(kcResetUserPassword).not.toHaveBeenCalled();
+
+    // App contract: SAME row id (FK chain preserved), `deleted_at`
+    // cleared, fresh `keycloak_id` distinct from the original.
+    const allRowsForEmail = await db
+      .select({ id: users.id, keycloakId: users.keycloakId, deletedAt: users.deletedAt })
+      .from(users)
+      .where(and(eq(users.orgId, f.orgId), eq(users.email, email.toLowerCase())));
+    expect(allRowsForEmail).toHaveLength(1);
+    const [rejoined] = allRowsForEmail;
+    expect(rejoined?.id).toBe(originalId);
+    expect(rejoined?.deletedAt).toBeNull();
+    expect(rejoined?.keycloakId).toBeTruthy();
+    expect(rejoined?.keycloakId).not.toBe(originalKcId);
   });
 
   it("creates the KC organization when tenant.keycloak_org_id is null", async () => {
@@ -1636,5 +1749,154 @@ describe("GET /v1/invitations/:token/probe", () => {
     expect(new Set(bodies.map((b) => b.title)).size).toBe(1);
     expect(new Set(bodies.map((b) => b.detail)).size).toBe(1);
     expect(new Set(bodies.map((b) => b.status)).size).toBe(1);
+  });
+});
+
+// ─── DELETE /v1/users/:id (ADR-021) ─────────────────────────────────────────
+
+describe("DELETE /v1/users/:id (soft-delete cascade)", () => {
+  // End-to-end: invite + accept + delete. Asserts the full cascade:
+  //   - app row is soft-deleted (`deleted_at` set, `keycloak_id` cleared)
+  //   - KC `deleteUser` is called on the prior keycloak id
+  //   - the user's `sub` is on the Redis blocklist
+  //   - the soft-deleted row is hidden from `/v1/users` listing
+  //   - the existing token (auth context still references the cleared row)
+  //     is rejected at the auth boundary on the next request
+  it("soft-deletes the row, syncs KC, blocklists the sub, and hides the user from listing", async () => {
+    const f = await makeFixture();
+    const email = `cascade+${f.slug}@example.org`;
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email, role: "user" },
+    });
+    expect(create.statusCode).toBe(201);
+    const invId = create.json<{ data: { id: string } }>().data.id;
+    const inviteToken = (
+      await db
+        .select({ token: invitations.token })
+        .from(invitations)
+        .where(eq(invitations.id, invId))
+    )[0]?.token;
+
+    const accept = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${inviteToken}/accept`,
+      payload: { firstName: "Will", lastName: "Leave", password: "long-enough-password-1" },
+    });
+    expect(accept.statusCode).toBe(201);
+
+    const [member] = await db
+      .select({ id: users.id, keycloakId: users.keycloakId })
+      .from(users)
+      .where(and(eq(users.orgId, f.orgId), eq(users.email, email.toLowerCase())));
+    const memberId = member?.id as string;
+    const memberKcId = member?.keycloakId as string;
+
+    // Soft-delete via the production route.
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${memberId}`,
+      headers: authHeader(f.inviterToken),
+    });
+    expect(del.statusCode).toBe(200);
+
+    // App side — row is soft-deleted.
+    const [softRow] = await db
+      .select({
+        id: users.id,
+        keycloakId: users.keycloakId,
+        deletedAt: users.deletedAt,
+      })
+      .from(users)
+      .where(eq(users.id, memberId));
+    expect(softRow?.deletedAt).not.toBeNull();
+    expect(softRow?.keycloakId).toBeNull();
+
+    // KC side — deleteUser called exactly once on the right id.
+    expect(kcDeleteUser).toHaveBeenCalledTimes(1);
+    expect(kcDeleteUser).toHaveBeenCalledWith(memberKcId);
+
+    // Auth side — the Keycloak `sub` is now on the blocklist, so any
+    // outstanding access token for this user is dead on arrival.
+    expect(await isUserBlocklisted(memberKcId)).toBe(true);
+
+    // Listing side — `/v1/users` does NOT surface the soft-deleted row.
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/users",
+      headers: authHeader(f.inviterToken),
+    });
+    expect(list.statusCode).toBe(200);
+    const listBody = list.json<{ data: Array<{ id: string; email: string }> }>();
+    expect(listBody.data.find((u) => u.id === memberId)).toBeUndefined();
+
+    // Auth boundary — a token minted with the soft-deleted user's `sub`
+    // is rejected before any handler runs (`Account no longer active.`).
+    // Tested with a fresh JWT (not the one the deleted user actually had,
+    // which we don't capture in test) — the user-blocklist branch fires
+    // on `sub` regardless of token age.
+    const ghostToken = signToken(app, { sub: memberKcId, org_id: f.orgId });
+    const ghostRes = await app.inject({
+      method: "GET",
+      url: "/v1/users/me",
+      headers: authHeader(ghostToken),
+    });
+    expect(ghostRes.statusCode).toBe(401);
+    expect(ghostRes.json<{ detail: string }>().detail).toBe("Account no longer active.");
+  });
+
+  // Idempotency: replaying DELETE on an already-soft-deleted row is safe
+  // and returns 200 (NOT 404). The KC deleteUser stub is called again
+  // on retry — but only because we provoke it; in production the second
+  // call would find no `keycloakId` (cleared on first delete) and skip.
+  it("re-deleting an already-soft-deleted user is idempotent (200, no second KC call)", async () => {
+    const f = await makeFixture();
+    const email = `idem+${f.slug}@example.org`;
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email, role: "user" },
+    });
+    const invId = create.json<{ data: { id: string } }>().data.id;
+    const inviteToken = (
+      await db
+        .select({ token: invitations.token })
+        .from(invitations)
+        .where(eq(invitations.id, invId))
+    )[0]?.token;
+    await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${inviteToken}/accept`,
+      payload: { firstName: "Twice", lastName: "Removed", password: "long-enough-password-1" },
+    });
+    const [member] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.orgId, f.orgId), eq(users.email, email.toLowerCase())));
+    const memberId = member?.id as string;
+
+    const first = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${memberId}`,
+      headers: authHeader(f.inviterToken),
+    });
+    expect(first.statusCode).toBe(200);
+    expect(kcDeleteUser).toHaveBeenCalledTimes(1);
+
+    // Replay. The first delete cleared `keycloak_id`; the route should
+    // detect `already_soft_deleted` and short-circuit without invoking
+    // KC again (no `keycloakId` to delete).
+    const second = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${memberId}`,
+      headers: authHeader(f.inviterToken),
+    });
+    expect(second.statusCode).toBe(200);
+    expect(kcDeleteUser).toHaveBeenCalledTimes(1); // still 1 — no second KC call
   });
 });
