@@ -15,27 +15,27 @@
   /* Primary — overridable per org via template.ftl */
   --gv-primary:       #096447;
   --gv-primary-hover: #005138;
-  --gv-primary-ring:  rgba(9, 100, 71, 0.25);
+  --gv-primary-ring:  rgba(9, 100, 71, 0.12);
 
   /* Surface */
-  --gv-bg:            #fff8f0;
+  --gv-bg:            #fcfbf9;
   --gv-surface:       #ffffff;
-  --gv-surface-low:   #f9f3ea;
-  --gv-surface-high:  #eee7de;
+  --gv-surface-low:   #f9f8f6;
+  --gv-surface-high:  #ebe8e2;
 
   /* Text */
-  --gv-text:          #1e1b16;
-  --gv-text-secondary:#3f4943;
-  --gv-text-muted:    #6f7a73;
+  --gv-text:          #1c1b1a;
+  --gv-text-secondary:#42403e;
+  --gv-text-muted:    #72706e;
 
   /* Border */
-  --gv-border:        #bec9c1;
-  --gv-border-light:  rgba(190, 201, 193, 0.35);
+  --gv-border:        #c3c1bc;
+  --gv-border-light:  rgba(190, 201, 193, 0.2);
 
   /* Status */
   --gv-error:         #ba1a1a;
   --gv-error-bg:      #ffdad6;
-  --gv-error-border:  rgba(186, 26, 26, 0.20);
+  --gv-error-border:  rgba(186, 26, 26, 0.12);
   --gv-warning:       #864700;
   --gv-warning-bg:    #ffdcc3;
   --gv-info:          #2e79a6;
