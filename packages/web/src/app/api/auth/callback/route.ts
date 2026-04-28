@@ -19,8 +19,22 @@ import { verifyKeycloakJwt } from "@/lib/auth/verify-keycloak-jwt";
 
 /** Map Keycloak errors to safe, fixed error codes — never reflect upstream error text. */
 function sanitizeError(error: string): string {
-  console.error("RAW_KEYCLOAK_ERROR:", error);
-  return `DEBUG_${error}`; // On préfixe pour que ça saute aux yeux dans l'URL
+  // Log the upstream error for diagnostics; only fixed codes are reflected in the URL.
+  console.error("Keycloak callback error:", error);
+  switch (error) {
+    case "access_denied":
+    case "login_required":
+    case "interaction_required":
+    case "invalid_scope":
+    case "invalid_request":
+    case "unauthorized_client":
+    case "unsupported_response_type":
+    case "server_error":
+    case "temporarily_unavailable":
+      return error;
+    default:
+      return "auth_error";
+  }
 }
 
 /**
