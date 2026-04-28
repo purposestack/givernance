@@ -119,7 +119,7 @@
         "https://*.givernance.org/*"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:3001/*##https://staging.givernance.org/*##https://app.givernance.org/*##https://*.givernance.org/*"
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:3001/*##https://staging.givernance.org/*##https://staging.givernance.org/login##https://app.givernance.org/*##https://*.givernance.org/*"
       },
       "webOrigins": [
         "+"
