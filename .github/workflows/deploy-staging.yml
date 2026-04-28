@@ -65,11 +65,13 @@ jobs:
       - name: Release Deploy Lock
         run: kamal lock release -c config/deploy-staging.yml || true
 
+      - name: Wipe Corrupted Keycloak Realm
+        run: |
+          kamal server exec -c config/deploy-staging.yml "docker exec givernance-keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password \${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }} || true"
+          kamal server exec -c config/deploy-staging.yml "docker exec givernance-keycloak /opt/keycloak/bin/kcadm.sh delete realms/givernance || true"
+
       - name: Reboot Keycloak
         run: |
-          KC_PASS="${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }}"
-          kamal server exec -c config/deploy-staging.yml "docker exec givernance-keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password \$KC_PASS || true"
-          kamal server exec -c config/deploy-staging.yml "docker exec givernance-keycloak /opt/keycloak/bin/kcadm.sh delete realms/givernance || true"
           kamal server exec -c config/deploy-staging.yml "docker rm -f givernance-keycloak || true"
           kamal server exec -c config/deploy-staging.yml "docker exec kamal-proxy kamal-proxy remove givernance-keycloak || true"
           
