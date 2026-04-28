@@ -290,41 +290,8 @@ reconcile_scope_mapper "organization" '{
 #                      versions don't have it attached to hand-rolled clients
 #                      like `givernance-web`, which strips `sub` from every
 #                      token and breaks the web-app callback's JWT verifier).
-if [ -n "$client_uuid" ]; then
-  default_scopes=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes")
-
-  ensure_default_scope() {
-    local scope_name="$1"
-    local scope_id="$2"
-    if [ -z "$scope_id" ]; then
-      warn "Scope '${scope_name}' not found on realm '${REALM}' — cannot attach to '${CLIENT_ID}'."
-      return
-    fi
-    if printf '%s' "$default_scopes" | NAME="$scope_name" python3 -c '
-import json, os, sys
-wanted = os.environ["NAME"]
-have = any(s.get("name") == wanted for s in json.load(sys.stdin))
-sys.exit(0 if have else 1)
-'; then
-      log "Client '${CLIENT_ID}' already has the ${scope_name} scope on default."
-    else
-      curl -sS -o /dev/null -w "client-scope attach (${scope_name} default): HTTP %{http_code}\n" \
-        -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${client_uuid}/default-client-scopes/${scope_id}" \
-        "${auth[@]}"
-      log "Added '${scope_name}' client scope to default on '${CLIENT_ID}'."
-    fi
-  }
-
-  # Look up `basic`, creating it if missing. Keycloak normally provisions
-  # `basic` (carrying `oidc-sub-mapper` and `oidc-audience-resolve-mapper`)
-  # at first realm-create time, but that path is skipped on staging because
-  # `KC_IMPORT_STRATEGY=OVERWRITE_EXISTING` re-imports the realm on every
-  # accessory reboot — `setupClientScopes()` does not run on the re-import
-  # path, so the realm ends up without `basic`. Without `basic` attached
-  # to `givernance-web`, the access token is missing the standard OIDC
-  # `sub` claim and `verifyKeycloakJwt` rejects every login.
-  basic_scope_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/client-scopes" \
-    | python3 -c '
+basic_scope_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/client-scopes" \
+  | python3 -c '
 import sys, json
 for s in json.load(sys.stdin):
     if s.get("name") == "basic":
@@ -449,9 +416,36 @@ for s in json.load(sys.stdin):
     fi
   fi
 
-  ensure_default_scope "organization" "$org_scope_id"
-  ensure_default_scope "basic" "$basic_scope_id"
-  ensure_default_scope "roles" "$roles_scope_id"
+attach_default_scope() {
+  local target_client_uuid="$1"
+  local target_client_id="$2"
+  local scope_name="$3"
+  local scope_id="$4"
+  if [ -z "$scope_id" ]; then
+    warn "Scope '${scope_name}' not found on realm '${REALM}' — cannot attach to '${target_client_id}'."
+    return
+  fi
+  local current
+  current=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${target_client_uuid}/default-client-scopes")
+  if printf '%s' "$current" | NAME="$scope_name" python3 -c '
+import json, os, sys
+wanted = os.environ["NAME"]
+have = any(s.get("name") == wanted for s in json.load(sys.stdin))
+sys.exit(0 if have else 1)
+'; then
+    log "Client '${target_client_id}' already has the ${scope_name} scope on default."
+  else
+    curl -sS -o /dev/null -w "client-scope attach (${target_client_id} default ${scope_name}): HTTP %{http_code}\n" \
+      -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${target_client_uuid}/default-client-scopes/${scope_id}" \
+      "${auth[@]}"
+    log "Added '${scope_name}' client scope to default on '${target_client_id}'."
+  fi
+}
+
+if [ -n "$client_uuid" ]; then
+  attach_default_scope "$client_uuid" "$CLIENT_ID" "organization" "$org_scope_id"
+  attach_default_scope "$client_uuid" "$CLIENT_ID" "basic" "$basic_scope_id"
+  attach_default_scope "$client_uuid" "$CLIENT_ID" "roles" "$roles_scope_id"
 fi
 
 # 2.e Attach the `organization` scope as OPTIONAL on `admin-cli`, and turn
@@ -477,6 +471,13 @@ sys.exit(0 if have else 1)
       "${auth[@]}"
     log "Added 'organization' client scope to optional on 'admin-cli'."
   fi
+
+  # Ensure the `basic` scope is attached as default on admin-cli so its
+  # access tokens carry `sub`. Keycloak's realm import skips auto-attaching
+  # default scopes to auto-bootstrapped clients when the realm JSON has a
+  # non-empty `clientScopes` array — admin-cli ends up with no default
+  # scopes at all and the smoke test fails on the missing `sub` claim.
+  attach_default_scope "$admin_cli_uuid" "admin-cli" "basic" "$basic_scope_id"
 
   admin_cli_full=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${admin_cli_uuid}")
   lightweight_enabled=$(printf '%s' "$admin_cli_full" | python3 -c '
