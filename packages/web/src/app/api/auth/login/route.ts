@@ -42,7 +42,7 @@ function extractOrgAlias(host: string): string | null {
   // X-Forwarded-Host spoofing from injecting an arbitrary kc_org value.
   if (process.env.NODE_ENV === "production") {
     const TRUSTED_SUFFIXES = [".givernance.org", ".givernance.eu"];
-    const hostnameWithDot = "." + hostname;
+    const hostnameWithDot = `.${hostname}`;
     if (!TRUSTED_SUFFIXES.some((s) => hostnameWithDot.endsWith(s))) return null;
   }
 
