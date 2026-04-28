@@ -1,9 +1,9 @@
 import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
 import { cookies, headers } from "next/headers";
 import { getRequestConfig } from "next-intl/server";
+import { createServerApiClient } from "@/lib/api/client-server";
 import enMessages from "../../messages/en.json";
 import frMessages from "../../messages/fr.json";
-import { createServerApiClient } from "@/lib/api/client-server";
 
 /**
  * Static locale → message-bundle map. Replaces a previous template-literal
