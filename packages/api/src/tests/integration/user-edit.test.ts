@@ -176,18 +176,29 @@ describe("PATCH /v1/users/:id (issue #161)", () => {
     const [audit] = await db
       .select({
         userId: auditLogs.userId,
+        actorId: auditLogs.actorId,
         resourceId: auditLogs.resourceId,
         oldValues: auditLogs.oldValues,
         newValues: auditLogs.newValues,
+        ipHash: auditLogs.ipHash,
+        userAgent: auditLogs.userAgent,
       })
       .from(auditLogs)
       .where(and(eq(auditLogs.orgId, f.orgId), eq(auditLogs.action, "user.profile_updated")));
     expect(audit?.oldValues).toEqual({ firstName: "Member" });
     expect(audit?.newValues).toEqual({ firstName: "Renamed" });
-    // Review E5 — `audit_logs.user_id` semantically means actor (who DID
-    // this), not target. The target's UUID belongs in `resource_id`.
+    // Review E5 — `audit_logs.user_id` is the JWT subject (actor under
+    // normal auth). `actor_id` is NULL under normal auth (only set under
+    // RFC 8693 impersonation). The target's UUID belongs in `resource_id`.
     expect(audit?.userId).toBe(f.adminKcId);
+    expect(audit?.actorId).toBeNull();
     expect(audit?.resourceId).toBe(f.memberUserId);
+    // Forensic context — the row must carry ip_hash + user_agent (not
+    // null) so the domain audit row matches the auto-row's coverage.
+    // app.inject's default request has `127.0.0.1` for ip and no
+    // user-agent header, so we just assert the columns are non-null.
+    expect(audit?.ipHash).toBeTruthy();
+    expect(audit?.ipHash?.length).toBe(16);
 
     expect(kcUpdateUser).toHaveBeenCalledWith(f.memberKcId, {
       firstName: "Renamed",
