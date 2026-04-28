@@ -10,4 +10,4 @@ jobs:
           ssh-private-key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
       - name: Check logs
         run: |
-          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs givernance-keycloak --tail 200" | grep WARN || true
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs givernance-keycloak --tail 50" || true
