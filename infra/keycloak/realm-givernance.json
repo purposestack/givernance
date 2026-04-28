@@ -114,6 +114,7 @@
         "http://localhost:3000/*",
         "http://localhost:3001/*",
         "https://staging.givernance.org/*",
+        "https://staging.givernance.org/api/auth/callback",
         "https://app.givernance.org/*",
         "https://*.givernance.org/*"
       ],
