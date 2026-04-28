@@ -65,53 +65,41 @@ jobs:
       - name: Release Deploy Lock
         run: kamal lock release -c config/deploy-staging.yml || true
 
-      - name: Wipe Corrupted Keycloak Realm
-        run: |
-          kamal server exec -c config/deploy-staging.yml "docker exec givernance-keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password \${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }} || true"
-          kamal server exec -c config/deploy-staging.yml "docker exec givernance-keycloak /opt/keycloak/bin/kcadm.sh delete realms/givernance || true"
-
-      - name: Reboot Keycloak
-        run: |
-          kamal server exec -c config/deploy-staging.yml "docker rm -f givernance-keycloak || true"
-          kamal server exec -c config/deploy-staging.yml "docker exec kamal-proxy kamal-proxy remove givernance-keycloak || true"
-          
-          # Boucle d'auto-réparation pour s'assurer que le boot passe même s'il y a un lock résiduel
-          max_retries=3
-          count=0
-          until kamal accessory boot keycloak -c config/deploy-staging.yml; do
-            count=$((count + 1))
-            if [ $count -gt $max_retries ]; then
-              echo "Échec du boot Keycloak après $max_retries tentatives."
-              exit 1
-            fi
-            echo "Le boot a échoué (potentiel lock). Libération du lock et nouvel essai ($count/$max_retries)..."
-            kamal lock release -c config/deploy-staging.yml || true
-            sleep 5
-          done
-
       - name: Deploy with Kamal
         run: |
-          max_retries=3
-          count=0
+          attempt=1
+          max_attempts=3
           until kamal setup -c config/deploy-staging.yml; do
-            count=$((count + 1))
-            if [ $count -gt $max_retries ]; then
-              echo "Échec du setup Kamal après $max_retries tentatives."
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "kamal setup failed after $max_attempts attempts" >&2
               exit 1
             fi
-            echo "Le setup a échoué. Libération du lock et nouvel essai ($count/$max_retries)..."
+            echo "kamal setup failed (attempt $attempt/$max_attempts) — releasing lock and retrying"
             kamal lock release -c config/deploy-staging.yml || true
+            attempt=$((attempt + 1))
             sleep 5
           done
 
-      - name: Print failed Keycloak container logs
-        if: failure()
+      # The realm JSON is mounted into the keycloak accessory via Kamal's `files:`.
+      # Rebooting the accessory re-copies the file and triggers a re-import under
+      # KC_IMPORT_STRATEGY=OVERWRITE_EXISTING (set in config/deploy-staging.yml).
+      - name: Reboot Keycloak to re-import realm JSON
+        run: kamal accessory reboot keycloak -c config/deploy-staging.yml -y
+
+      - name: Wait for Keycloak realm to be ready
         run: |
-          kamal server exec -c config/deploy-staging.yml "docker logs givernance-keycloak | tail -n 100" || true
-      - name: Print failed API container logs
-        if: failure()
-        run: |
-          kamal server exec -c config/deploy-staging.yml "docker ps -a --filter name=givernance-api -q | head -n 1 | xargs -I {} docker logs {}" || true
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              https://auth.staging.givernance.org/realms/givernance/.well-known/openid-configuration || true)
+            if [ "$code" = "200" ]; then
+              echo "Realm 'givernance' is ready."
+              exit 0
+            fi
+            echo "Waiting for realm 'givernance' (attempt $i/60, http=$code)..."
+            sleep 5
+          done
+          echo "Timed out waiting for realm 'givernance'." >&2
+          exit 1
 
       - name: Run DB Migrations
         run: kamal app exec -c config/deploy-staging.yml --reuse "pnpm --filter @givernance/api run db:migrate"
@@ -119,5 +107,26 @@ jobs:
       - name: Run DB Seed
         run: kamal app exec -c config/deploy-staging.yml --reuse "pnpm --filter @givernance/api run db:seed"
 
-      - name: Sync Keycloak Realm
-        run: kamal app exec -c config/deploy-staging.yml --reuse "/usr/bin/env KEYCLOAK_URL=http://givernance-keycloak:8080 bash scripts/keycloak-sync-realm.sh"
+      # The sync script reconciles the live realm (mappers, scopes, role
+      # assignments) against the source-of-truth in scripts/keycloak-sync-realm.sh.
+      # Run it from the runner against the public Admin URL — bash/curl/python3
+      # are all native to ubuntu-latest, so we don't have to ship them in the
+      # production image just to satisfy `kamal app exec`.
+      - name: Sync Keycloak realm
+        env:
+          KEYCLOAK_URL: https://auth.staging.givernance.org
+          KEYCLOAK_ADMIN: admin
+          KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }}
+        run: bash scripts/keycloak-sync-realm.sh
+
+      - name: Dump Keycloak logs on failure
+        if: failure()
+        run: |
+          kamal server exec -c config/deploy-staging.yml \
+            "docker logs givernance-keycloak --tail 200" || true
+
+      - name: Dump API logs on failure
+        if: failure()
+        run: |
+          kamal server exec -c config/deploy-staging.yml \
+            "docker ps -a --filter name=givernance-api -q | head -n 1 | xargs -I {} docker logs --tail 200 {}" || true
