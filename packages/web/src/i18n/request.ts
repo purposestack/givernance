@@ -1,7 +1,24 @@
 import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
 import { cookies, headers } from "next/headers";
 import { getRequestConfig } from "next-intl/server";
+import enMessages from "../../messages/en.json";
+import frMessages from "../../messages/fr.json";
 import { createServerApiClient } from "@/lib/api/client-server";
+
+/**
+ * Static locale → message-bundle map. Replaces a previous template-literal
+ * dynamic import (`await import(\`../../messages/${locale}.json\`)`) which
+ * Next.js 16 was bundling against a path that resolved correctly in dev
+ * but pointed outside the standalone `.next/server` tree at runtime in the
+ * monorepo image — surface: `ENOENT: open '/app/packages/messages/fr.json'`
+ * when the donation-create flow re-rendered an i18n boundary. Static
+ * imports give the bundler explicit references so both files are emitted
+ * to the server bundle.
+ */
+const MESSAGES_BY_LOCALE: Record<Locale, typeof enMessages> = {
+  en: enMessages,
+  fr: frMessages,
+};
 
 /**
  * Supported locales — ADR-015: fr (default), en for Phase 2.
@@ -87,6 +104,6 @@ export default getRequestConfig(async () => {
 
   return {
     locale,
-    messages: (await import(`../../messages/${locale}.json`)).default,
+    messages: MESSAGES_BY_LOCALE[locale],
   };
 });
