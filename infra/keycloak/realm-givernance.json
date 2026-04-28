@@ -33,8 +33,12 @@
       "firstName": "Super",
       "lastName": "Admin",
       "attributes": {
-        "org_id": ["00000000-0000-0000-0000-0000000000a1"],
-        "role": ["org_admin"]
+        "org_id": [
+          "00000000-0000-0000-0000-0000000000a1"
+        ],
+        "role": [
+          "org_admin"
+        ]
       },
       "credentials": [
         {
@@ -43,7 +47,9 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["super_admin"]
+      "realmRoles": [
+        "super_admin"
+      ]
     },
     {
       "username": "service-account-givernance-admin",
@@ -69,13 +75,21 @@
       "description": "Seeded platform organization for the super-admin user (ADR-016 / issue #114). org_id attribute pins the platform tenant UUID (00000000-0000-0000-0000-0000000000a1) so it matches the tenants row seeded in the application DB. NEVER store secrets in organization attributes — Keycloak 26's oidc-organization-membership-mapper emits every attribute to every token on the default scopes.",
       "redirectUrl": "",
       "attributes": {
-        "org_id": ["00000000-0000-0000-0000-0000000000a1"]
+        "org_id": [
+          "00000000-0000-0000-0000-0000000000a1"
+        ]
       },
       "domains": [
-        { "name": "platform.givernance.invalid", "verified": true }
+        {
+          "name": "platform.givernance.invalid",
+          "verified": true
+        }
       ],
       "members": [
-        { "username": "admin@givernance.org", "membershipType": "UNMANAGED" }
+        {
+          "username": "admin@givernance.org",
+          "membershipType": "UNMANAGED"
+        }
       ]
     }
   ],
@@ -137,36 +151,17 @@
         "email",
         "organization"
       ],
-      "protocolMappers": [
-        {
-          "name": "org_id",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "user.attribute": "org_id",
-            "claim.name": "org_id",
-            "jsonType.label": "String",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-          }
-        },
-        {
-          "name": "role",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "user.attribute": "role",
-            "claim.name": "role",
-            "jsonType.label": "String",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-          }
-        }
-      ],
+      "protocolMappers": null
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "organization",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
       "protocolMappers": [
         {
           "name": "org_id",
