@@ -66,16 +66,6 @@ async function auth(app: FastifyInstance) {
         .status(401)
         .send(problemDetail(401, "Unauthorized", "Account no longer active."));
     }
-    if (tokenResult === "no_org_claim") {
-      // ADR-021 — the JWT has a `sub` but no `org_id` and no
-      // `super_admin` realm role. Every tenant-scoped route would 500
-      // trying to use `request.auth.orgId`; rejecting here surfaces a
-      // clean 401 instead. Surfaced when a JWT was minted for a tenant
-      // user whose tenant was lost (e.g. soft-deleted on every org
-      // they belonged to).
-      return reply.status(401).send(problemDetail(401, "Unauthorized", "No active organisation."));
-    }
-
     if (!requiresCsrfCheck(request)) return;
 
     if (!csrfTokenValid(request)) {
@@ -95,21 +85,21 @@ function isAuthExempt(url: string): boolean {
  * distinct 401 response in the caller (ADR-021).
  *
  *   `"ok"` — JWT valid; `request.auth` populated.
- *   `"none"` — no token presented; route guards decide whether that's a 401.
+ *   `"none"` — no token presented OR token rejected by `verifyKeycloakJwt`
+ *     (bad signature, expired, missing `sub` / `org_id` / `email`); route
+ *     guards 401 via the `requireAuth` path with "Authentication required."
  *   `"session_revoked"` — JTI on the session blocklist (switch-org revocation).
  *   `"user_revoked"` — `sub` on the user blocklist (post-soft-delete).
  *   `"no_active_membership"` — JWT carries `org_id` but no active `users` row resolves.
- *   `"no_org_claim"` — JWT has `sub` but no `org_id` and not a super_admin (tenant route would 500 on `orgId`).
+ *
+ * Note on the absent `no_org_claim` discriminator: `verifyKeycloakJwt`
+ * already requires `org_id` to be present (every Keycloak token in this
+ * realm carries it; super_admin tokens too — they reuse a placeholder
+ * tenant id since the realm mapper can't omit the claim). A JWT without
+ * `org_id` is rejected upstream and surfaces here as `"none"`.
  */
-type TokenResult =
-  | "ok"
-  | "none"
-  | "session_revoked"
-  | "user_revoked"
-  | "no_active_membership"
-  | "no_org_claim";
+type TokenResult = "ok" | "none" | "session_revoked" | "user_revoked" | "no_active_membership";
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: applyAuthFromToken walks every reject branch (no token, signature fail, JTI blocklist, user blocklist, no-org sanity, active-row check) inline because each branch maps to a distinct 401 reason in the caller — splitting hides the dispatch.
 async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult> {
   const token = extractToken(request);
   if (!token) return "none";
@@ -118,8 +108,9 @@ async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult>
   try {
     decoded = await verifyKeycloakJwt(token);
   } catch {
-    // Invalid signature / expired / unparseable. Auth will be null,
-    // route guards will 401 via the `requireAuth` path.
+    // Invalid signature / expired / unparseable / missing `sub` / `org_id`
+    // / `email`. Auth will be null, route guards will 401 via the
+    // `requireAuth` path with "Authentication required."
     return "none";
   }
 
@@ -141,13 +132,13 @@ async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult>
   const realmRoles = decoded.realm_access?.roles ?? [];
   const isSuperAdmin = realmRoles.includes("super_admin");
 
-  // ADR-021 — every authenticated request must satisfy ONE of:
-  //   (a) super_admin (platform-level; no org binding by design), OR
-  //   (b) `org_id` claim present AND active `users` row resolves.
-  // Anything else is rejected here before `request.auth` is set so no
-  // tenant-scoped route can run with a non-resolvable subject.
+  // ADR-021 — active-row check for tenant-scoped principals. Super_admin
+  // is platform-level (no app-side users row required), so it's
+  // exempted; everyone else must resolve an active `users` row for
+  // `(sub, org_id)`. Closes the soft-delete + tenant-removal window
+  // where the JWT is still cryptographically valid but the subject is
+  // gone.
   if (!isSuperAdmin) {
-    if (!decoded.org_id) return "no_org_claim";
     const isActive = await resolveActiveMembership(decoded.sub, decoded.org_id);
     if (!isActive) return "no_active_membership";
   }
