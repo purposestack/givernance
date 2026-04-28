@@ -69,6 +69,43 @@ export function authHeader(token: string) {
 }
 
 /**
+ * Seed an active org_admin `users` row for the given `(orgId, sub)`
+ * pair so the auth plugin's active-row check (ADR-021) accepts the
+ * synthetic JWT. Tests that mint a token for a non-default tenant
+ * (custom `org_id` claim) MUST call this — without it, the token will
+ * 401 with `no_active_membership` and every dependent assertion will
+ * read `data.id` off `undefined`.
+ *
+ * Idempotent: deletes any prior row matching the synthetic identifier
+ * before inserting so re-runs don't trip the partial unique index.
+ */
+export async function seedTenantUser(
+  orgId: string,
+  opts: { sub?: string; email?: string; role?: string } = {},
+): Promise<void> {
+  const sub = opts.sub ?? USER_A;
+  const email = opts.email ?? `test-${sub}@example.org`;
+  const role = opts.role ?? "org_admin";
+  // Stable per-(orgId, sub) row id so the DELETE-then-INSERT below is
+  // safe across suites that share a tenant. Uses the last 12 hex chars
+  // of orgId as a discriminator since the synthetic UUIDs we use in
+  // tests already differ in the last block.
+  const orgSuffix = orgId.replace(/-/g, "").slice(-12);
+  const subSuffix = sub.replace(/-/g, "").slice(-12);
+  const rowId = `00000000-0000-0000-${orgSuffix.slice(0, 4)}-${subSuffix}`;
+  await db.execute(sql`
+    DELETE FROM users
+    WHERE id = ${rowId}
+       OR (org_id = ${orgId} AND keycloak_id = ${sub})
+       OR (org_id = ${orgId} AND email = ${email})
+  `);
+  await db.execute(sql`
+    INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+    VALUES (${rowId}, ${orgId}, ${sub}, ${email}, 'Test', 'User', ${role})
+  `);
+}
+
+/**
  * Upsert both test tenants AND a backing `users` row for each test JWT
  * subject (idempotent). The application user row is required by the
  * auth plugin's active-row check (ADR-021) — without it, every

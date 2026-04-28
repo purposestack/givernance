@@ -180,11 +180,13 @@ describe("POST /v1/superadmin/tenants/:id/first-admin-invitations", () => {
     // ADR-021 — seed an org_admin row so the auth-boundary active-row
     // check passes (otherwise the 401 from `no_active_membership` masks
     // the 404 anti-disclosure behaviour we're actually testing).
-    const orgAdminSub = `00000000-0000-0000-0000-${randomUUID().slice(0, 12).padStart(12, "0")}`;
+    // Use a fresh full UUID; building from a slice would mangle the
+    // dash structure and trip "invalid input syntax for type uuid".
+    const orgAdminSub = randomUUID();
     await db.execute(sql`
       INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
       VALUES (
-        ${orgAdminSub},
+        ${randomUUID()},
         ${f.orgId},
         ${orgAdminSub},
         ${`org-admin-${f.slug}@example.org`},

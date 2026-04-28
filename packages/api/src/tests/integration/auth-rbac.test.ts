@@ -192,10 +192,20 @@ describe("Tenant routes", () => {
 
 describe("User routes", () => {
   it("GET /v1/users/me returns 404 when user profile doesn't exist in DB", async () => {
+    // ADR-021 — the auth-boundary check rejects tokens whose `(sub,
+    // org_id)` tuple has no active users row, so the in-handler 404
+    // path is now reachable only via super_admin (which bypasses the
+    // active-row check). Mint a super_admin token with a synthetic sub
+    // that has no row anywhere; /me's tenant-scoped lookup falls through
+    // to the 404 branch.
+    const orphanToken = signToken(app, {
+      sub: "00000000-0000-0000-0000-00000000ffff",
+      realm_access: { roles: ["super_admin"] },
+    });
     const res = await app.inject({
       method: "GET",
       url: "/v1/users/me",
-      headers: authHeader(signToken(app)),
+      headers: authHeader(orphanToken),
     });
     expect(res.statusCode).toBe(404);
   });
