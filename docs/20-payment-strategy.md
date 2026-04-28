@@ -4,6 +4,8 @@
 > **Owner**: Payment Engineer agent (`.claude/agents/payment-engineer.md`)
 > **Related**: `02-reference-architecture.md`, `03-data-model.md`, `04-business-capabilities.md`, `06-security-compliance.md`, `08-pricing-packaging.md`, `15-infra-adr.md`
 > **Closes**: #10
+>
+> **Looking for the primer?** See [`payments-overview.md`](payments-overview.md) for a focused walkthrough of how fees are collected, how money reaches the NPO, and why each tenant onboards via Stripe Connect rather than pasting an API key. This document is the formal strategy and ADR; the primer is the conceptual companion.
 
 ## 1. Goals
 
