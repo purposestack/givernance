@@ -307,11 +307,24 @@ describe("GET /v1/invitations", () => {
 
   it("requires org_admin", async () => {
     const f = await makeFixture();
-    const userToken = signToken(app, {
-      sub: `kc-user-${f.slug}`,
-      org_id: f.orgId,
-      role: "user",
+    // ADR-021 — seed a `user`-role row so the auth-boundary active-row
+    // check passes (otherwise we'd get 401 from `no_active_membership`,
+    // hiding the 403 from `requireOrgAdmin` we're actually asserting).
+    const userSub = `kc-user-${f.slug}`;
+    const userId = randomUUID();
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.insert(users).values({
+        id: userId,
+        orgId: f.orgId,
+        email: `member-team-${f.slug}@example.org`,
+        firstName: "Team",
+        lastName: "Member",
+        role: "user",
+        keycloakId: userSub,
+      });
     });
+    const userToken = signToken(app, { sub: userSub, org_id: f.orgId, role: "user" });
     const res = await app.inject({
       method: "GET",
       url: "/v1/invitations",

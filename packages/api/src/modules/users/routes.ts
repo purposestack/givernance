@@ -211,13 +211,7 @@ export async function userRoutes(app: FastifyInstance) {
         const [existing] = await tx
           .select({ id: users.id, locale: users.locale })
           .from(users)
-          .where(
-            and(
-              eq(users.keycloakId, userId),
-              eq(users.orgId, orgId),
-              isNull(users.deletedAt),
-            ),
-          )
+          .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId), isNull(users.deletedAt)))
           .limit(1);
         if (!existing) return null;
 
@@ -729,11 +723,7 @@ export async function userRoutes(app: FastifyInstance) {
           // Idempotent: already soft-deleted, return the row as-is. KC
           // cleanup may have failed previously; the post-commit hooks
           // below run again to reconverge.
-          const [row] = await tx
-            .select()
-            .from(users)
-            .where(eq(users.id, id))
-            .limit(1);
+          const [row] = await tx.select().from(users).where(eq(users.id, id)).limit(1);
           return {
             kind: "already_soft_deleted" as const,
             keycloakId: existing.keycloakId,
@@ -778,10 +768,7 @@ export async function userRoutes(app: FastifyInstance) {
         try {
           await keycloakAdmin().deleteUser(keycloakId);
         } catch (err) {
-          request.log.warn(
-            { err, keycloakId, userId: id },
-            "user.removed.kc_sync_failed",
-          );
+          request.log.warn({ err, keycloakId, userId: id }, "user.removed.kc_sync_failed");
         }
         // Blocklist the sub regardless of KC delete outcome — closes the
         // access-token window even if the KC user lingers. TTL covers

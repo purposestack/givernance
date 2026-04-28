@@ -481,6 +481,16 @@ describe("Audit actorId double-attribution E2E", () => {
     // Use a dedicated subject so we can find our row unambiguously even if
     // parallel tests are hammering the audit_logs table.
     const impersonatedUserSub = "00000000-0000-0000-0000-0000000000bd";
+    // ADR-021 — seed `users` rows for both subjects so the auth-boundary
+    // active-row check resolves. The impersonated user's row is in
+    // ORG_A; the admin doesn't need a row in ORG_A specifically (only
+    // the JWT's `sub` matters for the active-row check).
+    await db.execute(sql`
+      INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+      VALUES
+        (${impersonatedUserSub}, ${ORG_A}, ${impersonatedUserSub}, 'impersonated-bd@example.org', 'Imp', 'User', 'org_admin')
+      ON CONFLICT DO NOTHING
+    `);
     // Mint a token where the effective subject (`sub`) and the impersonating
     // actor (`act.sub`) differ — this is what the impersonation flow produces.
     const impersonationToken = signToken(app, {
@@ -509,6 +519,13 @@ describe("Audit actorId double-attribution E2E", () => {
   it("leaves actor_id NULL under normal (non-impersonated) auth", async () => {
     // Fresh subject so we don't race with the impersonated test above.
     const plainSub = "00000000-0000-0000-0000-0000000000cd";
+    // ADR-021 — seed an active row for `plainSub` so the auth-boundary
+    // active-row check resolves.
+    await db.execute(sql`
+      INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+      VALUES (${plainSub}, ${ORG_A}, ${plainSub}, 'plain-cd@example.org', 'Plain', 'User', 'org_admin')
+      ON CONFLICT DO NOTHING
+    `);
     const tokenA = signToken(app, { sub: plainSub });
 
     const res = await app.inject({
