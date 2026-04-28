@@ -19,16 +19,8 @@ import { verifyKeycloakJwt } from "@/lib/auth/verify-keycloak-jwt";
 
 /** Map Keycloak errors to safe, fixed error codes — never reflect upstream error text. */
 function sanitizeError(error: string): string {
-  switch (error) {
-    case "access_denied":
-      return "access_denied";
-    case "login_required":
-      return "login_required";
-    case "missing_org_id":
-      return "missing_org_id";
-    default:
-      return "auth_error";
-  }
+  console.error("RAW_KEYCLOAK_ERROR:", error);
+  return `DEBUG_${error}`; // On préfixe pour que ça saute aux yeux dans l'URL
 }
 
 /**
