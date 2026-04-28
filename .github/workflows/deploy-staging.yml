@@ -116,3 +116,6 @@ jobs:
 
       - name: Run DB Seed
         run: kamal app exec -c config/deploy-staging.yml --reuse "pnpm --filter @givernance/api run db:seed"
+
+      - name: Sync Keycloak Realm
+        run: kamal app exec -c config/deploy-staging.yml --reuse "KEYCLOAK_URL=http://givernance-keycloak:8080 bash scripts/keycloak-sync-realm.sh"
