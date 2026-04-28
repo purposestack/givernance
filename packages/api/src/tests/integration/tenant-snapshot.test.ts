@@ -17,6 +17,23 @@ beforeAll(async () => {
         VALUES (${SNAPSHOT_ORG}, 'Snapshot Org', 'snapshot-org')
         ON CONFLICT (id) DO NOTHING`,
   );
+  // ADR-021 — seed an active org_admin row whose `keycloak_id` matches
+  // the canonical USER_A sub `signToken` mints by default. The row's
+  // own `id` is unique per-tenant; only the `keycloak_id` needs to
+  // match the JWT for the auth-boundary active-row check to resolve.
+  await db.execute(sql`
+    INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+    VALUES (
+      '00000000-0000-0000-0000-123000000099',
+      ${SNAPSHOT_ORG},
+      '00000000-0000-0000-0000-000000000099',
+      'admin-snapshot@example.org',
+      'Snapshot',
+      'Admin',
+      'org_admin'
+    )
+    ON CONFLICT (id) DO NOTHING
+  `);
 });
 
 afterAll(async () => {

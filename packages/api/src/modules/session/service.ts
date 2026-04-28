@@ -286,17 +286,18 @@ export async function setActiveUserCache(
   ttlSeconds = ACTIVE_USER_CACHE_TTL_SECONDS,
 ): Promise<void> {
   try {
-    await redis.setex(activeUserCacheKey(keycloakId, orgId), ttlSeconds, state === "active" ? "1" : "0");
+    await redis.setex(
+      activeUserCacheKey(keycloakId, orgId),
+      ttlSeconds,
+      state === "active" ? "1" : "0",
+    );
   } catch (err) {
     logger.error({ err, keycloakId, orgId }, "active-user cache write failed");
   }
 }
 
 /** Drop the cache for a (sub, orgId) pair after a soft-delete or rejoin. */
-export async function invalidateActiveUserCache(
-  keycloakId: string,
-  orgId: string,
-): Promise<void> {
+export async function invalidateActiveUserCache(keycloakId: string, orgId: string): Promise<void> {
   try {
     await redis.del(activeUserCacheKey(keycloakId, orgId));
   } catch (err) {

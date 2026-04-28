@@ -799,8 +799,7 @@ export async function acceptTeamInvitation(
         .from(users)
         .where(and(eq(users.orgId, row.orgId), sql`lower(${users.email}) = lower(${row.email})`))
         .limit(1);
-      const isRejoin =
-        existingUserRow !== undefined && existingUserRow.deletedAt !== null;
+      const isRejoin = existingUserRow !== undefined && existingUserRow.deletedAt !== null;
       // Soft-deleted rows have `keycloakId = NULL` (set by DELETE). Even
       // if we have a stale value, the KC user is gone — DON'T attempt a
       // resetUserPassword on it. The active-row recovery path stays

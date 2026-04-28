@@ -7,15 +7,16 @@
 --    unique restricted to active rows. This lets the same email be
 --    re-invited after soft-delete: the soft-deleted row sits outside
 --    the index, so an INSERT (or upsert restoration) doesn't conflict.
+--
+-- This file is **idempotent**. The dev workflow occasionally applies
+-- migrations out-of-band (manual psql for hot patching); using
+-- `IF NOT EXISTS` / `IF EXISTS` keeps `pnpm db:migrate` re-runnable
+-- against any combination of "already applied" / "fresh" databases.
 
-ALTER TABLE "users" ADD COLUMN "deleted_at" timestamp with time zone;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp with time zone;
 
--- Drop the old unconditional unique constraint and replace with a
--- partial unique index. We must use a unique INDEX (not a constraint)
--- because Postgres only supports partial UNIQUE on indexes, not
--- table-level constraints.
 ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "users_org_id_email_uniq";
 
-CREATE UNIQUE INDEX "users_org_id_email_active_uniq"
+CREATE UNIQUE INDEX IF NOT EXISTS "users_org_id_email_active_uniq"
   ON "users" ("org_id", "email")
   WHERE "deleted_at" IS NULL;

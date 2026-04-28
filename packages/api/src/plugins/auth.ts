@@ -52,7 +52,9 @@ async function auth(app: FastifyInstance) {
       // ADR-021 — the user's Keycloak `sub` was blocklisted at app
       // soft-delete time. The token is cryptographically valid but the
       // user is gone; reject before any handler can act on stale claims.
-      return reply.status(401).send(problemDetail(401, "Unauthorized", "Account no longer active."));
+      return reply
+        .status(401)
+        .send(problemDetail(401, "Unauthorized", "Account no longer active."));
     }
     if (tokenResult === "no_active_membership") {
       // ADR-021 — the JWT carries an `org_id` but no active `users`
@@ -60,7 +62,9 @@ async function auth(app: FastifyInstance) {
       // where the token outlives the row, OR a stale JWT for a tenant
       // the user has been removed from. Reject so no tenant-scoped
       // route can run with a non-resolvable subject.
-      return reply.status(401).send(problemDetail(401, "Unauthorized", "Account no longer active."));
+      return reply
+        .status(401)
+        .send(problemDetail(401, "Unauthorized", "Account no longer active."));
     }
     if (tokenResult === "no_org_claim") {
       // ADR-021 — the JWT has a `sub` but no `org_id` and no
@@ -177,16 +181,30 @@ async function resolveActiveMembership(sub: string, orgId: string): Promise<bool
   // Cache miss — query the source of truth. Filtered by tenant via
   // RLS through `withTenantContext`; the `eq(orgId)` predicate is
   // belt-and-suspenders.
-  const rows = await withTenantContext(orgId, async (tx) =>
-    tx
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.keycloakId, sub), eq(users.orgId, orgId), isNull(users.deletedAt)))
-      .limit(1),
-  );
-  const isActive = rows.length > 0;
-  await setActiveUserCache(sub, orgId, isActive ? "active" : "missing");
-  return isActive;
+  //
+  // We catch and swallow DB errors here: the auth plugin runs on every
+  // authenticated request, and a DB blip during the active-row check
+  // would otherwise turn into a 500 cascade. Fail-OPEN to "active" on
+  // DB error so a transient outage doesn't lock everyone out — the
+  // user blocklist and the JWT signature are still hard gates. A
+  // structured error log gives ops visibility without breaking the
+  // hot path.
+  try {
+    const rows = await withTenantContext(orgId, async (tx) =>
+      tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.keycloakId, sub), eq(users.orgId, orgId), isNull(users.deletedAt)))
+        .limit(1),
+    );
+    const isActive = rows.length > 0;
+    await setActiveUserCache(sub, orgId, isActive ? "active" : "missing");
+    return isActive;
+  } catch (err) {
+    // biome-ignore lint/suspicious/noConsole: structured logging plumbed via pino at the request scope; logger here is module-scoped
+    console.error({ err, sub, orgId }, "auth: active-row resolution failed — failing open");
+    return true;
+  }
 }
 
 function requiresCsrfCheck(request: FastifyRequest): boolean {

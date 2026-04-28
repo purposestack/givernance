@@ -52,3 +52,13 @@ if (!address || typeof address === "string") {
 
 process.env.KEYCLOAK_ISSUER ??= "https://keycloak.test/realms/givernance";
 process.env.KEYCLOAK_JWKS_URL ??= `http://127.0.0.1:${address.port}/.well-known/jwks.json`;
+
+// Seed the canonical test tenants + users once per test run. The auth
+// plugin's active-row check (ADR-021) requires `(keycloak_id, org_id,
+// deleted_at IS NULL)` to resolve before any authenticated request
+// passes — without these rows, every `signToken`-authenticated test 401s.
+// `ensureTestTenants` is idempotent, but importing it here from the
+// helpers ensures every test file (whether or not it calls the helper
+// directly) has the fixture available.
+const { ensureTestTenants } = await import("./helpers/auth.js");
+await ensureTestTenants();

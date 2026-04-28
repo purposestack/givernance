@@ -68,7 +68,13 @@ export function authHeader(token: string) {
   return { authorization: `Bearer ${token}` };
 }
 
-/** Upsert both test tenants (idempotent) */
+/**
+ * Upsert both test tenants AND a backing `users` row for each test JWT
+ * subject (idempotent). The application user row is required by the
+ * auth plugin's active-row check (ADR-021) — without it, every
+ * `signToken`-authenticated request would 401 with
+ * `no_active_membership`.
+ */
 export async function ensureTestTenants() {
   await db.execute(
     sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_A}, 'Org A', 'test-org-a') ON CONFLICT (id) DO NOTHING`,
@@ -76,6 +82,26 @@ export async function ensureTestTenants() {
   await db.execute(
     sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_B}, 'Org B', 'test-org-b') ON CONFLICT (id) DO NOTHING`,
   );
+  // Seed users matching the synthetic JWT subjects used by `signToken` /
+  // `signTokenB`. The auth plugin's active-row check requires
+  // `(keycloak_id, org_id, deleted_at IS NULL)` to resolve — without
+  // these rows, every authenticated test request 401s.
+  // `ON CONFLICT (org_id, email) WHERE deleted_at IS NULL DO NOTHING`
+  // keeps the fixture idempotent across re-runs even after a soft-delete
+  // (a soft-deleted row stays out of the partial unique, so a re-INSERT
+  // would raise on the email — explicitly DELETE soft-deleted fixtures
+  // first so re-runs are clean).
+  await db.execute(sql`
+    DELETE FROM users
+    WHERE id IN (${USER_A}, ${USER_B})
+       OR (org_id IN (${ORG_A}, ${ORG_B}) AND email IN ('user-a@example.org', 'user-b@example.org'))
+  `);
+  await db.execute(sql`
+    INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+    VALUES
+      (${USER_A}, ${ORG_A}, ${USER_A}, 'user-a@example.org', 'Test', 'UserA', 'org_admin'),
+      (${USER_B}, ${ORG_B}, ${USER_B}, 'user-b@example.org', 'Test', 'UserB', 'org_admin')
+  `);
 }
 
 function signJwt(payload: Record<string, unknown>) {

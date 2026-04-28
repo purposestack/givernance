@@ -49,7 +49,42 @@ beforeAll(async () => {
         ON CONFLICT (id) DO NOTHING`,
   );
 
-  const adminToken = signToken(app, { org_id: IDEMPOTENCY_ORG, role: "org_admin" });
+  // ADR-021 — seed `users` rows for the three synthetic JWT subjects
+  // used in this suite (admin, viewer, user) so the auth plugin's
+  // active-row check resolves. Without these rows, every authenticated
+  // request 401s at the auth boundary before reaching the idempotency
+  // replay path that this test is specifically designed to exercise.
+  // The synthetic subs use UUIDs distinct from the canonical USER_A /
+  // USER_B that `ensureTestTenants` seeds for ORG_A / ORG_B — sharing
+  // those would either violate the PK on `users.id` or write rows in
+  // the wrong org.
+  // Re-seed cleanly so a prior run with different keycloak_id values
+  // (e.g. the legacy short-string subs) doesn't leave stale rows that
+  // the auth boundary's active-row check resolves on a different `sub`
+  // than the JWT carries.
+  await db.execute(sql`DELETE FROM users WHERE org_id = ${IDEMPOTENCY_ORG}`);
+  await db.execute(sql`
+    INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+    VALUES
+      ('00000000-0000-0000-0000-181000000099', ${IDEMPOTENCY_ORG}, '00000000-0000-0000-0000-181000000099', 'admin-181@example.org', 'Idempotency', 'Admin', 'org_admin'),
+      ('00000000-0000-0000-0000-181000000001', ${IDEMPOTENCY_ORG}, '00000000-0000-0000-0000-181000000001', 'viewer-181@example.org', 'Idempotency', 'Viewer', 'viewer'),
+      ('00000000-0000-0000-0000-181000000002', ${IDEMPOTENCY_ORG}, '00000000-0000-0000-0000-181000000002', 'user-181@example.org', 'Idempotency', 'User', 'user')
+  `);
+  // Drop the active-row cache for these subs so a prior run's "missing"
+  // verdict doesn't shadow the freshly-seeded rows.
+  for (const sub of [
+    "00000000-0000-0000-0000-181000000099",
+    "00000000-0000-0000-0000-181000000001",
+    "00000000-0000-0000-0000-181000000002",
+  ]) {
+    await redis.del(`auth:active-user:${sub}:${IDEMPOTENCY_ORG}`);
+  }
+
+  const adminToken = signToken(app, {
+    sub: "00000000-0000-0000-0000-181000000099",
+    org_id: IDEMPOTENCY_ORG,
+    role: "org_admin",
+  });
 
   // Seed a constituent + campaign so donation / pledge / campaign-document
   // bodies have valid foreign keys to point at.
@@ -85,11 +120,24 @@ afterAll(async () => {
   await app.close();
 });
 
-const adminTokenFor = (org: string) => signToken(app, { org_id: org, role: "org_admin" });
+const adminTokenFor = (org: string) =>
+  signToken(app, {
+    sub: "00000000-0000-0000-0000-181000000099",
+    org_id: org,
+    role: "org_admin",
+  });
 const viewerTokenFor = (org: string) =>
-  signToken(app, { org_id: org, sub: "viewer-181", role: "viewer" });
+  signToken(app, {
+    sub: "00000000-0000-0000-0000-181000000001",
+    org_id: org,
+    role: "viewer",
+  });
 const userTokenFor = (org: string) =>
-  signToken(app, { org_id: org, sub: "user-181", role: "user" });
+  signToken(app, {
+    sub: "00000000-0000-0000-0000-181000000002",
+    org_id: org,
+    role: "user",
+  });
 
 function expect403Forbidden(res: { statusCode: number; json: () => unknown; headers: unknown }) {
   expect(res.statusCode).toBe(403);

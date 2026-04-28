@@ -471,7 +471,16 @@ describe("PATCH /v1/users/:id (issue #161)", () => {
 
   it("non-admin (user role) → 403", async () => {
     const f = await makeFixture();
-    const userToken = signToken(app, { org_id: f.orgId, role: "user" });
+    // Reuse the fixture's member sub — the auth-boundary active-row
+    // check (ADR-021) requires (sub, org_id) to resolve before the
+    // route's `requireOrgAdmin` can fire. The fixture's member is
+    // seeded with role="user" in the DB; the JWT here overrides only
+    // the role claim so the role check sees "user" and 403s.
+    const userToken = signToken(app, {
+      sub: f.memberKcId,
+      org_id: f.orgId,
+      role: "user",
+    });
 
     const res = await app.inject({
       method: "PATCH",
@@ -562,7 +571,13 @@ describe("PATCH /v1/users/:id (issue #161)", () => {
     // the guard to `requireWrite` would still 403 a viewer but not a user
     // — the symmetric tests catch both shapes.
     const f = await makeFixture();
-    const viewerToken = signToken(app, { org_id: f.orgId, role: "viewer" });
+    // Reuse the fixture's member sub for the same reason as the
+    // user-token test above (ADR-021 active-row check).
+    const viewerToken = signToken(app, {
+      sub: f.memberKcId,
+      org_id: f.orgId,
+      role: "viewer",
+    });
 
     const res = await app.inject({
       method: "PATCH",

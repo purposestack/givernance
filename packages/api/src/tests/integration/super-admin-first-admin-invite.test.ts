@@ -177,8 +177,24 @@ describe("POST /v1/superadmin/tenants/:id/first-admin-invitations", () => {
 
   it("returns 404 when the caller lacks the super_admin realm role", async () => {
     const f = await makeFixture();
+    // ADR-021 — seed an org_admin row so the auth-boundary active-row
+    // check passes (otherwise the 401 from `no_active_membership` masks
+    // the 404 anti-disclosure behaviour we're actually testing).
+    const orgAdminSub = `00000000-0000-0000-0000-${randomUUID().slice(0, 12).padStart(12, "0")}`;
+    await db.execute(sql`
+      INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+      VALUES (
+        ${orgAdminSub},
+        ${f.orgId},
+        ${orgAdminSub},
+        ${`org-admin-${f.slug}@example.org`},
+        'Org',
+        'Admin',
+        'org_admin'
+      )
+    `);
     const orgAdminToken = signToken(app, {
-      sub: `org-admin-${randomUUID().slice(0, 8)}`,
+      sub: orgAdminSub,
       org_id: f.orgId,
       role: "org_admin",
       realm_access: { roles: [] },
