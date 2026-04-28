@@ -101,7 +101,12 @@ accessories:
       - data/minio:/data
     cmd: server /data --console-address ":9001"
   keycloak:
-    image: quay.io/keycloak/keycloak:26.1
+    # Pinned to the same patch as local docker-compose (26.6.1). 26.1.x
+    # does not auto-create the native `basic` / `web-origins` / `acr` /
+    # `roles` client scopes on a fresh import — without `basic`, the
+    # access token is missing the OIDC `sub` claim and the web JWT
+    # verifier rejects every login. 26.6.1 provisions them correctly.
+    image: quay.io/keycloak/keycloak:26.6.1
     host: <%= ENV["STAGING_VPS_IP"] %>
     proxy:
       host: auth.staging.givernance.org
