@@ -95,6 +95,31 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot init container that creates the buckets the API + worker
+  # write to. Without it, the receipt-generation job DLQs with
+  # `NoSuchBucket: The specified bucket does not exist` on the very
+  # first donation. Idempotent (`mc mb --ignore-existing`), so safe on
+  # every `docker compose up`.
+  minio-init:
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-givernance}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-givernance_dev}
+      S3_RECEIPTS_BUCKET: ${S3_RECEIPTS_BUCKET:-receipts}
+      S3_CAMPAIGNS_BUCKET: ${S3_CAMPAIGNS_BUCKET:-campaigns}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "local/$$S3_RECEIPTS_BUCKET"
+        mc mb --ignore-existing "local/$$S3_CAMPAIGNS_BUCKET"
+        echo "MinIO buckets ready: $$S3_RECEIPTS_BUCKET, $$S3_CAMPAIGNS_BUCKET"
+    restart: "no"
+
   mailpit:
     image: axllent/mailpit:latest
     ports:
