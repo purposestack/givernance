@@ -5,7 +5,7 @@ import { LogIn, Shield, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { Suspense, useCallback, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useState, useTransition } from "react";
 import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
 import { setLocale } from "@/i18n/locale";
@@ -52,6 +52,19 @@ function LoginForm() {
     setRedirecting(true);
     window.location.href = `/api/auth/login?locale=${locale}`;
   }, [locale]);
+
+  // The Keycloak redirect leaves the page in `redirecting=true` (disabled
+  // button + spinner) and may leave a `useTransition` snapshot mid-flight
+  // from the locale picker. Browsers serve the back navigation from bfcache,
+  // restoring that frozen state verbatim — clear it so the form is usable
+  // again without a manual reload.
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setRedirecting(false);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
 
   return (
     <>
