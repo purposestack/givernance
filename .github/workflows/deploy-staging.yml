@@ -118,4 +118,7 @@ jobs:
         run: kamal app exec -c config/deploy-staging.yml --reuse "pnpm --filter @givernance/api run db:seed"
 
       - name: Sync Keycloak Realm
-        run: kamal app exec -c config/deploy-staging.yml --reuse "sh -c 'apk add --no-cache curl jq && KEYCLOAK_URL=http://givernance-keycloak:8080 sh scripts/keycloak-sync-realm.sh'"
+        run: |
+          KEYCLOAK_URL=https://auth.staging.givernance.org \
+          KEYCLOAK_ADMIN_PASSWORD="${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }}" \
+          bash scripts/keycloak-sync-realm.sh
