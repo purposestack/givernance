@@ -8,7 +8,12 @@ import type { FastifyInstance } from "fastify";
 import { requireOrgAdmin } from "../../lib/guards.js";
 import { redis } from "../../lib/redis.js";
 import { DataResponse, ErrorResponses, problemDetail } from "../../lib/schemas.js";
-import { createWebhookEvent, startStripeOnboarding, verifyStripeWebhook } from "./service.js";
+import {
+  createWebhookEvent,
+  getStripeConnectStatus,
+  startStripeOnboarding,
+  verifyStripeWebhook,
+} from "./service.js";
 
 const webhooksQueue = new Queue(QUEUE_NAMES.WEBHOOKS, { connection: redis });
 
@@ -22,7 +27,47 @@ const StripeConnectResponse = Type.Object({
   accountId: Type.String(),
 });
 
+const StripeConnectStatusResponse = Type.Object({
+  accountId: Type.Union([Type.String(), Type.Null()]),
+  chargesEnabled: Type.Boolean(),
+  payoutsEnabled: Type.Boolean(),
+  detailsSubmitted: Type.Boolean(),
+});
+
 export async function paymentRoutes(app: FastifyInstance) {
+  /**
+   * Read Stripe Connect status for the authenticated org. Returns a
+   * "not connected" shape (`accountId: null`, all flags false) when the
+   * tenant has no Stripe account yet so the settings UI can render a
+   * single panel without a 404 branch.
+   */
+  app.get(
+    "/admin/stripe-connect",
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        tags: ["Payments"],
+        response: { 200: DataResponse(StripeConnectStatusResponse), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+
+      try {
+        const status = await getStripeConnectStatus(orgId);
+        return { data: status };
+      } catch (err) {
+        request.log.error({ err }, "Stripe Connect status fetch failed");
+        return reply
+          .status(502)
+          .send(problemDetail(502, "Bad Gateway", "Payment provider error, please try again"));
+      }
+    },
+  );
+
   /**
    * Start Stripe Connect onboarding for the authenticated org.
    * Creates an Express connected account if needed, returns the Account Link URL.

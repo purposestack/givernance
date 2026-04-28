@@ -888,6 +888,27 @@
       "errorGeneric": "Impossible de télécharger l'export pour le moment.",
       "errorProblem": "L'export a échoué (HTTP {status}).",
       "lastDownloaded": "Dernier téléchargement : {value}"
+    },
+    "stripeConnect": {
+      "badge": "Paiements",
+      "title": "Stripe Connect",
+      "description": "Connectez votre compte Stripe pour que les donateurs puissent payer depuis les pages de campagne. Givernance ne détient jamais les fonds — les paiements arrivent directement sur votre compte.",
+      "adminOnly": "Seuls les administrateurs de l'organisation peuvent gérer les paiements.",
+      "status": {
+        "notConnected": "Non connecté",
+        "pending": "Onboarding incomplet",
+        "connected": "Connecté"
+      },
+      "actions": {
+        "connect": "Connecter Stripe",
+        "continue": "Reprendre l'onboarding",
+        "manage": "Rouvrir l'onboarding Stripe",
+        "starting": "Ouverture de Stripe…"
+      },
+      "errors": {
+        "load": "Impossible de charger le statut Stripe pour le moment.",
+        "start": "Impossible de démarrer l'onboarding Stripe pour le moment."
+      }
     }
   },
   "profile": {
@@ -1492,11 +1513,30 @@
         "generic": "Une erreur est survenue lors de la préparation du paiement. Réessayez."
       },
       "success": {
-        "intentCreated": "Votre don est prêt. L'étape de paiement Stripe est la prochaine intégration.",
+        "intentCreated": "Don préparé — saisissez vos informations de carte ci-dessous.",
         "nextStepTitle": "Étape suivante",
-        "nextStepBody": "Un intent de paiement a bien été créé côté API. La redirection ou le formulaire Stripe sera branché dans le prochain incrément."
+        "nextStepBody": "Utilisez le formulaire de carte pour finaliser votre don de manière sécurisée avec Stripe."
       },
-      "footnote": "En soumettant ce formulaire, vous préparez un paiement sécurisé. Le débit ne se fait pas encore sur cette version de la page."
+      "footnote": "En soumettant ce formulaire, vous préparez un paiement sécurisé. Votre carte sera débitée à l'étape suivante."
+    },
+    "payment": {
+      "summary": {
+        "title": "Vous donnez {amount}",
+        "subtitle": "Propulsé par Stripe — vos données de carte sont envoyées directement à Stripe et ne sont jamais stockées sur nos serveurs."
+      },
+      "actions": {
+        "pay": "Donner {amount}",
+        "paying": "Traitement du paiement…"
+      },
+      "success": {
+        "title": "Merci pour votre don !",
+        "body": "Nous avons bien reçu {amount}. Un reçu va arriver dans votre boîte mail."
+      },
+      "errors": {
+        "generic": "Le paiement n'a pas pu aboutir. Essayez avec une autre carte ou contactez le support.",
+        "missingPublishableKey": "Stripe n'est pas configuré sur cet environnement. Demandez à un administrateur de définir NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY."
+      },
+      "footnote": "Mode test : utilisez la carte 4242 4242 4242 4242 avec une date d'expiration future et n'importe quel CVC."
     }
   },
   "constituentForm": {

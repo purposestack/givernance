@@ -205,7 +205,14 @@ export async function createDonationIntent(
 
     const intent = await stripe.paymentIntents.create(intentParams, requestOptions);
 
-    return { clientSecret: intent.client_secret };
+    if (!intent.client_secret) {
+      throw new Error("Stripe returned a PaymentIntent without a client_secret");
+    }
+
+    return {
+      clientSecret: intent.client_secret,
+      stripeAccountId: tenant.stripeAccountId,
+    };
   });
 }
 
