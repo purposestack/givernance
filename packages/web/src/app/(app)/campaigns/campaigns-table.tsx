@@ -200,7 +200,8 @@ export function CampaignsTable({
           const raisedCents = stats?.totalRaisedCents ?? 0;
           const goalCents = campaign.goalAmountCents ?? 0;
           const progress = goalCents > 0 ? Math.min((raisedCents / goalCents) * 100, 100) : 0;
-          const ratioText = goalCents > 0 ? `${Math.round((raisedCents / goalCents) * 100)}%` : "N/A";
+          const ratioText =
+            goalCents > 0 ? `${Math.round((raisedCents / goalCents) * 100)}%` : "N/A";
 
           return (
             <div className="min-w-44">
@@ -280,7 +281,10 @@ export function CampaignsTable({
     <>
       <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant opacity-50" size={16} />
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant opacity-50"
+            size={16}
+          />
           <Input
             placeholder="Rechercher une campagne..."
             value={searchTerm}

@@ -309,8 +309,12 @@ function StatCard({
         <div className="flex items-center gap-2">
           {trend ? (
             <div title={trend.label}>
-              <Badge variant={trend.value >= 0 ? "success" : "error"} className="text-[10px] px-1.5 py-0 h-5">
-                {trend.value > 0 ? "+" : ""}{trend.value}%
+              <Badge
+                variant={trend.value >= 0 ? "success" : "error"}
+                className="text-[10px] px-1.5 py-0 h-5"
+              >
+                {trend.value > 0 ? "+" : ""}
+                {trend.value}%
               </Badge>
             </div>
           ) : null}
