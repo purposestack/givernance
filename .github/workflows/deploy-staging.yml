@@ -10,6 +10,9 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
@@ -69,10 +72,35 @@ jobs:
           kamal server exec -c config/deploy-staging.yml "docker exec givernance-keycloak /opt/keycloak/bin/kcadm.sh delete realms/givernance || true"
           kamal server exec -c config/deploy-staging.yml "docker rm -f givernance-keycloak || true"
           kamal server exec -c config/deploy-staging.yml "docker exec kamal-proxy kamal-proxy remove givernance-keycloak || true"
-          kamal accessory boot keycloak -c config/deploy-staging.yml
+          
+          # Boucle d'auto-réparation pour s'assurer que le boot passe même s'il y a un lock résiduel
+          max_retries=3
+          count=0
+          until kamal accessory boot keycloak -c config/deploy-staging.yml; do
+            count=$((count + 1))
+            if [ $count -gt $max_retries ]; then
+              echo "Échec du boot Keycloak après $max_retries tentatives."
+              exit 1
+            fi
+            echo "Le boot a échoué (potentiel lock). Libération du lock et nouvel essai ($count/$max_retries)..."
+            kamal lock release -c config/deploy-staging.yml || true
+            sleep 5
+          done
 
       - name: Deploy with Kamal
-        run: kamal setup -c config/deploy-staging.yml
+        run: |
+          max_retries=3
+          count=0
+          until kamal setup -c config/deploy-staging.yml; do
+            count=$((count + 1))
+            if [ $count -gt $max_retries ]; then
+              echo "Échec du setup Kamal après $max_retries tentatives."
+              exit 1
+            fi
+            echo "Le setup a échoué. Libération du lock et nouvel essai ($count/$max_retries)..."
+            kamal lock release -c config/deploy-staging.yml || true
+            sleep 5
+          done
 
       - name: Print failed Keycloak container logs
         if: failure()
