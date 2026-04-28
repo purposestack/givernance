@@ -63,6 +63,7 @@ interface RealmSeed {
   organizationsEnabled?: boolean;
   organizations?: KeycloakOrganization[];
   clients: KeycloakClient[];
+  clientScopes?: Array<{ name: string }>;
   users: Array<{
     id?: string;
     username: string;
@@ -179,6 +180,23 @@ describe("Keycloak realm seed (issue #114 — Organizations migration)", () => {
     expect(roles, "missing realm-management roles on givernance-admin SA").toEqual(
       expect.arrayContaining(["manage-realm", "view-realm"]),
     );
+  });
+
+  it("does not declare a top-level `clientScopes` block", () => {
+    // Regression guard for the staging incident on 2026-04-28: declaring
+    // `profile`, `email` (or any built-in) inside `clientScopes` made the
+    // import skip Keycloak's auto-creation of the native scopes referenced
+    // by `givernance-web.defaultClientScopes` (`basic`, `web-origins`,
+    // `acr`, `roles`). The login then aborted with `invalid_scope`.
+    //
+    // Contract: the realm JSON ships *structure* (realm flags, clients,
+    // users, organizations). All scope-level mappers — including the
+    // custom `organization` scope's `org_id` / `role` / membership
+    // mappers — are reconciled at runtime by scripts/keycloak-sync-realm.sh.
+    expect(
+      realm.clientScopes,
+      "Move scope mappers into scripts/keycloak-sync-realm.sh — see test comment.",
+    ).toBeUndefined();
   });
 
   it("cross-checks user.attributes.org_id === organization.attributes.org_id", () => {
