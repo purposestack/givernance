@@ -892,7 +892,11 @@
     "stripeConnect": {
       "badge": "Payments",
       "title": "Stripe Connect",
-      "description": "Connect your Stripe account so donors can pay through campaign pages. Givernance never holds funds — payouts go directly to your account.",
+      "description": {
+        "notConnected": "Connect your Stripe account so donors can pay through campaign pages. Givernance never holds funds — payouts go directly to your account.",
+        "pending": "Your Stripe onboarding isn't complete. Until you finish it, donors can't pay you.",
+        "connected": "Your Stripe account is connected. Donations from campaign pages land directly in your Stripe balance, and Givernance collects its platform fee on each donation."
+      },
       "adminOnly": "Only organisation admins can manage payments.",
       "status": {
         "notConnected": "Not connected",
