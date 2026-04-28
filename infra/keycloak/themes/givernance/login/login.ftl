@@ -4,8 +4,8 @@
 -->
 <#import "template.ftl" as layout>
 <@layout.registrationLayout
-    displayMessage=!messagesPerField.existsError("username","password")
-    displayInfo=realm.password && social.providers??;
+    displayMessage=true
+    displayInfo=realm.password && (social.providers)?has_content;
     section>
 
   <#if section = "header">
@@ -37,11 +37,6 @@
           <#if usernameEditDisabled??>readonly</#if>
           aria-invalid="${messagesPerField.existsError('username','password')?string('true','false')}"
         >
-        <#if messagesPerField.existsError('username')>
-          <span class="gv-field-error" role="alert">
-            ${kcSanitize(messagesPerField.getFirstError('username'))?no_esc}
-          </span>
-        </#if>
       </div>
 
       <#-- Password field -->
@@ -75,11 +70,6 @@
             </svg>
           </button>
         </div>
-        <#if messagesPerField.existsError('password')>
-          <span class="gv-field-error" role="alert">
-            ${kcSanitize(messagesPerField.getFirstError('password'))?no_esc}
-          </span>
-        </#if>
       </div>
 
       <#-- Remember me -->
@@ -124,10 +114,12 @@
     </script>
 
   <#elseif section = "info">
-    <#-- Social / identity provider buttons -->
-    <#if realm.password && social.providers??>
+    <#-- Social / identity provider buttons — only rendered when providers are
+         actually configured. social.providers?? is true even for an empty list;
+         ?has_content guards against showing the separator with no buttons. -->
+    <#if realm.password && (social.providers)?has_content>
       <p style="margin-bottom:12px;font-size:0.8125rem;text-align:center;">
-        Or continue with
+        ${msg("identity-provider-login-label")}
       </p>
       <#list social.providers as p>
         <a href="${p.loginUrl}" id="social-${p.alias}"
