@@ -6,7 +6,7 @@ import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { PINO_REDACT_PATHS } from "@givernance/shared/constants";
-import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
+import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance } from "fastify";
 import pino from "pino";
 import { env } from "./env.js";
 import { redis } from "./lib/redis.js";
@@ -63,7 +63,12 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   // us a guaranteed-sync write — Pino's default sonic-boom destination
   // batches writes asynchronously, which races the `await app.inject()`
   // boundary and made the rbac-denial log tests flaky on a PassThrough.
-  let loggerInstance: pino.Logger | undefined;
+  // Type as `FastifyBaseLogger` (the supertype Fastify expects) rather
+  // than `pino.Logger` — review E1. The concrete pino instance assigns
+  // cleanly into the supertype, Fastify's logger generic doesn't narrow
+  // to a private `pino.Logger`, and the previous `as unknown as
+  // FastifyInstance` escape hatch goes away.
+  let loggerInstance: FastifyBaseLogger | undefined;
   if (opts.onLogLine) {
     const writable = new Writable({
       write(chunk, _enc, cb) {
@@ -78,11 +83,6 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
     loggerInstance = pino({ ...loggerOpts, level: "info" }, writable);
   }
 
-  // Cast back to the default-generic FastifyInstance — passing a concrete
-  // pino instance via `loggerInstance` narrows Fastify's logger generic to
-  // `pino.Logger`, which then breaks every callsite that holds the result
-  // as `FastifyInstance` (no generics). The runtime behaviour is identical;
-  // only the type leak is suppressed.
   const app = Fastify({
     // Trust proxy headers (X-Forwarded-For, X-Real-IP) so rate-limit keying
     // and `ipHash` use the real client IP instead of the LB's internal IP
@@ -91,7 +91,7 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
     // on a fixed subnet.
     trustProxy: process.env.TRUST_PROXY ?? true,
     ...(loggerInstance ? { loggerInstance } : { logger: loggerOpts }),
-  }) as unknown as FastifyInstance;
+  });
 
   // --- Core plugins ---
   await app.register(cors, {

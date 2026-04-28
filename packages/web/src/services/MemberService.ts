@@ -1,6 +1,7 @@
 import type { ApiClient } from "@/lib/api";
 import type {
   Member,
+  MemberListQuery,
   MemberListResponse,
   UpdateMemberInput,
   UpdateMemberResponse,
@@ -15,11 +16,16 @@ import type {
  *
  * Issue #161 — replaces the role-only `PATCH /v1/users/:id/role` with a
  * combined endpoint accepting `{ firstName?, lastName?, role? }`.
+ * PR #185 review PJD-6 — `listMembers` is now paginated to scale to
+ * orgs with hundreds of staff.
  */
 export const MemberService = {
-  async listMembers(client: ApiClient): Promise<Member[]> {
-    const response = await client.get<MemberListResponse>("/v1/users");
-    return response.data;
+  async listMembers(client: ApiClient, query: MemberListQuery = {}): Promise<MemberListResponse> {
+    const params: Record<string, string | number | boolean | undefined> = {
+      page: query.page,
+      perPage: query.perPage,
+    };
+    return client.get<MemberListResponse>("/v1/users", { params });
   },
 
   async updateMember(client: ApiClient, id: string, input: UpdateMemberInput): Promise<Member> {

@@ -164,6 +164,14 @@ export function DataTable<TData>({
     >
       <div className="flex flex-col gap-3 border-b border-outline-variant px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-on-surface-variant">
+          {/*
+           * Review D6 — when the table has no `pagination` prop, suppress
+           * the row count entirely. The page header subtitle already
+           * surfaces the canonical count (e.g. "5 members on file"); a
+           * second "5 results" below it reads as redundant chrome. This
+           * also removes the unused `countSummary` translation path —
+           * keep the key in messages/* for future per-table fallback.
+           */}
           {hasRows
             ? pagination
               ? t("rangeSummary", {
@@ -171,7 +179,7 @@ export function DataTable<TData>({
                   end: rangeEnd,
                   total: pagination.total,
                 })
-              : t("countSummary", { count: data.length })
+              : ""
             : t("emptySummary")}
         </div>
         <div

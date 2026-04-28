@@ -3,17 +3,18 @@
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { auditLogs, outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
 import { keycloakAdmin } from "../../lib/keycloak-admin.js";
 import {
-  DataArrayResponseNoPagination,
+  DataArrayResponse,
   DataResponse,
   ErrorResponses,
   IdParams,
+  PaginationQuery,
   ProblemDetailSchema,
   problemDetail,
   UuidSchema,
@@ -270,25 +271,58 @@ export async function userRoutes(app: FastifyInstance) {
     },
   );
 
-  /** GET /v1/users — list users in tenant (org_admin only) */
+  /**
+   * GET /v1/users — paginated list of users in the tenant (org_admin only).
+   *
+   * Review PJD-6: previously returned the full list unconditionally, which
+   * scales badly for an org with hundreds of staff. Now uses the standard
+   * `page` / `perPage` query params (max 100/page) and returns the
+   * `DataArrayResponse` envelope with pagination metadata.
+   */
   app.get(
     "/users",
     {
       preHandler: requireOrgAdmin,
       schema: {
         tags: ["Users"],
-        response: { 200: DataArrayResponseNoPagination(UserResponse), ...ErrorResponses },
+        querystring: PaginationQuery,
+        response: { 200: DataArrayResponse(UserResponse), ...ErrorResponses },
       },
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId as string;
-      const all = await withTenantContext(orgId, async (tx) => {
-        return tx.select().from(users).where(eq(users.orgId, orgId));
+      const query = request.query as { page?: number; perPage?: number };
+      const page = query.page ?? 1;
+      const perPage = query.perPage ?? 20;
+      const offset = (page - 1) * perPage;
+
+      const { rows, total } = await withTenantContext(orgId, async (tx) => {
+        const countRows = await tx
+          .select({ total: sql<number>`count(*)::int` })
+          .from(users)
+          .where(eq(users.orgId, orgId));
+        const countResult = countRows[0]?.total ?? 0;
+        const data = await tx
+          .select()
+          .from(users)
+          .where(eq(users.orgId, orgId))
+          .orderBy(users.firstName, users.lastName, users.email)
+          .limit(perPage)
+          .offset(offset);
+        return { rows: data, total: countResult ?? 0 };
       });
-      return reply.send({ data: all });
+
+      return reply.send({
+        data: rows,
+        pagination: {
+          page,
+          perPage,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / perPage)),
+        },
+      });
     },
   );
-
   /** POST /v1/users — create user in tenant (org_admin only) */
   app.post(
     "/users",
@@ -409,6 +443,15 @@ export async function userRoutes(app: FastifyInstance) {
         // would walk out of their own org. The UI hides the role Select
         // for the caller's row, but the API gate is the durable
         // enforcement (issue #161 acceptance criteria).
+        //
+        // Review PJD-3 — refuse to compare when `existing.keycloakId` is
+        // null. A null id would make `null === callerKcId` always false
+        // and silently skip the self-demote guard, letting an admin demote
+        // themselves through the legacy-data path. Treat null as "we
+        // cannot prove this isn't the caller", which is fail-closed.
+        if (existing.keycloakId === null && body.role !== undefined) {
+          return { kind: "missing_keycloak_link" as const };
+        }
         const isSelf = existing.keycloakId === callerKcId;
         if (
           isSelf &&
@@ -417,6 +460,25 @@ export async function userRoutes(app: FastifyInstance) {
           body.role !== "org_admin"
         ) {
           return { kind: "cannot_self_demote" as const };
+        }
+
+        // Last-admin lock-out guard (review S1) — even when the caller is a
+        // DIFFERENT admin, demoting the only remaining `org_admin` (or this
+        // admin if they happen to be the only one and another admin sent
+        // the request) leaves the tenant with zero administrators. Recovery
+        // would require super_admin intervention or DB surgery, so refuse
+        // with a structured 422 the UI can map to a targeted message.
+        if (body.role !== undefined && existing.role === "org_admin" && body.role !== "org_admin") {
+          const countRows = await tx
+            .select({ count: sql<number>`count(*)::int` })
+            .from(users)
+            .where(
+              and(eq(users.orgId, orgId), eq(users.role, "org_admin"), ne(users.id, existing.id)),
+            );
+          const remainingAdmins = countRows[0]?.count ?? 0;
+          if (remainingAdmins === 0) {
+            return { kind: "cannot_demote_last_admin" as const };
+          }
         }
 
         const patch: {
@@ -454,9 +516,14 @@ export async function userRoutes(app: FastifyInstance) {
         }
 
         if (Object.keys(newValues).length > 0) {
+          // Review E5 — `audit_logs.user_id` semantically means "who DID
+          // this", not "what was changed". The target's UUID belongs in
+          // `resource_id`. Using `callerKcId` here matches the convention
+          // used elsewhere in the audit module so RBAC forensics ("which
+          // admin renamed Ada?") return the correct actor.
           await tx.insert(auditLogs).values({
             orgId,
-            userId: existing.id,
+            userId: callerKcId,
             action: "user.profile_updated",
             resourceType: "user",
             resourceId: existing.id,
@@ -486,7 +553,37 @@ export async function userRoutes(app: FastifyInstance) {
             "Unprocessable Entity",
             "An org_admin cannot demote their own role below org_admin.",
           ),
-          code: "cannot_self_demote",
+          errorCode: "cannot_self_demote",
+        });
+      }
+      if (result.kind === "missing_keycloak_link") {
+        // Review PJD-3 — fail-closed when the target row predates the
+        // Keycloak link (legacy import). Surface a discriminator distinct
+        // from the cross-tenant 404 so the admin knows to repair the row
+        // (e.g. via tenant-admin tooling) rather than thinking the user
+        // doesn't exist.
+        return reply.status(422).send({
+          ...problemDetail(
+            422,
+            "Unprocessable Entity",
+            "Cannot change role: this user has no Keycloak link. Contact support to repair the account.",
+          ),
+          errorCode: "missing_keycloak_link",
+        });
+      }
+      if (result.kind === "cannot_demote_last_admin") {
+        // Structured 422 — recovery from a zero-admin tenant requires
+        // super_admin intervention (review S1). Surface a discriminator
+        // distinct from `cannot_self_demote` so the UI can show "demote
+        // someone after promoting another admin" rather than "you can't
+        // change your own role".
+        return reply.status(422).send({
+          ...problemDetail(
+            422,
+            "Unprocessable Entity",
+            "Cannot demote the last org_admin in this tenant — promote another admin first.",
+          ),
+          errorCode: "cannot_demote_last_admin",
         });
       }
 

@@ -2,7 +2,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal, Pencil, Trash2, Users } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { type FormEvent, useCallback, useId, useMemo, useState } from "react";
 
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import {
   Dialog,
   DialogContent,
@@ -53,6 +53,7 @@ const ROLE_VALUES: readonly MemberRole[] = ["user", "org_admin", "viewer"];
 
 interface MembersTableProps {
   members: Member[];
+  pagination: DataTablePagination;
   canManageMembers: boolean;
   /**
    * Keycloak `sub` of the caller — used to identify the caller's own row so
@@ -69,15 +70,32 @@ interface MembersTableProps {
  * lastName / role). The role Select on the caller's own row is hidden
  * with a tooltip explaining "you can't change your own role" (issue
  * #161 — the API gate is the durable enforcement).
+ *
+ * Pagination uses the `mPage` query param (review PJD-6) so it doesn't
+ * collide with the Invitations table's own paginator on the same page.
  */
 export function MembersTable({
   members,
+  pagination,
   canManageMembers,
   currentUserKeycloakId,
 }: MembersTableProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const locale = useLocale();
   const t = useTranslations("settings.members");
+
+  const navigateToPage = useCallback(
+    (page: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (page <= 1) params.delete("mPage");
+      else params.set("mPage", String(page));
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
   const [editTarget, setEditTarget] = useState<Member | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
   const [isMutating, setIsMutating] = useState(false);
@@ -115,7 +133,16 @@ export function MembersTable({
             <div className="flex items-center gap-2">
               <span className="font-medium text-on-surface">{fullName || "—"}</span>
               {isSelf ? (
-                <Badge variant="neutral" className="text-[0.625rem] uppercase">
+                // Review D3 — drop the inline `text-[0.625rem]` arbitrary
+                // size; let the Badge render at its standard scale (still
+                // visually subordinate because the row's name uses
+                // `font-medium`). `aria-label` so screen readers
+                // announce the row as the current user, not just "you".
+                <Badge
+                  variant="neutral"
+                  className="uppercase"
+                  aria-label={t("editDialog.fields.youAriaLabel")}
+                >
                   {t("editDialog.fields.youBadge")}
                 </Badge>
               ) : null}
@@ -176,6 +203,8 @@ export function MembersTable({
       <DataTable
         columns={columns}
         data={members}
+        pagination={pagination}
+        onPageChange={navigateToPage}
         emptyState={
           <EmptyState
             icon={Users}
@@ -329,15 +358,20 @@ function EditMemberDialog({ target, isSelf, onClose, onSaved }: EditMemberDialog
         onSaved();
       } catch (err) {
         if (!(err instanceof ApiProblem)) console.error("members.update failed", err);
-        // Server emits `code: cannot_self_demote` as an RFC 9457 extension
-        // member on the 422 path so we can render a targeted message rather
-        // than rely on string-matching the human-readable `detail`.
+        // Server emits `errorCode` (Stripe/GitHub convention — see review
+        // A2) as an RFC 9457 extension member on the 422 path so we can
+        // render a targeted message rather than string-match the
+        // human-readable `detail`.
         const code =
-          err instanceof ApiProblem && typeof err.extensions.code === "string"
-            ? err.extensions.code
+          err instanceof ApiProblem && typeof err.extensions.errorCode === "string"
+            ? err.extensions.errorCode
             : undefined;
         if (code === "cannot_self_demote") {
           setError(t("editDialog.errors.selfDemote"));
+        } else if (code === "cannot_demote_last_admin") {
+          setError(t("editDialog.errors.lastAdmin"));
+        } else if (code === "missing_keycloak_link") {
+          setError(t("editDialog.errors.missingKeycloakLink"));
         } else if (err instanceof ApiProblem && err.detail) {
           setError(err.detail);
         } else {

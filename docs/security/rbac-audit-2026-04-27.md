@@ -152,7 +152,7 @@ Frontend permission map
 | users | PATCH `/v1/users/me` | `modules/users/routes.ts:157` | `requireAuth` | Caller updates own preferences (locale). |
 | users | GET `/v1/users` | `modules/users/routes.ts:252` | `requireOrgAdmin` | List tenant users. |
 | users | POST `/v1/users` | `modules/users/routes.ts:271` | `requireOrgAdmin` | Create user (provisioning path; deprecated by invitations). |
-| users | PATCH `/v1/users/:id/role` | `modules/users/routes.ts:317` | `requireOrgAdmin` | Update role. |
+| users | PATCH `/v1/users/:id` | `modules/users/routes.ts:362` | `requireOrgAdmin` | Combined update — firstName / lastName / role (issue #161). Replaced legacy `/role` sub-route in PR #185. |
 | users | DELETE `/v1/users/:id` | `modules/users/routes.ts:357` | `requireOrgAdmin` | Remove user. |
 
 ### Table A2 — Frontend `(app)` pages
@@ -302,7 +302,7 @@ If a module isn't listed above, every field inherits its route's guard.
 | users | PATCH `/v1/users/me` | `requireAuth` | `requireAuth` | Caller's own preferences. |
 | users | GET `/v1/users` | `requireOrgAdmin` | `requireOrgAdmin` | Member management. |
 | users | POST `/v1/users` | `requireOrgAdmin` | `requireOrgAdmin` | Member management (legacy provisioning path). |
-| users | PATCH `/v1/users/:id/role` | `requireOrgAdmin` | `requireOrgAdmin` | Member management. |
+| users | PATCH `/v1/users/:id` | `requireOrgAdmin` | `requireOrgAdmin` | Member management. Combined firstName / lastName / role since PR #185. |
 | users | DELETE `/v1/users/:id` | `requireOrgAdmin` | `requireOrgAdmin` | Member management. |
 
 ### Table B2 — Frontend `(app)` pages with target guard

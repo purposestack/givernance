@@ -233,28 +233,47 @@ Several JSONB columns across the schema require special GDPR handling because th
 | AI actions | ai.suggestion_generated, ai.action_executed, ai.action_blocked, ai.guard_denied | Yes | Yes (info for generated/executed, warn for blocked/denied) |
 | Migration | migration.started, migration.batch_loaded, migration.validation_error, migration.completed | Yes | Yes |
 
-### 7.2.1 RBAC denial discriminator (issue #182)
+### 7.2.1 Auth + RBAC denial discriminators (issue #182, refined PR #185)
 
-Every guard primitive in [`packages/api/src/lib/guards.ts`](../packages/api/src/lib/guards.ts) (`requireAuth`, `requireWrite`, `requireOrgAdmin`, `requireSuperAdmin`, `requireSuperAdminOrOwnOrgAdmin`) emits a structured `rbac denial` warning **before** sending the 403/404 response and lifts the same discriminator onto the request via `request.rbacDenial`. The audit plugin's `onResponse` line picks up `request.rbacDenial` so a mutating-request audit row carries the denial reason without a second log lookup.
+Every guard primitive in [`packages/api/src/lib/guards.ts`](../packages/api/src/lib/guards.ts) emits ONE of two structured discriminators **before** sending its denial response, and lifts it onto the request so the audit plugin's `onResponse` line carries it without a second log lookup. SOC dashboards filter on the discriminator to separate signal from noise.
 
-Shape:
+**Two distinct discriminators** (never both on the same line):
+
+- `authDenial` — the JWT was missing or unusable (the 401 path). Fires for cookie expiry, token rotation, missing `Authorization` header, etc. **Filter these OUT when hunting RBAC probes** to keep signal clean.
+- `rbacDenial` — a valid JWT presented an insufficient role (the 403/404 path). `requiredRoles` is a structured array (machine-parseable) plus an optional `tenantScoped` flag for the "(own org_admin)" constraint that `requireSuperAdminOrOwnOrgAdmin` adds on top.
+
+**Shape — `authDenial` (401):**
+
+```json
+{
+  "level": 40,
+  "msg": "auth denial",
+  "authDenial": {
+    "guard": "requireAuth",       // requireAuth | requireWrite | requireOrgAdmin | requireSuperAdmin | requireSuperAdminOrOwnOrgAdmin
+    "reason": "missing_token"     // currently the only reason; reserved for future invalid_token / expired_token discriminators
+  }
+}
+```
+
+**Shape — `rbacDenial` (403/404):**
 
 ```json
 {
   "level": 40,
   "msg": "rbac denial",
   "rbacDenial": {
-    "guard": "requireWrite",          // requireAuth | requireWrite | requireOrgAdmin | requireSuperAdmin | requireSuperAdminOrOwnOrgAdmin
-    "requiredRole": "user|org_admin", // human-readable required role; null for the unauthenticated branch
-    "actualRole": "viewer"            // role on the JWT (null if unauthenticated)
+    "guard": "requireWrite",
+    "requiredRoles": ["user", "org_admin"],   // structured array — machine-parseable in LogQL
+    "tenantScoped": true,                     // optional; only set by requireSuperAdminOrOwnOrgAdmin
+    "actualRole": "viewer"                    // role on the JWT; null when JWT had no role claim
   }
 }
 ```
 
-**LogQL — alert when a viewer probes write endpoints:**
+**LogQL — alert when a viewer probes write endpoints (RBAC only, excludes auth noise):**
 
 ```logql
-{service="givernance-api"} | json
+{service="givernance-api"} | json | __error__=""
   | rbacDenial_guard="requireWrite"
   | rbacDenial_actualRole="viewer"
 ```
@@ -269,14 +288,33 @@ sum by (rbacDenial_guard) (
 )
 ```
 
-**LogQL — surface the audit-line variant** (mutating requests, includes `userId` / `orgId`):
+**LogQL — match a specific required role across all guards** (the array flattens with `_n` indices):
 
 ```logql
-{service="givernance-api"} | json
+{service="givernance-api"} | json | __error__=""
+  | rbacDenial_requiredRoles_0="org_admin" or rbacDenial_requiredRoles_1="org_admin"
+```
+
+**LogQL — surface RBAC denials on the audit line** (mutating requests, includes `userId` / `orgId`):
+
+```logql
+{service="givernance-api"} | json | __error__=""
   | msg="audit" | rbacDenial_guard != ""
 ```
 
-The discriminator is **only** populated on RBAC denials. CSRF, validation, and tenant-scoping denials all currently land as 403 with no `rbacDenial` field — those are out of scope for this query and tracked as separate concerns.
+**LogQL — token-rotation noise dashboard** (auth-only, useful for debugging session expiry storms):
+
+```logql
+sum by (authDenial_guard) (
+  count_over_time(
+    {service="givernance-api"} | json | __error__="" | authDenial_guard != ""[5m]
+  )
+)
+```
+
+The discriminators are **only** populated on guard denials. CSRF, validation, and tenant-scoping denials all currently land as 403 with neither field — those are out of scope and tracked separately.
+
+**Audit table retention vs Pino retention.** `audit_logs` retains 7+ years (§7.1); the Pino warn/info lines retain 90 days for info / 1 year for error (§6.2). The discriminators are **observability-only**, not 7-year audit. After 90 days, "was there an RBAC probe against resource X on date Y" is unanswerable from logs alone — you'd join on the audit table by `(reqId, userId, orgId, resourceType)`. If long-term forensics on denial-reason becomes a requirement, add a `metadata jsonb` column to `audit_logs` and write the discriminator into it.
 
 ### 7.3 Audit log schema
 
