@@ -3,7 +3,14 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
-import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
+import {
+  authHeader,
+  ensureTestTenants,
+  ORG_A,
+  seedTenantUser,
+  signToken,
+  signTokenB,
+} from "../helpers/auth.js";
 
 let app: FastifyInstance;
 const CAMPAIGN_STATS_ORG = "00000000-0000-0000-0000-000000000127";
@@ -31,6 +38,11 @@ beforeAll(async () => {
         VALUES (${CAMPAIGN_STATS_ORG}, 'Campaign Stats Org', 'campaign-stats-org', 'CHF')
         ON CONFLICT (id) DO UPDATE SET base_currency = 'CHF'`,
   );
+  // ADR-021 — auth-boundary check needs an active users row matching
+  // the synthetic JWT sub for every (org, sub) combination signToken
+  // mints with. Without this seed the request 401s before the route
+  // runs, leaving `data.id` undefined.
+  await seedTenantUser(CAMPAIGN_STATS_ORG);
 
   const statsToken = signToken(app, { org_id: CAMPAIGN_STATS_ORG });
   const statsConstituentRes = await app.inject({

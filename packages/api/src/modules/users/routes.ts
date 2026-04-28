@@ -10,7 +10,6 @@ import { withTenantContext } from "../../lib/db.js";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
 import { keycloakAdmin } from "../../lib/keycloak-admin.js";
-import { blocklistUser, invalidateActiveUserCache } from "../session/service.js";
 import {
   DataArrayResponse,
   DataResponse,
@@ -21,6 +20,7 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
+import { blocklistUser, invalidateActiveUserCache } from "../session/service.js";
 
 const UserLocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)));
 

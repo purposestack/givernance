@@ -693,13 +693,18 @@ export async function verifySignup(
         }
       }
 
-      // Upsert (target = the (org_id, email) unique index) so a verify
-      // re-entry from a half-provisioned tenant — i.e. the resend flow
-      // cleared `acceptedAt` after the original verify already wrote a
-      // users row but couldn't bind a Keycloak credential — just patches
+      // Upsert (target = the partial unique index on `(org_id, email)
+      // WHERE deleted_at IS NULL` introduced in 0032 for the soft-delete
+      // re-invite path; ADR-021) so a verify re-entry from a
+      // half-provisioned tenant — i.e. the resend flow cleared
+      // `acceptedAt` after the original verify already wrote a users row
+      // but couldn't bind a Keycloak credential — just patches
       // `keycloak_id` onto the existing row instead of failing on the
       // unique violation. `firstAdmin` and `provisional_until` are left
       // untouched on update so the original grace window stays put.
+      // `targetWhere` MUST be passed so Postgres infers the partial
+      // index; without it the planner errors with "no unique or exclusion
+      // constraint matching the ON CONFLICT specification".
       // `RETURNING (xmax = 0) AS inserted` is the canonical Postgres trick
       // to distinguish an INSERT from an upsert-UPDATE — `xmax` is 0 only
       // on freshly-inserted rows. Drives the dedup logic on the
@@ -720,6 +725,7 @@ export async function verifySignup(
         })
         .onConflictDoUpdate({
           target: [users.orgId, users.email],
+          targetWhere: sql`${users.deletedAt} IS NULL`,
           set: {
             firstName,
             lastName,

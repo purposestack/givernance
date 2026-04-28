@@ -4,7 +4,14 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db, withTenantContext } from "../../lib/db.js";
 import { createServer } from "../../server.js";
-import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
+import {
+  authHeader,
+  ensureTestTenants,
+  ORG_A,
+  seedTenantUser,
+  signToken,
+  signTokenB,
+} from "../helpers/auth.js";
 
 let app: FastifyInstance;
 const MULTI_CURRENCY_ORG = "00000000-0000-0000-0000-000000000126";
@@ -61,6 +68,8 @@ beforeAll(async () => {
         VALUES (${MULTI_CURRENCY_ORG}, 'Donations Multi Currency Org', 'donations-multi-currency-org', 'CHF')
         ON CONFLICT (id) DO UPDATE SET base_currency = 'CHF'`,
   );
+  // ADR-021 — see campaigns.test.ts for the same seeding rationale.
+  await seedTenantUser(MULTI_CURRENCY_ORG);
 
   const multiCurrencyToken = signToken(app, { org_id: MULTI_CURRENCY_ORG });
   const multiCurrencyConstituentRes = await app.inject({
