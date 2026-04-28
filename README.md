@@ -111,6 +111,10 @@ See [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) for
 - [docs/06-security-compliance.md](docs/06-security-compliance.md) — Top-level security & GDPR specification
 - [docs/security/](docs/security/) — Periodic security audits and route-by-route guard matrices (e.g. [rbac-audit-2026-04-27.md](docs/security/rbac-audit-2026-04-27.md))
 
+### Payments
+- [docs/payments-overview.md](docs/payments-overview.md) — Money flow primer: how fees are collected, why each NPO connects rather than pasting keys
+- [docs/20-payment-strategy.md](docs/20-payment-strategy.md) — Strategy, ADR-010, provider comparison, GDPR/PCI
+
 ### Local development
 - [docs/dev/stripe-local-setup.md](docs/dev/stripe-local-setup.md) — Stripe Connect end-to-end setup (test mode, no real money)
 
