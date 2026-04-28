@@ -696,7 +696,6 @@
           "submitting": "Enregistrement…"
         },
         "errors": {
-          "noChanges": "Modifiez au moins un champ avant d'enregistrer.",
           "selfDemote": "Un·e admin ne peut pas se rétrograder en dessous d'admin.",
           "lastAdmin": "Impossible de rétrograder le·la dernier·ère admin de l'espace — promouvez d'abord un·e autre admin.",
           "missingKeycloakLink": "Le compte de ce·tte membre n'est pas complètement provisionné. Contactez le support pour réparer le lien avant de modifier le rôle.",
