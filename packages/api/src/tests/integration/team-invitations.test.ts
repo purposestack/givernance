@@ -63,6 +63,10 @@ const fakeKeycloakAdmin: KeycloakAdminClient = {
   // updateUser for the team-member PATCH endpoint; the invitation flow
   // never calls it (firstName/lastName arrive at createUser time).
   updateUser: vi.fn(async () => {}),
+  // ADR-021 — used by the `DELETE /v1/users/:id` cleanup path; team-
+  // invite tests don't exercise it directly but the stub must exist
+  // for type parity with the KeycloakAdminClient interface.
+  deleteUser: vi.fn(async () => {}),
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
   _circuitState: () => "closed",

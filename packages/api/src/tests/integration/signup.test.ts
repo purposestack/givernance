@@ -76,6 +76,8 @@ const fakeKeycloakAdmin: KeycloakAdminClient = {
   // Stubbed for parity with the production interface — issue #161 added
   // updateUser for the team-member PATCH endpoint, signup never calls it.
   updateUser: vi.fn(async () => {}),
+  // ADR-021 — soft-delete cleanup path; signup never calls it directly.
+  deleteUser: vi.fn(async () => {}),
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
   _circuitState: () => "closed",

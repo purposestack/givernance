@@ -197,3 +197,109 @@ export async function isSessionBlocklisted(jti: string | undefined): Promise<boo
     return true;
   }
 }
+
+// ─── User-ID blocklist + active-row cache (ADR-021) ──────────────────────────
+//
+// `DELETE /v1/users/:id` blocklists the user's Keycloak `sub` so any of
+// their already-issued access tokens are rejected at the auth boundary
+// even though the JWT signature still validates. This closes the window
+// between application soft-delete and access-token expiry. The blocklist
+// also short-circuits the per-request active-row lookup for revoked
+// users — see `isUserBlocklisted` below.
+//
+// The active-row cache (`auth:active-user:<sub>:<orgId>`) memoises the
+// "this JWT subject corresponds to an active `users` row in this org"
+// answer for ~30s so the auth plugin doesn't hit Postgres on every call.
+// A miss falls through to a DB query and writes the result; a soft-delete
+// invalidates the key so the next request observes the new state.
+
+const USER_BLOCKLIST_PREFIX = "auth:user-blocklist:";
+const ACTIVE_USER_CACHE_PREFIX = "auth:active-user:";
+/** Default TTL for the active-row cache. Soft-delete invalidates the key directly. */
+export const ACTIVE_USER_CACHE_TTL_SECONDS = 30;
+
+function userBlocklistKey(keycloakId: string): string {
+  return `${USER_BLOCKLIST_PREFIX}${keycloakId}`;
+}
+
+function activeUserCacheKey(keycloakId: string, orgId: string): string {
+  return `${ACTIVE_USER_CACHE_PREFIX}${keycloakId}:${orgId}`;
+}
+
+/**
+ * Mark a Keycloak `sub` as revoked. Used by `DELETE /v1/users/:id` to
+ * close the access-token-TTL window after the application soft-delete.
+ * `ttlSeconds` should be at least the realm's max access-token TTL
+ * (default 1 hour for Givernance — generous so the entry is gone well
+ * after any access token would naturally expire).
+ */
+export async function blocklistUser(keycloakId: string, ttlSeconds = 3600): Promise<void> {
+  await redis.setex(userBlocklistKey(keycloakId), Math.max(ttlSeconds, 1), "1");
+}
+
+/**
+ * Returns `true` when the user's Keycloak `sub` was blocklisted (e.g. by
+ * a soft-delete). Same fail-closed semantics as `isSessionBlocklisted`:
+ * a Redis blip surfaces as 401, not silent accept.
+ */
+export async function isUserBlocklisted(keycloakId: string | undefined): Promise<boolean> {
+  if (!keycloakId) return false;
+  try {
+    const hit = await redis.get(userBlocklistKey(keycloakId));
+    return hit !== null;
+  } catch (err) {
+    logger.error({ err, keycloakId }, "user blocklist lookup failed — failing closed");
+    return true;
+  }
+}
+
+/**
+ * Look up the active-row cache. Returns:
+ *   - `"active"` — a `users` row exists for `(keycloak_id, org_id)` with `deleted_at IS NULL`
+ *   - `"missing"` — no active row (cached negative)
+ *   - `null` — not in cache; caller should query Postgres
+ *
+ * The cache is intentionally short-TTL so a soft-delete propagates without
+ * needing a fanout invalidation; for zero-second propagation use the
+ * `blocklistUser` path which closes the door immediately.
+ */
+export async function getActiveUserCache(
+  keycloakId: string,
+  orgId: string,
+): Promise<"active" | "missing" | null> {
+  try {
+    const hit = await redis.get(activeUserCacheKey(keycloakId, orgId));
+    if (hit === "1") return "active";
+    if (hit === "0") return "missing";
+    return null;
+  } catch (err) {
+    logger.error({ err, keycloakId, orgId }, "active-user cache read failed");
+    return null;
+  }
+}
+
+/** Write the cache with a short TTL after a successful (or negative) DB lookup. */
+export async function setActiveUserCache(
+  keycloakId: string,
+  orgId: string,
+  state: "active" | "missing",
+  ttlSeconds = ACTIVE_USER_CACHE_TTL_SECONDS,
+): Promise<void> {
+  try {
+    await redis.setex(activeUserCacheKey(keycloakId, orgId), ttlSeconds, state === "active" ? "1" : "0");
+  } catch (err) {
+    logger.error({ err, keycloakId, orgId }, "active-user cache write failed");
+  }
+}
+
+/** Drop the cache for a (sub, orgId) pair after a soft-delete or rejoin. */
+export async function invalidateActiveUserCache(
+  keycloakId: string,
+  orgId: string,
+): Promise<void> {
+  try {
+    await redis.del(activeUserCacheKey(keycloakId, orgId));
+  } catch (err) {
+    logger.error({ err, keycloakId, orgId }, "active-user cache invalidation failed");
+  }
+}

@@ -4,12 +4,13 @@ import { createHash } from "node:crypto";
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { auditLogs, outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
 import { keycloakAdmin } from "../../lib/keycloak-admin.js";
+import { blocklistUser, invalidateActiveUserCache } from "../session/service.js";
 import {
   DataArrayResponse,
   DataResponse,
@@ -141,7 +142,17 @@ export async function userRoutes(app: FastifyInstance) {
           })
           .from(users)
           .innerJoin(tenants, eq(tenants.id, users.orgId))
-          .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)));
+          .where(
+            and(
+              eq(users.keycloakId, userId),
+              eq(users.orgId, orgId),
+              // ADR-021 — soft-deleted users are invisible to /me even
+              // if their JWT still validates (the auth plugin's user
+              // blocklist also catches this; this is the belt to the
+              // suspenders).
+              isNull(users.deletedAt),
+            ),
+          );
         return r;
       });
 
@@ -200,7 +211,13 @@ export async function userRoutes(app: FastifyInstance) {
         const [existing] = await tx
           .select({ id: users.id, locale: users.locale })
           .from(users)
-          .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId)))
+          .where(
+            and(
+              eq(users.keycloakId, userId),
+              eq(users.orgId, orgId),
+              isNull(users.deletedAt),
+            ),
+          )
           .limit(1);
         if (!existing) return null;
 
@@ -298,15 +315,17 @@ export async function userRoutes(app: FastifyInstance) {
       const offset = (page - 1) * perPage;
 
       const { rows, total } = await withTenantContext(orgId, async (tx) => {
+        // ADR-021 — soft-deleted rows are excluded from the members list.
+        const activeFilter = and(eq(users.orgId, orgId), isNull(users.deletedAt));
         const countRows = await tx
           .select({ total: sql<number>`count(*)::int` })
           .from(users)
-          .where(eq(users.orgId, orgId));
+          .where(activeFilter);
         const countResult = countRows[0]?.total ?? 0;
         const data = await tx
           .select()
           .from(users)
-          .where(eq(users.orgId, orgId))
+          .where(activeFilter)
           .orderBy(users.firstName, users.lastName, users.email)
           .limit(perPage)
           .offset(offset);
@@ -441,6 +460,8 @@ export async function userRoutes(app: FastifyInstance) {
       const t = resolveTranslations(request);
 
       const result = await withTenantContext(orgId, async (tx) => {
+        // ADR-021 — soft-deleted users are not editable. The 404 path
+        // is the same as cross-tenant or non-existent (no enumeration).
         const [existing] = await tx
           .select({
             id: users.id,
@@ -450,7 +471,7 @@ export async function userRoutes(app: FastifyInstance) {
             role: users.role,
           })
           .from(users)
-          .where(and(eq(users.id, id), eq(users.orgId, orgId)))
+          .where(and(eq(users.id, id), eq(users.orgId, orgId), isNull(users.deletedAt)))
           .limit(1);
         if (!existing) return { kind: "not_found" as const };
 
@@ -654,7 +675,26 @@ export async function userRoutes(app: FastifyInstance) {
     },
   );
 
-  /** DELETE /v1/users/:id — remove user from tenant (org_admin only) */
+  /**
+   * DELETE /v1/users/:id — remove user from tenant (org_admin only).
+   *
+   * Per ADR-021 ("User Lifecycle"):
+   *  - **App**: soft-delete (`deleted_at = now()`, `keycloak_id = NULL`).
+   *    The row is preserved so audit FKs and history stay intact; listing
+   *    endpoints filter `deleted_at IS NULL` so the user disappears from
+   *    the members table immediately.
+   *  - **Keycloak**: delete the realm user. Frees the email for re-invite
+   *    (otherwise `createUser` 409s on accept) and drops their refresh
+   *    tokens.
+   *  - **Auth boundary**: blocklist the user's Keycloak `sub` so
+   *    already-issued access tokens are rejected at the auth plugin
+   *    layer until they expire naturally (closes the post-delete
+   *    access window — see ADR-021 "Auth boundary"). Active-row cache
+   *    invalidation is the belt to the blocklist's suspenders.
+   *  - **Already-deleted is idempotent**: a request for a soft-deleted
+   *    row returns 200 with the existing soft-deleted state (re-running
+   *    cleanup is safe).
+   */
   app.delete(
     "/users/:id",
     {
@@ -669,15 +709,56 @@ export async function userRoutes(app: FastifyInstance) {
       const orgId = request.auth?.orgId as string;
       const { id } = request.params as { id: string };
 
-      const deleted = await withTenantContext(orgId, async (tx) => {
-        const [row] = await tx
-          .delete(users)
+      const result = await withTenantContext(orgId, async (tx) => {
+        // Capture keycloakId before the soft-delete so we can fire KC
+        // deleteUser + blocklist after the tx commits. Selecting the
+        // current row (including soft-deleted) lets us short-circuit
+        // already-deleted as 200 OK.
+        const [existing] = await tx
+          .select({
+            id: users.id,
+            keycloakId: users.keycloakId,
+            deletedAt: users.deletedAt,
+          })
+          .from(users)
+          .where(and(eq(users.id, id), eq(users.orgId, orgId)))
+          .limit(1);
+        if (!existing) return { kind: "not_found" as const };
+
+        if (existing.deletedAt) {
+          // Idempotent: already soft-deleted, return the row as-is. KC
+          // cleanup may have failed previously; the post-commit hooks
+          // below run again to reconverge.
+          const [row] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, id))
+            .limit(1);
+          return {
+            kind: "already_soft_deleted" as const,
+            keycloakId: existing.keycloakId,
+            row,
+          };
+        }
+
+        // Soft-delete: clear keycloakId so any future query treating it
+        // as a foreign key into KC misses (the realm user is about to
+        // be deleted). Audit row picked up by the audit plugin.
+        const [updated] = await tx
+          .update(users)
+          .set({ deletedAt: new Date(), keycloakId: null, updatedAt: new Date() })
           .where(and(eq(users.id, id), eq(users.orgId, orgId)))
           .returning();
-        return row;
+        if (!updated) return { kind: "not_found" as const };
+
+        return {
+          kind: "soft_deleted" as const,
+          keycloakId: existing.keycloakId,
+          row: updated,
+        };
       });
 
-      if (!deleted) {
+      if (result.kind === "not_found") {
         const t = resolveTranslations(request);
         return reply.status(404).send({
           type: "https://httpproblems.com/http-status/404",
@@ -687,7 +768,37 @@ export async function userRoutes(app: FastifyInstance) {
         });
       }
 
-      return reply.status(200).send({ data: deleted });
+      // Post-commit reconciliation with KC + auth boundary. Best-effort:
+      // a KC blip leaves the row soft-deleted (which is correct from the
+      // app's perspective) and the operator can retry the DELETE — the
+      // idempotent branch above re-runs the cleanup. Failures are logged
+      // at warn so SRE can grep `user.removed.kc_sync_failed`.
+      const { keycloakId } = result;
+      if (keycloakId) {
+        try {
+          await keycloakAdmin().deleteUser(keycloakId);
+        } catch (err) {
+          request.log.warn(
+            { err, keycloakId, userId: id },
+            "user.removed.kc_sync_failed",
+          );
+        }
+        // Blocklist the sub regardless of KC delete outcome — closes the
+        // access-token window even if the KC user lingers. TTL covers
+        // the realm's max access-token lifetime; expiring this entry
+        // early is fine because the KC user is also gone (or being
+        // retried) so fresh tokens won't mint.
+        try {
+          await blocklistUser(keycloakId);
+        } catch (err) {
+          request.log.warn({ err, keycloakId }, "user.removed.blocklist_failed");
+        }
+        // Drop the active-row cache so the next request observes the
+        // soft-delete without waiting for the 30s TTL.
+        await invalidateActiveUserCache(keycloakId, orgId);
+      }
+
+      return reply.status(200).send({ data: result.row });
     },
   );
 }

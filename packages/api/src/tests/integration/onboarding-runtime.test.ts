@@ -78,6 +78,8 @@ function makeKcStub(overrides: Partial<KeycloakAdminClient> = {}): KeycloakAdmin
     // Issue #161 — production interface gained updateUser for the team-member
     // PATCH endpoint. Stubbed for parity; this suite never exercises it.
     updateUser: async () => {},
+    // ADR-021 — soft-delete cleanup path; never invoked by this suite.
+    deleteUser: async () => {},
     getOrganizationByAlias: async () => null,
     createIdentityProvider: async () => {},
     deleteIdentityProvider: async () => {},

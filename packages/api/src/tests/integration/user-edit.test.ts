@@ -50,6 +50,7 @@ const fakeKeycloakAdmin: KeycloakAdminClient = {
   resetUserPassword: vi.fn(async () => {}),
   setUserAttributes: kcSetUserAttributes,
   updateUser: kcUpdateUser,
+  deleteUser: vi.fn(async () => {}),
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
   _circuitState: () => "closed",
