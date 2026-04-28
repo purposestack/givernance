@@ -46,12 +46,15 @@ env:
     APP_URL: https://staging.givernance.org
     NEXT_PUBLIC_APP_URL: https://staging.givernance.org
     NEXT_PUBLIC_API_URL: https://api.staging.givernance.org
-    # Server-side SSR calls the API via the internal Docker network (ADR-011:
-    # `API_URL` is the server boundary, `NEXT_PUBLIC_API_URL` is the browser
-    # boundary — they intentionally differ). Without this, the dashboard page
-    # SSR falls back to the dev default `http://127.0.0.1:4000` and surfaces
-    # as ECONNREFUSED (next.js error digest visible in the browser).
-    API_URL: http://givernance-api:3000
+    # Server-side SSR calls the API endpoint here (ADR-011: `API_URL` is the
+    # server boundary, `NEXT_PUBLIC_API_URL` is the browser boundary — they
+    # may differ). We point at the public hostname rather than the internal
+    # Docker DNS because Kamal app containers are named with a per-deploy
+    # version suffix (givernance-api-<sha>) and Kamal does not register a
+    # stable `givernance-api` alias on the `kamal` network. Routing through
+    # the kamal-proxy + public hostname is the canonical Kamal pattern for
+    # inter-service calls and keeps the path identical to the browser one.
+    API_URL: https://api.staging.givernance.org
     NEXT_PUBLIC_KEYCLOAK_URL: https://auth.staging.givernance.org
     S3_ENDPOINT: http://givernance-minio:9000
     S3_ACCESS_KEY_ID: admin
