@@ -16,6 +16,16 @@ const LogLevel = Type.Union(
   { default: "info" },
 );
 
+const EmailProvider = Type.Union(
+  [
+    /** Mailpit / nodemailer SMTP — local dev default, also the staging fallback if Resend is unavailable. */
+    Type.Literal("mailpit"),
+    /** Resend HTTP API — staging / prod transactional path (issue #190, ADR docs/05 §3.1). */
+    Type.Literal("resend"),
+  ],
+  { default: "mailpit" },
+);
+
 const EnvSchema = Type.Object({
   /** PostgreSQL connection string (owner role, bypasses RLS) */
   DATABASE_URL: Type.String({ minLength: 1 }),
@@ -41,6 +51,20 @@ const EnvSchema = Type.Object({
   STRIPE_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
   /** ExchangeRate-API key used for currency conversion refreshes */
   EXCHANGE_RATE_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /** Outbound email backend — `mailpit` (SMTP / dev) or `resend` (HTTP API / staging+prod) */
+  EMAIL_PROVIDER: EmailProvider,
+  /**
+   * RFC 5322 From header for outbound mail. Used by both backends; falls
+   * back to `SMTP_FROM` (the legacy name) for dev `.env` files that haven't
+   * migrated yet — see `resolveEmailFrom()` below.
+   */
+  EMAIL_FROM: Type.Optional(Type.String({ minLength: 1 })),
+  /**
+   * Resend API key. Required when `EMAIL_PROVIDER=resend`; the runtime check
+   * lives in `lib/email.ts` so the provider switch can crash with a helpful
+   * message at boot rather than at first send.
+   */
+  RESEND_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
   /** SMTP host for outbound mail — defaults to local Mailpit */
   SMTP_HOST: Type.String({ minLength: 1, default: "localhost" }),
   /** SMTP port (1025 for Mailpit, 587 for submission, 465 for SMTPS) */
@@ -49,8 +73,8 @@ const EnvSchema = Type.Object({
   SMTP_USER: Type.Optional(Type.String()),
   /** SMTP password — leave unset (empty) for auth-less dev relays like Mailpit */
   SMTP_PASS: Type.Optional(Type.String()),
-  /** RFC 5322 From header for outbound mail */
-  SMTP_FROM: Type.String({ minLength: 1, default: "Givernance <no-reply@givernance.local>" }),
+  /** Legacy alias for EMAIL_FROM — kept so dev `.env` files don't break in this PR's release window. */
+  SMTP_FROM: Type.Optional(Type.String({ minLength: 1 })),
   /** Public URL of the web app — used to build verification links sent by email */
   APP_URL: Type.String({ minLength: 1, default: "http://localhost:3000" }),
 });
@@ -67,3 +91,13 @@ if (!Value.Check(EnvSchema, value)) {
 }
 
 export const env: WorkerEnv = value;
+
+/**
+ * RFC 5322 From header for outbound mail. Prefers the new `EMAIL_FROM` name
+ * (used by both backends) and falls back to the legacy `SMTP_FROM` so a dev
+ * upgrading their `.env` doesn't get a broken send during the migration
+ * window. Default mirrors the local Mailpit hostname.
+ */
+export function resolveEmailFrom(): string {
+  return env.EMAIL_FROM ?? env.SMTP_FROM ?? "Givernance <no-reply@givernance.local>";
+}

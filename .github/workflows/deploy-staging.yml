@@ -46,6 +46,10 @@ jobs:
           KC_PASS="${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }}"
           KC_CLIENT_SECRET="${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET || 'staging_keycloak_client_secret_123' }}"
           SESSION_SEC="${{ secrets.SESSION_SECRET || 'staging_session_secret_123' }}"
+          # Resend API key — required because deploy-staging.yml sets
+          # EMAIL_PROVIDER=resend; missing key crashes the worker on first
+          # send. No fallback: an unset secret here is a deploy bug.
+          RESEND_KEY="${{ secrets.RESEND_API_KEY }}"
 
           cat <<EOF > .kamal/secrets
           GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
@@ -60,6 +64,7 @@ jobs:
           REDIS_URL=redis://:$REDIS_PASS@givernance-redis:6379
           S3_SECRET_ACCESS_KEY=$MINIO_PASS
           KEYCLOAK_ADMIN_CLIENT_SECRET=$KC_CLIENT_SECRET
+          RESEND_API_KEY=$RESEND_KEY
           EOF
 
       - name: Build and push Keycloak image

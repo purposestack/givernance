@@ -62,6 +62,12 @@ env:
     S3_ACCESS_KEY_ID: admin
     KEYCLOAK_URL: https://auth.staging.givernance.org
     KEYCLOAK_INTERNAL_URL: http://givernance-keycloak:8080
+    # Worker email backend — issue #190 / docs/05 §3.1. Resend handles
+    # transactional sends (signup verification, team invitations) so
+    # tenant onboarding flows on staging actually deliver mail. Local
+    # dev keeps `mailpit` (the worker's default) — see .env.example.
+    EMAIL_PROVIDER: resend
+    EMAIL_FROM: Givernance Staging <noreply@staging.givernance.org>
   secret:
     - POSTGRES_PASSWORD
     - REDIS_PASSWORD
@@ -73,6 +79,7 @@ env:
     - REDIS_URL
     - S3_SECRET_ACCESS_KEY
     - KEYCLOAK_ADMIN_CLIENT_SECRET
+    - RESEND_API_KEY
 
 # Configure builder setup.
 builder:
