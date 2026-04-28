@@ -14,6 +14,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # Build all workspace projects
 RUN pnpm run -r build
 
+# Install tools needed for Kamal remote exec of scripts
+RUN apk add --no-cache bash curl python3
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
