@@ -156,15 +156,10 @@ function PaymentForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-      <button
-        type="button"
-        onClick={onBack}
-        disabled={submitting}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-on-surface-variant hover:text-on-surface disabled:opacity-50 disabled:cursor-not-allowed"
-      >
+      <Button variant="ghost" size="sm" onClick={onBack} disabled={submitting}>
         <ArrowLeft size={16} aria-hidden="true" />
         {t("actions.back")}
-      </button>
+      </Button>
 
       <div className="rounded-2xl border border-outline-variant bg-surface px-4 py-3 text-sm text-on-surface-variant">
         <p className="text-on-surface">{t("summary.title", { amount: amountSummary })}</p>
