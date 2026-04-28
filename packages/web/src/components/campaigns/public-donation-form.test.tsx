@@ -3,6 +3,22 @@ import { ApiProblem } from "@/lib/api";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 import { mockToast, render, screen, userEvent, waitFor } from "../../tests/test-utils";
 
+// Stub Stripe.js so the Payment Element step renders without trying to load
+// the real script in jsdom. We don't assert anything inside the iframe — the
+// integration test for confirmPayment lives in Stripe's own test mode.
+vi.mock("@stripe/stripe-js", () => ({
+  loadStripe: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@stripe/react-stripe-js", () => ({
+  Elements: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="stripe-elements">{children}</div>
+  ),
+  PaymentElement: () => <div data-testid="stripe-payment-element" />,
+  useStripe: () => null,
+  useElements: () => null,
+}));
+
 describe("PublicDonationForm", () => {
   it("shows inline validation errors before submission", async () => {
     const user = userEvent.setup();
@@ -13,6 +29,7 @@ describe("PublicDonationForm", () => {
         colorPrimary="#096447"
         locale="en"
         goalAmountCents={50000}
+        publishableKey={null}
       />,
     );
 
@@ -24,11 +41,12 @@ describe("PublicDonationForm", () => {
     expect(screen.getByText("Enter a donation amount.")).toBeInTheDocument();
   });
 
-  it("creates a donation intent with trimmed values and cents", async () => {
+  it("creates a donation intent and transitions to the Payment Element step", async () => {
     const user = userEvent.setup();
 
     vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
       clientSecret: "pi_secret_123",
+      stripeAccountId: "acct_test_123",
     });
 
     render(
@@ -37,6 +55,7 @@ describe("PublicDonationForm", () => {
         colorPrimary="#096447"
         locale="en"
         goalAmountCents={50000}
+        publishableKey="pk_test_dummy"
       />,
     );
 
@@ -62,9 +81,39 @@ describe("PublicDonationForm", () => {
     );
 
     expect(mockToast.success).toHaveBeenCalledWith(
-      "Your donation is ready. The Stripe payment step is the next integration.",
+      "Donation prepared — enter your card details below.",
     );
-    expect(await screen.findByText("Next step")).toBeInTheDocument();
+    // Transition: details form is gone, Stripe Elements mounted.
+    expect(await screen.findByTestId("stripe-payment-element")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^First name/)).not.toBeInTheDocument();
+  });
+
+  it("blocks at payment step with a clear message when publishableKey is not configured", async () => {
+    const user = userEvent.setup();
+
+    vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      clientSecret: "pi_secret_123",
+      stripeAccountId: "acct_test_123",
+    });
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#096447"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey={null}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^First name/), "Jane");
+    await user.type(screen.getByLabelText(/^Last name/), "Doe");
+    await user.type(screen.getByLabelText(/^Email/), "jane@example.org");
+    await user.type(screen.getByLabelText(/^Amount/), "50");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    expect(await screen.findByText(/NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("stripe-payment-element")).not.toBeInTheDocument();
   });
 
   it("shows an API error toast when payment preparation fails", async () => {
@@ -85,6 +134,7 @@ describe("PublicDonationForm", () => {
         colorPrimary="#096447"
         locale="en"
         goalAmountCents={null}
+        publishableKey={null}
       />,
     );
 

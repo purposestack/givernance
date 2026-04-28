@@ -4,6 +4,7 @@ import { HeartHandshake, LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useState } from "react";
 
+import { PublicDonationPaymentStep } from "@/components/campaigns/public-donation-payment-step";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,6 +27,14 @@ interface PublicDonationFormProps {
   locale: string;
   goalAmountCents: number | null;
   defaultCurrency?: PublicDonationCurrency;
+  /**
+   * Stripe platform publishable key (`pk_test_...` / `pk_live_...`). Threaded
+   * from the server component so we don't have to re-evaluate
+   * `process.env.NEXT_PUBLIC_*` at every keystroke. `null` when the env var
+   * is not set — the form still collects donor info but blocks at the
+   * payment step with a clear message.
+   */
+  publishableKey: string | null;
 }
 
 interface PublicDonationFormValues {
@@ -41,6 +50,13 @@ interface FormErrors {
   lastName?: string;
   email?: string;
   amount?: string;
+}
+
+interface PaymentSession {
+  clientSecret: string;
+  stripeAccountId: string;
+  amountCents: number;
+  currency: PublicDonationCurrency;
 }
 
 const SUGGESTED_AMOUNTS = [25, 50, 100] as const;
@@ -60,15 +76,17 @@ export function PublicDonationForm({
   locale,
   goalAmountCents,
   defaultCurrency = "EUR",
+  publishableKey,
 }: PublicDonationFormProps) {
   const t = useTranslations("publicDonationPage.form");
+  const tPayment = useTranslations("publicDonationPage.payment");
   const [values, setValues] = useState<PublicDonationFormValues>({
     ...DEFAULT_VALUES,
     currency: defaultCurrency,
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [session, setSession] = useState<PaymentSession | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -80,11 +98,12 @@ export function PublicDonationForm({
     setIsSubmitting(true);
 
     try {
+      const amountCents = parseAmountToCents(values.amount);
       const result = await CampaignPublicPageService.createPublicDonationIntent(
         createClientApiClient(),
         campaignId,
         {
-          amountCents: parseAmountToCents(values.amount),
+          amountCents,
           currency: values.currency,
           email: values.email.trim(),
           firstName: values.firstName.trim(),
@@ -93,7 +112,12 @@ export function PublicDonationForm({
         createIdempotencyKey(),
       );
 
-      setClientSecret(result.clientSecret);
+      setSession({
+        clientSecret: result.clientSecret,
+        stripeAccountId: result.stripeAccountId,
+        amountCents,
+        currency: values.currency,
+      });
       toast.success(t("success.intentCreated"));
     } catch (error) {
       const message =
@@ -125,6 +149,72 @@ export function PublicDonationForm({
 
       <p className="mt-3 text-sm leading-6 text-on-surface-variant">{t("description")}</p>
 
+      {session ? (
+        publishableKey ? (
+          <div className="mt-6">
+            <PublicDonationPaymentStep
+              clientSecret={session.clientSecret}
+              stripeAccountId={session.stripeAccountId}
+              publishableKey={publishableKey}
+              colorPrimary={colorPrimary}
+              amountSummary={formatCurrency(session.amountCents, locale, session.currency)}
+              onPaid={() => {
+                toast.success(tPayment("success.title"));
+              }}
+            />
+          </div>
+        ) : (
+          <p className="mt-6 rounded-2xl border border-error bg-error-container px-4 py-3 text-sm text-on-error-container">
+            {tPayment("errors.missingPublishableKey")}
+          </p>
+        )
+      ) : (
+        <DonorDetailsForm
+          values={values}
+          errors={errors}
+          isSubmitting={isSubmitting}
+          colorPrimary={colorPrimary}
+          locale={locale}
+          goalAmountCents={goalAmountCents}
+          defaultCurrency={defaultCurrency}
+          onValuesChange={setValues}
+          onErrorsChange={setErrors}
+          onSubmit={handleSubmit}
+        />
+      )}
+    </section>
+  );
+}
+
+function DonorDetailsForm({
+  values,
+  errors,
+  isSubmitting,
+  colorPrimary,
+  locale,
+  goalAmountCents,
+  defaultCurrency,
+  onValuesChange,
+  onErrorsChange,
+  onSubmit,
+}: {
+  values: PublicDonationFormValues;
+  errors: FormErrors;
+  isSubmitting: boolean;
+  colorPrimary: string;
+  locale: string;
+  goalAmountCents: number | null;
+  defaultCurrency: PublicDonationCurrency;
+  onValuesChange: (next: (current: PublicDonationFormValues) => PublicDonationFormValues) => void;
+  onErrorsChange: (next: (current: FormErrors) => FormErrors) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  // Re-bind locally so next-intl's typed lookups stay specialised — passing
+  // a hoisted `t` as a prop loses the namespace generic and triggers
+  // TS2589 (`Type instantiation is excessively deep`).
+  const t = useTranslations("publicDonationPage.form");
+  return (
+    <>
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
         {SUGGESTED_AMOUNTS.map((amount) => (
           <button
@@ -137,8 +227,8 @@ export function PublicDonationForm({
                 values.amount === String(amount) ? getReadableTextColor(colorPrimary) : undefined,
             }}
             onClick={() => {
-              setValues((current) => ({ ...current, amount: String(amount) }));
-              setErrors((current) => ({ ...current, amount: undefined }));
+              onValuesChange((current) => ({ ...current, amount: String(amount) }));
+              onErrorsChange((current) => ({ ...current, amount: undefined }));
             }}
           >
             <span className="block text-center text-lg font-semibold sm:text-xl">
@@ -158,7 +248,7 @@ export function PublicDonationForm({
         </p>
       ) : null}
 
-      <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
+      <form className="mt-6 space-y-4" onSubmit={onSubmit} noValidate>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             inputId="public-donation-first-name"
@@ -170,8 +260,8 @@ export function PublicDonationForm({
                 id="public-donation-first-name"
                 value={values.firstName}
                 onChange={(event) => {
-                  setValues((current) => ({ ...current, firstName: event.target.value }));
-                  setErrors((current) => ({ ...current, firstName: undefined }));
+                  onValuesChange((current) => ({ ...current, firstName: event.target.value }));
+                  onErrorsChange((current) => ({ ...current, firstName: undefined }));
                 }}
                 placeholder={t("fields.firstNamePlaceholder")}
                 aria-invalid={Boolean(errors.firstName)}
@@ -189,8 +279,8 @@ export function PublicDonationForm({
                 id="public-donation-last-name"
                 value={values.lastName}
                 onChange={(event) => {
-                  setValues((current) => ({ ...current, lastName: event.target.value }));
-                  setErrors((current) => ({ ...current, lastName: undefined }));
+                  onValuesChange((current) => ({ ...current, lastName: event.target.value }));
+                  onErrorsChange((current) => ({ ...current, lastName: undefined }));
                 }}
                 placeholder={t("fields.lastNamePlaceholder")}
                 aria-invalid={Boolean(errors.lastName)}
@@ -211,8 +301,8 @@ export function PublicDonationForm({
               type="email"
               value={values.email}
               onChange={(event) => {
-                setValues((current) => ({ ...current, email: event.target.value }));
-                setErrors((current) => ({ ...current, email: undefined }));
+                onValuesChange((current) => ({ ...current, email: event.target.value }));
+                onErrorsChange((current) => ({ ...current, email: undefined }));
               }}
               placeholder={t("fields.emailPlaceholder")}
               aria-invalid={Boolean(errors.email)}
@@ -238,8 +328,8 @@ export function PublicDonationForm({
                 step="1"
                 value={values.amount}
                 onChange={(event) => {
-                  setValues((current) => ({ ...current, amount: event.target.value }));
-                  setErrors((current) => ({ ...current, amount: undefined }));
+                  onValuesChange((current) => ({ ...current, amount: event.target.value }));
+                  onErrorsChange((current) => ({ ...current, amount: undefined }));
                 }}
                 placeholder={t("fields.amountPlaceholder")}
                 aria-invalid={Boolean(errors.amount)}
@@ -257,7 +347,7 @@ export function PublicDonationForm({
             <Select
               value={values.currency}
               onValueChange={(currency) =>
-                setValues((current) => ({
+                onValuesChange((current) => ({
                   ...current,
                   currency: currency as PublicDonationCurrency,
                 }))
@@ -276,13 +366,6 @@ export function PublicDonationForm({
             </Select>
           }
         />
-
-        {clientSecret ? (
-          <div className="rounded-2xl border border-outline-variant bg-surface px-4 py-3 text-sm text-on-surface-variant">
-            <p className="font-medium text-on-surface">{t("success.nextStepTitle")}</p>
-            <p className="mt-1">{t("success.nextStepBody")}</p>
-          </div>
-        ) : null}
 
         <Button
           type="submit"
@@ -304,7 +387,7 @@ export function PublicDonationForm({
           {t("footnote")}
         </p>
       </form>
-    </section>
+    </>
   );
 }
 

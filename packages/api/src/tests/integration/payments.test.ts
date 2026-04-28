@@ -8,10 +8,16 @@ import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, signToken, signTokenB } from "../helpers/auth.js";
 
 // vi.hoisted runs before vi.mock hoisting — ensures mocks are defined before use
-const { mockQueueAdd, mockVerifyStripeWebhook, mockStartStripeOnboarding } = vi.hoisted(() => ({
+const {
+  mockQueueAdd,
+  mockVerifyStripeWebhook,
+  mockStartStripeOnboarding,
+  mockGetStripeConnectStatus,
+} = vi.hoisted(() => ({
   mockQueueAdd: vi.fn().mockResolvedValue({ id: "mock-job-id" }),
   mockVerifyStripeWebhook: vi.fn(),
   mockStartStripeOnboarding: vi.fn(),
+  mockGetStripeConnectStatus: vi.fn(),
 }));
 
 // Mock BullMQ Queue to avoid needing a real Redis queue connection for route tests
@@ -29,6 +35,7 @@ vi.mock("../../modules/payments/service.js", async (importOriginal) => {
     ...actual,
     verifyStripeWebhook: (...args: unknown[]) => mockVerifyStripeWebhook(...args),
     startStripeOnboarding: (...args: unknown[]) => mockStartStripeOnboarding(...args),
+    getStripeConnectStatus: (...args: unknown[]) => mockGetStripeConnectStatus(...args),
   };
 });
 
@@ -47,6 +54,91 @@ afterAll(async () => {
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+// ─── Stripe Connect Status ─────────────────────────────────────────────────
+
+describe("GET /v1/admin/stripe-connect", () => {
+  it("returns 401 without auth", async () => {
+    const res = await app.inject({ method: "GET", url: "/v1/admin/stripe-connect" });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns 403 for non-admin user (positive boundary check)", async () => {
+    const token = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/stripe-connect",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("returns the not-connected shape for a fresh tenant", async () => {
+    mockGetStripeConnectStatus.mockResolvedValueOnce({
+      accountId: null,
+      chargesEnabled: false,
+      payoutsEnabled: false,
+      detailsSubmitted: false,
+    });
+
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/stripe-connect",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      data: {
+        accountId: null,
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        detailsSubmitted: false,
+      },
+    });
+  });
+
+  it("returns the live capability flags when the tenant has a connected account", async () => {
+    mockGetStripeConnectStatus.mockResolvedValueOnce({
+      accountId: "acct_test_456",
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+    });
+
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/stripe-connect",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { accountId: string; chargesEnabled: boolean } }>();
+    expect(body.data.accountId).toBe("acct_test_456");
+    expect(body.data.chargesEnabled).toBe(true);
+  });
+
+  it("masks Stripe errors as 502 (no provider details leak)", async () => {
+    mockGetStripeConnectStatus.mockRejectedValueOnce(new Error("Stripe is on fire"));
+
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/stripe-connect",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(502);
+    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    expect(body.type).toBe("https://httpproblems.com/http-status/502");
+    expect(body.title).toBe("Bad Gateway");
+    expect(body.status).toBe(502);
+    expect(body.detail).not.toContain("on fire");
+    expect(body.detail).toContain("Payment provider error");
+  });
 });
 
 // ─── Stripe Connect Onboarding ─────────────────────────────────────────────

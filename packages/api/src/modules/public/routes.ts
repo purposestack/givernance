@@ -39,6 +39,7 @@ const DonateHeaders = Type.Object({
 
 const DonateResponse = Type.Object({
   clientSecret: Type.String(),
+  stripeAccountId: Type.String(),
 });
 
 const PublicPageCreateBody = CampaignPublicPageSchema;

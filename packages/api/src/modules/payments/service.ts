@@ -113,3 +113,46 @@ export async function findTenantByStripeAccount(stripeAccountId: string) {
 
   return tenant ?? null;
 }
+
+export interface StripeConnectStatus {
+  accountId: string | null;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+}
+
+/**
+ * Read the current Stripe Connect status for a tenant. Returns a "not connected"
+ * shape when the tenant has no `stripe_account_id` yet, so the settings UI can
+ * render a single panel without a separate 404 path.
+ *
+ * When the account exists, we hit `accounts.retrieve` so the booleans reflect
+ * Stripe's truth — the local DB only stores the account id, not its capabilities.
+ * Issue #62 will replace the live retrieve with cached state populated by the
+ * `account.updated` webhook, but the retrieve-on-read shape stays the same.
+ */
+export async function getStripeConnectStatus(orgId: string): Promise<StripeConnectStatus> {
+  const [tenant] = await db
+    .select({ stripeAccountId: tenants.stripeAccountId })
+    .from(tenants)
+    .where(eq(tenants.id, orgId));
+
+  if (!tenant?.stripeAccountId) {
+    return {
+      accountId: null,
+      chargesEnabled: false,
+      payoutsEnabled: false,
+      detailsSubmitted: false,
+    };
+  }
+
+  const stripe = getStripe();
+  const account = await stripe.accounts.retrieve(tenant.stripeAccountId);
+
+  return {
+    accountId: tenant.stripeAccountId,
+    chargesEnabled: account.charges_enabled,
+    payoutsEnabled: account.payouts_enabled,
+    detailsSubmitted: account.details_submitted,
+  };
+}

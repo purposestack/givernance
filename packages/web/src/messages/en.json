@@ -888,6 +888,27 @@
       "errorGeneric": "Unable to download the export right now.",
       "errorProblem": "Export failed (HTTP {status}).",
       "lastDownloaded": "Last download: {value}"
+    },
+    "stripeConnect": {
+      "badge": "Payments",
+      "title": "Stripe Connect",
+      "description": "Connect your Stripe account so donors can pay through campaign pages. Givernance never holds funds — payouts go directly to your account.",
+      "adminOnly": "Only organisation admins can manage payments.",
+      "status": {
+        "notConnected": "Not connected",
+        "pending": "Onboarding incomplete",
+        "connected": "Connected"
+      },
+      "actions": {
+        "connect": "Connect Stripe",
+        "continue": "Continue onboarding",
+        "manage": "Re-open Stripe onboarding",
+        "starting": "Opening Stripe…"
+      },
+      "errors": {
+        "load": "Unable to load Stripe status right now.",
+        "start": "Unable to start Stripe onboarding right now."
+      }
     }
   },
   "profile": {
@@ -1473,11 +1494,30 @@
         "generic": "Something went wrong while preparing payment. Please try again."
       },
       "success": {
-        "intentCreated": "Your donation is ready. The Stripe payment step is the next integration.",
+        "intentCreated": "Donation prepared — enter your card details below.",
         "nextStepTitle": "Next step",
-        "nextStepBody": "A payment intent has been created successfully through the API. Redirecting to Stripe or rendering Elements will be added in the next increment."
+        "nextStepBody": "Use the card form to complete your donation securely with Stripe."
       },
-      "footnote": "Submitting this form prepares a secure payment. This version of the page does not charge the card yet."
+      "footnote": "Submitting this form prepares a secure payment. Your card will be charged on the next step."
+    },
+    "payment": {
+      "summary": {
+        "title": "You're donating {amount}",
+        "subtitle": "Powered by Stripe — your card details are sent directly to Stripe and never stored on our servers."
+      },
+      "actions": {
+        "pay": "Donate {amount}",
+        "paying": "Processing payment…"
+      },
+      "success": {
+        "title": "Thank you for your donation!",
+        "body": "We've received {amount}. A receipt is on its way to your inbox."
+      },
+      "errors": {
+        "generic": "Payment could not be completed. Please try a different card or contact support.",
+        "missingPublishableKey": "Stripe is not configured for this environment. Ask an admin to set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY."
+      },
+      "footnote": "Test mode: use card 4242 4242 4242 4242 with any future expiry and any CVC."
     }
   },
   "constituentForm": {

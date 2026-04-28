@@ -52,6 +52,11 @@ export interface PublicDonationIntentInput {
 
 export interface PublicDonationIntent {
   clientSecret: string;
+  /**
+   * Connected account the PaymentIntent lives on. Stripe.js needs this when
+   * confirming a direct-charge intent — `loadStripe(pk, { stripeAccount })`.
+   */
+  stripeAccountId: string;
 }
 
 export interface PublicDonationIntentResponse {

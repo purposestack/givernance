@@ -354,8 +354,11 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ data: { clientSecret: string } }>();
+    const body = res.json<{ data: { clientSecret: string; stripeAccountId: string } }>();
     expect(body.data.clientSecret).toBe("pi_test_123_secret_abc");
+    // Connect direct-charge: client must know which connected account
+    // it's confirming against, so Stripe.js can pass `stripeAccount`.
+    expect(body.data.stripeAccountId).toBe("acct_test_org_a");
 
     // Verify Stripe was called with correct params
     expect(mockPaymentIntentsCreate).toHaveBeenCalledWith(
