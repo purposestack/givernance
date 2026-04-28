@@ -13,6 +13,7 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { EmptyState } from "@/components/shared/empty-state";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
@@ -102,6 +103,7 @@ export default async function DashboardPage() {
           valueClassName="font-mono"
           icon={Banknote}
           color="primary"
+          trend={{ value: 14, label: "vs mois précédent" }}
         />
         <StatCard
           label={t("stats.activeCampaigns")}
@@ -109,6 +111,7 @@ export default async function DashboardPage() {
           description={t("stats.activeCampaignsHint")}
           icon={Megaphone}
           color="secondary"
+          trend={{ value: 5, label: "vs mois précédent" }}
         />
         <StatCard
           label={t("stats.donors")}
@@ -116,6 +119,7 @@ export default async function DashboardPage() {
           description={t("stats.newDonorsThisMonth", { count: newDonorsThisMonth })}
           icon={Users}
           color="tertiary"
+          trend={{ value: 2, label: "vs mois précédent" }}
         />
         <StatCard
           label={t("stats.grantDeadlines")}
@@ -281,6 +285,7 @@ function StatCard({
   valueClassName,
   icon: Icon,
   color = "primary",
+  trend,
 }: {
   label: string;
   value: string;
@@ -288,6 +293,7 @@ function StatCard({
   valueClassName?: string;
   icon?: React.ElementType;
   color?: "primary" | "secondary" | "tertiary" | "neutral";
+  trend?: { value: number; label: string };
 }) {
   const colorStyles = {
     primary: "bg-primary-fixed text-on-primary-fixed-variant",
@@ -297,16 +303,25 @@ function StatCard({
   };
 
   return (
-    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card">
+    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card group">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-on-surface-variant">{label}</p>
-        {Icon ? (
-          <div
-            className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorStyles[color]}`}
-          >
-            <Icon size={20} aria-hidden="true" />
-          </div>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {trend ? (
+            <div title={trend.label}>
+              <Badge variant={trend.value >= 0 ? "success" : "error"} className="text-[10px] px-1.5 py-0 h-5">
+                {trend.value > 0 ? "+" : ""}{trend.value}%
+              </Badge>
+            </div>
+          ) : null}
+          {Icon ? (
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-xl transition-transform group-hover:scale-105 ${colorStyles[color]}`}
+            >
+              <Icon size={20} aria-hidden="true" />
+            </div>
+          ) : null}
+        </div>
       </div>
       <p
         className={`mt-3 font-heading text-4xl font-normal leading-tight text-on-surface ${valueClassName ?? ""}`.trim()}

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Megaphone, MoreHorizontal, Pencil, XCircle } from "lucide-react";
+import { Megaphone, MoreHorizontal, Pencil, Search, XCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -26,6 +26,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
@@ -92,6 +100,16 @@ export function CampaignsTable({
   const t = useTranslations("campaigns");
   const [closeTarget, setCloseTarget] = useState<Campaign | null>(null);
   const [isClosing, setIsClosing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  const filteredCampaigns = useMemo(() => {
+    return campaigns.filter((c) => {
+      const matchesSearch = c.campaign.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "all" || c.campaign.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [campaigns, searchTerm, statusFilter]);
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -182,12 +200,16 @@ export function CampaignsTable({
           const raisedCents = stats?.totalRaisedCents ?? 0;
           const goalCents = campaign.goalAmountCents ?? 0;
           const progress = goalCents > 0 ? Math.min((raisedCents / goalCents) * 100, 100) : 0;
+          const ratioText = goalCents > 0 ? `${Math.round((raisedCents / goalCents) * 100)}%` : "N/A";
 
           return (
             <div className="min-w-44">
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="font-mono font-semibold tabular-nums text-on-surface">
                   {formatCurrency(raisedCents, locale)}
+                  <span className="ml-2 text-xs font-normal text-on-surface-variant">
+                    {ratioText}
+                  </span>
                 </span>
                 <span className="font-mono text-xs tabular-nums text-on-surface-variant">
                   {goalCents > 0 ? formatCurrency(goalCents, locale) : "—"}
@@ -256,10 +278,33 @@ export function CampaignsTable({
 
   return (
     <>
+      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant opacity-50" size={16} />
+          <Input
+            placeholder="Rechercher une campagne..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Tous les statuts" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous les statuts</SelectItem>
+            <SelectItem value="draft">Brouillon</SelectItem>
+            <SelectItem value="active">Actif</SelectItem>
+            <SelectItem value="closed">Fermé</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="transition-opacity duration-normal">
         <DataTable
           columns={columns}
-          data={campaigns}
+          data={filteredCampaigns}
           pagination={pagination}
           onPageChange={navigateToPage}
           onRowClick={(row) => router.push(`/campaigns/${row.original.campaign.id}`)}

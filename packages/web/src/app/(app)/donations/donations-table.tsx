@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Gift, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Gift, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -26,6 +26,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
@@ -61,6 +69,17 @@ export function DonationsTable({
   const t = useTranslations("donations");
   const [donationToDelete, setDonationToDelete] = useState<DonationListRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [receiptFilter, setReceiptFilter] = useState<string>("all");
+
+  const filteredDonations = useMemo(() => {
+    return donations.filter((d) => {
+      const name = donationDonorName(d)?.toLowerCase() ?? "";
+      const matchesSearch = name.includes(searchTerm.toLowerCase());
+      const matchesReceipt = receiptFilter === "all" || d.receiptStatus === receiptFilter;
+      return matchesSearch && matchesReceipt;
+    });
+  }, [donations, searchTerm, receiptFilter]);
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -196,10 +215,33 @@ export function DonationsTable({
 
   return (
     <>
+      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant opacity-50" size={16} />
+          <Input
+            placeholder="Rechercher un donateur..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={receiptFilter} onValueChange={setReceiptFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Reçus" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous les reçus</SelectItem>
+            <SelectItem value="generated">Générés</SelectItem>
+            <SelectItem value="pending">En attente</SelectItem>
+            <SelectItem value="failed">En erreur</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="transition-opacity duration-normal">
         <DataTable
           columns={columns}
-          data={donations}
+          data={filteredDonations}
           pagination={pagination}
           onPageChange={navigateToPage}
           onRowClick={(row) => router.push(`/donations/${row.original.id}`)}

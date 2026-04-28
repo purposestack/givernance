@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Pencil, Trash2, Users } from "lucide-react";
+import { MoreHorizontal, Pencil, Search, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -26,6 +26,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
@@ -84,6 +92,17 @@ export function ConstituentsTable({
   const tType = useTranslations("constituents.types");
   const [deleteTarget, setDeleteTarget] = useState<Constituent | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+
+  const filteredConstituents = useMemo(() => {
+    return constituents.filter((c) => {
+      const name = fullName(c).toLowerCase();
+      const matchesSearch = name.includes(searchTerm.toLowerCase());
+      const matchesType = typeFilter === "all" || c.type === typeFilter;
+      return matchesSearch && matchesType;
+    });
+  }, [constituents, searchTerm, typeFilter]);
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -163,6 +182,27 @@ export function ConstituentsTable({
         ),
       },
       {
+        id: "tags",
+        accessorKey: "tags",
+        header: () => t("columns.tags") || "Tags",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const tags = row.original.tags;
+          if (!tags || tags.length === 0) {
+            return <span className="text-on-surface-variant">—</span>;
+          }
+          return (
+            <div className="flex flex-wrap gap-1">
+              {tags.map((tag) => (
+                <Badge key={tag} variant="neutral" className="text-xs">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          );
+        },
+      },
+      {
         id: "lastDonation",
         header: () => t("columns.lastDonation"),
         enableSorting: false,
@@ -197,10 +237,35 @@ export function ConstituentsTable({
 
   return (
     <>
+      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant opacity-50" size={16} />
+          <Input
+            placeholder="Rechercher un contact..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Tous les types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous les types</SelectItem>
+            <SelectItem value="donor">Donateur</SelectItem>
+            <SelectItem value="volunteer">Bénévole</SelectItem>
+            <SelectItem value="member">Membre</SelectItem>
+            <SelectItem value="beneficiary">Bénéficiaire</SelectItem>
+            <SelectItem value="partner">Partenaire</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="transition-opacity duration-normal">
         <DataTable
           columns={columns}
-          data={constituents}
+          data={filteredConstituents}
           pagination={pagination}
           onPageChange={navigateToPage}
           onRowClick={(row) => router.push(`/constituents/${row.original.id}`)}

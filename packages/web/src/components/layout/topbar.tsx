@@ -48,8 +48,10 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
         <Menu size={20} aria-hidden="true" />
       </button>
 
-      <div className="flex min-w-0 items-center gap-2 text-sm text-text-secondary">
-        <span className="truncate font-medium text-text">{title ?? t("breadcrumbDefault")}</span>
+      <div className="flex min-w-0 items-center gap-2 text-sm">
+        <div className="flex items-center rounded-full bg-primary-fixed/30 px-3 py-1 text-on-primary-fixed-variant shadow-sm border border-primary-fixed/50">
+          <span className="truncate font-medium">{title ?? t("breadcrumbDefault")}</span>
+        </div>
       </div>
 
       <div className="relative mx-auto hidden max-w-[400px] flex-1 md:block">
