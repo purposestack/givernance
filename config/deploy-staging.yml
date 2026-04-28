@@ -78,6 +78,11 @@ env:
 builder:
   arch: amd64
   dockerfile: Dockerfile
+  args:
+    # The Next.js rewrite destination is baked into routes-manifest.json
+    # at build time (see Dockerfile ARG API_URL comment). `env.clear`
+    # injection at runtime cannot reach it.
+    API_URL: https://api.staging.givernance.org
 
 # Use accessories for external services
 accessories:
