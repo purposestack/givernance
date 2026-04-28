@@ -32,8 +32,7 @@
           class="gv-input<#if messagesPerField.existsError('username')> gv-input--error</#if>"
           value="${(auth.attemptedUsername!'')}"
           autofocus
-          autocomplete="email"
-          tabindex="1"
+          autocomplete="<#if !realm.loginWithEmailAllowed>username<#else>email</#if>"
           aria-invalid="${messagesPerField.existsError('username')?string('true','false')}"
         >
         <#if messagesPerField.existsError('username')>
@@ -43,7 +42,7 @@
         </#if>
       </div>
 
-      <button type="submit" class="gv-btn gv-btn--primary" tabindex="2">
+      <button type="submit" class="gv-btn gv-btn--primary">
         ${msg("doSubmit")}
       </button>
 

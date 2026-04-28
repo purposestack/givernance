@@ -23,18 +23,28 @@ import {
  *
  * Returns null for:
  * - localhost / single-part hostnames (local dev — no subdomain)
- * - known non-org subdomains: www, app, api, admin
+ * - known non-org subdomains: www, app, api, admin, staging, preview, dev, auth
+ * - in production: any hostname not ending in a trusted domain suffix to
+ *   prevent X-Forwarded-Host spoofing from poisoning the kc_org hint
  */
 function extractOrgAlias(host: string): string | null {
-  const hostname = host.split(":")[0] ?? ""; // strip port
+  const hostname = host.split(":")[0]?.toLowerCase() ?? ""; // strip port
   const parts = hostname.split(".");
-  if (parts.length < 3) return null; // no subdomain
+  if (parts.length < 3) return null; // no subdomain (localhost, etc.)
 
   const subdomain = parts[0] ?? "";
   if (!subdomain) return null;
 
-  const NON_ORG = new Set(["www", "app", "api", "admin"]);
+  const NON_ORG = new Set(["www", "app", "api", "admin", "staging", "preview", "dev", "auth"]);
   if (NON_ORG.has(subdomain)) return null;
+
+  // M2: In production, only accept org aliases from known domains to prevent
+  // X-Forwarded-Host spoofing from injecting an arbitrary kc_org value.
+  if (process.env.NODE_ENV === "production") {
+    const TRUSTED_SUFFIXES = [".givernance.org", ".givernance.eu"];
+    const hostnameWithDot = "." + hostname;
+    if (!TRUSTED_SUFFIXES.some((s) => hostnameWithDot.endsWith(s))) return null;
+  }
 
   return subdomain;
 }

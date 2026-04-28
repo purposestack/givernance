@@ -1,8 +1,12 @@
 /**
  * Shared layout for all auth pages (login, forgot-password, reset-password, SSO).
  * Matches the auth-layout / auth-card / auth-footer structure from base.css mockups.
+ *
+ * The locale picker is hoisted here so every pre-auth page (login, signup,
+ * invite/accept, forgot-password) inherits it without each page managing its own.
  */
 import { getTranslations } from "next-intl/server";
+import { LocalePicker } from "@/components/auth/locale-picker";
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations("common");
@@ -13,6 +17,9 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
       className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6"
     >
       {children}
+
+      {/* Locale picker — below the card, above the footer on all pre-auth pages */}
+      <LocalePicker />
 
       {/* Footer — shared across all auth pages */}
       <footer className="text-center text-xs tracking-wide text-text-muted">
