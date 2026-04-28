@@ -1,5 +1,6 @@
 /** User routes — user profile and org-admin user management */
 
+import { createHash } from "node:crypto";
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { auditLogs, outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
@@ -416,6 +417,20 @@ export async function userRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const orgId = request.auth?.orgId as string;
       const callerKcId = request.auth?.userId as string;
+      // Impersonation: when an admin acts on behalf of another user via
+      // the RFC 8693 `act` claim (issue #24, ADR-016), the JWT carries
+      // `{ sub: <subject>, act: { sub: <admin> } }`. The audit row's
+      // `userId` is always the subject; `actorId` is the impersonating
+      // admin (NULL under normal auth where they're the same principal,
+      // matching the convention in plugins/audit.ts M2 fix).
+      const actorKcId = request.auth?.act?.sub ?? null;
+      // Mirror the audit plugin's `ip_hash` / `user_agent` capture so the
+      // domain-specific audit row is self-contained — without these, the
+      // row is missing forensic context that the plugin's auto-row has but
+      // the more semantic `user.profile_updated` row doesn't.
+      const ipHash = createHash("sha256").update(request.ip).digest("hex").slice(0, 16);
+      const userAgentHeader = request.headers["user-agent"];
+      const userAgent = typeof userAgentHeader === "string" ? userAgentHeader : undefined;
       const { id } = request.params as { id: string };
       const body = request.body as {
         firstName?: string;
@@ -517,18 +532,26 @@ export async function userRoutes(app: FastifyInstance) {
 
         if (Object.keys(newValues).length > 0) {
           // Review E5 — `audit_logs.user_id` semantically means "who DID
-          // this", not "what was changed". The target's UUID belongs in
-          // `resource_id`. Using `callerKcId` here matches the convention
-          // used elsewhere in the audit module so RBAC forensics ("which
-          // admin renamed Ada?") return the correct actor.
+          // this" (the JWT subject), not "what was changed". The target's
+          // UUID belongs in `resource_id`. `actor_id` follows the
+          // RFC 8693 convention from plugins/audit.ts (M2 fix): NULL under
+          // normal auth, populated with the impersonating admin's sub
+          // when the JWT carries an `act` claim. `ip_hash` + `user_agent`
+          // mirror the auto-row the audit plugin writes for every
+          // mutating request — without them, the more semantic
+          // `user.profile_updated` row would silently lose forensic
+          // context the auto-row has.
           await tx.insert(auditLogs).values({
             orgId,
             userId: callerKcId,
+            actorId: actorKcId,
             action: "user.profile_updated",
             resourceType: "user",
             resourceId: existing.id,
             oldValues,
             newValues,
+            ipHash,
+            userAgent,
           });
         }
 
