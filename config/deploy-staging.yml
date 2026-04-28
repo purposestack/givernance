@@ -28,7 +28,7 @@ proxy:
   host: staging.givernance.org
   app_port: 3000
   healthcheck:
-    path: /
+    path: /api/healthz
 
 # Credentials for your image host.
 registry:
