@@ -1465,7 +1465,7 @@
       "goal": "Fundraising goal",
       "goalFallback": "Goal coming soon",
       "trust": "Payment",
-      "trustValue": "Stripe flow coming next"
+      "trustValue": "Secured by Stripe"
     },
     "form": {
       "eyebrow": "Online donation",
@@ -1521,7 +1521,11 @@
         "generic": "Payment could not be completed. Please try a different card or contact support.",
         "missingPublishableKey": "Stripe is not configured for this environment. Ask an admin to set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY."
       },
-      "footnote": "Test mode: use card 4242 4242 4242 4242 with any future expiry and any CVC."
+      "testMode": {
+        "title": "Test mode — no real charge",
+        "bodyBefore": "Use card",
+        "bodyAfter": "with any future expiry and any CVC. No money will move."
+      }
     }
   },
   "constituentForm": {

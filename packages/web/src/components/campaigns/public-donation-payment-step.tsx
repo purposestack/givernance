@@ -2,7 +2,7 @@
 
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe, type StripeElementsOptions } from "@stripe/stripe-js";
-import { CheckCircle2, LoaderCircle } from "lucide-react";
+import { CheckCircle2, FlaskConical, LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useMemo, useState } from "react";
 
@@ -15,6 +15,16 @@ interface PublicDonationPaymentStepProps {
   colorPrimary: string;
   amountSummary: string;
   onPaid: () => void;
+}
+
+/**
+ * Stripe publishable keys are `pk_test_…` in test mode and `pk_live_…` in
+ * production. Detecting the prefix is sufficient for gating the test-card
+ * hint banner — checking server `NODE_ENV` would be wrong since a staging
+ * web build can run against test-mode Stripe.
+ */
+function isTestModeKey(publishableKey: string): boolean {
+  return publishableKey.startsWith("pk_test_");
 }
 
 /**
@@ -55,6 +65,7 @@ export function PublicDonationPaymentStep(props: PublicDonationPaymentStepProps)
       <PaymentForm
         amountSummary={props.amountSummary}
         colorPrimary={props.colorPrimary}
+        testMode={isTestModeKey(props.publishableKey)}
         onPaid={props.onPaid}
       />
     </Elements>
@@ -64,10 +75,12 @@ export function PublicDonationPaymentStep(props: PublicDonationPaymentStepProps)
 function PaymentForm({
   amountSummary,
   colorPrimary,
+  testMode,
   onPaid,
 }: {
   amountSummary: string;
   colorPrimary: string;
+  testMode: boolean;
   onPaid: () => void;
 }) {
   const t = useTranslations("publicDonationPage.payment");
@@ -137,6 +150,25 @@ function PaymentForm({
         <p className="mt-1 text-xs">{t("summary.subtitle")}</p>
       </div>
 
+      {testMode ? (
+        <div
+          role="note"
+          className="flex items-start gap-3 rounded-2xl border border-tertiary bg-tertiary-container px-4 py-3 text-sm text-on-tertiary-container"
+        >
+          <FlaskConical size={18} aria-hidden="true" className="mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-semibold">{t("testMode.title")}</p>
+            <p className="text-xs leading-5">
+              {t("testMode.bodyBefore")}{" "}
+              <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-on-surface">
+                4242 4242 4242 4242
+              </code>{" "}
+              {t("testMode.bodyAfter")}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <PaymentElement options={{ layout: "tabs" }} />
 
       {error ? <p className="text-sm text-error">{error}</p> : null}
@@ -156,8 +188,6 @@ function PaymentForm({
           t("actions.pay", { amount: amountSummary })
         )}
       </Button>
-
-      <p className="text-center text-xs leading-5 text-on-surface-variant">{t("footnote")}</p>
     </form>
   );
 }

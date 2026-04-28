@@ -1465,7 +1465,7 @@
       "goal": "Objectif de collecte",
       "goalFallback": "Objectif bientôt précisé",
       "trust": "Paiement",
-      "trustValue": "Flux Stripe à venir"
+      "trustValue": "Sécurisé par Stripe"
     },
     "form": {
       "eyebrow": "Don en ligne",
@@ -1521,7 +1521,11 @@
         "generic": "Le paiement n'a pas pu aboutir. Essayez avec une autre carte ou contactez le support.",
         "missingPublishableKey": "Stripe n'est pas configuré sur cet environnement. Demandez à un administrateur de définir NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY."
       },
-      "footnote": "Mode test : utilisez la carte 4242 4242 4242 4242 avec une date d'expiration future et n'importe quel CVC."
+      "testMode": {
+        "title": "Mode test — aucun débit réel",
+        "bodyBefore": "Utilisez la carte",
+        "bodyAfter": "avec une date d'expiration future et n'importe quel CVC. Aucun mouvement d'argent n'aura lieu."
+      }
     }
   },
   "constituentForm": {
