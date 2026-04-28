@@ -380,7 +380,8 @@
           "ownership": "Ownership",
           "createdAt": "Créé le",
           "updatedAt": "Dernière mise à jour",
-          "actions": "Actions"
+          "actions": "Actions",
+      "tags": "Tags"
         },
         "statuses": {
           "active": "Actif",
@@ -656,7 +657,8 @@
         "invitedBy": "Invité·e par",
         "createdAt": "Invité·e le",
         "joinedAt": "A rejoint le",
-        "actions": "Actions"
+        "actions": "Actions",
+      "tags": "Tags"
       },
       "roles": {
         "org_admin": "Administration",
@@ -778,7 +780,8 @@
         "type": "Type",
         "description": "Description",
         "createdAt": "Créé le",
-        "actions": "Actions"
+        "actions": "Actions",
+      "tags": "Tags"
       },
       "actions": {
         "new": "Nouveau fonds",
@@ -979,7 +982,8 @@
       "campaign": "Campagne",
       "paymentMethod": "Paiement",
       "receipt": "Reçu",
-      "actions": "Actions"
+      "actions": "Actions",
+      "tags": "Tags"
     },
     "receiptStatus": {
       "pending": "En attente",
@@ -1139,7 +1143,8 @@
       "type": "Type",
       "email": "Email",
       "lastDonation": "Dernier don",
-      "actions": "Actions"
+      "actions": "Actions",
+      "tags": "Tags"
     },
     "types": {
       "donor": "Donateur",
@@ -1185,7 +1190,8 @@
       "status": "Statut",
       "progress": "Progression",
       "date": "Date",
-      "actions": "Actions"
+      "actions": "Actions",
+      "tags": "Tags"
     },
     "status": {
       "draft": "Brouillon",

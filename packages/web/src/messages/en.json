@@ -380,7 +380,8 @@
           "ownership": "Ownership",
           "createdAt": "Created at",
           "updatedAt": "Last updated",
-          "actions": "Actions"
+          "actions": "Actions",
+      "tags": "Tags"
         },
         "statuses": {
           "active": "Active",
@@ -656,7 +657,8 @@
         "invitedBy": "Invited by",
         "createdAt": "Invited",
         "joinedAt": "Joined",
-        "actions": "Actions"
+        "actions": "Actions",
+      "tags": "Tags"
       },
       "roles": {
         "org_admin": "Admin",
@@ -778,7 +780,8 @@
         "type": "Type",
         "description": "Description",
         "createdAt": "Created",
-        "actions": "Actions"
+        "actions": "Actions",
+      "tags": "Tags"
       },
       "actions": {
         "new": "New fund",
@@ -979,7 +982,8 @@
       "campaign": "Campaign",
       "paymentMethod": "Payment method",
       "receipt": "Receipt",
-      "actions": "Actions"
+      "actions": "Actions",
+      "tags": "Tags"
     },
     "receiptStatus": {
       "pending": "Pending",
@@ -1139,7 +1143,8 @@
       "type": "Type",
       "email": "Email",
       "lastDonation": "Last donation",
-      "actions": "Actions"
+      "actions": "Actions",
+      "tags": "Tags"
     },
     "types": {
       "donor": "Donor",
@@ -1185,7 +1190,8 @@
       "status": "Status",
       "progress": "Progress",
       "date": "Date",
-      "actions": "Actions"
+      "actions": "Actions",
+      "tags": "Tags"
     },
     "status": {
       "draft": "Draft",
