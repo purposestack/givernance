@@ -1476,7 +1476,6 @@
     }
   },
   "publicDonationPage": {
-    "backHome": "Givernance home",
     "badge": "Public fundraising",
     "eyebrow": "Support this work",
     "descriptionFallback": "Your donation directly helps fund this campaign and the next steps it unlocks in the field.",

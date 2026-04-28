@@ -1476,7 +1476,6 @@
     }
   },
   "publicDonationPage": {
-    "backHome": "Accueil Givernance",
     "badge": "Collecte publique",
     "eyebrow": "Soutenez notre action",
     "descriptionFallback": "Votre don aide directement à financer cette campagne et ses prochaines étapes sur le terrain.",

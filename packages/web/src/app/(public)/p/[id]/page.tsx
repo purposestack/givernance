@@ -1,11 +1,9 @@
-import { ArrowLeft, Globe2 } from "lucide-react";
-import Link from "next/link";
+import { Globe2 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { PublicDonationForm } from "@/components/campaigns/public-donation-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { formatCurrency } from "@/lib/format";
@@ -37,13 +35,7 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
     return (
       <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(9,100,71,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
         <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-8 sm:py-6 lg:px-10 lg:py-10">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/">
-                <ArrowLeft size={16} aria-hidden="true" />
-                {t("backHome")}
-              </Link>
-            </Button>
+          <div className="flex justify-end">
             <Badge variant="info">
               <Globe2 size={12} aria-hidden="true" />
               {t("badge")}
