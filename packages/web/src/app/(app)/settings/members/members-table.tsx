@@ -346,7 +346,11 @@ function EditMemberDialog({ target, isSelf, onClose, onSaved }: EditMemberDialog
       if (!isSelf && role !== target.role) patch.role = role;
 
       if (Object.keys(patch).length === 0) {
-        setError(t("editDialog.errors.noChanges"));
+        // Idempotent no-op — desired state matches current state, so close
+        // the dialog silently. No toast, no error: a re-submit with the
+        // same values is a request to reach a state we're already in,
+        // which is success by definition.
+        onClose();
         return;
       }
 
@@ -385,6 +389,7 @@ function EditMemberDialog({ target, isSelf, onClose, onSaved }: EditMemberDialog
       firstName,
       isSelf,
       lastName,
+      onClose,
       onSaved,
       role,
       t,

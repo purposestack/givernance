@@ -696,7 +696,6 @@
           "submitting": "Saving…"
         },
         "errors": {
-          "noChanges": "Change at least one field before saving.",
           "selfDemote": "An org_admin can't demote their own role below admin.",
           "lastAdmin": "Can't demote the last admin in this workspace — promote another admin first.",
           "missingKeycloakLink": "This member's account isn't fully provisioned. Contact support to repair the link before changing the role.",
