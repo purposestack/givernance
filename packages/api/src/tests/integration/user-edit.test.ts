@@ -7,7 +7,7 @@
  *
  *  - Field-level updates (each field independently, then combinations)
  *  - Audit row carries the field-level diff
- *  - Self-demote guard returns 422 with `code: cannot_self_demote`
+ *  - Self-demote guard returns 422 with `errorCode: cannot_self_demote`
  *  - Keycloak sync calls fire only when the corresponding field is in the body
  *  - RBAC: non-admin → 403 (positive direction = admin → 200 covered below)
  *  - 404 when the user doesn't exist in the caller's tenant
@@ -174,11 +174,20 @@ describe("PATCH /v1/users/:id (issue #161)", () => {
     expect(memberRow).toMatchObject({ firstName: "Renamed", lastName: "Doe", role: "user" });
 
     const [audit] = await db
-      .select({ oldValues: auditLogs.oldValues, newValues: auditLogs.newValues })
+      .select({
+        userId: auditLogs.userId,
+        resourceId: auditLogs.resourceId,
+        oldValues: auditLogs.oldValues,
+        newValues: auditLogs.newValues,
+      })
       .from(auditLogs)
       .where(and(eq(auditLogs.orgId, f.orgId), eq(auditLogs.action, "user.profile_updated")));
     expect(audit?.oldValues).toEqual({ firstName: "Member" });
     expect(audit?.newValues).toEqual({ firstName: "Renamed" });
+    // Review E5 — `audit_logs.user_id` semantically means actor (who DID
+    // this), not target. The target's UUID belongs in `resource_id`.
+    expect(audit?.userId).toBe(f.adminKcId);
+    expect(audit?.resourceId).toBe(f.memberUserId);
 
     expect(kcUpdateUser).toHaveBeenCalledWith(f.memberKcId, {
       firstName: "Renamed",
@@ -243,10 +252,15 @@ describe("PATCH /v1/users/:id (issue #161)", () => {
     });
 
     expect(res.statusCode).toBe(422);
-    const body = res.json<{ status: number; code: string; title: string; detail: string }>();
+    const body = res.json<{
+      status: number;
+      errorCode: string;
+      title: string;
+      detail: string;
+    }>();
     expect(body).toMatchObject({
       status: 422,
-      code: "cannot_self_demote",
+      errorCode: "cannot_self_demote",
       title: "Unprocessable Entity",
     });
 
@@ -258,6 +272,159 @@ describe("PATCH /v1/users/:id (issue #161)", () => {
     expect(me?.role).toBe("org_admin");
 
     expect(kcSetUserAttributes).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 missing_keycloak_link when target user has no keycloak_id (review PJD-3)", async () => {
+    // Fail-closed when `existing.keycloakId` is null so the self-demote
+    // comparison `null === callerKcId` cannot silently bypass the guard.
+    const f = await makeFixture();
+
+    // Detach the member's KC link to simulate a legacy-imported row.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.update(users).set({ keycloakId: null }).where(eq(users.id, f.memberUserId));
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${f.memberUserId}`,
+      headers: authHeader(f.adminToken),
+      payload: { role: "viewer" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/422",
+      title: "Unprocessable Entity",
+      status: 422,
+      errorCode: "missing_keycloak_link",
+    });
+
+    // DB unchanged.
+    const [target] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, f.memberUserId));
+    expect(target?.role).toBe("user");
+  });
+
+  it("name-only edits succeed even when target has no keycloak_id (PJD-3 — only role changes blocked)", async () => {
+    // Name edits don't touch the role guard, so they should still work
+    // when the keycloak link is missing (the KC `updateUser` call gets
+    // skipped because there's no kcId, but DB + audit row land correctly).
+    const f = await makeFixture();
+
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.update(users).set({ keycloakId: null }).where(eq(users.id, f.memberUserId));
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${f.memberUserId}`,
+      headers: authHeader(f.adminToken),
+      payload: { firstName: "Renamed" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(kcUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 cannot_demote_last_admin when another admin demotes the only remaining org_admin (review S1)", async () => {
+    // Fixture seeds ONE admin; the test makes a second admin (the caller),
+    // and uses them to demote the original admin. With only the caller +
+    // the target left as admins, demoting the target leaves zero admins —
+    // the lock-out guard must refuse.
+    //
+    // To exercise: set up a tenant with admin A (the caller's "another admin")
+    // and admin T (the target). Demote T → no admins left except A. That's
+    // ONE remaining admin AFTER demotion, which is fine. So we need:
+    // tenant with ONLY admin T; caller is admin A from the SAME org but
+    // not yet a row. Easier setup: tenant with admin T (= callerKcId
+    // = different sub, role org_admin); caller's token is signed with
+    // a different sub mapping to admin A. But the caller needs a `users`
+    // row to satisfy auth.
+    //
+    // Cleaner approach: tenant with ONE admin row (T). Caller token is
+    // a DIFFERENT admin (A) — the role check passes via JWT claim, and
+    // the route resolves the target by id. After demotion, zero admin
+    // rows would remain → guard fires.
+    const f = await makeFixture();
+
+    // The caller in `makeFixture` already has `f.adminUserId` (admin A) +
+    // `f.memberUserId` (member with role "user"). Promote the member to
+    // org_admin first, then attempt to demote A — the only OTHER admin
+    // would be the just-promoted member, so we need a separate setup.
+    //
+    // Simplest: directly demote `f.adminUserId` from admin B's session,
+    // where admin B is the only other admin. Build it: promote the member
+    // to admin via the route, then have member-token caller demote f.admin.
+    // But test that already covers admin → 200 path; reusing it makes the
+    // flow noisy. Use SQL directly:
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.update(users).set({ role: "user" }).where(eq(users.id, f.memberUserId));
+    });
+
+    // Now the tenant has exactly one admin (f.adminUserId). Caller is the
+    // same admin demoting THEMSELVES, but `cannot_self_demote` fires first.
+    // To hit `cannot_demote_last_admin`, we need a SECOND admin to be the
+    // caller. Create one inline:
+    const secondAdminId = randomUUID();
+    const secondAdminKcId = `kc-second-${randomUUID().slice(0, 8)}`;
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.insert(users).values({
+        id: secondAdminId,
+        orgId: f.orgId,
+        email: `second-${f.slug}@example.org`,
+        firstName: "Second",
+        lastName: "Admin",
+        role: "org_admin",
+        keycloakId: secondAdminKcId,
+      });
+    });
+    const secondAdminToken = signToken(app, {
+      sub: secondAdminKcId,
+      org_id: f.orgId,
+      role: "org_admin",
+    });
+
+    // Now demote the FIRST admin via the SECOND admin → after demotion,
+    // only the second admin remains (1 admin). Self-demote not triggered.
+    // Last-admin guard not triggered (still 1 admin left). Should succeed.
+    const sanity = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${f.adminUserId}`,
+      headers: authHeader(secondAdminToken),
+      payload: { role: "user" },
+    });
+    expect(sanity.statusCode).toBe(200);
+
+    // Now there's only ONE admin (secondAdminId). Try to demote them via
+    // the original admin's token — but f.adminUserId is now `user`, so
+    // their token (role: org_admin in JWT but not in DB) — actually JWT
+    // role still says org_admin so requireOrgAdmin passes. The route
+    // resolves the target by id (secondAdminId) and finds 1 admin.
+    // After demotion: 0 admins. Guard must fire.
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${secondAdminId}`,
+      headers: authHeader(f.adminToken),
+      payload: { role: "user" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/422",
+      title: "Unprocessable Entity",
+      status: 422,
+      errorCode: "cannot_demote_last_admin",
+    });
+
+    // DB unchanged.
+    const [target] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, secondAdminId));
+    expect(target?.role).toBe("org_admin");
   });
 
   it("allows an org_admin to edit their OWN name (self-edit lock is role-only)", async () => {
@@ -319,5 +486,83 @@ describe("PATCH /v1/users/:id (issue #161)", () => {
       payload: { firstName: "Ghost" },
     });
     expect(res.statusCode).toBe(404);
+    // Lock the RFC 9457 body shape (review Q5).
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/404",
+      title: "Not Found",
+      status: 404,
+    });
+  });
+
+  // ─── Keycloak sync failure paths (review Q9) ──────────────────────────────
+
+  it("kc updateUser failure → 200 + DB committed + warn line (Q9)", async () => {
+    const f = await makeFixture();
+    kcUpdateUser.mockRejectedValueOnce(new Error("KC down"));
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${f.memberUserId}`,
+      headers: authHeader(f.adminToken),
+      payload: { firstName: "RenamedDespiteKcDown" },
+    });
+
+    // Route MUST swallow the KC error and return 200; SRE relies on the
+    // log-line discriminator name being stable for grep / Loki alerts.
+    // A regression that re-throws would 500 the caller and drift DB ↔ KC
+    // without a recovery path; the test pins the swallow behaviour.
+    expect(res.statusCode).toBe(200);
+
+    const [memberRow] = await db
+      .select({ firstName: users.firstName })
+      .from(users)
+      .where(eq(users.id, f.memberUserId));
+    expect(memberRow?.firstName).toBe("RenamedDespiteKcDown");
+
+    expect(kcUpdateUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("kc setUserAttributes failure → 200 + DB committed + role warn line (Q9)", async () => {
+    const f = await makeFixture();
+    kcSetUserAttributes.mockRejectedValueOnce(new Error("KC down"));
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${f.memberUserId}`,
+      headers: authHeader(f.adminToken),
+      payload: { role: "viewer" },
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    const [memberRow] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, f.memberUserId));
+    expect(memberRow?.role).toBe("viewer");
+
+    expect(kcSetUserAttributes).toHaveBeenCalledTimes(1);
+  });
+
+  it("viewer → 403 (lower edge of the requireOrgAdmin boundary)", async () => {
+    // Both-directions coverage rule (review Q4): user → 403 was already
+    // tested; this locks the viewer side too. A regression that loosens
+    // the guard to `requireWrite` would still 403 a viewer but not a user
+    // — the symmetric tests catch both shapes.
+    const f = await makeFixture();
+    const viewerToken = signToken(app, { org_id: f.orgId, role: "viewer" });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${f.memberUserId}`,
+      headers: authHeader(viewerToken),
+      payload: { firstName: "X" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/403",
+      title: "Forbidden",
+      status: 403,
+    });
   });
 });

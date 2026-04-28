@@ -143,14 +143,17 @@ async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
     // guard would have rejected. Failing fast here also avoids leaking the
     // existence of a cache entry under a guessed `Idempotency-Key`.
     if (idemConfig.minRole && !roleSatisfies(request.auth?.role, idemConfig.minRole)) {
-      // Lift the same discriminator the standalone guards emit (issue #182)
-      // so SOC dashboards filtering on `rbacDenial.guard` see this path too.
+      // Lift the same discriminator the standalone guards emit (issue #182,
+      // refined in PR #185 review PJD-5) so SOC dashboards filtering on
+      // `rbacDenial.guard` see this path too. The replay-time denial is a
+      // role rejection (the JWT is valid but insufficient), so it
+      // correctly belongs on `rbacDenial`, not `authDenial`.
       const guardName =
         idemConfig.minRole === "admin" ? "requireOrgAdmin" : ("requireWrite" as const);
-      const requiredRole = idemConfig.minRole === "admin" ? "org_admin" : "user|org_admin";
+      const requiredRoles = idemConfig.minRole === "admin" ? ["org_admin"] : ["user", "org_admin"];
       request.rbacDenial = {
         guard: guardName,
-        requiredRole,
+        requiredRoles,
         actualRole: request.auth?.role ?? null,
       };
       request.log.warn(

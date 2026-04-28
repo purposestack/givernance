@@ -68,9 +68,18 @@ async function audit(app: FastifyInstance) {
     } catch (err) {
       // Log error prominently — GDPR Art. 5(2) requires accountability (M3 fix).
       // We still don't fail the request, but we emit a structured error at 'error' level
-      // so alerting can catch audit failures.
+      // so alerting can catch audit failures. Carry forward the auth/rbac
+      // discriminators so SOC can correlate a failed audit insert with the
+      // original denial reason without joining on `reqId` (review L8).
       request.log.error(
-        { err, method: request.method, url: request.url, audit: "INSERT_FAILED" },
+        {
+          err,
+          method: request.method,
+          url: request.url,
+          audit: "INSERT_FAILED",
+          ...(request.authDenial ? { authDenial: request.authDenial } : {}),
+          ...(request.rbacDenial ? { rbacDenial: request.rbacDenial } : {}),
+        },
         "CRITICAL: audit log insert failed — GDPR accountability gap",
       );
     }
@@ -83,11 +92,12 @@ async function audit(app: FastifyInstance) {
         userId: request.auth.userId,
         actorId: request.auth.act?.sub ?? null,
         orgId: request.auth.orgId,
-        // Issue #182: structured RBAC denial discriminator. Set by the guard
-        // primitives in `lib/guards.ts` on the denial branch; absent for
-        // successful requests and for non-RBAC denials (CSRF, validation,
-        // tenant-scoping). SOC dashboards filter on `rbacDenial.guard` to
-        // separate RBAC probing from the other 403 sources.
+        // Issue #182 + PR #185 review PJD-5 / L2: split discriminators.
+        // `authDenial` for the 401 branch (missing/invalid token) so SOC
+        // dashboards filtering for RBAC probing can EXCLUDE these as
+        // benign auth noise; `rbacDenial` for the 403/404 role-rejection
+        // branch with structured `requiredRoles` array.
+        ...(request.authDenial ? { authDenial: request.authDenial } : {}),
         ...(request.rbacDenial ? { rbacDenial: request.rbacDenial } : {}),
       },
       "audit",

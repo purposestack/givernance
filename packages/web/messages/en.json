@@ -637,10 +637,15 @@
       "invitationsSection": {
         "title": "Invitations",
         "description": "Outstanding invitations — pending, expired, or already accepted.",
+        "descriptionNonAdmin": "Outstanding invitations to your workspace. To see and manage active members, ask an admin.",
         "empty": {
           "title": "No invitations yet",
           "description": "Invite a teammate to give them access to this workspace."
         }
+      },
+      "combinedEmpty": {
+        "title": "Build your team",
+        "description": "Invite your first teammate to start collaborating on this workspace."
       },
       "columns": {
         "name": "Name",
@@ -682,7 +687,8 @@
           "lastName": "Last name",
           "role": "Role",
           "selfRoleLockHint": "You can't change your own role — ask another admin.",
-          "youBadge": "you"
+          "youBadge": "you",
+          "youAriaLabel": "current user"
         },
         "actions": {
           "cancel": "Cancel",
@@ -692,6 +698,8 @@
         "errors": {
           "noChanges": "Change at least one field before saving.",
           "selfDemote": "An org_admin can't demote their own role below admin.",
+          "lastAdmin": "Can't demote the last admin in this workspace — promote another admin first.",
+          "missingKeycloakLink": "This member's account isn't fully provisioned. Contact support to repair the link before changing the role.",
           "generic": "Couldn't save the changes. Please try again."
         }
       },

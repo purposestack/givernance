@@ -637,10 +637,15 @@
       "invitationsSection": {
         "title": "Invitations",
         "description": "Invitations en cours — en attente, expirées ou déjà acceptées.",
+        "descriptionNonAdmin": "Invitations en cours pour votre espace. Pour voir et gérer les membres actifs, demandez à un·e admin.",
         "empty": {
           "title": "Aucune invitation",
           "description": "Invitez un·e collègue pour lui donner accès à cet espace."
         }
+      },
+      "combinedEmpty": {
+        "title": "Constituez votre équipe",
+        "description": "Invitez votre premier·ère collègue pour commencer à collaborer sur cet espace."
       },
       "columns": {
         "name": "Nom",
@@ -682,7 +687,8 @@
           "lastName": "Nom",
           "role": "Rôle",
           "selfRoleLockHint": "Vous ne pouvez pas modifier votre propre rôle — demandez à un·e autre admin.",
-          "youBadge": "vous"
+          "youBadge": "vous",
+          "youAriaLabel": "utilisateur actuel"
         },
         "actions": {
           "cancel": "Annuler",
@@ -692,6 +698,8 @@
         "errors": {
           "noChanges": "Modifiez au moins un champ avant d'enregistrer.",
           "selfDemote": "Un·e admin ne peut pas se rétrograder en dessous d'admin.",
+          "lastAdmin": "Impossible de rétrograder le·la dernier·ère admin de l'espace — promouvez d'abord un·e autre admin.",
+          "missingKeycloakLink": "Le compte de ce·tte membre n'est pas complètement provisionné. Contactez le support pour réparer le lien avant de modifier le rôle.",
           "generic": "Impossible d'enregistrer les changements. Veuillez réessayer."
         }
       },

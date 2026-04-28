@@ -22,6 +22,17 @@ beforeAll(async () => {
     VALUES ('00000000-0000-0000-0000-000000000998', '00000000-0000-0000-0000-000000000999', 'test-dispute.com', 'verified', 'gv_abc123def456ghi789jkl012mno345pqr678stu901')
     ON CONFLICT DO NOTHING
   `);
+
+  // Clear any dispute rows left over from a previous run. The route
+  // uses `tenant_disputes` (signup-side, not admin-impersonation
+  // disputes) and treats a duplicate `(orgId, claimerEmail)` as
+  // `already_disputed` → 409. Without cleanup, a second run of this
+  // suite gets 409 instead of 201 (PR #185: pre-existing flake fixed
+  // alongside the rest of the cleanup).
+  await db.execute(sql`
+    DELETE FROM tenant_disputes
+    WHERE org_id = '00000000-0000-0000-0000-000000000999'
+  `);
 });
 
 afterAll(async () => {
