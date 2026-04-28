@@ -2,7 +2,7 @@
 
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe, type StripeElementsOptions } from "@stripe/stripe-js";
-import { CheckCircle2, FlaskConical, LoaderCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FlaskConical, LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useMemo, useState } from "react";
 
@@ -15,6 +15,14 @@ interface PublicDonationPaymentStepProps {
   colorPrimary: string;
   amountSummary: string;
   onPaid: () => void;
+  /**
+   * Return the donor to the identity/amount form. We don't cancel the
+   * orphaned PaymentIntent server-side — Stripe auto-cancels unconfirmed
+   * intents after ~7 days, and resubmitting creates a fresh one (each
+   * submit mints a new idempotency key). Acceptable for Phase 1; if the
+   * orphan rate becomes a concern, add a `paymentIntents.cancel` call here.
+   */
+  onBack: () => void;
 }
 
 /**
@@ -67,6 +75,7 @@ export function PublicDonationPaymentStep(props: PublicDonationPaymentStepProps)
         colorPrimary={props.colorPrimary}
         testMode={isTestModeKey(props.publishableKey)}
         onPaid={props.onPaid}
+        onBack={props.onBack}
       />
     </Elements>
   );
@@ -77,11 +86,13 @@ function PaymentForm({
   colorPrimary,
   testMode,
   onPaid,
+  onBack,
 }: {
   amountSummary: string;
   colorPrimary: string;
   testMode: boolean;
   onPaid: () => void;
+  onBack: () => void;
 }) {
   const t = useTranslations("publicDonationPage.payment");
   const stripe = useStripe();
@@ -145,6 +156,16 @@ function PaymentForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+      <button
+        type="button"
+        onClick={onBack}
+        disabled={submitting}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-on-surface-variant hover:text-on-surface disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <ArrowLeft size={16} aria-hidden="true" />
+        {t("actions.back")}
+      </button>
+
       <div className="rounded-2xl border border-outline-variant bg-surface px-4 py-3 text-sm text-on-surface-variant">
         <p className="text-on-surface">{t("summary.title", { amount: amountSummary })}</p>
         <p className="mt-1 text-xs">{t("summary.subtitle")}</p>

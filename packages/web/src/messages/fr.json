@@ -1510,7 +1510,8 @@
       },
       "actions": {
         "pay": "Donner {amount}",
-        "paying": "Traitement du paiement…"
+        "paying": "Traitement du paiement…",
+        "back": "Modifier mon don"
       },
       "success": {
         "title": "Merci pour votre don !",
