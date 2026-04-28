@@ -1,0 +1,13 @@
+name: Diagnostics
+on: [push, workflow_dispatch]
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+      - name: Check logs
+        run: |
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs givernance-keycloak --tail 200" | grep WARN || true
