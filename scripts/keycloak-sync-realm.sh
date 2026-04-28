@@ -315,6 +315,14 @@ sys.exit(0 if have else 1)
     fi
   }
 
+  # Look up `basic`, creating it if missing. Keycloak normally provisions
+  # `basic` (carrying `oidc-sub-mapper` and `oidc-audience-resolve-mapper`)
+  # at first realm-create time, but that path is skipped on staging because
+  # `KC_IMPORT_STRATEGY=OVERWRITE_EXISTING` re-imports the realm on every
+  # accessory reboot — `setupClientScopes()` does not run on the re-import
+  # path, so the realm ends up without `basic`. Without `basic` attached
+  # to `givernance-web`, the access token is missing the standard OIDC
+  # `sub` claim and `verifyKeycloakJwt` rejects every login.
   basic_scope_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/client-scopes" \
     | python3 -c '
 import sys, json
@@ -323,6 +331,47 @@ for s in json.load(sys.stdin):
         print(s["id"])
         break
 ')
+  if [ -z "$basic_scope_id" ]; then
+    log "Native scope 'basic' missing on realm '${REALM}' — creating (carries the OIDC \`sub\` mapper)."
+    basic_create_resp=$(curl -sS -D - -o /dev/null \
+      -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes" \
+      "${auth[@]}" -H "Content-Type: application/json" -d '{
+        "name":"basic",
+        "protocol":"openid-connect",
+        "description":"OpenID Connect scope for add-ons that should be on by default (sub, audience).",
+        "attributes":{
+          "include.in.token.scope":"false",
+          "display.on.consent.screen":"false"
+        }
+      }')
+    basic_scope_id=$(printf '%s' "$basic_create_resp" | awk -F': ' 'tolower($1)=="location"{print $2}' | tr -d '\r\n' | awk -F/ '{print $NF}')
+    if [ -z "$basic_scope_id" ]; then
+      warn "Failed to create 'basic' scope — \`sub\` will be missing from access tokens."
+    else
+      log "Created 'basic' client scope (id=${basic_scope_id})."
+      curl -sS -o /dev/null -w "basic-mapper create (sub): HTTP %{http_code}\n" \
+        -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes/${basic_scope_id}/protocol-mappers/models" \
+        "${auth[@]}" -H "Content-Type: application/json" -d '{
+          "name":"sub",
+          "protocol":"openid-connect",
+          "protocolMapper":"oidc-sub-mapper",
+          "consentRequired":false,
+          "config":{
+            "introspection.token.claim":"true",
+            "access.token.claim":"true"
+          }
+        }'
+      curl -sS -o /dev/null -w "basic-mapper create (audience resolve): HTTP %{http_code}\n" \
+        -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes/${basic_scope_id}/protocol-mappers/models" \
+        "${auth[@]}" -H "Content-Type: application/json" -d '{
+          "name":"audience resolve",
+          "protocol":"openid-connect",
+          "protocolMapper":"oidc-audience-resolve-mapper",
+          "consentRequired":false,
+          "config":{}
+        }'
+    fi
+  fi
 
   ensure_default_scope "organization" "$org_scope_id"
   ensure_default_scope "basic" "$basic_scope_id"
