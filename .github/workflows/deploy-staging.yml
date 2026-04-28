@@ -84,7 +84,7 @@ jobs:
       # Rebooting the accessory re-copies the file and triggers a re-import under
       # KC_IMPORT_STRATEGY=OVERWRITE_EXISTING (set in config/deploy-staging.yml).
       - name: Reboot Keycloak to re-import realm JSON
-        run: kamal accessory reboot keycloak -c config/deploy-staging.yml -y
+        run: kamal accessory reboot keycloak -c config/deploy-staging.yml
 
       - name: Wait for Keycloak realm to be ready
         run: |
