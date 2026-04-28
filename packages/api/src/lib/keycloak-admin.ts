@@ -201,6 +201,18 @@ export interface KeycloakAdminClient {
    */
   createUser(input: CreateUserInput): Promise<{ id: string }>;
   getUserByEmail(email: string): Promise<KeycloakUser | null>;
+  /**
+   * Delete a realm user (ADR-021). Idempotent on 404 — if the user is
+   * already gone, the call is a no-op. Used by `DELETE /v1/users/:id`
+   * to keep KC aligned with the application's soft-delete: the realm
+   * user is gone, the email is freed for re-invite, refresh tokens are
+   * dropped by KC.
+   *
+   * The user's already-issued access tokens remain cryptographically
+   * valid until expiry — the auth plugin's user-ID blocklist (added in
+   * the same ADR) closes that window.
+   */
+  deleteUser(userId: string): Promise<void>;
   /** Replace a user's password with a new non-temporary credential. */
   resetUserPassword(userId: string, password: string): Promise<void>;
   /**
@@ -660,6 +672,19 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
         `/users?email=${e(normalised)}&exact=true`,
       );
       return rows?.find((u) => u.email?.toLowerCase() === normalised) ?? null;
+    },
+
+    deleteUser: async (userId) => {
+      // ADR-021 — idempotent on 404 so the caller can use this in the
+      // best-effort cleanup path of `DELETE /v1/users/:id` without
+      // branching on the error. Any other failure (5xx, network) bubbles
+      // up so the caller can decide between rollback / retry / log.
+      try {
+        await adminRequest<void>("DELETE", `/users/${e(userId)}`);
+      } catch (err) {
+        if (err instanceof KeycloakAdminError && err.status === 404) return;
+        throw err;
+      }
     },
 
     resetUserPassword: async (userId, password) => {

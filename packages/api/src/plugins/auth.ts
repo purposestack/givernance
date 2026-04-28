@@ -4,11 +4,19 @@ import { timingSafeEqual } from "node:crypto";
 
 import cookie from "@fastify/cookie";
 import type { AuthContext, UserRole } from "@givernance/shared";
+import { users } from "@givernance/shared/schema";
+import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
+import { withTenantContext } from "../lib/db.js";
 import { verifyKeycloakJwt } from "../lib/keycloak-jwt.js";
 import { problemDetail } from "../lib/schemas.js";
-import { isSessionBlocklisted } from "../modules/session/service.js";
+import {
+  getActiveUserCache,
+  isSessionBlocklisted,
+  isUserBlocklisted,
+  setActiveUserCache,
+} from "../modules/session/service.js";
 
 const JWT_COOKIE_NAME = "givernance_jwt";
 const CSRF_COOKIE_NAME = "csrf-token";
@@ -36,9 +44,32 @@ async function auth(app: FastifyInstance) {
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
     if (isAuthExempt(request.url)) return;
 
-    const blocklisted = await applyAuthFromToken(request);
-    if (blocklisted) {
+    const tokenResult = await applyAuthFromToken(request);
+    if (tokenResult === "session_revoked") {
       return reply.status(401).send(problemDetail(401, "Unauthorized", "Session revoked."));
+    }
+    if (tokenResult === "user_revoked") {
+      // ADR-021 — the user's Keycloak `sub` was blocklisted at app
+      // soft-delete time. The token is cryptographically valid but the
+      // user is gone; reject before any handler can act on stale claims.
+      return reply.status(401).send(problemDetail(401, "Unauthorized", "Account no longer active."));
+    }
+    if (tokenResult === "no_active_membership") {
+      // ADR-021 — the JWT carries an `org_id` but no active `users`
+      // row exists for `(sub, org_id)`. This is the soft-delete path
+      // where the token outlives the row, OR a stale JWT for a tenant
+      // the user has been removed from. Reject so no tenant-scoped
+      // route can run with a non-resolvable subject.
+      return reply.status(401).send(problemDetail(401, "Unauthorized", "Account no longer active."));
+    }
+    if (tokenResult === "no_org_claim") {
+      // ADR-021 — the JWT has a `sub` but no `org_id` and no
+      // `super_admin` realm role. Every tenant-scoped route would 500
+      // trying to use `request.auth.orgId`; rejecting here surfaces a
+      // clean 401 instead. Surfaced when a JWT was minted for a tenant
+      // user whose tenant was lost (e.g. soft-deleted on every org
+      // they belonged to).
+      return reply.status(401).send(problemDetail(401, "Unauthorized", "No active organisation."));
     }
 
     if (!requiresCsrfCheck(request)) return;
@@ -55,36 +86,107 @@ function isAuthExempt(url: string): boolean {
   return url.startsWith("/healthz") || url.startsWith("/readyz") || url.startsWith("/docs");
 }
 
-/** Returns `true` if the request's session is blocklisted and the caller should reject. */
-async function applyAuthFromToken(request: FastifyRequest): Promise<boolean> {
+/**
+ * Discriminated outcome of token validation. Each variant maps to a
+ * distinct 401 response in the caller (ADR-021).
+ *
+ *   `"ok"` — JWT valid; `request.auth` populated.
+ *   `"none"` — no token presented; route guards decide whether that's a 401.
+ *   `"session_revoked"` — JTI on the session blocklist (switch-org revocation).
+ *   `"user_revoked"` — `sub` on the user blocklist (post-soft-delete).
+ *   `"no_active_membership"` — JWT carries `org_id` but no active `users` row resolves.
+ *   `"no_org_claim"` — JWT has `sub` but no `org_id` and not a super_admin (tenant route would 500 on `orgId`).
+ */
+type TokenResult =
+  | "ok"
+  | "none"
+  | "session_revoked"
+  | "user_revoked"
+  | "no_active_membership"
+  | "no_org_claim";
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: applyAuthFromToken walks every reject branch (no token, signature fail, JTI blocklist, user blocklist, no-org sanity, active-row check) inline because each branch maps to a distinct 401 reason in the caller — splitting hides the dispatch.
+async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult> {
+  const token = extractToken(request);
+  if (!token) return "none";
+
+  let decoded: Awaited<ReturnType<typeof verifyKeycloakJwt>>;
   try {
-    const token = extractToken(request);
-    if (!token) return false;
-
-    const decoded = await verifyKeycloakJwt(token);
-
-    // Reject tokens revoked by a `switch-org` call (ADR-016 / doc 22 §6.3).
-    // Blocklist check lives in Redis; a missing `jti` means the upstream
-    // realm didn't emit one — the switch endpoint will still authorise
-    // itself, but will not be able to revoke the prior session.
-    if (decoded.jti && (await isSessionBlocklisted(decoded.jti))) {
-      return true;
-    }
-
-    request.auth = {
-      userId: decoded.sub,
-      orgId: decoded.org_id,
-      roles: decoded.realm_access?.roles ?? [],
-      email: decoded.email,
-      role: decoded.role as UserRole | undefined,
-      act: decoded.act,
-    };
-    request.jwtJti = decoded.jti ?? null;
-    request.jwtExp = typeof decoded.exp === "number" ? decoded.exp : null;
+    decoded = await verifyKeycloakJwt(token);
   } catch {
-    // Auth will be null for unauthenticated requests
+    // Invalid signature / expired / unparseable. Auth will be null,
+    // route guards will 401 via the `requireAuth` path.
+    return "none";
   }
-  return false;
+
+  // Reject tokens revoked by a `switch-org` call (ADR-016 / doc 22 §6.3).
+  // Blocklist check lives in Redis; a missing `jti` means the upstream
+  // realm didn't emit one — the switch endpoint will still authorise
+  // itself, but will not be able to revoke the prior session.
+  if (decoded.jti && (await isSessionBlocklisted(decoded.jti))) {
+    return "session_revoked";
+  }
+
+  // ADR-021 — user-ID blocklist. Closes the post-soft-delete window for
+  // already-issued access tokens. Zero-second propagation; the entry
+  // stays in Redis for the realm's max access-token TTL.
+  if (await isUserBlocklisted(decoded.sub)) {
+    return "user_revoked";
+  }
+
+  const realmRoles = decoded.realm_access?.roles ?? [];
+  const isSuperAdmin = realmRoles.includes("super_admin");
+
+  // ADR-021 — every authenticated request must satisfy ONE of:
+  //   (a) super_admin (platform-level; no org binding by design), OR
+  //   (b) `org_id` claim present AND active `users` row resolves.
+  // Anything else is rejected here before `request.auth` is set so no
+  // tenant-scoped route can run with a non-resolvable subject.
+  if (!isSuperAdmin) {
+    if (!decoded.org_id) return "no_org_claim";
+    const isActive = await resolveActiveMembership(decoded.sub, decoded.org_id);
+    if (!isActive) return "no_active_membership";
+  }
+
+  request.auth = {
+    userId: decoded.sub,
+    orgId: decoded.org_id,
+    roles: realmRoles,
+    email: decoded.email,
+    role: decoded.role as UserRole | undefined,
+    act: decoded.act,
+  };
+  request.jwtJti = decoded.jti ?? null;
+  request.jwtExp = typeof decoded.exp === "number" ? decoded.exp : null;
+  return "ok";
+}
+
+/**
+ * Resolve whether a `(sub, orgId)` pair maps to an active `users` row
+ * (ADR-021 active-row check). Reads through the Redis cache first; on
+ * a miss, queries Postgres and writes the result. Cache TTL is short
+ * (~30 s) so soft-delete propagates without explicit invalidation —
+ * callers that want zero-second propagation should also call
+ * `invalidateActiveUserCache` from the session-service module.
+ */
+async function resolveActiveMembership(sub: string, orgId: string): Promise<boolean> {
+  const cached = await getActiveUserCache(sub, orgId);
+  if (cached === "active") return true;
+  if (cached === "missing") return false;
+
+  // Cache miss — query the source of truth. Filtered by tenant via
+  // RLS through `withTenantContext`; the `eq(orgId)` predicate is
+  // belt-and-suspenders.
+  const rows = await withTenantContext(orgId, async (tx) =>
+    tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.keycloakId, sub), eq(users.orgId, orgId), isNull(users.deletedAt)))
+      .limit(1),
+  );
+  const isActive = rows.length > 0;
+  await setActiveUserCache(sub, orgId, isActive ? "active" : "missing");
+  return isActive;
 }
 
 function requiresCsrfCheck(request: FastifyRequest): boolean {

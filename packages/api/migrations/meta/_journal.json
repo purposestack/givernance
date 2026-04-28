@@ -225,6 +225,13 @@
       "when": 1777289831329,
       "tag": "0031_hot_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1777366800000,
+      "tag": "0032_user_soft_delete",
+      "breakpoints": true
     }
   ]
 }

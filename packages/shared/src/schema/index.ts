@@ -193,12 +193,26 @@ export const users = pgTable(
      * different from the tenant default at acceptance time (issue #153).
      */
     locale: varchar("locale", { length: 10 }).$type<Locale>(),
+    /**
+     * Soft-delete marker (ADR-021). Set when an org_admin removes a
+     * member; cleared on rejoin. Listing endpoints, /me, and PATCH all
+     * filter `deleted_at IS NULL`. The row is preserved so audit_logs
+     * FKs and history stay intact. The matching unique index on
+     * `(org_id, email)` is a partial index `WHERE deleted_at IS NULL`
+     * so the same email can be re-invited after soft-delete.
+     */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("users_org_id_idx").on(table.orgId),
     index("users_email_idx").on(table.email),
+    // Partial unique — see ADR-021. The same email can be re-invited
+    // after soft-delete because rows with `deleted_at IS NOT NULL` are
+    // outside the index. Drizzle Kit doesn't model partial indexes, so
+    // we declare the unconditional unique here for type-side parity
+    // and override with raw SQL in the migration.
     unique("users_org_id_email_uniq").on(table.orgId, table.email),
   ],
 );

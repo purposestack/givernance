@@ -782,22 +782,40 @@ export async function acceptTeamInvitation(
       // import or manual support write could otherwise miss the match
       // and fall through to the createUser path → 409 → spurious 410.
       // (Data review F-E.)
+      // ADR-021 — three accept paths:
+      //   (1) no existing row → fresh INSERT + createUser
+      //   (2) ACTIVE row (`deleted_at IS NULL`) → recovery: we own the KC user,
+      //       reset password and refresh attributes (legacy path)
+      //   (3) SOFT-DELETED row (`deleted_at IS NOT NULL`) → rejoin: the KC user
+      //       was deleted at remove-time, so always createUser fresh; UPDATE
+      //       the existing row in place (preserves the application UUID + FK
+      //       chain) and clear `deleted_at`.
       const [existingUserRow] = await tx
-        .select({ keycloakId: users.keycloakId })
+        .select({
+          id: users.id,
+          keycloakId: users.keycloakId,
+          deletedAt: users.deletedAt,
+        })
         .from(users)
         .where(and(eq(users.orgId, row.orgId), sql`lower(${users.email}) = lower(${row.email})`))
         .limit(1);
-      const existingKcId = existingUserRow?.keycloakId ?? null;
+      const isRejoin =
+        existingUserRow !== undefined && existingUserRow.deletedAt !== null;
+      // Soft-deleted rows have `keycloakId = NULL` (set by DELETE). Even
+      // if we have a stale value, the KC user is gone — DON'T attempt a
+      // resetUserPassword on it. The active-row recovery path stays
+      // gated on a non-null KC id.
+      const existingKcId = isRejoin ? null : (existingUserRow?.keycloakId ?? null);
 
       let kcUserId: string;
       if (existingKcId) {
-        // Legitimate recovery — we own this KC user. Reset password to
-        // whatever the invitee just typed (forgot-password semantics, with
-        // the invitation token as the proof of inbox control), patch
-        // attributes idempotently. Role attribute is sourced from the
-        // invitation row, NOT from the existing users row, so an admin
-        // updating a stale invitation's role before the invitee accepts
-        // produces the right JWT claims downstream.
+        // Path (2) — active row recovery. We own this KC user. Reset
+        // password to whatever the invitee just typed (forgot-password
+        // semantics, with the invitation token as the proof of inbox
+        // control), patch attributes idempotently. Role attribute is
+        // sourced from the invitation row, NOT from the existing users
+        // row, so an admin updating a stale invitation's role before
+        // the invitee accepts produces the right JWT claims downstream.
         await kcAdmin.resetUserPassword(existingKcId, input.password);
         await kcAdmin.setUserAttributes(existingKcId, {
           org_id: [row.orgId],
@@ -805,9 +823,12 @@ export async function acceptTeamInvitation(
         });
         kcUserId = existingKcId;
       } else {
-        // First binding for this email under this tenant. 409 here means
-        // the email belongs to a realm user we do NOT own — surface as a
-        // generic 410 with a `team_invite.kc_user_exists` warn for SRE.
+        // Path (1) fresh OR path (3) rejoin. 409 here means the email
+        // belongs to a realm user we do NOT own — surface as a generic
+        // 410 with a `team_invite.kc_user_exists` warn for SRE. (After
+        // ADR-021, the rejoin path should NOT 409 because the KC user
+        // was deleted at remove-time; if it does 409, the KC delete
+        // failed silently — that's the bug we're closing.)
         const created = await kcAdmin.createUser({
           email: row.email,
           firstName,
@@ -830,48 +851,65 @@ export async function acceptTeamInvitation(
         // 409 = already a member (recovery path). Treat as success.
       }
 
-      // Upsert the users row. `RETURNING (xmax = 0) AS inserted` lets us
-      // gate the `user.invited_accepted` outbox event so a recovery re-run
-      // doesn't re-fire the welcome consumer.
-      const upsertResult = await tx
-        .insert(users)
-        .values({
-          orgId: row.orgId,
-          email: row.email,
-          firstName,
-          lastName,
-          role: row.role,
-          keycloakId: kcUserId,
-          // Issue #153: write the personal locale only on first INSERT.
-          // The recovery branch (UPDATE) below explicitly omits `locale`
-          // from the SET clause, which has two intended consequences:
-          //   1. A user who already chose a personal locale earlier and
-          //      hits the recovery path keeps their preference (we never
-          //      clobber a chosen value).
-          //   2. A recovery-state user with `locale = NULL` cannot set
-          //      their personal preference via the accept form — they
-          //      must use the (future) /settings/profile switcher
-          //      (issue #159) instead.
-          // Both behaviours are deliberate; security review F-S2.
-          locale: personalLocale,
-        })
-        .onConflictDoUpdate({
-          target: [users.orgId, users.email],
-          set: {
+      // ADR-021 — three persistence paths matching the KC paths above:
+      //   (1) fresh INSERT (no existing row)
+      //   (2) UPDATE soft-deleted row in place (rejoin: clear `deleted_at`,
+      //       refresh names + role + new keycloakId, preserve UUID + audit
+      //       FKs). The partial unique index on `(orgId, email) WHERE
+      //       deleted_at IS NULL` means the standard upsert with
+      //       `target: [orgId, email]` does NOT fire on soft-deleted rows
+      //       — we'd insert a duplicate. Branch on `existingUserRow` instead.
+      //   (3) UPDATE active row (legacy recovery — same path the previous
+      //       upsert took).
+      let userId: string;
+      let userWasInserted: boolean;
+      if (existingUserRow) {
+        // Path (2) or (3) — UPDATE in place. Rejoin clears `deleted_at`;
+        // active recovery is a no-op on that column. `locale` is
+        // intentionally NOT in the SET clause (security review F-S2):
+        // a user who chose a personal locale earlier keeps it; a
+        // recovery-state user with `locale = NULL` doesn't get to set
+        // it via the accept form (use /settings/profile instead).
+        const [updated] = await tx
+          .update(users)
+          .set({
             firstName,
             lastName,
-            keycloakId: kcUserId,
-            // Don't downgrade an existing user's role on recovery — the
-            // invitation may carry a stale role from before an admin
-            // promoted them through another path.
             role: row.role,
+            keycloakId: kcUserId,
+            // Rejoin: clear soft-delete. No-op on active rows.
+            deletedAt: null,
             updatedAt: new Date(),
-          },
-        })
-        .returning({ id: users.id, inserted: sql<boolean>`(xmax = 0)` });
-      // biome-ignore lint/style/noNonNullAssertion: insert/upsert returning() yields one row
-      const u = upsertResult[0]!;
-      const userWasInserted = u.inserted === true;
+          })
+          .where(eq(users.id, existingUserRow.id))
+          .returning({ id: users.id });
+        // biome-ignore lint/style/noNonNullAssertion: update returning() yields one row by primary key
+        userId = updated!.id;
+        // Outbox event semantics: a rejoin IS a re-binding of an
+        // existing identity, NOT a new account, so we do NOT emit
+        // `user.invited_accepted` (which would re-fire the welcome
+        // consumer). Same as the legacy recovery branch.
+        userWasInserted = false;
+      } else {
+        // Path (1) — fresh INSERT.
+        const [inserted] = await tx
+          .insert(users)
+          .values({
+            orgId: row.orgId,
+            email: row.email,
+            firstName,
+            lastName,
+            role: row.role,
+            keycloakId: kcUserId,
+            // Issue #153 — write the personal locale only on first INSERT.
+            locale: personalLocale,
+          })
+          .returning({ id: users.id });
+        // biome-ignore lint/style/noNonNullAssertion: insert returning() yields one row
+        userId = inserted!.id;
+        userWasInserted = true;
+      }
+      const u = { id: userId };
 
       // Mark accepted and gate outbox emission on the actual flip — a
       // recovery re-run lands here with `acceptedAt` already set above
