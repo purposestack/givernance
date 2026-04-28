@@ -373,8 +373,85 @@ for s in json.load(sys.stdin):
     fi
   fi
 
+  # Look up `roles`, creating it if missing. Same root cause as `basic`:
+  # `KC_IMPORT_STRATEGY=OVERWRITE_EXISTING` skips `setupClientScopes()` on
+  # the re-import path, so the realm ends up without `roles`. Without it,
+  # the access token has no `realm_access.roles` claim — the web RBAC
+  # guard then fails to recognize realm roles like `super_admin`, hiding
+  # the back-office and the org-management settings even for the seeded
+  # platform super-admin.
+  roles_scope_id=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/client-scopes" \
+    | python3 -c '
+import sys, json
+for s in json.load(sys.stdin):
+    if s.get("name") == "roles":
+        print(s["id"])
+        break
+')
+  if [ -z "$roles_scope_id" ]; then
+    log "Native scope 'roles' missing on realm '${REALM}' — creating (carries realm/client role mappers)."
+    roles_create_resp=$(curl -sS -D - -o /dev/null \
+      -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes" \
+      "${auth[@]}" -H "Content-Type: application/json" -d '{
+        "name":"roles",
+        "protocol":"openid-connect",
+        "description":"OpenID Connect scope for add-ons that should be on by default (realm + client role memberships).",
+        "attributes":{
+          "include.in.token.scope":"false",
+          "display.on.consent.screen":"true",
+          "consent.screen.text":"${rolesScopeConsentText}"
+        }
+      }')
+    roles_scope_id=$(printf '%s' "$roles_create_resp" | awk -F': ' 'tolower($1)=="location"{print $2}' | tr -d '\r\n' | awk -F/ '{print $NF}')
+    if [ -z "$roles_scope_id" ]; then
+      warn "Failed to create 'roles' scope — \`realm_access.roles\` will be missing from access tokens."
+    else
+      log "Created 'roles' client scope (id=${roles_scope_id})."
+      curl -sS -o /dev/null -w "roles-mapper create (realm roles): HTTP %{http_code}\n" \
+        -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes/${roles_scope_id}/protocol-mappers/models" \
+        "${auth[@]}" -H "Content-Type: application/json" -d '{
+          "name":"realm roles",
+          "protocol":"openid-connect",
+          "protocolMapper":"oidc-usermodel-realm-role-mapper",
+          "consentRequired":false,
+          "config":{
+            "user.attribute":"foo",
+            "access.token.claim":"true",
+            "claim.name":"realm_access.roles",
+            "jsonType.label":"String",
+            "multivalued":"true"
+          }
+        }'
+      curl -sS -o /dev/null -w "roles-mapper create (client roles): HTTP %{http_code}\n" \
+        -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes/${roles_scope_id}/protocol-mappers/models" \
+        "${auth[@]}" -H "Content-Type: application/json" -d '{
+          "name":"client roles",
+          "protocol":"openid-connect",
+          "protocolMapper":"oidc-usermodel-client-role-mapper",
+          "consentRequired":false,
+          "config":{
+            "user.attribute":"foo",
+            "access.token.claim":"true",
+            "claim.name":"resource_access.${client_id}.roles",
+            "jsonType.label":"String",
+            "multivalued":"true"
+          }
+        }'
+      curl -sS -o /dev/null -w "roles-mapper create (audience resolve): HTTP %{http_code}\n" \
+        -X POST "${KC_URL}/admin/realms/${REALM}/client-scopes/${roles_scope_id}/protocol-mappers/models" \
+        "${auth[@]}" -H "Content-Type: application/json" -d '{
+          "name":"audience resolve",
+          "protocol":"openid-connect",
+          "protocolMapper":"oidc-audience-resolve-mapper",
+          "consentRequired":false,
+          "config":{}
+        }'
+    fi
+  fi
+
   ensure_default_scope "organization" "$org_scope_id"
   ensure_default_scope "basic" "$basic_scope_id"
+  ensure_default_scope "roles" "$roles_scope_id"
 fi
 
 # 2.e Attach the `organization` scope as OPTIONAL on `admin-cli`, and turn
