@@ -4,7 +4,7 @@
 -->
 <#import "template.ftl" as layout>
 <@layout.registrationLayout
-    displayMessage=true
+    displayMessage=false
     displayInfo=realm.password && (social.providers)?has_content;
     section>
 
@@ -37,6 +37,18 @@
           <#if usernameEditDisabled??>readonly</#if>
           aria-invalid="${messagesPerField.existsError('username','password')?string('true','false')}"
         >
+        <#-- Show field error if KC tagged this field; otherwise fall back to
+             the global message (e.g. "required" validation before auth even
+             runs, account locked, etc.) so all errors use the same span style. -->
+        <#if messagesPerField.existsError('username')>
+          <span class="gv-field-error" role="alert">
+            ${kcSanitize(messagesPerField.getFirstError('username'))?no_esc}
+          </span>
+        <#elseif message?has_content && message.type = "error">
+          <span class="gv-field-error" role="alert">
+            ${kcSanitize(message.summary)?no_esc}
+          </span>
+        </#if>
       </div>
 
       <#-- Password field -->
@@ -70,6 +82,11 @@
             </svg>
           </button>
         </div>
+        <#if messagesPerField.existsError('password')>
+          <span class="gv-field-error" role="alert">
+            ${kcSanitize(messagesPerField.getFirstError('password'))?no_esc}
+          </span>
+        </#if>
       </div>
 
       <#-- Remember me -->
