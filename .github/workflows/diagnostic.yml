@@ -17,11 +17,20 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
 
-      - name: Run docker ps
-        run: ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker ps -a"
+      - name: Test URL locally
+        run: curl -v -I http://${{ secrets.STAGING_VPS_IP }} -H "Host: staging.givernance.org"
 
-      - name: Run docker logs
-        run: |
-          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs givernance-web-web --tail 50 || docker logs givernance-web --tail 50"
-          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs givernance-api-api --tail 50 || docker logs givernance-api --tail 50"
-          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs kamal-proxy --tail 50"
+      - name: Test URL
+        run: curl -v -I https://staging.givernance.org
+
+      - name: Run docker logs kamal-proxy
+        run: ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs kamal-proxy --tail 100"
+
+      - name: Run docker logs web
+        run: ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs \$(docker ps -q -f name=givernance-web | head -n 1) --tail 100"
+
+      - name: Run docker logs api
+        run: ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs \$(docker ps -q -f name=givernance-api | head -n 1) --tail 100"
+
+      - name: Run docker logs keycloak
+        run: ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs \$(docker ps -q -f name=givernance-keycloak | head -n 1) --tail 100"
