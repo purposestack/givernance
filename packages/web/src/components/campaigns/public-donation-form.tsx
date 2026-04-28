@@ -161,6 +161,10 @@ export function PublicDonationForm({
               onPaid={() => {
                 toast.success(tPayment("success.title"));
               }}
+              // Clearing `session` re-renders the donor-details form below.
+              // `values` is preserved in parent state so fields pre-fill —
+              // donor only edits what they want to change.
+              onBack={() => setSession(null)}
             />
           </div>
         ) : (

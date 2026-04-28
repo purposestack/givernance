@@ -1529,7 +1529,8 @@
       },
       "actions": {
         "pay": "Donate {amount}",
-        "paying": "Processing payment…"
+        "paying": "Processing payment…",
+        "back": "Edit my donation"
       },
       "success": {
         "title": "Thank you for your donation!",

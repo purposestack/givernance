@@ -88,6 +88,44 @@ describe("PublicDonationForm", () => {
     expect(screen.queryByLabelText(/^First name/)).not.toBeInTheDocument();
   });
 
+  it("returns to the donor-details form with values preserved when 'Edit my donation' is clicked", async () => {
+    const user = userEvent.setup();
+
+    vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      clientSecret: "pi_secret_456",
+      stripeAccountId: "acct_test_123",
+    });
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#096447"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey="pk_test_dummy"
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^First name/), "Jane");
+    await user.type(screen.getByLabelText(/^Last name/), "Doe");
+    await user.type(screen.getByLabelText(/^Email/), "jane@example.org");
+    await user.type(screen.getByLabelText(/^Amount/), "75");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    // Wait for the Payment Element to mount, confirming we transitioned.
+    expect(await screen.findByTestId("stripe-payment-element")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Edit my donation" }));
+
+    // Donor-details fields are back, AND the values they typed are still there
+    // (parent state preserves `values` across the session-clear).
+    expect(await screen.findByLabelText(/^First name/)).toHaveValue("Jane");
+    expect(screen.getByLabelText(/^Last name/)).toHaveValue("Doe");
+    expect(screen.getByLabelText(/^Email/)).toHaveValue("jane@example.org");
+    expect(screen.getByLabelText(/^Amount/)).toHaveValue(75);
+    expect(screen.queryByTestId("stripe-payment-element")).not.toBeInTheDocument();
+  });
+
   it("blocks at payment step with a clear message when publishableKey is not configured", async () => {
     const user = userEvent.setup();
 
