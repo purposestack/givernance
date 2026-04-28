@@ -1,0 +1,27 @@
+name: Diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_VPS_IP: ${{ secrets.STAGING_VPS_IP }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH Auth Sock
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+
+      - name: Run docker ps
+        run: ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker ps -a"
+
+      - name: Run docker logs
+        run: |
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs givernance-web-web --tail 50 || docker logs givernance-web --tail 50"
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs givernance-api-api --tail 50 || docker logs givernance-api --tail 50"
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_VPS_IP }} "docker logs kamal-proxy --tail 50"
