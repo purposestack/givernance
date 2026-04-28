@@ -892,7 +892,11 @@
     "stripeConnect": {
       "badge": "Paiements",
       "title": "Stripe Connect",
-      "description": "Connectez votre compte Stripe pour que les donateurs puissent payer depuis les pages de campagne. Givernance ne détient jamais les fonds — les paiements arrivent directement sur votre compte.",
+      "description": {
+        "notConnected": "Connectez votre compte Stripe pour que les donateurs puissent payer depuis les pages de campagne. Givernance ne détient jamais les fonds — les paiements arrivent directement sur votre compte.",
+        "pending": "L'onboarding Stripe n'est pas terminé. Tant que vous n'avez pas validé toutes les étapes, les donateurs ne peuvent pas payer.",
+        "connected": "Votre compte Stripe est connecté. Les dons effectués depuis les pages de campagne arrivent directement sur votre solde Stripe ; Givernance prélève sa commission sur chaque don."
+      },
       "adminOnly": "Seuls les administrateurs de l'organisation peuvent gérer les paiements.",
       "status": {
         "notConnected": "Non connecté",

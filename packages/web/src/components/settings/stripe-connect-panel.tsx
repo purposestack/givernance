@@ -93,7 +93,9 @@ export function StripeConnectPanel({ canManageTenant }: StripeConnectPanelProps)
             {t("badge")}
           </div>
           <h2 className="mt-4 font-heading text-2xl leading-tight text-on-surface">{t("title")}</h2>
-          <p className="mt-2 text-sm leading-6 text-on-surface-variant">{t("description")}</p>
+          <p className="mt-2 text-sm leading-6 text-on-surface-variant">
+            {t(`description.${describeState(status)}`)}
+          </p>
 
           {status ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -147,4 +149,19 @@ function StatusBadge({
     return <Badge variant="warning">{t("status.pending")}</Badge>;
   }
   return <Badge variant="neutral">{t("status.notConnected")}</Badge>;
+}
+
+/**
+ * Map the live status to the i18n key suffix that drives the descriptive
+ * copy. Falls back to the not-connected description while the status fetch
+ * is in flight — the operator sees the right call-to-action immediately
+ * rather than "loading…", and once the GET resolves the copy swaps to
+ * "Connected" if applicable. Issue #192 follow-up.
+ */
+function describeState(
+  status: StripeConnectStatus | null,
+): "notConnected" | "pending" | "connected" {
+  if (!status || !status.accountId) return "notConnected";
+  if (status.chargesEnabled) return "connected";
+  return "pending";
 }
