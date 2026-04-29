@@ -53,49 +53,23 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
+      # Resolve every secret via `staging` env first (with fallbacks for
+      # non-load-bearing values) and hand them to the composite action,
+      # which writes `.kamal/secrets` and validates MINIO_KMS_SECRET_KEY.
+      # Same setup is reused by .github/workflows/staging-accessory-reboot.yml.
       - name: Setup Kamal Secrets
-        run: |
-          mkdir -p .kamal
-          PG_PASS="${{ secrets.POSTGRES_PASSWORD || 'staging_postgres_123' }}"
-          REDIS_PASS="${{ secrets.REDIS_PASSWORD || 'staging_redis_123' }}"
-          MINIO_PASS="${{ secrets.MINIO_ROOT_PASSWORD || 'staging_minio_123' }}"
-          KC_PASS="${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }}"
-          KC_CLIENT_SECRET="${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET || 'staging_keycloak_client_secret_123' }}"
-          SESSION_SEC="${{ secrets.SESSION_SECRET || 'staging_session_secret_123' }}"
-          # Resend API key — required because deploy-staging.yml sets
-          # EMAIL_PROVIDER=resend; missing key crashes the worker on first
-          # send. No fallback: an unset secret here is a deploy bug.
-          RESEND_KEY="${{ secrets.RESEND_API_KEY }}"
-          # Stripe — empty fallback intentionally surfaces the user-facing
-          # "Stripe is not configured" message instead of silently no-op'ing
-          # the route. Set the actual values via `gh secret set --env staging`
-          # (see docs/dev/stripe-local-setup.md → Staging deployment).
-          STRIPE_SECRET="${{ secrets.STRIPE_SECRET_KEY || '' }}"
-          STRIPE_WEBHOOK_SEC="${{ secrets.STRIPE_WEBHOOK_SECRET || '' }}"
-          # MinIO server-side AES256 encryption key. Format
-          # `<key-name>:<base64-32-byte-secret>`; generate with
-          # `openssl rand -base64 32`. Without this the worker DLQs every
-          # receipt PDF upload (issue #193 follow-up).
-          MINIO_KMS="${{ secrets.MINIO_KMS_SECRET_KEY || 'staging-kms:c3RhZ2luZy1taW5pby1rbXMtZmFsbGJhY2stMzItYnl0ZXM=' }}"
-
-          cat <<EOF > .kamal/secrets
-          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-          POSTGRES_PASSWORD=$PG_PASS
-          REDIS_PASSWORD=$REDIS_PASS
-          MINIO_ROOT_PASSWORD=$MINIO_PASS
-          MINIO_KMS_SECRET_KEY=$MINIO_KMS
-          KEYCLOAK_ADMIN_PASSWORD=$KC_PASS
-          SESSION_SECRET=$SESSION_SEC
-          KC_DB_PASSWORD=$PG_PASS
-          DATABASE_URL=postgres://givernance:$PG_PASS@givernance-postgres:5432/givernance_staging
-          DATABASE_URL_APP=postgres://givernance:$PG_PASS@givernance-postgres:5432/givernance_staging
-          REDIS_URL=redis://:$REDIS_PASS@givernance-redis:6379
-          S3_SECRET_ACCESS_KEY=$MINIO_PASS
-          KEYCLOAK_ADMIN_CLIENT_SECRET=$KC_CLIENT_SECRET
-          RESEND_API_KEY=$RESEND_KEY
-          STRIPE_SECRET_KEY=$STRIPE_SECRET
-          STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SEC
-          EOF
+        uses: ./.github/actions/setup-kamal-secrets
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          KEYCLOAK_ADMIN_CLIENT_SECRET: ${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
 
       - name: Build and push Keycloak image
         run: |

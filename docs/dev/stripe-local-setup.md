@@ -300,6 +300,18 @@ After deploy, smoke-test by:
 - **Stripe keys**: regenerate in the dashboard, update both `gh secret set …` values, redeploy.
 - **MINIO_KMS_SECRET_KEY**: generate a new value, update the secret, redeploy. **Existing receipts encrypted with the old key won't be readable** — staging data is non-load-bearing so this is acceptable; production rotation will need MinIO's `MINIO_KMS_AUTO_ENCRYPTION` config to keep both keys mounted.
 
+  The `Deploy to Staging` workflow validates that the resolved value (secret OR fallback) decodes to exactly 32 bytes; a mismatch fails the deploy with `MINIO_KMS_SECRET_KEY base64 portion decodes to N bytes, MinIO requires exactly 32`. Catches both a botched fallback edit and a malformed `gh secret set` value (issue #211).
+
+### Rotating an accessory env var without a full setup
+
+`kamal deploy` (the per-push staging flow) only rolls app containers — `web`, `api`, `worker`, `relay`. Accessories (`postgres`, `redis`, `minio`, `keycloak`) keep running with whatever env they were last booted with. So when you rotate an accessory secret (e.g. `MINIO_KMS_SECRET_KEY`, `KEYCLOAK_ADMIN_PASSWORD`) or bump an accessory image for a CVE patch, the per-push deploy will *not* pick it up.
+
+Use **`Reboot Staging Accessory`** (`.github/workflows/staging-accessory-reboot.yml`) — `Actions → Reboot Staging Accessory → Run workflow`, pick the accessory, type its name into the confirm field. The workflow reuses the same secrets bag as the deploy (single source of truth in `.github/actions/setup-kamal-secrets/action.yml`), then runs `kamal accessory reboot <name>`. This is the path that would have closed the 2026-04-29 incident in one click instead of an SSH session (issue #212).
+
+When NOT to use it:
+- **Accessory schema/topology change** (new port mapping, new mounted file, new env var added in `config/deploy-staging.yml`). Kamal needs to re-render the Compose config — use `workflow_dispatch` on the regular `Deploy to Staging` workflow, which runs `kamal setup` (slower, full bootstrap).
+- **App container restart** (web, api, worker, relay). Push to `main` or re-run the deploy workflow; `kamal deploy` already covers these.
+
 ---
 
 ## What's not covered yet
