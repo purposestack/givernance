@@ -203,16 +203,29 @@ const DonationDetailResponse = Type.Object({
  * the internal Docker hostname `givernance-minio:9000`, unreachable from
  * the browser.
  *
- * `expiresAt` is the caller's auth-token horizon — the path itself is
- * timeless (re-authenticated on every download), but after this instant
- * the user must re-auth and re-call this endpoint. Pre-#214 this field
- * tracked the presigned URL's TTL; the post-#214 meaning is
- * "auth-token-tied" per the issue's design constraint.
+ * `expiresAt` is a coarse "consider re-fetching after" hint — the path
+ * itself is timeless (re-authenticated on every download). We
+ * deliberately do NOT surface the JWT `exp` here: leaking the precise
+ * token-rotation instant would give an attacker who exfiltrates the
+ * cookie a useful timing primitive (review feedback). A fixed +1h
+ * horizon, rounded to the minute, is enough for a client that wants to
+ * pre-refresh and reveals nothing about the session.
  */
-const ReceiptUrlResponse = Type.Object({
+const ReceiptDownloadResponse = Type.Object({
   downloadPath: Type.String(),
   expiresAt: Type.String({ format: "date-time" }),
 });
+
+const RECEIPT_METADATA_TTL_SECONDS = 3600;
+
+/** Strict allowlist for receipt numbers we'll trust in a Content-Disposition
+ * filename. Today's generator emits `REC-YYYY-NNNN`; this regex pins that
+ * shape so a future writer (Salesforce import, manual SQL, schema drift)
+ * can never inject a `"` or CRLF that would split / corrupt the response
+ * header. Unmatched values get a generic `receipt.pdf` filename — the
+ * download still works, the legal artifact still ships, the header just
+ * stops carrying user-controlled bytes. */
+const SAFE_RECEIPT_NUMBER_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
 export async function donationRoutes(app: FastifyInstance) {
   /** List donations with pagination and filters */
@@ -571,7 +584,7 @@ export async function donationRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Donations"],
         params: IdParams,
-        response: { 200: DataResponse(ReceiptUrlResponse), ...ErrorResponses },
+        response: { 200: DataResponse(ReceiptDownloadResponse), ...ErrorResponses },
       },
     },
     async (request, reply) => {
@@ -611,14 +624,15 @@ export async function donationRoutes(app: FastifyInstance) {
           );
       }
 
-      // `jwtExp` is a UNIX-second timestamp set by the auth plugin from
-      // the verified JWT's `exp` claim (packages/api/src/plugins/auth.ts).
-      // Falls back to "1 hour from now" if the claim is missing — that's
-      // a defensive default, not a feature: every Keycloak-issued JWT
-      // carries `exp`. The frontend uses this only as a "consider
-      // refreshing" hint; the path itself doesn't go stale.
-      const expSeconds = request.jwtExp ?? Math.floor(Date.now() / 1000) + 3600;
-      const expiresAt = new Date(expSeconds * 1000).toISOString();
+      // Coarse "consider re-fetching after" hint — fixed +1h, rounded
+      // to the minute. Keeps the contract shape (`{ downloadPath,
+      // expiresAt }`) but deliberately doesn't surface the JWT exp:
+      // leaking the precise token-rotation instant would give an
+      // attacker who exfiltrated the cookie a useful timing primitive
+      // (review feedback). The path itself is timeless because the
+      // download endpoint re-authenticates on every call.
+      const horizonMs = Date.now() + RECEIPT_METADATA_TTL_SECONDS * 1000;
+      const expiresAt = new Date(horizonMs - (horizonMs % 60_000)).toISOString();
       return {
         data: {
           downloadPath: `/v1/donations/${id}/receipt/download`,
@@ -651,8 +665,11 @@ export async function donationRoutes(app: FastifyInstance) {
         params: IdParams,
         // Binary streaming response — no JSON envelope; only the error
         // shapes go through the schema. Fastify still validates the
-        // params at the schema layer above.
-        response: ErrorResponses,
+        // params at the schema layer above. 502 is included on top of
+        // the standard ErrorResponses for the "MinIO object missing /
+        // unreachable" path (see the try/catch around fetchReceiptObject
+        // below).
+        response: { ...ErrorResponses, 502: ProblemDetailSchema },
       },
     },
     async (request, reply) => {
@@ -691,7 +708,49 @@ export async function donationRoutes(app: FastifyInstance) {
           );
       }
 
-      const { body, contentLength } = await fetchReceiptObject(receipt.s3Path);
+      // Fetch from MinIO/S3. A receipt row pointing at a missing object
+      // (volume reset on staging, partial worker run, manual delete) is
+      // genuinely common — surface it as a clean 502 with a generic
+      // message instead of letting the AWS SDK's `NoSuchKey` error class
+      // bubble up to the global handler and leak the bucket key path
+      // into the user-facing problem-detail title.
+      let body: Awaited<ReturnType<typeof fetchReceiptObject>>["body"];
+      let contentLength: number | undefined;
+      try {
+        ({ body, contentLength } = await fetchReceiptObject(receipt.s3Path));
+      } catch (err) {
+        request.log.error(
+          {
+            err,
+            donationId: id,
+            receiptId: receipt.id,
+            receiptNumber: receipt.receiptNumber,
+            s3Path: receipt.s3Path,
+          },
+          "Receipt object fetch failed",
+        );
+        return reply
+          .status(502)
+          .send(problemDetail(502, "Bad Gateway", "Receipt is temporarily unavailable"));
+      }
+
+      // Detach + destroy the S3 stream if the client disconnects
+      // mid-transfer (closed tab, slow network) so the AWS SDK's HTTP
+      // agent reclaims the connection instead of holding the socket
+      // open until its idle timeout. Same listener handles a transient
+      // S3 read error after headers are flushed — at that point we can't
+      // change the status code, but we can stop emitting and free the
+      // socket.
+      request.raw.on("close", () => {
+        if (!request.raw.complete) body.destroy();
+      });
+      body.on("error", (streamErr) => {
+        request.log.error(
+          { err: streamErr, donationId: id, receiptId: receipt.id },
+          "Receipt stream error after headers flushed",
+        );
+        body.destroy();
+      });
 
       // Audit log — single source of truth for "who downloaded this
       // receipt". Indexed in Loki via the existing pino → stdout path
@@ -710,9 +769,18 @@ export async function donationRoutes(app: FastifyInstance) {
         "Receipt downloaded",
       );
 
+      // Pin the filename to a safe shape so the column's `varchar(100)`
+      // breadth — and any future writer (Salesforce import, manual SQL)
+      // — can't smuggle quotes / CRLF through the response header.
+      // Today's generator (`REC-YYYY-NNNN`) always matches; non-matching
+      // numbers fall back to `receipt.pdf` rather than corrupting the
+      // header (review feedback).
+      const safeFilename = SAFE_RECEIPT_NUMBER_RE.test(receipt.receiptNumber)
+        ? `${receipt.receiptNumber}.pdf`
+        : "receipt.pdf";
       reply
         .header("Content-Type", "application/pdf")
-        .header("Content-Disposition", `attachment; filename="${receipt.receiptNumber}.pdf"`)
+        .header("Content-Disposition", `attachment; filename="${safeFilename}"`)
         .header("Cache-Control", "private, no-store");
       if (contentLength !== undefined) {
         reply.header("Content-Length", contentLength.toString());

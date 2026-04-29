@@ -21,18 +21,29 @@ export function ReceiptPreviewButton({ donationId }: ReceiptPreviewButtonProps) 
   async function handlePreview() {
     if (loading) return;
     setLoading(true);
+    // Open the download tab synchronously so the click is in the same
+    // event-loop tick as the user gesture — Safari + Firefox block
+    // popups opened after an `await`. We redirect the placeholder tab
+    // to the resolved URL once the metadata fetch resolves.
+    const popup = window.open("about:blank", "_blank", "noopener,noreferrer");
     try {
-      // `downloadPath` is a same-origin API path (e.g.
-      // `/v1/donations/<id>/receipt/download`); next.config rewrites
-      // `/api/v1/*` to the API service. We prefix with `/api` so the
-      // request hits the same Next.js rewrite the rest of the SPA uses,
-      // keeping the donor on `staging.givernance.org` (issue #214).
-      const downloadPath = await DonationService.getDonationReceiptDownloadPath(
+      // The service resolves the absolute browser URL (NEXT_PUBLIC_API_URL
+      // + downloadPath) so this component never reconstructs the API
+      // base — preserves the URL-consistency rule (issue #214) without
+      // hardcoding `/api`.
+      const url = await DonationService.getDonationReceiptDownloadUrl(
         createClientApiClient(),
         donationId,
       );
-      window.open(`/api${downloadPath}`, "_blank", "noopener,noreferrer");
+      if (popup) {
+        popup.location.href = url;
+      } else {
+        // Popup blocker fired — surface the failure instead of leaving
+        // the user with no signal that anything went wrong.
+        toast.error(t("receipt.error"));
+      }
     } catch (err) {
+      popup?.close();
       if (err instanceof ApiProblem && err.status === 404) {
         toast.warning(t("receipt.pending"));
       } else {

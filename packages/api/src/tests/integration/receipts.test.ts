@@ -10,13 +10,16 @@ import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../
 // Stub S3 fetch so the streaming download tests don't depend on a real
 // MinIO object existing at the receipt's s3_path. The 403/404 paths
 // short-circuit before reaching this, so they exercise pure auth +
-// tenant-scope logic regardless of the stub.
+// tenant-scope logic regardless of the stub. `vi.hoisted` is the only
+// way to reference a mock factory's fn from the rest of the file (the
+// `vi.mock` call is hoisted above all imports), and it lets us call
+// `mockClear` / `mockRejectedValueOnce` per test.
 const STUB_PDF_BYTES = Buffer.from("%PDF-1.4 stub-receipt", "utf8");
+const { mockedFetchReceipt } = vi.hoisted(() => ({
+  mockedFetchReceipt: vi.fn(),
+}));
 vi.mock("../../lib/s3.js", () => ({
-  fetchReceiptObject: vi.fn(async () => ({
-    body: Readable.from(STUB_PDF_BYTES),
-    contentLength: STUB_PDF_BYTES.length,
-  })),
+  fetchReceiptObject: mockedFetchReceipt,
 }));
 
 let app: FastifyInstance;
@@ -27,6 +30,13 @@ const receiptSuffix = Date.now().toString(36);
 const receiptNumber = `REC-2026-${receiptSuffix}`;
 
 beforeAll(async () => {
+  // Default mock impl — emits a fresh `Readable` per call so each test
+  // gets an unconsumed stream (Node `Readable.from` returns one-shot
+  // streams that error on a second `pipe`).
+  mockedFetchReceipt.mockImplementation(async () => ({
+    body: Readable.from(STUB_PDF_BYTES),
+    contentLength: STUB_PDF_BYTES.length,
+  }));
   app = await createServer();
   await app.ready();
   await ensureTestTenants();
@@ -108,10 +118,17 @@ describe("Receipt endpoint", () => {
     // same-origin URL so the donor never leaves staging.givernance.org.
     expect(body.data.downloadPath).toBe(`/v1/donations/${donationIdA}/receipt/download`);
     expect(body.data.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    // expiresAt is the auth-token horizon, not a URL TTL — must be in the
-    // future at response time so a frontend that schedules a re-fetch
-    // doesn't pre-expire the metadata.
-    expect(new Date(body.data.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    // expiresAt is a coarse "consider re-fetching after" hint — must be
+    // in the future at response time. We DO NOT lock to JWT exp here
+    // (that would surface a session-rotation timing primitive); the
+    // contract is only "future-tense ISO-8601, minute-aligned, ~1h
+    // out". A regression that started leaking the JWT exp would
+    // surface as a per-test timestamp drift, which the upper bound
+    // catches.
+    const expiresAtMs = new Date(body.data.expiresAt).getTime();
+    expect(expiresAtMs).toBeGreaterThan(Date.now());
+    expect(expiresAtMs).toBeLessThanOrEqual(Date.now() + 90 * 60 * 1000); // sanity ceiling
+    expect(expiresAtMs % 60_000).toBe(0); // minute-aligned, no second-precision leak
     // Defend against accidental regression to a presigned-URL response
     // shape (which would re-introduce the cross-domain hop).
     expect(body.data).not.toHaveProperty("url");
@@ -222,11 +239,14 @@ describe("Receipt download endpoint", () => {
     }
   });
 
-  it("returns 404 when Tenant B requests Tenant A's receipt download (cross-tenant scope)", async () => {
+  it("returns 404 when Tenant B requests Tenant A's receipt download AND never reaches S3", async () => {
     // Even with a valid receipt s3Path guess, a Tenant B token must not
     // reach `fetchReceiptObject` — auth + tenant-scope short-circuit at
     // the donation lookup. The 404 is intentional: 403 would leak the
-    // existence of the donation across tenants.
+    // existence of the donation across tenants. Asserting the mock was
+    // *not* called is what catches a future refactor that reorders the
+    // S3 hit before the tenant gate.
+    mockedFetchReceipt.mockClear();
     const tokenB = signTokenB(app);
     const res = await app.inject({
       method: "GET",
@@ -235,6 +255,7 @@ describe("Receipt download endpoint", () => {
     });
 
     expect(res.statusCode).toBe(404);
+    expect(mockedFetchReceipt).not.toHaveBeenCalled();
     // Lock the RFC 9457 problem-detail body so a future regression to
     // a plain string or `{error: "..."}` shape is caught immediately
     // (memory: feedback_lock_rfc9457_body_in_tests).
@@ -262,6 +283,84 @@ describe("Receipt download endpoint", () => {
       headers: authHeader(tokenA),
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("returns 404 when the donation exists but its receipt is still pending (not yet generated)", async () => {
+    // Lock the `getReceiptByDonation` filter on `status='generated'`:
+    // a `pending` receipt row must NOT be downloadable (the worker
+    // hasn't written the PDF to S3 yet, so streaming would 502 with a
+    // NoSuchKey from MinIO). We surface 404 — the receipt isn't
+    // available yet, same as the no-row case.
+    const tokenA = signToken(app);
+
+    // Insert a fresh donation + a pending receipt for it.
+    const donRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 4242,
+        currency: "EUR",
+        paymentMethod: "wire",
+        fiscalYear: 2026,
+      },
+    });
+    const pendingDonationId = donRes.json<{ data: { id: string } }>().data.id;
+    const pendingReceiptNumber = `REC-2026-PENDING-${Date.now().toString(36)}`;
+    await withTenantContext(ORG_A, async (tx) => {
+      await tx.insert(receipts).values({
+        orgId: ORG_A,
+        donationId: pendingDonationId,
+        receiptNumber: pendingReceiptNumber,
+        fiscalYear: 2026,
+        s3Path: `${ORG_A}/receipts/${pendingReceiptNumber}.pdf`,
+        status: "pending",
+      });
+    });
+
+    mockedFetchReceipt.mockClear();
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${pendingDonationId}/receipt/download`,
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(404);
+    // S3 fetch must NOT happen for a pending receipt — proves the
+    // 'generated' filter on `getReceiptByDonation` is load-bearing for
+    // the download endpoint, not just the metadata endpoint.
+    expect(mockedFetchReceipt).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 + RFC 9457 body when MinIO fetch fails (NoSuchKey / network)", async () => {
+    // Worker volume reset, manual S3 delete, MinIO container restart
+    // mid-fetch — the row exists but the object is gone. We must not
+    // leak the AWS SDK error class name (e.g. "NoSuchKey") or the s3Path
+    // into the donor-facing problem-detail title.
+    const tokenA = signToken(app);
+    mockedFetchReceipt.mockRejectedValueOnce(
+      Object.assign(new Error("The specified key does not exist."), {
+        name: "NoSuchKey",
+      }),
+    );
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${donationIdA}/receipt/download`,
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(502);
+    const body = res.json<{ title: string; detail: string; status: number; type: string }>();
+    expect(body).toMatchObject({
+      type: expect.any(String),
+      title: "Bad Gateway",
+      status: 502,
+      detail: expect.any(String),
+    });
+    // Generic message — must not leak SDK error class or bucket key.
+    expect(body.detail).not.toContain("NoSuchKey");
+    expect(body.detail).not.toContain(".pdf");
   });
 });
 

@@ -78,17 +78,20 @@ export const DonationService = {
   },
 
   /**
-   * Fetch the relative same-origin path the browser opens to stream the
-   * receipt PDF. Returns the path verbatim so the caller can decide
-   * whether to `window.open` it or render a link. The browser never sees
-   * a presigned MinIO URL (issue #214 — the old presigned flow baked the
-   * Docker-internal hostname into the SigV4 signature).
+   * Resolve the absolute browser URL the user opens to stream the receipt
+   * PDF. The API returns a *relative* path (`/v1/...`) and we hand the
+   * caller back the URL with the configured API base prefix already
+   * applied — so callers `window.open(url)` directly without re-doing the
+   * `NEXT_PUBLIC_API_URL` resolution and without hardcoding `/api`. The
+   * browser never sees a presigned MinIO URL (issue #214 — the old
+   * presigned flow baked the Docker-internal hostname into the SigV4
+   * signature).
    */
-  async getDonationReceiptDownloadPath(client: ApiClient, id: string): Promise<string> {
+  async getDonationReceiptDownloadUrl(client: ApiClient, id: string): Promise<string> {
     const response = await client.get<{ data: DonationReceiptMeta }>(
       `/v1/donations/${encodeURIComponent(id)}/receipt`,
     );
-    return response.data.downloadPath;
+    return client.resolveBrowserUrl(response.data.downloadPath);
   },
 
   /**

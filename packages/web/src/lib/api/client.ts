@@ -71,6 +71,18 @@ export class ApiClient {
     return this.request<T>("DELETE", path, undefined, options);
   }
 
+  /**
+   * Resolve a relative API path to the absolute browser-resolvable URL the
+   * client would fetch. Use this for callers that need the URL itself
+   * rather than the parsed JSON body — e.g. `window.open` for a streamed
+   * file download. Mirrors `buildUrl` so the configured `baseUrl` (and
+   * its `NEXT_PUBLIC_API_URL` override) is the single source of truth;
+   * components must not hardcode `/api` themselves (issue #214 review).
+   */
+  resolveBrowserUrl(path: string): string {
+    return this.buildUrl(path);
+  }
+
   private async request<T>(
     method: HttpMethod,
     path: string,

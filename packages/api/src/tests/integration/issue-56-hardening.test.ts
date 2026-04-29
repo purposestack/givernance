@@ -596,7 +596,10 @@ describe("GET /v1/donations/:id/receipt exposes expiresAt (API minor)", () => {
       `/v1/donations/${donationId!}/receipt/download`,
     );
     expect(body.data.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    // Must be in the future.
+    // Must be in the future. We don't lock the exact value because the
+    // post-#214 semantics are a coarse "consider re-fetching after"
+    // hint, not a presigned-URL TTL — see receipts.test.ts for the
+    // minute-alignment + ceiling assertions that lock that contract.
     expect(new Date(body.data.expiresAt).getTime()).toBeGreaterThan(Date.now());
     // Defend against regression to the presigned-URL contract.
     expect(body.data).not.toHaveProperty("url");
