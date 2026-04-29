@@ -52,6 +52,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Detect whether this push touched Keycloak — gates the slow chain
+      # (image build → accessory reboot → realm-ready wait → realm sync,
+      # ~85s combined). On workflow_dispatch we always run the chain so a
+      # manual button-click means "full deploy" by default. paths-filter
+      # uses the GitHub API and works with default (shallow) checkouts.
+      - name: Detect changed paths
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            keycloak:
+              - 'infra/keycloak/**'
+              - 'scripts/keycloak-sync-realm.sh'
+              - '.github/workflows/deploy-staging.yml'
+
       - name: Set up Ruby (for Kamal)
         uses: ruby/setup-ruby@v1
         with:
@@ -85,6 +100,7 @@ jobs:
           MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
 
       - name: Build and push Keycloak image
+        if: steps.changes.outputs.keycloak == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker build \
@@ -123,6 +139,7 @@ jobs:
       # Rebooting the accessory re-copies the file and triggers a re-import under
       # KC_IMPORT_STRATEGY=OVERWRITE_EXISTING (set in config/deploy-staging.yml).
       - name: Reboot Keycloak to re-import realm JSON
+        if: steps.changes.outputs.keycloak == 'true' || github.event_name == 'workflow_dispatch'
         run: kamal accessory reboot keycloak -c config/deploy-staging.yml
 
       # `kamal setup` only re-creates accessories that aren't already
@@ -137,6 +154,7 @@ jobs:
         run: kamal accessory reboot minio -c config/deploy-staging.yml
 
       - name: Wait for Keycloak realm to be ready
+        if: steps.changes.outputs.keycloak == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' \
@@ -192,6 +210,7 @@ jobs:
       # are all native to ubuntu-latest, so we don't have to ship them in the
       # production image just to satisfy `kamal app exec`.
       - name: Sync Keycloak realm
+        if: steps.changes.outputs.keycloak == 'true' || github.event_name == 'workflow_dispatch'
         env:
           KEYCLOAK_URL: https://auth.staging.givernance.org
           KEYCLOAK_ADMIN: admin
