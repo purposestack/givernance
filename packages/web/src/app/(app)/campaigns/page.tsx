@@ -19,7 +19,13 @@ const MAX_PER_PAGE = 100;
  * Mirror of `CAMPAIGN_SORT_FIELDS` from the API
  * (`packages/api/src/modules/campaigns/routes.ts`).
  */
-const CAMPAIGN_SORT_FIELDS = new Set<CampaignSortField>(["name", "type", "status", "createdAt"]);
+const CAMPAIGN_SORT_FIELDS = new Set<CampaignSortField>([
+  "name",
+  "type",
+  "status",
+  "progress",
+  "createdAt",
+]);
 const DEFAULT_SORT: CampaignSortField = "createdAt";
 const DEFAULT_ORDER: CampaignSortOrder = "desc";
 
