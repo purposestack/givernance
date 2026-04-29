@@ -251,7 +251,6 @@ export function ConstituentsTable({
         id: "email",
         accessorKey: "email",
         header: () => t("columns.email"),
-        enableSorting: false,
         cell: ({ row }) => (
           <span className="text-on-surface-variant">{row.original.email ?? "—"}</span>
         ),
