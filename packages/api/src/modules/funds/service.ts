@@ -17,6 +17,12 @@ export interface ListFundsQuery {
   order?: string;
 }
 
+/**
+ * Defense-in-depth — see `donations/service.ts` `normalizeDonationSort`
+ * for the rationale. Route-level TypeBox literal union
+ * (`FUND_SORT_FIELDS` in `routes.ts`) is the contract; this fallback
+ * only kicks in if validation is loosened.
+ */
 function normalizeFundSort(value: string | undefined): FundSortField {
   if (value && FUND_SORT_FIELDS.has(value as FundSortField)) {
     return value as FundSortField;

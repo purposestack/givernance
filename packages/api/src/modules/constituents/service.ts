@@ -25,6 +25,12 @@ export interface ListConstituentsQuery {
   order?: string;
 }
 
+/**
+ * Defense-in-depth — see `donations/service.ts` `normalizeDonationSort`
+ * for the rationale. Route-level TypeBox literal union
+ * (`CONSTITUENT_SORT_FIELDS` in `routes.ts`) is the contract; this
+ * fallback only kicks in if validation is loosened.
+ */
 function normalizeConstituentSort(value: string | undefined): ConstituentSortField {
   if (value && CONSTITUENT_SORT_FIELDS.has(value as ConstituentSortField)) {
     return value as ConstituentSortField;

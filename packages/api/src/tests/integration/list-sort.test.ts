@@ -1,18 +1,26 @@
 /**
  * Server-side sort across paginated list endpoints (issue #209).
  *
- * Locks two contracts per route:
+ * Per route, this suite locks three contracts:
  *   1. Unknown `sort` field → 400 with RFC 9457 problem detail body
  *      (per memory `lock_rfc9457_body_in_tests`: validate the body shape,
  *      not just the status code).
- *   2. `sort=name&order=asc` returns rows ordered server-side, so the
- *      first row of a `perPage=100` window is the alphabetic minimum —
- *      proves the orderBy reaches the DB and isn't applied client-side.
+ *   2. Both axes of the sort: `order=asc` returns rows in ascending order
+ *      AND `order=desc` returns them reversed — proves the orderBy reaches
+ *      the DB and isn't applied client-side. Per memory
+ *      `role_test_coverage_both_directions` (analogous principle: every
+ *      change covered in both directions).
+ *   3. Edge cases that ajv literal-union validation should reject (empty
+ *      `?sort=`, uppercase `?order=ASC`) and that the response shape stays
+ *      RFC 9457 even when the dataset is empty.
  *
- * The asc/desc smoke test is enough to detect a regression to fixed
- * orderBy. Per-route sort-field combinatorics (every column × asc/desc)
- * are intentionally NOT exercised — they'd add minutes to CI for the
- * same signal.
+ * Tenant isolation: this suite uses a **dedicated** tenant
+ * (`LIST_SORT_ORG`) instead of the shared `ORG_A`. Otherwise the
+ * `beforeAll` cleanup would wipe data seeded by alphabetically-earlier
+ * suites (`donations.test.ts`, `constituents.test.ts`, etc.) and any
+ * future test that asserts on `ORG_A` row counts would break silently.
+ * Same precedent as `tenant-onboarding-schema.test.ts` — share fixtures
+ * only when the read path is observably the same.
  */
 
 import { sql } from "drizzle-orm";
@@ -20,47 +28,85 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
-import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
+import { authHeader, ensureTestTenants, seedTenantUser, signToken } from "../helpers/auth.js";
 
-const PROBLEM_TYPE_400 = /http-status\/400/;
+/**
+ * RFC 9457 problem `type` URI used by this app for HTTP 400. Pinned to
+ * the full origin so a regression that switches problem-type prefixes
+ * (e.g. to a self-hosted IRI) doesn't pass silently.
+ */
+const PROBLEM_TYPE_400 = /^https:\/\/httpproblems\.com\/http-status\/400$/;
+
+const LIST_SORT_ORG = "00000000-0000-0000-0000-00000000209a";
+/** Empty tenant for "no rows" pagination assertions. */
+const LIST_SORT_EMPTY_ORG = "00000000-0000-0000-0000-00000000209b";
+// Distinct keycloak_id per tenant. `seedTenantUser` derives its synthetic
+// rowId as `00000000-0000-0000-${orgSuffix.slice(0, 4)}-${subSuffix}` —
+// where `orgSuffix` and `subSuffix` are the last 12 hex chars of `orgId`
+// and `sub`. Both my tenants' last-12 starts with "0000" (so
+// `orgSuffix.slice(0, 4)` collides), so we lean on the sub's last-12
+// being distinct: pack the discriminator (`209a` / `209b`) into the
+// LAST 12 hex chars of each sub, not the third UUID block.
+const LIST_SORT_USER = "00000000-0000-0000-0000-000000209a01";
+const LIST_SORT_EMPTY_USER = "00000000-0000-0000-0000-000000209b01";
 
 let app: FastifyInstance;
 let token: string;
+let emptyToken: string;
 
 beforeAll(async () => {
   app = await createServer();
   await app.ready();
   await ensureTestTenants();
-  token = signToken(app);
 
-  // Clean slate so the asc/desc assertions on min/max names are
-  // deterministic regardless of what previous suites left behind.
-  // Order matters: child tables before parents to avoid FK violations
-  // (`pledges` and `donations` both FK to `constituents`).
-  await db.execute(sql`DELETE FROM donation_allocations WHERE org_id = ${ORG_A}`);
-  await db.execute(sql`DELETE FROM donations WHERE org_id = ${ORG_A}`);
-  await db.execute(sql`DELETE FROM pledges WHERE org_id = ${ORG_A}`);
-  await db.execute(sql`DELETE FROM campaign_funds WHERE org_id = ${ORG_A}`);
-  await db.execute(sql`DELETE FROM funds WHERE org_id = ${ORG_A}`);
-  await db.execute(sql`DELETE FROM campaigns WHERE org_id = ${ORG_A}`);
-  await db.execute(sql`DELETE FROM constituents WHERE org_id = ${ORG_A}`);
+  // Two dedicated tenants for this suite — one seeded with disjoint
+  // fixture data, one left empty. Both `INSERT … ON CONFLICT DO NOTHING`
+  // so this suite is idempotent across re-runs.
+  await db.execute(sql`
+    INSERT INTO tenants (id, name, slug)
+    VALUES
+      (${LIST_SORT_ORG}, 'List Sort Org', 'list-sort-org'),
+      (${LIST_SORT_EMPTY_ORG}, 'List Sort Empty Org', 'list-sort-empty-org')
+    ON CONFLICT (id) DO NOTHING
+  `);
+  await seedTenantUser(LIST_SORT_ORG, { sub: LIST_SORT_USER });
+  await seedTenantUser(LIST_SORT_EMPTY_ORG, { sub: LIST_SORT_EMPTY_USER });
+
+  token = signToken(app, { org_id: LIST_SORT_ORG, sub: LIST_SORT_USER });
+  emptyToken = signToken(app, { org_id: LIST_SORT_EMPTY_ORG, sub: LIST_SORT_EMPTY_USER });
+
+  // Wipe only the dedicated tenant's data — order matters: child tables
+  // before parents to avoid FK violations (`pledges` and `donations`
+  // both FK to `constituents`).
+  await db.execute(sql`DELETE FROM donation_allocations WHERE org_id = ${LIST_SORT_ORG}`);
+  await db.execute(sql`DELETE FROM donations WHERE org_id = ${LIST_SORT_ORG}`);
+  await db.execute(sql`DELETE FROM pledges WHERE org_id = ${LIST_SORT_ORG}`);
+  await db.execute(sql`DELETE FROM campaign_funds WHERE org_id = ${LIST_SORT_ORG}`);
+  await db.execute(sql`DELETE FROM funds WHERE org_id = ${LIST_SORT_ORG}`);
+  await db.execute(sql`DELETE FROM campaigns WHERE org_id = ${LIST_SORT_ORG}`);
+  await db.execute(sql`DELETE FROM constituents WHERE org_id = ${LIST_SORT_ORG}`);
 
   // Seed three constituents whose lower(lastName) ordering is unambiguous
   // (Adams < Mitchell < Zane) regardless of locale collation defaults.
+  const constituentIds: string[] = [];
   for (const [first, last] of [
     ["Bea", "Mitchell"],
     ["Cara", "Adams"],
     ["Dan", "Zane"],
   ]) {
-    await app.inject({
+    const res = await app.inject({
       method: "POST",
       url: "/v1/constituents?force=true",
       headers: authHeader(token),
       payload: { firstName: first, lastName: last, type: "donor" },
     });
+    if (res.statusCode !== 201) {
+      throw new Error(`seed constituent failed: ${res.statusCode} ${res.body}`);
+    }
+    constituentIds.push(res.json<{ data: { id: string } }>().data.id);
   }
 
-  // Seed three campaigns and three funds with similarly disjoint names.
+  // Three campaigns and three funds with similarly disjoint names.
   for (const name of ["Beta Drive", "Alpha Push", "Zeta Finale"]) {
     await app.inject({
       method: "POST",
@@ -75,6 +121,26 @@ beforeAll(async () => {
       url: "/v1/funds",
       headers: authHeader(token),
       payload: { name, type: "unrestricted" },
+    });
+  }
+
+  // Three donations with disjoint amounts so directionality on
+  // `?sort=amountCents` is unambiguous.
+  for (let i = 0; i < constituentIds.length; i++) {
+    const amounts = [1000, 5000, 9999];
+    await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(token),
+      payload: {
+        // biome-ignore lint/style/noNonNullAssertion: fixture array
+        constituentId: constituentIds[i]!,
+        // biome-ignore lint/style/noNonNullAssertion: fixture array
+        amountCents: amounts[i]!,
+        currency: "EUR",
+        paymentMethod: "check",
+        paymentRef: `LIST-SORT-${i}-${Date.now()}`,
+      },
     });
   }
 });
@@ -120,13 +186,28 @@ describe("GET /v1/donations — server-side sort", () => {
     expectProblem400(res.json<ProblemBody>());
   });
 
-  it("accepts a valid sort + order without erroring", async () => {
+  it("sort=amountCents&order=asc returns donations from smallest to largest", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/v1/donations?sort=amountCents&order=asc&perPage=100",
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ amountCents: number }> }>();
+    const amounts = body.data.map((d) => d.amountCents);
+    expect(amounts).toEqual([...amounts].sort((a, b) => a - b));
+    expect(amounts).toEqual([1000, 5000, 9999]);
+  });
+
+  it("sort=amountCents&order=desc reverses the order", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations?sort=amountCents&order=desc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ amountCents: number }> }>();
+    expect(body.data.map((d) => d.amountCents)).toEqual([9999, 5000, 1000]);
   });
 });
 
@@ -152,7 +233,6 @@ describe("GET /v1/constituents — server-side sort", () => {
     const lastNames = body.data.map((c) => c.lastName.toLowerCase());
     const sorted = [...lastNames].sort();
     expect(lastNames).toEqual(sorted);
-    // Spot-check: with the seeded data, "adams" must come before "zane".
     expect(lastNames.indexOf("adams")).toBeLessThan(lastNames.indexOf("zane"));
   });
 
@@ -216,5 +296,48 @@ describe("GET /v1/funds — server-side sort", () => {
     const names = body.data.map((c) => c.name.toLowerCase());
     const sorted = [...names].sort();
     expect(names).toEqual(sorted);
+  });
+});
+
+describe("Edge cases — defense in depth on the sort/order contract", () => {
+  // Tests that lock behaviour the route schema *should* enforce. The
+  // service-layer `normalizeXxxSort()` falls back to a stable default
+  // for unknown values — these tests prove the route validation rejects
+  // the value before normalisation, so the fallback can't silently mask
+  // a regression to a looser TypeBox schema.
+
+  it("?sort= (empty string) → 400", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/funds?sort=",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(400);
+    expectProblem400(res.json<ProblemBody>());
+  });
+
+  it("?order=ASC (uppercase) → 400 — literal whitelist is case-sensitive", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/funds?order=ASC",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(400);
+    expectProblem400(res.json<ProblemBody>());
+  });
+
+  it("empty result set + sort applied returns an RFC-shaped pagination envelope", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/funds?sort=name&order=asc&perPage=20",
+      headers: authHeader(emptyToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: unknown[];
+      pagination: { page: number; perPage: number; total: number; totalPages: number };
+    }>();
+    expect(body.data).toEqual([]);
+    expect(body.pagination).toEqual({ page: 1, perPage: 20, total: 0, totalPages: 0 });
   });
 });
