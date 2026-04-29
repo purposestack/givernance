@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { type FormEvent, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { getReadableTextColor } from "@/lib/color";
 
 interface PublicDonationPaymentStepProps {
   clientSecret: string;
@@ -155,7 +156,12 @@ function PaymentForm({
   }
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+    <form
+      className="space-y-4"
+      onSubmit={handleSubmit}
+      noValidate
+      aria-busy={submitting || undefined}
+    >
       <Button variant="ghost" size="sm" onClick={onBack} disabled={submitting}>
         <ArrowLeft size={16} aria-hidden="true" />
         {t("actions.back")}
@@ -167,9 +173,15 @@ function PaymentForm({
       </div>
 
       {testMode ? (
+        // role="status" + aria-live so AT users hear the test-mode disclosure
+        // when the banner mounts. Visually uses the `info` token family
+        // (matches the `Badge variant="info"` palette) — `tertiary` aliases
+        // to `--color-amber` in the design system, which would read as a
+        // warning rather than an informational note.
         <div
-          role="note"
-          className="flex items-start gap-3 rounded-2xl border border-tertiary bg-tertiary-container px-4 py-3 text-sm text-on-tertiary-container"
+          role="status"
+          aria-live="polite"
+          className="flex items-start gap-3 rounded-2xl border border-secondary bg-secondary-fixed px-4 py-3 text-sm text-on-secondary-fixed-variant"
         >
           <FlaskConical size={18} aria-hidden="true" className="mt-0.5 shrink-0" />
           <div className="space-y-1">
@@ -206,13 +218,4 @@ function PaymentForm({
       </Button>
     </form>
   );
-}
-
-function getReadableTextColor(hex: string): "#FFFFFF" | "#111827" {
-  const normalized = hex.replace("#", "");
-  const r = Number.parseInt(normalized.slice(0, 2), 16);
-  const g = Number.parseInt(normalized.slice(2, 4), 16);
-  const b = Number.parseInt(normalized.slice(4, 6), 16);
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return luminance > 0.6 ? "#111827" : "#FFFFFF";
 }

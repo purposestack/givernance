@@ -1462,7 +1462,6 @@
     "descriptionFallback": "Your donation directly helps fund this campaign and the next steps it unlocks in the field.",
     "metrics": {
       "goal": "Fundraising goal",
-      "goalFallback": "Goal coming soon",
       "trust": "Payment",
       "trustValue": "Secured by Stripe"
     },
