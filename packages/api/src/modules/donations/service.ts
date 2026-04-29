@@ -474,3 +474,96 @@ export async function deleteDonation(orgId: string, id: string) {
     return deleted ?? null;
   });
 }
+
+/**
+ * Result of `refundDonation`. Discriminated union so the route layer
+ * can map each precondition failure to the right HTTP status without
+ * inspecting strings (issue #199).
+ */
+export type RefundDonationResult =
+  | { kind: "ok" }
+  | { kind: "not_found" }
+  | { kind: "not_stripe" }
+  | { kind: "already_refunded" }
+  | { kind: "stripe_error"; message: string };
+
+/**
+ * Issue a Stripe refund against the original PaymentIntent of a donation
+ * and roll back the platform fee with `refund_application_fee: true`. The
+ * actual donation-row update + campaign fee decrement happens in the
+ * `charge.refunded` webhook handler (worker) so the change is observed
+ * exactly once whether the refund originated from our UI or from the
+ * NPO's Stripe dashboard. This route ALSO marks the donation as
+ * `refunded` immediately for snappy UI feedback — the webhook handler
+ * is idempotent on already-refunded rows.
+ *
+ * @returns discriminated union the route layer maps to HTTP status.
+ */
+export async function refundDonation(
+  orgId: string,
+  donationId: string,
+  refundsApi: {
+    create: (params: {
+      payment_intent: string;
+      refund_application_fee?: boolean;
+    }) => Promise<unknown>;
+  },
+): Promise<RefundDonationResult> {
+  return withTenantContext(orgId, async (tx) => {
+    const [donation] = await tx
+      .select({
+        id: donations.id,
+        status: donations.status,
+        paymentMethod: donations.paymentMethod,
+        paymentRef: donations.paymentRef,
+      })
+      .from(donations)
+      .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)));
+
+    if (!donation) return { kind: "not_found" } as const;
+    if (donation.status === "refunded") return { kind: "already_refunded" } as const;
+    if (donation.paymentMethod !== "stripe" || !donation.paymentRef) {
+      // Off-Stripe donations (cash, SEPA imported, check) need their own
+      // refund mechanism — out of scope here; route returns 422.
+      return { kind: "not_stripe" } as const;
+    }
+
+    try {
+      // `refund_application_fee: true` rolls back the 1.5%+30¢ platform
+      // fee to the connected account at the same time as refunding the
+      // donor — donor experience: "I got my €50 back, no fee."
+      await refundsApi.create({
+        payment_intent: donation.paymentRef,
+        refund_application_fee: true,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Stripe refund failed";
+      return { kind: "stripe_error", message } as const;
+    }
+
+    // Mark the row refunded immediately so the operator sees instant
+    // feedback in the UI. The `charge.refunded` webhook handler will
+    // observe `status === "refunded"` and short-circuit, keeping the
+    // pipeline idempotent.
+    await tx
+      .update(donations)
+      .set({ status: "refunded" })
+      .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)));
+
+    // Emit the domain event from the API path too — mirrors what the
+    // webhook handler does. Outbox is keyed on `(tenantId, type,
+    // payload->>donationId)` only; if a duplicate emit happens, the
+    // relay's at-least-once delivery + downstream idempotency handles it.
+    await tx.insert(outboxEvents).values({
+      tenantId: orgId,
+      type: "donation.refunded",
+      payload: {
+        donationId,
+        paymentRef: donation.paymentRef,
+        source: "donation_refund_route",
+      },
+    });
+
+    return { kind: "ok" } as const;
+  });
+}

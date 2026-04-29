@@ -5,6 +5,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 
 import { DeleteDonationButton } from "@/components/donations/delete-donation-button";
 import { ReceiptPreviewButton } from "@/components/donations/receipt-preview-button";
+import { RefundDonationButton } from "@/components/donations/refund-donation-button";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -55,6 +56,15 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
 
   const donorName = donationDetailDonorName(donation) || t("anonymousDonor");
   const amountLabel = formatCurrency(donation.amountCents, locale, donation.currency);
+  // Refund button visible only when:
+  //   - the operator is an org_admin (`canDelete` proxies for "admin"),
+  //   - the donation came in via Stripe (only path our refund route supports),
+  //   - the donation isn't already refunded (avoids 422 on click).
+  // Off-Stripe donations (cash/SEPA/check) need their own refund flow,
+  // tracked separately — guarding by `paymentMethod` keeps this scoped
+  // to issue #199's contract without breaking other payment methods.
+  const canRefund =
+    canDelete && donation.paymentMethod === "stripe" && donation.status !== "refunded";
 
   return (
     <>
@@ -83,6 +93,13 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
               </Button>
             ) : null}
             <ReceiptPreviewButton donationId={donation.id} />
+            {canRefund ? (
+              <RefundDonationButton
+                donationId={donation.id}
+                amountLabel={amountLabel}
+                donorName={donationDetailDonorName(donation) || null}
+              />
+            ) : null}
             {canDelete ? (
               <DeleteDonationButton
                 donationId={donation.id}
