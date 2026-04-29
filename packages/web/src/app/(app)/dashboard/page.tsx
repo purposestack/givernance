@@ -12,19 +12,20 @@ import {
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { StatCardTrend } from "@/components/dashboard/stat-card-trend";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import type { Campaign, CampaignStats } from "@/models/campaign";
-import type { ConstituentListResponse } from "@/models/constituent";
+import type { DashboardPeriod } from "@/models/dashboard";
 import type { DonationListRow } from "@/models/donation";
 import { donationDonorName } from "@/models/donation";
 import { CampaignService } from "@/services/CampaignService";
 import { ConstituentService } from "@/services/ConstituentService";
+import { DashboardService } from "@/services/DashboardService";
 import { DonationService } from "@/services/DonationService";
 
 const RECENT_DONATIONS_LIMIT = 5;
@@ -53,7 +54,7 @@ export default async function DashboardPage() {
   const locale = await getLocale();
   const client = await createServerApiClient();
 
-  const [recentDonations, kpiDonations, donorResult, activeCampaigns] = await Promise.all([
+  const [recentDonations, kpiDonations, donorResult, activeCampaigns, stats] = await Promise.all([
     getSafeData(() =>
       DonationService.listDonations(client, { page: 1, perPage: RECENT_DONATIONS_LIMIT }),
     ),
@@ -70,16 +71,22 @@ export default async function DashboardPage() {
     getSafeData(() =>
       CampaignService.listCampaigns(client, { page: 1, perPage: 5, status: "active" }),
     ),
+    getSafeData(() => DashboardService.getStats(client)),
   ]);
 
   const activeCampaignStats = await getActiveCampaignStats(activeCampaigns?.data ?? []);
-  const totalRaisedCents = (kpiDonations?.data ?? []).reduce(
-    (sum, donation) => sum + donation.amountCents,
-    0,
-  );
+  const totalRaisedCents = stats?.totalRaisedCents.current ?? 0;
   const primaryCurrency = kpiDonations?.data[0]?.currency ?? "EUR";
-  const newDonorsThisMonth = countCreatedThisMonth(donorResult?.data ?? []);
+  const newDonorsThisMonth = stats?.newDonors.current ?? 0;
   const activeCampaignCount = activeCampaigns?.pagination.total ?? 0;
+  const trendLabel = t("stats.trendLabel");
+  const trendRaised = buildTrend(stats?.totalRaisedCents, trendLabel, (cents) =>
+    formatCurrency(cents, locale, primaryCurrency),
+  );
+  const trendCampaigns = buildTrend(stats?.newActiveCampaigns, trendLabel, (n) =>
+    formatNumber(n, locale),
+  );
+  const trendDonors = buildTrend(stats?.newDonors, trendLabel, (n) => formatNumber(n, locale));
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -103,7 +110,7 @@ export default async function DashboardPage() {
           valueClassName="font-mono"
           icon={Banknote}
           color="primary"
-          trend={{ value: 14, label: "vs mois précédent" }}
+          trend={trendRaised}
         />
         <StatCard
           label={t("stats.activeCampaigns")}
@@ -111,7 +118,7 @@ export default async function DashboardPage() {
           description={t("stats.activeCampaignsHint")}
           icon={Megaphone}
           color="secondary"
-          trend={{ value: 5, label: "vs mois précédent" }}
+          trend={trendCampaigns}
         />
         <StatCard
           label={t("stats.donors")}
@@ -119,7 +126,7 @@ export default async function DashboardPage() {
           description={t("stats.newDonorsThisMonth", { count: newDonorsThisMonth })}
           icon={Users}
           color="tertiary"
-          trend={{ value: 2, label: "vs mois précédent" }}
+          trend={trendDonors}
         />
         <StatCard
           label={t("stats.grantDeadlines")}
@@ -246,10 +253,24 @@ async function getSafeData<T>(loader: () => Promise<T>): Promise<T | null> {
   }
 }
 
-function countCreatedThisMonth(constituents: ConstituentListResponse["data"]) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  return constituents.filter((constituent) => new Date(constituent.createdAt) >= start).length;
+function buildTrend(
+  period: DashboardPeriod | undefined,
+  label: string,
+  format: (n: number) => string,
+): TrendProp | undefined {
+  if (!period || period.previous === 0) return undefined;
+  const value = Math.round(((period.current - period.previous) / period.previous) * 100);
+  return {
+    value,
+    label,
+    detail: { current: format(period.current), previous: format(period.previous) },
+  };
+}
+
+interface TrendProp {
+  value: number;
+  label: string;
+  detail: { current: string; previous: string };
 }
 
 function SectionHeader({
@@ -293,7 +314,7 @@ function StatCard({
   valueClassName?: string;
   icon?: React.ElementType;
   color?: "primary" | "secondary" | "tertiary" | "neutral";
-  trend?: { value: number; label: string };
+  trend?: TrendProp;
 }) {
   const colorStyles = {
     primary: "bg-primary-fixed text-on-primary-fixed-variant",
@@ -308,15 +329,7 @@ function StatCard({
         <p className="text-sm font-medium text-on-surface-variant">{label}</p>
         <div className="flex items-center gap-2">
           {trend ? (
-            <div title={trend.label}>
-              <Badge
-                variant={trend.value >= 0 ? "success" : "error"}
-                className="text-[10px] px-1.5 py-0 h-5"
-              >
-                {trend.value > 0 ? "+" : ""}
-                {trend.value}%
-              </Badge>
-            </div>
+            <StatCardTrend value={trend.value} label={trend.label} detail={trend.detail} />
           ) : null}
           {Icon ? (
             <div
