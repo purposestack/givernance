@@ -903,27 +903,43 @@
         "hint": "Cliquez sur « Reprendre l'onboarding » ci-dessus pour fournir les informations manquantes.",
         "fields": {
           "external_account": "Compte bancaire pour les versements",
-          "tos_acceptance.date": "Accepter les CGU de Stripe",
-          "tos_acceptance.ip": "Accepter les CGU de Stripe (IP)",
-          "individual.id_number": "Numéro de pièce d'identité",
-          "individual.dob.day": "Date de naissance (jour)",
-          "individual.dob.month": "Date de naissance (mois)",
-          "individual.dob.year": "Date de naissance (année)",
-          "individual.first_name": "Prénom légal",
-          "individual.last_name": "Nom légal",
-          "individual.email": "Adresse email",
-          "individual.phone": "Numéro de téléphone",
-          "individual.address.line1": "Adresse (rue)",
-          "individual.address.city": "Adresse (ville)",
-          "individual.address.postal_code": "Adresse (code postal)",
-          "individual.address.country": "Adresse (pays)",
-          "individual.verification.document": "Document d'identité",
-          "business_profile.url": "Site web de l'organisation",
-          "business_profile.mcc": "Catégorie d'activité",
           "business_type": "Type d'entité",
-          "company.name": "Nom de l'organisation",
-          "company.tax_id": "Numéro fiscal",
-          "company.verification.document": "Document de vérification de l'organisation"
+          "tos_acceptance": {
+            "date": "Accepter les CGU de Stripe",
+            "ip": "Accepter les CGU de Stripe (IP)"
+          },
+          "individual": {
+            "id_number": "Numéro de pièce d'identité",
+            "first_name": "Prénom légal",
+            "last_name": "Nom légal",
+            "email": "Adresse email",
+            "phone": "Numéro de téléphone",
+            "dob": {
+              "day": "Date de naissance (jour)",
+              "month": "Date de naissance (mois)",
+              "year": "Date de naissance (année)"
+            },
+            "address": {
+              "line1": "Adresse (rue)",
+              "city": "Adresse (ville)",
+              "postal_code": "Adresse (code postal)",
+              "country": "Adresse (pays)"
+            },
+            "verification": {
+              "document": "Document d'identité"
+            }
+          },
+          "business_profile": {
+            "url": "Site web de l'organisation",
+            "mcc": "Catégorie d'activité"
+          },
+          "company": {
+            "name": "Nom de l'organisation",
+            "tax_id": "Numéro fiscal",
+            "verification": {
+              "document": "Document de vérification de l'organisation"
+            }
+          }
         }
       },
       "adminOnly": "Seuls les administrateurs de l'organisation peuvent gérer les paiements.",

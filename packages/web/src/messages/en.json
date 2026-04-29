@@ -903,27 +903,43 @@
         "hint": "Click 'Continue onboarding' above to provide the missing information.",
         "fields": {
           "external_account": "Bank account for payouts",
-          "tos_acceptance.date": "Accept Stripe's Terms of Service",
-          "tos_acceptance.ip": "Accept Stripe's Terms of Service (IP)",
-          "individual.id_number": "Personal ID number",
-          "individual.dob.day": "Date of birth (day)",
-          "individual.dob.month": "Date of birth (month)",
-          "individual.dob.year": "Date of birth (year)",
-          "individual.first_name": "Legal first name",
-          "individual.last_name": "Legal last name",
-          "individual.email": "Email address",
-          "individual.phone": "Phone number",
-          "individual.address.line1": "Address (street)",
-          "individual.address.city": "Address (city)",
-          "individual.address.postal_code": "Address (postal code)",
-          "individual.address.country": "Address (country)",
-          "individual.verification.document": "ID verification document",
-          "business_profile.url": "Business website",
-          "business_profile.mcc": "Business category",
           "business_type": "Business type",
-          "company.name": "Company name",
-          "company.tax_id": "Company tax ID",
-          "company.verification.document": "Company verification document"
+          "tos_acceptance": {
+            "date": "Accept Stripe's Terms of Service",
+            "ip": "Accept Stripe's Terms of Service (IP)"
+          },
+          "individual": {
+            "id_number": "Personal ID number",
+            "first_name": "Legal first name",
+            "last_name": "Legal last name",
+            "email": "Email address",
+            "phone": "Phone number",
+            "dob": {
+              "day": "Date of birth (day)",
+              "month": "Date of birth (month)",
+              "year": "Date of birth (year)"
+            },
+            "address": {
+              "line1": "Address (street)",
+              "city": "Address (city)",
+              "postal_code": "Address (postal code)",
+              "country": "Address (country)"
+            },
+            "verification": {
+              "document": "ID verification document"
+            }
+          },
+          "business_profile": {
+            "url": "Business website",
+            "mcc": "Business category"
+          },
+          "company": {
+            "name": "Company name",
+            "tax_id": "Company tax ID",
+            "verification": {
+              "document": "Company verification document"
+            }
+          }
         }
       },
       "adminOnly": "Only organisation admins can manage payments.",
