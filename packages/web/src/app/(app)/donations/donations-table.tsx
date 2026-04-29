@@ -212,7 +212,6 @@ export function DonationsTable({
       {
         id: "donor",
         header: () => t("columns.donor"),
-        enableSorting: false,
         cell: ({ row }) => {
           const name = donationDonorName(row.original) ?? t("anonymousDonor");
           return (
@@ -239,10 +238,9 @@ export function DonationsTable({
       {
         id: "campaign",
         header: () => t("columns.campaign"),
-        enableSorting: false,
         cell: ({ row }) =>
-          row.original.campaignId ? (
-            <span className="truncate text-on-surface-variant">{row.original.campaignId}</span>
+          row.original.campaign ? (
+            <span className="truncate text-on-surface-variant">{row.original.campaign.name}</span>
           ) : (
             <span className="text-on-surface-variant opacity-60">—</span>
           ),

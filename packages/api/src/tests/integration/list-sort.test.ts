@@ -109,13 +109,20 @@ beforeAll(async () => {
   }
 
   // Three campaigns and three funds with similarly disjoint names.
+  // Capture campaign ids so we can link each donation to a different
+  // campaign — needed for the donations `?sort=campaign` direction tests.
+  const campaignIds: string[] = [];
   for (const name of ["Beta Drive", "Alpha Push", "Zeta Finale"]) {
-    await app.inject({
+    const res = await app.inject({
       method: "POST",
       url: "/v1/campaigns",
       headers: authHeader(token),
       payload: { name, type: "digital" },
     });
+    if (res.statusCode !== 201) {
+      throw new Error(`seed campaign failed: ${res.statusCode} ${res.body}`);
+    }
+    campaignIds.push(res.json<{ data: { id: string } }>().data.id);
   }
   for (const name of ["Beta Reserve", "Alpha Pool", "Zeta Endowment"]) {
     await app.inject({
@@ -127,7 +134,12 @@ beforeAll(async () => {
   }
 
   // Three donations with disjoint amounts so directionality on
-  // `?sort=amountCents` is unambiguous.
+  // `?sort=amountCents` is unambiguous, and pinned to disjoint donors +
+  // campaigns so `?sort=donor` and `?sort=campaign` are unambiguous too.
+  // Donor ↔ campaign pairing is intentionally non-monotonic (Bea→Beta,
+  // Cara→Alpha, Dan→Zeta) so a regression that swapped donor for
+  // campaign in `buildDonationOrderBy` would produce a different order
+  // and fail the test, rather than coincidentally pass.
   for (let i = 0; i < constituentIds.length; i++) {
     const amounts = [1000, 5000, 9999];
     await app.inject({
@@ -137,6 +149,8 @@ beforeAll(async () => {
       payload: {
         // biome-ignore lint/style/noNonNullAssertion: fixture array
         constituentId: constituentIds[i]!,
+        // biome-ignore lint/style/noNonNullAssertion: fixture array
+        campaignId: campaignIds[i]!,
         // biome-ignore lint/style/noNonNullAssertion: fixture array
         amountCents: amounts[i]!,
         currency: "EUR",
@@ -210,6 +224,98 @@ describe("GET /v1/donations — server-side sort", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: Array<{ amountCents: number }> }>();
     expect(body.data.map((d) => d.amountCents)).toEqual([9999, 5000, 1000]);
+  });
+
+  it("sort=donor&order=asc returns donations ordered by lower(firstName) of the joined constituent", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations?sort=donor&order=asc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: Array<{ constituent: { firstName: string; lastName: string } | null }>;
+    }>();
+    const firstNames = body.data.map((d) => d.constituent?.firstName.toLowerCase() ?? "");
+    expect(firstNames).toEqual([...firstNames].sort());
+    expect(firstNames.indexOf("bea")).toBeLessThan(firstNames.indexOf("dan"));
+  });
+
+  it("sort=donor&order=desc reverses the order", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations?sort=donor&order=desc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ constituent: { firstName: string } | null }> }>();
+    const firstNames = body.data.map((d) => d.constituent?.firstName.toLowerCase() ?? "");
+    expect(firstNames.indexOf("dan")).toBeLessThan(firstNames.indexOf("bea"));
+  });
+
+  it("sort=campaign&order=asc returns donations ordered by lower(name) of the joined campaign", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations?sort=campaign&order=asc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ campaign: { name: string } | null }> }>();
+    const names = body.data.map((d) => d.campaign?.name.toLowerCase() ?? "");
+    expect(names).toEqual([...names].sort());
+    expect(names.indexOf("alpha push")).toBeLessThan(names.indexOf("zeta finale"));
+  });
+
+  it("sort=campaign&order=desc reverses the order — and rows with NULL campaign sort LAST under desc too", async () => {
+    // Seed one donation WITHOUT a campaignId. Postgres' default ORDER BY
+    // desc puts NULL first; `buildDonationOrderBy` pins NULLS LAST in
+    // either direction so "no campaign" doesn't form a wall at the top
+    // when the user clicks the column desc. This test catches a regression
+    // to the default.
+    const constituentRes = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?perPage=1",
+      headers: authHeader(token),
+    });
+    const constituentId = constituentRes.json<{ data: Array<{ id: string }> }>().data[0]?.id;
+    if (!constituentId) throw new Error("expected at least one seeded constituent");
+    const seed = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(token),
+      payload: {
+        constituentId,
+        amountCents: 100,
+        currency: "EUR",
+        paymentMethod: "check",
+        paymentRef: `LIST-SORT-NULLS-CAMPAIGN-${Date.now()}`,
+      },
+    });
+    if (seed.statusCode !== 201) {
+      throw new Error(`null-campaign donation seed failed: ${seed.statusCode} ${seed.body}`);
+    }
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations?sort=campaign&order=desc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ campaign: { name: string } | null }> }>();
+    const names = body.data.map((d) => d.campaign?.name.toLowerCase() ?? null);
+    // Among non-null entries: zeta finale before alpha push (desc).
+    const nonNull = names.filter((n): n is string => n !== null);
+    expect(nonNull.indexOf("zeta finale")).toBeLessThan(nonNull.indexOf("alpha push"));
+    // The null-campaign donation MUST come after all non-null entries.
+    let lastNonNullIdx = -1;
+    for (let i = names.length - 1; i >= 0; i--) {
+      if (names[i] !== null) {
+        lastNonNullIdx = i;
+        break;
+      }
+    }
+    const firstNullIdx = names.findIndex((n) => n === null);
+    expect(firstNullIdx).toBeGreaterThan(lastNonNullIdx);
   });
 });
 

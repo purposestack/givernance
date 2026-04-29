@@ -27,6 +27,8 @@ const DONATION_SORT_FIELDS = new Set<DonationSortField>([
   "donatedAt",
   "amountCents",
   "paymentMethod",
+  "donor",
+  "campaign",
   "createdAt",
 ]);
 const DEFAULT_SORT: DonationSortField = "donatedAt";
