@@ -1,4 +1,4 @@
-import { Globe2 } from "lucide-react";
+import { Globe2, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
@@ -32,6 +32,16 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
     const colorPrimary = page.colorPrimary ?? DEFAULT_THEME_COLOR;
     const onPrimary = getReadableTextColor(colorPrimary);
     const hasGoal = page.goalAmountCents !== null && page.goalAmountCents > 0;
+    // Issue #200: render the mockup's progress bar + donor count when we have
+    // a goal AND there's been at least one donation. Falling back to the
+    // metric tiles if either signal is missing keeps fresh campaigns from
+    // showing an empty bar.
+    const showProgress = hasGoal && page.raisedCents > 0;
+    const goalCents = page.goalAmountCents ?? 0;
+    const progressPercent =
+      hasGoal && goalCents > 0
+        ? Math.min(100, Math.round((page.raisedCents / goalCents) * 100))
+        : 0;
 
     return (
       <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(9,100,71,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
@@ -63,17 +73,28 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
                 </p>
               </div>
 
-              <div
-                className={`grid gap-4 border-t border-outline-variant px-5 py-5 sm:px-8 sm:py-6 lg:px-10 lg:py-8 ${hasGoal ? "sm:grid-cols-2" : ""}`}
-              >
-                {hasGoal ? (
-                  <Metric
-                    label={t("metrics.goal")}
-                    value={formatCurrency(page.goalAmountCents!, locale)}
-                  />
-                ) : null}
-                <Metric label={t("metrics.trust")} value={t("metrics.trustValue")} />
-              </div>
+              {showProgress ? (
+                <Progress
+                  raisedCents={page.raisedCents}
+                  goalCents={goalCents}
+                  donorCount={page.donorCount}
+                  progressPercent={progressPercent}
+                  colorPrimary={colorPrimary}
+                  locale={locale}
+                  raisedLabel={t("metrics.raised")}
+                  goalSuffix={t("metrics.goalSuffix")}
+                  donorsLabel={t("metrics.donors", { count: page.donorCount })}
+                />
+              ) : (
+                <div
+                  className={`grid gap-4 border-t border-outline-variant px-5 py-5 sm:px-8 sm:py-6 lg:px-10 lg:py-8 ${hasGoal ? "sm:grid-cols-2" : ""}`}
+                >
+                  {hasGoal ? (
+                    <Metric label={t("metrics.goal")} value={formatCurrency(goalCents, locale)} />
+                  ) : null}
+                  <Metric label={t("metrics.trust")} value={t("metrics.trustValue")} />
+                </div>
+              )}
             </section>
 
             <PublicDonationForm
@@ -83,6 +104,7 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
               goalAmountCents={page.goalAmountCents}
               defaultCurrency={page.defaultCurrency}
               publishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null}
+              tenantStripeAccountId={page.stripeAccountId}
             />
           </div>
         </div>
@@ -103,6 +125,65 @@ function Metric({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="mt-2 text-base font-semibold text-on-surface sm:text-lg">{value}</p>
+    </div>
+  );
+}
+
+function Progress({
+  raisedCents,
+  goalCents,
+  donorCount,
+  progressPercent,
+  colorPrimary,
+  locale,
+  raisedLabel,
+  goalSuffix,
+  donorsLabel,
+}: {
+  raisedCents: number;
+  goalCents: number;
+  donorCount: number;
+  progressPercent: number;
+  colorPrimary: string;
+  locale: string;
+  raisedLabel: string;
+  goalSuffix: string;
+  donorsLabel: string;
+}) {
+  return (
+    <div className="border-t border-outline-variant px-5 py-5 sm:px-8 sm:py-6 lg:px-10 lg:py-8">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-xs font-medium uppercase tracking-[0.14em] text-on-surface-variant">
+          {raisedLabel}
+        </p>
+        <p className="font-mono text-xs text-on-surface-variant">
+          {donorCount > 0 ? (
+            <span className="inline-flex items-center gap-1">
+              <Users size={12} aria-hidden="true" />
+              {donorsLabel}
+            </span>
+          ) : null}
+        </p>
+      </div>
+      <p className="mt-2 font-heading text-2xl text-on-surface sm:text-3xl">
+        <span className="font-semibold">{formatCurrency(raisedCents, locale)}</span>
+        <span className="ml-1 text-sm font-normal text-on-surface-variant">
+          {goalSuffix} {formatCurrency(goalCents, locale)}
+        </span>
+      </p>
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progressPercent}
+        aria-label={raisedLabel}
+        className="mt-3 h-2.5 overflow-hidden rounded-full bg-surface-container"
+      >
+        <div
+          className="h-full rounded-full transition-[width] duration-slow"
+          style={{ width: `${progressPercent}%`, backgroundColor: colorPrimary }}
+        />
+      </div>
     </div>
   );
 }

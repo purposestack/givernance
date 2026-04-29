@@ -897,6 +897,35 @@
         "pending": "Your Stripe onboarding isn't complete. Until you finish it, donors can't pay you.",
         "connected": "Your Stripe account is connected. Donations from campaign pages land directly in your Stripe balance, and Givernance collects its platform fee on each donation."
       },
+      "requirements": {
+        "title": "Stripe needs more information before you can accept payments",
+        "disabledReason": "Reason",
+        "hint": "Click 'Continue onboarding' above to provide the missing information.",
+        "fields": {
+          "external_account": "Bank account for payouts",
+          "tos_acceptance.date": "Accept Stripe's Terms of Service",
+          "tos_acceptance.ip": "Accept Stripe's Terms of Service (IP)",
+          "individual.id_number": "Personal ID number",
+          "individual.dob.day": "Date of birth (day)",
+          "individual.dob.month": "Date of birth (month)",
+          "individual.dob.year": "Date of birth (year)",
+          "individual.first_name": "Legal first name",
+          "individual.last_name": "Legal last name",
+          "individual.email": "Email address",
+          "individual.phone": "Phone number",
+          "individual.address.line1": "Address (street)",
+          "individual.address.city": "Address (city)",
+          "individual.address.postal_code": "Address (postal code)",
+          "individual.address.country": "Address (country)",
+          "individual.verification.document": "ID verification document",
+          "business_profile.url": "Business website",
+          "business_profile.mcc": "Business category",
+          "business_type": "Business type",
+          "company.name": "Company name",
+          "company.tax_id": "Company tax ID",
+          "company.verification.document": "Company verification document"
+        }
+      },
       "adminOnly": "Only organisation admins can manage payments.",
       "status": {
         "notConnected": "Not connected",
@@ -1037,11 +1066,22 @@
       "confirm": "Delete donation",
       "deleting": "Deleting…"
     },
+    "refundDialog": {
+      "title": "Refund this donation?",
+      "description": "Refund {amount} back to {name}'s card via Stripe. This also rolls back the platform fee.",
+      "descriptionFallback": "Refund {amount} back to the donor's card via Stripe. This also rolls back the platform fee.",
+      "hint": "The donor's card will be credited within a few business days. This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Refund donation",
+      "refunding": "Processing refund…"
+    },
     "success": {
-      "deleted": "Donation deleted."
+      "deleted": "Donation deleted.",
+      "refunded": "Refund issued. The donor will see the credit within a few business days."
     },
     "errors": {
-      "deleteGeneric": "Something went wrong while deleting the donation. Please try again."
+      "deleteGeneric": "Something went wrong while deleting the donation. Please try again.",
+      "refundGeneric": "Something went wrong while processing the refund. Please try again."
     },
     "form": {
       "createTitle": "Record a donation",
@@ -1147,6 +1187,7 @@
         "back": "Back to donations",
         "edit": "Edit",
         "delete": "Delete",
+        "refund": "Refund",
         "previewReceipt": "Receipt preview",
         "generatingReceipt": "Generating receipt…"
       },
@@ -1481,6 +1522,9 @@
     "descriptionFallback": "Your donation directly helps fund this campaign and the next steps it unlocks in the field.",
     "metrics": {
       "goal": "Fundraising goal",
+      "raised": "Raised so far",
+      "goalSuffix": "of",
+      "donors": "{count, plural, =0 {No donors yet} one {# donor} other {# donors}}",
       "trust": "Payment",
       "trustValue": "Secured by Stripe"
     },
@@ -1538,6 +1582,12 @@
       "errors": {
         "generic": "Payment could not be completed. Please try a different card or contact support.",
         "missingPublishableKey": "Stripe is not configured for this environment. Ask an admin to set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY."
+      },
+      "postRedirect": {
+        "checking": "Verifying your payment with Stripe…",
+        "processing": "Your payment is being processed. You'll receive a confirmation email shortly.",
+        "requiresAction": "Your payment didn't complete. Try a different card below.",
+        "startOver": "Start a new donation"
       },
       "testMode": {
         "title": "Test mode — no real charge",

@@ -1,10 +1,11 @@
 "use client";
 
-import { HeartHandshake, LoaderCircle } from "lucide-react";
+import { CheckCircle2, HeartHandshake, LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 import { PublicDonationPaymentStep } from "@/components/campaigns/public-donation-payment-step";
+import { retrievePostRedirectIntent } from "@/components/campaigns/public-donation-post-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -36,6 +37,15 @@ interface PublicDonationFormProps {
    * payment step with a clear message.
    */
   publishableKey: string | null;
+  /**
+   * Tenant's connected account id (`acct_…`). Available before the donor
+   * has submitted, so we can detect a 3DS post-redirect on mount and
+   * resolve the PaymentIntent without round-tripping to the donate
+   * endpoint first (issue #197). Null when the tenant hasn't onboarded
+   * yet — donor flow degrades gracefully (no post-redirect retrieval, the
+   * donate step itself blocks at 502).
+   */
+  tenantStripeAccountId: string | null;
 }
 
 interface PublicDonationFormValues {
@@ -60,6 +70,24 @@ interface PaymentSession {
   currency: PublicDonationCurrency;
 }
 
+/**
+ * Outcome resolved from `?payment_intent_client_secret=…` query params on
+ * mount — i.e., the donor was redirected here after a 3DS challenge. See
+ * `public-donation-post-redirect.ts` for the full type and rationale.
+ */
+type PostRedirectState =
+  | { kind: "checking" }
+  | { kind: "succeeded"; amountCents: number; currency: string }
+  | {
+      kind: "requires_action";
+      clientSecret: string;
+      amountCents: number;
+      currency: string;
+    }
+  | { kind: "processing" }
+  | { kind: "failed"; message: string }
+  | null;
+
 const SUGGESTED_AMOUNTS = [25, 50, 100] as const;
 
 const DEFAULT_VALUES: PublicDonationFormValues = {
@@ -78,6 +106,7 @@ export function PublicDonationForm({
   goalAmountCents,
   defaultCurrency = "EUR",
   publishableKey,
+  tenantStripeAccountId,
 }: PublicDonationFormProps) {
   const t = useTranslations("publicDonationPage.form");
   const tPayment = useTranslations("publicDonationPage.payment");
@@ -88,6 +117,42 @@ export function PublicDonationForm({
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [session, setSession] = useState<PaymentSession | null>(null);
+  // Detect 3DS post-redirect on mount. `checking` keeps the donor from
+  // briefly seeing the empty form before retrieve resolves; `null` means
+  // there's nothing to retrieve (most visits) and the form renders normally.
+  const initialPostRedirect: PostRedirectState =
+    typeof window !== "undefined" &&
+    publishableKey &&
+    tenantStripeAccountId &&
+    new URLSearchParams(window.location.search).has("payment_intent_client_secret")
+      ? { kind: "checking" }
+      : null;
+  const [postRedirect, setPostRedirect] = useState<PostRedirectState>(initialPostRedirect);
+
+  useEffect(() => {
+    if (!postRedirect || postRedirect.kind !== "checking") return;
+    if (!publishableKey || !tenantStripeAccountId) return;
+
+    let active = true;
+    void retrievePostRedirectIntent({ publishableKey, stripeAccountId: tenantStripeAccountId })
+      .then((outcome) => {
+        if (!active) return;
+        if (!outcome) {
+          setPostRedirect(null);
+          return;
+        }
+        setPostRedirect(outcome);
+      })
+      .catch(() => {
+        if (!active) return;
+        setPostRedirect({ kind: "failed", message: tPayment("errors.generic") });
+      });
+
+    return () => {
+      active = false;
+    };
+    // tPayment is stable per locale; we intentionally fire this once on mount.
+  }, [postRedirect, publishableKey, tenantStripeAccountId, tPayment]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -150,7 +215,24 @@ export function PublicDonationForm({
 
       <p className="mt-3 text-sm leading-6 text-on-surface-variant">{t("description")}</p>
 
-      {session ? (
+      {/*
+        Render priority:
+        1. Post-3DS return state (donor came back from a Stripe redirect; we
+           override everything else so they never see a blank form they
+           already filled out before the challenge).
+        2. Active payment session (donor in the Payment Element step).
+        3. Donor details form (initial state).
+      */}
+      {postRedirect ? (
+        <PostRedirectView
+          state={postRedirect}
+          colorPrimary={colorPrimary}
+          locale={locale}
+          publishableKey={publishableKey}
+          tenantStripeAccountId={tenantStripeAccountId}
+          onDismiss={() => setPostRedirect(null)}
+        />
+      ) : session ? (
         publishableKey ? (
           <div className="mt-6">
             <PublicDonationPaymentStep
@@ -487,4 +569,126 @@ function createIdempotencyKey(): string {
     return crypto.randomUUID();
   }
   return `public-donation-${Date.now()}`;
+}
+
+/**
+ * Render the donor's post-3DS-return state (issue #197). This intentionally
+ * mirrors the Payment Element's success styling for `succeeded`, exposes a
+ * retry path for `requires_action`, and degrades gracefully on `processing`
+ * / `failed`.
+ */
+function PostRedirectView({
+  state,
+  colorPrimary,
+  locale,
+  publishableKey,
+  tenantStripeAccountId,
+  onDismiss,
+}: {
+  state: NonNullable<PostRedirectState>;
+  colorPrimary: string;
+  locale: string;
+  publishableKey: string | null;
+  tenantStripeAccountId: string | null;
+  onDismiss: () => void;
+}) {
+  const t = useTranslations("publicDonationPage.payment");
+
+  if (state.kind === "checking") {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="mt-6 flex items-center gap-3 rounded-2xl border border-outline-variant bg-surface px-4 py-5 text-sm text-on-surface-variant"
+      >
+        <LoaderCircle size={18} className="animate-spin" aria-hidden="true" />
+        {t("postRedirect.checking")}
+      </div>
+    );
+  }
+
+  if (state.kind === "succeeded") {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="mt-6 flex flex-col items-start gap-3 rounded-2xl border border-outline-variant bg-surface px-4 py-5 text-sm text-on-surface"
+      >
+        <span
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full"
+          style={{ backgroundColor: `color-mix(in srgb, ${colorPrimary} 18%, white)` }}
+        >
+          <CheckCircle2 size={20} style={{ color: colorPrimary }} aria-hidden="true" />
+        </span>
+        <p className="font-medium text-on-surface">{t("success.title")}</p>
+        <p className="text-on-surface-variant">
+          {t("success.body", {
+            amount: formatCurrency(state.amountCents, locale, state.currency),
+          })}
+        </p>
+      </div>
+    );
+  }
+
+  if (state.kind === "processing") {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="mt-6 rounded-2xl border border-outline-variant bg-surface px-4 py-3 text-sm text-on-surface-variant"
+      >
+        {t("postRedirect.processing")}
+      </div>
+    );
+  }
+
+  if (state.kind === "requires_action") {
+    // Donor's 3DS attempt didn't complete. Re-mount the Payment Element
+    // against the SAME intent so they can pick a different card without
+    // creating a duplicate PaymentIntent on the connected account.
+    if (!publishableKey || !tenantStripeAccountId) {
+      return (
+        <p className="mt-6 rounded-2xl border border-error bg-error-container px-4 py-3 text-sm text-on-error-container">
+          {t("errors.missingPublishableKey")}
+        </p>
+      );
+    }
+    return (
+      <div className="mt-6 space-y-4">
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-2xl border border-error bg-error-container px-4 py-3 text-sm text-on-error-container"
+        >
+          {t("postRedirect.requiresAction")}
+        </div>
+        <PublicDonationPaymentStep
+          clientSecret={state.clientSecret}
+          stripeAccountId={tenantStripeAccountId}
+          publishableKey={publishableKey}
+          colorPrimary={colorPrimary}
+          amountSummary={formatCurrency(state.amountCents, locale, state.currency)}
+          onPaid={() => {
+            toast.success(t("success.title"));
+          }}
+          onBack={onDismiss}
+        />
+      </div>
+    );
+  }
+
+  // state.kind === "failed"
+  return (
+    <div className="mt-6 space-y-3">
+      <div
+        role="alert"
+        className="rounded-2xl border border-error bg-error-container px-4 py-3 text-sm text-on-error-container"
+      >
+        {state.message}
+      </div>
+      <Button variant="ghost" size="sm" onClick={onDismiss}>
+        {t("postRedirect.startOver")}
+      </Button>
+    </div>
+  );
 }

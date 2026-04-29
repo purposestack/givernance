@@ -275,11 +275,25 @@ describe("GET /v1/public/campaigns/:id/page", () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json<{
-      data: { title: string; description: string; goalAmountCents: number };
+      data: {
+        title: string;
+        description: string;
+        goalAmountCents: number;
+        stripeAccountId: string | null;
+        raisedCents: number;
+        donorCount: number;
+      };
     }>();
     expect(body.data.title).toBe("Public Campaign");
     expect(body.data.description).toBe("Donate now");
     expect(body.data.goalAmountCents).toBe(100000);
+    // Issue #197: connected account id is exposed so the donor SDK can
+    // bind to it (post-3DS retrieve, intent confirmation).
+    expect(body.data.stripeAccountId).toBe("acct_test_org_a");
+    // Issue #200: aggregate fields default to 0 when no cleared donations
+    // exist for the campaign yet — fresh campaigns mustn't crash the hero.
+    expect(body.data.raisedCents).toBe(0);
+    expect(body.data.donorCount).toBe(0);
   });
 
   it("returns 404 for draft page (not published)", async () => {

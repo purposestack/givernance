@@ -28,6 +28,12 @@ export interface PublishedCampaignPublicPage {
   colorPrimary: CampaignPublicPageColor | null;
   goalAmountCents: number | null;
   defaultCurrency: PublicDonationCurrency;
+  /** `acct_…` for the campaign's tenant; null when not yet onboarded. */
+  stripeAccountId: string | null;
+  /** Cumulative cleared donations in the tenant's base currency (issue #200). */
+  raisedCents: number;
+  /** Distinct donor count, cleared donations only (issue #200). */
+  donorCount: number;
 }
 
 export interface PublishedCampaignPublicPageResponse {
