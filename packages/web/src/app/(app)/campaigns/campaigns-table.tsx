@@ -306,7 +306,7 @@ export function CampaignsTable({
                   </span>
                 </span>
                 <span className="font-mono text-xs tabular-nums text-on-surface-variant">
-                  {goalCents > 0 ? formatCurrency(goalCents, locale) : "—"}
+                  {formatCurrency(goalCents, locale)}
                 </span>
               </div>
               <div
