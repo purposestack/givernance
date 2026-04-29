@@ -64,14 +64,54 @@ describe("GET /v1/admin/stripe-connect", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("returns 403 for non-admin user (positive boundary check)", async () => {
-    const token = signToken(app, { role: "viewer" });
+  // Both negative roles must 403 — over-correcting a guard from
+  // `requireOrgAdmin` to `requireWrite` (which accepts `user`) would slip
+  // through with a single `viewer` test (memory:
+  // feedback_role_test_coverage_both_directions.md).
+  it.each([
+    { role: "viewer" as const },
+    { role: "user" as const },
+  ])("returns 403 for role $role", async ({ role }) => {
+    const token = signToken(app, { role });
     const res = await app.inject({
       method: "GET",
       url: "/v1/admin/stripe-connect",
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(403);
+    // Lock the RFC 9457 shape on the 403 path — a regression to a
+    // plain-string body or `{error}` envelope would silently pass a
+    // status-only assertion (memory: feedback_lock_rfc9457_body_in_tests.md).
+    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    expect(body.type).toBe("https://httpproblems.com/http-status/403");
+    expect(body.title).toBe("Forbidden");
+    expect(body.status).toBe(403);
+    expect(typeof body.detail).toBe("string");
+  });
+
+  it("isolates GET to the calling org (cross-tenant)", async () => {
+    // `getStripeConnectStatus` is mocked, so we assert the route passes
+    // the **caller's** orgId through, not the params or body. Tenant B's
+    // org_admin sees Tenant B's account, never Tenant A's.
+    mockGetStripeConnectStatus.mockResolvedValueOnce({
+      accountId: "acct_test_tenant_b",
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+    });
+    const token = signTokenB(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/stripe-connect",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { accountId: string } }>();
+    expect(body.data.accountId).toBe("acct_test_tenant_b");
+    // The mock was called with Tenant B's orgId, not Tenant A's
+    expect(mockGetStripeConnectStatus).toHaveBeenCalledTimes(1);
+    const calledWith = mockGetStripeConnectStatus.mock.calls[0]?.[0];
+    expect(calledWith).not.toBe("00000000-0000-0000-0000-0000000000a1");
   });
 
   it("returns the not-connected shape for a fresh tenant", async () => {
@@ -156,8 +196,11 @@ describe("POST /v1/admin/stripe-connect", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("returns 403 for non-admin user", async () => {
-    const token = signToken(app, { role: "viewer" });
+  it.each([
+    { role: "viewer" as const },
+    { role: "user" as const },
+  ])("returns 403 for role $role", async ({ role }) => {
+    const token = signToken(app, { role });
     const res = await app.inject({
       method: "POST",
       url: "/v1/admin/stripe-connect",
