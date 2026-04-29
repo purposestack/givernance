@@ -10,6 +10,11 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
+    # Scoping the job to the `staging` GitHub Environment lets us keep
+    # env-specific secrets (VPS_IP, SSH_PRIVATE_KEY, RESEND_API_KEY) out
+    # of the repo-wide bag and use unprefixed names that will line up
+    # cleanly when a future `production` environment gets added.
+    environment: staging
     concurrency:
       group: deploy-staging
       cancel-in-progress: false
@@ -17,7 +22,10 @@ jobs:
       contents: read
       packages: write
     env:
-      STAGING_VPS_IP: ${{ secrets.STAGING_VPS_IP }}
+      # Kamal config (config/deploy-staging.yml) reads STAGING_VPS_IP from
+      # the runner env — keep the env var name; only the secret source moved
+      # into the `staging` environment.
+      STAGING_VPS_IP: ${{ secrets.VPS_IP }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
@@ -35,7 +43,7 @@ jobs:
       - name: Configure SSH Auth Sock
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Setup Kamal Secrets
         run: |
