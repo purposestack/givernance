@@ -1385,6 +1385,11 @@
         "created": "Créée",
         "noGoal": "Aucun objectif",
         "goalHint": "Objectif : {goal}",
+        "goalProgressLabel": "Progression vers l'objectif",
+        "goalProgressCaption": "{progress}% de {goal}",
+        "goalProgressAria": "{raised} collecté sur {goal}",
+        "goalRemaining": "{amount} restants pour atteindre l'objectif",
+        "goalReached": "Objectif atteint",
         "donationsHint": "{count, plural, =0 {Aucun don pour l'instant} one {# don enregistré} other {# dons enregistrés}}",
         "updatedHint": "Mise à jour {date}"
       },
