@@ -100,7 +100,7 @@ const DonationResponse = Type.Object({
   paymentMethod: Type.Union([Type.String(), Type.Null()]),
   paymentRef: Type.Union([Type.String(), Type.Null()]),
   donatedAt: Type.String(),
-  fiscalYear: Type.Integer(),
+  fiscalYear: Type.Union([Type.Integer(), Type.Null()]),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -116,7 +116,7 @@ const DonationListRow = Type.Object({
   paymentMethod: Type.Union([Type.String(), Type.Null()]),
   paymentRef: Type.Union([Type.String(), Type.Null()]),
   donatedAt: Type.String(),
-  fiscalYear: Type.Integer(),
+  fiscalYear: Type.Union([Type.Integer(), Type.Null()]),
   createdAt: Type.String(),
   updatedAt: Type.String(),
   constituent: Type.Union([
@@ -141,7 +141,7 @@ const DonationDetailResponse = Type.Object({
   paymentMethod: Type.Union([Type.String(), Type.Null()]),
   paymentRef: Type.Union([Type.String(), Type.Null()]),
   donatedAt: Type.String(),
-  fiscalYear: Type.Integer(),
+  fiscalYear: Type.Union([Type.Integer(), Type.Null()]),
   createdAt: Type.String(),
   updatedAt: Type.String(),
   constituent: Type.Object({

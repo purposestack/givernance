@@ -159,7 +159,9 @@ async function InfoCard({
             t("notRecorded")
           )}
         </DetailRow>
-        <DetailRow label={t("fields.fiscalYear")}>{String(donation.fiscalYear)}</DetailRow>
+        <DetailRow label={t("fields.fiscalYear")}>
+          {donation.fiscalYear ? String(donation.fiscalYear) : t("notRecorded")}
+        </DetailRow>
         <DetailRow label={t("fields.recordedAt")}>
           {formatDate(donation.createdAt, locale, "long")}
         </DetailRow>

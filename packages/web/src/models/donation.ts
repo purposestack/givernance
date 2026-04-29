@@ -20,7 +20,7 @@ export interface Donation {
   paymentMethod: string | null;
   paymentRef: string | null;
   donatedAt: string;
-  fiscalYear: number;
+  fiscalYear: number | null;
   createdAt: string;
   updatedAt: string;
 }
