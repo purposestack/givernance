@@ -5,16 +5,18 @@ on:
     inputs:
       mode:
         description: |
-          Kamal command to run. `deploy` is the per-push fast path (only
-          rolls the app containers). `setup` does a full bootstrap —
-          pick this after editing `accessories:` in
-          `config/deploy-staging.yml` (new accessory, new env var on an
-          existing accessory) so the changes actually land on the VPS.
+          Kamal command override. `auto` (default) inspects the diff — if
+          `config/deploy-staging.yml` changed (accessories, proxy, env,
+          builder), runs `kamal setup`; otherwise runs `kamal deploy`.
+          Pick `setup` to force a full bootstrap, or `deploy` to skip
+          bootstrap even if config changed (only if you're sure the
+          change has no accessory side-effects).
         type: choice
         options:
+          - auto
           - deploy
           - setup
-        default: deploy
+        default: auto
   push:
     branches:
       - main
@@ -66,6 +68,8 @@ jobs:
               - 'infra/keycloak/**'
               - 'scripts/keycloak-sync-realm.sh'
               - '.github/workflows/deploy-staging.yml'
+            kamal_config:
+              - 'config/deploy-staging.yml'
 
       - name: Set up Ruby (for Kamal)
         uses: ruby/setup-ruby@v1
@@ -115,12 +119,38 @@ jobs:
       # Per-push runs use `kamal deploy` (only rolls app containers) — `setup`
       # additionally re-installs Docker, recreates the kamal network, and
       # re-registers every accessory, all of which is wasted work on an
-      # already-bootstrapped VPS. Trigger `setup` manually via the
-      # workflow_dispatch `mode: setup` input after editing `accessories:`
-      # in `config/deploy-staging.yml`.
+      # already-bootstrapped VPS. We auto-fall-back to `setup` whenever
+      # `config/deploy-staging.yml` is modified, so accessory edits land
+      # on the VPS without anyone having to remember to flip a switch.
+      # Manual override available via the `mode` workflow_dispatch input.
+      - name: Resolve Kamal command
+        id: kamal_cmd
+        env:
+          INPUT_MODE: ${{ github.event.inputs.mode || 'auto' }}
+          KAMAL_CONFIG_CHANGED: ${{ steps.changes.outputs.kamal_config }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$INPUT_MODE" = "setup" ] || [ "$INPUT_MODE" = "deploy" ]; then
+            CMD="$INPUT_MODE"
+            echo "Manual override (workflow_dispatch mode=$INPUT_MODE) — running kamal $CMD"
+          elif [ "$KAMAL_CONFIG_CHANGED" = "true" ]; then
+            CMD="setup"
+            echo "config/deploy-staging.yml changed in this push — running kamal setup (full bootstrap, accessory-safe)"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # Manual trigger + mode=auto: paths-filter has no reliable diff
+            # to compare against (no parent push), so default to the safe
+            # full-bootstrap path. Mirrors the keycloak-chain default.
+            CMD="setup"
+            echo "Manual trigger with mode=auto — defaulting to kamal setup"
+          else
+            CMD="deploy"
+            echo "Routine push, no config change — running kamal deploy (fast path)"
+          fi
+          echo "cmd=$CMD" >> "$GITHUB_OUTPUT"
+
       - name: Deploy with Kamal
         env:
-          KAMAL_CMD: ${{ github.event.inputs.mode || 'deploy' }}
+          KAMAL_CMD: ${{ steps.kamal_cmd.outputs.cmd }}
         run: |
           attempt=1
           max_attempts=3
