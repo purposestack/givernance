@@ -127,6 +127,7 @@ desired_login_theme = "givernance"
 desired_i18n = True
 desired_locales = ["en", "fr"]
 desired_default_locale = "en"
+desired_reset_password = True
 
 changes = []
 if d.get("passwordPolicy") != desired_policy:
@@ -144,6 +145,9 @@ if sorted(d.get("supportedLocales") or []) != sorted(desired_locales):
 if d.get("defaultLocale") != desired_default_locale:
     d["defaultLocale"] = desired_default_locale
     changes.append("defaultLocale")
+if d.get("resetPasswordAllowed") != desired_reset_password:
+    d["resetPasswordAllowed"] = desired_reset_password
+    changes.append("resetPasswordAllowed")
 
 print(json.dumps({"changes": changes, "realm": d}))
 ')
@@ -858,3 +862,88 @@ print("yes" if any(m.get("id") == wanted for m in json.load(sys.stdin)) else "no
       log "Added user '${SEED_USERNAME}' as member of '${SEED_ORG_ALIAS}'."
     fi
   fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. Configure Keycloak realm SMTP so password-reset emails can be sent.
+#
+#    resetPasswordAllowed is now true in realm-givernance.json (and reconciled
+#    by section 1.b above). Without SMTP the KC "Forgot password?" flow shows
+#    a generic error immediately after the user submits the reset form — the
+#    realm has no MTA to deliver the token.
+#
+#    Configuration is driven by env vars so each environment supplies its own
+#    mail backend without touching the realm JSON:
+#
+#      Local dev  →  KC_SMTP_HOST=mailpit  KC_SMTP_PORT=1025  (no auth, no TLS)
+#                    Mailpit is running in docker-compose and captures every mail
+#                    at http://localhost:${MAILPIT_HTTP_PORT:-8025}.
+#      Staging    →  KC_SMTP_HOST=smtp.resend.com  KC_SMTP_PORT=587
+#                    KC_SMTP_AUTH=true  KC_SMTP_STARTTLS=true
+#                    KC_SMTP_USERNAME=resend  KC_SMTP_PASSWORD=<RESEND_API_KEY>
+#                    Resend is already the app worker's email backend (issue #190).
+#                    Using the same API key for KC keeps the secret surface small.
+#
+#    The section is idempotent: it reads the current smtpServer from the realm,
+#    compares it to the desired state, and only calls PUT when a field differs.
+#    When KC_SMTP_HOST is unset the section is skipped entirely (allows running
+#    the sync script in read-only environments where email is not needed).
+# ─────────────────────────────────────────────────────────────────────────────
+
+if [ -z "${KC_SMTP_HOST:-}" ]; then
+  log "KC_SMTP_HOST not set — skipping SMTP configuration (password-reset emails will not work until configured)."
+else
+  log "Reconciling realm SMTP configuration (host=${KC_SMTP_HOST}, port=${KC_SMTP_PORT:-25})..."
+
+  current_realm_for_smtp=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}")
+
+  smtp_patch=$(printf '%s' "$current_realm_for_smtp" | \
+    KC_SMTP_HOST="${KC_SMTP_HOST}" \
+    KC_SMTP_PORT="${KC_SMTP_PORT:-25}" \
+    KC_SMTP_FROM="${KC_SMTP_FROM:-noreply@givernance.org}" \
+    KC_SMTP_FROM_DISPLAY_NAME="${KC_SMTP_FROM_DISPLAY_NAME:-Givernance}" \
+    KC_SMTP_REPLY_TO="${KC_SMTP_REPLY_TO:-}" \
+    KC_SMTP_SSL="${KC_SMTP_SSL:-false}" \
+    KC_SMTP_STARTTLS="${KC_SMTP_STARTTLS:-false}" \
+    KC_SMTP_AUTH="${KC_SMTP_AUTH:-false}" \
+    KC_SMTP_USERNAME="${KC_SMTP_USERNAME:-}" \
+    KC_SMTP_PASSWORD="${KC_SMTP_PASSWORD:-}" \
+    python3 -c '
+import json, os, sys
+
+d = json.load(sys.stdin)
+desired = {
+    "host":            os.environ["KC_SMTP_HOST"],
+    "port":            os.environ["KC_SMTP_PORT"],
+    "from":            os.environ["KC_SMTP_FROM"],
+    "fromDisplayName": os.environ["KC_SMTP_FROM_DISPLAY_NAME"],
+    "replyTo":         os.environ["KC_SMTP_REPLY_TO"],
+    "ssl":             os.environ["KC_SMTP_SSL"],
+    "starttls":        os.environ["KC_SMTP_STARTTLS"],
+    "auth":            os.environ["KC_SMTP_AUTH"],
+    "user":            os.environ["KC_SMTP_USERNAME"],
+    "password":        os.environ["KC_SMTP_PASSWORD"],
+}
+# Strip empty optional fields to avoid sending empty strings to KC
+desired = {k: v for k, v in desired.items() if v != "" or k in ("host", "port", "from")}
+
+current = d.get("smtpServer") or {}
+# Compare only the keys we manage (ignore KC-internal extras like "envelopeFrom")
+needs_update = any(current.get(k) != v for k, v in desired.items())
+if needs_update:
+    d["smtpServer"] = {**current, **desired}
+    print(json.dumps({"update": True, "realm": d}))
+else:
+    print(json.dumps({"update": False}))
+')
+
+  smtp_needs_update=$(printf '%s' "$smtp_patch" | python3 -c 'import json,sys; print(json.load(sys.stdin)["update"])')
+  if [ "$smtp_needs_update" = "True" ]; then
+    new_realm_smtp=$(printf '%s' "$smtp_patch" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["realm"]))')
+    curl -sS -o /dev/null -w 'realm smtp update: HTTP %{http_code}\n' \
+      -X PUT "${KC_URL}/admin/realms/${REALM}" \
+      "${auth[@]}" -H "Content-Type: application/json" -d "$new_realm_smtp"
+    log "SMTP configured on realm '${REALM}' (host=${KC_SMTP_HOST}:${KC_SMTP_PORT:-25})."
+  else
+    log "Realm SMTP already matches desired config — no change."
+  fi
+fi
