@@ -5,7 +5,7 @@ import { Gift, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -91,9 +91,19 @@ export function DonationsTable({
   const initialSearch = searchParams.get("search") ?? "";
   const initialReceipt = searchParams.get("receiptStatus") ?? "all";
   const [searchTerm, setSearchTerm] = useState(initialSearch);
+  // Issue #216: surface a pending state on the table during URL-driven
+  // round-trips. `isPending` flips true while the server resolves the
+  // new sort/filter/page slice and flips back when the new RSC payload
+  // commits. Wiring router.push/replace inside `startTransition` is the
+  // canonical Next.js App Router pattern for this.
+  const [isPending, startTransition] = useTransition();
 
   // Server-side search: see campaigns-table.tsx for the rationale on why
   // `searchParams` is excluded from the deps.
+  // Issue #217: search/filter/sort changes use `router.replace` instead
+  // of `push` — back button should escape the page, not unwind every
+  // header click. Pagination still uses `push` (meaningful navigation
+  // users may want to retrace).
   // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {
     if (searchTerm === initialSearch) return;
@@ -106,7 +116,9 @@ export function DonationsTable({
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     }, 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
@@ -121,7 +133,9 @@ export function DonationsTable({
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -135,23 +149,25 @@ export function DonationsTable({
         params.set("page", String(page));
       }
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.push(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
 
   // Drive the DataTable's sort indicator from the server-resolved `sort` /
   // `order` URL params, not from local TanStack state. Without this, click
-  // → push URL → re-render would briefly show the OLD direction's arrow
+  // → URL update → re-render would briefly show the OLD direction's arrow
   // (DataTable's internal state lags the server round-trip by one paint).
   const sorting = useMemo<SortingState>(
     () => [{ id: sort, desc: order === "desc" }],
     [order, sort],
   );
 
-  // Header click handler. Pushes `?sort=&order=` and resets the page back
-  // to 1 — paginating into a sorted slice is meaningless when the slice
-  // itself just shifted. Mirrors the tenants-table.tsx (admin) pattern.
+  // Header click handler. Replaces (not pushes) the URL with the new
+  // `?sort=&order=` and resets the page back to 1 — paginating into a
+  // sorted slice is meaningless when the slice itself just shifted.
   const onSortingChange = useCallback(
     (nextSorting: SortingState) => {
       const [next] = nextSorting;
@@ -165,7 +181,9 @@ export function DonationsTable({
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -323,20 +341,19 @@ export function DonationsTable({
         </Select>
       </div>
 
-      <div className="transition-opacity duration-normal">
-        <DataTable
-          columns={columns}
-          data={donations}
-          pagination={pagination}
-          onPageChange={navigateToPage}
-          sorting={sorting}
-          onSortingChange={onSortingChange}
-          onRowClick={(row) => router.push(`/donations/${row.original.id}`)}
-          emptyState={
-            <EmptyState icon={Gift} title={t("empty.title")} description={t("empty.description")} />
-          }
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={donations}
+        pagination={pagination}
+        onPageChange={navigateToPage}
+        sorting={sorting}
+        onSortingChange={onSortingChange}
+        isPending={isPending}
+        onRowClick={(row) => router.push(`/donations/${row.original.id}`)}
+        emptyState={
+          <EmptyState icon={Gift} title={t("empty.title")} description={t("empty.description")} />
+        }
+      />
 
       <AlertDialog
         open={donationToDelete !== null}

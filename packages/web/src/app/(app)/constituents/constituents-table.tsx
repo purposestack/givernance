@@ -4,8 +4,8 @@ import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { MoreHorizontal, Pencil, Search, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -37,8 +37,9 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { formatDate } from "@/lib/format";
 import {
-  type Constituent,
+  type ConstituentListRow,
   type ConstituentSortField,
   type ConstituentSortOrder,
   fullName,
@@ -69,7 +70,7 @@ function translateType(
 }
 
 interface ConstituentsTableProps {
-  constituents: Constituent[];
+  constituents: ConstituentListRow[];
   pagination: { page: number; perPage: number; total: number; totalPages: number };
   /**
    * Delete is `requireOrgAdmin` server-side; when `false`, the row's
@@ -101,15 +102,20 @@ export function ConstituentsTable({
   const searchParams = useSearchParams();
   const t = useTranslations("constituents");
   const tType = useTranslations("constituents.types");
+  const locale = useLocale();
   const tFilters = useTranslations("constituents.filters");
-  const [deleteTarget, setDeleteTarget] = useState<Constituent | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ConstituentListRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const initialSearch = searchParams.get("search") ?? "";
   const initialType = searchParams.get("type") ?? "all";
   const [searchTerm, setSearchTerm] = useState(initialSearch);
+  // Issue #216: see donations-table.tsx for the pattern.
+  const [isPending, startTransition] = useTransition();
 
   // Server-side search: see campaigns-table.tsx for the rationale on why
   // `searchParams` is excluded from the deps.
+  // Issue #217: search/filter/sort use `router.replace`; pagination uses
+  // `router.push` so prev/next remain meaningful navigation steps.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {
     if (searchTerm === initialSearch) return;
@@ -122,7 +128,9 @@ export function ConstituentsTable({
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     }, 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
@@ -137,7 +145,9 @@ export function ConstituentsTable({
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -151,7 +161,9 @@ export function ConstituentsTable({
         params.set("page", String(page));
       }
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.push(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -174,7 +186,9 @@ export function ConstituentsTable({
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -199,7 +213,7 @@ export function ConstituentsTable({
     }
   }, [deleteTarget, router, t]);
 
-  const columns = useMemo<ColumnDef<Constituent>[]>(
+  const columns = useMemo<ColumnDef<ConstituentListRow>[]>(
     () => [
       {
         id: "name",
@@ -266,8 +280,14 @@ export function ConstituentsTable({
       {
         id: "lastDonation",
         header: () => t("columns.lastDonation"),
-        enableSorting: false,
-        cell: () => <span className="text-on-surface-variant">—</span>,
+        cell: ({ row }) =>
+          row.original.lastDonationAt ? (
+            <span className="whitespace-nowrap text-on-surface-variant">
+              {formatDate(row.original.lastDonationAt, locale, "short")}
+            </span>
+          ) : (
+            <span className="text-on-surface-variant opacity-60">—</span>
+          ),
       },
       // For viewers (no Edit, no Delete) we drop the column entirely — keeping
       // it would render an `sr-only` "Actions" header above empty cells, a
@@ -278,7 +298,7 @@ export function ConstituentsTable({
               id: "actions",
               header: () => <span className="sr-only">{t("columns.actions")}</span>,
               enableSorting: false,
-              cell: ({ row }: { row: { original: Constituent } }) => (
+              cell: ({ row }: { row: { original: ConstituentListRow } }) => (
                 <ConstituentRowActions
                   constituent={row.original}
                   canEdit={canWrite}
@@ -289,11 +309,11 @@ export function ConstituentsTable({
                   deleteLabel={t("actions.delete")}
                 />
               ),
-            } satisfies ColumnDef<Constituent>,
+            } satisfies ColumnDef<ConstituentListRow>,
           ]
         : []),
     ],
-    [canManageAdminActions, canWrite, t, tType],
+    [canManageAdminActions, canWrite, locale, t, tType],
   );
 
   return (
@@ -327,24 +347,19 @@ export function ConstituentsTable({
         </Select>
       </div>
 
-      <div className="transition-opacity duration-normal">
-        <DataTable
-          columns={columns}
-          data={constituents}
-          pagination={pagination}
-          onPageChange={navigateToPage}
-          sorting={sorting}
-          onSortingChange={onSortingChange}
-          onRowClick={(row) => router.push(`/constituents/${row.original.id}`)}
-          emptyState={
-            <EmptyState
-              icon={Users}
-              title={t("empty.title")}
-              description={t("empty.description")}
-            />
-          }
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={constituents}
+        pagination={pagination}
+        onPageChange={navigateToPage}
+        sorting={sorting}
+        onSortingChange={onSortingChange}
+        isPending={isPending}
+        onRowClick={(row) => router.push(`/constituents/${row.original.id}`)}
+        emptyState={
+          <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />
+        }
+      />
 
       <AlertDialog
         open={deleteTarget !== null}
@@ -382,7 +397,7 @@ export function ConstituentsTable({
 }
 
 interface ConstituentRowActionsProps {
-  constituent: Constituent;
+  constituent: ConstituentListRow;
   canEdit: boolean;
   canDelete: boolean;
   onDelete: () => void;

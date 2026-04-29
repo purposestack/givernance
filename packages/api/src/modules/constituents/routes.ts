@@ -16,6 +16,7 @@ import {
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
+  CONSTITUENT_SORT_FIELDS,
   createConstituent,
   deleteConstituent,
   findDuplicates,
@@ -65,8 +66,10 @@ const ConstituentUpdateBody = Type.Object(
   { minProperties: 1 },
 );
 
-/** Server-side sort fields whitelist for `GET /constituents`. */
-const CONSTITUENT_SORT_FIELDS = ["name", "type", "createdAt"] as const;
+/**
+ * Server-side sort fields whitelist for `GET /constituents`. Single
+ * source of truth lives in `./service.ts` (issue #218).
+ */
 const ConstituentSortFieldSchema = Type.Union(
   CONSTITUENT_SORT_FIELDS.map((field) => Type.Literal(field)),
 );
@@ -123,6 +126,20 @@ const ConstituentResponse = Type.Object({
   activities: Type.Optional(Type.Array(Type.Unknown())),
 });
 
+/**
+ * List-only row shape: `ConstituentResponse` + `lastDonationAt` (issue
+ * #215). The detail endpoint (`GET /v1/constituents/:id`) doesn't compute
+ * the aggregate, so the field lives on the list row only — modeling it
+ * here means TypeBox response validation drops the field from any other
+ * route's payload, even if a future refactor accidentally projects it.
+ */
+const ConstituentListRow = Type.Composite([
+  ConstituentResponse,
+  Type.Object({
+    lastDonationAt: Type.Union([Type.Null(), Type.String()]),
+  }),
+]);
+
 const DuplicateResponse = Type.Object({
   id: UuidSchema,
   firstName: Type.String(),
@@ -151,7 +168,7 @@ export async function constituentRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Constituents"],
         querystring: ListQuery,
-        response: { 200: DataArrayResponse(ConstituentResponse), ...ErrorResponses },
+        response: { 200: DataArrayResponse(ConstituentListRow), ...ErrorResponses },
       },
     },
     async (request, reply) => {

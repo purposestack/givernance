@@ -5,10 +5,14 @@ import type { Pagination } from "@givernance/shared/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
-export type FundSortField = "name" | "type" | "createdAt";
+/**
+ * Single source of truth for the funds sort whitelist (issue #218).
+ * Tuple drives both the route's TypeBox literal union and the service-
+ * level `normalizeFundSort` fallback.
+ */
+export const FUND_SORT_FIELDS = ["name", "type", "createdAt"] as const;
+export type FundSortField = (typeof FUND_SORT_FIELDS)[number];
 export type FundSortOrder = "asc" | "desc";
-
-const FUND_SORT_FIELDS: ReadonlySet<FundSortField> = new Set(["name", "type", "createdAt"]);
 
 export interface ListFundsQuery {
   page: number;
@@ -19,12 +23,12 @@ export interface ListFundsQuery {
 
 /**
  * Defense-in-depth — see `donations/service.ts` `normalizeDonationSort`
- * for the rationale. Route-level TypeBox literal union
- * (`FUND_SORT_FIELDS` in `routes.ts`) is the contract; this fallback
- * only kicks in if validation is loosened.
+ * for the rationale. Route-level TypeBox literal derived from the same
+ * tuple is the contract; this fallback only kicks in if validation is
+ * loosened.
  */
 function normalizeFundSort(value: string | undefined): FundSortField {
-  if (value && FUND_SORT_FIELDS.has(value as FundSortField)) {
+  if (value && FUND_SORT_FIELDS.includes(value as FundSortField)) {
     return value as FundSortField;
   }
   return "createdAt";

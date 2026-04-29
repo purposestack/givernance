@@ -22,6 +22,16 @@ export interface Constituent {
   updatedAt: string;
 }
 
+/**
+ * List-only enrichment: latest donation date for the constituent, or
+ * `null` if they've never donated. Surfaced by the API's
+ * `GET /v1/constituents` LEFT JOIN aggregate (issue #215). The detail
+ * route does not return this field.
+ */
+export interface ConstituentListRow extends Constituent {
+  lastDonationAt: string | null;
+}
+
 export interface Pagination {
   page: number;
   perPage: number;
@@ -30,7 +40,7 @@ export interface Pagination {
 }
 
 export interface ConstituentListResponse {
-  data: Constituent[];
+  data: ConstituentListRow[];
   pagination: Pagination;
 }
 
@@ -38,7 +48,7 @@ export interface ConstituentDetailResponse {
   data: Constituent;
 }
 
-export type ConstituentSortField = "name" | "type" | "createdAt";
+export type ConstituentSortField = "name" | "type" | "lastDonation" | "createdAt";
 export type ConstituentSortOrder = "asc" | "desc";
 
 export interface ConstituentListQuery {

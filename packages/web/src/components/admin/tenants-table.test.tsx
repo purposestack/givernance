@@ -6,7 +6,10 @@ import { mockRouter } from "@/tests/mocks";
 import { TenantsTable } from "./tenants-table";
 
 describe("TenantsTable", () => {
-  it("pushes sort params when a sortable header is clicked", async () => {
+  it("replaces (not pushes) the URL with sort params when a sortable header is clicked", async () => {
+    // Issue #217: sort changes use `router.replace` so the back button
+    // escapes the page in one press rather than unwinding every header
+    // click.
     const user = userEvent.setup();
 
     render(
@@ -35,7 +38,8 @@ describe("TenantsTable", () => {
 
     await user.click(screen.getByRole("button", { name: /tenant/i }));
 
-    expect(mockRouter.push).toHaveBeenCalledWith("/settings/funds?sort=name&order=asc");
+    expect(mockRouter.replace).toHaveBeenCalledWith("/settings/funds?sort=name&order=asc");
+    expect(mockRouter.push).not.toHaveBeenCalled();
   });
 
   it("renders tenant rows and navigates to the detail page on row click", async () => {

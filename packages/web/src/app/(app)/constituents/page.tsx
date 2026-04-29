@@ -26,7 +26,12 @@ const MAX_PER_PAGE = 100;
  * whitelist on the client too means we never round-trip a value the API
  * will reject with 400.
  */
-const CONSTITUENT_SORT_FIELDS = new Set<ConstituentSortField>(["name", "type", "createdAt"]);
+const CONSTITUENT_SORT_FIELDS = new Set<ConstituentSortField>([
+  "name",
+  "type",
+  "lastDonation",
+  "createdAt",
+]);
 const DEFAULT_SORT: ConstituentSortField = "createdAt";
 const DEFAULT_ORDER: ConstituentSortOrder = "desc";
 

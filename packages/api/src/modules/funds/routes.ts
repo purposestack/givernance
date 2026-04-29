@@ -18,6 +18,7 @@ import {
 import {
   createFund,
   deleteFund,
+  FUND_SORT_FIELDS,
   FundConflictError,
   getFund,
   listFunds,
@@ -51,8 +52,10 @@ const FundResponse = Type.Object({
   updatedAt: Type.String(),
 });
 
-/** Server-side sort fields whitelist for `GET /funds`. */
-const FUND_SORT_FIELDS = ["name", "type", "createdAt"] as const;
+/**
+ * Server-side sort fields whitelist for `GET /funds`. Single source
+ * of truth lives in `./service.ts` (issue #218).
+ */
 const FundSortFieldSchema = Type.Union(FUND_SORT_FIELDS.map((field) => Type.Literal(field)));
 
 const FundListQuery = Type.Intersect([

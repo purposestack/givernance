@@ -13,24 +13,23 @@ import type { Pagination } from "@givernance/shared/types";
 import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
-export type CampaignSortField = "name" | "type" | "status" | "createdAt";
+/**
+ * Single source of truth for the campaigns sort whitelist (issue #218).
+ * Tuple drives both the route's TypeBox literal union and the service-
+ * level `normalizeCampaignSort` fallback.
+ */
+export const CAMPAIGN_SORT_FIELDS = ["name", "type", "status", "createdAt"] as const;
+export type CampaignSortField = (typeof CAMPAIGN_SORT_FIELDS)[number];
 export type CampaignSortOrder = "asc" | "desc";
-
-const CAMPAIGN_SORT_FIELDS: ReadonlySet<CampaignSortField> = new Set([
-  "name",
-  "type",
-  "status",
-  "createdAt",
-]);
 
 /**
  * Defense-in-depth — see `donations/service.ts` `normalizeDonationSort`
- * for the rationale. Route-level TypeBox literal union
- * (`CAMPAIGN_SORT_FIELDS` in `routes.ts`) is the contract; this fallback
- * only kicks in if validation is loosened.
+ * for the rationale. Route-level TypeBox literal derived from the same
+ * tuple is the contract; this fallback only kicks in if validation is
+ * loosened.
  */
 function normalizeCampaignSort(value: string | undefined): CampaignSortField {
-  if (value && CAMPAIGN_SORT_FIELDS.has(value as CampaignSortField)) {
+  if (value && CAMPAIGN_SORT_FIELDS.includes(value as CampaignSortField)) {
     return value as CampaignSortField;
   }
   return "createdAt";

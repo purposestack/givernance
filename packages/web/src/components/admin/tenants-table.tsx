@@ -5,7 +5,7 @@ import { Building2, Eye, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useTransition } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -51,12 +51,16 @@ export function TenantsTable({ tenants, sort, order }: TenantsTableProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const t = useTranslations("admin.tenants.list");
+  // Issue #216: see donations-table.tsx for the pattern.
+  const [isPending, startTransition] = useTransition();
 
   const sorting = useMemo<SortingState>(
     () => [{ id: sort, desc: order === "desc" }],
     [order, sort],
   );
 
+  // Issue #217: sort changes use `router.replace` so back-button escapes
+  // the page rather than unwinding every header click.
   const onSortingChange = useCallback(
     (nextSorting: SortingState) => {
       const [next] = nextSorting;
@@ -69,7 +73,9 @@ export function TenantsTable({ tenants, sort, order }: TenantsTableProps) {
         params.set("order", next.desc ? "desc" : "asc");
       }
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -187,6 +193,7 @@ export function TenantsTable({ tenants, sort, order }: TenantsTableProps) {
       onPageChange={() => {}}
       sorting={sorting}
       onSortingChange={onSortingChange}
+      isPending={isPending}
       onRowClick={(row) => router.push(`/admin/tenants/${row.original.id}`)}
       emptyState={
         <EmptyState

@@ -38,6 +38,7 @@ describe("DonationForm", () => {
           deletedAt: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
+          lastDonationAt: null,
         },
       ],
       pagination: { page: 1, perPage: 50, total: 1, totalPages: 1 },

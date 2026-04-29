@@ -4,6 +4,7 @@ import type {
   ConstituentDetailResponse,
   ConstituentListQuery,
   ConstituentListResponse,
+  ConstituentListRow,
 } from "@/models/constituent";
 
 /**
@@ -47,7 +48,7 @@ export const ConstituentService = {
     const response = await client.get<ConstituentListResponse>("/v1/constituents", { params });
 
     return {
-      data: response.data.map(mapConstituent),
+      data: response.data.map(mapConstituentListRow),
       pagination: response.pagination,
     };
   },
@@ -124,6 +125,13 @@ function mapConstituent(raw: Constituent): Constituent {
     deletedAt: raw.deletedAt,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+  };
+}
+
+function mapConstituentListRow(raw: ConstituentListRow): ConstituentListRow {
+  return {
+    ...mapConstituent(raw),
+    lastDonationAt: raw.lastDonationAt,
   };
 }
 
