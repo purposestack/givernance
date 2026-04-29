@@ -279,6 +279,7 @@ export function ConstituentsTable({
       },
       {
         id: "lastDonation",
+        accessorFn: (row) => row.lastDonationAt ?? "",
         header: () => t("columns.lastDonation"),
         cell: ({ row }) =>
           row.original.lastDonationAt ? (
