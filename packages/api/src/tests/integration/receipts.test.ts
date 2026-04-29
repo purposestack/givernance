@@ -1,10 +1,23 @@
+import { Readable } from "node:stream";
 import { receipts } from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { withTenantContext } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
+
+// Stub S3 fetch so the streaming download tests don't depend on a real
+// MinIO object existing at the receipt's s3_path. The 403/404 paths
+// short-circuit before reaching this, so they exercise pure auth +
+// tenant-scope logic regardless of the stub.
+const STUB_PDF_BYTES = Buffer.from("%PDF-1.4 stub-receipt", "utf8");
+vi.mock("../../lib/s3.js", () => ({
+  fetchReceiptObject: vi.fn(async () => ({
+    body: Readable.from(STUB_PDF_BYTES),
+    contentLength: STUB_PDF_BYTES.length,
+  })),
+}));
 
 let app: FastifyInstance;
 
@@ -67,7 +80,7 @@ describe("Receipt endpoint", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("GET /v1/donations/:id/receipt returns presigned URL after receipt is inserted", async () => {
+  it("GET /v1/donations/:id/receipt returns same-origin downloadPath after receipt is inserted", async () => {
     // Simulate the worker inserting a receipt record (use withTenantContext, not session-scoped set_config)
     await withTenantContext(ORG_A, async (tx) => {
       await tx.insert(receipts).values({
@@ -88,9 +101,20 @@ describe("Receipt endpoint", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ data: { url: string } }>();
-    expect(body.data).toHaveProperty("url");
-    expect(body.data.url).toContain(`${receiptNumber}.pdf`);
+    const body = res.json<{ data: { downloadPath: string; expiresAt: string } }>();
+    // Lock the post-#214 contract: relative download path on the app's
+    // own apex, never a presigned MinIO URL with a Docker-internal
+    // hostname. The leading "/" matters — frontend opens this as a
+    // same-origin URL so the donor never leaves staging.givernance.org.
+    expect(body.data.downloadPath).toBe(`/v1/donations/${donationIdA}/receipt/download`);
+    expect(body.data.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // expiresAt is the auth-token horizon, not a URL TTL — must be in the
+    // future at response time so a frontend that schedules a re-fetch
+    // doesn't pre-expire the metadata.
+    expect(new Date(body.data.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    // Defend against accidental regression to a presigned-URL response
+    // shape (which would re-introduce the cross-domain hop).
+    expect(body.data).not.toHaveProperty("url");
   });
 
   it("GET /v1/donations/:id/receipt returns 404 for non-existent donation", async () => {
@@ -127,6 +151,116 @@ describe("Receipt RLS tenant isolation", () => {
       headers: authHeader(tokenB),
     });
 
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+// ─── Receipt Download (streaming) endpoint — issue #214 ───────────────────
+
+describe("Receipt download endpoint", () => {
+  it("GET /v1/donations/:id/receipt/download streams the PDF with PDF headers", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${donationIdA}/receipt/download`,
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/pdf");
+    expect(res.headers["content-disposition"]).toBe(`attachment; filename="${receiptNumber}.pdf"`);
+    expect(res.headers["cache-control"]).toBe("private, no-store");
+    expect(res.headers["content-length"]).toBe(String(STUB_PDF_BYTES.length));
+    expect(res.rawPayload.equals(STUB_PDF_BYTES)).toBe(true);
+  });
+
+  it("logs an audit entry with userId, donationId, and receiptNumber on every download", async () => {
+    // The default test app pins LOG_LEVEL=silent and uses Pino's stdout
+    // sonic-boom destination, so a `vi.spyOn(app.log, "info")` doesn't
+    // see writes via the request-scoped child logger. Spin up a parallel
+    // server with the `onLogLine` capture hook (same pattern as
+    // rbac-denial-logs.test.ts) so we can assert on the actual emitted
+    // JSON record — what Loki will index in production.
+    const captured: Record<string, unknown>[] = [];
+    const captureApp = await createServer({
+      onLogLine: (line) => {
+        for (const record of line.trim().split("\n")) {
+          if (!record.trim()) continue;
+          try {
+            captured.push(JSON.parse(record) as Record<string, unknown>);
+          } catch {
+            // skip non-JSON
+          }
+        }
+      },
+    });
+    await captureApp.ready();
+    try {
+      const tokenA = signToken(captureApp);
+      const res = await captureApp.inject({
+        method: "GET",
+        url: `/v1/donations/${donationIdA}/receipt/download`,
+        headers: authHeader(tokenA),
+      });
+      expect(res.statusCode).toBe(200);
+
+      const auditLine = captured.find((rec) => rec.msg === "Receipt downloaded");
+      expect(auditLine, "expected an audit log line for the download").toBeTruthy();
+      // Lock the field shape — these are the keys Loki queries against
+      // for "who downloaded what" audit, and a rename here silently
+      // breaks every saved query (docs/17-log-management.md).
+      expect(auditLine).toMatchObject({
+        orgId: ORG_A,
+        donationId: donationIdA,
+        receiptNumber,
+        fiscalYear: 2026,
+      });
+      expect(auditLine).toHaveProperty("userId");
+      expect(auditLine).toHaveProperty("receiptId");
+    } finally {
+      await captureApp.close();
+    }
+  });
+
+  it("returns 404 when Tenant B requests Tenant A's receipt download (cross-tenant scope)", async () => {
+    // Even with a valid receipt s3Path guess, a Tenant B token must not
+    // reach `fetchReceiptObject` — auth + tenant-scope short-circuit at
+    // the donation lookup. The 404 is intentional: 403 would leak the
+    // existence of the donation across tenants.
+    const tokenB = signTokenB(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${donationIdA}/receipt/download`,
+      headers: authHeader(tokenB),
+    });
+
+    expect(res.statusCode).toBe(404);
+    // Lock the RFC 9457 problem-detail body so a future regression to
+    // a plain string or `{error: "..."}` shape is caught immediately
+    // (memory: feedback_lock_rfc9457_body_in_tests).
+    expect(res.json()).toMatchObject({
+      type: expect.any(String),
+      title: "Not Found",
+      status: 404,
+      detail: expect.any(String),
+    });
+  });
+
+  it("GET /v1/donations/:id/receipt/download without token returns 401", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${donationIdA}/receipt/download`,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("GET /v1/donations/:id/receipt/download returns 404 for non-existent donation", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations/00000000-0000-0000-0000-ffffffffffff/receipt/download",
+      headers: authHeader(tokenA),
+    });
     expect(res.statusCode).toBe(404);
   });
 });

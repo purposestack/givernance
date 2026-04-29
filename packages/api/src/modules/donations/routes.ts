@@ -4,7 +4,7 @@ import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
-import { getReceiptPresignedUrl } from "../../lib/s3.js";
+import { fetchReceiptObject } from "../../lib/s3.js";
 import {
   CurrencySchema,
   DataArrayResponse,
@@ -195,9 +195,22 @@ const DonationDetailResponse = Type.Object({
   ),
 });
 
+/**
+ * The receipt metadata response. `downloadPath` is a relative API path
+ * the frontend opens directly — `staging.givernance.org/v1/donations/.../
+ * receipt/download` — so the donor-visible URL stays on the app's apex
+ * (issue #214). No presigned URL field: presigned URLs would point at
+ * the internal Docker hostname `givernance-minio:9000`, unreachable from
+ * the browser.
+ *
+ * `expiresAt` is the caller's auth-token horizon — the path itself is
+ * timeless (re-authenticated on every download), but after this instant
+ * the user must re-auth and re-call this endpoint. Pre-#214 this field
+ * tracked the presigned URL's TTL; the post-#214 meaning is
+ * "auth-token-tied" per the issue's design constraint.
+ */
 const ReceiptUrlResponse = Type.Object({
-  url: Type.String(),
-  /** ISO-8601 absolute expiry. Clients can cache the URL safely up to this instant. */
+  downloadPath: Type.String(),
   expiresAt: Type.String({ format: "date-time" }),
 });
 
@@ -539,7 +552,18 @@ export async function donationRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Get a presigned URL for downloading a donation's tax receipt PDF */
+  /**
+   * Receipt metadata — returns the relative `downloadPath` the frontend
+   * opens to actually fetch the PDF. The frontend can decide whether to
+   * `window.open(downloadPath)` immediately or render a link for later.
+   *
+   * Pre-issue-#214 this returned a presigned MinIO URL. That broke on
+   * staging because the URL contained the internal Docker hostname
+   * (`givernance-minio:9000`, baked into the SigV4 signature so it can't
+   * be host-rewritten). The new endpoint streams through `:id/receipt/
+   * download` instead, keeping every donor-visible URL on the app's apex
+   * — see the URL-consistency rule in CLAUDE.md.
+   */
   app.get(
     "/donations/:id/receipt",
     {
@@ -587,8 +611,113 @@ export async function donationRoutes(app: FastifyInstance) {
           );
       }
 
-      const { url, expiresAt } = await getReceiptPresignedUrl(receipt.s3Path);
-      return { data: { url, expiresAt: expiresAt.toISOString() } };
+      // `jwtExp` is a UNIX-second timestamp set by the auth plugin from
+      // the verified JWT's `exp` claim (packages/api/src/plugins/auth.ts).
+      // Falls back to "1 hour from now" if the claim is missing — that's
+      // a defensive default, not a feature: every Keycloak-issued JWT
+      // carries `exp`. The frontend uses this only as a "consider
+      // refreshing" hint; the path itself doesn't go stale.
+      const expSeconds = request.jwtExp ?? Math.floor(Date.now() / 1000) + 3600;
+      const expiresAt = new Date(expSeconds * 1000).toISOString();
+      return {
+        data: {
+          downloadPath: `/v1/donations/${id}/receipt/download`,
+          expiresAt,
+        },
+      };
+    },
+  );
+
+  /**
+   * Stream a donation's receipt PDF inline from MinIO/S3 (issue #214).
+   *
+   * Auth + tenant scope are enforced on every call (not just at link
+   * generation, the way presigned URLs were), so revoking access is
+   * immediate. Each call lands a structured log line via the existing
+   * pino instance — `userId` + `donationId` + `receiptNumber` so log-side
+   * audit can answer "who downloaded what when" without the scattered S3
+   * access logs the presigned-URL flow produced.
+   *
+   * Cache-Control is `private, no-store` because the response includes a
+   * legal proof of donation specific to one user; we don't want a shared
+   * cache returning the same PDF to a different identity.
+   */
+  app.get(
+    "/donations/:id/receipt/download",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["Donations"],
+        params: IdParams,
+        // Binary streaming response — no JSON envelope; only the error
+        // shapes go through the schema. Fastify still validates the
+        // params at the schema layer above.
+        response: ErrorResponses,
+      },
+    },
+    async (request, reply) => {
+      const t = resolveTranslations(request);
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", t("errors.unauthorized")));
+      }
+
+      const { id } = request.params as { id: string };
+
+      const donation = await getDonation(orgId, id);
+      if (!donation) {
+        return reply
+          .status(404)
+          .send(
+            problemDetail(
+              404,
+              "Not Found",
+              t("errors.notFound", { resource: t("resources.donation") }),
+            ),
+          );
+      }
+
+      const receipt = await getReceiptByDonation(orgId, id);
+      if (!receipt) {
+        return reply
+          .status(404)
+          .send(
+            problemDetail(
+              404,
+              "Not Found",
+              t("errors.notFound", { resource: t("resources.receipt") }),
+            ),
+          );
+      }
+
+      const { body, contentLength } = await fetchReceiptObject(receipt.s3Path);
+
+      // Audit log — single source of truth for "who downloaded this
+      // receipt". Indexed in Loki via the existing pino → stdout path
+      // (docs/17-log-management.md). receiptNumber is non-PII; fiscalYear
+      // helps narrow the search when an NPO asks for a year-of-account
+      // export of their download history.
+      request.log.info(
+        {
+          orgId,
+          userId,
+          donationId: id,
+          receiptId: receipt.id,
+          receiptNumber: receipt.receiptNumber,
+          fiscalYear: receipt.fiscalYear,
+        },
+        "Receipt downloaded",
+      );
+
+      reply
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", `attachment; filename="${receipt.receiptNumber}.pdf"`)
+        .header("Cache-Control", "private, no-store");
+      if (contentLength !== undefined) {
+        reply.header("Content-Length", contentLength.toString());
+      }
+      return reply.send(body);
     },
   );
 }

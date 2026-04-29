@@ -543,10 +543,16 @@ describe("Audit actorId double-attribution E2E", () => {
   });
 });
 
-// ─── Receipt URL includes expiresAt (API minor) ─────────────────────────────
+// ─── Receipt metadata includes expiresAt (API minor; reshaped by #214) ────
 
 describe("GET /v1/donations/:id/receipt exposes expiresAt (API minor)", () => {
-  it("returns both url and ISO-8601 expiresAt in the data envelope", async () => {
+  it("returns same-origin downloadPath plus ISO-8601 expiresAt in the data envelope", async () => {
+    // Pre-#214 this test asserted `body.data.url` (a presigned MinIO URL
+    // with a 15-min TTL). Issue #214 replaced that with a same-origin
+    // streaming endpoint; `expiresAt` now reflects the caller's
+    // auth-token horizon, not a URL TTL — but the contract still
+    // requires a future-tense ISO-8601 timestamp for clients that
+    // schedule a re-fetch.
     const tokenA = signToken(app);
 
     let donationId: string;
@@ -584,10 +590,15 @@ describe("GET /v1/donations/:id/receipt exposes expiresAt (API minor)", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ data: { url: string; expiresAt: string } }>();
-    expect(typeof body.data.url).toBe("string");
+    const body = res.json<{ data: { downloadPath: string; expiresAt: string } }>();
+    expect(body.data.downloadPath).toBe(
+      // biome-ignore lint/style/noNonNullAssertion: donationId is assigned above
+      `/v1/donations/${donationId!}/receipt/download`,
+    );
     expect(body.data.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     // Must be in the future.
     expect(new Date(body.data.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    // Defend against regression to the presigned-URL contract.
+    expect(body.data).not.toHaveProperty("url");
   });
 });

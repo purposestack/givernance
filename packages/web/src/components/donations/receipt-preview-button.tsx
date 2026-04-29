@@ -22,8 +22,16 @@ export function ReceiptPreviewButton({ donationId }: ReceiptPreviewButtonProps) 
     if (loading) return;
     setLoading(true);
     try {
-      const url = await DonationService.getDonationReceiptUrl(createClientApiClient(), donationId);
-      window.open(url, "_blank", "noopener,noreferrer");
+      // `downloadPath` is a same-origin API path (e.g.
+      // `/v1/donations/<id>/receipt/download`); next.config rewrites
+      // `/api/v1/*` to the API service. We prefix with `/api` so the
+      // request hits the same Next.js rewrite the rest of the SPA uses,
+      // keeping the donor on `staging.givernance.org` (issue #214).
+      const downloadPath = await DonationService.getDonationReceiptDownloadPath(
+        createClientApiClient(),
+        donationId,
+      );
+      window.open(`/api${downloadPath}`, "_blank", "noopener,noreferrer");
     } catch (err) {
       if (err instanceof ApiProblem && err.status === 404) {
         toast.warning(t("receipt.pending"));

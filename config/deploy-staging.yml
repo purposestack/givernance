@@ -149,7 +149,13 @@ accessories:
   minio:
     image: minio/minio:latest
     host: <%= ENV["STAGING_VPS_IP"] %>
-    port: 9000
+    # No `port:` publishing — MinIO is reachable only on the internal
+    # `kamal` Docker network at `givernance-minio:9000`. Closes the
+    # browser-facing presigned-URL hole that issue #214 fixed: the API
+    # streams receipts through `:id/receipt/download`, so no donor
+    # browser ever needs to resolve port 9000 directly. The bucket-
+    # creation step in deploy-staging.yml uses `--network kamal` so it
+    # still works without a published port.
     env:
       clear:
         MINIO_ROOT_USER: admin

@@ -118,8 +118,19 @@ export interface DonationUpdateInput {
   allocations?: DonationAllocationInput[];
 }
 
-export interface DonationReceiptUrl {
-  url: string;
+/**
+ * Receipt metadata returned by `GET /v1/donations/:id/receipt`. Always a
+ * relative same-origin path — the API streams the PDF through
+ * `:id/receipt/download` so the donor never leaves the app's apex (issue
+ * #214). No presigned URL field; if you see one, the contract drifted.
+ *
+ * `expiresAt` reflects the caller's auth-token horizon (after that the
+ * user must re-auth before calling the download endpoint). The path
+ * itself is timeless because the API re-authenticates on every fetch.
+ */
+export interface DonationReceiptMeta {
+  downloadPath: string;
+  expiresAt: string;
 }
 
 export function donationDonorName(row: DonationListRow): string | null {
