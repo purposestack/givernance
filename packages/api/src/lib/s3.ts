@@ -1,7 +1,7 @@
-/** S3/MinIO client for generating presigned download URLs */
+/** S3/MinIO client for fetching receipt PDFs server-side */
 
+import type { Readable } from "node:stream";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../env.js";
 
 const s3 = new S3Client({
@@ -14,22 +14,33 @@ const s3 = new S3Client({
   },
 });
 
-export const RECEIPT_URL_TTL_SECONDS = 900;
-
 /**
- * Generate a presigned URL for downloading a receipt PDF (default TTL 15 min).
- * Returns both the URL and the absolute expiry so clients can cache the URL
- * safely and refetch before it expires — issue #56 API minor.
+ * Fetch a receipt PDF from MinIO/S3. Returns the body as a Node Readable
+ * (Fastify pipes it natively through `reply.send`) plus content metadata
+ * for the response headers.
+ *
+ * The route streams this through the API instead of redirecting the browser
+ * to a presigned URL because (a) presigned URLs bake the S3 hostname into
+ * the SigV4 signature, and on staging that's `givernance-minio:9000` — only
+ * resolvable inside the Docker network, and (b) the donor-visible URL must
+ * stay on the app's own apex/subdomain to keep the trust path consistent.
+ * See issue #214 for the design decision and rejected alternatives.
  */
-export async function getReceiptPresignedUrl(
-  s3Path: string,
-): Promise<{ url: string; expiresAt: Date }> {
+export async function fetchReceiptObject(s3Path: string): Promise<{
+  body: Readable;
+  contentLength: number | undefined;
+}> {
   const command = new GetObjectCommand({
     Bucket: env.S3_RECEIPTS_BUCKET,
     Key: s3Path,
   });
-
-  const url = await getSignedUrl(s3, command, { expiresIn: RECEIPT_URL_TTL_SECONDS });
-  const expiresAt = new Date(Date.now() + RECEIPT_URL_TTL_SECONDS * 1000);
-  return { url, expiresAt };
+  const response = await s3.send(command);
+  // The AWS SDK types `Body` as a union (Readable | Blob | ReadableStream)
+  // because the same SDK runs in Node and the browser. In Node the runtime
+  // value is always a Node Readable.
+  const body = response.Body as Readable | undefined;
+  if (!body) {
+    throw new Error(`S3 object missing body: ${s3Path}`);
+  }
+  return { body, contentLength: response.ContentLength };
 }
