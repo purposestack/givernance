@@ -3,7 +3,7 @@ import { vi } from "vitest";
 import { render, screen } from "@/tests/test-utils";
 
 vi.mock("next-intl", async () => {
-  const messages = (await import("../../../messages/en.json")).default as Record<string, unknown>;
+  const messages = (await import("../../messages/en.json")).default as Record<string, unknown>;
 
   function lookup(path: string): string {
     const parts = path.split(".");

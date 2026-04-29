@@ -1,4 +1,4 @@
-import type messages from "../../messages/fr.json";
+import type messages from "../messages/fr.json";
 
 /**
  * ADR-015: Type-safe translation keys.

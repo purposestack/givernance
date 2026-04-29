@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, beforeEach, vi } from "vitest";
 
-import messages from "../../messages/en.json";
+import messages from "../messages/en.json";
 import { mockApiClient, mockRouter, mockToast } from "./mocks";
 
 type MessageValue = string | Record<string, unknown>;
