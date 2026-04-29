@@ -9,12 +9,23 @@ import { db } from "../../lib/db.js";
 /** Lazily initialized Stripe client — null when STRIPE_SECRET_KEY is not configured */
 let stripeClient: Stripe | null = null;
 
+/**
+ * Pin the Stripe API version explicitly. Without this, `new Stripe(key)`
+ * uses whatever version the SDK ships with at install time — a patch bump
+ * to `stripe@22.x` can silently shift the version and break the worker's
+ * webhook payload parsing (`payload.amount`, `payload.application_fee_amount`,
+ * etc.). Bump this constant + the SDK together when adopting a new version.
+ *
+ * Current: matches the default of `stripe@22.0.1` (see SDK `apiVersion.js`).
+ */
+const STRIPE_API_VERSION = "2026-03-25.dahlia" as const;
+
 export function getStripe(): Stripe {
   if (!env.STRIPE_SECRET_KEY) {
     throw new Error("STRIPE_SECRET_KEY is not configured");
   }
   if (!stripeClient) {
-    stripeClient = new Stripe(env.STRIPE_SECRET_KEY);
+    stripeClient = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: STRIPE_API_VERSION });
   }
   return stripeClient;
 }
@@ -25,17 +36,21 @@ export function getStripe(): Stripe {
  * a charge on a connected account without the `card_payments` capability
  * enabled." `transfers` is requested alongside so the account can receive
  * funds via destination charges if we ever switch off the direct-charge
- * model. SEPA Direct Debit (`sepa_debit_payments`) is intentionally
- * out-of-scope for Phase 1 — see ADR-010 §11.
+ * model. `link_payments` is requested because Stripe Link is enabled on
+ * the Payment Element by default and EU one-click checkout requires this
+ * capability on the connected account; without it the donor sees a
+ * downgraded payment experience. SEPA Direct Debit (`sepa_debit_payments`)
+ * is intentionally out-of-scope for Phase 1 — see ADR-010 §11.
  *
- * Both keys are idempotent on Stripe's side: re-requesting an already-
- * requested capability is a no-op, so the same shape covers both
+ * All three keys are idempotent on Stripe's side: re-requesting an
+ * already-requested capability is a no-op, so the same shape covers both
  * `accounts.create` (new accounts) and `accounts.update` (recovering
- * accounts created before this fix landed — issue #192 follow-up).
+ * accounts created before any of these capabilities were requested).
  */
 const REQUESTED_CAPABILITIES = {
   card_payments: { requested: true },
   transfers: { requested: true },
+  link_payments: { requested: true },
 } as const;
 
 /**

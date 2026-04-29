@@ -4,7 +4,13 @@ import { CampaignPublicPageSchema } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireOrgAdmin } from "../../lib/guards.js";
-import { DataResponse, ErrorResponses, problemDetail, UuidSchema } from "../../lib/schemas.js";
+import {
+  DataResponse,
+  ErrorResponses,
+  ProblemDetailSchema,
+  problemDetail,
+  UuidSchema,
+} from "../../lib/schemas.js";
 import {
   createDonationIntent,
   getAdminPublicPage,
@@ -15,6 +21,19 @@ import {
 
 const CampaignIdParams = Type.Object({ id: UuidSchema });
 
+/**
+ * Currencies the public donation flow accepts. Narrower than the application
+ * `CurrencySchema` (which covers internal-reporting currencies) — we only
+ * accept what Stripe Connect direct-charge supports natively across our
+ * primary target jurisdictions today. Used in both request body validation
+ * and the published-page response shape so they cannot drift.
+ */
+const PublicDonationCurrencySchema = Type.Union([
+  Type.Literal("EUR"),
+  Type.Literal("GBP"),
+  Type.Literal("CHF"),
+]);
+
 const PublicPageResponse = Type.Object({
   id: UuidSchema,
   campaignId: UuidSchema,
@@ -22,18 +41,28 @@ const PublicPageResponse = Type.Object({
   description: Type.Union([Type.String(), Type.Null()]),
   colorPrimary: Type.Union([Type.String(), Type.Null()]),
   goalAmountCents: Type.Union([Type.Integer(), Type.Null()]),
-  defaultCurrency: Type.Union([Type.Literal("EUR"), Type.Literal("GBP"), Type.Literal("CHF")]),
+  defaultCurrency: PublicDonationCurrencySchema,
 });
 
 const DonateBody = Type.Object({
   amountCents: Type.Integer({ minimum: 100, maximum: 1000000 }),
-  currency: Type.Union([Type.Literal("EUR"), Type.Literal("GBP"), Type.Literal("CHF")]),
+  currency: PublicDonationCurrencySchema,
   email: Type.String({ format: "email" }),
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
 });
 
 const DonateHeaders = Type.Object({
+  /**
+   * Forwarded directly to Stripe's `paymentIntents.create` as the SDK-level
+   * idempotency key. **Not** stored in the application's idempotency table
+   * — the route is unauthenticated and the local plugin keys on
+   * `(orgId, route, fingerprint)` which we don't have here. Practical
+   * effects: a retry that fails before reaching Stripe is NOT deduped on
+   * our side; a retry that reaches Stripe will get the original
+   * PaymentIntent back. If you ever need local dedup on this route, key
+   * on `(publicPage.orgId, campaignId, sha256(headerValue))`.
+   */
   "idempotency-key": Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
 });
 
@@ -177,10 +206,10 @@ export async function publicDonationRoutes(app: FastifyInstance) {
         body: DonateBody,
         response: {
           200: DataResponse(DonateResponse),
-          400: Type.Any(),
-          429: Type.Any(),
-          502: Type.Any(),
-          ...ErrorResponses,
+          400: ProblemDetailSchema,
+          404: ProblemDetailSchema,
+          429: ProblemDetailSchema,
+          502: ProblemDetailSchema,
         },
       },
     },
@@ -208,12 +237,25 @@ export async function publicDonationRoutes(app: FastifyInstance) {
       try {
         const result = await createDonationIntent(id, body, idempotencyKey);
         if (!result) {
+          // `createDonationIntent` returns `null` for several distinct reasons
+          // (invalid uuid, no public page found, no campaign row) — collapsing
+          // to a single 404 is deliberate so an enumerator can't distinguish
+          // "campaign exists but unpublished" from "campaign doesn't exist".
           return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
         }
         return { data: result };
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Payment processing failed";
-        request.log.error({ err: message, campaignId: id }, "Donation intent creation failed");
+        // Sanitised log: drop the raw Stripe Error object — it carries
+        // `requestId`, `payment_intent.id`, and possibly the connected
+        // `acct_…` id which would cross tenant boundaries in a shared log
+        // index. The donor-facing 502 stays generic; ops can recover the
+        // raw error from Stripe's dashboard via the donor email + timestamp.
+        const errMessage = err instanceof Error ? err.message : "Payment processing failed";
+        const errCode = err instanceof Error ? (err as { code?: string }).code : undefined;
+        request.log.error(
+          { errMessage, errCode, campaignId: id },
+          "Donation intent creation failed",
+        );
         return reply
           .status(502)
           .send(problemDetail(502, "Bad Gateway", "Payment processing failed"));

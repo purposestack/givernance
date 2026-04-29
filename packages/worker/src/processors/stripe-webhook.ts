@@ -11,7 +11,7 @@ import {
   webhookEvents,
 } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
@@ -188,13 +188,20 @@ async function handlePaymentIntentSucceeded(
     const donationId = donation.id;
 
     if (campaignId) {
+      // Defence-in-depth: `campaignId` came from PaymentIntent metadata, which
+      // the platform sets server-side today but is technically attacker-tainted
+      // (a hand-crafted PI created via Stripe dashboard on the same connected
+      // account could carry a `metadata.campaign_id` for a campaign on a
+      // different tenant). RLS catches it via `withWorkerContext(orgId)`, but
+      // the explicit `org_id` filter makes the query refuse to write across
+      // tenants even if the RLS context were ever wrong.
       await tx
         .update(campaigns)
         .set({
           platformFeesCents: sql`${campaigns.platformFeesCents} + ${platformFeeCents}`,
           updatedAt: new Date(),
         })
-        .where(eq(campaigns.id, campaignId));
+        .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
     }
 
     // Emit DonationCreated domain event atomically
