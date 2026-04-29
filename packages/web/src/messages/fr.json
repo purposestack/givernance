@@ -1481,7 +1481,6 @@
     "descriptionFallback": "Votre don aide directement à financer cette campagne et ses prochaines étapes sur le terrain.",
     "metrics": {
       "goal": "Objectif de collecte",
-      "goalFallback": "Objectif bientôt précisé",
       "trust": "Paiement",
       "trustValue": "Sécurisé par Stripe"
     },

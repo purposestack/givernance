@@ -6,6 +6,7 @@ import { PublicDonationForm } from "@/components/campaigns/public-donation-form"
 import { Badge } from "@/components/ui/badge";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
+import { getReadableTextColor } from "@/lib/color";
 import { formatCurrency } from "@/lib/format";
 import { isUuid } from "@/lib/utils";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
@@ -104,13 +105,4 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="mt-2 text-base font-semibold text-on-surface sm:text-lg">{value}</p>
     </div>
   );
-}
-
-function getReadableTextColor(hex: string): "#FFFFFF" | "#111827" {
-  const normalized = hex.replace("#", "");
-  const r = Number.parseInt(normalized.slice(0, 2), 16);
-  const g = Number.parseInt(normalized.slice(2, 4), 16);
-  const b = Number.parseInt(normalized.slice(4, 6), 16);
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return luminance > 0.6 ? "#111827" : "#FFFFFF";
 }

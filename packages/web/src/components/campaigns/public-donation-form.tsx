@@ -17,6 +17,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { getReadableTextColor } from "@/lib/color";
 import { formatCurrency } from "@/lib/format";
 import type { PublicDonationCurrency } from "@/models/public-page";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
@@ -219,31 +220,46 @@ function DonorDetailsForm({
   const t = useTranslations("publicDonationPage.form");
   return (
     <>
+      {/*
+        Suggested-amount chips. `aria-pressed` carries the toggle semantics
+        for AT users — donors can pick any chip OR type a custom amount in
+        the field below, which is why these are individual toggles rather
+        than a `<RadioGroup>`. The `Button` size="lg" + height override
+        gives a visibly tappable target on mobile while inheriting the
+        design-system focus ring and disabled handling.
+       */}
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {SUGGESTED_AMOUNTS.map((amount) => (
-          <button
-            key={amount}
-            type="button"
-            className="rounded-2xl border border-outline-variant bg-surface px-4 py-4 text-center transition-colors hover:border-primary sm:py-5"
-            style={{
-              backgroundColor: values.amount === String(amount) ? colorPrimary : undefined,
-              color:
-                values.amount === String(amount) ? getReadableTextColor(colorPrimary) : undefined,
-            }}
-            onClick={() => {
-              onValuesChange((current) => ({ ...current, amount: String(amount) }));
-              onErrorsChange((current) => ({ ...current, amount: undefined }));
-            }}
-          >
-            <span className="block text-center text-lg font-semibold sm:text-xl">
+        {SUGGESTED_AMOUNTS.map((amount) => {
+          const isSelected = values.amount === String(amount);
+          return (
+            <Button
+              key={amount}
+              type="button"
+              variant={isSelected ? "primary" : "secondary"}
+              size="lg"
+              aria-pressed={isSelected}
+              className="h-auto py-4 text-lg font-semibold sm:py-5 sm:text-xl"
+              style={
+                isSelected
+                  ? {
+                      backgroundColor: colorPrimary,
+                      color: getReadableTextColor(colorPrimary),
+                    }
+                  : undefined
+              }
+              onClick={() => {
+                onValuesChange((current) => ({ ...current, amount: String(amount) }));
+                onErrorsChange((current) => ({ ...current, amount: undefined }));
+              }}
+            >
               {new Intl.NumberFormat(locale, {
                 style: "currency",
                 currency: values.currency,
                 maximumFractionDigits: 0,
               }).format(amount)}
-            </span>
-          </button>
-        ))}
+            </Button>
+          );
+        })}
       </div>
 
       {goalAmountCents !== null ? (
@@ -252,7 +268,12 @@ function DonorDetailsForm({
         </p>
       ) : null}
 
-      <form className="mt-6 space-y-4" onSubmit={onSubmit} noValidate>
+      <form
+        className="mt-6 space-y-4"
+        onSubmit={onSubmit}
+        noValidate
+        aria-busy={isSubmitting || undefined}
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             inputId="public-donation-first-name"
@@ -466,13 +487,4 @@ function createIdempotencyKey(): string {
     return crypto.randomUUID();
   }
   return `public-donation-${Date.now()}`;
-}
-
-function getReadableTextColor(hex: string): "#FFFFFF" | "#111827" {
-  const normalized = hex.replace("#", "");
-  const r = Number.parseInt(normalized.slice(0, 2), 16);
-  const g = Number.parseInt(normalized.slice(2, 4), 16);
-  const b = Number.parseInt(normalized.slice(4, 6), 16);
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return luminance > 0.6 ? "#111827" : "#FFFFFF";
 }
