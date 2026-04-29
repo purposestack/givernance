@@ -185,7 +185,11 @@ describe("Receipt download endpoint", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toBe("application/pdf");
-    expect(res.headers["content-disposition"]).toBe(`attachment; filename="${receiptNumber}.pdf"`);
+    // `inline` (not `attachment`) so the "Preview receipt" CTA actually
+    // previews the PDF in the new tab — modern browsers render
+    // application/pdf inline natively, and `filename=` is still
+    // honored on Save As.
+    expect(res.headers["content-disposition"]).toBe(`inline; filename="${receiptNumber}.pdf"`);
     expect(res.headers["cache-control"]).toBe("private, no-store");
     expect(res.headers["content-length"]).toBe(String(STUB_PDF_BYTES.length));
     expect(res.rawPayload.equals(STUB_PDF_BYTES)).toBe(true);
