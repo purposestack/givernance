@@ -94,6 +94,40 @@ if (process.env.NODE_ENV === "production" && !value.KEYCLOAK_ADMIN_CLIENT_SECRET
   process.exit(1);
 }
 
+// Stripe secret key + webhook secret — fail fast at boot in production
+// instead of letting `getStripe()` crash on the first donation. (PR #193
+// review, finding #6.) Local dev keeps both Optional so an env without
+// Stripe still boots — the user-facing surface (Settings panel 502, donor
+// flow blocked) tells the operator what's missing.
+if (process.env.NODE_ENV === "production") {
+  if (!value.STRIPE_SECRET_KEY) {
+    console.error(
+      "[api] STRIPE_SECRET_KEY is strictly required in production — without it every donation attempt 502s.",
+    );
+    process.exit(1);
+  }
+  // Format sanity-check so a typo'd value (e.g. swapped publishable key)
+  // surfaces at boot rather than on the first PaymentIntent.create.
+  if (!/^sk_(test|live)_/.test(value.STRIPE_SECRET_KEY)) {
+    console.error(
+      "[api] STRIPE_SECRET_KEY must start with `sk_test_` or `sk_live_` — looks like a publishable key or restricted key was set instead.",
+    );
+    process.exit(1);
+  }
+  if (!value.STRIPE_WEBHOOK_SECRET) {
+    console.error(
+      "[api] STRIPE_WEBHOOK_SECRET is strictly required in production — without it every webhook 400s on signature verification.",
+    );
+    process.exit(1);
+  }
+  if (!value.STRIPE_WEBHOOK_SECRET.startsWith("whsec_")) {
+    console.error(
+      "[api] STRIPE_WEBHOOK_SECRET must start with `whsec_` — got something else, likely the wrong dashboard field copied.",
+    );
+    process.exit(1);
+  }
+}
+
 const adminUrl = value.KEYCLOAK_ADMIN_URL ?? value.KEYCLOAK_INTERNAL_URL ?? value.KEYCLOAK_URL;
 const isLocalHost =
   /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0|givernance-keycloak)(:|$|\/)/i.test(adminUrl);

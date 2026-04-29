@@ -3,6 +3,7 @@
 import { ExchangeRateService } from "@givernance/shared";
 import type { ProcessStripeWebhookJob } from "@givernance/shared/jobs";
 import {
+  auditLogs,
   campaigns,
   constituents,
   donations,
@@ -349,6 +350,28 @@ async function handleChargeRefunded(
         donationId: donation.id,
         paymentRef: paymentIntentId,
         source: "stripe_webhook",
+      },
+    });
+
+    // Audit trail (PR #193 review, finding #9). The API plugin already
+    // logs the operator who hit POST /v1/donations/:id/refund — but a
+    // refund initiated from the NPO's Stripe dashboard skips that path
+    // entirely, and the worker-side state change had no audit trace.
+    // `userId` / `actorId` null = system-initiated; the previous +
+    // resulting status are recorded so a forensic reader can reconstruct
+    // who-flipped-what without joining against the original API request.
+    await tx.insert(auditLogs).values({
+      orgId,
+      userId: null,
+      actorId: null,
+      action: "WEBHOOK:charge.refunded",
+      resourceType: "donations",
+      resourceId: donation.id,
+      oldValues: { status: "cleared" },
+      newValues: {
+        status: "refunded",
+        chargeId: charge.id,
+        paymentIntentId,
       },
     });
 

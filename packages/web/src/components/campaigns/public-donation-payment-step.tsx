@@ -31,8 +31,20 @@ interface PublicDonationPaymentStepProps {
  * production. Detecting the prefix is sufficient for gating the test-card
  * hint banner — checking server `NODE_ENV` would be wrong since a staging
  * web build can run against test-mode Stripe.
+ *
+ * Defence-in-depth (PR #193 review, finding #8): explicit-deny on
+ * `pk_live_` so a key with an unexpected prefix (empty string, malformed
+ * value, or some hypothetical Stripe future-key format) defaults to
+ * **not showing** the test banner. The previous `startsWith("pk_test_")`
+ * also returned false for live keys, but only by accident; if Stripe
+ * ever ships keys with a non-`pk_` prefix, the explicit live-rejection
+ * keeps live donors from seeing test-mode copy. An explicit
+ * `STRIPE_MODE=test|live` env var was considered and rejected: it
+ * duplicates information already encoded in the key name and adds
+ * config sprawl across local dev / staging / prod for no real gain.
  */
 function isTestModeKey(publishableKey: string): boolean {
+  if (publishableKey.startsWith("pk_live_")) return false;
   return publishableKey.startsWith("pk_test_");
 }
 

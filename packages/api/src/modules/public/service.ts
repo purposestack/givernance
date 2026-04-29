@@ -9,8 +9,23 @@ import {
 } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
+import { redis } from "../../lib/redis.js";
 import { isUuid } from "../../lib/schemas.js";
 import { getStripe } from "../payments/service.js";
+
+/**
+ * 30s Redis cache for the public-page payload (issue #193 review,
+ * finding #4). The aggregate query (`SUM(amount_base_cents)` +
+ * `COUNT(DISTINCT constituent_id)`) is full-scan-prone on a campaign
+ * with many donations; a viral campaign drives every visitor through
+ * that scan. 30s is short enough that "raised so far" stays
+ * recognisably-fresh to a donor and long enough to flatten a Black-
+ * Friday-shaped traffic spike. Invalidation is implicit — donations
+ * are eventually-consistent on the donor's view, which is fine since
+ * the funds have already cleared in Stripe by the time the row exists.
+ */
+const PUBLIC_PAGE_CACHE_TTL_SECONDS = 30;
+const PUBLIC_PAGE_CACHE_PREFIX = "public-page:v1:";
 
 /**
  * Resolve an opaque QR code scanned from a printed campaign letter.
@@ -63,6 +78,32 @@ export async function getPublicPage(campaignId: string) {
     return null;
   }
 
+  // Cache hit — return the snapshot. We cache the full payload (config +
+  // aggregates) since the donate flow is the only consumer and 30s
+  // staleness on either piece is acceptable. `null` is cached as the
+  // string "404" to distinguish "we know there's no page" from a cache
+  // miss; saves DB hits on a scraper hammering unknown campaign ids.
+  const cacheKey = `${PUBLIC_PAGE_CACHE_PREFIX}${campaignId}`;
+  const cached = await redis.get(cacheKey);
+  if (cached === "404") return null;
+  if (cached !== null) {
+    try {
+      return JSON.parse(cached) as Awaited<ReturnType<typeof loadPublicPage>>;
+    } catch {
+      // Bad JSON — fall through to a fresh fetch + overwrite.
+    }
+  }
+
+  const fresh = await loadPublicPage(campaignId);
+  if (fresh === null) {
+    await redis.set(cacheKey, "404", "EX", PUBLIC_PAGE_CACHE_TTL_SECONDS);
+  } else {
+    await redis.set(cacheKey, JSON.stringify(fresh), "EX", PUBLIC_PAGE_CACHE_TTL_SECONDS);
+  }
+  return fresh;
+}
+
+async function loadPublicPage(campaignId: string) {
   // Find the page without RLS to get the orgId.
   // campaign_public_pages does not enforce RLS for reads.
   const [basicPage] = await db
@@ -242,6 +283,33 @@ export async function createDonationIntent(
     if (!intent.client_secret) {
       throw new Error("Stripe returned a PaymentIntent without a client_secret");
     }
+
+    // Orphan-PI observability hook (PR #193 review, finding #10): emit a
+    // structured `donation_intent.created` log line per PI creation so
+    // an ops query of the form
+    //   donation_intent.created events without a matching
+    //   payment_intent.succeeded webhook within 24h
+    // surfaces the donor abandon rate. A donor who closes the tab
+    // between `paymentIntents.create` and `confirmPayment` leaves the
+    // intent in `requires_payment_method` — Stripe auto-cancels after
+    // 7 days, but in the meantime we have no signal to reconcile.
+    //
+    // Not implemented here: a cleanup worker that explicitly calls
+    // `paymentIntents.cancel` on orphans (24h+ stale, no match in our
+    // `donations` table). The platform-finance dashboard (#206) is the
+    // natural home for the abandon metric and the cleanup job; both are
+    // tracked there, deliberately not bundled into this PR.
+    //
+    // biome-ignore lint/suspicious/noConsole: structured ops log; pino is request-scoped, not in this code path
+    console.info(
+      JSON.stringify({
+        event: "donation_intent.created",
+        paymentIntentId: intent.id,
+        stripeAccountId: tenant.stripeAccountId,
+        campaignId,
+        ts: new Date().toISOString(),
+      }),
+    );
 
     return {
       clientSecret: intent.client_secret,

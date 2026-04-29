@@ -178,6 +178,15 @@ export async function stripeWebhookRoute(app: FastifyInstance) {
   // (Black-Friday-scale donation spike) shares a single source — too low a
   // cap forces Stripe into exponential-backoff retries and queues up
   // donations on its side. 50 was overly conservative.
+  //
+  // Defence-in-depth at the edge (PR #193 review, finding #5): Stripe
+  // publishes its webhook source IPs at
+  // https://stripe.com/docs/ips#webhook-notifications. In production, the
+  // platform proxy / reverse-proxy SHOULD allowlist those IPs so an
+  // attacker can't drown legitimate webhook traffic by burning the per-IP
+  // rate limit. This is infra-side config, not application code. Today
+  // signature verification on every event is the primary defence; the
+  // rate limit + allowlist together protect availability.
   await app.register(rateLimit, {
     max: 300,
     timeWindow: "1 minute",

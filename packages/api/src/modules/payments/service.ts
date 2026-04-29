@@ -16,7 +16,15 @@ let stripeClient: Stripe | null = null;
  * webhook payload parsing (`payload.amount`, `payload.application_fee_amount`,
  * etc.). Bump this constant + the SDK together when adopting a new version.
  *
- * Current: matches the default of `stripe@22.0.1` (see SDK `apiVersion.js`).
+ * On the version suffix: Stripe's API versions follow `YYYY-MM-DD.<codename>`,
+ * where the codename is the *release-train* identifier, NOT a "preview"
+ * marker. `2026-03-25.dahlia` is the GA stable version that ships with
+ * `stripe@22.0.1` — see https://docs.stripe.com/upgrades for the schedule.
+ * (PR #193 review, finding #7: the codename suffix can read like a preview
+ * channel, so noting it here.) Upgrading is a coordinated change: bump the
+ * SDK in `package.json`, update this constant, re-run the worker tests
+ * against the new payload shapes, and check the Stripe upgrade-guide
+ * deltas for `payment_intent.succeeded` / `charge.refunded` / `account.*`.
  */
 const STRIPE_API_VERSION = "2026-03-25.dahlia" as const;
 

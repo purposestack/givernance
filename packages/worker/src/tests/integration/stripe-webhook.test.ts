@@ -407,6 +407,31 @@ describe("processStripeWebhook", () => {
       .from(outboxEvents)
       .where(and(eq(outboxEvents.tenantId, ORG_ID), eq(outboxEvents.type, "donation.refunded")));
     expect(events.length).toBeGreaterThan(0);
+
+    // Audit log row written by the worker (PR #193 finding #9). The API
+    // refund route is captured by the audit plugin via `onResponse`, but
+    // a refund initiated from the NPO's Stripe dashboard skips that path
+    // entirely — the worker is the only place we can record the state
+    // change in that case.
+    const auditRows = await db.execute(
+      sql`SELECT user_id, actor_id, action, resource_type, resource_id, old_values, new_values
+          FROM audit_logs
+          WHERE org_id = ${ORG_ID}
+            AND action = 'WEBHOOK:charge.refunded'
+            AND resource_id = (SELECT id::text FROM donations WHERE org_id = ${ORG_ID} AND payment_ref = ${paymentRef})`,
+    );
+    const auditRow = (auditRows as unknown as { rows: Record<string, unknown>[] }).rows[0];
+    expect(auditRow).toBeDefined();
+    // System-initiated → both null. Forensic readers compute "who did
+    // this" via COALESCE(actor_id, user_id, 'system').
+    expect(auditRow?.user_id).toBeNull();
+    expect(auditRow?.actor_id).toBeNull();
+    expect(auditRow?.resource_type).toBe("donations");
+    expect(auditRow?.old_values).toMatchObject({ status: "cleared" });
+    expect(auditRow?.new_values).toMatchObject({
+      status: "refunded",
+      paymentIntentId: paymentRef,
+    });
   });
 
   it("charge.refunded is idempotent on already-refunded donations", async () => {

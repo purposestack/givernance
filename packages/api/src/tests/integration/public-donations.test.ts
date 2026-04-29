@@ -296,6 +296,45 @@ describe("GET /v1/public/campaigns/:id/page", () => {
     expect(body.data.donorCount).toBe(0);
   });
 
+  it("caches the published page in Redis for 30s (PR #193 finding #4)", async () => {
+    // Lock the cache contract: a second call within the TTL returns the
+    // same payload even if the underlying DB row has been deleted out
+    // from under us. This both proves the cache layer is wired AND
+    // catches any future refactor that accidentally bypasses it (the
+    // public hero is the highest-traffic endpoint we have).
+    const campaign = await createTestCampaign("Public Page Test Cached");
+    const token = signToken(app);
+
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Cached Campaign", status: "published" },
+    });
+
+    // Prime the cache.
+    const first = await app.inject({
+      method: "GET",
+      url: `/v1/public/campaigns/${campaign.id}/page`,
+    });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json<{ data: { title: string } }>();
+    expect(firstBody.data.title).toBe("Cached Campaign");
+
+    // Delete the page from the DB, bypassing any application-level cache
+    // invalidation. The next request MUST still return the cached
+    // response — that's the point of the cache.
+    await db.execute(sql`DELETE FROM campaign_public_pages WHERE campaign_id = ${campaign.id}`);
+
+    const second = await app.inject({
+      method: "GET",
+      url: `/v1/public/campaigns/${campaign.id}/page`,
+    });
+    expect(second.statusCode).toBe(200);
+    const secondBody = second.json<{ data: { title: string } }>();
+    expect(secondBody.data.title).toBe("Cached Campaign");
+  });
+
   it("returns 404 for draft page (not published)", async () => {
     const campaign = await createTestCampaign("Public Page Test Draft");
     const token = signToken(app);
