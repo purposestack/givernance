@@ -42,6 +42,25 @@ const PublicPageResponse = Type.Object({
   colorPrimary: Type.Union([Type.String(), Type.Null()]),
   goalAmountCents: Type.Union([Type.Integer(), Type.Null()]),
   defaultCurrency: PublicDonationCurrencySchema,
+  /**
+   * Connected account id for the campaign's tenant. Null when the tenant
+   * hasn't onboarded with Stripe yet (donor flow blocks at the donate step
+   * with a 502 in that case). Public per Stripe docs — donor's Stripe.js
+   * binds to it for both intent confirmation and 3DS post-redirect retrieve.
+   */
+  stripeAccountId: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * Cumulative cleared donations against this campaign in the tenant's base
+   * currency (issue #200). Drives the public hero's progress bar.
+   */
+  raisedCents: Type.Integer(),
+  /**
+   * Distinct donor count for cleared donations (issue #200). Anonymous
+   * donors get a fresh constituent row per gift, which slightly inflates
+   * the count — acceptable since donor-count is a social-proof signal,
+   * not an audit number.
+   */
+  donorCount: Type.Integer(),
 });
 
 const DonateBody = Type.Object({

@@ -6,8 +6,13 @@ import { mockToast, render, screen, userEvent, waitFor } from "../../tests/test-
 // Stub Stripe.js so the Payment Element step renders without trying to load
 // the real script in jsdom. We don't assert anything inside the iframe — the
 // integration test for confirmPayment lives in Stripe's own test mode.
+const { mockRetrievePaymentIntent } = vi.hoisted(() => ({
+  mockRetrievePaymentIntent: vi.fn(),
+}));
 vi.mock("@stripe/stripe-js", () => ({
-  loadStripe: vi.fn().mockResolvedValue(null),
+  loadStripe: vi.fn().mockResolvedValue({
+    retrievePaymentIntent: mockRetrievePaymentIntent,
+  }),
 }));
 
 vi.mock("@stripe/react-stripe-js", () => ({
@@ -30,6 +35,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={50000}
         publishableKey={null}
+        tenantStripeAccountId={null}
       />,
     );
 
@@ -56,6 +62,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={50000}
         publishableKey="pk_test_dummy"
+        tenantStripeAccountId="acct_test_999"
       />,
     );
 
@@ -103,6 +110,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"
+        tenantStripeAccountId="acct_test_999"
       />,
     );
 
@@ -141,6 +149,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"
+        tenantStripeAccountId="acct_test_999"
       />,
     );
 
@@ -172,6 +181,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_live_real_key"
+        tenantStripeAccountId="acct_live_888"
       />,
     );
 
@@ -201,6 +211,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey={null}
+        tenantStripeAccountId={null}
       />,
     );
 
@@ -233,6 +244,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey={null}
+        tenantStripeAccountId={null}
       />,
     );
 
@@ -243,5 +255,89 @@ describe("PublicDonationForm", () => {
     await user.click(screen.getByRole("button", { name: "Continue to payment" }));
 
     await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith("Stripe is unavailable."));
+  });
+
+  // ─── Issue #197: Post-3DS return handler ────────────────────────────────
+
+  it("renders the post-3DS success state when ?payment_intent_client_secret is present and the intent succeeded", async () => {
+    // Stripe's redirect-back URL on a 3DS success.
+    const originalSearch = window.location.search;
+    window.history.replaceState(
+      {},
+      "",
+      "?payment_intent=pi_post3ds&payment_intent_client_secret=pi_post3ds_secret&redirect_status=succeeded",
+    );
+    mockRetrievePaymentIntent.mockResolvedValueOnce({
+      paymentIntent: {
+        id: "pi_post3ds",
+        amount: 5000,
+        currency: "eur",
+        status: "succeeded",
+      },
+      error: null,
+    });
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#096447"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey="pk_test_dummy"
+        tenantStripeAccountId="acct_test_999"
+      />,
+    );
+
+    expect(await screen.findByText("Thank you for your donation!")).toBeInTheDocument();
+    // Donor-details form must NOT be shown — we'd be asking them to
+    // re-enter info they already submitted before the 3DS challenge.
+    expect(screen.queryByLabelText(/^First name/)).not.toBeInTheDocument();
+    // URL should be cleaned of redirect params so a refresh doesn't loop
+    // the retrieve call.
+    await waitFor(() =>
+      expect(window.location.search).not.toContain("payment_intent_client_secret"),
+    );
+
+    // Restore for downstream tests.
+    window.history.replaceState({}, "", originalSearch || "/");
+  });
+
+  it("renders a retry CTA when post-3DS status is requires_payment_method", async () => {
+    const originalSearch = window.location.search;
+    window.history.replaceState(
+      {},
+      "",
+      "?payment_intent=pi_post3ds_fail&payment_intent_client_secret=pi_post3ds_fail_secret&redirect_status=failed",
+    );
+    mockRetrievePaymentIntent.mockResolvedValueOnce({
+      paymentIntent: {
+        id: "pi_post3ds_fail",
+        amount: 5000,
+        currency: "eur",
+        status: "requires_payment_method",
+        last_payment_error: { message: "Your card was declined." },
+      },
+      error: null,
+    });
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#096447"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey="pk_test_dummy"
+        tenantStripeAccountId="acct_test_999"
+      />,
+    );
+
+    // Retry CTA + Payment Element re-mounted on the SAME intent's
+    // clientSecret so the donor doesn't create a duplicate PaymentIntent.
+    expect(
+      await screen.findByText(/Your payment didn't complete\. Try a different card/i),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("stripe-payment-element")).toBeInTheDocument();
+
+    window.history.replaceState({}, "", originalSearch || "/");
   });
 });

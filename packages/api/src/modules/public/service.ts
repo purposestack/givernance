@@ -4,6 +4,7 @@ import {
   campaignPublicPages,
   campaignQrCodes,
   campaigns,
+  donations,
   tenants,
 } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
@@ -89,12 +90,39 @@ export async function getPublicPage(campaignId: string) {
         colorPrimary: campaignPublicPages.colorPrimary,
         goalAmountCents: campaignPublicPages.goalAmountCents,
         defaultCurrency: campaigns.defaultCurrency,
+        // Connect direct-charge requires the browser SDK to bind to the
+        // connected account — exposed on this public endpoint so the donor
+        // page can both (a) initialise Stripe.js and (b) handle 3DS
+        // post-redirect retrieves without round-tripping to the donate
+        // endpoint first. `acct_…` ids are public per Stripe docs (issue #197).
+        stripeAccountId: tenants.stripeAccountId,
       })
       .from(campaignPublicPages)
       .innerJoin(campaigns, eq(campaigns.id, campaignPublicPages.campaignId))
+      .innerJoin(tenants, eq(tenants.id, campaigns.orgId))
       .where(eq(campaignPublicPages.campaignId, campaignId));
 
-    return page ?? null;
+    if (!page) return null;
+
+    // Aggregate raised total and donor count for the public hero (issue #200).
+    // Cleared donations only — pending/refunded/failed don't count toward the
+    // displayed progress. `count(distinct constituent_id)` is the donor-count;
+    // anonymous donors get a fresh constituent each so we slightly over-count
+    // anonymity, which is the right direction (donors prefer to feel
+    // "many people are giving" over an exact-and-lower number).
+    const [stats] = await tx
+      .select({
+        raisedCents: sql<number>`COALESCE(SUM(${donations.amountBaseCents}), 0)::int`,
+        donorCount: sql<number>`COUNT(DISTINCT ${donations.constituentId})::int`,
+      })
+      .from(donations)
+      .where(and(eq(donations.campaignId, campaignId), eq(donations.status, "cleared")));
+
+    return {
+      ...page,
+      raisedCents: stats?.raisedCents ?? 0,
+      donorCount: stats?.donorCount ?? 0,
+    };
   });
 }
 

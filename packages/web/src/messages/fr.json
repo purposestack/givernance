@@ -897,6 +897,35 @@
         "pending": "L'onboarding Stripe n'est pas terminé. Tant que vous n'avez pas validé toutes les étapes, les donateurs ne peuvent pas payer.",
         "connected": "Votre compte Stripe est connecté. Les dons effectués depuis les pages de campagne arrivent directement sur votre solde Stripe ; Givernance prélève sa commission sur chaque don."
       },
+      "requirements": {
+        "title": "Stripe a besoin d'informations supplémentaires avant que vous puissiez accepter les paiements",
+        "disabledReason": "Raison",
+        "hint": "Cliquez sur « Reprendre l'onboarding » ci-dessus pour fournir les informations manquantes.",
+        "fields": {
+          "external_account": "Compte bancaire pour les versements",
+          "tos_acceptance.date": "Accepter les CGU de Stripe",
+          "tos_acceptance.ip": "Accepter les CGU de Stripe (IP)",
+          "individual.id_number": "Numéro de pièce d'identité",
+          "individual.dob.day": "Date de naissance (jour)",
+          "individual.dob.month": "Date de naissance (mois)",
+          "individual.dob.year": "Date de naissance (année)",
+          "individual.first_name": "Prénom légal",
+          "individual.last_name": "Nom légal",
+          "individual.email": "Adresse email",
+          "individual.phone": "Numéro de téléphone",
+          "individual.address.line1": "Adresse (rue)",
+          "individual.address.city": "Adresse (ville)",
+          "individual.address.postal_code": "Adresse (code postal)",
+          "individual.address.country": "Adresse (pays)",
+          "individual.verification.document": "Document d'identité",
+          "business_profile.url": "Site web de l'organisation",
+          "business_profile.mcc": "Catégorie d'activité",
+          "business_type": "Type d'entité",
+          "company.name": "Nom de l'organisation",
+          "company.tax_id": "Numéro fiscal",
+          "company.verification.document": "Document de vérification de l'organisation"
+        }
+      },
       "adminOnly": "Seuls les administrateurs de l'organisation peuvent gérer les paiements.",
       "status": {
         "notConnected": "Non connecté",
@@ -1033,11 +1062,22 @@
       "confirm": "Supprimer le don",
       "deleting": "Suppression…"
     },
+    "refundDialog": {
+      "title": "Rembourser ce don ?",
+      "description": "Rembourser {amount} sur la carte de {name} via Stripe. La commission de plateforme est également annulée.",
+      "descriptionFallback": "Rembourser {amount} sur la carte du donateur via Stripe. La commission de plateforme est également annulée.",
+      "hint": "Le donateur verra le crédit sur sa carte sous quelques jours ouvrés. Cette action est irréversible.",
+      "cancel": "Annuler",
+      "confirm": "Rembourser le don",
+      "refunding": "Traitement du remboursement…"
+    },
     "success": {
-      "deleted": "Don supprimé."
+      "deleted": "Don supprimé.",
+      "refunded": "Remboursement effectué. Le donateur verra le crédit sous quelques jours ouvrés."
     },
     "errors": {
-      "deleteGeneric": "Une erreur est survenue lors de la suppression du don. Réessayez."
+      "deleteGeneric": "Une erreur est survenue lors de la suppression du don. Réessayez.",
+      "refundGeneric": "Une erreur est survenue lors du traitement du remboursement. Réessayez."
     },
     "form": {
       "createTitle": "Enregistrer un don",
@@ -1143,6 +1183,7 @@
         "back": "Retour aux dons",
         "edit": "Modifier",
         "delete": "Supprimer",
+        "refund": "Rembourser",
         "previewReceipt": "Aperçu du reçu",
         "generatingReceipt": "Génération du reçu…"
       },
@@ -1462,6 +1503,9 @@
     "descriptionFallback": "Votre don aide directement à financer cette campagne et ses prochaines étapes sur le terrain.",
     "metrics": {
       "goal": "Objectif de collecte",
+      "raised": "Déjà collecté",
+      "goalSuffix": "sur",
+      "donors": "{count, plural, =0 {Aucun donateur pour l'instant} one {# donateur} other {# donateurs}}",
       "trust": "Paiement",
       "trustValue": "Sécurisé par Stripe"
     },
@@ -1519,6 +1563,12 @@
       "errors": {
         "generic": "Le paiement n'a pas pu aboutir. Essayez avec une autre carte ou contactez le support.",
         "missingPublishableKey": "Stripe n'est pas configuré sur cet environnement. Demandez à un administrateur de définir NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY."
+      },
+      "postRedirect": {
+        "checking": "Vérification du paiement auprès de Stripe…",
+        "processing": "Votre paiement est en cours de traitement. Vous recevrez un email de confirmation sous peu.",
+        "requiresAction": "Votre paiement n'a pas abouti. Essayez avec une autre carte ci-dessous.",
+        "startOver": "Recommencer un don"
       },
       "testMode": {
         "title": "Mode test — aucun débit réel",
