@@ -26,7 +26,13 @@ import { withTenantContext } from "../../lib/db.js";
  * aggregate `MAX(donations.donatedAt)` from `latestDonationSubquery`
  * below — see `listConstituents` for the LEFT JOIN.
  */
-export const CONSTITUENT_SORT_FIELDS = ["name", "type", "lastDonation", "createdAt"] as const;
+export const CONSTITUENT_SORT_FIELDS = [
+  "name",
+  "type",
+  "email",
+  "lastDonation",
+  "createdAt",
+] as const;
 export type ConstituentSortField = (typeof CONSTITUENT_SORT_FIELDS)[number];
 export type ConstituentSortOrder = "asc" | "desc";
 
@@ -83,6 +89,14 @@ function buildConstituentOrderBy(
     ];
   }
   if (sort === "type") return [dir(constituents.type), asc(constituents.id)];
+  if (sort === "email") {
+    // Case-insensitive + NULLS LAST: not every constituent has an email
+    // (volunteers contacted only by phone, anonymized records). Pinning
+    // NULLs to the bottom under both directions matches the convention
+    // used by `paymentMethod` / `donor` / `campaign`.
+    const direction = order === "asc" ? sql`ASC` : sql`DESC`;
+    return [sql`lower(${constituents.email}) ${direction} NULLS LAST`, asc(constituents.id)];
+  }
   if (sort === "lastDonation") {
     const direction = order === "asc" ? sql`ASC` : sql`DESC`;
     return [sql`${lastDonationAtCol} ${direction} NULLS LAST`, asc(constituents.id)];

@@ -29,6 +29,7 @@ const MAX_PER_PAGE = 100;
 const CONSTITUENT_SORT_FIELDS = new Set<ConstituentSortField>([
   "name",
   "type",
+  "email",
   "lastDonation",
   "createdAt",
 ]);

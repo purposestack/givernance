@@ -323,11 +323,71 @@ describe("GET /v1/constituents — server-side sort", () => {
   it("rejects an unknown sort field with RFC 9457 400", async () => {
     const res = await app.inject({
       method: "GET",
-      url: "/v1/constituents?sort=email", // not in the whitelist
+      url: "/v1/constituents?sort=phone", // not in the whitelist
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(400);
     expectProblem400(res.json<ProblemBody>());
+  });
+
+  it("sort=email&order=asc orders by lower(email) ASC, no-email rows last", async () => {
+    // Seed deliberately exposes email NULLability: only Bea has an email
+    // address by default (constituents seeded via POST without `email`
+    // get NULL). Add an email to Cara so we have two non-null rows to
+    // assert directionality on, and leave Dan as null.
+    const constituentsRes = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?perPage=100",
+      headers: authHeader(token),
+    });
+    const all = constituentsRes.json<{
+      data: Array<{ id: string; firstName: string; email: string | null }>;
+    }>().data;
+    const bea = all.find((c) => c.firstName === "Bea");
+    const cara = all.find((c) => c.firstName === "Cara");
+    if (!bea || !cara) throw new Error("expected seeded Bea + Cara constituents");
+    if (!bea.email) {
+      await app.inject({
+        method: "PUT",
+        url: `/v1/constituents/${bea.id}`,
+        headers: authHeader(token),
+        payload: { email: "alpha@example.test" },
+      });
+    }
+    if (!cara.email) {
+      await app.inject({
+        method: "PUT",
+        url: `/v1/constituents/${cara.id}`,
+        headers: authHeader(token),
+        payload: { email: "zulu@example.test" },
+      });
+    }
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?sort=email&order=asc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ email: string | null }> }>();
+    const emails = body.data.map((c) => c.email);
+    const nonNull = emails.filter((e): e is string => e !== null);
+    expect(nonNull).toEqual([...nonNull].sort());
+    expect(nonNull.indexOf("alpha@example.test")).toBeLessThan(
+      nonNull.indexOf("zulu@example.test"),
+    );
+    // Null emails come AFTER all non-null emails (NULLS LAST under asc).
+    let lastNonNullIdx = -1;
+    for (let i = emails.length - 1; i >= 0; i--) {
+      if (emails[i] !== null) {
+        lastNonNullIdx = i;
+        break;
+      }
+    }
+    const firstNullIdx = emails.findIndex((e) => e === null);
+    if (firstNullIdx !== -1) {
+      expect(firstNullIdx).toBeGreaterThan(lastNonNullIdx);
+    }
   });
 
   it("sort=name&order=asc returns rows ordered by lower(firstName) ASC", async () => {

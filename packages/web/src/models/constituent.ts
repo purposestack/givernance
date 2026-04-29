@@ -48,7 +48,7 @@ export interface ConstituentDetailResponse {
   data: Constituent;
 }
 
-export type ConstituentSortField = "name" | "type" | "lastDonation" | "createdAt";
+export type ConstituentSortField = "name" | "type" | "email" | "lastDonation" | "createdAt";
 export type ConstituentSortOrder = "asc" | "desc";
 
 export interface ConstituentListQuery {
