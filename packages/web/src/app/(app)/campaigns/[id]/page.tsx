@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, Gift, Globe, Pencil } from "lucide-react";
+import { ArrowLeft, CircleHelp, Gift, Globe, Pencil, Trophy } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -216,16 +216,27 @@ async function StatsCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <dl className="space-y-4">
-          <StatRow
-            label={t("stats.raised")}
-            value={formatCurrency(roiMetrics.rawRaisedCents, locale)}
-            hint={t("stats.goalHint", {
-              goal:
-                campaign.goalAmountCents !== null
-                  ? formatCurrency(campaign.goalAmountCents, locale)
-                  : t("stats.noGoal"),
-            })}
-          />
+          {campaign.goalAmountCents && campaign.goalAmountCents > 0 ? (
+            <GoalProgressRow
+              raisedCents={roiMetrics.rawRaisedCents}
+              goalCents={campaign.goalAmountCents}
+              locale={locale}
+              labels={{
+                raised: t("stats.raised"),
+                progressLabel: t("stats.goalProgressLabel"),
+                caption: (progress, goal) => t("stats.goalProgressCaption", { progress, goal }),
+                aria: (raised, goal) => t("stats.goalProgressAria", { raised, goal }),
+                remaining: (amount) => t("stats.goalRemaining", { amount }),
+                reached: t("stats.goalReached"),
+              }}
+            />
+          ) : (
+            <StatRow
+              label={t("stats.raised")}
+              value={formatCurrency(roiMetrics.rawRaisedCents, locale)}
+              hint={t("stats.goalHint", { goal: t("stats.noGoal") })}
+            />
+          )}
           <StatRow
             label={t("stats.donors")}
             value={formatNumber(stats.uniqueDonors, locale)}
@@ -241,6 +252,75 @@ async function StatsCard({
         </dl>
       </CardContent>
     </Card>
+  );
+}
+
+interface GoalProgressLabels {
+  raised: string;
+  progressLabel: string;
+  caption: (progress: number, goal: string) => string;
+  aria: (raised: string, goal: string) => string;
+  remaining: (amount: string) => string;
+  reached: string;
+}
+
+function GoalProgressRow({
+  raisedCents,
+  goalCents,
+  locale,
+  labels,
+}: {
+  raisedCents: number;
+  goalCents: number;
+  locale: string;
+  labels: GoalProgressLabels;
+}) {
+  const ratio = raisedCents / goalCents;
+  const progress = Math.round(ratio * 100);
+  const cappedProgress = Math.min(progress, 100);
+  const remainingCents = Math.max(goalCents - raisedCents, 0);
+  const reached = raisedCents >= goalCents;
+  const raisedFormatted = formatCurrency(raisedCents, locale);
+  const goalFormatted = formatCurrency(goalCents, locale);
+
+  return (
+    <div className="rounded-xl bg-surface-container p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <dt className="text-sm text-on-surface-variant">{labels.raised}</dt>
+        {reached ? (
+          <Badge variant="success" className="gap-1 text-[10px] uppercase tracking-wide">
+            <Trophy size={12} aria-hidden="true" />
+            {labels.reached}
+          </Badge>
+        ) : null}
+      </div>
+      <dd className="mt-1 font-mono text-2xl font-semibold tabular-nums text-on-surface">
+        {raisedFormatted}
+      </dd>
+      <div
+        className="mt-3 h-2 overflow-hidden rounded-md bg-surface-container-highest"
+        role="progressbar"
+        aria-valuenow={cappedProgress}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={labels.aria(raisedFormatted, goalFormatted)}
+      >
+        <div
+          className={`h-full rounded-md transition-all duration-500 ease-out ${
+            reached ? "bg-success" : "bg-secondary"
+          }`}
+          style={{ width: `${cappedProgress}%` }}
+        />
+      </div>
+      <p className="mt-2 flex items-center justify-between gap-2 text-xs text-on-surface-variant">
+        <span>{labels.caption(progress, goalFormatted)}</span>
+        {!reached ? (
+          <span className="font-mono tabular-nums">
+            {labels.remaining(formatCurrency(remainingCents, locale))}
+          </span>
+        ) : null}
+      </p>
+    </div>
   );
 }
 
