@@ -116,6 +116,72 @@ describe("Campaigns CRUD", () => {
     expect(body.data.operationalCostCents).toBe(50000);
   });
 
+  it("POST /v1/campaigns persists goalAmountCents and reads it back on the campaign", async () => {
+    const token = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: {
+        name: "Goal Campaign",
+        type: "digital",
+        goalAmountCents: 1_000_000,
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const created = createRes.json<{ data: { id: string; goalAmountCents: number | null } }>();
+    expect(created.data.goalAmountCents).toBe(1_000_000);
+
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${created.data.id}`,
+      headers: authHeader(token),
+    });
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.json<{ data: { goalAmountCents: number | null } }>().data.goalAmountCents).toBe(
+      1_000_000,
+    );
+  });
+
+  it("PATCH /v1/campaigns/:id updates goalAmountCents (and supports clearing it)", async () => {
+    const token = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Goal Update", type: "digital" },
+    });
+    const id = createRes.json<{ data: { id: string } }>().data.id;
+
+    const setRes = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${id}`,
+      headers: authHeader(token),
+      payload: { goalAmountCents: 500_000 },
+    });
+    expect(setRes.statusCode).toBe(200);
+    expect(setRes.json<{ data: { goalAmountCents: number | null } }>().data.goalAmountCents).toBe(
+      500_000,
+    );
+
+    const clearRes = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${id}`,
+      headers: authHeader(token),
+      payload: { goalAmountCents: null },
+    });
+    expect(clearRes.statusCode).toBe(200);
+    // Verify the DB row directly — clearer signal than the API response in
+    // case fast-json-stringify ever mis-serializes the union[integer, null].
+    const { rows: dbRows } = await db.execute<{ goal_amount_cents: number | null }>(
+      sql`SELECT goal_amount_cents FROM campaign_public_pages WHERE campaign_id = ${id}`,
+    );
+    expect(dbRows[0]?.goal_amount_cents).toBeNull();
+    expect(
+      clearRes.json<{ data: { goalAmountCents: number | null } }>().data.goalAmountCents,
+    ).toBeNull();
+  });
+
   it("POST /v1/campaigns rejects non-existent parent UUID", async () => {
     const token = signToken(app);
     const res = await app.inject({

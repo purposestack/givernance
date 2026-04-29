@@ -19,6 +19,7 @@ export interface CreateCampaignInput {
   defaultCurrency?: "EUR" | "GBP" | "CHF";
   parentId?: string | null;
   operationalCostCents?: number | null;
+  goalAmountCents?: number | null;
   fundIds?: string[];
 }
 
@@ -29,6 +30,7 @@ export interface UpdateCampaignInput {
   status?: "draft" | "active" | "closed";
   parentId?: string | null;
   operationalCostCents?: number | null;
+  goalAmountCents?: number | null;
   fundIds?: string[];
 }
 
@@ -127,6 +129,43 @@ async function syncCampaignFunds(
   );
 }
 
+/**
+ * Persist the campaign-level fundraising goal. Stored on
+ * `campaign_public_pages.goalAmountCents` (cf. ADR-pending) so it can also
+ * back the public page widget. When no public_pages row exists yet (the
+ * org hasn't opened the public-page editor), bootstrap a draft row whose
+ * title mirrors the campaign name — the org can override every other
+ * field later from `/campaigns/[id]/public-page`.
+ */
+async function upsertCampaignGoal(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  campaignId: string,
+  campaignName: string,
+  goalAmountCents: number | null,
+) {
+  const [existing] = await tx
+    .select({ id: campaignPublicPages.id })
+    .from(campaignPublicPages)
+    .where(eq(campaignPublicPages.campaignId, campaignId));
+
+  if (existing) {
+    await tx
+      .update(campaignPublicPages)
+      .set({ goalAmountCents, updatedAt: new Date() })
+      .where(eq(campaignPublicPages.id, existing.id));
+    return;
+  }
+
+  await tx.insert(campaignPublicPages).values({
+    orgId,
+    campaignId,
+    title: campaignName,
+    status: "draft",
+    goalAmountCents,
+  });
+}
+
 /** List campaigns for an organization with pagination */
 export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
   const { page, perPage, search, status } = query;
@@ -209,6 +248,11 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput, 
     if (input.fundIds !== undefined) {
       // biome-ignore lint/style/noNonNullAssertion: insert().returning() always returns one row
       await syncCampaignFunds(tx, orgId, campaign!.id, input.fundIds);
+    }
+
+    if (input.goalAmountCents !== undefined) {
+      // biome-ignore lint/style/noNonNullAssertion: insert().returning() always returns one row
+      await upsertCampaignGoal(tx, orgId, campaign!.id, input.name, input.goalAmountCents);
     }
 
     await tx.insert(outboxEvents).values({
@@ -303,6 +347,10 @@ export async function updateCampaign(
 
     if (input.fundIds !== undefined) {
       await syncCampaignFunds(tx, orgId, id, input.fundIds);
+    }
+
+    if (input.goalAmountCents !== undefined) {
+      await upsertCampaignGoal(tx, orgId, id, input.name ?? existing.name, input.goalAmountCents);
     }
 
     const [updated] = await tx
