@@ -4,12 +4,16 @@
  * defined in docs/glossary-i18n.md.
  */
 
-/** Format a monetary amount in cents to a localized currency string. */
+/**
+ * Format a monetary amount in cents to a localized currency string.
+ * Always renders two decimals — `€1 000,00` reads consistently next to
+ * `€1 234,56` in a table column, and matches accounting convention.
+ */
 export function formatCurrency(cents: number, locale: string, currency = "EUR"): string {
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(cents / 100);
 }
