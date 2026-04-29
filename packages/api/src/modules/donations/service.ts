@@ -74,6 +74,7 @@ async function assertFundsBelongToOrg(
 export interface ListDonationsQuery {
   page: number;
   perPage: number;
+  search?: string;
   dateFrom?: string;
   dateTo?: string;
   amountMin?: number;
@@ -168,8 +169,18 @@ async function replaceDonationAllocations(
 
 /** Build the SQL conditions for a list-donations query */
 function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
-  const { dateFrom, dateTo, amountMin, amountMax, constituentId, campaignId } = query;
+  const { search, dateFrom, dateTo, amountMin, amountMax, constituentId, campaignId } = query;
   const conditions = [eq(donations.orgId, orgId)];
+
+  if (search) {
+    const pattern = `%${search}%`;
+    conditions.push(
+      inArray(
+        donations.constituentId,
+        sql`(SELECT id FROM constituents WHERE org_id = ${orgId} AND (first_name ILIKE ${pattern} OR last_name ILIKE ${pattern} OR email ILIKE ${pattern}))`
+      )
+    );
+  }
 
   if (dateFrom) conditions.push(gte(donations.donatedAt, new Date(dateFrom)));
   if (dateTo) conditions.push(lte(donations.donatedAt, new Date(dateTo)));

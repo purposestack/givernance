@@ -50,6 +50,7 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
 
   const page = parsePositiveInt(params.page, 1);
   const perPage = parsePositiveInt(params.perPage, DEFAULT_PER_PAGE, MAX_PER_PAGE);
+  const searchValue = Array.isArray(params.search) ? params.search[0] : params.search;
   const dateFrom = parseIsoDate(params.dateFrom);
   const dateTo = parseIsoDate(params.dateTo);
   const campaignId = parseUuid(params.campaignId);
@@ -62,6 +63,7 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
     result = await DonationService.listDonations(client, {
       page,
       perPage,
+      search: searchValue,
       dateFrom,
       dateTo,
       campaignId,

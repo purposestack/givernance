@@ -5,7 +5,7 @@ import { Gift, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -69,17 +69,33 @@ export function DonationsTable({
   const t = useTranslations("donations");
   const [donationToDelete, setDonationToDelete] = useState<DonationListRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? "");
   const [receiptFilter, setReceiptFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      const currentSearch = params.get("search") ?? "";
+      if (searchTerm === currentSearch) return;
+
+      if (searchTerm) {
+        params.set("search", searchTerm);
+      } else {
+        params.delete("search");
+      }
+      params.delete("page");
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm, pathname, router, searchParams]);
 
   const filteredDonations = useMemo(() => {
     return donations.filter((d) => {
-      const name = donationDonorName(d)?.toLowerCase() ?? "";
-      const matchesSearch = name.includes(searchTerm.toLowerCase());
       const matchesReceipt = receiptFilter === "all" || d.receiptStatus === receiptFilter;
-      return matchesSearch && matchesReceipt;
+      return matchesReceipt;
     });
-  }, [donations, searchTerm, receiptFilter]);
+  }, [donations, receiptFilter]);
 
   const navigateToPage = useCallback(
     (page: number) => {

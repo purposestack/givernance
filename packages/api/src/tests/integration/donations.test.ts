@@ -209,6 +209,18 @@ describe("Donations CRUD", () => {
     }
   });
 
+  it("GET /v1/donations supports search filter by constituent name/email", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations?search=John",
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toBeInstanceOf(Array);
+  });
+
   it("GET /v1/donations/:id returns donation with constituent and allocations", async () => {
     const tokenA = signToken(app);
     const res = await app.inject({

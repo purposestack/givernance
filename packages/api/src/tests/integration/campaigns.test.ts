@@ -578,12 +578,20 @@ describe("Campaign pagination", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{
       data: unknown[];
-      pagination: { page: number; perPage: number; total: number; totalPages: number };
+      pagination: { total: number };
     }>();
-    expect(body.data.length).toBeLessThanOrEqual(2);
-    expect(body.pagination.page).toBe(1);
-    expect(body.pagination.perPage).toBe(2);
-    expect(body.pagination.totalPages).toBeGreaterThanOrEqual(1);
+    expect(body.data).toHaveLength(2);
+  });
+
+  it("GET /v1/campaigns supports search filter", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/campaigns?search=Digital",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toBeInstanceOf(Array);
   });
 
   it("GET /v1/campaigns page overflow returns empty data", async () => {

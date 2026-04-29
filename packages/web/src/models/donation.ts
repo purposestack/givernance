@@ -38,6 +38,7 @@ export interface DonationListResponse {
 export interface DonationListQuery {
   page?: number;
   perPage?: number;
+  search?: string;
   constituentId?: string;
   campaignId?: string;
   dateFrom?: string;

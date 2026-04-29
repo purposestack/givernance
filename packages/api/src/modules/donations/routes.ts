@@ -29,6 +29,7 @@ import {
 const ListQuery = Type.Intersect([
   PaginationQuery,
   Type.Object({
+    search: Type.Optional(Type.String()),
     dateFrom: Type.Optional(Type.String({ format: "date" })),
     dateTo: Type.Optional(Type.String({ format: "date" })),
     amountMin: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -187,6 +188,7 @@ export async function donationRoutes(app: FastifyInstance) {
       const query = request.query as {
         page?: number;
         perPage?: number;
+        search?: string;
         dateFrom?: string;
         dateTo?: string;
         amountMin?: number;
@@ -198,6 +200,7 @@ export async function donationRoutes(app: FastifyInstance) {
       const result = await listDonations(orgId, {
         page: query.page ?? 1,
         perPage: query.perPage ?? 20,
+        search: query.search,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
         amountMin: query.amountMin,

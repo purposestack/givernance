@@ -36,12 +36,17 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
 
   const page = parsePositiveInt(params.page, 1);
   const perPage = parsePositiveInt(params.perPage, DEFAULT_PER_PAGE, MAX_PER_PAGE);
+  const searchValue = Array.isArray(params.search) ? params.search[0] : params.search;
 
   const client = await createServerApiClient();
 
   let result: CampaignListResponse;
   try {
-    result = await CampaignService.listCampaigns(client, { page, perPage });
+    result = await CampaignService.listCampaigns(client, {
+      page,
+      perPage,
+      search: searchValue,
+    });
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
       result = {

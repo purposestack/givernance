@@ -5,7 +5,7 @@ import { Megaphone, MoreHorizontal, Pencil, Search, XCircle } from "lucide-react
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -100,16 +100,33 @@ export function CampaignsTable({
   const t = useTranslations("campaigns");
   const [closeTarget, setCloseTarget] = useState<Campaign | null>(null);
   const [isClosing, setIsClosing] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? "");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      const currentSearch = params.get("search") ?? "";
+      if (searchTerm === currentSearch) return;
+
+      if (searchTerm) {
+        params.set("search", searchTerm);
+      } else {
+        params.delete("search");
+      }
+      params.delete("page");
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm, pathname, router, searchParams]);
 
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter((c) => {
-      const matchesSearch = c.campaign.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === "all" || c.campaign.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      return matchesStatus;
     });
-  }, [campaigns, searchTerm, statusFilter]);
+  }, [campaigns, statusFilter]);
 
   const navigateToPage = useCallback(
     (page: number) => {

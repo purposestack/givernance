@@ -26,6 +26,7 @@ export const DonationService = {
     const params: Record<string, string | number | boolean | undefined> = {
       page: query.page,
       perPage: query.perPage,
+      search: query.search,
       constituentId: query.constituentId,
       campaignId: query.campaignId,
       dateFrom: query.dateFrom,

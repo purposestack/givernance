@@ -10,7 +10,7 @@ import {
   outboxEvents,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
 export interface CreateCampaignInput {
@@ -35,6 +35,7 @@ export interface UpdateCampaignInput {
 export interface ListCampaignsQuery {
   page: number;
   perPage: number;
+  search?: string;
 }
 
 function campaignSelectFields() {
@@ -127,11 +128,17 @@ async function syncCampaignFunds(
 
 /** List campaigns for an organization with pagination */
 export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
-  const { page, perPage } = query;
+  const { page, perPage, search } = query;
   const offset = (page - 1) * perPage;
 
   return withTenantContext(orgId, async (tx) => {
-    const where = eq(campaigns.orgId, orgId);
+    const conditions = [eq(campaigns.orgId, orgId)];
+
+    if (search) {
+      conditions.push(ilike(campaigns.name, `%${search}%`));
+    }
+
+    const where = and(...conditions);
 
     const [data, countResult] = await Promise.all([
       tx

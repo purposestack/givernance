@@ -5,7 +5,7 @@ import { MoreHorizontal, Pencil, Search, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -92,17 +92,33 @@ export function ConstituentsTable({
   const tType = useTranslations("constituents.types");
   const [deleteTarget, setDeleteTarget] = useState<Constituent | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? "");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      const currentSearch = params.get("search") ?? "";
+      if (searchTerm === currentSearch) return;
+
+      if (searchTerm) {
+        params.set("search", searchTerm);
+      } else {
+        params.delete("search");
+      }
+      params.delete("page");
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm, pathname, router, searchParams]);
 
   const filteredConstituents = useMemo(() => {
     return constituents.filter((c) => {
-      const name = fullName(c).toLowerCase();
-      const matchesSearch = name.includes(searchTerm.toLowerCase());
       const matchesType = typeFilter === "all" || c.type === typeFilter;
-      return matchesSearch && matchesType;
+      return matchesType;
     });
-  }, [constituents, searchTerm, typeFilter]);
+  }, [constituents, typeFilter]);
 
   const navigateToPage = useCallback(
     (page: number) => {

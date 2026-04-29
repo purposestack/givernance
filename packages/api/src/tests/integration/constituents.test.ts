@@ -525,6 +525,19 @@ describe("Constituents viewer-role enforcement (issue #162)", () => {
     expect(res.statusCode).toBe(200);
   });
 
+  it("GET /v1/constituents supports search filter", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?search=Jane",
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.data).toBeInstanceOf(Array);
+    // As long as the query succeeds, backend ilike logic didn't crash.
+  });
+
   it("user role can still POST /v1/constituents (parity with org_admin)", async () => {
     const userToken = signToken(app, { role: "user" });
     const res = await app.inject({

@@ -141,6 +141,13 @@ const CampaignRoiResponse = Type.Object({
   roiPct: Type.Union([Type.Number(), Type.Null()]),
 });
 
+const ListQuery = Type.Intersect([
+  PaginationQuery,
+  Type.Object({
+    search: Type.Optional(Type.String()),
+  }),
+]);
+
 export async function campaignRoutes(app: FastifyInstance) {
   /** List campaigns with pagination */
   app.get(
@@ -149,7 +156,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       preHandler: requireAuth,
       schema: {
         tags: ["Campaigns"],
-        querystring: PaginationQuery,
+        querystring: ListQuery,
         response: { 200: DataArrayResponse(CampaignResponse), ...ErrorResponses },
       },
     },
@@ -159,10 +166,11 @@ export async function campaignRoutes(app: FastifyInstance) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
-      const query = request.query as { page?: number; perPage?: number };
+      const query = request.query as { page?: number; perPage?: number; search?: string };
       const result = await listCampaigns(orgId, {
         page: query.page ?? 1,
         perPage: query.perPage ?? 20,
+        search: query.search,
       });
 
       return { data: result.data, pagination: result.pagination };

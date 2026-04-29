@@ -23,6 +23,7 @@ export interface CampaignListQuery {
   page?: number;
   perPage?: number;
   status?: CampaignStatus;
+  search?: string;
 }
 
 export interface CampaignListResponse {
