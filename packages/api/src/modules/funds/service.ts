@@ -2,12 +2,42 @@
 
 import { campaignFunds, donationAllocations, funds } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
+
+export type FundSortField = "name" | "type" | "createdAt";
+export type FundSortOrder = "asc" | "desc";
+
+const FUND_SORT_FIELDS: ReadonlySet<FundSortField> = new Set(["name", "type", "createdAt"]);
 
 export interface ListFundsQuery {
   page: number;
   perPage: number;
+  sort?: string;
+  order?: string;
+}
+
+function normalizeFundSort(value: string | undefined): FundSortField {
+  if (value && FUND_SORT_FIELDS.has(value as FundSortField)) {
+    return value as FundSortField;
+  }
+  return "createdAt";
+}
+
+function normalizeFundOrder(value: string | undefined): FundSortOrder {
+  return value === "asc" ? "asc" : "desc";
+}
+
+/**
+ * ORDER BY for `GET /funds`. `name` sort is case-insensitive (`lower(...)`)
+ * to keep mixed-case fund names from splitting into two alphabets. Always
+ * tiebreaks with `asc(id)` for deterministic offset pagination.
+ */
+function buildFundOrderBy(sort: FundSortField, order: FundSortOrder) {
+  const dir = order === "asc" ? asc : desc;
+  if (sort === "name") return [dir(sql`lower(${funds.name})`), asc(funds.id)];
+  if (sort === "type") return [dir(funds.type), asc(funds.id)];
+  return [dir(funds.createdAt), asc(funds.id)];
 }
 
 export interface FundInput {
@@ -41,6 +71,8 @@ function normalizeDescription(description: string | null | undefined) {
 export async function listFunds(orgId: string, query: ListFundsQuery) {
   const { page, perPage } = query;
   const offset = (page - 1) * perPage;
+  const sort = normalizeFundSort(query.sort);
+  const order = normalizeFundOrder(query.order);
 
   return withTenantContext(orgId, async (tx) => {
     const where = eq(funds.orgId, orgId);
@@ -50,7 +82,7 @@ export async function listFunds(orgId: string, query: ListFundsQuery) {
         .select()
         .from(funds)
         .where(where)
-        .orderBy(sql`${funds.createdAt} DESC`)
+        .orderBy(...buildFundOrderBy(sort, order))
         .limit(perPage)
         .offset(offset),
       tx.select({ count: sql<number>`count(*)` }).from(funds).where(where),

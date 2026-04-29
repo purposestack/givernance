@@ -22,6 +22,8 @@ describe("FundsTable", () => {
         funds={[fund]}
         pagination={{ page: 1, perPage: 20, total: 1, totalPages: 1 }}
         canManageFunds
+        sort="createdAt"
+        order="desc"
       />,
     );
 
@@ -43,6 +45,8 @@ describe("FundsTable", () => {
         funds={[fund]}
         pagination={{ page: 1, perPage: 20, total: 1, totalPages: 1 }}
         canManageFunds
+        sort="createdAt"
+        order="desc"
       />,
     );
 

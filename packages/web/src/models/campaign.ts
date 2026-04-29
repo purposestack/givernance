@@ -19,11 +19,16 @@ export interface Campaign {
   updatedAt: string;
 }
 
+export type CampaignSortField = "name" | "type" | "status" | "createdAt";
+export type CampaignSortOrder = "asc" | "desc";
+
 export interface CampaignListQuery {
   page?: number;
   perPage?: number;
   status?: CampaignStatus;
   search?: string;
+  sort?: CampaignSortField;
+  order?: CampaignSortOrder;
 }
 
 export interface CampaignListResponse {

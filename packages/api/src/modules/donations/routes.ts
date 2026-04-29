@@ -14,6 +14,7 @@ import {
   PaginationQuery,
   ProblemDetailSchema,
   problemDetail,
+  SortOrderSchema,
   UuidSchema,
 } from "../../lib/schemas.js";
 import { getStripe } from "../payments/service.js";
@@ -35,6 +36,12 @@ const ReceiptStatusSchema = Type.Union([
   Type.Literal("failed"),
 ]);
 
+/** Server-side sort fields whitelist for `GET /donations`. */
+const DONATION_SORT_FIELDS = ["donatedAt", "amountCents", "paymentMethod", "createdAt"] as const;
+const DonationSortFieldSchema = Type.Union(
+  DONATION_SORT_FIELDS.map((field) => Type.Literal(field)),
+);
+
 const ListQuery = Type.Intersect([
   PaginationQuery,
   Type.Object({
@@ -46,6 +53,8 @@ const ListQuery = Type.Intersect([
     constituentId: Type.Optional(UuidSchema),
     campaignId: Type.Optional(UuidSchema),
     receiptStatus: Type.Optional(ReceiptStatusSchema),
+    sort: Type.Optional(DonationSortFieldSchema),
+    order: Type.Optional(SortOrderSchema),
   }),
 ]);
 
@@ -217,6 +226,8 @@ export async function donationRoutes(app: FastifyInstance) {
         constituentId?: string;
         campaignId?: string;
         receiptStatus?: "pending" | "generated" | "failed";
+        sort?: (typeof DONATION_SORT_FIELDS)[number];
+        order?: "asc" | "desc";
       };
 
       const result = await listDonations(orgId, {
@@ -230,6 +241,8 @@ export async function donationRoutes(app: FastifyInstance) {
         constituentId: query.constituentId,
         campaignId: query.campaignId,
         receiptStatus: query.receiptStatus,
+        sort: query.sort,
+        order: query.order,
       });
 
       return { data: result.data, pagination: result.pagination };

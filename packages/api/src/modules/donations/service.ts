@@ -11,7 +11,7 @@ import {
   tenants,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
 import { ExchangeRateService } from "../finance/exchange-rate-service.js";
 
@@ -71,6 +71,16 @@ async function assertFundsBelongToOrg(
   if (missing) throw new CrossTenantReferenceError("fund", missing);
 }
 
+export type DonationSortField = "donatedAt" | "amountCents" | "paymentMethod" | "createdAt";
+export type DonationSortOrder = "asc" | "desc";
+
+const DONATION_SORT_FIELDS: ReadonlySet<DonationSortField> = new Set([
+  "donatedAt",
+  "amountCents",
+  "paymentMethod",
+  "createdAt",
+]);
+
 export interface ListDonationsQuery {
   page: number;
   perPage: number;
@@ -82,6 +92,35 @@ export interface ListDonationsQuery {
   constituentId?: string;
   campaignId?: string;
   receiptStatus?: "pending" | "generated" | "failed";
+  sort?: string;
+  order?: string;
+}
+
+function normalizeDonationSort(value: string | undefined): DonationSortField {
+  if (value && DONATION_SORT_FIELDS.has(value as DonationSortField)) {
+    return value as DonationSortField;
+  }
+  return "donatedAt";
+}
+
+function normalizeDonationOrder(value: string | undefined): DonationSortOrder {
+  return value === "asc" ? "asc" : "desc";
+}
+
+/**
+ * Build the ORDER BY clause for `GET /donations`. Always tiebreaks with
+ * `asc(donations.id)` so offset pagination is deterministic across pages
+ * even when many rows share the same sort key (e.g. multiple donations on
+ * the same day, or many rows with NULL `paymentMethod`).
+ */
+function buildDonationOrderBy(sort: DonationSortField, order: DonationSortOrder) {
+  const dir = order === "asc" ? asc : desc;
+  if (sort === "amountCents") return [dir(donations.amountCents), asc(donations.id)];
+  if (sort === "paymentMethod") {
+    return [dir(sql`coalesce(${donations.paymentMethod}, '')`), asc(donations.id)];
+  }
+  if (sort === "createdAt") return [dir(donations.createdAt), asc(donations.id)];
+  return [dir(donations.donatedAt), asc(donations.id)];
 }
 
 export interface DonationInput {
@@ -274,6 +313,8 @@ export async function listDonations(orgId: string, query: ListDonationsQuery) {
   const { page, perPage } = query;
   const offset = (page - 1) * perPage;
   const where = listDonationsConditions(orgId, query);
+  const sort = normalizeDonationSort(query.sort);
+  const order = normalizeDonationOrder(query.order);
 
   return withTenantContext(orgId, async (tx) => {
     const [data, countResult] = await Promise.all([
@@ -281,7 +322,7 @@ export async function listDonations(orgId: string, query: ListDonationsQuery) {
         .select()
         .from(donations)
         .where(where)
-        .orderBy(sql`${donations.donatedAt} DESC`)
+        .orderBy(...buildDonationOrderBy(sort, order))
         .limit(perPage)
         .offset(offset),
       tx.select({ count: sql<number>`count(*)` }).from(donations).where(where),

@@ -8,13 +8,39 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
-import type { ConstituentListResponse, ConstituentType } from "@/models/constituent";
+import type {
+  ConstituentListResponse,
+  ConstituentSortField,
+  ConstituentSortOrder,
+  ConstituentType,
+} from "@/models/constituent";
 import { ConstituentService } from "@/services/ConstituentService";
 
 import { ConstituentsTable } from "./constituents-table";
 
 const DEFAULT_PER_PAGE = 20;
 const MAX_PER_PAGE = 100;
+/**
+ * Mirror of `CONSTITUENT_SORT_FIELDS` from the API
+ * (`packages/api/src/modules/constituents/routes.ts`). Keeping the
+ * whitelist on the client too means we never round-trip a value the API
+ * will reject with 400.
+ */
+const CONSTITUENT_SORT_FIELDS = new Set<ConstituentSortField>(["name", "type", "createdAt"]);
+const DEFAULT_SORT: ConstituentSortField = "createdAt";
+const DEFAULT_ORDER: ConstituentSortOrder = "desc";
+
+function parseSortField(value: string | string[] | undefined): ConstituentSortField {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && CONSTITUENT_SORT_FIELDS.has(raw as ConstituentSortField)
+    ? (raw as ConstituentSortField)
+    : DEFAULT_SORT;
+}
+
+function parseSortOrder(value: string | string[] | undefined): ConstituentSortOrder {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === "asc" ? "asc" : DEFAULT_ORDER;
+}
 
 interface ConstituentsPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -47,6 +73,8 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
     "partner",
   ];
   const typeValue = ALLOWED_TYPES.find((t) => t === rawType);
+  const sort = parseSortField(params.sort);
+  const order = parseSortOrder(params.order);
 
   const client = await createServerApiClient();
 
@@ -57,6 +85,8 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
       perPage,
       search: searchValue,
       type: typeValue,
+      sort,
+      order,
     });
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
@@ -97,6 +127,8 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
           pagination={result.pagination}
           canManageAdminActions={canManageAdminActions}
           canWrite={canWrite}
+          sort={sort}
+          order={order}
         />
       ) : (
         <div className="rounded-2xl bg-surface-container-lowest shadow-card">

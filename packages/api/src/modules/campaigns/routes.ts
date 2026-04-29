@@ -18,6 +18,7 @@ import {
   PaginationQuery,
   ProblemDetailSchema,
   problemDetail,
+  SortOrderSchema,
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
@@ -143,11 +144,19 @@ const CampaignRoiResponse = Type.Object({
   roiPct: Type.Union([Type.Number(), Type.Null()]),
 });
 
+/** Server-side sort fields whitelist for `GET /campaigns`. */
+const CAMPAIGN_SORT_FIELDS = ["name", "type", "status", "createdAt"] as const;
+const CampaignSortFieldSchema = Type.Union(
+  CAMPAIGN_SORT_FIELDS.map((field) => Type.Literal(field)),
+);
+
 const ListQuery = Type.Intersect([
   PaginationQuery,
   Type.Object({
     search: Type.Optional(Type.String({ maxLength: 200 })),
     status: Type.Optional(CampaignStatusSchema),
+    sort: Type.Optional(CampaignSortFieldSchema),
+    order: Type.Optional(SortOrderSchema),
   }),
 ]);
 
@@ -174,12 +183,16 @@ export async function campaignRoutes(app: FastifyInstance) {
         perPage?: number;
         search?: string;
         status?: "draft" | "active" | "closed";
+        sort?: (typeof CAMPAIGN_SORT_FIELDS)[number];
+        order?: "asc" | "desc";
       };
       const result = await listCampaigns(orgId, {
         page: query.page ?? 1,
         perPage: query.perPage ?? 20,
         search: query.search,
         status: query.status,
+        sort: query.sort,
+        order: query.order,
       });
 
       return { data: result.data, pagination: result.pagination };

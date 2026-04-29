@@ -38,11 +38,16 @@ export interface ConstituentDetailResponse {
   data: Constituent;
 }
 
+export type ConstituentSortField = "name" | "type" | "createdAt";
+export type ConstituentSortOrder = "asc" | "desc";
+
 export interface ConstituentListQuery {
   page?: number;
   perPage?: number;
   search?: string;
   type?: ConstituentType;
+  sort?: ConstituentSortField;
+  order?: ConstituentSortOrder;
 }
 
 export function fullName(constituent: Constituent): string {

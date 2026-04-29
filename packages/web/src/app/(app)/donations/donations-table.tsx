@@ -1,6 +1,6 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { Gift, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -38,7 +38,13 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { type DonationListRow, donationDonorName, type ReceiptStatus } from "@/models/donation";
+import {
+  type DonationListRow,
+  type DonationSortField,
+  type DonationSortOrder,
+  donationDonorName,
+  type ReceiptStatus,
+} from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
@@ -54,6 +60,15 @@ interface DonationsTableProps {
   pagination: DataTablePagination;
   canWrite: boolean;
   canDelete: boolean;
+  /**
+   * Server-resolved sort field from `searchParams` (validated against the
+   * `DONATION_SORT_FIELDS` whitelist on the page). Mirrors the
+   * tenants-table (admin) pattern: the table renders the indicator from
+   * this prop and pushes new query params on click — sorting always
+   * round-trips through the API, never via TanStack's local sort.
+   */
+  sort: DonationSortField;
+  order: DonationSortOrder;
 }
 
 export function DonationsTable({
@@ -61,6 +76,8 @@ export function DonationsTable({
   pagination,
   canWrite,
   canDelete,
+  sort,
+  order,
 }: DonationsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -123,6 +140,36 @@ export function DonationsTable({
     [pathname, router, searchParams],
   );
 
+  // Drive the DataTable's sort indicator from the server-resolved `sort` /
+  // `order` URL params, not from local TanStack state. Without this, click
+  // → push URL → re-render would briefly show the OLD direction's arrow
+  // (DataTable's internal state lags the server round-trip by one paint).
+  const sorting = useMemo<SortingState>(
+    () => [{ id: sort, desc: order === "desc" }],
+    [order, sort],
+  );
+
+  // Header click handler. Pushes `?sort=&order=` and resets the page back
+  // to 1 — paginating into a sorted slice is meaningless when the slice
+  // itself just shifted. Mirrors the tenants-table.tsx (admin) pattern.
+  const onSortingChange = useCallback(
+    (nextSorting: SortingState) => {
+      const [next] = nextSorting;
+      const params = new URLSearchParams(searchParams.toString());
+      if (!next) {
+        params.delete("sort");
+        params.delete("order");
+      } else {
+        params.set("sort", next.id);
+        params.set("order", next.desc ? "desc" : "asc");
+      }
+      params.delete("page");
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
   const confirmDelete = useCallback(async () => {
     if (!donationToDelete) {
       return;
@@ -147,6 +194,11 @@ export function DonationsTable({
 
   const columns = useMemo<ColumnDef<DonationListRow>[]>(
     () => [
+      // Column `id` matches the API's `sort=` value (cf.
+      // `DONATION_SORT_FIELDS` in the route). Server-sortable columns
+      // leave `enableSorting` at the default (true); columns whose values
+      // are joined/computed (donor, campaign, receipt status) are hard-
+      // disabled so a click can't push a `sort=` value the API rejects.
       {
         id: "donatedAt",
         accessorKey: "donatedAt",
@@ -160,6 +212,7 @@ export function DonationsTable({
       {
         id: "donor",
         header: () => t("columns.donor"),
+        enableSorting: false,
         cell: ({ row }) => {
           const name = donationDonorName(row.original) ?? t("anonymousDonor");
           return (
@@ -174,7 +227,7 @@ export function DonationsTable({
         },
       },
       {
-        id: "amount",
+        id: "amountCents",
         accessorKey: "amountCents",
         header: () => <span className="block text-right">{t("columns.amount")}</span>,
         cell: ({ row }) => (
@@ -186,6 +239,7 @@ export function DonationsTable({
       {
         id: "campaign",
         header: () => t("columns.campaign"),
+        enableSorting: false,
         cell: ({ row }) =>
           row.original.campaignId ? (
             <span className="truncate text-on-surface-variant">{row.original.campaignId}</span>
@@ -204,6 +258,7 @@ export function DonationsTable({
       {
         id: "receipt",
         header: () => t("columns.receipt"),
+        enableSorting: false,
         cell: ({ row }) => {
           const status = row.original.receiptStatus;
           if (!status) {
@@ -276,6 +331,8 @@ export function DonationsTable({
           data={donations}
           pagination={pagination}
           onPageChange={navigateToPage}
+          sorting={sorting}
+          onSortingChange={onSortingChange}
           onRowClick={(row) => router.push(`/donations/${row.original.id}`)}
           emptyState={
             <EmptyState icon={Gift} title={t("empty.title")} description={t("empty.description")} />

@@ -23,7 +23,14 @@ export const CampaignService = {
     const perPage = query.perPage ?? 20;
 
     const response = await client.get<CampaignListResponse>("/v1/campaigns", {
-      params: { page, perPage, search: query.search, status: query.status },
+      params: {
+        page,
+        perPage,
+        search: query.search,
+        status: query.status,
+        sort: query.sort,
+        order: query.order,
+      },
     });
 
     return { data: response.data.map(mapCampaign), pagination: response.pagination };

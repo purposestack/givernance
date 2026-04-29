@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
-import type { DonationListResponse } from "@/models/donation";
+import type { DonationListResponse, DonationSortField, DonationSortOrder } from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
 
 import { DonationsFilters } from "./donations-filters";
@@ -17,6 +17,32 @@ import { DonationsTable } from "./donations-table";
 const DEFAULT_PER_PAGE = 20;
 const MAX_PER_PAGE = 100;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * Mirror of `DONATION_SORT_FIELDS` from the API
+ * (`packages/api/src/modules/donations/routes.ts`). The API rejects unknown
+ * `sort` values with 400 RFC 9457 — this set is the same whitelist applied
+ * client-side so we never even send a value the server doesn't accept.
+ */
+const DONATION_SORT_FIELDS = new Set<DonationSortField>([
+  "donatedAt",
+  "amountCents",
+  "paymentMethod",
+  "createdAt",
+]);
+const DEFAULT_SORT: DonationSortField = "donatedAt";
+const DEFAULT_ORDER: DonationSortOrder = "desc";
+
+function parseSortField(value: string | string[] | undefined): DonationSortField {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && DONATION_SORT_FIELDS.has(raw as DonationSortField)
+    ? (raw as DonationSortField)
+    : DEFAULT_SORT;
+}
+
+function parseSortOrder(value: string | string[] | undefined): DonationSortOrder {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === "asc" ? "asc" : DEFAULT_ORDER;
+}
 
 interface DonationsPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -62,6 +88,8 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
     rawReceipt === "pending" || rawReceipt === "generated" || rawReceipt === "failed"
       ? rawReceipt
       : undefined;
+  const sort = parseSortField(params.sort);
+  const order = parseSortOrder(params.order);
 
   const client = await createServerApiClient();
 
@@ -76,6 +104,8 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
       campaignId,
       constituentId,
       receiptStatus: receiptStatusValue,
+      sort,
+      order,
     });
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
@@ -118,6 +148,8 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
           pagination={result.pagination}
           canWrite={canWrite}
           canDelete={canDelete}
+          sort={sort}
+          order={order}
         />
       ) : (
         <div className="rounded-2xl bg-surface-container-lowest shadow-card">

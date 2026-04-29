@@ -41,6 +41,9 @@ export interface DonationListResponse {
   pagination: Pagination;
 }
 
+export type DonationSortField = "donatedAt" | "amountCents" | "paymentMethod" | "createdAt";
+export type DonationSortOrder = "asc" | "desc";
+
 export interface DonationListQuery {
   page?: number;
   perPage?: number;
@@ -52,6 +55,8 @@ export interface DonationListQuery {
   amountMin?: number;
   amountMax?: number;
   receiptStatus?: "pending" | "generated" | "failed";
+  sort?: DonationSortField;
+  order?: DonationSortOrder;
 }
 
 export interface DonationAllocation {

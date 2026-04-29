@@ -1,6 +1,6 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { MoreHorizontal, Pencil, Search, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -37,7 +37,13 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import { type Constituent, fullName, initials } from "@/models/constituent";
+import {
+  type Constituent,
+  type ConstituentSortField,
+  type ConstituentSortOrder,
+  fullName,
+  initials,
+} from "@/models/constituent";
 import { ConstituentService } from "@/services/ConstituentService";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
@@ -77,6 +83,9 @@ interface ConstituentsTableProps {
    * the row dropdown entirely when no action is available.
    */
   canWrite: boolean;
+  /** Server-resolved sort/order — see donations-table.tsx for rationale. */
+  sort: ConstituentSortField;
+  order: ConstituentSortOrder;
 }
 
 export function ConstituentsTable({
@@ -84,6 +93,8 @@ export function ConstituentsTable({
   pagination,
   canManageAdminActions,
   canWrite,
+  sort,
+  order,
 }: ConstituentsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -139,6 +150,29 @@ export function ConstituentsTable({
       } else {
         params.set("page", String(page));
       }
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const sorting = useMemo<SortingState>(
+    () => [{ id: sort, desc: order === "desc" }],
+    [order, sort],
+  );
+
+  const onSortingChange = useCallback(
+    (nextSorting: SortingState) => {
+      const [next] = nextSorting;
+      const params = new URLSearchParams(searchParams.toString());
+      if (!next) {
+        params.delete("sort");
+        params.delete("order");
+      } else {
+        params.set("sort", next.id);
+        params.set("order", next.desc ? "desc" : "asc");
+      }
+      params.delete("page");
       const query = params.toString();
       router.push(query ? `${pathname}?${query}` : pathname);
     },
@@ -299,6 +333,8 @@ export function ConstituentsTable({
           data={constituents}
           pagination={pagination}
           onPageChange={navigateToPage}
+          sorting={sorting}
+          onSortingChange={onSortingChange}
           onRowClick={(row) => router.push(`/constituents/${row.original.id}`)}
           emptyState={
             <EmptyState

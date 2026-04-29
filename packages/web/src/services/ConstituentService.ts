@@ -40,6 +40,8 @@ export const ConstituentService = {
       perPage: query.perPage,
       search: query.search || undefined,
       type: query.type,
+      sort: query.sort,
+      order: query.order,
     };
 
     const response = await client.get<ConstituentListResponse>("/v1/constituents", { params });
