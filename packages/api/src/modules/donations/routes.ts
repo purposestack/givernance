@@ -22,6 +22,7 @@ import {
   AllocationSumMismatchError,
   CrossTenantReferenceError,
   createDonation,
+  DONATION_SORT_FIELDS,
   deleteDonation,
   getDonation,
   getReceiptByDonation,
@@ -36,15 +37,11 @@ const ReceiptStatusSchema = Type.Union([
   Type.Literal("failed"),
 ]);
 
-/** Server-side sort fields whitelist for `GET /donations`. */
-const DONATION_SORT_FIELDS = [
-  "donatedAt",
-  "amountCents",
-  "paymentMethod",
-  "donor",
-  "campaign",
-  "createdAt",
-] as const;
+/**
+ * Server-side sort fields whitelist for `GET /donations`. Single source
+ * of truth lives in `./service.ts` so the route-level TypeBox literal
+ * and the service-level `normalizeDonationSort` fallback can never drift.
+ */
 const DonationSortFieldSchema = Type.Union(
   DONATION_SORT_FIELDS.map((field) => Type.Literal(field)),
 );

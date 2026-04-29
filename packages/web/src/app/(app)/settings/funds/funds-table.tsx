@@ -5,7 +5,7 @@ import { MoreHorizontal, Pencil, PiggyBank, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -61,6 +61,8 @@ export function FundsTable({ funds, pagination, canManageFunds, sort, order }: F
   const t = useTranslations("settings.funds");
   const [fundToDelete, setFundToDelete] = useState<Fund | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  // Issue #216: see donations-table.tsx for the pattern.
+  const [isPending, startTransition] = useTransition();
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -71,7 +73,9 @@ export function FundsTable({ funds, pagination, canManageFunds, sort, order }: F
         params.set("page", String(page));
       }
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.push(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -81,6 +85,8 @@ export function FundsTable({ funds, pagination, canManageFunds, sort, order }: F
     [order, sort],
   );
 
+  // Issue #217: sort changes use `router.replace` so back-button doesn't
+  // unwind every header click. Pagination still uses `push` (above).
   const onSortingChange = useCallback(
     (nextSorting: SortingState) => {
       const [next] = nextSorting;
@@ -94,7 +100,9 @@ export function FundsTable({ funds, pagination, canManageFunds, sort, order }: F
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -194,6 +202,7 @@ export function FundsTable({ funds, pagination, canManageFunds, sort, order }: F
         onPageChange={navigateToPage}
         sorting={sorting}
         onSortingChange={onSortingChange}
+        isPending={isPending}
         emptyState={
           <EmptyState
             icon={PiggyBank}

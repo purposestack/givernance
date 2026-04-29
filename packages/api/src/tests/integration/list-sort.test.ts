@@ -355,6 +355,52 @@ describe("GET /v1/constituents — server-side sort", () => {
     const firstNames = body.data.map((c) => c.firstName.toLowerCase());
     expect(firstNames.indexOf("dan")).toBeLessThan(firstNames.indexOf("bea"));
   });
+
+  it("sort=lastDonation&order=desc orders by MAX(donations.donatedAt) desc, never-donated last", async () => {
+    // The seed in beforeAll creates exactly one donation per constituent
+    // (Bea→1000, Cara→5000, Dan→9999). Plus the null-campaign test in
+    // the donations describe block adds a fourth donation against the
+    // first-page constituent. We don't assert which constituent comes
+    // first under desc — that depends on insert order — but we DO lock:
+    //   - all constituents who have donated come before any who haven't
+    //   - the response includes `lastDonationAt: string | null`
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?sort=lastDonation&order=desc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ lastDonationAt: string | null }> }>();
+    expect(body.data.length).toBeGreaterThan(0);
+    // Every row must expose the field (locks the response shape).
+    for (const row of body.data) {
+      expect(row).toHaveProperty("lastDonationAt");
+    }
+    // Donated rows precede never-donated rows under desc (NULLS LAST).
+    let lastNonNullIdx = -1;
+    for (let i = body.data.length - 1; i >= 0; i--) {
+      if (body.data[i]?.lastDonationAt !== null) {
+        lastNonNullIdx = i;
+        break;
+      }
+    }
+    const firstNullIdx = body.data.findIndex((r) => r.lastDonationAt === null);
+    if (firstNullIdx !== -1 && lastNonNullIdx !== -1) {
+      expect(firstNullIdx).toBeGreaterThan(lastNonNullIdx);
+    }
+  });
+
+  it("sort=lastDonation&order=asc — non-null dates come back in ascending order", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?sort=lastDonation&order=asc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ lastDonationAt: string | null }> }>();
+    const dates = body.data.map((r) => r.lastDonationAt).filter((d): d is string => d !== null);
+    expect(dates).toEqual([...dates].sort());
+  });
 });
 
 describe("GET /v1/campaigns — server-side sort", () => {

@@ -5,7 +5,7 @@ import { Megaphone, MoreHorizontal, Pencil, Search, XCircle } from "lucide-react
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -117,12 +117,16 @@ export function CampaignsTable({
   const initialSearch = searchParams.get("search") ?? "";
   const initialStatus = searchParams.get("status") ?? "all";
   const [searchTerm, setSearchTerm] = useState(initialSearch);
+  // Issue #216: see donations-table.tsx for the pattern.
+  const [isPending, startTransition] = useTransition();
 
-  // Server-side search: debounce keystrokes then push the new ?search= param
-  // to the URL so the page re-fetches with consistent server pagination.
+  // Server-side search: debounce keystrokes then replace the URL with the
+  // new ?search= so the page re-fetches with consistent server pagination.
   // Excluding `searchParams` from deps is intentional — re-running on every
   // navigation would queue redundant timers; the input value is the only
   // signal that should restart the debounce.
+  // Issue #217: search/filter/sort use `router.replace`; pagination uses
+  // `router.push` so prev/next remain meaningful navigation steps.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {
     if (searchTerm === initialSearch) return;
@@ -135,7 +139,9 @@ export function CampaignsTable({
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     }, 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
@@ -150,7 +156,9 @@ export function CampaignsTable({
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -164,7 +172,9 @@ export function CampaignsTable({
         params.set("page", String(page));
       }
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.push(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -187,7 +197,9 @@ export function CampaignsTable({
       }
       params.delete("page");
       const query = params.toString();
-      router.push(query ? `${pathname}?${query}` : pathname);
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
     },
     [pathname, router, searchParams],
   );
@@ -373,24 +385,23 @@ export function CampaignsTable({
         </Select>
       </div>
 
-      <div className="transition-opacity duration-normal">
-        <DataTable
-          columns={columns}
-          data={campaigns}
-          pagination={pagination}
-          onPageChange={navigateToPage}
-          sorting={sorting}
-          onSortingChange={onSortingChange}
-          onRowClick={(row) => router.push(`/campaigns/${row.original.campaign.id}`)}
-          emptyState={
-            <EmptyState
-              icon={Megaphone}
-              title={t("empty.title")}
-              description={t("empty.description")}
-            />
-          }
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={campaigns}
+        pagination={pagination}
+        onPageChange={navigateToPage}
+        sorting={sorting}
+        onSortingChange={onSortingChange}
+        isPending={isPending}
+        onRowClick={(row) => router.push(`/campaigns/${row.original.campaign.id}`)}
+        emptyState={
+          <EmptyState
+            icon={Megaphone}
+            title={t("empty.title")}
+            description={t("empty.description")}
+          />
+        }
+      />
 
       <AlertDialog
         open={closeTarget !== null}

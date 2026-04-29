@@ -2,17 +2,33 @@
 
 import { constituents, donations, mergeHistory, outboxEvents } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, arrayOverlaps, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  arrayOverlaps,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  ilike,
+  isNull,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
-export type ConstituentSortField = "name" | "type" | "createdAt";
+/**
+ * Single source of truth for the constituents sort whitelist (issue
+ * #218). Tuple drives both the route's TypeBox literal union and the
+ * service-level `normalizeConstituentSort` fallback.
+ *
+ * `lastDonation` (issue #215, mockup compliance) sorts on the joined
+ * aggregate `MAX(donations.donatedAt)` from `latestDonationSubquery`
+ * below — see `listConstituents` for the LEFT JOIN.
+ */
+export const CONSTITUENT_SORT_FIELDS = ["name", "type", "lastDonation", "createdAt"] as const;
+export type ConstituentSortField = (typeof CONSTITUENT_SORT_FIELDS)[number];
 export type ConstituentSortOrder = "asc" | "desc";
-
-const CONSTITUENT_SORT_FIELDS: ReadonlySet<ConstituentSortField> = new Set([
-  "name",
-  "type",
-  "createdAt",
-]);
 
 export interface ListConstituentsQuery {
   page: number;
@@ -32,7 +48,7 @@ export interface ListConstituentsQuery {
  * fallback only kicks in if validation is loosened.
  */
 function normalizeConstituentSort(value: string | undefined): ConstituentSortField {
-  if (value && CONSTITUENT_SORT_FIELDS.has(value as ConstituentSortField)) {
+  if (value && CONSTITUENT_SORT_FIELDS.includes(value as ConstituentSortField)) {
     return value as ConstituentSortField;
   }
   return "createdAt";
@@ -46,10 +62,18 @@ function normalizeConstituentOrder(value: string | undefined): ConstituentSortOr
  * ORDER BY for `GET /constituents`. `name` sorts on `(firstName, lastName)`
  * to match the cell's display order (`fullName()` renders "First Last") —
  * sorting on the second-rendered token feels arbitrary to the user.
+ * `lastDonation` sorts on the joined aggregate `MAX(donations.donatedAt)`
+ * passed from the caller (NULLS LAST so never-donated constituents don't
+ * form a wall under desc — same convention as `paymentMethod` /
+ * `donor` / `campaign` in donations/service.ts).
  * `lower(...)` keeps mixed French/English locales in one alphabet. Always
  * tiebreaks with `asc(id)` for deterministic offset pagination.
  */
-function buildConstituentOrderBy(sort: ConstituentSortField, order: ConstituentSortOrder) {
+function buildConstituentOrderBy(
+  sort: ConstituentSortField,
+  order: ConstituentSortOrder,
+  lastDonationAtCol: SQL.Aliased<string | null>,
+) {
   const dir = order === "asc" ? asc : desc;
   if (sort === "name") {
     return [
@@ -59,6 +83,10 @@ function buildConstituentOrderBy(sort: ConstituentSortField, order: ConstituentS
     ];
   }
   if (sort === "type") return [dir(constituents.type), asc(constituents.id)];
+  if (sort === "lastDonation") {
+    const direction = order === "asc" ? sql`ASC` : sql`DESC`;
+    return [sql`${lastDonationAtCol} ${direction} NULLS LAST`, asc(constituents.id)];
+  }
   return [dir(constituents.createdAt), asc(constituents.id)];
 }
 
@@ -116,12 +144,33 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
     const sort = normalizeConstituentSort(query.sort);
     const order = normalizeConstituentOrder(query.order);
 
+    // Aggregate subquery: latest donation date per constituent within
+    // this tenant. LEFT JOINed below so constituents who never donated
+    // appear with `lastDonationAt = NULL`. Pre-aggregating in a subquery
+    // (vs. correlated scalar subquery in SELECT + ORDER BY) lets PG plan
+    // a single hash aggregate over `donations` instead of one indexed
+    // lookup per page row, and reuses the same value in SELECT and
+    // ORDER BY without recomputation. Issue #215.
+    const latestDonationSq = tx
+      .select({
+        constituentId: donations.constituentId,
+        lastDonationAt: sql<string | null>`max(${donations.donatedAt})`.as("last_donation_at"),
+      })
+      .from(donations)
+      .where(eq(donations.orgId, orgId))
+      .groupBy(donations.constituentId)
+      .as("latest_donation");
+
     const [data, countResult] = await Promise.all([
       tx
-        .select()
+        .select({
+          ...getTableColumns(constituents),
+          lastDonationAt: latestDonationSq.lastDonationAt,
+        })
         .from(constituents)
+        .leftJoin(latestDonationSq, eq(latestDonationSq.constituentId, constituents.id))
         .where(where)
-        .orderBy(...buildConstituentOrderBy(sort, order))
+        .orderBy(...buildConstituentOrderBy(sort, order, latestDonationSq.lastDonationAt))
         .limit(perPage)
         .offset(offset),
       tx.select({ count: sql<number>`count(*)` }).from(constituents).where(where),

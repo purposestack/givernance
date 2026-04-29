@@ -22,6 +22,7 @@ import {
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
+  CAMPAIGN_SORT_FIELDS,
   CampaignValidationError,
   closeCampaign,
   createCampaign,
@@ -144,8 +145,10 @@ const CampaignRoiResponse = Type.Object({
   roiPct: Type.Union([Type.Number(), Type.Null()]),
 });
 
-/** Server-side sort fields whitelist for `GET /campaigns`. */
-const CAMPAIGN_SORT_FIELDS = ["name", "type", "status", "createdAt"] as const;
+/**
+ * Server-side sort fields whitelist for `GET /campaigns`. Single source
+ * of truth lives in `./service.ts` (issue #218).
+ */
 const CampaignSortFieldSchema = Type.Union(
   CAMPAIGN_SORT_FIELDS.map((field) => Type.Literal(field)),
 );

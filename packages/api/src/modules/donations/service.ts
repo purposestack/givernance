@@ -83,23 +83,22 @@ async function assertFundsBelongToOrg(
   if (missing) throw new CrossTenantReferenceError("fund", missing);
 }
 
-export type DonationSortField =
-  | "donatedAt"
-  | "amountCents"
-  | "paymentMethod"
-  | "donor"
-  | "campaign"
-  | "createdAt";
-export type DonationSortOrder = "asc" | "desc";
-
-const DONATION_SORT_FIELDS: ReadonlySet<DonationSortField> = new Set([
+/**
+ * Single source of truth for the donations sort whitelist (issue #218).
+ * Both the route's TypeBox literal union AND the service's
+ * defense-in-depth normalizer derive from this tuple — adding a 7th
+ * field is now a one-line change here, not two-and-pray-they-stay-in-sync.
+ */
+export const DONATION_SORT_FIELDS = [
   "donatedAt",
   "amountCents",
   "paymentMethod",
   "donor",
   "campaign",
   "createdAt",
-]);
+] as const;
+export type DonationSortField = (typeof DONATION_SORT_FIELDS)[number];
+export type DonationSortOrder = "asc" | "desc";
 
 export interface ListDonationsQuery {
   page: number;
@@ -125,7 +124,7 @@ export interface ListDonationsQuery {
  * the fallback then becomes the safety net rather than the contract.
  */
 function normalizeDonationSort(value: string | undefined): DonationSortField {
-  if (value && DONATION_SORT_FIELDS.has(value as DonationSortField)) {
+  if (value && DONATION_SORT_FIELDS.includes(value as DonationSortField)) {
     return value as DonationSortField;
   }
   return "donatedAt";

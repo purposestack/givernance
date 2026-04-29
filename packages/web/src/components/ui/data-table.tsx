@@ -53,6 +53,13 @@ export interface DataTableProps<TData> {
   onPageChange?: (page: number) => void;
   sorting?: SortingState;
   onSortingChange?: (sorting: SortingState) => void;
+  /**
+   * When `true`, the table dims and goes non-interactive while a sort/
+   * filter/page round-trip is in flight (issue #216). Caller wires this
+   * to `useTransition`'s `isPending`. Also surfaces `aria-busy` for
+   * screen-reader users.
+   */
+  isPending?: boolean;
   emptyState?: React.ReactNode;
   defaultDensity?: Density;
   className?: string;
@@ -118,6 +125,7 @@ export function DataTable<TData>({
   onPageChange,
   sorting: controlledSorting,
   onSortingChange,
+  isPending = false,
   emptyState,
   defaultDensity = "comfortable",
   className,
@@ -163,8 +171,14 @@ export function DataTable<TData>({
 
   return (
     <div
+      // Issue #216: while a sort/filter/page round-trip is in flight,
+      // dim the table and disable pointer events so rage-clicks don't
+      // queue conflicting URL updates. `data-pending` on the wrapper +
+      // `aria-busy` on the table together cover sighted and SR users.
+      data-pending={isPending || undefined}
       className={cn(
-        "overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card",
+        "overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card transition-opacity duration-normal",
+        "data-[pending=true]:pointer-events-none data-[pending=true]:opacity-60",
         className,
       )}
     >
@@ -229,7 +243,7 @@ export function DataTable<TData>({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left">
+        <table className="w-full border-collapse text-left" aria-busy={isPending || undefined}>
           <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
