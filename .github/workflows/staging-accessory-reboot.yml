@@ -1,0 +1,103 @@
+name: Reboot Staging Accessory
+
+# Manually-triggered workaround for accessory env-var changes that the
+# per-push `Deploy to Staging` flow doesn't cover. `kamal deploy` only
+# rolls app containers (web, api, worker, relay); accessories
+# (postgres, redis, minio, keycloak) keep running with whatever env
+# they were last booted with. So when an accessory secret rotates
+# (e.g. MINIO_KMS_SECRET_KEY, KEYCLOAK_ADMIN_PASSWORD) or its image
+# bumps for a CVE patch, this workflow re-boots the named accessory
+# with the *current* GH secret values — without forcing a slow
+# `kamal setup` or an out-of-band `docker run` on the VPS that drifts
+# Kamal's view of the world (issue #212; see incident on 2026-04-29).
+
+on:
+  workflow_dispatch:
+    inputs:
+      accessory:
+        description: Accessory to reboot
+        required: true
+        type: choice
+        options:
+          - minio
+          - redis
+          - postgres
+          - keycloak
+      confirm:
+        description: >
+          Type the accessory name again to confirm (extra-click guard,
+          since rebooting an accessory drops every connection it was
+          serving).
+        required: true
+        type: string
+
+jobs:
+  reboot:
+    name: Reboot ${{ inputs.accessory }}
+    runs-on: ubuntu-latest
+    # Same `staging` GitHub Environment as deploy-staging.yml so the
+    # secrets bag resolves identically. Approval gates / branch policies
+    # added later attach here automatically.
+    environment: staging
+    concurrency:
+      # Share the deploy-staging concurrency group so a reboot can't
+      # collide with an in-flight `kamal setup` (both touch the same
+      # Kamal lock).
+      group: deploy-staging
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      STAGING_VPS_IP: ${{ secrets.VPS_IP }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Validate confirm input
+        run: |
+          if [ "${{ inputs.confirm }}" != "${{ inputs.accessory }}" ]; then
+            echo "::error::Confirm input '${{ inputs.confirm }}' does not match accessory '${{ inputs.accessory }}'. Re-run and type the accessory name in the confirm field." >&2
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby (for Kamal)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Install Kamal
+        run: gem install kamal
+
+      - name: Configure SSH Auth Sock
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # Same secrets bag as deploy-staging.yml — single source of truth
+      # in .github/actions/setup-kamal-secrets/action.yml. Any future
+      # rotation / new var lands once and propagates to both flows.
+      - name: Setup Kamal Secrets
+        uses: ./.github/actions/setup-kamal-secrets
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          KEYCLOAK_ADMIN_CLIENT_SECRET: ${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
+
+      - name: Reboot accessory
+        run: kamal accessory reboot "${{ inputs.accessory }}" -c config/deploy-staging.yml
+
+      - name: Dump accessory logs on failure
+        if: failure()
+        run: |
+          kamal server exec -c config/deploy-staging.yml \
+            "docker logs givernance-${{ inputs.accessory }} --tail 100" || true
