@@ -112,6 +112,18 @@ env:
 builder:
   arch: amd64
   dockerfile: Dockerfile
+  # Registry-backed BuildKit cache — without this, the `kamal-local-docker-container`
+  # buildx builder is recreated from scratch on every CI run, losing the pnpm
+  # store mount cache and forcing a full `pnpm install` + `pnpm -r build`
+  # (~76s of the deploy). Storing the cache as a sibling tag in GHCR lets
+  # subsequent runs reuse the install/build layers. `mode=max` exports
+  # intermediate layers (not just the final ones) for better hit rates;
+  # the existing `packages: write` permission on the deploy workflow covers
+  # the cache image push.
+  cache:
+    type: registry
+    image: ghcr.io/purposestack/givernance-build-cache
+    options: mode=max
   args:
     # The Next.js rewrite destination is baked into routes-manifest.json
     # at build time (see Dockerfile ARG API_URL comment). `env.clear`
