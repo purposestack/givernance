@@ -213,10 +213,12 @@ export function DonationsTable({
   const columns = useMemo<ColumnDef<DonationListRow>[]>(
     () => [
       // Column `id` matches the API's `sort=` value (cf.
-      // `DONATION_SORT_FIELDS` in the route). Server-sortable columns
-      // leave `enableSorting` at the default (true); columns whose values
-      // are joined/computed (donor, campaign, receipt status) are hard-
-      // disabled so a click can't push a `sort=` value the API rejects.
+      // `DONATION_SORT_FIELDS` in the route). Every server-sortable
+      // column needs an `accessorKey` or `accessorFn` even in manual-
+      // sort mode — TanStack's `getCanSort()` returns false (and skips
+      // the header arrow) when a column has no accessor, regardless of
+      // `enableSorting`. The accessor's extracted value is unused on
+      // the server-sort path; only the column's `id` reaches the API.
       {
         id: "donatedAt",
         accessorKey: "donatedAt",
@@ -229,6 +231,7 @@ export function DonationsTable({
       },
       {
         id: "donor",
+        accessorFn: (row) => donationDonorName(row) ?? "",
         header: () => t("columns.donor"),
         cell: ({ row }) => {
           const name = donationDonorName(row.original) ?? t("anonymousDonor");
@@ -255,6 +258,7 @@ export function DonationsTable({
       },
       {
         id: "campaign",
+        accessorFn: (row) => row.campaign?.name ?? "",
         header: () => t("columns.campaign"),
         cell: ({ row }) =>
           row.original.campaign ? (
