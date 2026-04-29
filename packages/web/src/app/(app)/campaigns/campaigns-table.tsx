@@ -102,15 +102,20 @@ export function CampaignsTable({
   const tFilters = useTranslations("campaigns.filters");
   const [closeTarget, setCloseTarget] = useState<Campaign | null>(null);
   const [isClosing, setIsClosing] = useState(false);
-  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? "");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const initialSearch = searchParams.get("search") ?? "";
+  const initialStatus = searchParams.get("status") ?? "all";
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
 
+  // Server-side search: debounce keystrokes then push the new ?search= param
+  // to the URL so the page re-fetches with consistent server pagination.
+  // Excluding `searchParams` from deps is intentional — re-running on every
+  // navigation would queue redundant timers; the input value is the only
+  // signal that should restart the debounce.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {
+    if (searchTerm === initialSearch) return;
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString());
-      const currentSearch = params.get("search") ?? "";
-      if (searchTerm === currentSearch) return;
-
       if (searchTerm) {
         params.set("search", searchTerm);
       } else {
@@ -121,14 +126,22 @@ export function CampaignsTable({
       router.push(query ? `${pathname}?${query}` : pathname);
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchTerm, pathname, router, searchParams]);
+  }, [searchTerm]);
 
-  const filteredCampaigns = useMemo(() => {
-    return campaigns.filter((c) => {
-      const matchesStatus = statusFilter === "all" || c.campaign.status === statusFilter;
-      return matchesStatus;
-    });
-  }, [campaigns, statusFilter]);
+  const updateStatus = useCallback(
+    (next: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next && next !== "all") {
+        params.set("status", next);
+      } else {
+        params.delete("status");
+      }
+      params.delete("page");
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -306,13 +319,14 @@ export function CampaignsTable({
           />
           <Input
             placeholder={tFilters("searchPlaceholder")}
+            aria-label={tFilters("searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-[180px]">
+        <Select value={initialStatus} onValueChange={updateStatus}>
+          <SelectTrigger className="w-full sm:w-[180px]" aria-label={tFilters("statusLabel")}>
             <SelectValue placeholder={tFilters("allStatuses")} />
           </SelectTrigger>
           <SelectContent>
@@ -327,7 +341,7 @@ export function CampaignsTable({
       <div className="transition-opacity duration-normal">
         <DataTable
           columns={columns}
-          data={filteredCampaigns}
+          data={campaigns}
           pagination={pagination}
           onPageChange={navigateToPage}
           onRowClick={(row) => router.push(`/campaigns/${row.original.campaign.id}`)}

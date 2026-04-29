@@ -33,6 +33,7 @@ export const DonationService = {
       dateTo: query.dateTo,
       amountMin: query.amountMin,
       amountMax: query.amountMax,
+      receiptStatus: query.receiptStatus,
     };
 
     const response = await client.get<DonationListResponse>("/v1/donations", { params });

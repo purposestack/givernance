@@ -45,6 +45,7 @@ export interface DonationListQuery {
   dateTo?: string;
   amountMin?: number;
   amountMax?: number;
+  receiptStatus?: "pending" | "generated" | "failed";
 }
 
 export interface DonationAllocation {

@@ -324,7 +324,7 @@ function StatCard({
   };
 
   return (
-    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card group">
+    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-on-surface-variant">{label}</p>
         <div className="flex items-center gap-2">
@@ -333,7 +333,7 @@ function StatCard({
           ) : null}
           {Icon ? (
             <div
-              className={`flex h-10 w-10 items-center justify-center rounded-xl transition-transform group-hover:scale-105 ${colorStyles[color]}`}
+              className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorStyles[color]}`}
             >
               <Icon size={20} aria-hidden="true" />
             </div>

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
-import type { ConstituentListResponse } from "@/models/constituent";
+import type { ConstituentListResponse, ConstituentType } from "@/models/constituent";
 import { ConstituentService } from "@/services/ConstituentService";
 
 import { ConstituentsTable } from "./constituents-table";
@@ -38,6 +38,15 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
   const page = parsePositiveInt(params.page, 1);
   const perPage = parsePositiveInt(params.perPage, DEFAULT_PER_PAGE, MAX_PER_PAGE);
   const searchValue = Array.isArray(params.search) ? params.search[0] : params.search;
+  const rawType = Array.isArray(params.type) ? params.type[0] : params.type;
+  const ALLOWED_TYPES: readonly ConstituentType[] = [
+    "donor",
+    "volunteer",
+    "member",
+    "beneficiary",
+    "partner",
+  ];
+  const typeValue = ALLOWED_TYPES.find((t) => t === rawType);
 
   const client = await createServerApiClient();
 
@@ -47,6 +56,7 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
       page,
       perPage,
       search: searchValue,
+      type: typeValue,
     });
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {

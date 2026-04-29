@@ -93,15 +93,17 @@ export function ConstituentsTable({
   const tFilters = useTranslations("constituents.filters");
   const [deleteTarget, setDeleteTarget] = useState<Constituent | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? "");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const initialSearch = searchParams.get("search") ?? "";
+  const initialType = searchParams.get("type") ?? "all";
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
 
+  // Server-side search: see campaigns-table.tsx for the rationale on why
+  // `searchParams` is excluded from the deps.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {
+    if (searchTerm === initialSearch) return;
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString());
-      const currentSearch = params.get("search") ?? "";
-      if (searchTerm === currentSearch) return;
-
       if (searchTerm) {
         params.set("search", searchTerm);
       } else {
@@ -112,14 +114,22 @@ export function ConstituentsTable({
       router.push(query ? `${pathname}?${query}` : pathname);
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchTerm, pathname, router, searchParams]);
+  }, [searchTerm]);
 
-  const filteredConstituents = useMemo(() => {
-    return constituents.filter((c) => {
-      const matchesType = typeFilter === "all" || c.type === typeFilter;
-      return matchesType;
-    });
-  }, [constituents, typeFilter]);
+  const updateType = useCallback(
+    (next: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next && next !== "all") {
+        params.set("type", next);
+      } else {
+        params.delete("type");
+      }
+      params.delete("page");
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -262,13 +272,14 @@ export function ConstituentsTable({
           />
           <Input
             placeholder={tFilters("searchPlaceholder")}
+            aria-label={tFilters("searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
           />
         </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-full sm:w-[180px]">
+        <Select value={initialType} onValueChange={updateType}>
+          <SelectTrigger className="w-full sm:w-[180px]" aria-label={tFilters("typeLabel")}>
             <SelectValue placeholder={tFilters("allTypes")} />
           </SelectTrigger>
           <SelectContent>
@@ -285,7 +296,7 @@ export function ConstituentsTable({
       <div className="transition-opacity duration-normal">
         <DataTable
           columns={columns}
-          data={filteredConstituents}
+          data={constituents}
           pagination={pagination}
           onPageChange={navigateToPage}
           onRowClick={(row) => router.push(`/constituents/${row.original.id}`)}

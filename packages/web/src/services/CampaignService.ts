@@ -13,13 +13,7 @@ import type {
 } from "@/models/campaign";
 import type { Fund } from "@/models/fund";
 
-/**
- * CampaignService — ADR-011 Layer 2 (services).
- *
- * The API list endpoint does not expose a status query yet. Keep status
- * filtering in this web adapter for dashboard reads until the API contract
- * grows that filter.
- */
+/** CampaignService — ADR-011 Layer 2 (services). */
 export const CampaignService = {
   async listCampaigns(
     client: ApiClient,
@@ -27,29 +21,12 @@ export const CampaignService = {
   ): Promise<CampaignListResponse> {
     const page = query.page ?? 1;
     const perPage = query.perPage ?? 20;
-    const requestPerPage = query.status ? Math.max(perPage, 100) : perPage;
 
     const response = await client.get<CampaignListResponse>("/v1/campaigns", {
-      params: { page, perPage: requestPerPage, search: query.search },
+      params: { page, perPage, search: query.search, status: query.status },
     });
 
-    const data = response.data.map(mapCampaign);
-
-    if (!query.status) {
-      return { data, pagination: response.pagination };
-    }
-
-    const filtered = data.filter((campaign) => campaign.status === query.status);
-
-    return {
-      data: filtered.slice(0, perPage),
-      pagination: {
-        page,
-        perPage,
-        total: filtered.length,
-        totalPages: Math.ceil(filtered.length / perPage),
-      },
-    };
+    return { data: response.data.map(mapCampaign), pagination: response.pagination };
   },
 
   async getCampaignStats(client: ApiClient, id: string): Promise<CampaignStats> {
