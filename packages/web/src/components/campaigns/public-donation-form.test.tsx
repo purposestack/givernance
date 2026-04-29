@@ -126,6 +126,66 @@ describe("PublicDonationForm", () => {
     expect(screen.queryByTestId("stripe-payment-element")).not.toBeInTheDocument();
   });
 
+  it("renders the test-mode banner when publishableKey starts with pk_test_", async () => {
+    const user = userEvent.setup();
+
+    vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      clientSecret: "pi_secret_999",
+      stripeAccountId: "acct_test_999",
+    });
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#096447"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey="pk_test_dummy"
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^First name/), "Jane");
+    await user.type(screen.getByLabelText(/^Last name/), "Doe");
+    await user.type(screen.getByLabelText(/^Email/), "jane@example.org");
+    await user.type(screen.getByLabelText(/^Amount/), "50");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    expect(await screen.findByText("Test mode — no real charge")).toBeInTheDocument();
+    expect(screen.getByText("4242 4242 4242 4242")).toBeInTheDocument();
+  });
+
+  it("does NOT render the test-mode banner when publishableKey starts with pk_live_", async () => {
+    // Critical inverse: a flipped predicate would silently leak "Test mode"
+    // copy onto live-donor pages. We assert both the banner heading and the
+    // card hint are absent.
+    const user = userEvent.setup();
+
+    vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      clientSecret: "pi_secret_888",
+      stripeAccountId: "acct_live_888",
+    });
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#096447"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey="pk_live_real_key"
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^First name/), "Jane");
+    await user.type(screen.getByLabelText(/^Last name/), "Doe");
+    await user.type(screen.getByLabelText(/^Email/), "jane@example.org");
+    await user.type(screen.getByLabelText(/^Amount/), "50");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    expect(await screen.findByTestId("stripe-payment-element")).toBeInTheDocument();
+    expect(screen.queryByText("Test mode — no real charge")).not.toBeInTheDocument();
+    expect(screen.queryByText("4242 4242 4242 4242")).not.toBeInTheDocument();
+  });
+
   it("blocks at payment step with a clear message when publishableKey is not configured", async () => {
     const user = userEvent.setup();
 

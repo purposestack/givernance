@@ -460,4 +460,93 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
 
     expect(res.statusCode).toBe(400);
   });
+
+  // The two error paths below are the most common production failures
+  // (NPO clicks Connect Stripe but bails halfway, or Stripe disables
+  // their account). They were untested before — the QA review surfaced
+  // the gap. Both must mask to 502 + RFC 9457 body — no Stripe internal
+  // detail leaks (donor sees a generic message), and the body shape is
+  // locked so a regression to a plain-string response would fail the test.
+  it("returns 502 with RFC 9457 body when the tenant has no stripe_account_id (onboarding never started)", async () => {
+    const campaign = await createTestCampaign("Public Page Test Not Onboarded");
+    const token = signToken(app);
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Donate Page", status: "published" },
+    });
+
+    // Wipe the seed's stripe account so `createDonationIntent` hits the
+    // "Organization has not completed Stripe onboarding" branch.
+    await db.execute(sql`UPDATE tenants SET stripe_account_id = NULL WHERE id = ${ORG_A}`);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/v1/public/campaigns/${campaign.id}/donate`,
+        payload: {
+          amountCents: 5000,
+          currency: "EUR",
+          email: "donor@example.org",
+          firstName: "Jane",
+          lastName: "Doe",
+        },
+      });
+
+      expect(res.statusCode).toBe(502);
+      const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+      expect(body.type).toBe("https://httpproblems.com/http-status/502");
+      expect(body.title).toBe("Bad Gateway");
+      expect(body.status).toBe(502);
+      expect(body.detail).toBe("Payment processing failed");
+      // Donor must NOT see the underlying Stripe-onboarding message.
+      expect(body.detail).not.toContain("onboarding");
+    } finally {
+      // Restore the fixture so subsequent tests in the file pass.
+      await db.execute(
+        sql`UPDATE tenants SET stripe_account_id = 'acct_test_org_a' WHERE id = ${ORG_A}`,
+      );
+    }
+  });
+
+  it("returns 502 with RFC 9457 body when the connected account has charges disabled", async () => {
+    const campaign = await createTestCampaign("Public Page Test Charges Disabled");
+    const token = signToken(app);
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Donate Page", status: "published" },
+    });
+
+    // Stub the per-test Stripe `accounts.retrieve` to return charges_enabled=false
+    mockGetStripe.mockReturnValueOnce({
+      paymentIntents: { create: mockPaymentIntentsCreate },
+      accounts: {
+        retrieve: vi.fn().mockResolvedValue({ charges_enabled: false }),
+      },
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/public/campaigns/${campaign.id}/donate`,
+      payload: {
+        amountCents: 5000,
+        currency: "EUR",
+        email: "donor@example.org",
+        firstName: "Jane",
+        lastName: "Doe",
+      },
+    });
+
+    expect(res.statusCode).toBe(502);
+    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    expect(body.type).toBe("https://httpproblems.com/http-status/502");
+    expect(body.status).toBe(502);
+    expect(body.detail).toBe("Payment processing failed");
+    expect(body.detail).not.toContain("fully onboarded");
+    // Stripe wasn't asked to create a PaymentIntent — we short-circuited
+    // before that on the charges_enabled check.
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+  });
 });

@@ -16,6 +16,11 @@ process.env.S3_ENDPOINT ??= "http://localhost:9000";
 process.env.S3_ACCESS_KEY_ID ??= "minioadmin";
 process.env.S3_SECRET_ACCESS_KEY ??= "minioadmin";
 process.env.ADMIN_SECRET ??= "test-secret";
+// Stripe credentials — `getStripe()` requires a non-empty value to construct
+// the SDK client. The actual key is never used by tests (the `stripe` module
+// is mocked in test files that exercise the real service path); just needs
+// to pass the env-validation gate.
+process.env.STRIPE_SECRET_KEY ??= "sk_test_dummy_for_tests";
 process.env.LOG_LEVEL ??= "silent";
 
 const TEST_JWKS = {
