@@ -77,8 +77,14 @@ env:
     # transactional sends (signup verification, team invitations) so
     # tenant onboarding flows on staging actually deliver mail. Local
     # dev keeps `mailpit` (the worker's default) — see .env.example.
+    #
+    # The dedicated staging Resend API key is scoped to the verified
+    # `givernance.org` apex (not the `staging.` subdomain), so the
+    # Mail-From must live on `givernance.org`. The "Givernance Staging"
+    # display name keeps the staging context visible in the recipient's
+    # inbox without needing a separate verified subdomain.
     EMAIL_PROVIDER: resend
-    EMAIL_FROM: Givernance Staging <noreply@staging.givernance.org>
+    EMAIL_FROM: Givernance Staging <noreply@givernance.org>
   secret:
     - POSTGRES_PASSWORD
     - REDIS_PASSWORD
