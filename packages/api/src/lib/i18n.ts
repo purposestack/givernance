@@ -1,9 +1,3 @@
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 /**
  * Backend i18n helper — ADR-015.
  *
@@ -20,9 +14,15 @@ const __dirname = dirname(__filename);
  *   });
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { FastifyRequest } from "fastify";
+// JSON imports are inlined by tsup at build time so the bundled `dist/index.js`
+// does not depend on the runtime location of the messages directory.
+// Previously the loader used `readFileSync(join(__dirname, "../../messages", …))`,
+// which silently broke in production: from `dist/index.js` the path resolved to
+// `packages/messages/` (one level too high) and every route calling
+// `resolveTranslations` 500ed with ENOENT.
+import enMessages from "../../messages/en.json";
+import frMessages from "../../messages/fr.json";
 
 const SUPPORTED_LOCALES = ["fr", "en"] as const;
 type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -30,16 +30,13 @@ const DEFAULT_LOCALE: Locale = "fr";
 
 type Messages = Record<string, Record<string, string>>;
 
-const messageCache = new Map<Locale, Messages>();
+const MESSAGES: Record<Locale, Messages> = {
+  en: enMessages as Messages,
+  fr: frMessages as Messages,
+};
 
 function loadMessages(locale: Locale): Messages {
-  const cached = messageCache.get(locale);
-  if (cached) return cached;
-
-  const filePath = join(__dirname, "../../messages", `${locale}.json`);
-  const messages = JSON.parse(readFileSync(filePath, "utf-8")) as Messages;
-  messageCache.set(locale, messages);
-  return messages;
+  return MESSAGES[locale];
 }
 
 function resolveLocale(acceptLanguage: string | undefined): Locale {

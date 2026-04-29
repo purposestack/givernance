@@ -123,8 +123,15 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   });
 
   // --- Global error handler (RFC 9457 application/problem+json) ---
-  app.setErrorHandler((error: FastifyError, _request, reply) => {
+  app.setErrorHandler((error: FastifyError, request, reply) => {
     const status = error.statusCode ?? 500;
+    // Fastify's default error handler logs unhandled errors; once we override
+    // it via setErrorHandler, that auto-logging is gone. Log here so 5xx
+    // responses are never silent — without this, a fresh 500 in production
+    // shows up only in proxy access logs with no stack to debug from.
+    if (status >= 500) {
+      request.log.error({ err: error }, "unhandled-route-error");
+    }
     const body = {
       ...problemDetail(
         status,
