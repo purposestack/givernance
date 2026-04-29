@@ -95,7 +95,7 @@ stripe login
 
 stripe listen \
   --forward-to http://localhost:4000/v1/donations/stripe-webhook \
-  --events payment_intent.succeeded,account.updated
+  --events payment_intent.succeeded,charge.refunded,account.updated
 ```
 
 The first line of output looks like:
@@ -108,7 +108,7 @@ Ready! Your webhook signing secret is whsec_… (^C to quit)
 
 Copy the `whsec_…` value into `STRIPE_WEBHOOK_SECRET` in `.env`.
 
-The `--events` filter mirrors what the API actually handles today (`payment_intent.succeeded`) plus the `account.updated` lifecycle event needed by [issue #62](https://github.com/purposestack/givernance/issues/62).
+The `--events` filter mirrors what the API actually handles today: `payment_intent.succeeded` (donation creation), `charge.refunded` (refund flow — issue #199), and `account.updated` (Connect lifecycle — drives the auto-promote-to-live work in [issue #62](https://github.com/purposestack/givernance/issues/62)). Without `charge.refunded`, the local refund flow ships donor-card refunds through Stripe but the local DB never reflects the new status — handy if you're testing the API path in isolation, otherwise leave all three on.
 
 ---
 
