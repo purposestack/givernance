@@ -2,6 +2,19 @@ name: Deploy to Staging
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: |
+          Kamal command to run. `deploy` is the per-push fast path (only
+          rolls the app containers). `setup` does a full bootstrap —
+          pick this after editing `accessories:` in
+          `config/deploy-staging.yml` (new accessory, new env var on an
+          existing accessory) so the changes actually land on the VPS.
+        type: choice
+        options:
+          - deploy
+          - setup
+        default: deploy
   push:
     branches:
       - main
@@ -83,16 +96,24 @@ jobs:
       - name: Release Deploy Lock
         run: kamal lock release -c config/deploy-staging.yml || true
 
+      # Per-push runs use `kamal deploy` (only rolls app containers) — `setup`
+      # additionally re-installs Docker, recreates the kamal network, and
+      # re-registers every accessory, all of which is wasted work on an
+      # already-bootstrapped VPS. Trigger `setup` manually via the
+      # workflow_dispatch `mode: setup` input after editing `accessories:`
+      # in `config/deploy-staging.yml`.
       - name: Deploy with Kamal
+        env:
+          KAMAL_CMD: ${{ github.event.inputs.mode || 'deploy' }}
         run: |
           attempt=1
           max_attempts=3
-          until kamal setup -c config/deploy-staging.yml; do
+          until kamal "$KAMAL_CMD" -c config/deploy-staging.yml; do
             if [ "$attempt" -ge "$max_attempts" ]; then
-              echo "kamal setup failed after $max_attempts attempts" >&2
+              echo "kamal $KAMAL_CMD failed after $max_attempts attempts" >&2
               exit 1
             fi
-            echo "kamal setup failed (attempt $attempt/$max_attempts) — releasing lock and retrying"
+            echo "kamal $KAMAL_CMD failed (attempt $attempt/$max_attempts) — releasing lock and retrying"
             kamal lock release -c config/deploy-staging.yml || true
             attempt=$((attempt + 1))
             sleep 5
