@@ -161,6 +161,38 @@ export interface StripeConnectStatus {
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
   detailsSubmitted: boolean;
+  /**
+   * Requirements Stripe wants the connected account to satisfy before
+   * `charges_enabled` flips on. Empty array when fully onboarded. Used by
+   * the Settings panel to tell the operator *why* charges aren't enabled
+   * (issue #201) instead of "Onboarding incomplete" with no detail.
+   */
+  requirementsCurrentlyDue: string[];
+  /**
+   * Stripe's machine-readable reason for `charges_enabled: false`, e.g.
+   * `requirements.past_due`, `requirements.pending_verification`. Null
+   * when the account is healthy.
+   */
+  disabledReason: string | null;
+  /**
+   * Per-capability status. Reflects whether each capability we requested
+   * is `active` (working), `pending` (Stripe is verifying), or `inactive`
+   * (blocked on requirements / not yet requested).
+   */
+  capabilities: {
+    cardPayments: StripeCapabilityStatus;
+    transfers: StripeCapabilityStatus;
+    linkPayments: StripeCapabilityStatus;
+  };
+}
+
+export type StripeCapabilityStatus = "active" | "pending" | "inactive" | "unrequested";
+
+function normaliseCapability(value: string | undefined): StripeCapabilityStatus {
+  if (value === "active" || value === "pending" || value === "inactive") {
+    return value;
+  }
+  return "unrequested";
 }
 
 /**
@@ -185,6 +217,13 @@ export async function getStripeConnectStatus(orgId: string): Promise<StripeConne
       chargesEnabled: false,
       payoutsEnabled: false,
       detailsSubmitted: false,
+      requirementsCurrentlyDue: [],
+      disabledReason: null,
+      capabilities: {
+        cardPayments: "unrequested",
+        transfers: "unrequested",
+        linkPayments: "unrequested",
+      },
     };
   }
 
@@ -196,5 +235,12 @@ export async function getStripeConnectStatus(orgId: string): Promise<StripeConne
     chargesEnabled: account.charges_enabled,
     payoutsEnabled: account.payouts_enabled,
     detailsSubmitted: account.details_submitted,
+    requirementsCurrentlyDue: account.requirements?.currently_due ?? [],
+    disabledReason: account.requirements?.disabled_reason ?? null,
+    capabilities: {
+      cardPayments: normaliseCapability(account.capabilities?.card_payments),
+      transfers: normaliseCapability(account.capabilities?.transfers),
+      linkPayments: normaliseCapability(account.capabilities?.link_payments),
+    },
   };
 }

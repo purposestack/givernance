@@ -54,17 +54,35 @@ const StripeConnectResponse = Type.Object({
   accountId: Type.String(),
 });
 
+const StripeCapabilityStatusSchema = Type.Union([
+  Type.Literal("active"),
+  Type.Literal("pending"),
+  Type.Literal("inactive"),
+  Type.Literal("unrequested"),
+]);
+
 /**
  * GET response — the "connection status" resource always exists for any
  * authenticated org, but `accountId` is `null` when the tenant has not yet
  * onboarded. Contrast with `StripeConnectResponse.accountId` (POST) which
  * is non-null because POST always produces an account.
+ *
+ * `requirementsCurrentlyDue` + `disabledReason` + per-capability statuses
+ * (issue #201) let the Settings UI tell the operator *why* charges aren't
+ * enabled instead of "Onboarding incomplete" with no remediation hint.
  */
 const StripeConnectStatusResponse = Type.Object({
   accountId: Type.Union([Type.String(), Type.Null()]),
   chargesEnabled: Type.Boolean(),
   payoutsEnabled: Type.Boolean(),
   detailsSubmitted: Type.Boolean(),
+  requirementsCurrentlyDue: Type.Array(Type.String()),
+  disabledReason: Type.Union([Type.String(), Type.Null()]),
+  capabilities: Type.Object({
+    cardPayments: StripeCapabilityStatusSchema,
+    transfers: StripeCapabilityStatusSchema,
+    linkPayments: StripeCapabilityStatusSchema,
+  }),
 });
 
 export async function paymentRoutes(app: FastifyInstance) {

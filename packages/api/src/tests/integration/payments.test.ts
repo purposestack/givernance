@@ -56,6 +56,29 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+/**
+ * Default Stripe Connect status — fully populated so the route's TypeBox
+ * response validation passes. Tests override the fields they care about.
+ * Mirrors the `StripeConnectStatus` interface in
+ * `modules/payments/service.ts`.
+ */
+function makeStatus(overrides: Record<string, unknown> = {}) {
+  return {
+    accountId: null,
+    chargesEnabled: false,
+    payoutsEnabled: false,
+    detailsSubmitted: false,
+    requirementsCurrentlyDue: [],
+    disabledReason: null,
+    capabilities: {
+      cardPayments: "unrequested",
+      transfers: "unrequested",
+      linkPayments: "unrequested",
+    },
+    ...overrides,
+  };
+}
+
 // ─── Stripe Connect Status ─────────────────────────────────────────────────
 
 describe("GET /v1/admin/stripe-connect", () => {
@@ -93,12 +116,19 @@ describe("GET /v1/admin/stripe-connect", () => {
     // `getStripeConnectStatus` is mocked, so we assert the route passes
     // the **caller's** orgId through, not the params or body. Tenant B's
     // org_admin sees Tenant B's account, never Tenant A's.
-    mockGetStripeConnectStatus.mockResolvedValueOnce({
-      accountId: "acct_test_tenant_b",
-      chargesEnabled: true,
-      payoutsEnabled: true,
-      detailsSubmitted: true,
-    });
+    mockGetStripeConnectStatus.mockResolvedValueOnce(
+      makeStatus({
+        accountId: "acct_test_tenant_b",
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        detailsSubmitted: true,
+        capabilities: {
+          cardPayments: "active",
+          transfers: "active",
+          linkPayments: "active",
+        },
+      }),
+    );
     const token = signTokenB(app);
     const res = await app.inject({
       method: "GET",
@@ -115,12 +145,7 @@ describe("GET /v1/admin/stripe-connect", () => {
   });
 
   it("returns the not-connected shape for a fresh tenant", async () => {
-    mockGetStripeConnectStatus.mockResolvedValueOnce({
-      accountId: null,
-      chargesEnabled: false,
-      payoutsEnabled: false,
-      detailsSubmitted: false,
-    });
+    mockGetStripeConnectStatus.mockResolvedValueOnce(makeStatus());
 
     const token = signToken(app);
     const res = await app.inject({
@@ -136,17 +161,31 @@ describe("GET /v1/admin/stripe-connect", () => {
         chargesEnabled: false,
         payoutsEnabled: false,
         detailsSubmitted: false,
+        requirementsCurrentlyDue: [],
+        disabledReason: null,
+        capabilities: {
+          cardPayments: "unrequested",
+          transfers: "unrequested",
+          linkPayments: "unrequested",
+        },
       },
     });
   });
 
   it("returns the live capability flags when the tenant has a connected account", async () => {
-    mockGetStripeConnectStatus.mockResolvedValueOnce({
-      accountId: "acct_test_456",
-      chargesEnabled: true,
-      payoutsEnabled: true,
-      detailsSubmitted: true,
-    });
+    mockGetStripeConnectStatus.mockResolvedValueOnce(
+      makeStatus({
+        accountId: "acct_test_456",
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        detailsSubmitted: true,
+        capabilities: {
+          cardPayments: "active",
+          transfers: "active",
+          linkPayments: "active",
+        },
+      }),
+    );
 
     const token = signToken(app);
     const res = await app.inject({
@@ -159,6 +198,46 @@ describe("GET /v1/admin/stripe-connect", () => {
     const body = res.json<{ data: { accountId: string; chargesEnabled: boolean } }>();
     expect(body.data.accountId).toBe("acct_test_456");
     expect(body.data.chargesEnabled).toBe(true);
+  });
+
+  it("surfaces requirements.currently_due + disabled_reason when account is partial (issue #201)", async () => {
+    mockGetStripeConnectStatus.mockResolvedValueOnce(
+      makeStatus({
+        accountId: "acct_test_partial",
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        detailsSubmitted: true,
+        requirementsCurrentlyDue: ["external_account", "individual.id_number"],
+        disabledReason: "requirements.past_due",
+        capabilities: {
+          cardPayments: "inactive",
+          transfers: "inactive",
+          linkPayments: "inactive",
+        },
+      }),
+    );
+
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/stripe-connect",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: {
+        requirementsCurrentlyDue: string[];
+        disabledReason: string | null;
+        capabilities: { cardPayments: string };
+      };
+    }>();
+    expect(body.data.requirementsCurrentlyDue).toEqual([
+      "external_account",
+      "individual.id_number",
+    ]);
+    expect(body.data.disabledReason).toBe("requirements.past_due");
+    expect(body.data.capabilities.cardPayments).toBe("inactive");
   });
 
   it("masks Stripe errors as 502 (no provider details leak)", async () => {
