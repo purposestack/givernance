@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, ExternalLink, Lock } from "lucide-react";
+import { AlertTriangle, CreditCard, ExternalLink, Lock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
@@ -108,6 +108,10 @@ export function StripeConnectPanel({ canManageTenant }: StripeConnectPanelProps)
             </div>
           ) : null}
 
+          {status && status.accountId && !status.chargesEnabled ? (
+            <RequirementsList status={status} />
+          ) : null}
+
           {errorMessage ? <p className="mt-3 text-sm text-error">{errorMessage}</p> : null}
         </div>
 
@@ -164,4 +168,61 @@ function describeState(
   if (!status || !status.accountId) return "notConnected";
   if (status.chargesEnabled) return "connected";
   return "pending";
+}
+
+/**
+ * Render the remediation list when an account is onboarded but charges
+ * are disabled. Stripe gives us machine-readable requirement keys (e.g.
+ * `external_account`, `individual.id_number`); we translate them via
+ * i18n to human-readable labels and fall back to the raw key for
+ * requirement keys we haven't translated yet (so the operator at least
+ * sees what's missing rather than a localised "?"). Issue #201.
+ */
+function RequirementsList({ status }: { status: StripeConnectStatus }) {
+  const t = useTranslations("settings.stripeConnect.requirements");
+  const tFields = useTranslations("settings.stripeConnect.requirements.fields");
+
+  if (status.requirementsCurrentlyDue.length === 0 && !status.disabledReason) {
+    return null;
+  }
+
+  return (
+    // `tertiary` is the design-system's amber/warning tone — the right
+    // palette here precisely *because* this is a remediation state the
+    // operator needs to act on, contrast with the test-mode banner which
+    // is informational and uses `secondary-fixed`.
+    <div className="mt-4 rounded-2xl border border-tertiary bg-tertiary-container px-4 py-3 text-sm text-on-tertiary-container">
+      <div className="flex items-start gap-2">
+        <AlertTriangle size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+        <div className="space-y-2">
+          <p className="font-semibold">{t("title")}</p>
+          {status.requirementsCurrentlyDue.length > 0 ? (
+            <ul className="list-disc space-y-1 pl-5">
+              {status.requirementsCurrentlyDue.map((key) => {
+                // Translate known requirement keys; fall back to the raw key
+                // for ones we haven't covered yet (Stripe ships ~20 of them).
+                let label: string;
+                try {
+                  label = tFields(key as never);
+                } catch {
+                  label = key;
+                }
+                return (
+                  <li key={key}>
+                    <span>{label}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          {status.disabledReason ? (
+            <p className="text-xs">
+              {t("disabledReason")}: <code>{status.disabledReason}</code>
+            </p>
+          ) : null}
+          <p className="text-xs">{t("hint")}</p>
+        </div>
+      </div>
+    </div>
+  );
 }
