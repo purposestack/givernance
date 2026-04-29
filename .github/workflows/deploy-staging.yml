@@ -139,6 +139,11 @@ jobs:
           KEYCLOAK_URL: https://auth.staging.givernance.org
           KEYCLOAK_ADMIN: admin
           KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD || 'staging_keycloak_123' }}
+          # Source-of-truth for the `givernance-admin` client secret. The
+          # sync script rotates the imported placeholder so Admin API calls
+          # from the backend authenticate cleanly. Same value Kamal injects
+          # into the API container.
+          KEYCLOAK_ADMIN_CLIENT_SECRET: ${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET || 'staging_keycloak_client_secret_123' }}
         run: bash scripts/keycloak-sync-realm.sh
 
       - name: Dump Keycloak logs on failure
