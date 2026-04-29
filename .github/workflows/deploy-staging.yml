@@ -167,13 +167,17 @@ jobs:
           # happens here on the runner, not on the VPS shell parsing.
           # The inner `sh -c '...'` gets the password from the docker `-e`
           # env, not the command line — so it doesn't show up in `ps aux`.
+          # `--entrypoint sh` is required because recent minio/mc images set
+          # `mc` as the entrypoint, which would parse `sh -c ...` as a (non-
+          # existent) `mc sh` subcommand. Pin matches docker-compose.yml.
           REMOTE_CMD="docker run --rm --network kamal \
             -e MINIO_PASS='${MINIO_ROOT_PASSWORD}' \
-            minio/mc:latest \
-            sh -c 'mc alias set local http://givernance-minio:9000 admin \"\$MINIO_PASS\" \
-                   && mc mb --ignore-existing local/${S3_RECEIPTS_BUCKET} \
-                   && mc mb --ignore-existing local/${S3_CAMPAIGNS_BUCKET} \
-                   && echo MinIO buckets ready: ${S3_RECEIPTS_BUCKET}, ${S3_CAMPAIGNS_BUCKET}'"
+            --entrypoint sh \
+            minio/mc:RELEASE.2024-11-21T17-21-54Z \
+            -c 'mc alias set local http://givernance-minio:9000 admin \"\$MINIO_PASS\" \
+                && mc mb --ignore-existing local/${S3_RECEIPTS_BUCKET} \
+                && mc mb --ignore-existing local/${S3_CAMPAIGNS_BUCKET} \
+                && echo MinIO buckets ready: ${S3_RECEIPTS_BUCKET}, ${S3_CAMPAIGNS_BUCKET}'"
           kamal server exec -c config/deploy-staging.yml "$REMOTE_CMD"
 
       # The sync script reconciles the live realm (mappers, scopes, role
