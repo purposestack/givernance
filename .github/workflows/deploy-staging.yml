@@ -27,6 +27,14 @@ jobs:
       # into the `staging` environment.
       STAGING_VPS_IP: ${{ secrets.VPS_IP }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Exported here (not just in the secrets-write step below) so the
+      # ERB template in `config/deploy-staging.yml` resolves it at
+      # `kamal setup` time. `NEXT_PUBLIC_*` is baked into the Next.js
+      # bundle at Docker build via `builder.args` — runtime env injection
+      # cannot reach it. Empty fallback keeps the deploy from blocking on
+      # a missing secret; the donor flow surfaces a clear "Stripe is not
+      # configured" message instead.
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -58,12 +66,24 @@ jobs:
           # EMAIL_PROVIDER=resend; missing key crashes the worker on first
           # send. No fallback: an unset secret here is a deploy bug.
           RESEND_KEY="${{ secrets.RESEND_API_KEY }}"
+          # Stripe — empty fallback intentionally surfaces the user-facing
+          # "Stripe is not configured" message instead of silently no-op'ing
+          # the route. Set the actual values via `gh secret set --env staging`
+          # (see docs/dev/stripe-local-setup.md → Staging deployment).
+          STRIPE_SECRET="${{ secrets.STRIPE_SECRET_KEY || '' }}"
+          STRIPE_WEBHOOK_SEC="${{ secrets.STRIPE_WEBHOOK_SECRET || '' }}"
+          # MinIO server-side AES256 encryption key. Format
+          # `<key-name>:<base64-32-byte-secret>`; generate with
+          # `openssl rand -base64 32`. Without this the worker DLQs every
+          # receipt PDF upload (issue #193 follow-up).
+          MINIO_KMS="${{ secrets.MINIO_KMS_SECRET_KEY || 'staging-kms:c3RhZ2luZy1taW5pby1rbXMtZmFsbGJhY2stMzItYnl0ZXM=' }}"
 
           cat <<EOF > .kamal/secrets
           GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           POSTGRES_PASSWORD=$PG_PASS
           REDIS_PASSWORD=$REDIS_PASS
           MINIO_ROOT_PASSWORD=$MINIO_PASS
+          MINIO_KMS_SECRET_KEY=$MINIO_KMS
           KEYCLOAK_ADMIN_PASSWORD=$KC_PASS
           SESSION_SECRET=$SESSION_SEC
           KC_DB_PASSWORD=$PG_PASS
@@ -73,6 +93,8 @@ jobs:
           S3_SECRET_ACCESS_KEY=$MINIO_PASS
           KEYCLOAK_ADMIN_CLIENT_SECRET=$KC_CLIENT_SECRET
           RESEND_API_KEY=$RESEND_KEY
+          STRIPE_SECRET_KEY=$STRIPE_SECRET
+          STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SEC
           EOF
 
       - name: Build and push Keycloak image
@@ -128,6 +150,31 @@ jobs:
 
       - name: Run DB Seed
         run: kamal app exec -c config/deploy-staging.yml --reuse "pnpm --filter @givernance/api run db:seed"
+
+      # Ensure the MinIO buckets the worker writes receipt + campaign PDFs
+      # to actually exist (issue #193 follow-up). Mirrors the local
+      # `minio-init` sidecar in docker-compose.yml. Idempotent — `mc mb
+      # --ignore-existing` is a no-op when buckets are already present.
+      # Runs on the staging VPS via `kamal server exec`, against the
+      # `kamal` Docker network (where the minio accessory lives).
+      - name: Ensure MinIO buckets exist
+        env:
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD || 'staging_minio_123' }}
+          S3_RECEIPTS_BUCKET: ${{ secrets.S3_RECEIPTS_BUCKET || 'receipts' }}
+          S3_CAMPAIGNS_BUCKET: ${{ secrets.S3_CAMPAIGNS_BUCKET || 'campaigns' }}
+        run: |
+          # Build the remote command in a variable so the password expansion
+          # happens here on the runner, not on the VPS shell parsing.
+          # The inner `sh -c '...'` gets the password from the docker `-e`
+          # env, not the command line — so it doesn't show up in `ps aux`.
+          REMOTE_CMD="docker run --rm --network kamal \
+            -e MINIO_PASS='${MINIO_ROOT_PASSWORD}' \
+            minio/mc:latest \
+            sh -c 'mc alias set local http://givernance-minio:9000 admin \"\$MINIO_PASS\" \
+                   && mc mb --ignore-existing local/${S3_RECEIPTS_BUCKET} \
+                   && mc mb --ignore-existing local/${S3_CAMPAIGNS_BUCKET} \
+                   && echo MinIO buckets ready: ${S3_RECEIPTS_BUCKET}, ${S3_CAMPAIGNS_BUCKET}'"
+          kamal server exec -c config/deploy-staging.yml "$REMOTE_CMD"
 
       # The sync script reconciles the live realm (mappers, scopes, role
       # assignments) against the source-of-truth in scripts/keycloak-sync-realm.sh.

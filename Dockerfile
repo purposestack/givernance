@@ -19,6 +19,16 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 ARG API_URL=http://localhost:4000
 ENV API_URL=$API_URL
 
+# Bake the Stripe publishable key into the Next.js client bundle. Same
+# constraint as API_URL: `NEXT_PUBLIC_*` env vars are inlined at build
+# time (Next.js replaces `process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+# with the literal string in the JS bundle), so a runtime `env.clear`
+# would never reach the browser. Empty default means the donor flow's
+# "Stripe is not configured for this environment" error path is what a
+# misconfigured deploy will surface — not a silent broken Stripe.js init.
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=""
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+
 # Build all workspace projects
 RUN pnpm run -r build
 

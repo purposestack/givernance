@@ -207,10 +207,96 @@ Check the worker terminal — the BullMQ job processor logs `Failed to process S
 
 ---
 
+## Staging deployment
+
+Staging (`staging.givernance.org`) runs the same Stripe Connect code as local dev but reads its credentials from GitHub Actions secrets via Kamal (`config/deploy-staging.yml` + `.github/workflows/deploy-staging.yml`). Setting it up the first time is a 4-step ritual; afterwards the deploy workflow re-applies the config on every push to `main`.
+
+### Step 1 — register GitHub Actions secrets
+
+Five new repo-level secrets are needed for staging Stripe to work. The deploy workflow has empty fallbacks for all of them so it doesn't crash on a fresh repo, but the donor flow will block at "Stripe is not configured" (publishable key missing) or 502 on `Continue to payment` (secret key missing) until you set them.
+
+```sh
+# Run from a machine with `gh` auth + repo admin access.
+
+# 1. Stripe platform credentials. Use sk_test_… / pk_test_… for staging
+#    (we never want real money to move on a staging environment).
+gh secret set STRIPE_SECRET_KEY --repo purposestack/givernance \
+  --body "sk_test_…"
+gh secret set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY --repo purposestack/givernance \
+  --body "pk_test_…"
+
+# 2. Webhook signing secret. This is the dashboard-issued endpoint
+#    secret (NOT the `whsec_…` from `stripe listen`, which is a separate
+#    local-dev-only value). Step 3 below describes how to mint this from
+#    the Stripe dashboard.
+gh secret set STRIPE_WEBHOOK_SECRET --repo purposestack/givernance \
+  --body "whsec_…"
+
+# 3. MinIO KMS key for AES256 server-side encryption. Worker DLQs every
+#    receipt PDF without this. Generate fresh:
+gh secret set MINIO_KMS_SECRET_KEY --repo purposestack/givernance \
+  --body "staging-kms:$(openssl rand -base64 32)"
+
+# 4. Optional — bucket name overrides. Defaults to `receipts` /
+#    `campaigns`; only set if your staging tenant uses different names.
+# gh secret set S3_RECEIPTS_BUCKET --body "receipts"
+# gh secret set S3_CAMPAIGNS_BUCKET --body "campaigns"
+```
+
+The IDE will lint these as "Context access might be invalid" until they're registered — soft warning, deploys succeed regardless. The fallbacks in the workflow are deliberate so deploys never fail on a missing secret; the user-facing surface is what tells you something's misconfigured.
+
+### Step 2 — register the staging Stripe webhook endpoint
+
+In the Stripe dashboard (test mode):
+
+1. Go to **Developers → Webhooks → Add endpoint**.
+2. **URL**: `https://api.staging.givernance.org/v1/donations/stripe-webhook`
+3. **Events to send**:
+    - `payment_intent.succeeded`
+    - `charge.refunded`
+    - `account.updated` (subscribe even though Givernance ingests this passively today — issue #62 will wire the auto-promote-to-live path)
+4. **Listen to events on Connected accounts** — toggle ON. Without this, donor payments on connected accounts fire events to *the connected account's* webhooks, not yours. Givernance is the platform; we want the platform-side fan-in.
+5. Save. Copy the **Signing secret** (starts with `whsec_`) into the `STRIPE_WEBHOOK_SECRET` GitHub secret from step 1.
+
+If you skip step 4, donations land in Stripe and never reach our worker — a silent failure mode that only shows up on the first donor test.
+
+### Step 3 — register the platform Connect account
+
+Same as the local-dev step 2, but in test mode against your staging Stripe account (which can be the same Stripe account you use for local — Stripe scopes everything to test/live). Confirm:
+
+- Platform settings → Connect → Get started
+- Connected account type: **Express** (matches `type: "express"` in `packages/api/src/modules/payments/service.ts`)
+- Capabilities: leave the defaults; the API requests `card_payments`, `transfers`, `link_payments` on every account it creates.
+
+### Step 4 — push to `main`
+
+The deploy workflow does the rest:
+
+- Builds the Docker image with `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` baked in (Next.js inlines `NEXT_PUBLIC_*` at build time, so this CAN'T be done at runtime — see Dockerfile + `config/deploy-staging.yml` `builder.args`).
+- Writes the runtime secrets (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `MINIO_KMS_SECRET_KEY`) to `.kamal/secrets`.
+- Restarts the MinIO accessory with the KMS key configured.
+- Runs `db:migrate` + `db:seed` — same as before.
+- **New**: runs an idempotent bucket-creation step (`mc mb --ignore-existing`) so the worker has somewhere to upload receipts on the very first donation.
+
+After deploy, smoke-test by:
+
+1. Signing in to `https://staging.givernance.org` as the seeded admin.
+2. Settings → Stripe Connect → onboard.
+3. Make a test donation on the public campaign page (test card `4242 4242 4242 4242`).
+4. Confirm in Stripe dashboard: webhook event delivered with HTTP 200.
+5. Confirm in app: donation appears, receipt PDF generated.
+
+### Rotating staging credentials
+
+- **Stripe keys**: regenerate in the dashboard, update both `gh secret set …` values, redeploy.
+- **MINIO_KMS_SECRET_KEY**: generate a new value, update the secret, redeploy. **Existing receipts encrypted with the old key won't be readable** — staging data is non-load-bearing so this is acceptable; production rotation will need MinIO's `MINIO_KMS_AUTO_ENCRYPTION` config to keep both keys mounted.
+
+---
+
 ## What's not covered yet
 
 - **`account.updated` webhook handling** — when a connected account flips `charges_enabled: true`, we should auto-promote the tenant to live mode. Tracked in [issue #62](https://github.com/purposestack/givernance/issues/62).
 - **Mollie gateway** — co-primary for FR/BE/NL, gated behind `ff.payments.mollie`. Same issue.
-- **Production key handling** — restricted keys, key rotation, AWS Secrets Manager / Scaleway equivalent. Tracked in `docs/06-security-compliance.md` and `docs/20-payment-strategy.md`.
+- **Production key handling** — restricted keys, key rotation against Scaleway Object Storage's native SSE-S3, separate Stripe live-mode platform account, KMS-rotation-with-fallback. Tracked in `docs/06-security-compliance.md` and `docs/20-payment-strategy.md`.
 
 If you hit a snag this guide doesn't cover, file an issue with the `payments` label and link the failing log line.
