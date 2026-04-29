@@ -96,35 +96,66 @@ else
   log "User profile already permissive — no change."
 fi
 
-# 1.b Reconcile the realm-level `passwordPolicy`. The realm JSON declares
-#     `length(12) and notUsername` to match the API-side `minLength: 12` and
-#     prevent a future direct-admin path from setting trivial passwords.
-#     Two reasons to reconcile at runtime as well:
-#       - `--import-realm` skips fields on existing realms (IGNORE_EXISTING),
-#         so the JSON change alone never reaches a dev's running container.
-#       - The PR #143 review caught a JS-template-literal accident
-#         (`notUsername(undefined)`) that landed in the imported realm and
-#         silently degraded the policy. Reconciling here means the policy
-#         state on disk is the source of truth even when the import was
-#         lossy or the operator hand-edited it via the admin console.
+# 1.b Reconcile realm-level fields that `--import-realm` silently skips
+#     when the realm already exists. Despite `KC_IMPORT_STRATEGY=
+#     OVERWRITE_EXISTING` being set in the env, the start-time import
+#     path still uses IGNORE_EXISTING (the env var only takes effect via
+#     the dedicated `kc.sh import` command). Confirmed in KC 26.6.1
+#     boot logs:
+#       "Realm 'givernance' already exists. Import skipped"
+#       "Strategy: IGNORE_EXISTING"
+#
+#     Reconciling here means the realm JSON stays the source of truth
+#     for these fields even when the start-time import was lossy or the
+#     operator hand-edited them via the admin console:
+#       - passwordPolicy → matches API-side `minLength: 12` and prevents
+#         a future direct-admin path from setting trivial passwords.
+#         (PR #143 review also caught a `notUsername(undefined)` accident
+#         that this same reconciliation block now repairs.)
+#       - loginTheme → required for the custom Givernance theme to
+#         render; without it KC silently falls back to `keycloak.v2`.
+#       - internationalizationEnabled / supportedLocales / defaultLocale
+#         → drive the locale picker and the per-locale message bundles
+#         (issue #153 / locale-resolution flows).
 DESIRED_PASSWORD_POLICY="${KEYCLOAK_PASSWORD_POLICY:-length(12) and notUsername}"
 realm_repr=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}")
-patched_realm=$(printf '%s' "$realm_repr" | DESIRED="$DESIRED_PASSWORD_POLICY" python3 -c '
+patched_realm=$(printf '%s' "$realm_repr" | DESIRED_POLICY="$DESIRED_PASSWORD_POLICY" python3 -c '
 import json, os, sys
 d = json.load(sys.stdin)
-desired = os.environ["DESIRED"]
-changed = d.get("passwordPolicy") != desired
-d["passwordPolicy"] = desired
-print(json.dumps({"changed": changed, "realm": d}))
+desired_policy = os.environ["DESIRED_POLICY"]
+desired_login_theme = "givernance"
+desired_i18n = True
+desired_locales = ["en", "fr"]
+desired_default_locale = "en"
+
+changes = []
+if d.get("passwordPolicy") != desired_policy:
+    d["passwordPolicy"] = desired_policy
+    changes.append("passwordPolicy")
+if d.get("loginTheme") != desired_login_theme:
+    d["loginTheme"] = desired_login_theme
+    changes.append("loginTheme")
+if d.get("internationalizationEnabled") != desired_i18n:
+    d["internationalizationEnabled"] = desired_i18n
+    changes.append("internationalizationEnabled")
+if sorted(d.get("supportedLocales") or []) != sorted(desired_locales):
+    d["supportedLocales"] = desired_locales
+    changes.append("supportedLocales")
+if d.get("defaultLocale") != desired_default_locale:
+    d["defaultLocale"] = desired_default_locale
+    changes.append("defaultLocale")
+
+print(json.dumps({"changes": changes, "realm": d}))
 ')
-if printf '%s' "$patched_realm" | python3 -c 'import json,sys;sys.exit(0 if json.load(sys.stdin)["changed"] else 1)'; then
+realm_changes=$(printf '%s' "$patched_realm" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["changes"]))')
+if [ -n "$realm_changes" ]; then
   new_realm=$(printf '%s' "$patched_realm" | python3 -c 'import json,sys;print(json.dumps(json.load(sys.stdin)["realm"]))')
-  curl -sS -o /dev/null -w 'realm passwordPolicy update: HTTP %{http_code}\n' \
+  curl -sS -o /dev/null -w 'realm fields update: HTTP %{http_code}\n' \
     -X PUT "${KC_URL}/admin/realms/${REALM}" \
     "${auth[@]}" -H "Content-Type: application/json" -d "$new_realm"
-  log "Reconciled passwordPolicy on realm '${REALM}' to '${DESIRED_PASSWORD_POLICY}'."
+  log "Reconciled realm fields on '${REALM}': ${realm_changes}"
 else
-  log "passwordPolicy already matches '${DESIRED_PASSWORD_POLICY}' — no change."
+  log "Realm fields (passwordPolicy, loginTheme, i18n, locales) already match — no change."
 fi
 
 # 2. Ensure the `organization` client scope is the single home for all
