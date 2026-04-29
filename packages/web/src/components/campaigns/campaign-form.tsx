@@ -67,6 +67,7 @@ interface CampaignFormValues {
   defaultCurrency: CampaignCurrency;
   parentId: string;
   operationalCostCents: number | null;
+  goalAmountCents: number | null;
   fundIds: string[];
 }
 
@@ -91,6 +92,7 @@ export function CampaignForm(props: CampaignFormProps) {
     defaultCurrency: props.campaign?.defaultCurrency ?? "EUR",
     parentId: props.campaign?.parentId ?? "",
     operationalCostCents: props.campaign?.operationalCostCents ?? null,
+    goalAmountCents: props.campaign?.goalAmountCents ?? null,
     fundIds: [],
   };
 
@@ -330,6 +332,26 @@ export function CampaignForm(props: CampaignFormProps) {
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="goalAmountCents"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("fields.goalAmount")}</FormLabel>
+                  <FormControl>
+                    <AmountInput
+                      value={field.value}
+                      onChange={(nextValue) => field.onChange(nextValue)}
+                      placeholder={t("fields.goalAmountPlaceholder")}
+                    />
+                  </FormControl>
+                  <p className="text-xs text-on-surface-variant">
+                    {t("fields.goalAmountHint")}
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
         </FormSection>
 
@@ -386,6 +408,7 @@ function toApiPayload(values: CampaignFormValues) {
     defaultCurrency: values.defaultCurrency,
     parentId: values.parentId?.trim() || null,
     operationalCostCents: values.operationalCostCents,
+    goalAmountCents: values.goalAmountCents,
     fundIds: values.fundIds.map((value) => value.trim()).filter((value) => value !== ""),
   };
 }
@@ -409,6 +432,9 @@ function buildResolver(): Resolver<CampaignFormValues> {
     }
     if (values.operationalCostCents !== null) {
       cleaned.operationalCostCents = values.operationalCostCents;
+    }
+    if (values.goalAmountCents !== null) {
+      cleaned.goalAmountCents = values.goalAmountCents;
     }
     cleaned.fundIds = values.fundIds.map((value) => value.trim()).filter((value) => value !== "");
 

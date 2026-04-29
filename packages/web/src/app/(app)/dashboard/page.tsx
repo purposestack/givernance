@@ -408,22 +408,28 @@ function CampaignProgressItem({
           {formatCurrency(raisedCents, locale)}
         </span>
       </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-md bg-surface-container">
-        <div
-          className="h-full rounded-md bg-secondary transition-all duration-500 ease-out"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-      <p className="mt-2 text-xs text-on-surface-variant">
-        {goalCents > 0
-          ? translate("campaigns.progressWithGoal", {
+      {goalCents > 0 ? (
+        <>
+          <div className="mt-4 h-2 overflow-hidden rounded-md bg-surface-container">
+            <div
+              className="h-full rounded-md bg-secondary transition-all duration-500 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs text-on-surface-variant">
+            {translate("campaigns.progressWithGoal", {
               progress,
               goal: formatCurrency(goalCents, locale),
-            })
-          : translate("campaigns.progressWithoutGoal", {
-              donations: stats?.donationCount ?? 0,
             })}
-      </p>
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 text-xs text-on-surface-variant">
+          {translate("campaigns.progressWithoutGoal", {
+            donations: stats?.donationCount ?? 0,
+          })}
+        </p>
+      )}
     </article>
   );
 }
