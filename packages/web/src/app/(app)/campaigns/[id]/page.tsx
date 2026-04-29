@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, Gift, Globe, Pencil, Trophy } from "lucide-react";
+import { ArrowLeft, Gift, Globe, Pencil, Trophy } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -6,11 +6,11 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { CampaignRoiChart } from "@/components/campaigns/campaign-roi-chart";
 import { CampaignStatusActions } from "@/components/campaigns/campaign-status-actions";
 import { EmptyState } from "@/components/shared/empty-state";
+import { InfoTooltipButton } from "@/components/shared/info-tooltip-button";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
@@ -348,22 +348,10 @@ async function CostBreakdownCard({
         <CardHeader className="gap-2">
           <div className="flex items-center gap-2">
             <CardTitle>{t("roi.breakdownTitle")}</CardTitle>
-            <TooltipProvider delayDuration={150}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex size-7 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
-                    aria-label={t("roi.breakdownTooltipLabel")}
-                  >
-                    <CircleHelp size={16} aria-hidden="true" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-72 text-sm leading-relaxed">
-                  {t("roi.breakdownTooltip")}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <InfoTooltipButton
+              ariaLabel={t("roi.breakdownTooltipLabel")}
+              content={t("roi.breakdownTooltip")}
+            />
           </div>
           <CardDescription>{t("roi.breakdownSubtitle")}</CardDescription>
         </CardHeader>
