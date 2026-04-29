@@ -381,7 +381,7 @@
           "createdAt": "Created at",
           "updatedAt": "Last updated",
           "actions": "Actions",
-      "tags": "Tags"
+          "tags": "Tags"
         },
         "statuses": {
           "active": "Active",
@@ -658,7 +658,7 @@
         "createdAt": "Invited",
         "joinedAt": "Joined",
         "actions": "Actions",
-      "tags": "Tags"
+        "tags": "Tags"
       },
       "roles": {
         "org_admin": "Admin",
@@ -781,7 +781,7 @@
         "description": "Description",
         "createdAt": "Created",
         "actions": "Actions",
-      "tags": "Tags"
+        "tags": "Tags"
       },
       "actions": {
         "new": "New fund",
@@ -931,7 +931,8 @@
       "newDonorsThisMonth": "{count, plural, =0 {No new donors this month} one {# new donor this month} other {# new donors this month}}",
       "grantDeadlines": "Grant deadlines",
       "noGrantDeadlinesValue": "0",
-      "noGrantDeadlinesHint": "Grant tracking is coming in a later sprint."
+      "noGrantDeadlinesHint": "Grant tracking is coming in a later sprint.",
+      "trendLabel": "vs previous month"
     },
     "recentDonations": {
       "title": "Recent donations",
@@ -992,7 +993,10 @@
     },
     "filters": {
       "dateFrom": "From",
-      "dateTo": "To"
+      "dateTo": "To",
+      "searchPlaceholder": "Search a donor…",
+      "receiptLabel": "Receipts",
+      "allReceipts": "All receipts"
     },
     "actions": {
       "new": "New donation",
@@ -1153,6 +1157,11 @@
       "beneficiary": "Beneficiary",
       "partner": "Partner"
     },
+    "filters": {
+      "searchPlaceholder": "Search a contact…",
+      "typeLabel": "Type",
+      "allTypes": "All types"
+    },
     "actions": {
       "new": "New constituent",
       "menu": "Open actions for {name}",
@@ -1202,6 +1211,11 @@
       "nominative_postal": "Nominative postal",
       "door_drop": "Door drop",
       "digital": "Digital"
+    },
+    "filters": {
+      "searchPlaceholder": "Search a campaign…",
+      "statusLabel": "Status",
+      "allStatuses": "All statuses"
     },
     "actions": {
       "new": "New Campaign",

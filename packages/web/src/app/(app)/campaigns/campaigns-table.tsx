@@ -98,6 +98,8 @@ export function CampaignsTable({
   const searchParams = useSearchParams();
   const locale = useLocale();
   const t = useTranslations("campaigns");
+  const tStatus = useTranslations("campaigns.status");
+  const tFilters = useTranslations("campaigns.filters");
   const [closeTarget, setCloseTarget] = useState<Campaign | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? "");
@@ -303,7 +305,7 @@ export function CampaignsTable({
             size={16}
           />
           <Input
-            placeholder="Rechercher une campagne..."
+            placeholder={tFilters("searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
@@ -311,13 +313,13 @@ export function CampaignsTable({
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Tous les statuts" />
+            <SelectValue placeholder={tFilters("allStatuses")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous les statuts</SelectItem>
-            <SelectItem value="draft">Brouillon</SelectItem>
-            <SelectItem value="active">Actif</SelectItem>
-            <SelectItem value="closed">Fermé</SelectItem>
+            <SelectItem value="all">{tFilters("allStatuses")}</SelectItem>
+            <SelectItem value="draft">{tStatus("draft")}</SelectItem>
+            <SelectItem value="active">{tStatus("active")}</SelectItem>
+            <SelectItem value="closed">{tStatus("closed")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
