@@ -19,7 +19,7 @@ export interface Campaign {
   updatedAt: string;
 }
 
-export type CampaignSortField = "name" | "type" | "status" | "createdAt";
+export type CampaignSortField = "name" | "type" | "status" | "progress" | "createdAt";
 export type CampaignSortOrder = "asc" | "desc";
 
 export interface CampaignListQuery {

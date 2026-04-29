@@ -486,6 +486,99 @@ describe("GET /v1/campaigns — server-side sort", () => {
     const sorted = [...names].sort();
     expect(names).toEqual(sorted);
   });
+
+  it("sort=progress&order=desc orders by raised/goal ratio, no-goal campaigns last", async () => {
+    // The seed in beforeAll attaches Bea→Beta (1000), Cara→Alpha (5000),
+    // Dan→Zeta (9999). None of those campaigns have a goal yet (the
+    // seed creates campaigns without goalAmountCents), so they all sort
+    // under NULLS LAST regardless of direction. Set distinct goals on
+    // two of them so we can assert directionality on the ratio:
+    //   - Beta:  goal 2000  → 1000/2000 = 50%
+    //   - Alpha: goal 10000 → 5000/10000 = 50% as well, but with a
+    //                          different absolute → tiebreak via
+    //     campaign id is fine for the directionality assertion.
+    //   - Zeta:  goal 5000  → 9999/5000 = 199.98% (overfunded)
+    //   - Zeta should be first under desc; Beta and Alpha next at 50%;
+    //     campaigns without goals sort LAST.
+    //
+    // Locate the seeded campaigns and patch their goals via the
+    // public-page goal endpoint (PATCH /v1/campaigns/:id sets
+    // goalAmountCents).
+    const listRes = await app.inject({
+      method: "GET",
+      url: "/v1/campaigns?perPage=100",
+      headers: authHeader(token),
+    });
+    const all = listRes.json<{
+      data: Array<{ id: string; name: string; goalAmountCents: number | null }>;
+    }>().data;
+    const targets = [
+      { name: "Beta Drive", goal: 2000 },
+      { name: "Alpha Push", goal: 10000 },
+      { name: "Zeta Finale", goal: 5000 },
+    ];
+    for (const target of targets) {
+      const row = all.find((c) => c.name === target.name);
+      if (!row) throw new Error(`expected seeded campaign "${target.name}"`);
+      if (row.goalAmountCents !== target.goal) {
+        const patch = await app.inject({
+          method: "PATCH",
+          url: `/v1/campaigns/${row.id}`,
+          headers: authHeader(token),
+          payload: { goalAmountCents: target.goal },
+        });
+        if (patch.statusCode !== 200) {
+          throw new Error(`set goal failed: ${patch.statusCode} ${patch.body}`);
+        }
+      }
+    }
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/campaigns?sort=progress&order=desc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: Array<{ id: string; name: string; goalAmountCents: number | null }>;
+    }>();
+    const indexByName = (name: string) => body.data.findIndex((c) => c.name === name);
+    // Zeta (199%) > Beta (50%) = Alpha (50%); regardless of the 50/50
+    // tiebreak via id, both must precede Zeta only and follow nothing
+    // else with non-null progress.
+    expect(indexByName("Zeta Finale")).toBe(0);
+    expect(indexByName("Beta Drive")).toBeGreaterThan(0);
+    expect(indexByName("Alpha Push")).toBeGreaterThan(0);
+    // Campaigns without a goal (none of the funds-suite campaigns or any
+    // others created by sibling tests in this dedicated tenant) sort
+    // AFTER all goal-bearing campaigns under desc.
+    const noGoalRows = body.data.filter((c) => c.goalAmountCents === null);
+    if (noGoalRows.length > 0) {
+      const lastGoalRowIdx = (() => {
+        for (let i = body.data.length - 1; i >= 0; i--) {
+          if (body.data[i]?.goalAmountCents !== null) return i;
+        }
+        return -1;
+      })();
+      const firstNoGoalIdx = body.data.findIndex((c) => c.goalAmountCents === null);
+      expect(firstNoGoalIdx).toBeGreaterThan(lastGoalRowIdx);
+    }
+  });
+
+  it("sort=progress&order=asc returns the lowest ratio first", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/campaigns?sort=progress&order=asc&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ name: string }> }>();
+    // Asc: Beta (50%) and Alpha (50%) at the start, Zeta (199%) last
+    // among non-null goals.
+    const idx = (n: string) => body.data.findIndex((c) => c.name === n);
+    expect(idx("Zeta Finale")).toBeGreaterThan(idx("Beta Drive"));
+    expect(idx("Zeta Finale")).toBeGreaterThan(idx("Alpha Push"));
+  });
 });
 
 describe("GET /v1/funds — server-side sort", () => {

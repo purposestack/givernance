@@ -10,7 +10,7 @@ import {
   outboxEvents,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, type SQL, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
 /**
@@ -18,7 +18,7 @@ import { withTenantContext } from "../../lib/db.js";
  * Tuple drives both the route's TypeBox literal union and the service-
  * level `normalizeCampaignSort` fallback.
  */
-export const CAMPAIGN_SORT_FIELDS = ["name", "type", "status", "createdAt"] as const;
+export const CAMPAIGN_SORT_FIELDS = ["name", "type", "status", "progress", "createdAt"] as const;
 export type CampaignSortField = (typeof CAMPAIGN_SORT_FIELDS)[number];
 export type CampaignSortOrder = "asc" | "desc";
 
@@ -41,14 +41,40 @@ function normalizeCampaignOrder(value: string | undefined): CampaignSortOrder {
 
 /**
  * ORDER BY for `GET /campaigns`. `name` uses `lower(...)` for
- * case-insensitive sort. Always tiebreaks with `asc(id)` so offset
- * pagination stays deterministic across pages with duplicate sort keys.
+ * case-insensitive sort. `progress` orders by the ratio of net raised
+ * (cleared − refunded base cents) to the public-page goal — campaigns
+ * without a goal sort to the bottom under both directions (NULLS LAST,
+ * same convention as `paymentMethod` / `donor` / `campaign` /
+ * `lastDonation`). Always tiebreaks with `asc(id)` so offset pagination
+ * stays deterministic across pages with duplicate sort keys.
+ *
+ * `progress` references columns from a LEFT JOINed aggregate (`raisedCol`
+ * passed in from `listCampaigns`); their values are determined by the
+ * joined row, not by anything on `campaigns` itself.
  */
-function buildCampaignOrderBy(sort: CampaignSortField, order: CampaignSortOrder) {
+function buildCampaignOrderBy(
+  sort: CampaignSortField,
+  order: CampaignSortOrder,
+  raisedCol: SQL.Aliased<number | null>,
+) {
   const dir = order === "asc" ? asc : desc;
   if (sort === "name") return [dir(sql`lower(${campaigns.name})`), asc(campaigns.id)];
   if (sort === "type") return [dir(campaigns.type), asc(campaigns.id)];
   if (sort === "status") return [dir(campaigns.status), asc(campaigns.id)];
+  if (sort === "progress") {
+    const direction = order === "asc" ? sql`ASC` : sql`DESC`;
+    // CASE returns NULL when no goal is set so those rows sort under
+    // NULLS LAST. `COALESCE(raised, 0)::float / goal` gives a true ratio
+    // (0 for campaigns with a goal but no donations, > 1 for overfunded
+    // — both correctly placed in the asc/desc spectrum).
+    return [
+      sql`(CASE
+        WHEN ${campaignPublicPages.goalAmountCents} IS NULL OR ${campaignPublicPages.goalAmountCents} = 0 THEN NULL
+        ELSE COALESCE(${raisedCol}, 0)::float / ${campaignPublicPages.goalAmountCents}
+      END) ${direction} NULLS LAST`,
+      asc(campaigns.id),
+    ];
+  }
   return [dir(campaigns.createdAt), asc(campaigns.id)];
 }
 
@@ -227,13 +253,34 @@ export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
 
     const where = and(...conditions);
 
+    // Aggregate subquery: net raised cents per campaign (cleared minus
+    // refunded), mirrors the `getCampaignStats` formula. LEFT JOINed
+    // below so campaigns without donations still appear with NULL —
+    // `buildCampaignOrderBy`'s `progress` branch coalesces NULL → 0
+    // before dividing by goal, so a campaign with a goal but no
+    // donations sorts at 0% (last under desc, first under asc).
+    const raisedSq = tx
+      .select({
+        campaignId: donations.campaignId,
+        raisedCents: sql<number | null>`SUM(CASE
+          WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
+          WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}
+          ELSE 0
+        END)`.as("raised_cents"),
+      })
+      .from(donations)
+      .where(eq(donations.orgId, orgId))
+      .groupBy(donations.campaignId)
+      .as("raised");
+
     const [data, countResult] = await Promise.all([
       tx
         .select(campaignSelectFields())
         .from(campaigns)
         .leftJoin(campaignPublicPages, eq(campaignPublicPages.campaignId, campaigns.id))
+        .leftJoin(raisedSq, eq(raisedSq.campaignId, campaigns.id))
         .where(where)
-        .orderBy(...buildCampaignOrderBy(sort, order))
+        .orderBy(...buildCampaignOrderBy(sort, order, raisedSq.raisedCents))
         .limit(perPage)
         .offset(offset),
       tx.select({ count: sql<number>`count(*)` }).from(campaigns).where(where),

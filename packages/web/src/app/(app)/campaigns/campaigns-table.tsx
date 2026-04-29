@@ -272,8 +272,18 @@ export function CampaignsTable({
       },
       {
         id: "progress",
+        // Stub accessorFn so TanStack's `getCanSort()` enables the
+        // header sort UI; the value is unused on the manual-sort path
+        // (only the column `id` reaches the API as `sort=progress`).
+        // The actual ratio is computed server-side from a LEFT JOIN
+        // aggregate in `listCampaigns` so sorting is global, not
+        // page-local — see buildCampaignOrderBy.
+        accessorFn: (row) => {
+          const goal = row.campaign.goalAmountCents ?? 0;
+          if (goal <= 0) return null;
+          return ((row.stats?.totalRaisedCents ?? 0) / goal) * 100;
+        },
         header: () => t("columns.progress"),
-        enableSorting: false,
         cell: ({ row }) => {
           const { campaign, stats } = row.original;
           const raisedCents = stats?.totalRaisedCents ?? 0;
