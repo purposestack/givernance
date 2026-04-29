@@ -144,7 +144,11 @@ export const CampaignCreateSchema = Type.Object({
   ]),
   defaultCurrency: Type.Optional(MultiCurrencySchema),
   parentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
-  operationalCostCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
+  // Type.Null() comes first in the union: AJV otherwise coerces JSON `null`
+  // into 0 when validating the body, which silently turns "clear the value"
+  // into "set it to zero" (cf. PR #204 review).
+  operationalCostCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
+  goalAmountCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
 });
 
 /** Schema for updating a campaign (all fields optional) */
