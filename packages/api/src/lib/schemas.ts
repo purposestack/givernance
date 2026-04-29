@@ -21,6 +21,13 @@ export const PaginationQuery = Type.Object({
   perPage: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 20 })),
 });
 
+/**
+ * Sort direction shared across list endpoints. Used alongside a per-route
+ * `sort` whitelist (literal union) so unknown sort fields fail closed with
+ * a 400 RFC 9457 body — see issue #209.
+ */
+export const SortOrderSchema = Type.Union([Type.Literal("asc"), Type.Literal("desc")]);
+
 /** RFC 9457 Problem Details response schema (all members optional per spec) */
 export const ProblemDetailSchema = Type.Object(
   {

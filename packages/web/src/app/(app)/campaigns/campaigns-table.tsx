@@ -1,6 +1,6 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { Megaphone, MoreHorizontal, Pencil, Search, XCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -38,7 +38,14 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatCurrency, formatDate } from "@/lib/format";
-import type { Campaign, CampaignStats, CampaignStatus, CampaignType } from "@/models/campaign";
+import type {
+  Campaign,
+  CampaignSortField,
+  CampaignSortOrder,
+  CampaignStats,
+  CampaignStatus,
+  CampaignType,
+} from "@/models/campaign";
 import { CampaignService } from "@/services/CampaignService";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
@@ -77,6 +84,9 @@ interface CampaignsTableProps {
    * shortcut pattern.
    */
   canManageAdminActions: boolean;
+  /** Server-resolved sort/order — see donations-table.tsx for rationale. */
+  sort: CampaignSortField;
+  order: CampaignSortOrder;
 }
 
 function isCampaignType(value: string): value is CampaignType {
@@ -92,6 +102,8 @@ export function CampaignsTable({
   pagination,
   canWrite,
   canManageAdminActions,
+  sort,
+  order,
 }: CampaignsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -151,6 +163,29 @@ export function CampaignsTable({
       } else {
         params.set("page", String(page));
       }
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const sorting = useMemo<SortingState>(
+    () => [{ id: sort, desc: order === "desc" }],
+    [order, sort],
+  );
+
+  const onSortingChange = useCallback(
+    (nextSorting: SortingState) => {
+      const [next] = nextSorting;
+      const params = new URLSearchParams(searchParams.toString());
+      if (!next) {
+        params.delete("sort");
+        params.delete("order");
+      } else {
+        params.set("sort", next.id);
+        params.set("order", next.desc ? "desc" : "asc");
+      }
+      params.delete("page");
       const query = params.toString();
       router.push(query ? `${pathname}?${query}` : pathname);
     },
@@ -344,6 +379,8 @@ export function CampaignsTable({
           data={campaigns}
           pagination={pagination}
           onPageChange={navigateToPage}
+          sorting={sorting}
+          onSortingChange={onSortingChange}
           onRowClick={(row) => router.push(`/campaigns/${row.original.campaign.id}`)}
           emptyState={
             <EmptyState

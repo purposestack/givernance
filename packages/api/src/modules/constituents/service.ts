@@ -2,8 +2,17 @@
 
 import { constituents, donations, mergeHistory, outboxEvents } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, arrayOverlaps, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, arrayOverlaps, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
+
+export type ConstituentSortField = "name" | "type" | "createdAt";
+export type ConstituentSortOrder = "asc" | "desc";
+
+const CONSTITUENT_SORT_FIELDS: ReadonlySet<ConstituentSortField> = new Set([
+  "name",
+  "type",
+  "createdAt",
+]);
 
 export interface ListConstituentsQuery {
   page: number;
@@ -12,6 +21,38 @@ export interface ListConstituentsQuery {
   tags?: string[];
   type?: string;
   includeDeleted?: boolean;
+  sort?: string;
+  order?: string;
+}
+
+function normalizeConstituentSort(value: string | undefined): ConstituentSortField {
+  if (value && CONSTITUENT_SORT_FIELDS.has(value as ConstituentSortField)) {
+    return value as ConstituentSortField;
+  }
+  return "createdAt";
+}
+
+function normalizeConstituentOrder(value: string | undefined): ConstituentSortOrder {
+  return value === "asc" ? "asc" : "desc";
+}
+
+/**
+ * ORDER BY for `GET /constituents`. `name` sorts on `(lastName, firstName)`
+ * with case-insensitive lower(...) so French/English mixed locales don't
+ * partition into two alphabets. Always tiebreaks with `asc(id)` for
+ * deterministic offset pagination.
+ */
+function buildConstituentOrderBy(sort: ConstituentSortField, order: ConstituentSortOrder) {
+  const dir = order === "asc" ? asc : desc;
+  if (sort === "name") {
+    return [
+      dir(sql`lower(${constituents.lastName})`),
+      dir(sql`lower(${constituents.firstName})`),
+      asc(constituents.id),
+    ];
+  }
+  if (sort === "type") return [dir(constituents.type), asc(constituents.id)];
+  return [dir(constituents.createdAt), asc(constituents.id)];
 }
 
 export interface ConstituentInput {
@@ -65,9 +106,17 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
     }
 
     const where = and(...conditions);
+    const sort = normalizeConstituentSort(query.sort);
+    const order = normalizeConstituentOrder(query.order);
 
     const [data, countResult] = await Promise.all([
-      tx.select().from(constituents).where(where).limit(perPage).offset(offset),
+      tx
+        .select()
+        .from(constituents)
+        .where(where)
+        .orderBy(...buildConstituentOrderBy(sort, order))
+        .limit(perPage)
+        .offset(offset),
       tx.select({ count: sql<number>`count(*)` }).from(constituents).where(where),
     ]);
 

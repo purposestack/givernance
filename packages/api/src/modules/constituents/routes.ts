@@ -12,6 +12,7 @@ import {
   PaginationQuery,
   ProblemDetailSchema,
   problemDetail,
+  SortOrderSchema,
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
@@ -64,6 +65,12 @@ const ConstituentUpdateBody = Type.Object(
   { minProperties: 1 },
 );
 
+/** Server-side sort fields whitelist for `GET /constituents`. */
+const CONSTITUENT_SORT_FIELDS = ["name", "type", "createdAt"] as const;
+const ConstituentSortFieldSchema = Type.Union(
+  CONSTITUENT_SORT_FIELDS.map((field) => Type.Literal(field)),
+);
+
 const ListQuery = Type.Intersect([
   PaginationQuery,
   Type.Object({
@@ -71,6 +78,8 @@ const ListQuery = Type.Intersect([
     tags: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()])),
     type: Type.Optional(ConstituentTypeEnum),
     includeDeleted: Type.Optional(Type.Boolean({ default: false })),
+    sort: Type.Optional(ConstituentSortFieldSchema),
+    order: Type.Optional(SortOrderSchema),
   }),
 ]);
 
@@ -158,6 +167,8 @@ export async function constituentRoutes(app: FastifyInstance) {
         tags?: string[] | string;
         type?: string;
         includeDeleted?: boolean;
+        sort?: (typeof CONSTITUENT_SORT_FIELDS)[number];
+        order?: "asc" | "desc";
       };
 
       const tags = query.tags ? (Array.isArray(query.tags) ? query.tags : [query.tags]) : undefined;
@@ -169,6 +180,8 @@ export async function constituentRoutes(app: FastifyInstance) {
         tags,
         type: query.type,
         includeDeleted: query.includeDeleted,
+        sort: query.sort,
+        order: query.order,
       });
 
       return { data: result.data, pagination: result.pagination };

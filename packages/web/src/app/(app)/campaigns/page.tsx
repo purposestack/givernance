@@ -8,13 +8,32 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
-import type { CampaignListResponse } from "@/models/campaign";
+import type { CampaignListResponse, CampaignSortField, CampaignSortOrder } from "@/models/campaign";
 import { CampaignService } from "@/services/CampaignService";
 
 import { CampaignsTable } from "./campaigns-table";
 
 const DEFAULT_PER_PAGE = 20;
 const MAX_PER_PAGE = 100;
+/**
+ * Mirror of `CAMPAIGN_SORT_FIELDS` from the API
+ * (`packages/api/src/modules/campaigns/routes.ts`).
+ */
+const CAMPAIGN_SORT_FIELDS = new Set<CampaignSortField>(["name", "type", "status", "createdAt"]);
+const DEFAULT_SORT: CampaignSortField = "createdAt";
+const DEFAULT_ORDER: CampaignSortOrder = "desc";
+
+function parseSortField(value: string | string[] | undefined): CampaignSortField {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && CAMPAIGN_SORT_FIELDS.has(raw as CampaignSortField)
+    ? (raw as CampaignSortField)
+    : DEFAULT_SORT;
+}
+
+function parseSortOrder(value: string | string[] | undefined): CampaignSortOrder {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === "asc" ? "asc" : DEFAULT_ORDER;
+}
 
 interface CampaignsPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -42,6 +61,8 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
     rawStatus === "draft" || rawStatus === "active" || rawStatus === "closed"
       ? rawStatus
       : undefined;
+  const sort = parseSortField(params.sort);
+  const order = parseSortOrder(params.order);
 
   const client = await createServerApiClient();
 
@@ -52,6 +73,8 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
       perPage,
       search: searchValue,
       status: statusValue,
+      sort,
+      order,
     });
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
@@ -98,6 +121,8 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
           pagination={result.pagination}
           canWrite={canWrite}
           canManageAdminActions={canManageAdminActions}
+          sort={sort}
+          order={order}
         />
       ) : (
         <div className="rounded-2xl bg-surface-container-lowest shadow-card">

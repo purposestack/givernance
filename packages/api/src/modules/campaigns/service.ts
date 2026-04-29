@@ -10,8 +10,42 @@ import {
   outboxEvents,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, eq, ilike, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
+
+export type CampaignSortField = "name" | "type" | "status" | "createdAt";
+export type CampaignSortOrder = "asc" | "desc";
+
+const CAMPAIGN_SORT_FIELDS: ReadonlySet<CampaignSortField> = new Set([
+  "name",
+  "type",
+  "status",
+  "createdAt",
+]);
+
+function normalizeCampaignSort(value: string | undefined): CampaignSortField {
+  if (value && CAMPAIGN_SORT_FIELDS.has(value as CampaignSortField)) {
+    return value as CampaignSortField;
+  }
+  return "createdAt";
+}
+
+function normalizeCampaignOrder(value: string | undefined): CampaignSortOrder {
+  return value === "asc" ? "asc" : "desc";
+}
+
+/**
+ * ORDER BY for `GET /campaigns`. `name` uses `lower(...)` for
+ * case-insensitive sort. Always tiebreaks with `asc(id)` so offset
+ * pagination stays deterministic across pages with duplicate sort keys.
+ */
+function buildCampaignOrderBy(sort: CampaignSortField, order: CampaignSortOrder) {
+  const dir = order === "asc" ? asc : desc;
+  if (sort === "name") return [dir(sql`lower(${campaigns.name})`), asc(campaigns.id)];
+  if (sort === "type") return [dir(campaigns.type), asc(campaigns.id)];
+  if (sort === "status") return [dir(campaigns.status), asc(campaigns.id)];
+  return [dir(campaigns.createdAt), asc(campaigns.id)];
+}
 
 export interface CreateCampaignInput {
   name: string;
@@ -39,6 +73,8 @@ export interface ListCampaignsQuery {
   perPage: number;
   search?: string;
   status?: "draft" | "active" | "closed";
+  sort?: string;
+  order?: string;
 }
 
 function campaignSelectFields() {
@@ -170,6 +206,8 @@ async function upsertCampaignGoal(
 export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
   const { page, perPage, search, status } = query;
   const offset = (page - 1) * perPage;
+  const sort = normalizeCampaignSort(query.sort);
+  const order = normalizeCampaignOrder(query.order);
 
   return withTenantContext(orgId, async (tx) => {
     const conditions = [eq(campaigns.orgId, orgId)];
@@ -190,7 +228,7 @@ export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
         .from(campaigns)
         .leftJoin(campaignPublicPages, eq(campaignPublicPages.campaignId, campaigns.id))
         .where(where)
-        .orderBy(sql`${campaigns.createdAt} DESC`)
+        .orderBy(...buildCampaignOrderBy(sort, order))
         .limit(perPage)
         .offset(offset),
       tx.select({ count: sql<number>`count(*)` }).from(campaigns).where(where),

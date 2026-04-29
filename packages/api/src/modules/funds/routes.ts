@@ -12,6 +12,7 @@ import {
   PaginationQuery,
   ProblemDetailSchema,
   problemDetail,
+  SortOrderSchema,
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
@@ -50,6 +51,18 @@ const FundResponse = Type.Object({
   updatedAt: Type.String(),
 });
 
+/** Server-side sort fields whitelist for `GET /funds`. */
+const FUND_SORT_FIELDS = ["name", "type", "createdAt"] as const;
+const FundSortFieldSchema = Type.Union(FUND_SORT_FIELDS.map((field) => Type.Literal(field)));
+
+const FundListQuery = Type.Intersect([
+  PaginationQuery,
+  Type.Object({
+    sort: Type.Optional(FundSortFieldSchema),
+    order: Type.Optional(SortOrderSchema),
+  }),
+]);
+
 export async function fundRoutes(app: FastifyInstance) {
   app.get(
     "/funds",
@@ -57,7 +70,7 @@ export async function fundRoutes(app: FastifyInstance) {
       preHandler: requireAuth,
       schema: {
         tags: ["Funds"],
-        querystring: PaginationQuery,
+        querystring: FundListQuery,
         response: { 200: DataArrayResponse(FundResponse), ...ErrorResponses },
       },
     },
@@ -67,10 +80,17 @@ export async function fundRoutes(app: FastifyInstance) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
-      const query = request.query as { page?: number; perPage?: number };
+      const query = request.query as {
+        page?: number;
+        perPage?: number;
+        sort?: (typeof FUND_SORT_FIELDS)[number];
+        order?: "asc" | "desc";
+      };
       const result = await listFunds(orgId, {
         page: query.page ?? 1,
         perPage: query.perPage ?? 20,
+        sort: query.sort,
+        order: query.order,
       });
 
       return { data: result.data, pagination: result.pagination };

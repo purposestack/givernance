@@ -1,6 +1,6 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { MoreHorizontal, Pencil, PiggyBank, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -30,7 +30,7 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatDate } from "@/lib/format";
-import type { Fund, FundType } from "@/models/fund";
+import type { Fund, FundSortField, FundSortOrder, FundType } from "@/models/fund";
 import { FundService } from "@/services/FundService";
 
 const FUND_TYPES = new Set<FundType>(["restricted", "unrestricted"]);
@@ -44,13 +44,16 @@ interface FundsTableProps {
   funds: Fund[];
   pagination: DataTablePagination;
   canManageFunds: boolean;
+  /** Server-resolved sort/order — see donations-table.tsx for rationale. */
+  sort: FundSortField;
+  order: FundSortOrder;
 }
 
 function isFundType(value: string): value is FundType {
   return FUND_TYPES.has(value as FundType);
 }
 
-export function FundsTable({ funds, pagination, canManageFunds }: FundsTableProps) {
+export function FundsTable({ funds, pagination, canManageFunds, sort, order }: FundsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -67,6 +70,29 @@ export function FundsTable({ funds, pagination, canManageFunds }: FundsTableProp
       } else {
         params.set("page", String(page));
       }
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const sorting = useMemo<SortingState>(
+    () => [{ id: sort, desc: order === "desc" }],
+    [order, sort],
+  );
+
+  const onSortingChange = useCallback(
+    (nextSorting: SortingState) => {
+      const [next] = nextSorting;
+      const params = new URLSearchParams(searchParams.toString());
+      if (!next) {
+        params.delete("sort");
+        params.delete("order");
+      } else {
+        params.set("sort", next.id);
+        params.set("order", next.desc ? "desc" : "asc");
+      }
+      params.delete("page");
       const query = params.toString();
       router.push(query ? `${pathname}?${query}` : pathname);
     },
@@ -166,6 +192,8 @@ export function FundsTable({ funds, pagination, canManageFunds }: FundsTableProp
         data={funds}
         pagination={pagination}
         onPageChange={navigateToPage}
+        sorting={sorting}
+        onSortingChange={onSortingChange}
         emptyState={
           <EmptyState
             icon={PiggyBank}

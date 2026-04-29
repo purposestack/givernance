@@ -12,9 +12,14 @@ export interface Fund {
   updatedAt: string;
 }
 
+export type FundSortField = "name" | "type" | "createdAt";
+export type FundSortOrder = "asc" | "desc";
+
 export interface FundListQuery {
   page?: number;
   perPage?: number;
+  sort?: FundSortField;
+  order?: FundSortOrder;
 }
 
 export interface FundListResponse {

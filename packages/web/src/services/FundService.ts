@@ -15,6 +15,8 @@ export const FundService = {
       params: {
         page: query.page ?? 1,
         perPage: query.perPage ?? 20,
+        sort: query.sort,
+        order: query.order,
       },
     });
 
