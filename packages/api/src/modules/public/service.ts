@@ -179,6 +179,12 @@ export async function createDonationIntent(
     if (!stripeAccountDetails.charges_enabled) {
       throw new Error("Organization Stripe account is not fully onboarded");
     }
+    // Platform fee. NOTE for the future refund handler: Stripe's default on
+    // direct charges is to keep the application fee on refund — the platform
+    // pockets the 1.5%+30¢ even when the donor is fully refunded. To match
+    // donor expectations ("I got my €50 back, I didn't pay any fee"), the
+    // refund call must pass `refund_application_fee: true`. Tracked in the
+    // refund-flow follow-up issue.
     const applicationFeeAmount = calculatePlatformFee(body.amountCents);
 
     const intentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {

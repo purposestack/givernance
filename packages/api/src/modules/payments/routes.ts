@@ -7,7 +7,12 @@ import { Queue } from "bullmq";
 import type { FastifyInstance } from "fastify";
 import { requireOrgAdmin } from "../../lib/guards.js";
 import { redis } from "../../lib/redis.js";
-import { DataResponse, ErrorResponses, problemDetail } from "../../lib/schemas.js";
+import {
+  DataResponse,
+  ErrorResponses,
+  ProblemDetailSchema,
+  problemDetail,
+} from "../../lib/schemas.js";
 import {
   createWebhookEvent,
   getStripeConnectStatus,
@@ -17,16 +22,44 @@ import {
 
 const webhooksQueue = new Queue(QUEUE_NAMES.WEBHOOKS, { connection: redis });
 
+/**
+ * Pino-safe shape for Stripe error logging. The raw `Stripe.errors.StripeError`
+ * carries `requestId`, full message, raw HTTP body, and possibly tenant-scoped
+ * ids (`account`, `payment_intent.id`) which would cross-contaminate a shared
+ * log index. `{message, code}` is enough to triage a 502 in ops without
+ * spilling identifiers across tenants.
+ */
+function logStripeError(err: unknown) {
+  if (err instanceof Error) {
+    const code = (err as { code?: string }).code;
+    return code ? { errMessage: err.message, errCode: code } : { errMessage: err.message };
+  }
+  return { errMessage: String(err) };
+}
+
 const StripeConnectBody = Type.Object({
-  refreshUrl: Type.String({ minLength: 1 }),
-  returnUrl: Type.String({ minLength: 1 }),
+  /** Stripe redirects here if the operator abandons the hosted onboarding form. */
+  refreshUrl: Type.String({ minLength: 1, format: "uri" }),
+  /** Stripe redirects here when the operator finishes (or short-circuits) onboarding. */
+  returnUrl: Type.String({ minLength: 1, format: "uri" }),
 });
 
+/**
+ * POST response — `accountId` is **always** populated since we either
+ * created the account in this call or returned an existing one. Contrast
+ * with `StripeConnectStatusResponse.accountId` which is nullable.
+ */
 const StripeConnectResponse = Type.Object({
   url: Type.String(),
   accountId: Type.String(),
 });
 
+/**
+ * GET response — the "connection status" resource always exists for any
+ * authenticated org, but `accountId` is `null` when the tenant has not yet
+ * onboarded. Contrast with `StripeConnectResponse.accountId` (POST) which
+ * is non-null because POST always produces an account.
+ */
 const StripeConnectStatusResponse = Type.Object({
   accountId: Type.Union([Type.String(), Type.Null()]),
   chargesEnabled: Type.Boolean(),
@@ -39,15 +72,22 @@ export async function paymentRoutes(app: FastifyInstance) {
    * Read Stripe Connect status for the authenticated org. Returns a
    * "not connected" shape (`accountId: null`, all flags false) when the
    * tenant has no Stripe account yet so the settings UI can render a
-   * single panel without a 404 branch.
+   * single panel without a 404 branch. Calls `accounts.retrieve` on Stripe
+   * for live capability flags — per-route rate-limited so a misbehaving
+   * Settings page can't burn the platform's Stripe API budget.
    */
   app.get(
     "/admin/stripe-connect",
     {
       preHandler: requireOrgAdmin,
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
       schema: {
         tags: ["Payments"],
-        response: { 200: DataResponse(StripeConnectStatusResponse), ...ErrorResponses },
+        response: {
+          200: DataResponse(StripeConnectStatusResponse),
+          502: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -60,7 +100,7 @@ export async function paymentRoutes(app: FastifyInstance) {
         const status = await getStripeConnectStatus(orgId);
         return { data: status };
       } catch (err) {
-        request.log.error({ err }, "Stripe Connect status fetch failed");
+        request.log.error(logStripeError(err), "Stripe Connect status fetch failed");
         return reply
           .status(502)
           .send(problemDetail(502, "Bad Gateway", "Payment provider error, please try again"));
@@ -79,7 +119,11 @@ export async function paymentRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Payments"],
         body: StripeConnectBody,
-        response: { 200: DataResponse(StripeConnectResponse), ...ErrorResponses },
+        response: {
+          200: DataResponse(StripeConnectResponse),
+          502: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -97,7 +141,7 @@ export async function paymentRoutes(app: FastifyInstance) {
         const result = await startStripeOnboarding(orgId, refreshUrl, returnUrl);
         return { data: result };
       } catch (err) {
-        request.log.error({ err }, "Stripe Connect onboarding failed");
+        request.log.error(logStripeError(err), "Stripe Connect onboarding failed");
         return reply
           .status(502)
           .send(problemDetail(502, "Bad Gateway", "Payment provider error, please try again"));
@@ -111,9 +155,13 @@ export async function paymentRoutes(app: FastifyInstance) {
  * raw-body content-type parser doesn't affect other JSON routes.
  */
 export async function stripeWebhookRoute(app: FastifyInstance) {
-  // Per-IP rate limit for the public webhook endpoint
+  // Per-IP rate limit for the public webhook endpoint. 300/min: Stripe sends
+  // from a small fixed pool of source IPs, so legitimate burst traffic
+  // (Black-Friday-scale donation spike) shares a single source — too low a
+  // cap forces Stripe into exponential-backoff retries and queues up
+  // donations on its side. 50 was overly conservative.
   await app.register(rateLimit, {
-    max: 50,
+    max: 300,
     timeWindow: "1 minute",
     redis,
   });
