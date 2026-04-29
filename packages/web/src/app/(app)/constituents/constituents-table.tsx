@@ -90,6 +90,7 @@ export function ConstituentsTable({
   const searchParams = useSearchParams();
   const t = useTranslations("constituents");
   const tType = useTranslations("constituents.types");
+  const tFilters = useTranslations("constituents.filters");
   const [deleteTarget, setDeleteTarget] = useState<Constituent | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? "");
@@ -200,7 +201,7 @@ export function ConstituentsTable({
       {
         id: "tags",
         accessorKey: "tags",
-        header: () => t("columns.tags") || "Tags",
+        header: () => t("columns.tags"),
         enableSorting: false,
         cell: ({ row }) => {
           const tags = row.original.tags;
@@ -260,7 +261,7 @@ export function ConstituentsTable({
             size={16}
           />
           <Input
-            placeholder="Rechercher un contact..."
+            placeholder={tFilters("searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
@@ -268,15 +269,15 @@ export function ConstituentsTable({
         </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Tous les types" />
+            <SelectValue placeholder={tFilters("allTypes")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous les types</SelectItem>
-            <SelectItem value="donor">Donateur</SelectItem>
-            <SelectItem value="volunteer">Bénévole</SelectItem>
-            <SelectItem value="member">Membre</SelectItem>
-            <SelectItem value="beneficiary">Bénéficiaire</SelectItem>
-            <SelectItem value="partner">Partenaire</SelectItem>
+            <SelectItem value="all">{tFilters("allTypes")}</SelectItem>
+            <SelectItem value="donor">{tType("donor")}</SelectItem>
+            <SelectItem value="volunteer">{tType("volunteer")}</SelectItem>
+            <SelectItem value="member">{tType("member")}</SelectItem>
+            <SelectItem value="beneficiary">{tType("beneficiary")}</SelectItem>
+            <SelectItem value="partner">{tType("partner")}</SelectItem>
           </SelectContent>
         </Select>
       </div>

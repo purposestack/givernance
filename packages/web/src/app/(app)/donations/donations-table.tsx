@@ -67,6 +67,8 @@ export function DonationsTable({
   const searchParams = useSearchParams();
   const locale = useLocale();
   const t = useTranslations("donations");
+  const tReceipt = useTranslations("donations.receiptStatus");
+  const tFilters = useTranslations("donations.filters");
   const [donationToDelete, setDonationToDelete] = useState<DonationListRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? "");
@@ -238,7 +240,7 @@ export function DonationsTable({
             size={16}
           />
           <Input
-            placeholder="Rechercher un donateur..."
+            placeholder={tFilters("searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
@@ -246,13 +248,13 @@ export function DonationsTable({
         </div>
         <Select value={receiptFilter} onValueChange={setReceiptFilter}>
           <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Reçus" />
+            <SelectValue placeholder={tFilters("receiptLabel")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous les reçus</SelectItem>
-            <SelectItem value="generated">Générés</SelectItem>
-            <SelectItem value="pending">En attente</SelectItem>
-            <SelectItem value="failed">En erreur</SelectItem>
+            <SelectItem value="all">{tFilters("allReceipts")}</SelectItem>
+            <SelectItem value="generated">{tReceipt("generated")}</SelectItem>
+            <SelectItem value="pending">{tReceipt("pending")}</SelectItem>
+            <SelectItem value="failed">{tReceipt("failed")}</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -381,7 +381,7 @@
           "createdAt": "Créé le",
           "updatedAt": "Dernière mise à jour",
           "actions": "Actions",
-      "tags": "Tags"
+          "tags": "Tags"
         },
         "statuses": {
           "active": "Actif",
@@ -658,7 +658,7 @@
         "createdAt": "Invité·e le",
         "joinedAt": "A rejoint le",
         "actions": "Actions",
-      "tags": "Tags"
+        "tags": "Tags"
       },
       "roles": {
         "org_admin": "Administration",
@@ -781,7 +781,7 @@
         "description": "Description",
         "createdAt": "Créé le",
         "actions": "Actions",
-      "tags": "Tags"
+        "tags": "Tags"
       },
       "actions": {
         "new": "Nouveau fonds",
@@ -931,7 +931,8 @@
       "newDonorsThisMonth": "{count, plural, =0 {Aucun nouveau donateur ce mois-ci} one {# nouveau donateur ce mois-ci} other {# nouveaux donateurs ce mois-ci}}",
       "grantDeadlines": "Échéances de subventions",
       "noGrantDeadlinesValue": "0",
-      "noGrantDeadlinesHint": "Le suivi des subventions arrivera dans un sprint ultérieur."
+      "noGrantDeadlinesHint": "Le suivi des subventions arrivera dans un sprint ultérieur.",
+      "trendLabel": "vs mois précédent"
     },
     "recentDonations": {
       "title": "Dons récents",
@@ -992,7 +993,10 @@
     },
     "filters": {
       "dateFrom": "Du",
-      "dateTo": "Au"
+      "dateTo": "Au",
+      "searchPlaceholder": "Rechercher un donateur…",
+      "receiptLabel": "Reçus",
+      "allReceipts": "Tous les reçus"
     },
     "actions": {
       "new": "Nouveau don",
@@ -1153,6 +1157,11 @@
       "beneficiary": "Bénéficiaire",
       "partner": "Partenaire"
     },
+    "filters": {
+      "searchPlaceholder": "Rechercher un contact…",
+      "typeLabel": "Type",
+      "allTypes": "Tous les types"
+    },
     "actions": {
       "new": "Nouveau constituant",
       "menu": "Ouvrir les actions pour {name}",
@@ -1202,6 +1211,11 @@
       "nominative_postal": "Postal nominatif",
       "door_drop": "Boîtage",
       "digital": "Digital"
+    },
+    "filters": {
+      "searchPlaceholder": "Rechercher une campagne…",
+      "statusLabel": "Statut",
+      "allStatuses": "Tous les statuts"
     },
     "actions": {
       "new": "Nouvelle campagne",
