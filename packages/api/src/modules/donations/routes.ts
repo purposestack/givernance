@@ -26,16 +26,23 @@ import {
   updateDonation,
 } from "./service.js";
 
+const ReceiptStatusSchema = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("generated"),
+  Type.Literal("failed"),
+]);
+
 const ListQuery = Type.Intersect([
   PaginationQuery,
   Type.Object({
-    search: Type.Optional(Type.String()),
+    search: Type.Optional(Type.String({ maxLength: 200 })),
     dateFrom: Type.Optional(Type.String({ format: "date" })),
     dateTo: Type.Optional(Type.String({ format: "date" })),
     amountMin: Type.Optional(Type.Integer({ minimum: 0 })),
     amountMax: Type.Optional(Type.Integer({ minimum: 0 })),
     constituentId: Type.Optional(UuidSchema),
     campaignId: Type.Optional(UuidSchema),
+    receiptStatus: Type.Optional(ReceiptStatusSchema),
   }),
 ]);
 
@@ -195,6 +202,7 @@ export async function donationRoutes(app: FastifyInstance) {
         amountMax?: number;
         constituentId?: string;
         campaignId?: string;
+        receiptStatus?: "pending" | "generated" | "failed";
       };
 
       const result = await listDonations(orgId, {
@@ -207,6 +215,7 @@ export async function donationRoutes(app: FastifyInstance) {
         amountMax: query.amountMax,
         constituentId: query.constituentId,
         campaignId: query.campaignId,
+        receiptStatus: query.receiptStatus,
       });
 
       return { data: result.data, pagination: result.pagination };

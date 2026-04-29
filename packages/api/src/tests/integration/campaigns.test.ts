@@ -578,9 +578,13 @@ describe("Campaign pagination", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{
       data: unknown[];
-      pagination: { total: number };
+      pagination: { page: number; perPage: number; total: number; totalPages: number };
     }>();
     expect(body.data).toHaveLength(2);
+    expect(body.pagination.page).toBe(1);
+    expect(body.pagination.perPage).toBe(2);
+    expect(body.pagination.totalPages).toBeGreaterThanOrEqual(1);
+    expect(body.pagination.total).toBeGreaterThanOrEqual(2);
   });
 
   it("GET /v1/campaigns supports search filter", async () => {
@@ -607,6 +611,57 @@ describe("Campaign pagination", () => {
     const body = res.json<{ data: unknown[]; pagination: { page: number; total: number } }>();
     expect(body.data.length).toBe(0);
     expect(body.pagination.page).toBe(9999);
+  });
+
+  it("GET /v1/campaigns?status=active returns only active campaigns", async () => {
+    const token = signToken(app);
+    // Seed: ensure at least one active and one draft
+    const draftRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Status filter draft", type: "digital", defaultCurrency: "EUR" },
+    });
+    expect(draftRes.statusCode).toBe(201);
+    const activeRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Status filter active", type: "digital", defaultCurrency: "EUR" },
+    });
+    expect(activeRes.statusCode).toBe(201);
+    const activeId = activeRes.json<{ data: { id: string } }>().data.id;
+    await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${activeId}`,
+      headers: authHeader(token),
+      payload: { status: "active" },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/campaigns?status=active&perPage=100",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { name: string; status: "draft" | "active" | "closed" }[];
+    }>();
+    expect(body.data.length).toBeGreaterThan(0);
+    for (const c of body.data) {
+      expect(c.status).toBe("active");
+    }
+    expect(body.data.map((c) => c.name)).not.toContain("Status filter draft");
+  });
+
+  it("GET /v1/campaigns?status=invalid returns 400", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/campaigns?status=bogus",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(400);
   });
 });
 

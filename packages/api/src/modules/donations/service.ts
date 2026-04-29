@@ -11,8 +11,8 @@ import {
   tenants,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { withTenantContext } from "../../lib/db.js";
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import { db, withTenantContext } from "../../lib/db.js";
 import { ExchangeRateService } from "../finance/exchange-rate-service.js";
 
 /** Thrown when allocation amounts don't sum to the donation total */
@@ -81,6 +81,7 @@ export interface ListDonationsQuery {
   amountMax?: number;
   constituentId?: string;
   campaignId?: string;
+  receiptStatus?: "pending" | "generated" | "failed";
 }
 
 export interface DonationInput {
@@ -169,15 +170,35 @@ async function replaceDonationAllocations(
 
 /** Build the SQL conditions for a list-donations query */
 function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
-  const { search, dateFrom, dateTo, amountMin, amountMax, constituentId, campaignId } = query;
+  const {
+    search,
+    dateFrom,
+    dateTo,
+    amountMin,
+    amountMax,
+    constituentId,
+    campaignId,
+    receiptStatus,
+  } = query;
   const conditions = [eq(donations.orgId, orgId)];
 
   if (search) {
     const pattern = `%${search}%`;
+    // Subquery: constituents matching the term. RLS on `constituents`
+    // already scopes to the current org, so no need to re-filter org_id here.
     conditions.push(
       inArray(
         donations.constituentId,
-        sql`(SELECT id FROM constituents WHERE org_id = ${orgId} AND (first_name ILIKE ${pattern} OR last_name ILIKE ${pattern} OR email ILIKE ${pattern}))`,
+        db
+          .select({ id: constituents.id })
+          .from(constituents)
+          .where(
+            or(
+              ilike(constituents.firstName, pattern),
+              ilike(constituents.lastName, pattern),
+              ilike(constituents.email, pattern),
+            ),
+          ),
       ),
     );
   }
@@ -188,6 +209,20 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
   if (amountMax !== undefined) conditions.push(lte(donations.amountCents, amountMax));
   if (constituentId) conditions.push(eq(donations.constituentId, constituentId));
   if (campaignId) conditions.push(eq(donations.campaignId, campaignId));
+  if (receiptStatus) {
+    // Donations whose latest receipt has the requested status. Only one
+    // receipt per donation is produced today (cf. enrichDonationRows), so
+    // an EXISTS-style subquery is sufficient and avoids a window function.
+    conditions.push(
+      inArray(
+        donations.id,
+        db
+          .select({ id: receipts.donationId })
+          .from(receipts)
+          .where(eq(receipts.status, receiptStatus)),
+      ),
+    );
+  }
 
   return and(...conditions);
 }
