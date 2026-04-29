@@ -96,6 +96,14 @@ export interface ListDonationsQuery {
   order?: string;
 }
 
+/**
+ * Defense-in-depth: the route-level TypeBox literal union
+ * (`DONATION_SORT_FIELDS` in `donations/routes.ts`) already 400s unknown
+ * `sort` values before the handler runs, so this fallback is unreachable
+ * in production. We keep it because the route schema and this Set could
+ * drift if someone widens the schema to `Type.String()` for ergonomics —
+ * the fallback then becomes the safety net rather than the contract.
+ */
 function normalizeDonationSort(value: string | undefined): DonationSortField {
   if (value && DONATION_SORT_FIELDS.has(value as DonationSortField)) {
     return value as DonationSortField;
@@ -110,14 +118,26 @@ function normalizeDonationOrder(value: string | undefined): DonationSortOrder {
 /**
  * Build the ORDER BY clause for `GET /donations`. Always tiebreaks with
  * `asc(donations.id)` so offset pagination is deterministic across pages
- * even when many rows share the same sort key (e.g. multiple donations on
- * the same day, or many rows with NULL `paymentMethod`).
+ * even when many rows share the same sort key.
+ *
+ * `paymentMethod` is free-text and frequently NULL, so it gets two tweaks
+ * over the other fields:
+ * - `lower(...)` — case-insensitive, matches the `name` treatment in
+ *   campaigns/funds/constituents so "Wire" / "wire" / "WIRE" group together.
+ * - explicit `NULLS LAST` for both `asc` and `desc` — Postgres' default
+ *   puts NULLs first under `asc` and last under `desc`. Users sorting by
+ *   "payment method desc" don't want a wall of empty cells before any
+ *   non-null data; pinning NULLs to the bottom either way is the least
+ *   surprising read of the column.
  */
 function buildDonationOrderBy(sort: DonationSortField, order: DonationSortOrder) {
   const dir = order === "asc" ? asc : desc;
   if (sort === "amountCents") return [dir(donations.amountCents), asc(donations.id)];
   if (sort === "paymentMethod") {
-    return [dir(sql`coalesce(${donations.paymentMethod}, '')`), asc(donations.id)];
+    // No `sql.raw` — `order` is a typed literal but switching between two
+    // pre-built `sql` fragments keeps the safety obvious in review.
+    const direction = order === "asc" ? sql`ASC` : sql`DESC`;
+    return [sql`lower(${donations.paymentMethod}) ${direction} NULLS LAST`, asc(donations.id)];
   }
   if (sort === "createdAt") return [dir(donations.createdAt), asc(donations.id)];
   return [dir(donations.donatedAt), asc(donations.id)];
