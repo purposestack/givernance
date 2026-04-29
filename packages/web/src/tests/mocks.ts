@@ -11,6 +11,7 @@ export const mockRouter = {
 export const mockToast = {
   success: vi.fn(),
   error: vi.fn(),
+  warning: vi.fn(),
 };
 
 export const mockApiClient = {
@@ -19,4 +20,7 @@ export const mockApiClient = {
   put: vi.fn(),
   patch: vi.fn(),
   delete: vi.fn(),
+  // Mirrors ApiClient.resolveBrowserUrl — a passthrough is fine for
+  // tests since they don't depend on the configured baseUrl.
+  resolveBrowserUrl: vi.fn((path: string) => `/api${path}`),
 };

@@ -660,16 +660,36 @@ export async function donationRoutes(app: FastifyInstance) {
     "/donations/:id/receipt/download",
     {
       preHandler: requireAuth,
+      // Per-user rate limit. Without this, a logged-in user (or a
+      // compromised session) can loop the download to tie up an API
+      // worker and exhaust the container's bandwidth — the API is in
+      // the streaming path now (review feedback). 60/min is generous
+      // for legitimate "open the same receipt twice in a settings
+      // page" usage but caps abuse at ~1/sec. Keyed by orgId+userId so
+      // one tenant can't degrade another's downloads.
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => {
+            const orgId = req.auth?.orgId ?? "no-org";
+            const userId = req.auth?.userId ?? req.ip;
+            return `receipt-download:${orgId}:${userId}`;
+          },
+        },
+      },
       schema: {
         tags: ["Donations"],
         params: IdParams,
-        // Binary streaming response — no JSON envelope; only the error
-        // shapes go through the schema. Fastify still validates the
-        // params at the schema layer above. 502 is included on top of
-        // the standard ErrorResponses for the "MinIO object missing /
-        // unreachable" path (see the try/catch around fetchReceiptObject
-        // below).
-        response: { ...ErrorResponses, 502: ProblemDetailSchema },
+        // Binary streaming response — no JSON envelope; the success
+        // path is annotated only via `produces` so OpenAPI consumers
+        // know to expect application/pdf (review feedback). Fastify
+        // still validates the params at the schema layer above. 502 is
+        // for the "MinIO object missing / unreachable" path (see the
+        // try/catch around fetchReceiptObject below); 429 is the rate
+        // limiter's response shape.
+        produces: ["application/pdf"],
+        response: { ...ErrorResponses, 429: ProblemDetailSchema, 502: ProblemDetailSchema },
       },
     },
     async (request, reply) => {
@@ -778,9 +798,13 @@ export async function donationRoutes(app: FastifyInstance) {
       const safeFilename = SAFE_RECEIPT_NUMBER_RE.test(receipt.receiptNumber)
         ? `${receipt.receiptNumber}.pdf`
         : "receipt.pdf";
+      // `inline` so the donor-facing "Preview receipt" CTA actually
+      // previews the PDF in the new tab (modern browsers render
+      // application/pdf inline by default). The `filename=` is still
+      // honored when the user hits "Save As".
       reply
         .header("Content-Type", "application/pdf")
-        .header("Content-Disposition", `attachment; filename="${safeFilename}"`)
+        .header("Content-Disposition", `inline; filename="${safeFilename}"`)
         .header("Cache-Control", "private, no-store");
       if (contentLength !== undefined) {
         reply.header("Content-Length", contentLength.toString());

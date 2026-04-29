@@ -155,7 +155,14 @@ accessories:
     # streams receipts through `:id/receipt/download`, so no donor
     # browser ever needs to resolve port 9000 directly. The bucket-
     # creation step in deploy-staging.yml uses `--network kamal` so it
-    # still works without a published port.
+    # still works without a published port. Local docker-compose still
+    # publishes 9000 — that's intentional, the local console UI + `mc`
+    # from the host shell both need it.
+    #
+    # When `deploy-prod.yml` lands, do NOT re-publish port 9000 — the
+    # streaming endpoint covers every browser-facing path. Adding
+    # `port: 9000` to the prod accessory would silently re-open the
+    # public attack surface this PR closed.
     env:
       clear:
         MINIO_ROOT_USER: admin
