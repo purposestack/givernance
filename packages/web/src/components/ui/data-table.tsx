@@ -142,6 +142,12 @@ export function DataTable<TData>({
     getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
     manualPagination: true,
     manualSorting,
+    // In controlled mode the URL always carries a server default (e.g.
+    // donatedAt desc) — the user can never truly "unsort." Without this,
+    // clicking a column whose current direction conflicts with TanStack's
+    // inferred firstSortDir hits the "remove sort" branch, the page falls
+    // back to the same default, and the click looks like a no-op.
+    enableSortingRemoval: !manualSorting,
     pageCount: pagination?.totalPages ?? 1,
   });
 

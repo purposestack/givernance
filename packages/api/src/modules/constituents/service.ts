@@ -43,17 +43,18 @@ function normalizeConstituentOrder(value: string | undefined): ConstituentSortOr
 }
 
 /**
- * ORDER BY for `GET /constituents`. `name` sorts on `(lastName, firstName)`
- * with case-insensitive lower(...) so French/English mixed locales don't
- * partition into two alphabets. Always tiebreaks with `asc(id)` for
- * deterministic offset pagination.
+ * ORDER BY for `GET /constituents`. `name` sorts on `(firstName, lastName)`
+ * to match the cell's display order (`fullName()` renders "First Last") —
+ * sorting on the second-rendered token feels arbitrary to the user.
+ * `lower(...)` keeps mixed French/English locales in one alphabet. Always
+ * tiebreaks with `asc(id)` for deterministic offset pagination.
  */
 function buildConstituentOrderBy(sort: ConstituentSortField, order: ConstituentSortOrder) {
   const dir = order === "asc" ? asc : desc;
   if (sort === "name") {
     return [
-      dir(sql`lower(${constituents.lastName})`),
       dir(sql`lower(${constituents.firstName})`),
+      dir(sql`lower(${constituents.lastName})`),
       asc(constituents.id),
     ];
   }

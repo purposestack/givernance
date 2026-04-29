@@ -86,8 +86,10 @@ beforeAll(async () => {
   await db.execute(sql`DELETE FROM campaigns WHERE org_id = ${LIST_SORT_ORG}`);
   await db.execute(sql`DELETE FROM constituents WHERE org_id = ${LIST_SORT_ORG}`);
 
-  // Seed three constituents whose lower(lastName) ordering is unambiguous
-  // (Adams < Mitchell < Zane) regardless of locale collation defaults.
+  // Seed three constituents whose lower(firstName) ordering is unambiguous
+  // (Bea < Cara < Dan) regardless of locale collation defaults. Sorted by
+  // firstName because the column displays "First Last" — see
+  // buildConstituentOrderBy in constituents/service.ts.
   const constituentIds: string[] = [];
   for (const [first, last] of [
     ["Bea", "Mitchell"],
@@ -222,7 +224,7 @@ describe("GET /v1/constituents — server-side sort", () => {
     expectProblem400(res.json<ProblemBody>());
   });
 
-  it("sort=name&order=asc returns rows ordered by lower(lastName) ASC", async () => {
+  it("sort=name&order=asc returns rows ordered by lower(firstName) ASC", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/v1/constituents?sort=name&order=asc&perPage=100",
@@ -230,10 +232,10 @@ describe("GET /v1/constituents — server-side sort", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: Array<{ firstName: string; lastName: string }> }>();
-    const lastNames = body.data.map((c) => c.lastName.toLowerCase());
-    const sorted = [...lastNames].sort();
-    expect(lastNames).toEqual(sorted);
-    expect(lastNames.indexOf("adams")).toBeLessThan(lastNames.indexOf("zane"));
+    const firstNames = body.data.map((c) => c.firstName.toLowerCase());
+    const sorted = [...firstNames].sort();
+    expect(firstNames).toEqual(sorted);
+    expect(firstNames.indexOf("bea")).toBeLessThan(firstNames.indexOf("dan"));
   });
 
   it("sort=name&order=desc reverses the order", async () => {
@@ -243,9 +245,9 @@ describe("GET /v1/constituents — server-side sort", () => {
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ data: Array<{ lastName: string }> }>();
-    const lastNames = body.data.map((c) => c.lastName.toLowerCase());
-    expect(lastNames.indexOf("zane")).toBeLessThan(lastNames.indexOf("adams"));
+    const body = res.json<{ data: Array<{ firstName: string }> }>();
+    const firstNames = body.data.map((c) => c.firstName.toLowerCase());
+    expect(firstNames.indexOf("dan")).toBeLessThan(firstNames.indexOf("bea"));
   });
 });
 
