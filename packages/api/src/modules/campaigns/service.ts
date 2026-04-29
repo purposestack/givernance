@@ -42,10 +42,13 @@ function normalizeCampaignOrder(value: string | undefined): CampaignSortOrder {
 /**
  * ORDER BY for `GET /campaigns`. `name` uses `lower(...)` for
  * case-insensitive sort. `progress` orders by the ratio of net raised
- * (cleared − refunded base cents) to the public-page goal — campaigns
- * without a goal sort to the bottom under both directions (NULLS LAST,
- * same convention as `paymentMethod` / `donor` / `campaign` /
- * `lastDonation`). Always tiebreaks with `asc(id)` so offset pagination
+ * (cleared − refunded base cents) to the public-page goal. Campaigns
+ * without a goal (or `goal = 0`) are sorted as **0%** rather than
+ * NULLS LAST, so the sort matches the cell's display: a campaign that
+ * reads "0%" sits next to the other 0%-funded campaigns under both
+ * directions, not at the bottom of the table. Overfunded (raised >
+ * goal) campaigns produce a ratio > 1 and correctly sort highest
+ * under desc. Always tiebreaks with `asc(id)` so offset pagination
  * stays deterministic across pages with duplicate sort keys.
  *
  * `progress` references columns from a LEFT JOINed aggregate (`raisedCol`
@@ -63,15 +66,11 @@ function buildCampaignOrderBy(
   if (sort === "status") return [dir(campaigns.status), asc(campaigns.id)];
   if (sort === "progress") {
     const direction = order === "asc" ? sql`ASC` : sql`DESC`;
-    // CASE returns NULL when no goal is set so those rows sort under
-    // NULLS LAST. `COALESCE(raised, 0)::float / goal` gives a true ratio
-    // (0 for campaigns with a goal but no donations, > 1 for overfunded
-    // — both correctly placed in the asc/desc spectrum).
     return [
       sql`(CASE
-        WHEN ${campaignPublicPages.goalAmountCents} IS NULL OR ${campaignPublicPages.goalAmountCents} = 0 THEN NULL
+        WHEN ${campaignPublicPages.goalAmountCents} IS NULL OR ${campaignPublicPages.goalAmountCents} = 0 THEN 0
         ELSE COALESCE(${raisedCol}, 0)::float / ${campaignPublicPages.goalAmountCents}
-      END) ${direction} NULLS LAST`,
+      END) ${direction}`,
       asc(campaigns.id),
     ];
   }

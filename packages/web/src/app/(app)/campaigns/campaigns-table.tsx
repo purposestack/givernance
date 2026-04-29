@@ -289,8 +289,12 @@ export function CampaignsTable({
           const raisedCents = stats?.totalRaisedCents ?? 0;
           const goalCents = campaign.goalAmountCents ?? 0;
           const progress = goalCents > 0 ? Math.min((raisedCents / goalCents) * 100, 100) : 0;
-          const ratioText =
-            goalCents > 0 ? `${Math.round((raisedCents / goalCents) * 100)}%` : "N/A";
+          // No goal set → 0% (rather than "N/A"). Users read it as
+          // "nothing raised against this campaign yet", which sorts
+          // alongside campaigns whose goal exists but hasn't been hit.
+          const ratioText = `${
+            goalCents > 0 ? Math.round((raisedCents / goalCents) * 100) : 0
+          }%`;
 
           return (
             <div className="min-w-44">
