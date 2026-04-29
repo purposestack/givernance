@@ -345,9 +345,7 @@ export function CampaignForm(props: CampaignFormProps) {
                       placeholder={t("fields.goalAmountPlaceholder")}
                     />
                   </FormControl>
-                  <p className="text-xs text-on-surface-variant">
-                    {t("fields.goalAmountHint")}
-                  </p>
+                  <p className="text-xs text-on-surface-variant">{t("fields.goalAmountHint")}</p>
                   <FormMessage />
                 </FormItem>
               )}

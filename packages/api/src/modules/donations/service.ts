@@ -177,8 +177,8 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
     conditions.push(
       inArray(
         donations.constituentId,
-        sql`(SELECT id FROM constituents WHERE org_id = ${orgId} AND (first_name ILIKE ${pattern} OR last_name ILIKE ${pattern} OR email ILIKE ${pattern}))`
-      )
+        sql`(SELECT id FROM constituents WHERE org_id = ${orgId} AND (first_name ILIKE ${pattern} OR last_name ILIKE ${pattern} OR email ILIKE ${pattern}))`,
+      ),
     );
   }
 
