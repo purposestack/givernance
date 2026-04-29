@@ -115,6 +115,9 @@ function toRequestBody(input: CampaignCreateInput | CampaignUpdateInput): Record
   if (input.operationalCostCents !== undefined) {
     body.operationalCostCents = input.operationalCostCents;
   }
+  if (input.goalAmountCents !== undefined) {
+    body.goalAmountCents = input.goalAmountCents;
+  }
   if (input.fundIds !== undefined) body.fundIds = input.fundIds;
 
   return body;
