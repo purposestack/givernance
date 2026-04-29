@@ -69,7 +69,8 @@ const CampaignCreateBody = Type.Object({
   type: CampaignTypeSchema,
   defaultCurrency: Type.Optional(CampaignDefaultCurrencySchema),
   parentId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
-  operationalCostCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
+  operationalCostCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
+  goalAmountCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
   fundIds: Type.Optional(Type.Array(UuidSchema)),
 });
 
@@ -82,7 +83,8 @@ const CampaignUpdateBody = Type.Object(
       Type.Union([Type.Literal("draft"), Type.Literal("active"), Type.Literal("closed")]),
     ),
     parentId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
-    operationalCostCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
+    operationalCostCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
+    goalAmountCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
     fundIds: Type.Optional(Type.Array(UuidSchema)),
   },
   { minProperties: 1 },
@@ -216,6 +218,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         defaultCurrency?: "EUR" | "GBP" | "CHF";
         parentId?: string | null;
         operationalCostCents?: number | null;
+        goalAmountCents?: number | null;
         fundIds?: string[];
       };
       try {
@@ -307,6 +310,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         status?: "draft" | "active" | "closed";
         parentId?: string | null;
         operationalCostCents?: number | null;
+        goalAmountCents?: number | null;
         fundIds?: string[];
       };
 
