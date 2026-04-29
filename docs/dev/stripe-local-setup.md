@@ -211,39 +211,48 @@ Check the worker terminal — the BullMQ job processor logs `Failed to process S
 
 Staging (`staging.givernance.org`) runs the same Stripe Connect code as local dev but reads its credentials from GitHub Actions secrets via Kamal (`config/deploy-staging.yml` + `.github/workflows/deploy-staging.yml`). Setting it up the first time is a 4-step ritual; afterwards the deploy workflow re-applies the config on every push to `main`.
 
-### Step 1 — register GitHub Actions secrets
+### Step 1 — register secrets in the `staging` GitHub Environment
 
-Five new repo-level secrets are needed for staging Stripe to work. The deploy workflow has empty fallbacks for all of them so it doesn't crash on a fresh repo, but the donor flow will block at "Stripe is not configured" (publishable key missing) or 502 on `Continue to payment` (secret key missing) until you set them.
+The deploy workflow declares `environment: staging` on the deploy job, which scopes every `secrets.X` lookup to the `staging` GitHub Environment first (falling back to repo-level secrets). That means staging and a future production environment can hold distinct values for the same logical key — no `STAGING_*` / `PROD_*` prefix dance — and approval gates / branch policies attach to the environment, toggleable in **Settings → Environments → staging** without touching workflow YAML.
+
+If the `staging` environment doesn't exist yet, create it once: **GitHub repo → Settings → Environments → New environment → "staging"** (no protection rules — push-to-`main` should keep deploying without manual approval).
+
+The deploy workflow has empty fallbacks for all of them so it doesn't crash on a fresh repo, but the donor flow will block at "Stripe is not configured" (publishable key missing) or 502 on `Continue to payment` (secret key missing) until you set them.
 
 ```sh
 # Run from a machine with `gh` auth + repo admin access.
+# `--env staging` scopes the secret to the staging environment so a
+# future prod environment can hold a different value under the SAME name.
 
 # 1. Stripe platform credentials. Use sk_test_… / pk_test_… for staging
 #    (we never want real money to move on a staging environment).
-gh secret set STRIPE_SECRET_KEY --repo purposestack/givernance \
-  --body "sk_test_…"
-gh secret set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY --repo purposestack/givernance \
-  --body "pk_test_…"
+gh secret set STRIPE_SECRET_KEY --env staging \
+  --repo purposestack/givernance --body "sk_test_…"
+gh secret set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY --env staging \
+  --repo purposestack/givernance --body "pk_test_…"
 
 # 2. Webhook signing secret. This is the dashboard-issued endpoint
 #    secret (NOT the `whsec_…` from `stripe listen`, which is a separate
-#    local-dev-only value). Step 3 below describes how to mint this from
+#    local-dev-only value). Step 2 below describes how to mint this from
 #    the Stripe dashboard.
-gh secret set STRIPE_WEBHOOK_SECRET --repo purposestack/givernance \
-  --body "whsec_…"
+gh secret set STRIPE_WEBHOOK_SECRET --env staging \
+  --repo purposestack/givernance --body "whsec_…"
 
 # 3. MinIO KMS key for AES256 server-side encryption. Worker DLQs every
 #    receipt PDF without this. Generate fresh:
-gh secret set MINIO_KMS_SECRET_KEY --repo purposestack/givernance \
-  --body "staging-kms:$(openssl rand -base64 32)"
+gh secret set MINIO_KMS_SECRET_KEY --env staging \
+  --repo purposestack/givernance --body "staging-kms:$(openssl rand -base64 32)"
 
-# 4. Optional — bucket name overrides. Defaults to `receipts` /
-#    `campaigns`; only set if your staging tenant uses different names.
-# gh secret set S3_RECEIPTS_BUCKET --body "receipts"
-# gh secret set S3_CAMPAIGNS_BUCKET --body "campaigns"
+# 4. Optional — bucket name overrides. These aren't secrets; prefer
+#    environment variables over secrets so they show in plaintext in the
+#    Environments UI. Defaults to `receipts` / `campaigns` if unset.
+# gh variable set S3_RECEIPTS_BUCKET --env staging --body "receipts"
+# gh variable set S3_CAMPAIGNS_BUCKET --env staging --body "campaigns"
 ```
 
-The IDE will lint these as "Context access might be invalid" until they're registered — soft warning, deploys succeed regardless. The fallbacks in the workflow are deliberate so deploys never fail on a missing secret; the user-facing surface is what tells you something's misconfigured.
+The IDE will lint these as "Context access might be invalid" until they're registered — soft warning, deploys succeed regardless. The fallbacks in the workflow are deliberate so deploys never fail on a missing secret; the user-facing surface (donor sees "Stripe is not configured" or 502 on Continue to payment) is what tells you something's misconfigured.
+
+> **Existing un-prefixed secrets stay repo-level for now.** A handful of secrets pre-date the environment-scoping switch (`POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `SESSION_SECRET`, `KEYCLOAK_ADMIN_CLIENT_SECRET`). They still resolve via repo-level fallback, so the deploy keeps working. Migrating them to the staging environment is a separate hygiene task — atomic per secret: register the new value in the environment, redeploy to confirm, then unset the repo-level one. Don't piecemeal-rename alongside other work.
 
 ### Step 2 — register the staging Stripe webhook endpoint
 
