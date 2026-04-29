@@ -97,6 +97,16 @@ env:
     - S3_SECRET_ACCESS_KEY
     - KEYCLOAK_ADMIN_CLIENT_SECRET
     - RESEND_API_KEY
+    # Stripe Connect — set via GitHub Actions secrets (staging
+    # environment), written to .kamal/secrets in the deploy workflow.
+    # STRIPE_SECRET_KEY is the platform `sk_test_…` / `sk_live_…`;
+    # STRIPE_WEBHOOK_SECRET is the signing secret from the Stripe
+    # dashboard webhook endpoint pointing at
+    # https://api.staging.givernance.org/v1/donations/stripe-webhook
+    # (NOT the local-dev `stripe listen` value — that one rotates per
+    # session). See docs/dev/stripe-local-setup.md → Staging.
+    - STRIPE_SECRET_KEY
+    - STRIPE_WEBHOOK_SECRET
 
 # Configure builder setup.
 builder:
@@ -107,6 +117,14 @@ builder:
     # at build time (see Dockerfile ARG API_URL comment). `env.clear`
     # injection at runtime cannot reach it.
     API_URL: https://api.staging.givernance.org
+    # Stripe publishable key — same Next.js build-time-inlining constraint
+    # as API_URL. Sourced from a shell env var the deploy workflow exports
+    # before invoking `kamal setup` (publishable keys are public per
+    # Stripe docs, but pulling from CI secrets keeps the test/live
+    # environments separated). Empty fallback so a missing secret surfaces
+    # the donor's "Stripe is not configured" message instead of a silently
+    # broken Stripe.js init.
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: <%= ENV.fetch("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "") %>
 
 # Use accessories for external services
 accessories:
@@ -137,6 +155,20 @@ accessories:
         MINIO_ROOT_USER: admin
       secret:
         - MINIO_ROOT_PASSWORD
+        # The worker uploads receipt + campaign PDFs with
+        # `ServerSideEncryption: "AES256"`. MinIO refuses that header
+        # without a KMS-equivalent backing key (Scaleway / AWS S3 manage
+        # SSE-S3 keys natively, MinIO doesn't). Without this every PDF
+        # upload DLQs with `NotImplemented: Server side encryption
+        # specified but KMS is not configured`. Format: `<key-name>:
+        # <base64-encoded-32-byte-secret>`. Generated with
+        # `openssl rand -base64 32`; rotate by changing the GitHub secret
+        # and redeploying — existing-encrypted-objects survive the rotation
+        # only if the previous key is added as a fallback (we don't, since
+        # staging data is non-load-bearing; if you keep PDFs across a
+        # rotation, MinIO's `MINIO_KMS_AUTO_ENCRYPTION` is the option to
+        # configure backwards compat).
+        - MINIO_KMS_SECRET_KEY
     directories:
       - data/minio:/data
     cmd: server /data --console-address ":9001"
