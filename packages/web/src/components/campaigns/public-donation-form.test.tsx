@@ -299,7 +299,10 @@ describe("PublicDonationForm", () => {
     );
 
     // Restore for downstream tests.
-    window.history.replaceState({}, "", originalSearch || "/");
+    // Restore. Using `pathname` rather than the `originalSearch || "/"`
+    // pattern because empty search → falsy → would redirect us to "/" and
+    // change the route under test (caught in PR #193 review).
+    window.history.replaceState({}, "", `${window.location.pathname}${originalSearch}`);
   });
 
   it("renders a retry CTA when post-3DS status is requires_payment_method", async () => {
@@ -338,6 +341,9 @@ describe("PublicDonationForm", () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId("stripe-payment-element")).toBeInTheDocument();
 
-    window.history.replaceState({}, "", originalSearch || "/");
+    // Restore. Using `pathname` rather than the `originalSearch || "/"`
+    // pattern because empty search → falsy → would redirect us to "/" and
+    // change the route under test (caught in PR #193 review).
+    window.history.replaceState({}, "", `${window.location.pathname}${originalSearch}`);
   });
 });

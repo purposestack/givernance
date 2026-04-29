@@ -544,8 +544,19 @@ export async function refundDonation(
     }) => Promise<unknown>;
   },
 ): Promise<RefundDonationResult> {
-  return withTenantContext(orgId, async (tx) => {
-    const [donation] = await tx
+  // Three-phase flow so we never hold a Postgres connection through a
+  // network call to Stripe (PR #193 review, finding #2):
+  //   1. Read-and-validate transaction (RLS-scoped, fast).
+  //   2. Stripe API call OUTSIDE any DB transaction.
+  //   3. Write-back transaction (RLS-scoped, fast).
+  // Holding a tx open across the Stripe call would pin a connection for
+  // the full latency of `refunds.create` (variable, can timeout). Under
+  // a burst of concurrent refunds the pool drains and unrelated requests
+  // start queuing.
+
+  // Phase 1 — read state, decide whether to call Stripe.
+  const validation = await withTenantContext(orgId, async (tx) => {
+    const [row] = await tx
       .select({
         id: donations.id,
         status: donations.status,
@@ -554,32 +565,37 @@ export async function refundDonation(
       })
       .from(donations)
       .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)));
+    return row ?? null;
+  });
 
-    if (!donation) return { kind: "not_found" } as const;
-    if (donation.status === "refunded") return { kind: "already_refunded" } as const;
-    if (donation.paymentMethod !== "stripe" || !donation.paymentRef) {
-      // Off-Stripe donations (cash, SEPA imported, check) need their own
-      // refund mechanism — out of scope here; route returns 422.
-      return { kind: "not_stripe" } as const;
-    }
+  if (!validation) return { kind: "not_found" } as const;
+  if (validation.status === "refunded") return { kind: "already_refunded" } as const;
+  if (validation.paymentMethod !== "stripe" || !validation.paymentRef) {
+    // Off-Stripe donations (cash, SEPA imported, check) need their own
+    // refund mechanism — out of scope here; route returns 422.
+    return { kind: "not_stripe" } as const;
+  }
+  const paymentRef = validation.paymentRef;
 
-    try {
-      // `refund_application_fee: true` rolls back the 1.5%+30¢ platform
-      // fee to the connected account at the same time as refunding the
-      // donor — donor experience: "I got my €50 back, no fee."
-      await refundsApi.create({
-        payment_intent: donation.paymentRef,
-        refund_application_fee: true,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Stripe refund failed";
-      return { kind: "stripe_error", message } as const;
-    }
+  // Phase 2 — Stripe call. NO DB transaction held during this network
+  // request. `refund_application_fee: true` rolls back the 1.5%+30¢
+  // platform fee to the connected account at the same time as refunding
+  // the donor — donor experience: "I got my €50 back, no fee."
+  try {
+    await refundsApi.create({
+      payment_intent: paymentRef,
+      refund_application_fee: true,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Stripe refund failed";
+    return { kind: "stripe_error", message } as const;
+  }
 
-    // Mark the row refunded immediately so the operator sees instant
-    // feedback in the UI. The `charge.refunded` webhook handler will
-    // observe `status === "refunded"` and short-circuit, keeping the
-    // pipeline idempotent.
+  // Phase 3 — persist the local state change. There's a tiny race window
+  // between phase 2 and phase 3 where the `charge.refunded` webhook can
+  // fire before we mark the row; both writers are idempotent on
+  // `status === "refunded"` so the second one short-circuits cleanly.
+  await withTenantContext(orgId, async (tx) => {
     await tx
       .update(donations)
       .set({ status: "refunded" })
@@ -594,11 +610,11 @@ export async function refundDonation(
       type: "donation.refunded",
       payload: {
         donationId,
-        paymentRef: donation.paymentRef,
+        paymentRef,
         source: "donation_refund_route",
       },
     });
-
-    return { kind: "ok" } as const;
   });
+
+  return { kind: "ok" } as const;
 }
