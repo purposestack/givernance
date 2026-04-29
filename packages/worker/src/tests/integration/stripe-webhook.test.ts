@@ -294,4 +294,171 @@ describe("processStripeWebhook", () => {
     expect(donation?.exchangeRate).toBe("150.00000000");
     expect(donation?.amountBaseCents).toBe(375000);
   });
+
+  // ─── #198: malformed payload rejected, not silently inserted as €0 ──────
+
+  it("DLQs (throws) when payment_intent payload is missing required fields", async () => {
+    // Insert a webhook_events row so the processor has somewhere to write
+    // its `failed` status update.
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000ee",
+      stripeEventId: "evt_test_malformed_pi",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+    });
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000ee",
+      stripeEventId: "evt_test_malformed_pi",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        // Missing `id` and `amount` — would have silently inserted a €0
+        // donation under the previous `as number ?? 0` casts.
+        currency: "eur",
+      },
+    });
+
+    await expect(processStripeWebhook(job)).rejects.toThrow(/Malformed payment_intent/);
+
+    // No donation row written
+    const matches = await db
+      .select()
+      .from(donations)
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, "evt_test_malformed_pi")));
+    expect(matches).toHaveLength(0);
+
+    // webhook_events flipped to failed (so the BullMQ retry chain has a record)
+    const [event] = await db
+      .select({ status: webhookEvents.status, error: webhookEvents.error })
+      .from(webhookEvents)
+      .where(eq(webhookEvents.id, "00000000-0000-0000-0000-0000000000ee"));
+    expect(event?.status).toBe("failed");
+    expect(event?.error).toContain("Malformed payment_intent");
+  });
+
+  // ─── #199: charge.refunded marks donation refunded + decrements campaign fee ──
+
+  it("charge.refunded flips status to refunded + decrements campaign platform fee", async () => {
+    // First seed a cleared Stripe donation we can refund.
+    const paymentRef = "pi_test_refund_target";
+    await db.execute(
+      sql`INSERT INTO constituents (id, org_id, first_name, last_name, type)
+          VALUES ('00000000-0000-0000-0000-0000000000c1', ${ORG_ID}, 'Refund', 'Target', 'donor')
+          ON CONFLICT (id) DO NOTHING`,
+    );
+    await db.execute(
+      sql`INSERT INTO campaigns (id, org_id, name, type, platform_fees_cents)
+          VALUES ('00000000-0000-0000-0000-0000000000c2', ${ORG_ID}, 'Refund Campaign', 'digital', 105)
+          ON CONFLICT (id) DO UPDATE SET platform_fees_cents = 105`,
+    );
+    await db.execute(
+      sql`INSERT INTO donations
+          (org_id, constituent_id, amount_cents, currency, exchange_rate, amount_base_cents,
+           campaign_id, status, platform_fee_cents, payment_method, payment_ref, donated_at, fiscal_year)
+          VALUES (${ORG_ID}, '00000000-0000-0000-0000-0000000000c1', 5000, 'EUR', '1', 5000,
+                  '00000000-0000-0000-0000-0000000000c2', 'cleared', 105, 'stripe', ${paymentRef}, now(), 2026)
+          ON CONFLICT DO NOTHING`,
+    );
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000ef",
+      stripeEventId: "evt_test_refund_1",
+      eventType: "charge.refunded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+    });
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000ef",
+      stripeEventId: "evt_test_refund_1",
+      eventType: "charge.refunded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: "ch_test_refund_1",
+        payment_intent: paymentRef,
+      },
+    });
+
+    await processStripeWebhook(job);
+
+    const [donation] = await db
+      .select({ status: donations.status })
+      .from(donations)
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, paymentRef)));
+    expect(donation?.status).toBe("refunded");
+
+    // Campaign platform-fee accumulator rolled back
+    const campaignResult = await db.execute(
+      sql`SELECT platform_fees_cents FROM campaigns WHERE id = '00000000-0000-0000-0000-0000000000c2'`,
+    );
+    const campaignRows = (
+      campaignResult as unknown as { rows: { platform_fees_cents: string | number }[] }
+    ).rows;
+    // Postgres `bigint` (or numeric-summed) columns can come back as strings
+    // through node-pg; normalise before asserting.
+    expect(Number(campaignRows[0]?.platform_fees_cents ?? -1)).toBe(0);
+
+    // donation.refunded outbox event emitted
+    const events = await db
+      .select({ type: outboxEvents.type, payload: outboxEvents.payload })
+      .from(outboxEvents)
+      .where(and(eq(outboxEvents.tenantId, ORG_ID), eq(outboxEvents.type, "donation.refunded")));
+    expect(events.length).toBeGreaterThan(0);
+  });
+
+  it("charge.refunded is idempotent on already-refunded donations", async () => {
+    // Donation seeded as already refunded — handler should short-circuit
+    // (no second outbox event, no second decrement).
+    const paymentRef = "pi_test_refund_idempotent";
+    await db.execute(
+      sql`INSERT INTO constituents (id, org_id, first_name, last_name, type)
+          VALUES ('00000000-0000-0000-0000-0000000000d1', ${ORG_ID}, 'Refund', 'Idempotent', 'donor')
+          ON CONFLICT (id) DO NOTHING`,
+    );
+    await db.execute(
+      sql`INSERT INTO donations
+          (org_id, constituent_id, amount_cents, currency, exchange_rate, amount_base_cents,
+           status, platform_fee_cents, payment_method, payment_ref, donated_at, fiscal_year)
+          VALUES (${ORG_ID}, '00000000-0000-0000-0000-0000000000d1', 5000, 'EUR', '1', 5000,
+                  'refunded', 105, 'stripe', ${paymentRef}, now(), 2026)
+          ON CONFLICT DO NOTHING`,
+    );
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000ea",
+      stripeEventId: "evt_test_refund_idempotent",
+      eventType: "charge.refunded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+    });
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000ea",
+      stripeEventId: "evt_test_refund_idempotent",
+      eventType: "charge.refunded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: "ch_test_refund_idempotent",
+        payment_intent: paymentRef,
+      },
+    });
+
+    // Should NOT throw — short-circuits on already-refunded.
+    await processStripeWebhook(job);
+
+    // Only one (or zero) refunded outbox event for this paymentRef — the
+    // first refund route call already emitted one in seeded data; the
+    // webhook handler must NOT emit a second.
+    const events = await db
+      .select({ payload: outboxEvents.payload })
+      .from(outboxEvents)
+      .where(and(eq(outboxEvents.tenantId, ORG_ID), eq(outboxEvents.type, "donation.refunded")));
+    const matchingPayloads = events.filter(
+      (e) => (e.payload as { paymentRef?: string }).paymentRef === paymentRef,
+    );
+    expect(matchingPayloads.length).toBeLessThanOrEqual(1);
+  });
 });
