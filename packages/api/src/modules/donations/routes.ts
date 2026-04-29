@@ -12,9 +12,11 @@ import {
   ErrorResponses,
   IdParams,
   PaginationQuery,
+  ProblemDetailSchema,
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
+import { getStripe } from "../payments/service.js";
 import {
   AllocationSumMismatchError,
   CrossTenantReferenceError,
@@ -23,6 +25,7 @@ import {
   getDonation,
   getReceiptByDonation,
   listDonations,
+  refundDonation,
   updateDonation,
 } from "./service.js";
 
@@ -138,6 +141,13 @@ const DonationListRow = Type.Object({
   ]),
 });
 
+const DonationStatusSchema = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("cleared"),
+  Type.Literal("refunded"),
+  Type.Literal("failed"),
+]);
+
 const DonationDetailResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
@@ -147,6 +157,10 @@ const DonationDetailResponse = Type.Object({
   campaignId: Type.Union([UuidSchema, Type.Null()]),
   paymentMethod: Type.Union([Type.String(), Type.Null()]),
   paymentRef: Type.Union([Type.String(), Type.Null()]),
+  // Issue #199: exposed so the donation detail UI can hide the refund
+  // button on already-refunded rows and the refund flow doesn't surprise
+  // a donor who clicked twice.
+  status: DonationStatusSchema,
   donatedAt: Type.String(),
   fiscalYear: Type.Union([Type.Integer(), Type.Null()]),
   createdAt: Type.String(),
@@ -429,6 +443,81 @@ export async function donationRoutes(app: FastifyInstance) {
       }
 
       return { data: deleted };
+    },
+  );
+
+  /**
+   * Refund a Stripe donation (issue #199). Only org_admins, only Stripe-
+   * sourced donations, and only ones not already refunded.
+   *
+   * The actual donation-row update happens twice for idempotency: once
+   * synchronously here for snappy UI, and again on the `charge.refunded`
+   * webhook (which the worker handles regardless of refund origin — our
+   * UI or the NPO's Stripe dashboard). Both paths set `status =
+   * "refunded"`; the second one is a no-op when it sees the row is
+   * already refunded.
+   */
+  app.post(
+    "/donations/:id/refund",
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        tags: ["Donations"],
+        params: IdParams,
+        response: {
+          200: DataResponse(Type.Object({ id: UuidSchema, status: Type.Literal("refunded") })),
+          422: ProblemDetailSchema,
+          502: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const t = resolveTranslations(request);
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", t("errors.unauthorized")));
+      }
+
+      const { id } = request.params as { id: string };
+      const stripe = getStripe();
+      const result = await refundDonation(orgId, id, stripe.refunds);
+
+      switch (result.kind) {
+        case "ok":
+          return { data: { id, status: "refunded" as const } };
+        case "not_found":
+          return reply
+            .status(404)
+            .send(
+              problemDetail(
+                404,
+                "Not Found",
+                t("errors.notFound", { resource: t("resources.donation") }),
+              ),
+            );
+        case "already_refunded":
+          return reply
+            .status(422)
+            .send(problemDetail(422, "Unprocessable Entity", "Donation already refunded"));
+        case "not_stripe":
+          return reply
+            .status(422)
+            .send(
+              problemDetail(
+                422,
+                "Unprocessable Entity",
+                "Only Stripe-sourced donations can be refunded through this endpoint",
+              ),
+            );
+        case "stripe_error":
+          // Sanitised log; donor-/operator-facing message stays generic
+          // (memory: don't leak Stripe internals to authenticated callers).
+          request.log.error({ errMessage: result.message, donationId: id }, "Stripe refund failed");
+          return reply
+            .status(502)
+            .send(problemDetail(502, "Bad Gateway", "Payment provider error, please try again"));
+      }
     },
   );
 

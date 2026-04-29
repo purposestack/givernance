@@ -81,6 +81,19 @@ export const DonationService = {
     );
     return response.data.url;
   },
+
+  /**
+   * Refund a Stripe donation (issue #199). Returns the refunded id +
+   * status; the actual donation row is updated server-side both
+   * synchronously by this route AND asynchronously by the
+   * `charge.refunded` webhook (idempotent).
+   */
+  async refundDonation(client: ApiClient, id: string): Promise<{ id: string; status: "refunded" }> {
+    const response = await client.post<{ data: { id: string; status: "refunded" } }>(
+      `/v1/donations/${encodeURIComponent(id)}/refund`,
+    );
+    return response.data;
+  },
 };
 
 function mapDonationRow(raw: DonationListRow): DonationListRow {

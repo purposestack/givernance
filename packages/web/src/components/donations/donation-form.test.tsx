@@ -125,6 +125,7 @@ describe("DonationForm", () => {
           campaignId: null,
           paymentMethod: "wire",
           paymentRef: "WIRE-2026-0001",
+          status: "cleared",
           donatedAt: "2026-04-22T00:00:00.000Z",
           fiscalYear: 2026,
           createdAt: "2026-04-22T00:00:00.000Z",

@@ -1,7 +1,7 @@
 import { funds } from "@givernance/shared/schema";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { db, withTenantContext } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import {
@@ -12,6 +12,17 @@ import {
   signToken,
   signTokenB,
 } from "../helpers/auth.js";
+
+// Stub the Stripe SDK so the refund route doesn't hit real Stripe. Only
+// `getStripe()` is mocked — the rest of the service runs unmodified.
+const { mockRefundsCreate } = vi.hoisted(() => ({ mockRefundsCreate: vi.fn() }));
+vi.mock("../../modules/payments/service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../modules/payments/service.js")>();
+  return {
+    ...actual,
+    getStripe: () => ({ refunds: { create: mockRefundsCreate } }),
+  };
+});
 
 let app: FastifyInstance;
 const MULTI_CURRENCY_ORG = "00000000-0000-0000-0000-000000000126";
@@ -441,6 +452,159 @@ describe("Donations CRUD", () => {
 
     expect(rows.rows.length).toBe(1);
     expect((rows.rows[0] as { type: string }).type).toBe("donation.created");
+  });
+});
+
+// ─── Refund flow (issue #199) ───────────────────────────────────────────────
+
+describe("POST /v1/donations/:id/refund", () => {
+  it("calls Stripe with refund_application_fee=true and flips status to refunded", async () => {
+    mockRefundsCreate.mockResolvedValueOnce({ id: "re_test_1", status: "succeeded" });
+
+    // Seed a Stripe-sourced cleared donation
+    const tokenA = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 5000,
+        paymentMethod: "stripe",
+        paymentRef: `pi_test_refund_${Date.now()}`,
+      },
+    });
+    const donationId = createRes.json<{ data: { id: string } }>().data.id;
+    const paymentRef = createRes.json<{ data: { paymentRef: string } }>().data.paymentRef;
+
+    const refundRes = await app.inject({
+      method: "POST",
+      url: `/v1/donations/${donationId}/refund`,
+      headers: authHeader(tokenA),
+    });
+
+    expect(refundRes.statusCode).toBe(200);
+    expect(refundRes.json()).toEqual({ data: { id: donationId, status: "refunded" } });
+
+    // Stripe was called with the right payload — `refund_application_fee:
+    // true` is the load-bearing flag that distinguishes our refund flow
+    // from a stock Stripe refund (issue #199 / docs/payments-overview.md).
+    expect(mockRefundsCreate).toHaveBeenCalledWith({
+      payment_intent: paymentRef,
+      refund_application_fee: true,
+    });
+
+    // Donation row reflects the refund immediately (UI doesn't have to wait
+    // for the webhook to fire — webhook handler is idempotent on already-
+    // refunded rows).
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${donationId}`,
+      headers: authHeader(tokenA),
+    });
+    expect(getRes.json<{ data: { status: string } }>().data.status).toBe("refunded");
+  });
+
+  it("returns 422 for already-refunded donations", async () => {
+    mockRefundsCreate.mockClear();
+    const tokenA = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1000,
+        paymentMethod: "stripe",
+        paymentRef: `pi_test_already_refunded_${Date.now()}`,
+      },
+    });
+    const donationId = createRes.json<{ data: { id: string } }>().data.id;
+
+    // First refund succeeds
+    mockRefundsCreate.mockResolvedValueOnce({ id: "re_test_2", status: "succeeded" });
+    await app.inject({
+      method: "POST",
+      url: `/v1/donations/${donationId}/refund`,
+      headers: authHeader(tokenA),
+    });
+
+    // Second call gets a 422 — Stripe is NOT re-invoked
+    const dupRes = await app.inject({
+      method: "POST",
+      url: `/v1/donations/${donationId}/refund`,
+      headers: authHeader(tokenA),
+    });
+    expect(dupRes.statusCode).toBe(422);
+    expect(mockRefundsCreate).toHaveBeenCalledTimes(1);
+    const body = dupRes.json<{ type: string; status: number; detail: string }>();
+    expect(body.type).toBe("https://httpproblems.com/http-status/422");
+    expect(body.status).toBe(422);
+  });
+
+  it("returns 422 when the donation isn't Stripe-sourced", async () => {
+    mockRefundsCreate.mockClear();
+    const tokenA = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1000,
+        paymentMethod: "cash",
+        paymentRef: `CASH-RECEIPT-${Date.now()}-${Math.random()}`,
+      },
+    });
+    const donationId = createRes.json<{ data: { id: string } }>().data.id;
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/donations/${donationId}/refund`,
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(mockRefundsCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { role: "viewer" as const },
+    { role: "user" as const },
+  ])("returns 403 for role $role (org_admin only)", async ({ role }) => {
+    const token = signToken(app, { role });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/donations/00000000-0000-0000-0000-ffffffffffff/refund",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("returns 502 with masked detail when Stripe rejects the refund", async () => {
+    mockRefundsCreate.mockRejectedValueOnce(new Error("Stripe internal failure detail"));
+    const tokenA = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1000,
+        paymentMethod: "stripe",
+        paymentRef: `pi_test_stripe_fail_${Date.now()}`,
+      },
+    });
+    const donationId = createRes.json<{ data: { id: string } }>().data.id;
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/donations/${donationId}/refund`,
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(502);
+    const body = res.json<{ detail: string }>();
+    expect(body.detail).not.toContain("internal failure detail");
+    expect(body.detail).toContain("Payment provider error");
   });
 });
 

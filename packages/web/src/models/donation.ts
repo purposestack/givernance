@@ -10,6 +10,12 @@ import type { Pagination } from "@/models/constituent";
 
 export type ReceiptStatus = "pending" | "generated" | "failed";
 
+/**
+ * Donation lifecycle status as exposed by `GET /v1/donations/:id`. Issue
+ * #199 — the refund button hides itself when status is already `refunded`.
+ */
+export type DonationStatus = "pending" | "cleared" | "refunded" | "failed";
+
 export interface Donation {
   id: string;
   orgId: string;
@@ -61,6 +67,8 @@ export interface DonationAllocationInput {
 }
 
 export interface DonationDetail extends Donation {
+  /** Lifecycle status — see `DonationStatus`. Drives the refund button. */
+  status: DonationStatus;
   constituent: {
     id: string;
     firstName: string;
