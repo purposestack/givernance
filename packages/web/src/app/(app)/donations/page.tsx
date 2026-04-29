@@ -55,6 +55,13 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
   const dateTo = parseIsoDate(params.dateTo);
   const campaignId = parseUuid(params.campaignId);
   const constituentId = parseUuid(params.constituentId);
+  const rawReceipt = Array.isArray(params.receiptStatus)
+    ? params.receiptStatus[0]
+    : params.receiptStatus;
+  const receiptStatusValue =
+    rawReceipt === "pending" || rawReceipt === "generated" || rawReceipt === "failed"
+      ? rawReceipt
+      : undefined;
 
   const client = await createServerApiClient();
 
@@ -68,6 +75,7 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
       dateTo,
       campaignId,
       constituentId,
+      receiptStatus: receiptStatusValue,
     });
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {

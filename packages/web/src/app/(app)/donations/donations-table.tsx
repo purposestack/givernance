@@ -71,15 +71,17 @@ export function DonationsTable({
   const tFilters = useTranslations("donations.filters");
   const [donationToDelete, setDonationToDelete] = useState<DonationListRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("search") ?? "");
-  const [receiptFilter, setReceiptFilter] = useState<string>("all");
+  const initialSearch = searchParams.get("search") ?? "";
+  const initialReceipt = searchParams.get("receiptStatus") ?? "all";
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
 
+  // Server-side search: see campaigns-table.tsx for the rationale on why
+  // `searchParams` is excluded from the deps.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {
+    if (searchTerm === initialSearch) return;
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString());
-      const currentSearch = params.get("search") ?? "";
-      if (searchTerm === currentSearch) return;
-
       if (searchTerm) {
         params.set("search", searchTerm);
       } else {
@@ -90,14 +92,22 @@ export function DonationsTable({
       router.push(query ? `${pathname}?${query}` : pathname);
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchTerm, pathname, router, searchParams]);
+  }, [searchTerm]);
 
-  const filteredDonations = useMemo(() => {
-    return donations.filter((d) => {
-      const matchesReceipt = receiptFilter === "all" || d.receiptStatus === receiptFilter;
-      return matchesReceipt;
-    });
-  }, [donations, receiptFilter]);
+  const updateReceipt = useCallback(
+    (next: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next && next !== "all") {
+        params.set("receiptStatus", next);
+      } else {
+        params.delete("receiptStatus");
+      }
+      params.delete("page");
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -241,13 +251,14 @@ export function DonationsTable({
           />
           <Input
             placeholder={tFilters("searchPlaceholder")}
+            aria-label={tFilters("searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
           />
         </div>
-        <Select value={receiptFilter} onValueChange={setReceiptFilter}>
-          <SelectTrigger className="w-full sm:w-[180px]">
+        <Select value={initialReceipt} onValueChange={updateReceipt}>
+          <SelectTrigger className="w-full sm:w-[180px]" aria-label={tFilters("receiptLabel")}>
             <SelectValue placeholder={tFilters("receiptLabel")} />
           </SelectTrigger>
           <SelectContent>
@@ -262,7 +273,7 @@ export function DonationsTable({
       <div className="transition-opacity duration-normal">
         <DataTable
           columns={columns}
-          data={filteredDonations}
+          data={donations}
           pagination={pagination}
           onPageChange={navigateToPage}
           onRowClick={(row) => router.push(`/donations/${row.original.id}`)}

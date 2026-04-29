@@ -37,6 +37,11 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
   const page = parsePositiveInt(params.page, 1);
   const perPage = parsePositiveInt(params.perPage, DEFAULT_PER_PAGE, MAX_PER_PAGE);
   const searchValue = Array.isArray(params.search) ? params.search[0] : params.search;
+  const rawStatus = Array.isArray(params.status) ? params.status[0] : params.status;
+  const statusValue =
+    rawStatus === "draft" || rawStatus === "active" || rawStatus === "closed"
+      ? rawStatus
+      : undefined;
 
   const client = await createServerApiClient();
 
@@ -46,6 +51,7 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
       page,
       perPage,
       search: searchValue,
+      status: statusValue,
     });
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
