@@ -22,6 +22,17 @@ servers:
     hosts:
       - <%= ENV["STAGING_VPS_IP"] %>
     cmd: pnpm --filter @givernance/worker run start
+  # Outbox relay — polls outbox_events and republishes to BullMQ
+  # (givernance_events queue), which fans out to the typed worker queues
+  # (emails, receipts, etc). Without this process, every domain event
+  # (invitation.created, signup.created, …) sits forever with
+  # status='pending' and the worker never sees a job. Single instance
+  # is fine: the relay uses SELECT … FOR UPDATE SKIP LOCKED, so adding
+  # more later just shards work.
+  relay:
+    hosts:
+      - <%= ENV["STAGING_VPS_IP"] %>
+    cmd: pnpm --filter @givernance/relay run start
 
 proxy:
   ssl: true
