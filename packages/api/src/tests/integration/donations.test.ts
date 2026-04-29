@@ -221,6 +221,66 @@ describe("Donations CRUD", () => {
     expect(res.json().data).toBeInstanceOf(Array);
   });
 
+  it("GET /v1/donations?receiptStatus=generated returns only donations with a generated receipt", async () => {
+    const tokenA = signToken(app);
+    // Create a donation, then directly insert a 'generated' receipt for it
+    const donRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 4242,
+        currency: "EUR",
+      },
+    });
+    expect(donRes.statusCode).toBe(201);
+    const seededDonationId = donRes.json<{ data: { id: string } }>().data.id;
+    // Receipt numbers are unique per (org, fiscal_year) — derive from the
+    // donation ID so re-runs against a persistent DB don't collide.
+    const receiptNumber = `TEST-FILTER-${seededDonationId.slice(0, 8)}`;
+    await db.execute(sql`
+      INSERT INTO receipts (org_id, donation_id, receipt_number, fiscal_year, s3_path, status)
+      VALUES (${ORG_A}, ${seededDonationId}, ${receiptNumber}, 2026, 's3://test/path', 'generated')
+    `);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations?receiptStatus=generated&perPage=100",
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { id: string; receiptStatus: "generated" | "pending" | "failed" | null }[];
+    }>();
+    expect(body.data.length).toBeGreaterThan(0);
+    for (const d of body.data) {
+      expect(d.receiptStatus).toBe("generated");
+    }
+    expect(body.data.map((d) => d.id)).toContain(seededDonationId);
+  });
+
+  it("GET /v1/donations?receiptStatus=invalid returns 400", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/donations?receiptStatus=bogus",
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("GET /v1/donations?search=<201 chars> returns 400", async () => {
+    const tokenA = signToken(app);
+    const longSearch = "a".repeat(201);
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/donations?search=${longSearch}`,
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it("GET /v1/donations/:id returns donation with constituent and allocations", async () => {
     const tokenA = signToken(app);
     const res = await app.inject({

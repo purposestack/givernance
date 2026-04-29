@@ -67,7 +67,7 @@ const ConstituentUpdateBody = Type.Object(
 const ListQuery = Type.Intersect([
   PaginationQuery,
   Type.Object({
-    search: Type.Optional(Type.String()),
+    search: Type.Optional(Type.String({ maxLength: 200 })),
     tags: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()])),
     type: Type.Optional(ConstituentTypeEnum),
     includeDeleted: Type.Optional(Type.Boolean({ default: false })),

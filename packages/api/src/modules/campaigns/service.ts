@@ -36,6 +36,7 @@ export interface ListCampaignsQuery {
   page: number;
   perPage: number;
   search?: string;
+  status?: "draft" | "active" | "closed";
 }
 
 function campaignSelectFields() {
@@ -128,7 +129,7 @@ async function syncCampaignFunds(
 
 /** List campaigns for an organization with pagination */
 export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
-  const { page, perPage, search } = query;
+  const { page, perPage, search, status } = query;
   const offset = (page - 1) * perPage;
 
   return withTenantContext(orgId, async (tx) => {
@@ -136,6 +137,10 @@ export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
 
     if (search) {
       conditions.push(ilike(campaigns.name, `%${search}%`));
+    }
+
+    if (status) {
+      conditions.push(eq(campaigns.status, status));
     }
 
     const where = and(...conditions);
