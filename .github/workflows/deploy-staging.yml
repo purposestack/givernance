@@ -104,6 +104,17 @@ jobs:
       - name: Reboot Keycloak to re-import realm JSON
         run: kamal accessory reboot keycloak -c config/deploy-staging.yml
 
+      # `kamal setup` only re-creates accessories that aren't already
+      # running, so accessory-config changes (port mappings, env vars,
+      # image bumps) on an existing instance are silent no-ops. Reboot
+      # MinIO unconditionally so port-mapping or KMS-key changes in
+      # `config/deploy-staging.yml` actually take effect on the running
+      # container — issue #214 dropped the public `port: 9000` mapping
+      # and previously that change would have only landed on a fresh
+      # VPS. Idempotent: noop on a steady-state deploy.
+      - name: Reboot MinIO to apply accessory config changes
+        run: kamal accessory reboot minio -c config/deploy-staging.yml
+
       - name: Wait for Keycloak realm to be ready
         run: |
           for i in $(seq 1 60); do
