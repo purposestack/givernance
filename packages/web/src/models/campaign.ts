@@ -66,6 +66,7 @@ export interface CampaignCreateInput {
   defaultCurrency?: CampaignCurrency;
   parentId?: string | null;
   operationalCostCents?: number | null;
+  goalAmountCents?: number | null;
   fundIds?: string[];
 }
 
