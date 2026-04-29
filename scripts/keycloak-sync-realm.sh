@@ -561,6 +561,39 @@ except Exception:
   fi
 fi
 
+# 2.g Rotate the `givernance-admin` client secret to match the
+#     `KEYCLOAK_ADMIN_CLIENT_SECRET` env var. The realm JSON ships a
+#     placeholder secret (`ci-test-admin-secret-do-not-use-in-production`)
+#     that's correct for local + CI but wrong for staging/prod, where the
+#     API container authenticates with a per-environment value. Without
+#     this rotation, every Admin API call from the backend 401s with
+#     "Token endpoint returned 401" and silently kills the
+#     accept-invitation / signup-verify flows that need to provision
+#     Keycloak users (the 410 / 500 the route returns gives no breadcrumb
+#     pointing here).
+if [ -z "${admin_client_uuid:-}" ]; then
+  log "Skipping admin client secret rotation (admin_client_uuid not resolved)."
+elif [ -z "${KEYCLOAK_ADMIN_CLIENT_SECRET:-}" ]; then
+  log "KEYCLOAK_ADMIN_CLIENT_SECRET unset — leaving 'givernance-admin' secret as imported."
+else
+  current_admin_client=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/clients/${admin_client_uuid}")
+  current_secret=$(printf '%s' "$current_admin_client" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("secret",""))')
+  if [ "$current_secret" = "$KEYCLOAK_ADMIN_CLIENT_SECRET" ]; then
+    log "Client 'givernance-admin' secret already matches env."
+  else
+    patched_admin_client=$(printf '%s' "$current_admin_client" | KCSEC="$KEYCLOAK_ADMIN_CLIENT_SECRET" python3 -c '
+import json, os, sys
+d = json.load(sys.stdin)
+d["secret"] = os.environ["KCSEC"]
+print(json.dumps(d))
+')
+    curl -sS -o /dev/null -w 'givernance-admin secret rotation: HTTP %{http_code}\n' \
+      -X PUT "${KC_URL}/admin/realms/${REALM}/clients/${admin_client_uuid}" \
+      "${auth[@]}" -H "Content-Type: application/json" -d "$patched_admin_client"
+    log "Rotated 'givernance-admin' client secret to match KEYCLOAK_ADMIN_CLIENT_SECRET."
+  fi
+fi
+
 # 3. Ensure the seed user has the org_id attribute set.
 user_json=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users?username=$(urlencode "$SEED_USERNAME")&exact=true")
 user_id=$(printf '%s' "$user_json" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')
