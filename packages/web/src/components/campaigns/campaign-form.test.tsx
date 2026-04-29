@@ -59,7 +59,7 @@ describe("CampaignForm", () => {
     await waitFor(() => expect(FundService.listFunds).toHaveBeenCalled());
 
     await user.type(screen.getByPlaceholderText("Spring appeal 2026"), "  Spring Appeal 2026  ");
-    await user.type(screen.getByPlaceholderText("0.00"), "12.50");
+    await user.type(screen.getByRole("textbox", { name: "Operational cost" }), "12.50");
     const fundCheckbox = await screen.findByRole("checkbox", { name: "Restricted Fund" });
     await user.click(fundCheckbox);
     await waitFor(() => expect(fundCheckbox).toHaveAttribute("data-state", "checked"));
