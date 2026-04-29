@@ -11,7 +11,19 @@ import {
   tenants,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, asc, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  gte,
+  ilike,
+  inArray,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
 import { ExchangeRateService } from "../finance/exchange-rate-service.js";
 
@@ -71,13 +83,21 @@ async function assertFundsBelongToOrg(
   if (missing) throw new CrossTenantReferenceError("fund", missing);
 }
 
-export type DonationSortField = "donatedAt" | "amountCents" | "paymentMethod" | "createdAt";
+export type DonationSortField =
+  | "donatedAt"
+  | "amountCents"
+  | "paymentMethod"
+  | "donor"
+  | "campaign"
+  | "createdAt";
 export type DonationSortOrder = "asc" | "desc";
 
 const DONATION_SORT_FIELDS: ReadonlySet<DonationSortField> = new Set([
   "donatedAt",
   "amountCents",
   "paymentMethod",
+  "donor",
+  "campaign",
   "createdAt",
 ]);
 
@@ -120,15 +140,20 @@ function normalizeDonationOrder(value: string | undefined): DonationSortOrder {
  * `asc(donations.id)` so offset pagination is deterministic across pages
  * even when many rows share the same sort key.
  *
- * `paymentMethod` is free-text and frequently NULL, so it gets two tweaks
- * over the other fields:
+ * `paymentMethod`, `donor`, and `campaign` are all free-text and may be
+ * NULL (campaign FK is nullable, donor row may be soft-deleted), so they
+ * share two tweaks:
  * - `lower(...)` — case-insensitive, matches the `name` treatment in
  *   campaigns/funds/constituents so "Wire" / "wire" / "WIRE" group together.
  * - explicit `NULLS LAST` for both `asc` and `desc` — Postgres' default
  *   puts NULLs first under `asc` and last under `desc`. Users sorting by
- *   "payment method desc" don't want a wall of empty cells before any
- *   non-null data; pinning NULLs to the bottom either way is the least
+ *   "campaign desc" or "donor asc" don't want a wall of empty cells before
+ *   any non-null data; pinning NULLs to the bottom either way is the least
  *   surprising read of the column.
+ *
+ * `donor` and `campaign` reference columns from tables joined into
+ * `listDonations` via LEFT JOIN — their order is determined by the joined
+ * row, not by anything on `donations` itself.
  */
 function buildDonationOrderBy(sort: DonationSortField, order: DonationSortOrder) {
   const dir = order === "asc" ? asc : desc;
@@ -138,6 +163,21 @@ function buildDonationOrderBy(sort: DonationSortField, order: DonationSortOrder)
     // pre-built `sql` fragments keeps the safety obvious in review.
     const direction = order === "asc" ? sql`ASC` : sql`DESC`;
     return [sql`lower(${donations.paymentMethod}) ${direction} NULLS LAST`, asc(donations.id)];
+  }
+  if (sort === "donor") {
+    // Sort on the joined constituent row. Tuple is (firstName, lastName)
+    // to match the cell display ("First Last") — same rationale as
+    // `buildConstituentOrderBy` in constituents/service.ts.
+    const direction = order === "asc" ? sql`ASC` : sql`DESC`;
+    return [
+      sql`lower(${constituents.firstName}) ${direction} NULLS LAST`,
+      sql`lower(${constituents.lastName}) ${direction} NULLS LAST`,
+      asc(donations.id),
+    ];
+  }
+  if (sort === "campaign") {
+    const direction = order === "asc" ? sql`ASC` : sql`DESC`;
+    return [sql`lower(${campaigns.name}) ${direction} NULLS LAST`, asc(donations.id)];
   }
   if (sort === "createdAt") return [dir(donations.createdAt), asc(donations.id)];
   return [dir(donations.donatedAt), asc(donations.id)];
@@ -286,31 +326,23 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
   return and(...conditions);
 }
 
-/** Enrich donation rows with constituent names and latest receipt status for list views */
-async function enrichDonationRows<T extends { id: string; constituentId: string }>(
+/**
+ * Attach the latest receipt status per donation. Constituent + campaign
+ * names already arrive from `listDonations`'s LEFT JOINs (so that they're
+ * sortable). Receipts stay separate because they're 1:N (latest by
+ * createdAt) and would multiply rows in the list query.
+ */
+async function attachLatestReceiptStatus<T extends { id: string }>(
   tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
   rows: T[],
 ) {
-  const constituentIds = Array.from(new Set(rows.map((d) => d.constituentId)));
   const donationIds = rows.map((d) => d.id);
+  const receiptRows = await tx
+    .select({ donationId: receipts.donationId, status: receipts.status })
+    .from(receipts)
+    .where(inArray(receipts.donationId, donationIds))
+    .orderBy(desc(receipts.createdAt));
 
-  const [constituentRows, receiptRows] = await Promise.all([
-    tx
-      .select({
-        id: constituents.id,
-        firstName: constituents.firstName,
-        lastName: constituents.lastName,
-      })
-      .from(constituents)
-      .where(inArray(constituents.id, constituentIds)),
-    tx
-      .select({ donationId: receipts.donationId, status: receipts.status })
-      .from(receipts)
-      .where(inArray(receipts.donationId, donationIds))
-      .orderBy(desc(receipts.createdAt)),
-  ]);
-
-  const constituentById = new Map(constituentRows.map((c) => [c.id, c]));
   const receiptByDonationId = new Map<string, (typeof receiptRows)[number]["status"]>();
   for (const r of receiptRows) {
     if (!receiptByDonationId.has(r.donationId)) {
@@ -318,14 +350,10 @@ async function enrichDonationRows<T extends { id: string; constituentId: string 
     }
   }
 
-  return rows.map((d) => {
-    const c = constituentById.get(d.constituentId) ?? null;
-    return {
-      ...d,
-      constituent: c ? { firstName: c.firstName, lastName: c.lastName } : null,
-      receiptStatus: receiptByDonationId.get(d.id) ?? null,
-    };
-  });
+  return rows.map((d) => ({
+    ...d,
+    receiptStatus: receiptByDonationId.get(d.id) ?? null,
+  }));
 }
 
 /** List donations for an organization with pagination and filtering */
@@ -337,10 +365,23 @@ export async function listDonations(orgId: string, query: ListDonationsQuery) {
   const order = normalizeDonationOrder(query.order);
 
   return withTenantContext(orgId, async (tx) => {
+    // LEFT JOIN constituents + campaigns so the donor/campaign names are
+    // available both for `ORDER BY` (server-side sort on the joined row,
+    // not on the visible page slice) AND for the response cell display.
+    // LEFT (not INNER) is intentional: constituent rows can be soft-deleted
+    // and `donations.campaignId` is nullable, so a missing join row means
+    // "anonymous" / "no campaign", not "exclude this donation".
     const [data, countResult] = await Promise.all([
       tx
-        .select()
+        .select({
+          ...getTableColumns(donations),
+          _constituentFirstName: constituents.firstName,
+          _constituentLastName: constituents.lastName,
+          _campaignName: campaigns.name,
+        })
         .from(donations)
+        .leftJoin(constituents, eq(donations.constituentId, constituents.id))
+        .leftJoin(campaigns, eq(donations.campaignId, campaigns.id))
         .where(where)
         .orderBy(...buildDonationOrderBy(sort, order))
         .limit(perPage)
@@ -360,7 +401,18 @@ export async function listDonations(orgId: string, query: ListDonationsQuery) {
       return { data: [], pagination };
     }
 
-    const enriched = await enrichDonationRows(tx, data);
+    const shaped = data.map(
+      ({ _constituentFirstName, _constituentLastName, _campaignName, ...d }) => ({
+        ...d,
+        constituent:
+          _constituentFirstName !== null && _constituentLastName !== null
+            ? { firstName: _constituentFirstName, lastName: _constituentLastName }
+            : null,
+        campaign: _campaignName !== null ? { name: _campaignName } : null,
+      }),
+    );
+
+    const enriched = await attachLatestReceiptStatus(tx, shaped);
     return { data: enriched, pagination };
   });
 }

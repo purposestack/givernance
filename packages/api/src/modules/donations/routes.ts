@@ -37,7 +37,14 @@ const ReceiptStatusSchema = Type.Union([
 ]);
 
 /** Server-side sort fields whitelist for `GET /donations`. */
-const DONATION_SORT_FIELDS = ["donatedAt", "amountCents", "paymentMethod", "createdAt"] as const;
+const DONATION_SORT_FIELDS = [
+  "donatedAt",
+  "amountCents",
+  "paymentMethod",
+  "donor",
+  "campaign",
+  "createdAt",
+] as const;
 const DonationSortFieldSchema = Type.Union(
   DONATION_SORT_FIELDS.map((field) => Type.Literal(field)),
 );
@@ -142,6 +149,7 @@ const DonationListRow = Type.Object({
     Type.Object({ firstName: Type.String(), lastName: Type.String() }),
     Type.Null(),
   ]),
+  campaign: Type.Union([Type.Object({ name: Type.String() }), Type.Null()]),
   receiptStatus: Type.Union([
     Type.Literal("pending"),
     Type.Literal("generated"),

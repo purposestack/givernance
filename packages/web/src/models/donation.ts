@@ -33,6 +33,7 @@ export interface Donation {
 
 export interface DonationListRow extends Donation {
   constituent: { firstName: string; lastName: string } | null;
+  campaign: { name: string } | null;
   receiptStatus: ReceiptStatus | null;
 }
 
@@ -41,7 +42,13 @@ export interface DonationListResponse {
   pagination: Pagination;
 }
 
-export type DonationSortField = "donatedAt" | "amountCents" | "paymentMethod" | "createdAt";
+export type DonationSortField =
+  | "donatedAt"
+  | "amountCents"
+  | "paymentMethod"
+  | "donor"
+  | "campaign"
+  | "createdAt";
 export type DonationSortOrder = "asc" | "desc";
 
 export interface DonationListQuery {

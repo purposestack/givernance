@@ -115,6 +115,7 @@ function mapDonationRow(raw: DonationListRow): DonationListRow {
     constituent: raw.constituent
       ? { firstName: raw.constituent.firstName, lastName: raw.constituent.lastName }
       : null,
+    campaign: raw.campaign ? { name: raw.campaign.name } : null,
     receiptStatus: raw.receiptStatus,
   };
 }
