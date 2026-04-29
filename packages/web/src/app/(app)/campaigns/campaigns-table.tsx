@@ -51,7 +51,7 @@ interface CampaignWithStats {
 const STATUS_VARIANTS: Record<CampaignStatus, BadgeVariant> = {
   draft: "neutral",
   active: "success",
-  closed: "info",
+  closed: "neutral",
 };
 
 const TYPE_VARIANTS: Record<CampaignType, BadgeVariant> = {

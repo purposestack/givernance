@@ -394,7 +394,7 @@ function StatusBadge({ status }: { status: Campaign["status"] }) {
   const variants = {
     draft: "neutral",
     active: "success",
-    closed: "info",
+    closed: "neutral",
   } as const;
 
   return <TranslatedStatusBadge status={status} variant={variants[status]} />;
