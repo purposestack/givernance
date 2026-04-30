@@ -212,6 +212,19 @@ Production self-hosted deployments should add:
 - Redis persistence configuration
 - MinIO replication for storage durability
 
+### Staging build cache (GHCR)
+
+The staging deploy ([`.github/workflows/deploy-staging.yml`](../../.github/workflows/deploy-staging.yml)) uses a registry-backed BuildKit cache (`ghcr.io/purposestack/givernance-build-cache`, `mode=max`) so the pnpm-store mount and `pnpm -r build` outputs survive across runs. Without retention, manifests accumulate as untagged blobs over time.
+
+GHCR doesn't auto-prune untagged manifests. Suggested policy:
+
+- Retain only the **latest 5 untagged manifests** of `givernance-build-cache` — `mode=max` rewrites the cache image on every cache-warm push, and only the latest manifest is read on the next build.
+- Worst case (a corrupt cache push) is one slow rebuild; older manifests are not used as fallbacks. Keeping 5 covers the rare case of needing to roll back.
+
+Apply via the **package settings** UI on `ghcr.io/purposestack/givernance-build-cache` → "Manage versions" → set retention rule, or via a small scheduled workflow using `actions/delete-package-versions`. Either approach is fine — pick the one that fits your operational cadence. The cache image is **safe to delete entirely** at any time; the next push reseeds it (one slow run, then back to fast).
+
+`docker run ghcr.io/purposestack/givernance-build-cache` won't work — these are BuildKit cache manifests, not runnable images. Inspect with `docker buildx imagetools inspect ghcr.io/purposestack/givernance-build-cache` if you need to see what's there.
+
 ---
 
 ## Troubleshooting
