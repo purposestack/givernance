@@ -29,7 +29,7 @@ runs:
     - name: Reboot accessory
       id: reboot
       shell: bash
-      run: kamal accessory reboot "${{ inputs.accessory }}" -c "${{ inputs.config }}"
+      run: bundle exec kamal accessory reboot "${{ inputs.accessory }}" -c "${{ inputs.config }}"
 
     # Scoped to "the reboot itself failed" rather than `if: failure()`,
     # which would also fire on any earlier failure in the parent job and
@@ -38,5 +38,5 @@ runs:
       if: steps.reboot.conclusion == 'failure'
       shell: bash
       run: |
-        kamal server exec -c "${{ inputs.config }}" \
+        bundle exec kamal server exec -c "${{ inputs.config }}" \
           "docker logs givernance-${{ inputs.accessory }} --tail 100" || true
