@@ -175,12 +175,17 @@ jobs:
       # `kamal setup` only re-creates accessories that aren't already
       # running, so accessory-config changes (port mappings, env vars,
       # image bumps) on an existing instance are silent no-ops. Reboot
-      # MinIO unconditionally so port-mapping or KMS-key changes in
-      # `config/deploy-staging.yml` actually take effect on the running
-      # container — issue #214 dropped the public `port: 9000` mapping
-      # and previously that change would have only landed on a fresh
-      # VPS. Idempotent: noop on a steady-state deploy.
+      # MinIO when `config/deploy-staging.yml` changed so port-mapping
+      # or image-bump edits actually take effect on the running container
+      # — issue #214 dropped the public `port: 9000` mapping and that
+      # change would have only landed on a fresh VPS otherwise. Gated
+      # on the same `kamal_config` filter as the auto-detector below,
+      # so a typical no-config push skips the ~30-60s reboot. Out-of-band
+      # secret rotations (MINIO_KMS_SECRET_KEY etc) use the dedicated
+      # `staging-accessory-reboot.yml` workflow — they don't need this
+      # gate because no file changed to trigger paths-filter.
       - name: Reboot MinIO to apply accessory config changes
+        if: steps.changes.outputs.kamal_config == 'true' || github.event_name == 'workflow_dispatch'
         run: kamal accessory reboot minio -c config/deploy-staging.yml
 
       - name: Wait for Keycloak realm to be ready
