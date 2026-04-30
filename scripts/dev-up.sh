@@ -106,7 +106,14 @@ until curl -sf -o /dev/null "${KC_URL}/realms/${REALM_NAME}/.well-known/openid-c
 done
 
 echo "Syncing Keycloak realm state (idempotent)..."
-KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-sync-realm.sh"
+KC_SMTP_HOST=mailpit \
+  KC_SMTP_PORT=1025 \
+  KC_SMTP_FROM="noreply@givernance.org" \
+  KC_SMTP_FROM_DISPLAY_NAME="Givernance" \
+  KC_SMTP_SSL=false \
+  KC_SMTP_STARTTLS=false \
+  KC_SMTP_AUTH=false \
+  KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-sync-realm.sh"
 
 echo "Running Keycloak smoke test (issue #114 acceptance criterion)..."
 # Fail-fast: a broken realm (missing org_id claim, missing membership,
