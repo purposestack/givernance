@@ -54,22 +54,117 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Detect whether this push touched Keycloak — gates the slow chain
-      # (image build → accessory reboot → realm-ready wait → realm sync,
-      # ~85s combined). On workflow_dispatch we always run the chain so a
-      # manual button-click means "full deploy" by default. paths-filter
-      # uses the GitHub API and works with default (shallow) checkouts.
+      # Detect whether this push touched Keycloak source files (the realm
+      # JSON, the sync script) — combined with `gates.outputs.keycloak_changed`
+      # below to drive the slow chain (image build → reboot → realm-ready
+      # wait → realm sync, ~85s combined). On workflow_dispatch we always
+      # run the chain so a manual button-click means "full deploy" by
+      # default. paths-filter uses the GitHub API and works with default
+      # (shallow) checkouts.
+      #
+      # `.github/workflows/deploy-staging.yml` is intentionally NOT in the
+      # `keycloak` filter — workflow tweaks (comment edits, runner bumps,
+      # editing this filter list) shouldn't trigger the ~85s Keycloak chain.
+      # Real Keycloak-relevant changes are caught either by `infra/keycloak/**`
+      # / the sync script (here) or by `gates.outputs.keycloak_changed`
+      # (when `accessories.keycloak` in `config/deploy-staging.yml`
+      # changes — image bumps, env tweaks).
+      #
+      # Pinned to a commit SHA per @Onigam's review — the workflow runs
+      # with `packages: write`, so a third-party action gets a SHA pin
+      # instead of a moving tag. SHA below is `dorny/paths-filter@v3`
+      # at 2026-04-30; bump intentionally when upgrading.
       - name: Detect changed paths
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@6852f92c20ea7fd3b0c25de3b5112db3a98da050 # v3
         with:
           filters: |
             keycloak:
               - 'infra/keycloak/**'
               - 'scripts/keycloak-sync-realm.sh'
-              - '.github/workflows/deploy-staging.yml'
             kamal_config:
               - 'config/deploy-staging.yml'
+
+      # Per-accessory subtree diff of `config/deploy-staging.yml`. The
+      # file-level `kamal_config` filter above tells us "the file was
+      # edited"; this step tells us "the `accessories.minio` subtree
+      # changed" or "the `accessories.keycloak` subtree changed", so we
+      # only reboot the accessories whose config actually moved instead
+      # of every accessory whenever the file is touched (e.g., a
+      # top-level `env.clear` edit).
+      #
+      # Outputs:
+      #   minio_changed       — `accessories.minio` subtree differs vs BEFORE_SHA
+      #   keycloak_changed    — `accessories.keycloak` subtree differs vs BEFORE_SHA
+      #   run_keycloak        — combined gate for the Keycloak chain
+      #                         (file-paths OR subtree OR workflow_dispatch)
+      #   run_minio_reboot    — combined gate for the MinIO accessory reboot
+      #                         (subtree OR workflow_dispatch)
+      #
+      # Conservative on edge cases: workflow_dispatch (no diff base) and
+      # missing-parent (force push, first push to a new branch) both
+      # treat every accessory as changed. False positive cost is one
+      # extra ~30-60s reboot on a rare push; false negative cost is a
+      # silently-skipped config sync, which we won't accept.
+      - name: Detect per-accessory config changes & compute gates
+        id: gates
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          KAMAL_CONFIG_CHANGED: ${{ steps.changes.outputs.kamal_config }}
+          KEYCLOAK_FILES_CHANGED: ${{ steps.changes.outputs.keycloak }}
+        run: |
+          set -euo pipefail
+          minio_changed=false
+          keycloak_changed=false
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            minio_changed=true
+            keycloak_changed=true
+          elif [ "$KAMAL_CONFIG_CHANGED" = "true" ]; then
+            OLD=$(mktemp)
+            if git show "${BEFORE_SHA}:config/deploy-staging.yml" > "$OLD" 2>/dev/null; then
+              for acc in minio keycloak; do
+                OLD_HASH=$(yq ".accessories.${acc}" "$OLD" 2>/dev/null | sha256sum | cut -d' ' -f1)
+                NEW_HASH=$(yq ".accessories.${acc}" config/deploy-staging.yml 2>/dev/null | sha256sum | cut -d' ' -f1)
+                if [ "$OLD_HASH" != "$NEW_HASH" ]; then
+                  eval "${acc}_changed=true"
+                  echo "accessories.${acc} subtree changed"
+                fi
+              done
+              rm -f "$OLD"
+            else
+              # Force push, first-push to branch, or BEFORE_SHA gone — be conservative.
+              minio_changed=true
+              keycloak_changed=true
+              echo "BEFORE_SHA=${BEFORE_SHA} unavailable — assuming all accessory subtrees changed"
+            fi
+          fi
+
+          run_keycloak=false
+          if [ "$KEYCLOAK_FILES_CHANGED" = "true" ] || [ "$keycloak_changed" = "true" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_keycloak=true
+          fi
+
+          run_minio_reboot=false
+          if [ "$minio_changed" = "true" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_minio_reboot=true
+          fi
+
+          {
+            echo "minio_changed=${minio_changed}"
+            echo "keycloak_changed=${keycloak_changed}"
+            echo "run_keycloak=${run_keycloak}"
+            echo "run_minio_reboot=${run_minio_reboot}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "::group::Computed deploy gates"
+          echo "  keycloak files changed (paths-filter):    ${KEYCLOAK_FILES_CHANGED}"
+          echo "  accessories.keycloak subtree changed:     ${keycloak_changed}"
+          echo "  accessories.minio subtree changed:        ${minio_changed}"
+          echo "  → run_keycloak (chain):                   ${run_keycloak}"
+          echo "  → run_minio_reboot:                       ${run_minio_reboot}"
+          echo "::endgroup::"
 
       - name: Set up Ruby (for Kamal)
         uses: ruby/setup-ruby@v1
@@ -104,7 +199,7 @@ jobs:
           MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
 
       - name: Build and push Keycloak image
-        if: steps.changes.outputs.keycloak == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.gates.outputs.run_keycloak == 'true'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker build \
@@ -171,7 +266,7 @@ jobs:
       # Reboot procedure shared with staging-accessory-reboot.yml via the
       # composite action.
       - name: Reboot Keycloak to re-import realm JSON
-        if: steps.changes.outputs.keycloak == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.gates.outputs.run_keycloak == 'true'
         uses: ./.github/actions/reboot-kamal-accessory
         with:
           accessory: keycloak
@@ -188,13 +283,13 @@ jobs:
       # they don't need this gate because no file changed to trigger
       # paths-filter.
       - name: Reboot MinIO to apply accessory config changes
-        if: steps.changes.outputs.kamal_config == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.gates.outputs.run_minio_reboot == 'true'
         uses: ./.github/actions/reboot-kamal-accessory
         with:
           accessory: minio
 
       - name: Wait for Keycloak realm to be ready
-        if: steps.changes.outputs.keycloak == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.gates.outputs.run_keycloak == 'true'
         run: |
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' \
@@ -250,7 +345,7 @@ jobs:
       # are all native to ubuntu-latest, so we don't have to ship them in the
       # production image just to satisfy `kamal app exec`.
       - name: Sync Keycloak realm
-        if: steps.changes.outputs.keycloak == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.gates.outputs.run_keycloak == 'true'
         env:
           KEYCLOAK_URL: https://auth.staging.givernance.org
           KEYCLOAK_ADMIN: admin
