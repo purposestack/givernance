@@ -25,7 +25,16 @@ export function ReceiptPreviewButton({ donationId }: ReceiptPreviewButtonProps) 
     // event-loop tick as the user gesture — Safari + Firefox block
     // popups opened after an `await`. We redirect the placeholder tab
     // to the resolved URL once the metadata fetch resolves.
-    const popup = window.open("about:blank", "_blank", "noopener,noreferrer");
+    //
+    // We deliberately do NOT pass `noopener,noreferrer` here: per the
+    // window.open spec, those features force the return value to
+    // `null`, which would leave us unable to redirect the placeholder
+    // — exactly the bug shipped on the first cut of this PR. Safe in
+    // this case because the redirect target is a same-origin
+    // application/pdf response: the browser's native PDF viewer
+    // doesn't execute JavaScript, so the new tab can't tabnab the
+    // opener via `window.opener.location`.
+    const popup = window.open("about:blank", "_blank");
     try {
       // The service resolves the absolute browser URL (NEXT_PUBLIC_API_URL
       // + downloadPath) so this component never reconstructs the API

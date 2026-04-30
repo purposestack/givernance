@@ -31,7 +31,18 @@ describe("ReceiptPreviewButton", () => {
     await waitFor(() =>
       expect(popup.location.href).toBe(`/api/v1/donations/${donationId}/receipt/download`),
     );
-    expect(openSpy).toHaveBeenCalledWith("about:blank", "_blank", "noopener,noreferrer");
+    // Lock the placeholder-tab signature: NO `noopener` / `noreferrer`
+    // — those features cause window.open to return null per spec,
+    // which would strand the user on about:blank (the bug shipped on
+    // the first cut of this PR). We rely on the same-origin PDF
+    // response not executing JS to neutralize the tabnabbing risk
+    // that `noopener` normally guards against.
+    expect(openSpy).toHaveBeenCalledWith("about:blank", "_blank");
+    expect(openSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.stringContaining("noopener"),
+    );
   });
 
   it("shows a 'pending' warning toast when the receipt is not ready (404)", async () => {
