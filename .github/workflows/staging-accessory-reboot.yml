@@ -93,11 +93,10 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
 
+      # Same reboot procedure used by deploy-staging.yml when accessory
+      # config (kamal yml subtree) changed. Single source of truth in
+      # .github/actions/reboot-kamal-accessory/action.yml.
       - name: Reboot accessory
-        run: kamal accessory reboot "${{ inputs.accessory }}" -c config/deploy-staging.yml
-
-      - name: Dump accessory logs on failure
-        if: failure()
-        run: |
-          kamal server exec -c config/deploy-staging.yml \
-            "docker logs givernance-${{ inputs.accessory }} --tail 100" || true
+        uses: ./.github/actions/reboot-kamal-accessory
+        with:
+          accessory: ${{ inputs.accessory }}

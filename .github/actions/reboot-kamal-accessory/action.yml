@@ -1,0 +1,42 @@
+name: Reboot Kamal Accessory
+description: >
+  Reboot a Kamal accessory and dump its container logs on failure.
+  Single source of truth for the reboot procedure: deploy-staging.yml
+  invokes it after a kamal deploy when accessory config changed (so
+  port-mapping / image-bump / env edits actually take effect on the
+  running container — `kamal setup` is a noop on already-running
+  accessories), and staging-accessory-reboot.yml invokes it for
+  out-of-band secret rotations (MINIO_KMS_SECRET_KEY etc) where no
+  file changed but the running env is now stale.
+
+  Caller responsibilities (must run before this action): the SSH agent
+  is configured against the staging VPS, ruby + kamal are installed,
+  and `.kamal/secrets` is on disk. The two callers both get there via
+  the same setup-kamal-secrets composite action.
+
+inputs:
+  accessory:
+    description: Accessory name, must match `accessories.<name>` in the kamal config.
+    required: true
+  config:
+    description: Path to the kamal config file.
+    required: false
+    default: config/deploy-staging.yml
+
+runs:
+  using: composite
+  steps:
+    - name: Reboot accessory
+      id: reboot
+      shell: bash
+      run: kamal accessory reboot "${{ inputs.accessory }}" -c "${{ inputs.config }}"
+
+    # Scoped to "the reboot itself failed" rather than `if: failure()`,
+    # which would also fire on any earlier failure in the parent job and
+    # produce confusing logs from an accessory we never tried to touch.
+    - name: Dump accessory logs on reboot failure
+      if: steps.reboot.conclusion == 'failure'
+      shell: bash
+      run: |
+        kamal server exec -c "${{ inputs.config }}" \
+          "docker logs givernance-${{ inputs.accessory }} --tail 100" || true
