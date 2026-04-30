@@ -7,3 +7,13 @@ dist
 .env.*
 !.env.example
 .pnpm-store
+# `setup-kamal-secrets` writes plaintext secrets to `.kamal/secrets`
+# on the runner CWD before the build, and the Dockerfile's `COPY . .`
+# would otherwise ingest that file into a layer. With `builder.cache:
+# mode=max` (config/deploy-staging.yml) those layers also get pushed
+# to the GHCR build-cache image, widening the blast radius if a
+# secret ever leaks into the build context. Kamal filters `.kamal/`
+# from the context itself today, but that's an upstream-tool
+# implementation detail — explicit `.dockerignore` is the durable
+# defense. Per @Onigam's review on PR #208.
+.kamal
