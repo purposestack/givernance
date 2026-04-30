@@ -28,6 +28,14 @@ export interface CreateDonationIntentParams {
   campaignId: string;
   /** ISO 4217 (uppercase) — the donor's chosen currency. */
   currency: string;
+  /**
+   * Campaign's configured default currency (`campaigns.default_currency`).
+   * Threaded into gateway-side metadata as a reconciliation breadcrumb
+   * between the donor-chosen currency and the campaign's books — a donor
+   * giving GBP to a EUR-denominated campaign carries this on the
+   * PaymentIntent for downstream finance reports.
+   */
+  campaignDefaultCurrency: string;
   amountCents: number;
   /** `applicationFeeAmount` for Stripe; not currently surfaced for Mollie. */
   applicationFeeAmountCents: number;
@@ -61,6 +69,15 @@ export type CreateDonationIntentResult =
       provider: "stripe";
       clientSecret: string;
       stripeAccountId: string;
+      /**
+       * The created PaymentIntent id (`pi_…`). Returned alongside the
+       * client secret so the orphan-PI observability log line in
+       * `public/service.ts` can join API-side intent creation against the
+       * `payment_intent.succeeded` webhook for donor abandon-rate metrics.
+       * Stripe documents `pi_…` ids as not secret (they appear in the
+       * post-3DS redirect URL).
+       */
+      paymentIntentId: string;
     }
   | {
       provider: "mollie";

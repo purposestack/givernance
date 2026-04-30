@@ -106,6 +106,7 @@ const DonateResponse = Type.Union([
     provider: Type.Literal("stripe"),
     clientSecret: Type.String(),
     stripeAccountId: Type.String(),
+    paymentIntentId: Type.String(),
   }),
   Type.Object({
     provider: Type.Literal("mollie"),

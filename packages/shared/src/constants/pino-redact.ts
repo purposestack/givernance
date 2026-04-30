@@ -56,6 +56,21 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   "body.cvv",
   "body.pan",
 
+  // ─── Payment-provider credentials (issue #62) ─────────────────────────────
+  // The Mollie API key is per-tenant, stored in `tenants.mollie_api_key`,
+  // and reaches the API via `PATCH /v1/admin/payment-gateway` body. It is
+  // a `live_…` / `test_…` token that — if leaked into Loki / Tempo — lets
+  // an attacker drive payments and refunds against the NPO's Mollie account.
+  // Pino's `redact` is one-level-wildcard, so enumerate the carriers we know
+  // about (request body + nested tenant rows that someone might log).
+  "body.mollieApiKey",
+  "req.body.mollieApiKey",
+  "request.body.mollieApiKey",
+  "mollieApiKey",
+  "*.mollieApiKey",
+  "tenant.mollieApiKey",
+  "*.mollie_api_key",
+
   // ─── PII (docs/17 §6.1, docs/06) ──────────────────────────────────────────
   // Direct identifiers — covered on request bodies, responses, and anywhere
   // they end up attached under a `constituent` object logged by mistake.

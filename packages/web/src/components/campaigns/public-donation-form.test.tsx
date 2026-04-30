@@ -55,6 +55,7 @@ describe("PublicDonationForm", () => {
       provider: "stripe",
       clientSecret: "pi_secret_123",
       stripeAccountId: "acct_test_123",
+      paymentIntentId: "pi_test_mock",
     });
 
     render(
@@ -105,6 +106,7 @@ describe("PublicDonationForm", () => {
       provider: "stripe",
       clientSecret: "pi_secret_456",
       stripeAccountId: "acct_test_123",
+      paymentIntentId: "pi_test_mock",
     });
 
     render(
@@ -146,6 +148,7 @@ describe("PublicDonationForm", () => {
       provider: "stripe",
       clientSecret: "pi_secret_999",
       stripeAccountId: "acct_test_999",
+      paymentIntentId: "pi_test_mock",
     });
 
     render(
@@ -180,6 +183,7 @@ describe("PublicDonationForm", () => {
       provider: "stripe",
       clientSecret: "pi_secret_888",
       stripeAccountId: "acct_live_888",
+      paymentIntentId: "pi_test_mock",
     });
 
     render(
@@ -212,6 +216,7 @@ describe("PublicDonationForm", () => {
       provider: "stripe",
       clientSecret: "pi_secret_123",
       stripeAccountId: "acct_test_123",
+      paymentIntentId: "pi_test_mock",
     });
 
     render(
@@ -359,5 +364,79 @@ describe("PublicDonationForm", () => {
     // pattern because empty search → falsy → would redirect us to "/" and
     // change the route under test (caught in PR #193 review).
     window.history.replaceState({}, "", `${window.location.pathname}${originalSearch}`);
+  });
+
+  // ─── Issue #62: Mollie redirect branch ──────────────────────────────────
+
+  it("redirects to Mollie checkout when paymentGateway='mollie'", async () => {
+    const user = userEvent.setup();
+
+    vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      provider: "mollie",
+      checkoutUrl: "https://www.mollie.com/checkout/test/tr_redirect_e2e",
+      molliePaymentId: "tr_redirect_e2e",
+    });
+
+    // jsdom guards `window.location` against `vi.spyOn` (its descriptor
+    // is non-configurable). Replace the whole `location` object for this
+    // test with a stub that captures `.assign` calls; restore on teardown
+    // so the rest of the suite gets the original.
+    const originalLocation = window.location;
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign: assignSpy },
+    });
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#096447"
+        locale="en"
+        goalAmountCents={null}
+        paymentGateway="mollie"
+        publishableKey={null}
+        tenantStripeAccountId={null}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^First name/), "Mollie");
+    await user.type(screen.getByLabelText(/^Last name/), "Donor");
+    await user.type(screen.getByLabelText(/^Email/), "mollie@example.org");
+    await user.type(screen.getByLabelText(/^Amount/), "50");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    await waitFor(() =>
+      expect(assignSpy).toHaveBeenCalledWith(
+        "https://www.mollie.com/checkout/test/tr_redirect_e2e",
+      ),
+    );
+
+    // We must NOT have mounted the Stripe Elements step on the Mollie path.
+    expect(screen.queryByTestId("stripe-payment-element")).not.toBeInTheDocument();
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
+  it("renders the offline-only notice when paymentGateway='manual'", async () => {
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#096447"
+        locale="en"
+        goalAmountCents={null}
+        paymentGateway="manual"
+        publishableKey={null}
+        tenantStripeAccountId={null}
+      />,
+    );
+
+    expect(await screen.findByText(/accepts donations offline only/i)).toBeInTheDocument();
+    // The donor-details form should NOT appear — there's nothing to submit.
+    expect(screen.queryByLabelText(/^First name/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue to payment" })).not.toBeInTheDocument();
   });
 });

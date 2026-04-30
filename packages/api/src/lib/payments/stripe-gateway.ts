@@ -52,6 +52,10 @@ export class StripeGateway implements PaymentGateway {
       metadata: {
         campaign_id: params.campaignId,
         org_id: this.tenant.orgId,
+        // Reconciliation breadcrumb — the campaign's books currency
+        // alongside the donor's chosen currency. Survives the round-trip
+        // to the `payment_intent.succeeded` webhook for finance reports.
+        campaign_default_currency: params.campaignDefaultCurrency,
         constituent_first_name: params.donor.firstName,
         constituent_last_name: params.donor.lastName,
       },
@@ -75,6 +79,7 @@ export class StripeGateway implements PaymentGateway {
       provider: "stripe",
       clientSecret: intent.client_secret,
       stripeAccountId: this.tenant.stripeAccountId,
+      paymentIntentId: intent.id,
     };
   }
 

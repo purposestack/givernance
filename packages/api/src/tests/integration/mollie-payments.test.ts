@@ -24,14 +24,40 @@ import {
   signTokenB,
 } from "../helpers/auth.js";
 
-const { mockQueueAdd } = vi.hoisted(() => ({
-  mockQueueAdd: vi.fn().mockResolvedValue({ id: "mock-job-id" }),
-}));
+const { mockQueueAdd, mockMolliePaymentsCreate, mockCreateMollieClient } = vi.hoisted(() => {
+  const mockMolliePaymentsCreate = vi.fn();
+  const mockCreateMollieClient = vi.fn().mockImplementation(() => ({
+    payments: { create: mockMolliePaymentsCreate, get: vi.fn() },
+  }));
+  return {
+    mockQueueAdd: vi.fn().mockResolvedValue({ id: "mock-job-id" }),
+    mockMolliePaymentsCreate,
+    mockCreateMollieClient,
+  };
+});
 
 vi.mock("bullmq", () => ({
   Queue: vi.fn().mockImplementation(() => ({
     add: mockQueueAdd,
   })),
+}));
+
+// Mock the Mollie SDK at the module boundary so the donor-flow test below
+// can exercise the route → factory → MollieGateway path without making a
+// live Mollie API call. Stripe is NOT mocked here — the donor-flow Mollie
+// test sets ORG_A's gateway to `'mollie'` so the factory never reaches
+// Stripe, and the existing tests in this file don't touch the donate route.
+vi.mock("@mollie/api-client", () => ({
+  default: mockCreateMollieClient,
+  PaymentStatus: {
+    open: "open",
+    canceled: "canceled",
+    pending: "pending",
+    authorized: "authorized",
+    expired: "expired",
+    failed: "failed",
+    paid: "paid",
+  },
 }));
 
 // Must match the value set in `src/tests/setup.ts` so the route's env-loaded
@@ -48,12 +74,21 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.execute(sql`DELETE FROM webhook_events WHERE provider_event_id LIKE 'tr_test_%'`);
-  // Reset gateway selection on the test tenants so other test files start
-  // from a known state.
+  await db.execute(sql`DELETE FROM campaign_public_pages WHERE org_id = ${ORG_A}`);
+  await db.execute(
+    sql`DELETE FROM campaigns WHERE org_id = ${ORG_A} AND name LIKE 'Mollie Donate Test%'`,
+  );
+  // Reset gateway selection on BOTH test tenants so the next test file
+  // starts from a known state regardless of which test in this file ran
+  // last (the "isolates the PATCH" test mutates ORG_B to `manual`).
   await db
     .update(tenants)
     .set({ paymentGateway: "stripe", mollieApiKey: null, featureFlags: {} })
     .where(eq(tenants.id, ORG_A));
+  await db
+    .update(tenants)
+    .set({ paymentGateway: "stripe", mollieApiKey: null, featureFlags: {} })
+    .where(eq(tenants.id, ORG_B));
   await app.close();
 });
 
@@ -229,7 +264,7 @@ describe("GET /v1/admin/payment-gateway", () => {
 });
 
 describe("PATCH /v1/admin/payment-gateway", () => {
-  it("rejects switching to mollie when ff.payments.mollie is off (400)", async () => {
+  it("rejects switching to mollie when ff.payments.mollie is off (400 + RFC 9457 body)", async () => {
     await db
       .update(tenants)
       .set({ paymentGateway: "stripe", mollieApiKey: null, featureFlags: {} })
@@ -243,7 +278,13 @@ describe("PATCH /v1/admin/payment-gateway", () => {
       payload: { paymentGateway: "mollie", mollieApiKey: "test_xxx" },
     });
     expect(res.statusCode).toBe(400);
-    const body = res.json<{ detail: string }>();
+    // Lock the full RFC 9457 envelope on at least one PATCH 400 path so a
+    // regression to a plain-string body or a `{error}` shape doesn't slip
+    // through (memory: feedback_lock_rfc9457_body_in_tests.md).
+    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    expect(body.type).toBe("https://httpproblems.com/http-status/400");
+    expect(body.title).toBe("Bad Request");
+    expect(body.status).toBe(400);
     expect(body.detail).toContain("Mollie is not enabled");
   });
 
@@ -339,5 +380,87 @@ describe("PATCH /v1/admin/payment-gateway", () => {
       .where(eq(tenants.id, ORG_A));
     expect(orgA?.paymentGateway).toBe("stripe");
     expect(orgA?.mollieApiKey).toBe("preserved");
+  });
+});
+
+// ─── End-to-end donor flow on the Mollie path ──────────────────────────────
+
+describe("POST /v1/public/campaigns/:id/donate (Mollie path)", () => {
+  it("returns the Mollie response shape when the tenant is on Mollie", async () => {
+    // 1. Switch ORG_A onto the Mollie gateway with the flag on + an API key.
+    await db
+      .update(tenants)
+      .set({
+        paymentGateway: "mollie",
+        mollieApiKey: "test_xxx_mollie_donor",
+        featureFlags: { "ff.payments.mollie": true },
+      })
+      .where(eq(tenants.id, ORG_A));
+
+    // 2. Create a campaign + published public page on ORG_A.
+    const adminToken = signToken(app);
+    const campaignRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(adminToken),
+      payload: { name: "Mollie Donate Test", type: "digital" },
+    });
+    const campaignId = campaignRes.json<{ data: { id: string } }>().data.id;
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaignId}/public-page`,
+      headers: authHeader(adminToken),
+      payload: { title: "Help us", status: "published" },
+    });
+
+    // 3. Stub Mollie's `payments.create` to return a synthetic checkout URL.
+    mockMolliePaymentsCreate.mockResolvedValueOnce({
+      id: "tr_test_donate_e2e",
+      _links: { checkout: { href: "https://www.mollie.com/checkout/test/tr_test_donate_e2e" } },
+    });
+
+    // 4. POST the donate endpoint as a donor (unauthenticated).
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/public/campaigns/${campaignId}/donate`,
+      payload: {
+        amountCents: 5000,
+        currency: "EUR",
+        email: "donor@example.org",
+        firstName: "Mollie",
+        lastName: "Donor",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data:
+        | {
+            provider: "stripe";
+            clientSecret: string;
+            stripeAccountId: string;
+            paymentIntentId: string;
+          }
+        | { provider: "mollie"; checkoutUrl: string; molliePaymentId: string };
+    }>();
+    // Discriminated union — the donor frontend branches on this.
+    expect(body.data.provider).toBe("mollie");
+    if (body.data.provider !== "mollie") throw new Error("unreachable");
+    expect(body.data.checkoutUrl).toBe("https://www.mollie.com/checkout/test/tr_test_donate_e2e");
+    expect(body.data.molliePaymentId).toBe("tr_test_donate_e2e");
+
+    // The Mollie SDK's `payments.create` was called with the donor + campaign
+    // metadata so the worker can recover them on webhook receipt.
+    expect(mockMolliePaymentsCreate).toHaveBeenCalledTimes(1);
+    const createCall = mockMolliePaymentsCreate.mock.calls[0]?.[0] as {
+      amount: { value: string; currency: string };
+      metadata: Record<string, unknown>;
+      webhookUrl: string;
+      redirectUrl: string;
+    };
+    expect(createCall.amount).toEqual({ value: "50.00", currency: "EUR" });
+    expect(createCall.metadata.org_id).toBe(ORG_A);
+    expect(createCall.metadata.campaign_id).toBe(campaignId);
+    expect(createCall.webhookUrl).toContain("/v1/donations/mollie-webhook");
   });
 });

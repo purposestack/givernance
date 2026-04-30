@@ -72,6 +72,7 @@ export type PublicDonationIntent =
       clientSecret: string;
       /** Connected account the PaymentIntent lives on; needed by `loadStripe(pk, { stripeAccount })`. */
       stripeAccountId: string;
+      paymentIntentId: string;
     }
   | {
       provider: "mollie";

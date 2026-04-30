@@ -309,6 +309,7 @@ export async function createDonationIntent(
     const result = await gateway.createDonationIntent({
       campaignId,
       currency: body.currency,
+      campaignDefaultCurrency: campaign.defaultCurrency,
       amountCents: body.amountCents,
       applicationFeeAmountCents: applicationFeeAmount,
       donor: {
@@ -326,6 +327,8 @@ export async function createDonationIntent(
     //   donation_intent.created events without a matching gateway-success
     //   webhook within 24h
     // surfaces the donor abandon rate, regardless of which gateway was used.
+    // The Stripe branch carries `paymentIntentId` so the join key against
+    // `payment_intent.succeeded` matches the original (pre-#62) log shape.
     //
     // biome-ignore lint/suspicious/noConsole: structured ops log; pino is request-scoped, not in this code path
     console.info(
@@ -335,7 +338,10 @@ export async function createDonationIntent(
         campaignId,
         ts: new Date().toISOString(),
         ...(result.provider === "stripe"
-          ? { stripeAccountId: result.stripeAccountId }
+          ? {
+              paymentIntentId: result.paymentIntentId,
+              stripeAccountId: result.stripeAccountId,
+            }
           : { molliePaymentId: result.molliePaymentId }),
       }),
     );

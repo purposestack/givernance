@@ -3,7 +3,6 @@
 import { ExchangeRateService } from "@givernance/shared";
 import type { ProcessMollieWebhookJob } from "@givernance/shared/jobs";
 import {
-  campaigns,
   constituents,
   donations,
   outboxEvents,
@@ -12,7 +11,7 @@ import {
 } from "@givernance/shared/schema";
 import createMollieClient, { type Payment, PaymentStatus } from "@mollie/api-client";
 import type { Job } from "bullmq";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
@@ -66,12 +65,15 @@ export async function processMollieWebhook(
       log,
     );
 
-    if (
-      resolved.payment.status === PaymentStatus.paid ||
-      resolved.payment.status === PaymentStatus.authorized
-    ) {
+    if (resolved.payment.status === PaymentStatus.paid) {
       await handleMolliePaid(resolved.orgId, resolved.payment, log);
     } else {
+      // `authorized` is intentionally NOT treated as paid: for "pay later"
+      // methods (Klarna, etc.) `authorized` means the funds are held but
+      // NOT captured. Inserting a `cleared` donation now would mean a
+      // booked-but-unfunded receipt if the payment never gets captured
+      // (Mollie auto-expires authorized-only payments). The capture flow
+      // will fire its own `paid` webhook later — that's the trigger.
       log.info(
         { molliePaymentId, status: resolved.payment.status },
         "Mollie payment not paid — no donation row inserted",
@@ -176,7 +178,6 @@ interface MollieDonationMeta {
   constituentFirstName: string;
   constituentLastName: string;
   campaignId: string | null;
-  platformFeeCents: number;
 }
 
 function extractMollieDonationMeta(payment: Payment): MollieDonationMeta {
@@ -189,8 +190,6 @@ function extractMollieDonationMeta(payment: Payment): MollieDonationMeta {
     constituentLastName:
       typeof meta.constituent_last_name === "string" ? meta.constituent_last_name : "Donor",
     campaignId: typeof meta.campaign_id === "string" ? meta.campaign_id : null,
-    platformFeeCents:
-      typeof meta.application_fee_cents === "number" ? meta.application_fee_cents : 0,
   };
 }
 
@@ -252,7 +251,19 @@ async function handleMolliePaid(
   const amountCents = Math.round(Number(payment.amount.value) * 100);
   const currency = payment.amount.currency.toUpperCase();
   const paymentRef = payment.id;
-  const { campaignId, platformFeeCents } = meta;
+  const { campaignId } = meta;
+  // Granular payment method (`ideal`, `bancontact`, `creditcard`, `sepadirectdebit`,
+  // …). Falls back to the bare gateway name if Mollie didn't tag it on the payment
+  // (older API versions / certain legacy methods). Belgian/Dutch NPOs care strongly
+  // about Bancontact-vs-card share in reporting, and the SEPA reconciliation
+  // pipeline keys on `sepadirectdebit` rows.
+  const paymentMethod = typeof payment.method === "string" ? payment.method : "mollie";
+  // Phase 1: Mollie has no Connect-equivalent fee mechanism, so we record
+  // `platform_fee_cents = 0` for Mollie donations rather than crediting
+  // ourselves a fee Mollie didn't actually deduct (which would overstate
+  // platform revenue and understate funds available to the NPO).
+  // The Mollie monetisation model is a follow-up.
+  const platformFeeCents = 0;
 
   await withWorkerContext(orgId, async (tx) => {
     const exchangeRateService = new ExchangeRateService({
@@ -281,7 +292,7 @@ async function handleMolliePaid(
         campaignId: campaignId || undefined,
         status: "cleared",
         platformFeeCents,
-        paymentMethod: "mollie",
+        paymentMethod,
         paymentRef,
         donatedAt: new Date(),
         fiscalYear: new Date().getFullYear(),
@@ -294,18 +305,9 @@ async function handleMolliePaid(
       return;
     }
 
-    if (campaignId && platformFeeCents > 0) {
-      // Same defence-in-depth pattern as the Stripe path — explicit org_id
-      // filter alongside the RLS context so a tampered `metadata.campaign_id`
-      // can't cross tenant boundaries.
-      await tx
-        .update(campaigns)
-        .set({
-          platformFeesCents: sql`${campaigns.platformFeesCents} + ${platformFeeCents}`,
-          updatedAt: new Date(),
-        })
-        .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
-    }
+    // No platform-fee accumulation on the Mollie path — see comment above.
+    // The campaign's `platform_fees_cents` column is updated only by the Stripe
+    // worker today; introducing a Mollie fee here would mis-attribute revenue.
 
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
@@ -315,7 +317,7 @@ async function handleMolliePaid(
         constituentId,
         amountCents,
         currency,
-        paymentMethod: "mollie",
+        paymentMethod,
         paymentRef,
         source: "mollie_webhook",
       },
