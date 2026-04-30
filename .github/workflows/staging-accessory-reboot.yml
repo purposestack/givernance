@@ -62,14 +62,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # `bundler-cache: true` reads the repo-root Gemfile.lock and caches
+      # `vendor/bundle` between runs (same setup as deploy-staging.yml so
+      # both flows share the cache). Bumping Kamal: edit the version in
+      # the Gemfile, run `bundle update kamal`, commit both files.
       - name: Set up Ruby (for Kamal)
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
-
-      - name: Install Kamal
-        run: gem install kamal
 
       - name: Configure SSH Auth Sock
         uses: webfactory/ssh-agent@v0.9.0
