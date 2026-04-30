@@ -21,6 +21,12 @@ process.env.ADMIN_SECRET ??= "test-secret";
 // is mocked in test files that exercise the real service path); just needs
 // to pass the env-validation gate.
 process.env.STRIPE_SECRET_KEY ??= "sk_test_dummy_for_tests";
+// Mollie webhook secret (issue #62) — Mollie webhook tests sign synthetic
+// bodies with this same value, so any change here MUST be mirrored in
+// `tests/integration/mollie-payments.test.ts`. Set unconditionally (not
+// `??=`) so a developer with `MOLLIE_WEBHOOK_SECRET` exported in their
+// shell doesn't get a signature mismatch in tests.
+process.env.MOLLIE_WEBHOOK_SECRET = "test-mollie-secret";
 process.env.LOG_LEVEL ??= "silent";
 
 const TEST_JWKS = {

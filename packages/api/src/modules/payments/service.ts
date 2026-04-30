@@ -119,22 +119,36 @@ export async function startStripeOnboarding(
 
 /**
  * Persist a webhook event with status 'pending' for async processing.
- * Stores only event.data.object (not the full Stripe envelope) to avoid
- * persisting unnecessary PII. Uses ON CONFLICT to handle race conditions.
+ * Stores only the gateway resource object (not the full envelope) to avoid
+ * persisting unnecessary PII. Uses ON CONFLICT on `(provider, provider_event_id)`
+ * to handle race conditions across BullMQ retries and gateway-side retries.
  * Returns the created record, or null if a duplicate was detected.
+ *
+ * Provider-agnostic since migration 0033 (issue #62) — accepts any of the
+ * `PaymentGatewayKey` values that emit webhooks (`stripe` | `mollie`). The
+ * route handler converts the gateway-specific `Stripe.Event` /
+ * `VerifiedWebhookEvent` envelope into this shape before calling.
  */
-export async function createWebhookEvent(event: Stripe.Event) {
+export async function createWebhookEvent(input: {
+  provider: "stripe" | "mollie";
+  providerEventId: string;
+  eventType: string;
+  accountId: string | null;
+  payload: Record<string, unknown>;
+  livemode: boolean;
+}) {
   const [record] = await db
     .insert(webhookEvents)
     .values({
-      stripeEventId: event.id,
-      eventType: event.type,
-      accountId: event.account ?? null,
-      payload: event.data.object as unknown as Record<string, unknown>,
+      provider: input.provider,
+      providerEventId: input.providerEventId,
+      eventType: input.eventType,
+      accountId: input.accountId,
+      payload: input.payload,
       status: "pending",
-      livemode: event.livemode,
+      livemode: input.livemode,
     })
-    .onConflictDoNothing({ target: webhookEvents.stripeEventId })
+    .onConflictDoNothing({ target: [webhookEvents.provider, webhookEvents.providerEventId] })
     .returning();
 
   return record ?? null;

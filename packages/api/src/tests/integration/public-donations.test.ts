@@ -551,7 +551,12 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
       expect(body.type).toBe("https://httpproblems.com/http-status/502");
       expect(body.title).toBe("Bad Gateway");
       expect(body.status).toBe(502);
-      expect(body.detail).toBe("Payment processing failed");
+      // Issue #62: gateway-unavailable conditions ("not onboarded", "Mollie
+      // not configured", "manual gateway") collapse to a single donor-facing
+      // detail so a donor cannot distinguish between operator-side errors —
+      // they're all unrecoverable on the donor side and should land at the
+      // same generic message. Internal logs carry the structured `reason`.
+      expect(body.detail).toBe("Payment provider is not configured");
       // Donor must NOT see the underlying Stripe-onboarding message.
       expect(body.detail).not.toContain("onboarding");
     } finally {

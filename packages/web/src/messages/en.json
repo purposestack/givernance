@@ -889,6 +889,47 @@
       "errorProblem": "Export failed (HTTP {status}).",
       "lastDownloaded": "Last download: {value}"
     },
+    "paymentGateway": {
+      "badge": "Payments",
+      "title": "Payment gateway",
+      "subtitle": "Choose how donors pay your organisation. Only one provider can be active at a time.",
+      "loading": "Loading payment gateway settings…",
+      "adminOnly": "Only organisation administrators can change the payment gateway.",
+      "current": {
+        "stripe": "Active: Stripe",
+        "mollie": "Active: Mollie",
+        "manual": "Active: Manual (offline only)"
+      },
+      "options": {
+        "stripe": "Stripe Connect",
+        "mollie": "Mollie",
+        "manual": "Manual / offline"
+      },
+      "descriptions": {
+        "stripe": "Cards, Apple Pay, and SEPA via Stripe Connect. Recommended for most organisations.",
+        "mollie": "iDEAL, Bancontact, and cards via Mollie. Recommended for FR/BE/NL associations with simplified verification.",
+        "manual": "No online checkout. Donors are told to contact you directly."
+      },
+      "fields": {
+        "gateway": "Payment provider",
+        "mollieApiKey": "Mollie API key",
+        "mollieApiKeyPlaceholder": "test_… or live_…",
+        "mollieApiKeyHint": "Paste the API key from your Mollie dashboard. We never echo it back; rotate from this field whenever you need to."
+      },
+      "mollieKeyConfigured": "Mollie key configured",
+      "flagOffHint": "Mollie is not enabled for your organisation. Contact support to request access.",
+      "actions": {
+        "save": "Save changes",
+        "saving": "Saving…"
+      },
+      "success": {
+        "saved": "Payment gateway updated"
+      },
+      "errors": {
+        "load": "Could not load payment gateway settings.",
+        "save": "Could not save payment gateway settings."
+      }
+    },
     "stripeConnect": {
       "badge": "Payments",
       "title": "Stripe Connect",
@@ -1579,7 +1620,8 @@
         "nextStepTitle": "Next step",
         "nextStepBody": "Use the card form to complete your donation securely with Stripe."
       },
-      "footnote": "Submitting this form prepares a secure payment. Your card will be charged on the next step."
+      "footnote": "Submitting this form prepares a secure payment. Your card will be charged on the next step.",
+      "manualGateway": "This organization currently accepts donations offline only. Please contact them directly to support this campaign."
     },
     "payment": {
       "summary": {

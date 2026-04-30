@@ -60,9 +60,34 @@ export interface ProcessStripeWebhookJob {
   name: "process-stripe-webhook";
   data: {
     webhookEventId: string;
+    /**
+     * Provider-native event id (kept on `stripeEventId` for backward
+     * compatibility with the BullMQ payload shape). Equivalent to
+     * `webhook_events.provider_event_id` post-migration 0033.
+     */
     stripeEventId: string;
     eventType: string;
     accountId: string | null;
+    payload: Record<string, unknown>;
+  };
+}
+
+/**
+ * Process a Mollie webhook event asynchronously. The Mollie webhook contract
+ * sends only the affected payment id and status — the worker fetches the
+ * full payment from Mollie API using the per-tenant `tenants.mollie_api_key`
+ * before creating a donation row. `provider_event_id` is the synthesised
+ * `${paymentId}-${status}` so retries on the same status are idempotent.
+ */
+export interface ProcessMollieWebhookJob {
+  name: "process-mollie-webhook";
+  data: {
+    webhookEventId: string;
+    /** Synthesised `${paymentId}-${status}` — matches `webhook_events.provider_event_id`. */
+    providerEventId: string;
+    /** Mollie payment id (`tr_…`) — what the worker passes to `mollie.payments.get`. */
+    molliePaymentId: string;
+    eventType: string;
     payload: Record<string, unknown>;
   };
 }
@@ -74,7 +99,8 @@ export type JobDefinition =
   | ExportDataJob
   | GdprErasureJob
   | GenerateCampaignDocumentsJob
-  | ProcessStripeWebhookJob;
+  | ProcessStripeWebhookJob
+  | ProcessMollieWebhookJob;
 
 /** Queue names */
 export const QUEUE_NAMES = {

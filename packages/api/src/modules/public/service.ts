@@ -1,17 +1,22 @@
-/** Public donations service — unauthenticated campaign page lookups and Stripe intent creation */
+/** Public donations service — unauthenticated campaign page lookups and gateway-dispatched intent creation */
 
 import {
   campaignPublicPages,
   campaignQrCodes,
   campaigns,
   donations,
+  type PaymentGatewayKey,
   tenants,
 } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
+import type { CreateDonationIntentResult } from "../../lib/payments/gateway.interface.js";
+import {
+  getGatewayForTenant,
+  PaymentGatewayUnavailableError,
+} from "../../lib/payments/gateway-factory.js";
 import { redis } from "../../lib/redis.js";
 import { isUuid } from "../../lib/schemas.js";
-import { getStripe } from "../payments/service.js";
 
 /**
  * 30s Redis cache for the public-page payload (issue #193 review,
@@ -131,11 +136,20 @@ async function loadPublicPage(campaignId: string) {
         colorPrimary: campaignPublicPages.colorPrimary,
         goalAmountCents: campaignPublicPages.goalAmountCents,
         defaultCurrency: campaigns.defaultCurrency,
+        /**
+         * Tenant's selected gateway. The donor frontend branches on this
+         * to render Stripe Elements (`'stripe'`), a Mollie redirect button
+         * (`'mollie'`), or a "this org takes offline donations" fallback
+         * (`'manual'`). Returned on the public page so the form can
+         * differentiate before the donor submits.
+         */
+        paymentGateway: tenants.paymentGateway,
         // Connect direct-charge requires the browser SDK to bind to the
         // connected account — exposed on this public endpoint so the donor
         // page can both (a) initialise Stripe.js and (b) handle 3DS
         // post-redirect retrieves without round-tripping to the donate
         // endpoint first. `acct_…` ids are public per Stripe docs (issue #197).
+        // Null when the tenant uses Mollie or has not onboarded yet.
         stripeAccountId: tenants.stripeAccountId,
       })
       .from(campaignPublicPages)
@@ -195,7 +209,29 @@ function calculatePlatformFee(amountCents: number): number {
   return Math.round(amountCents * 0.015 + 30);
 }
 
-/** Create a Stripe PaymentIntent on the tenant's connected account for a public donation */
+export type CreateDonationIntentOutcome =
+  | { kind: "ok"; result: CreateDonationIntentResult }
+  | { kind: "not_found" }
+  | { kind: "gateway_unavailable"; reason: PaymentGatewayUnavailableError["reason"] };
+
+/**
+ * Create a payment intent on the tenant's selected gateway (issue #62).
+ *
+ * Dispatch flow:
+ *   1. Resolve the public page → tenant
+ *   2. Build a `PaymentGateway` via `getGatewayForTenant` (which checks
+ *      the `ff.payments.mollie` flag for Mollie tenants, the
+ *      `stripeAccountId` for Stripe, etc.)
+ *   3. Delegate to `gateway.createDonationIntent(...)` with the donor
+ *      details + URLs the gateway needs (Mollie wants `webhookUrl` and
+ *      `redirectUrl`; Stripe doesn't, but the interface stays uniform).
+ *
+ * The return shape is the discriminated union the gateway emits — the
+ * route turns this into the donor-frontend response. `gateway_unavailable`
+ * surfaces the structured reason so the route can map to a specific
+ * problem-detail message ("Mollie not configured" vs. "Stripe not
+ * onboarded" vs. "Org uses manual reconciliation").
+ */
 export async function createDonationIntent(
   campaignId: string,
   body: {
@@ -205,13 +241,17 @@ export async function createDonationIntent(
     firstName: string;
     lastName: string;
   },
-  idempotencyKey?: string,
-) {
+  options: {
+    idempotencyKey?: string;
+    /** Public donor-page URL — Mollie redirects donors back here after checkout. */
+    returnUrl: string;
+    /** Public webhook URL Mollie POSTs to on payment status changes. */
+    webhookUrl: string;
+  },
+): Promise<CreateDonationIntentOutcome> {
   if (!isUuid(campaignId)) {
-    return null;
+    return { kind: "not_found" };
   }
-
-  const stripe = getStripe();
 
   // Find the orgId from the public page (readable without RLS)
   const [publicPage] = await db
@@ -219,9 +259,9 @@ export async function createDonationIntent(
     .from(campaignPublicPages)
     .where(eq(campaignPublicPages.campaignId, campaignId));
 
-  if (!publicPage) return null;
+  if (!publicPage) return { kind: "not_found" };
 
-  return withTenantContext(publicPage.orgId, async (tx) => {
+  return withTenantContext(publicPage.orgId, async (tx): Promise<CreateDonationIntentOutcome> => {
     // Look up the campaign to find the default currency (requires RLS context)
     const [campaign] = await tx
       .select({
@@ -232,22 +272,32 @@ export async function createDonationIntent(
       .from(campaigns)
       .where(eq(campaigns.id, campaignId));
 
-    if (!campaign) return null;
+    if (!campaign) return { kind: "not_found" };
 
-    // Look up the tenant's Stripe account
+    // Look up the tenant's gateway selection + per-gateway credentials.
     const [tenant] = await tx
-      .select({ id: tenants.id, stripeAccountId: tenants.stripeAccountId })
+      .select({
+        id: tenants.id,
+        paymentGateway: tenants.paymentGateway,
+        stripeAccountId: tenants.stripeAccountId,
+        mollieApiKey: tenants.mollieApiKey,
+        featureFlags: tenants.featureFlags,
+      })
       .from(tenants)
       .where(eq(tenants.id, campaign.orgId));
 
-    if (!tenant?.stripeAccountId) {
-      throw new Error("Organization has not completed Stripe onboarding");
+    if (!tenant) return { kind: "not_found" };
+
+    let gateway: ReturnType<typeof getGatewayForTenant>;
+    try {
+      gateway = getGatewayForTenant(tenant);
+    } catch (err) {
+      if (err instanceof PaymentGatewayUnavailableError) {
+        return { kind: "gateway_unavailable", reason: err.reason };
+      }
+      throw err;
     }
 
-    const stripeAccountDetails = await stripe.accounts.retrieve(tenant.stripeAccountId);
-    if (!stripeAccountDetails.charges_enabled) {
-      throw new Error("Organization Stripe account is not fully onboarded");
-    }
     // Platform fee. NOTE for the future refund handler: Stripe's default on
     // direct charges is to keep the application fee on refund — the platform
     // pockets the 1.5%+30¢ even when the donor is fully refunded. To match
@@ -256,67 +306,46 @@ export async function createDonationIntent(
     // refund-flow follow-up issue.
     const applicationFeeAmount = calculatePlatformFee(body.amountCents);
 
-    const intentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {
-      amount: body.amountCents,
-      currency: body.currency.toLowerCase(),
-      application_fee_amount: applicationFeeAmount,
-      receipt_email: body.email,
-      metadata: {
-        campaign_id: campaignId,
-        org_id: campaign.orgId,
-        campaign_default_currency: campaign.defaultCurrency,
-        constituent_first_name: body.firstName,
-        constituent_last_name: body.lastName,
+    const result = await gateway.createDonationIntent({
+      campaignId,
+      currency: body.currency,
+      amountCents: body.amountCents,
+      applicationFeeAmountCents: applicationFeeAmount,
+      donor: {
+        email: body.email,
+        firstName: body.firstName,
+        lastName: body.lastName,
       },
-    };
+      idempotencyKey: options.idempotencyKey,
+      returnUrl: options.returnUrl,
+      webhookUrl: options.webhookUrl,
+    });
 
-    const requestOptions: Parameters<typeof stripe.paymentIntents.create>[1] = {
-      stripeAccount: tenant.stripeAccountId,
-    };
-
-    if (idempotencyKey) {
-      requestOptions.idempotencyKey = idempotencyKey;
-    }
-
-    const intent = await stripe.paymentIntents.create(intentParams, requestOptions);
-
-    if (!intent.client_secret) {
-      throw new Error("Stripe returned a PaymentIntent without a client_secret");
-    }
-
-    // Orphan-PI observability hook (PR #193 review, finding #10): emit a
-    // structured `donation_intent.created` log line per PI creation so
-    // an ops query of the form
-    //   donation_intent.created events without a matching
-    //   payment_intent.succeeded webhook within 24h
-    // surfaces the donor abandon rate. A donor who closes the tab
-    // between `paymentIntents.create` and `confirmPayment` leaves the
-    // intent in `requires_payment_method` — Stripe auto-cancels after
-    // 7 days, but in the meantime we have no signal to reconcile.
-    //
-    // Not implemented here: a cleanup worker that explicitly calls
-    // `paymentIntents.cancel` on orphans (24h+ stale, no match in our
-    // `donations` table). The platform-finance dashboard (#206) is the
-    // natural home for the abandon metric and the cleanup job; both are
-    // tracked there, deliberately not bundled into this PR.
+    // Orphan observability hook (PR #193 review, finding #10): one structured
+    // line per intent creation so an ops query of the form
+    //   donation_intent.created events without a matching gateway-success
+    //   webhook within 24h
+    // surfaces the donor abandon rate, regardless of which gateway was used.
     //
     // biome-ignore lint/suspicious/noConsole: structured ops log; pino is request-scoped, not in this code path
     console.info(
       JSON.stringify({
         event: "donation_intent.created",
-        paymentIntentId: intent.id,
-        stripeAccountId: tenant.stripeAccountId,
+        provider: result.provider,
         campaignId,
         ts: new Date().toISOString(),
+        ...(result.provider === "stripe"
+          ? { stripeAccountId: result.stripeAccountId }
+          : { molliePaymentId: result.molliePaymentId }),
       }),
     );
 
-    return {
-      clientSecret: intent.client_secret,
-      stripeAccountId: tenant.stripeAccountId,
-    };
+    return { kind: "ok", result };
   });
 }
+
+/** Re-export the discriminated union so the route + frontend share a single source of truth. */
+export type { CreateDonationIntentResult, PaymentGatewayKey };
 
 /** Upsert a public page configuration for a campaign (admin) */
 export async function upsertPublicPage(

@@ -103,6 +103,7 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
               locale={locale}
               goalAmountCents={page.goalAmountCents}
               defaultCurrency={page.defaultCurrency}
+              paymentGateway={page.paymentGateway}
               publishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null}
               tenantStripeAccountId={page.stripeAccountId}
             />

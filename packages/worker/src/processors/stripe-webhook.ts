@@ -44,6 +44,13 @@ function asCharge(payload: Record<string, unknown>): Stripe.Charge {
   return payload as unknown as Stripe.Charge;
 }
 
+function asAccount(payload: Record<string, unknown>): Stripe.Account {
+  if (typeof payload.id !== "string") {
+    throw new Error(`Malformed account payload: id=${typeof payload.id}`);
+  }
+  return payload as unknown as Stripe.Account;
+}
+
 /** Look up the tenant associated with a Stripe connected account ID */
 async function findTenantByStripeAccount(stripeAccountId: string) {
   const [tenant] = await db
@@ -56,7 +63,7 @@ async function findTenantByStripeAccount(stripeAccountId: string) {
 
 /**
  * Process a Stripe webhook event.
- * Handles: payment_intent.succeeded, charge.refunded.
+ * Handles: payment_intent.succeeded, charge.refunded, account.updated.
  * Other event types are acknowledged + marked completed without action so the
  * `webhook_events` row carries an audit trail of "we saw it" without forcing
  * a retry storm; extend the routing block below to handle new types.
@@ -80,6 +87,8 @@ export async function processStripeWebhook(
       await handlePaymentIntentSucceeded(accountId, asPaymentIntent(payload), log);
     } else if (eventType === "charge.refunded") {
       await handleChargeRefunded(accountId, asCharge(payload), log);
+    } else if (eventType === "account.updated") {
+      await handleAccountUpdated(asAccount(payload), log);
     } else {
       log.info({ eventType }, "Unhandled Stripe event type, marking completed");
     }
@@ -380,4 +389,67 @@ async function handleChargeRefunded(
       "Donation refunded from Stripe charge.refunded",
     );
   });
+}
+
+/**
+ * Handle `account.updated` (issue #62). Caches the connected account's
+ * `charges_enabled` / `payouts_enabled` / `details_submitted` flags onto
+ * the matching tenant row so the donor flow can flip from test mode to
+ * live mode without a per-page-load `accounts.retrieve` round-trip.
+ *
+ * "Auto-switch to live mode" in doc-20 §5.2 = persisting
+ * `stripe_charges_enabled = true`. Downstream consumers (donor flow,
+ * platform-finance dashboard) read the cached column instead of calling
+ * Stripe live; the cached snapshot is refreshed on every `account.updated`
+ * webhook so it never lags behind by more than a few seconds in healthy
+ * deployments.
+ *
+ * Stripe sends `account.updated` events without a top-level `account` id —
+ * the connected account whose state changed is the event payload itself
+ * (`event.data.object.id`). The handler resolves the tenant by that id;
+ * a missing tenant row is logged but not thrown so a webhook for a
+ * connected account that we no longer own (e.g. mid-migration) doesn't
+ * DLQ the queue.
+ */
+async function handleAccountUpdated(
+  account: Stripe.Account,
+  log: ReturnType<typeof jobLogger>,
+): Promise<void> {
+  const stripeAccountId = account.id;
+
+  const [tenant] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.stripeAccountId, stripeAccountId));
+
+  if (!tenant) {
+    log.warn({ stripeAccountId }, "account.updated for unknown connected account, skipping");
+    return;
+  }
+
+  const chargesEnabled = Boolean(account.charges_enabled);
+  const payoutsEnabled = Boolean(account.payouts_enabled);
+  const detailsSubmitted = Boolean(account.details_submitted);
+
+  await db
+    .update(tenants)
+    .set({
+      stripeChargesEnabled: chargesEnabled,
+      stripePayoutsEnabled: payoutsEnabled,
+      stripeDetailsSubmitted: detailsSubmitted,
+      stripeAccountStateAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(tenants.id, tenant.id));
+
+  log.info(
+    {
+      orgId: tenant.id,
+      stripeAccountId,
+      chargesEnabled,
+      payoutsEnabled,
+      detailsSubmitted,
+    },
+    "Cached Stripe account.updated state on tenant",
+  );
 }

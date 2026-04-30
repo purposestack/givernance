@@ -3,6 +3,7 @@
  * All tables include org_id for row-level security and audit columns.
  */
 
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigint,
@@ -73,6 +74,32 @@ export const webhookEventStatusEnum = pgEnum("webhook_event_status", [
   "completed",
   "failed",
 ]);
+
+// ─── Payment Gateway Enums ─────────────────────────────────────────────────
+
+/**
+ * Per-tenant payment gateway selector. ADR-010: Stripe is the default, Mollie
+ * is co-primary for FR/BE/NL tenants gated by `ff.payments.mollie`, and
+ * `manual` is reserved for offline reconciliation flows.
+ *
+ * Stored as VARCHAR(20) with a CHECK constraint rather than a Postgres ENUM
+ * so adding new gateways (saferpay, mangopay) is a no-downtime constraint
+ * change rather than a `pg_enum` add followed by a rewrite.
+ */
+export const PAYMENT_GATEWAY_VALUES = ["stripe", "mollie", "manual"] as const;
+export type PaymentGatewayKey = (typeof PAYMENT_GATEWAY_VALUES)[number];
+
+// ─── Feature flag keys ─────────────────────────────────────────────────────
+
+/**
+ * Registry of feature-flag keys we look up in `tenants.feature_flags`. The
+ * full doc-18 system (registry table, Redis cache, admin UI) is forthcoming;
+ * this MVP store keeps the surface tiny — flags read from a JSONB column on
+ * the tenant row, default to `false`, and gate code paths via
+ * `hasFeatureFlag()` in the API.
+ */
+export const FEATURE_FLAG_KEYS = ["ff.payments.mollie"] as const;
+export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number];
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -154,6 +181,56 @@ export const tenants = pgTable(
       .default("fr")
       .$type<Locale>(),
     stripeAccountId: varchar("stripe_account_id", { length: 255 }),
+    /**
+     * Per-tenant payment gateway selection. ADR-010 / issue #62. Default
+     * `'stripe'` matches the platform default; `'mollie'` requires
+     * `ff.payments.mollie` to be enabled in `feature_flags`. The CHECK
+     * constraint (migration 0033) enforces the closed set; keep
+     * `PAYMENT_GATEWAY_VALUES` in lockstep with that constraint.
+     */
+    paymentGateway: varchar("payment_gateway", { length: 20 })
+      .notNull()
+      .default("stripe")
+      .$type<PaymentGatewayKey>(),
+    /**
+     * Per-tenant Mollie API key — each NPO brings its own (test_… or
+     * live_… prefix), pasted into the org-admin Settings → Payments form.
+     * NULL when the tenant uses Stripe (or hasn't pasted a key yet);
+     * the gateway factory raises a clear "Mollie not configured" error
+     * if the key is missing when `payment_gateway = 'mollie'`.
+     *
+     * Storage caveat (out of scope for #62): VARCHAR plaintext today —
+     * production should encrypt with KMS / pgcrypto + per-tenant DEK.
+     * Filed as a follow-up so we don't ship live-mode keys at rest in
+     * cleartext beyond the FR/BE/NL pilot. See doc-20 §6 PCI scope; no
+     * card data passes through this column.
+     */
+    mollieApiKey: varchar("mollie_api_key", { length: 255 }),
+    /**
+     * Minimal feature-flag store ahead of the full doc-18 system (see
+     * `FEATURE_FLAG_KEYS`). JSONB shape is `{ "ff.payments.mollie":
+     * boolean, ... }`; missing keys resolve to `false`. The full doc-18
+     * plan layers Redis caching + a `tenant_flag_overrides` table on top
+     * of this MVP — when that lands, this column is the migration
+     * target for existing per-tenant state.
+     */
+    featureFlags: jsonb("feature_flags")
+      .notNull()
+      .default(sql`'{}'::jsonb`)
+      .$type<Partial<Record<FeatureFlagKey, boolean>>>(),
+    /**
+     * Cached Stripe Connect state, populated by the `account.updated`
+     * webhook (issue #62). `stripeChargesEnabled = true` is what doc-20
+     * §5.2 calls "live mode" — the donor flow flips from test cards to
+     * real charges when this becomes `true`. Live `accounts.retrieve`
+     * stays the source of truth for the org-admin Settings panel; this
+     * cached snapshot drives the donor-side test/live-mode rendering
+     * without round-tripping to Stripe per page view.
+     */
+    stripeChargesEnabled: boolean("stripe_charges_enabled").notNull().default(false),
+    stripePayoutsEnabled: boolean("stripe_payouts_enabled").notNull().default(false),
+    stripeDetailsSubmitted: boolean("stripe_details_submitted").notNull().default(false),
+    stripeAccountStateAt: timestamp("stripe_account_state_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -161,6 +238,7 @@ export const tenants = pgTable(
     unique("tenants_stripe_account_id_uniq").on(table.stripeAccountId),
     index("tenants_status_idx").on(table.status),
     index("tenants_created_via_idx").on(table.createdVia),
+    index("tenants_payment_gateway_idx").on(table.paymentGateway),
   ],
 );
 
@@ -819,12 +897,34 @@ export const campaignPublicPages = pgTable(
 
 // ─── Webhook Events ────────────────────────────────────────────────────────
 
-/** Webhook Events — idempotent tracking of inbound payment gateway webhooks */
+/**
+ * Webhook Events — idempotent tracking of inbound payment-gateway webhooks.
+ *
+ * Multi-gateway since migration 0033 (issue #62): the unique key is
+ * `(provider, provider_event_id)` so Stripe `evt_…` ids and Mollie payment
+ * `tr_…` ids share the table without colliding. The Mollie webhook contract
+ * doesn't emit unique event ids — only the affected resource id — so the
+ * Mollie route synthesises `${paymentId}-${status}` to keep one row per
+ * status transition and dedupe genuine retries.
+ *
+ * `account_id` is Stripe-specific (the connected account that emitted the
+ * event); for Mollie events this column is null and the worker resolves the
+ * tenant via the payment metadata instead. The column name is kept rather
+ * than renamed to `provider_account_id` because (a) only Stripe populates
+ * it today, and (b) renaming columns is bigger than the gain.
+ */
 export const webhookEvents = pgTable(
   "webhook_events",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    stripeEventId: varchar("stripe_event_id", { length: 255 }).notNull().unique(),
+    /** `'stripe' | 'mollie'` — see `PAYMENT_GATEWAY_VALUES` (excludes `'manual'`). */
+    provider: varchar("provider", { length: 20 }).notNull().default("stripe"),
+    /**
+     * Provider-native event identifier. For Stripe this is `evt_…`; for
+     * Mollie it's the synthesised `${paymentId}-${status}` so each status
+     * transition is processed exactly once per (provider, id) pair.
+     */
+    providerEventId: varchar("provider_event_id", { length: 255 }).notNull(),
     eventType: varchar("event_type", { length: 255 }).notNull(),
     accountId: varchar("account_id", { length: 255 }),
     payload: jsonb("payload").notNull(),
@@ -834,5 +934,8 @@ export const webhookEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp("processed_at", { withTimezone: true }),
   },
-  (table) => [index("webhook_events_stripe_event_id_idx").on(table.stripeEventId)],
+  (table) => [
+    unique("webhook_events_provider_event_uniq").on(table.provider, table.providerEventId),
+    index("webhook_events_provider_event_id_idx").on(table.providerEventId),
+  ],
 );

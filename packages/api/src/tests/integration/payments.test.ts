@@ -48,7 +48,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.execute(sql`DELETE FROM webhook_events WHERE stripe_event_id LIKE 'evt_test_%'`);
+  await db.execute(sql`DELETE FROM webhook_events WHERE provider_event_id LIKE 'evt_test_%'`);
+  await db.execute(sql`DELETE FROM webhook_events WHERE provider_event_id LIKE 'tr_test_%'`);
   await app.close();
 });
 
@@ -415,8 +416,9 @@ describe("POST /v1/donations/stripe-webhook", () => {
     const [persisted] = await db
       .select()
       .from(webhookEvents)
-      .where(eq(webhookEvents.stripeEventId, eventId));
+      .where(eq(webhookEvents.providerEventId, eventId));
     expect(persisted).toBeTruthy();
+    expect(persisted?.provider).toBe("stripe");
     expect(persisted?.eventType).toBe("payment_intent.succeeded");
     expect(persisted?.status).toBe("pending");
     // Payload should be event.data.object, NOT the full envelope

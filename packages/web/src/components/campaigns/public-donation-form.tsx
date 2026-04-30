@@ -20,7 +20,7 @@ import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { getReadableTextColor } from "@/lib/color";
 import { formatCurrency } from "@/lib/format";
-import type { PublicDonationCurrency } from "@/models/public-page";
+import type { PaymentGatewayKey, PublicDonationCurrency } from "@/models/public-page";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 
 interface PublicDonationFormProps {
@@ -29,6 +29,14 @@ interface PublicDonationFormProps {
   locale: string;
   goalAmountCents: number | null;
   defaultCurrency?: PublicDonationCurrency;
+  /**
+   * Tenant's selected payment gateway (issue #62). Drives the post-submit
+   * branch:
+   *   - `'stripe'` → mount the Payment Element step
+   *   - `'mollie'` → redirect the browser to Mollie's hosted checkout
+   *   - `'manual'` → render an "offline donations only" notice
+   */
+  paymentGateway: PaymentGatewayKey;
   /**
    * Stripe platform publishable key (`pk_test_...` / `pk_live_...`). Threaded
    * from the server component so we don't have to re-evaluate
@@ -63,12 +71,20 @@ interface FormErrors {
   amount?: string;
 }
 
-interface PaymentSession {
-  clientSecret: string;
-  stripeAccountId: string;
-  amountCents: number;
-  currency: PublicDonationCurrency;
-}
+type PaymentSession =
+  | {
+      provider: "stripe";
+      clientSecret: string;
+      stripeAccountId: string;
+      amountCents: number;
+      currency: PublicDonationCurrency;
+    }
+  | {
+      provider: "mollie";
+      checkoutUrl: string;
+      amountCents: number;
+      currency: PublicDonationCurrency;
+    };
 
 /**
  * Outcome resolved from `?payment_intent_client_secret=…` query params on
@@ -105,6 +121,7 @@ export function PublicDonationForm({
   locale,
   goalAmountCents,
   defaultCurrency = "EUR",
+  paymentGateway,
   publishableKey,
   tenantStripeAccountId,
 }: PublicDonationFormProps) {
@@ -178,13 +195,24 @@ export function PublicDonationForm({
         createIdempotencyKey(),
       );
 
-      setSession({
-        clientSecret: result.clientSecret,
-        stripeAccountId: result.stripeAccountId,
-        amountCents,
-        currency: values.currency,
-      });
-      toast.success(t("success.intentCreated"));
+      if (result.provider === "stripe") {
+        setSession({
+          provider: "stripe",
+          clientSecret: result.clientSecret,
+          stripeAccountId: result.stripeAccountId,
+          amountCents,
+          currency: values.currency,
+        });
+        toast.success(t("success.intentCreated"));
+      } else {
+        // Mollie's hosted checkout requires a full-page redirect; we hop
+        // off Givernance entirely and the donor lands back on this page
+        // (URL: `${APP_URL}/p/:id`) once Mollie finishes. The webhook
+        // creates the donation row independently of the redirect — if the
+        // donor closes the tab, we still get the webhook and credit the
+        // donation; if they come back, the page just re-renders normally.
+        window.location.assign(result.checkoutUrl);
+      }
     } catch (error) {
       const message =
         error instanceof ApiProblem
@@ -232,7 +260,7 @@ export function PublicDonationForm({
           tenantStripeAccountId={tenantStripeAccountId}
           onDismiss={() => setPostRedirect(null)}
         />
-      ) : session ? (
+      ) : session && session.provider === "stripe" ? (
         publishableKey ? (
           <div className="mt-6">
             <PublicDonationPaymentStep
@@ -255,6 +283,13 @@ export function PublicDonationForm({
             {tPayment("errors.missingPublishableKey")}
           </p>
         )
+      ) : paymentGateway === "manual" ? (
+        // No online checkout for manual reconciliation — the org takes
+        // donations via bank transfer / cheque. Render a non-blocking
+        // notice so the page is still informational.
+        <p className="mt-6 rounded-2xl border border-outline-variant bg-surface px-4 py-3 text-sm text-on-surface-variant">
+          {t("manualGateway")}
+        </p>
       ) : (
         <DonorDetailsForm
           values={values}

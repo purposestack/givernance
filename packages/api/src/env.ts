@@ -67,6 +67,17 @@ const EnvSchema = Type.Object({
   STRIPE_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
   /** Stripe webhook endpoint secret (whsec_...) */
   STRIPE_WEBHOOK_SECRET: Type.Optional(Type.String({ minLength: 1 })),
+  /**
+   * Mollie webhook signing secret (issue #62). Verifies the
+   * `X-Mollie-Signature` HMAC-SHA256 header on inbound Mollie webhooks
+   * (`/v1/donations/mollie-webhook`). Platform-level — one secret per
+   * Givernance deployment, configured in the Mollie dashboard. Distinct
+   * from the per-tenant `tenants.mollie_api_key`, which authenticates
+   * outbound API calls per NPO. Optional in dev so a workspace without
+   * Mollie configured still boots; required in production once any
+   * tenant has `payment_gateway = 'mollie'`.
+   */
+  MOLLIE_WEBHOOK_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   /** ExchangeRate-API key used for currency conversion refreshes */
   EXCHANGE_RATE_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
 });

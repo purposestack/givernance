@@ -43,7 +43,8 @@ beforeAll(async () => {
   // Insert a webhook_events row for the processor to update
   await db.insert(webhookEvents).values({
     id: "00000000-0000-0000-0000-0000000000e1",
-    stripeEventId: "evt_test_pi_succeeded",
+    provider: "stripe",
+    providerEventId: "evt_test_pi_succeeded",
     eventType: "payment_intent.succeeded",
     accountId: STRIPE_ACCOUNT_ID,
     payload: {},
@@ -61,7 +62,7 @@ afterAll(async () => {
   await db.execute(sql`DELETE FROM outbox_events WHERE tenant_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
   await db.execute(sql`DELETE FROM donations WHERE org_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
   await db.execute(sql`DELETE FROM constituents WHERE org_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
-  await db.execute(sql`DELETE FROM webhook_events WHERE stripe_event_id LIKE 'evt_test_%'`);
+  await db.execute(sql`DELETE FROM webhook_events WHERE provider_event_id LIKE 'evt_test_%'`);
   await db.execute(
     sql`DELETE FROM exchange_rates WHERE currency = 'EUR' AND base_currency = 'CHF' AND date = ${TODAY}`,
   );
@@ -121,7 +122,7 @@ describe("processStripeWebhook", () => {
     const [webhookEvt] = await db
       .select()
       .from(webhookEvents)
-      .where(eq(webhookEvents.stripeEventId, "evt_test_pi_succeeded"));
+      .where(eq(webhookEvents.providerEventId, "evt_test_pi_succeeded"));
 
     expect(webhookEvt?.status).toBe("completed");
     expect(webhookEvt?.processedAt).toBeTruthy();
@@ -131,7 +132,8 @@ describe("processStripeWebhook", () => {
     // Insert webhook event for the unknown account test
     await db.insert(webhookEvents).values({
       id: "00000000-0000-0000-0000-0000000000e2",
-      stripeEventId: "evt_test_unknown_account",
+      provider: "stripe",
+      providerEventId: "evt_test_unknown_account",
       eventType: "payment_intent.succeeded",
       accountId: "acct_nonexistent",
       payload: {},
@@ -159,7 +161,8 @@ describe("processStripeWebhook", () => {
     // Insert webhook event targeting Tenant A's Stripe account
     await db.insert(webhookEvents).values({
       id: "00000000-0000-0000-0000-0000000000e3",
-      stripeEventId: "evt_test_cross_tenant",
+      provider: "stripe",
+      providerEventId: "evt_test_cross_tenant",
       eventType: "payment_intent.succeeded",
       accountId: STRIPE_ACCOUNT_ID,
       payload: {},
@@ -203,7 +206,8 @@ describe("processStripeWebhook", () => {
     // Insert webhook event for retry test
     await db.insert(webhookEvents).values({
       id: "00000000-0000-0000-0000-0000000000e4",
-      stripeEventId: "evt_test_retry_dup",
+      provider: "stripe",
+      providerEventId: "evt_test_retry_dup",
       eventType: "payment_intent.succeeded",
       accountId: STRIPE_ACCOUNT_ID,
       payload: {},
@@ -256,7 +260,8 @@ describe("processStripeWebhook", () => {
       });
     await db.insert(webhookEvents).values({
       id: "00000000-0000-0000-0000-0000000000e5",
-      stripeEventId: "evt_test_foreign_currency",
+      provider: "stripe",
+      providerEventId: "evt_test_foreign_currency",
       eventType: "payment_intent.succeeded",
       accountId: STRIPE_ACCOUNT_ID_MULTI,
       payload: {},
@@ -302,7 +307,8 @@ describe("processStripeWebhook", () => {
     // its `failed` status update.
     await db.insert(webhookEvents).values({
       id: "00000000-0000-0000-0000-0000000000ee",
-      stripeEventId: "evt_test_malformed_pi",
+      provider: "stripe",
+      providerEventId: "evt_test_malformed_pi",
       eventType: "payment_intent.succeeded",
       accountId: STRIPE_ACCOUNT_ID,
       payload: {},
@@ -364,7 +370,8 @@ describe("processStripeWebhook", () => {
     );
     await db.insert(webhookEvents).values({
       id: "00000000-0000-0000-0000-0000000000ef",
-      stripeEventId: "evt_test_refund_1",
+      provider: "stripe",
+      providerEventId: "evt_test_refund_1",
       eventType: "charge.refunded",
       accountId: STRIPE_ACCOUNT_ID,
       payload: {},
@@ -453,7 +460,8 @@ describe("processStripeWebhook", () => {
     );
     await db.insert(webhookEvents).values({
       id: "00000000-0000-0000-0000-0000000000ea",
-      stripeEventId: "evt_test_refund_idempotent",
+      provider: "stripe",
+      providerEventId: "evt_test_refund_idempotent",
       eventType: "charge.refunded",
       accountId: STRIPE_ACCOUNT_ID,
       payload: {},
@@ -485,5 +493,83 @@ describe("processStripeWebhook", () => {
       (e) => (e.payload as { paymentRef?: string }).paymentRef === paymentRef,
     );
     expect(matchingPayloads.length).toBeLessThanOrEqual(1);
+  });
+
+  // ─── account.updated (issue #62) ─────────────────────────────────────────
+
+  it("caches Stripe charges_enabled / payouts_enabled / details_submitted on the tenant", async () => {
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000eb",
+      provider: "stripe",
+      providerEventId: "evt_test_account_updated",
+      eventType: "account.updated",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+    });
+
+    // Reset cached state to false so we can observe the flip.
+    await db.execute(
+      sql`UPDATE tenants
+          SET stripe_charges_enabled = false,
+              stripe_payouts_enabled = false,
+              stripe_details_submitted = false,
+              stripe_account_state_at = NULL
+          WHERE id = ${ORG_ID}`,
+    );
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000eb",
+      stripeEventId: "evt_test_account_updated",
+      eventType: "account.updated",
+      accountId: null,
+      payload: {
+        id: STRIPE_ACCOUNT_ID,
+        charges_enabled: true,
+        payouts_enabled: true,
+        details_submitted: true,
+      },
+    });
+
+    await processStripeWebhook(job);
+
+    const result = await db.execute(
+      sql`SELECT stripe_charges_enabled, stripe_payouts_enabled, stripe_details_submitted, stripe_account_state_at
+          FROM tenants WHERE id = ${ORG_ID}`,
+    );
+    const tenant = (result as { rows?: Record<string, unknown>[] }).rows?.[0] ?? undefined;
+    expect(tenant?.stripe_charges_enabled).toBe(true);
+    expect(tenant?.stripe_payouts_enabled).toBe(true);
+    expect(tenant?.stripe_details_submitted).toBe(true);
+    expect(tenant?.stripe_account_state_at).toBeTruthy();
+  });
+
+  it("ignores account.updated for an unknown connected account (no DLQ throw)", async () => {
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000ec",
+      provider: "stripe",
+      providerEventId: "evt_test_account_updated_unknown",
+      eventType: "account.updated",
+      accountId: "acct_definitely_not_a_real_tenant",
+      payload: {},
+      status: "pending",
+    });
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000ec",
+      stripeEventId: "evt_test_account_updated_unknown",
+      eventType: "account.updated",
+      accountId: null,
+      payload: {
+        id: "acct_definitely_not_a_real_tenant",
+        charges_enabled: true,
+        payouts_enabled: true,
+        details_submitted: true,
+      },
+    });
+
+    // Must NOT throw — unknown account is logged + marked completed so the
+    // job doesn't enter the DLQ.
+    await expect(processStripeWebhook(job)).resolves.toBeUndefined();
   });
 });

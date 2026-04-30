@@ -11,6 +11,7 @@ import { extractTraceId } from "./lib/trace-context.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
+import { processMollieWebhook } from "./processors/mollie-webhook.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import {
   processSignupVerificationEmail,
@@ -202,11 +203,32 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
-  const webhooksWorker = new Worker(QUEUE_NAMES.WEBHOOKS, processStripeWebhook, {
-    connection: createRedisConnection(),
-    concurrency: 5,
-    ...defaultJobOpts,
-  });
+  /**
+   * Single webhook queue, multiple processors — dispatched by `job.name`
+   * so Stripe and Mollie webhooks share BullMQ infrastructure (one
+   * concurrency budget, one DLQ, one retry policy) but run different
+   * handlers. Adding a new gateway is a new processor + a new arm here.
+   */
+  const webhooksWorker = new Worker(
+    QUEUE_NAMES.WEBHOOKS,
+    async (job) => {
+      if (job.name === "process-stripe-webhook") {
+        return processStripeWebhook(job as Parameters<typeof processStripeWebhook>[0]);
+      }
+      if (job.name === "process-mollie-webhook") {
+        return processMollieWebhook(job as Parameters<typeof processMollieWebhook>[0]);
+      }
+      // Unknown job name — fail loudly so it lands in BullMQ's failed set
+      // and surfaces in the DLQ telemetry rather than silently being
+      // marked completed.
+      throw new Error(`Unknown webhook job name: ${job.name}`);
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 5,
+      ...defaultJobOpts,
+    },
+  );
 
   const tenantLifecycleWorker = new Worker(QUEUE_NAMES.TENANT_LIFECYCLE, processTenantLifecycle, {
     connection: createRedisConnection(),

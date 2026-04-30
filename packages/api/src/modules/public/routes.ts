@@ -1,8 +1,10 @@
 /** Public donation routes — unauthenticated endpoints for embeddable donation pages */
 
+import { PAYMENT_GATEWAY_VALUES } from "@givernance/shared/schema";
 import { CampaignPublicPageSchema } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+import { env } from "../../env.js";
 import { requireOrgAdmin } from "../../lib/guards.js";
 import {
   DataResponse,
@@ -34,6 +36,8 @@ const PublicDonationCurrencySchema = Type.Union([
   Type.Literal("CHF"),
 ]);
 
+const PaymentGatewaySchema = Type.Union(PAYMENT_GATEWAY_VALUES.map((v) => Type.Literal(v)));
+
 const PublicPageResponse = Type.Object({
   id: UuidSchema,
   campaignId: UuidSchema,
@@ -43,9 +47,15 @@ const PublicPageResponse = Type.Object({
   goalAmountCents: Type.Union([Type.Integer(), Type.Null()]),
   defaultCurrency: PublicDonationCurrencySchema,
   /**
+   * Tenant's selected payment gateway (issue #62). Drives donor-frontend
+   * branching: Stripe Elements for `'stripe'`, redirect to Mollie checkout
+   * for `'mollie'`, "donate offline" message for `'manual'`.
+   */
+  paymentGateway: PaymentGatewaySchema,
+  /**
    * Connected account id for the campaign's tenant. Null when the tenant
-   * hasn't onboarded with Stripe yet (donor flow blocks at the donate step
-   * with a 502 in that case). Public per Stripe docs — donor's Stripe.js
+   * hasn't onboarded with Stripe yet, or when the tenant uses a non-Stripe
+   * gateway (Mollie / manual). Public per Stripe docs — donor's Stripe.js
    * binds to it for both intent confirmation and 3DS post-redirect retrieve.
    */
   stripeAccountId: Type.Union([Type.String(), Type.Null()]),
@@ -85,10 +95,24 @@ const DonateHeaders = Type.Object({
   "idempotency-key": Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
 });
 
-const DonateResponse = Type.Object({
-  clientSecret: Type.String(),
-  stripeAccountId: Type.String(),
-});
+/**
+ * Discriminated union returned by `/donate` so the donor frontend renders
+ * Stripe Elements (`provider === 'stripe'`) or a Mollie checkout redirect
+ * (`provider === 'mollie'`). Adding a new gateway adds a new branch here +
+ * a new `PaymentGateway` implementation; route handler stays unchanged.
+ */
+const DonateResponse = Type.Union([
+  Type.Object({
+    provider: Type.Literal("stripe"),
+    clientSecret: Type.String(),
+    stripeAccountId: Type.String(),
+  }),
+  Type.Object({
+    provider: Type.Literal("mollie"),
+    checkoutUrl: Type.String(),
+    molliePaymentId: Type.String(),
+  }),
+]);
 
 const PublicPageCreateBody = CampaignPublicPageSchema;
 
@@ -224,7 +248,11 @@ export async function publicDonationRoutes(app: FastifyInstance) {
         headers: DonateHeaders,
         body: DonateBody,
         response: {
-          200: DataResponse(DonateResponse),
+          // Inline `data` wrapper because the response is a discriminated
+          // union and the shared `DataResponse(...)` helper accepts only a
+          // `TObject`. Keeping the type information at the call site is fine
+          // here — only this route returns a union shape today.
+          200: Type.Object({ data: DonateResponse }),
           400: ProblemDetailSchema,
           404: ProblemDetailSchema,
           429: ProblemDetailSchema,
@@ -254,15 +282,47 @@ export async function publicDonationRoutes(app: FastifyInstance) {
       }
 
       try {
-        const result = await createDonationIntent(id, body, idempotencyKey);
-        if (!result) {
-          // `createDonationIntent` returns `null` for several distinct reasons
-          // (invalid uuid, no public page found, no campaign row) — collapsing
-          // to a single 404 is deliberate so an enumerator can't distinguish
-          // "campaign exists but unpublished" from "campaign doesn't exist".
+        // Mollie needs a redirect URL (donor lands here post-checkout) and a
+        // webhook URL (Mollie POSTs status changes here). Both are derived
+        // from the API's configured `APP_URL` so a Cloudflare-tunnelled dev
+        // environment, staging, and prod each emit the right hostnames
+        // without per-tenant config. Stripe ignores both.
+        const returnUrl = `${env.APP_URL}/p/${id}`;
+        const webhookUrl = `${env.APP_URL.replace(/\/+$/, "")}/v1/donations/mollie-webhook`;
+
+        const outcome = await createDonationIntent(id, body, {
+          idempotencyKey,
+          returnUrl,
+          webhookUrl,
+        });
+        if (outcome.kind === "not_found") {
+          // The service collapses several distinct null reasons (invalid uuid,
+          // no public page, no campaign row) to a single 404 so an enumerator
+          // can't distinguish "campaign exists but unpublished" from "campaign
+          // doesn't exist".
           return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
         }
-        return { data: result };
+        if (outcome.kind === "gateway_unavailable") {
+          // Map structured reasons to specific donor-facing messages so the
+          // Settings panel UI can show the right hint. Donors hit a 502 in
+          // every case — they shouldn't be able to distinguish "Stripe not
+          // onboarded" from "Mollie key missing"; both are operator errors
+          // on the NPO side that the donor cannot work around.
+          const detailByReason: Record<typeof outcome.reason, string> = {
+            stripe_not_onboarded: "Payment provider is not configured",
+            mollie_flag_off: "Payment provider is not configured",
+            mollie_not_configured: "Payment provider is not configured",
+            manual_gateway: "This organization accepts donations offline only",
+          };
+          request.log.warn(
+            { campaignId: id, reason: outcome.reason },
+            "Donate request rejected — gateway unavailable",
+          );
+          return reply
+            .status(502)
+            .send(problemDetail(502, "Bad Gateway", detailByReason[outcome.reason]));
+        }
+        return { data: outcome.result };
       } catch (err) {
         // Sanitised log: drop the raw Stripe Error object — it carries
         // `requestId`, `payment_intent.id`, and possibly the connected

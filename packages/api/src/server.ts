@@ -21,7 +21,12 @@ import { donationRoutes } from "./modules/donations/routes.js";
 import { fundRoutes } from "./modules/funds/routes.js";
 import { healthRoutes } from "./modules/health/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
-import { paymentRoutes, stripeWebhookRoute } from "./modules/payments/routes.js";
+import {
+  mollieWebhookRoute,
+  paymentGatewaySettingsRoute,
+  paymentRoutes,
+  stripeWebhookRoute,
+} from "./modules/payments/routes.js";
 import { pledgeRoutes } from "./modules/pledges/routes.js";
 import { publicDonationRoutes } from "./modules/public/routes.js";
 import { reportsRoutes } from "./modules/reports/routes.js";
@@ -163,7 +168,9 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(pledgeRoutes, { prefix: "/v1" });
   await app.register(campaignRoutes, { prefix: "/v1" });
   await app.register(paymentRoutes, { prefix: "/v1" });
+  await app.register(paymentGatewaySettingsRoute, { prefix: "/v1" });
   await app.register(stripeWebhookRoute, { prefix: "/v1" });
+  await app.register(mollieWebhookRoute, { prefix: "/v1" });
   await app.register(publicDonationRoutes, { prefix: "/v1" });
   await app.register(signupRoutes, { prefix: "/v1" });
   await app.register(reportsRoutes, { prefix: "/v1" });

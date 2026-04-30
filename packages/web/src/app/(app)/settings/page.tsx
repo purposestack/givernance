@@ -1,4 +1,5 @@
 import { getTranslations } from "next-intl/server";
+import { PaymentGatewayPanel } from "@/components/settings/payment-gateway-panel";
 import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { SettingsSnapshotPanel } from "@/components/settings/settings-snapshot-panel";
 import { StripeConnectPanel } from "@/components/settings/stripe-connect-panel";
@@ -24,6 +25,7 @@ export default async function SettingsPage() {
       />
       <SettingsNavigation />
       <TenantSettingsForm orgId={auth.orgId} canManageTenant={auth.roles.includes("org_admin")} />
+      <PaymentGatewayPanel canManageTenant={auth.roles.includes("org_admin")} />
       <StripeConnectPanel canManageTenant={auth.roles.includes("org_admin")} />
       <SettingsSnapshotPanel orgId={auth.orgId} canExport={auth.roles.includes("org_admin")} />
     </div>

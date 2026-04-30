@@ -35,6 +35,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={50000}
         publishableKey={null}
+        paymentGateway="stripe"
         tenantStripeAccountId={null}
       />,
     );
@@ -51,6 +52,7 @@ describe("PublicDonationForm", () => {
     const user = userEvent.setup();
 
     vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      provider: "stripe",
       clientSecret: "pi_secret_123",
       stripeAccountId: "acct_test_123",
     });
@@ -62,6 +64,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={50000}
         publishableKey="pk_test_dummy"
+        paymentGateway="stripe"
         tenantStripeAccountId="acct_test_999"
       />,
     );
@@ -99,6 +102,7 @@ describe("PublicDonationForm", () => {
     const user = userEvent.setup();
 
     vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      provider: "stripe",
       clientSecret: "pi_secret_456",
       stripeAccountId: "acct_test_123",
     });
@@ -110,6 +114,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"
+        paymentGateway="stripe"
         tenantStripeAccountId="acct_test_999"
       />,
     );
@@ -138,6 +143,7 @@ describe("PublicDonationForm", () => {
     const user = userEvent.setup();
 
     vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      provider: "stripe",
       clientSecret: "pi_secret_999",
       stripeAccountId: "acct_test_999",
     });
@@ -149,6 +155,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"
+        paymentGateway="stripe"
         tenantStripeAccountId="acct_test_999"
       />,
     );
@@ -170,6 +177,7 @@ describe("PublicDonationForm", () => {
     const user = userEvent.setup();
 
     vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      provider: "stripe",
       clientSecret: "pi_secret_888",
       stripeAccountId: "acct_live_888",
     });
@@ -181,6 +189,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_live_real_key"
+        paymentGateway="stripe"
         tenantStripeAccountId="acct_live_888"
       />,
     );
@@ -200,6 +209,7 @@ describe("PublicDonationForm", () => {
     const user = userEvent.setup();
 
     vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      provider: "stripe",
       clientSecret: "pi_secret_123",
       stripeAccountId: "acct_test_123",
     });
@@ -211,6 +221,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey={null}
+        paymentGateway="stripe"
         tenantStripeAccountId={null}
       />,
     );
@@ -244,6 +255,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey={null}
+        paymentGateway="stripe"
         tenantStripeAccountId={null}
       />,
     );
@@ -284,6 +296,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"
+        paymentGateway="stripe"
         tenantStripeAccountId="acct_test_999"
       />,
     );
@@ -330,6 +343,7 @@ describe("PublicDonationForm", () => {
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"
+        paymentGateway="stripe"
         tenantStripeAccountId="acct_test_999"
       />,
     );

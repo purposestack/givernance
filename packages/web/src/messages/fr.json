@@ -889,6 +889,47 @@
       "errorProblem": "L'export a échoué (HTTP {status}).",
       "lastDownloaded": "Dernier téléchargement : {value}"
     },
+    "paymentGateway": {
+      "badge": "Paiements",
+      "title": "Plateforme de paiement",
+      "subtitle": "Choisissez comment les donateurs payent votre organisation. Un seul prestataire peut être actif à la fois.",
+      "loading": "Chargement des paramètres de paiement…",
+      "adminOnly": "Seuls les administrateurs de l'organisation peuvent changer la plateforme de paiement.",
+      "current": {
+        "stripe": "Actif : Stripe",
+        "mollie": "Actif : Mollie",
+        "manual": "Actif : Manuel (hors ligne uniquement)"
+      },
+      "options": {
+        "stripe": "Stripe Connect",
+        "mollie": "Mollie",
+        "manual": "Manuel / hors ligne"
+      },
+      "descriptions": {
+        "stripe": "Cartes, Apple Pay et SEPA via Stripe Connect. Recommandé pour la plupart des organisations.",
+        "mollie": "iDEAL, Bancontact et cartes via Mollie. Recommandé pour les associations FR/BE/NL avec une vérification simplifiée.",
+        "manual": "Pas de paiement en ligne. Les donateurs sont invités à vous contacter directement."
+      },
+      "fields": {
+        "gateway": "Prestataire de paiement",
+        "mollieApiKey": "Clé API Mollie",
+        "mollieApiKeyPlaceholder": "test_… ou live_…",
+        "mollieApiKeyHint": "Collez la clé API depuis votre tableau de bord Mollie. Nous ne la renvoyons jamais ; faites-la tourner depuis ce champ à chaque fois que nécessaire."
+      },
+      "mollieKeyConfigured": "Clé Mollie configurée",
+      "flagOffHint": "Mollie n'est pas activé pour votre organisation. Contactez le support pour demander l'accès.",
+      "actions": {
+        "save": "Enregistrer",
+        "saving": "Enregistrement…"
+      },
+      "success": {
+        "saved": "Plateforme de paiement mise à jour"
+      },
+      "errors": {
+        "load": "Impossible de charger les paramètres de paiement.",
+        "save": "Impossible d'enregistrer les paramètres de paiement."
+      }
+    },
     "stripeConnect": {
       "badge": "Paiements",
       "title": "Stripe Connect",
@@ -1579,7 +1620,8 @@
         "nextStepTitle": "Étape suivante",
         "nextStepBody": "Utilisez le formulaire de carte pour finaliser votre don de manière sécurisée avec Stripe."
       },
-      "footnote": "En soumettant ce formulaire, vous préparez un paiement sécurisé. Votre carte sera débitée à l'étape suivante."
+      "footnote": "En soumettant ce formulaire, vous préparez un paiement sécurisé. Votre carte sera débitée à l'étape suivante.",
+      "manualGateway": "Cette association n'accepte les dons qu'en dehors de la plateforme. Merci de la contacter directement pour soutenir cette campagne."
     },
     "payment": {
       "summary": {
