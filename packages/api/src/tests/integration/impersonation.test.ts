@@ -42,6 +42,12 @@ const TARGET_SUPER_ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000aa102";
 // platform tenant. Tenant row is upserted in beforeAll.
 const PLATFORM_TARGET_APP_ID = "00000000-0000-0000-0000-0000000aaa01";
 const PLATFORM_TARGET_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000aa103";
+// Viewer-role target — used to verify pure-impersonation honours the
+// target's RBAC (writes 403 because the target is read-only) without any
+// extra write-block plugin (issue #24: "impersonation = permissions du
+// user cible uniquement").
+const VIEWER_TARGET_APP_ID = "00000000-0000-0000-0000-0000000aaa02";
+const VIEWER_TARGET_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000aa104";
 
 let app: FastifyInstance;
 
@@ -61,14 +67,15 @@ beforeAll(async () => {
 
   // Seed a target user under ORG_A that the operator will impersonate.
   await db.execute(sql`
-    DELETE FROM users WHERE id IN (${TARGET_USER_APP_ID}, ${TARGET_SUPER_ADMIN_APP_ID}, ${PLATFORM_TARGET_APP_ID})
+    DELETE FROM users WHERE id IN (${TARGET_USER_APP_ID}, ${TARGET_SUPER_ADMIN_APP_ID}, ${PLATFORM_TARGET_APP_ID}, ${VIEWER_TARGET_APP_ID})
   `);
   await db.execute(sql`
     INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
     VALUES
       (${TARGET_USER_APP_ID}, ${ORG_A}, ${TARGET_USER_KEYCLOAK_ID}, 'target@example.org', 'Target', 'User', 'org_admin'),
       (${TARGET_SUPER_ADMIN_APP_ID}, ${ORG_A}, ${TARGET_SUPER_ADMIN_KEYCLOAK_ID}, 'super@example.org', 'Target', 'SuperAdmin', 'org_admin'),
-      (${PLATFORM_TARGET_APP_ID}, ${PLATFORM_TENANT_ID}, ${PLATFORM_TARGET_KEYCLOAK_ID}, 'platform-target@example.org', 'Platform', 'Target', 'org_admin')
+      (${PLATFORM_TARGET_APP_ID}, ${PLATFORM_TENANT_ID}, ${PLATFORM_TARGET_KEYCLOAK_ID}, 'platform-target@example.org', 'Platform', 'Target', 'org_admin'),
+      (${VIEWER_TARGET_APP_ID}, ${ORG_A}, ${VIEWER_TARGET_KEYCLOAK_ID}, 'viewer-target@example.org', 'Viewer', 'Target', 'viewer')
   `);
 });
 
@@ -310,14 +317,21 @@ describe("POST /v1/admin/impersonation — successful start (both modes)", () =>
 
 // ─── Mode-specific permission isolation ────────────────────────────────────
 
-describe("Pure-impersonation write block + delegation pass-through", () => {
-  async function startSession(mode: "delegation" | "impersonation") {
+/**
+ * Issue #24 acceptance criterion: "impersonation = permissions du user
+ * cible uniquement". RBAC is the only gate; no extra write-block.
+ *   - impersonating a write-capable target → writes succeed
+ *   - impersonating a viewer (read-only)   → writes 403 via existing RBAC
+ *   - delegation                            → super_admin retained → writes succeed
+ */
+describe("Permission isolation honours the target's role (no extra write-block)", () => {
+  async function startSession(targetUserId: string, mode: "delegation" | "impersonation") {
     const token = superAdminToken();
     const res = await app.inject({
       method: "POST",
       url: "/v1/admin/impersonation",
       headers: authHeader(token),
-      payload: { targetUserId: TARGET_USER_APP_ID, mode, reason: VALID_REASON },
+      payload: { targetUserId, mode, reason: VALID_REASON },
     });
     expect(res.statusCode).toBe(201);
     const cookie = extractImpersonationCookie(res.headers["set-cookie"]);
@@ -326,7 +340,7 @@ describe("Pure-impersonation write block + delegation pass-through", () => {
   }
 
   it("pure impersonation: GET /v1/constituents passes (read allowed)", async () => {
-    const { cookie } = await startSession("impersonation");
+    const { cookie } = await startSession(TARGET_USER_APP_ID, "impersonation");
     const res = await app.inject({
       method: "GET",
       url: "/v1/constituents",
@@ -335,21 +349,43 @@ describe("Pure-impersonation write block + delegation pass-through", () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it("pure impersonation: POST /v1/constituents is blocked with 403", async () => {
-    const { cookie } = await startSession("impersonation");
+  it("pure impersonation as org_admin target: writes SUCCEED (target has write role)", async () => {
+    const { cookie } = await startSession(TARGET_USER_APP_ID, "impersonation");
+    const stamp = Date.now().toString(36);
     const res = await app.inject({
       method: "POST",
-      url: "/v1/constituents",
-      headers: impersonationCookieHeaders(cookie),
-      payload: { firstName: "Should", lastName: "Fail", type: "donor" },
+      url: "/v1/constituents?force=true",
+      headers: { ...impersonationCookieHeaders(cookie), "content-type": "application/json" },
+      payload: {
+        firstName: `Repro-${stamp}`,
+        lastName: `Bug-${stamp}`,
+        type: "donor",
+      },
     });
-    expect(res.statusCode).toBe(403);
-    const body = JSON.parse(res.payload);
-    expect(body.detail).toMatch(/read-only/i);
+    expect([200, 201]).toContain(res.statusCode);
   });
 
-  it("pure impersonation: DELETE /v1/admin/impersonation/:sessionId is allowlisted", async () => {
-    const { cookie, sessionId } = await startSession("impersonation");
+  it("pure impersonation as VIEWER target: writes 403 via target's RBAC (no extra block)", async () => {
+    const { cookie } = await startSession(VIEWER_TARGET_APP_ID, "impersonation");
+    const stamp = Date.now().toString(36);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: { ...impersonationCookieHeaders(cookie), "content-type": "application/json" },
+      payload: {
+        firstName: `Viewer-${stamp}`,
+        lastName: `Blocked-${stamp}`,
+        type: "donor",
+      },
+    });
+    // 403 from `requireWrite` because the target is `viewer` — same
+    // response a real viewer would get logging in directly. No "read-only"
+    // detail string; this is the standard RBAC denial.
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("operator can end their own session from inside a pure-impersonation cookie", async () => {
+    const { cookie, sessionId } = await startSession(TARGET_USER_APP_ID, "impersonation");
     const res = await app.inject({
       method: "DELETE",
       url: `/v1/admin/impersonation/${sessionId}`,
@@ -358,11 +394,8 @@ describe("Pure-impersonation write block + delegation pass-through", () => {
     expect(res.statusCode).toBe(204);
   });
 
-  it("delegation: POST /v1/constituents IS allowed (writes pass through)", async () => {
-    const { cookie } = await startSession("delegation");
-    // Unique per-run name + `?force=true` to bypass the dedup check —
-    // we're testing the write-block boundary, not the duplicate-detection
-    // heuristic that runs on the same constituents endpoint.
+  it("delegation: POST /v1/constituents IS allowed (super_admin retained)", async () => {
+    const { cookie } = await startSession(TARGET_USER_APP_ID, "delegation");
     const stamp = Date.now().toString(36);
     const res = await app.inject({
       method: "POST",
