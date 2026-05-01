@@ -153,7 +153,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
-      "description": "Issue #24 — confidential client used by the API to mint impersonation tokens via OAuth2 Token Exchange (RFC 8693). Token Exchange is only granted on this client to keep the realm-management `impersonation` role narrowly scoped. The Script Mapper at infra/keycloak/mappers/impersonation-act-mapper.js injects the `act` claim that Keycloak 26 still does not emit natively (keycloak/keycloak#12076).",
+      "description": "Issue #24 — confidential client for OAuth2 Token Exchange (RFC 8693) used by the API to mint impersonation tokens. See docs/19-impersonation.md.",
       "attributes": {
         "token.exchange.grant.enabled": "true",
         "standard.token.exchange.enabled": "true"
