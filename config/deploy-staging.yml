@@ -120,9 +120,15 @@ builder:
   # intermediate layers (not just the final ones) for better hit rates;
   # the existing `packages: write` permission on the deploy workflow covers
   # the cache image push.
+  #
+  # IMPORTANT: `image:` is the path RELATIVE TO `registry.server` above.
+  # Kamal joins them at build time, so do NOT include `ghcr.io/` here —
+  # an earlier version of this PR did, which produced a cache image at
+  # `ghcr.io/ghcr.io/purposestack/givernance-build-cache` (doubled host).
+  # Fully-qualified resolved ref: `ghcr.io/purposestack/givernance-build-cache`.
   cache:
     type: registry
-    image: ghcr.io/purposestack/givernance-build-cache
+    image: purposestack/givernance-build-cache
     options: mode=max
   args:
     # The Next.js rewrite destination is baked into routes-manifest.json
