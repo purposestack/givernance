@@ -325,7 +325,12 @@ export async function searchTargets(filters: {
   limit?: number;
 }): Promise<ImpersonationTargetCandidate[]> {
   const limit = Math.min(Math.max(filters.limit ?? 20, 1), 50);
-  const conditions = [isNull(users.deletedAt), sql`${users.orgId} != ${PLATFORM_TENANT_ID}::uuid`];
+  // The picker shows every active user; the platform-tenant block lives at
+  // start-session time (`startSession` rejects with 400 + the
+  // TARGET_NESTED_SUPER_ADMIN code). Filtering it out here would zero out
+  // the picker in dev environments where the demo tenant shares the
+  // platform UUID (see packages/api/scripts/seed.ts).
+  const conditions = [isNull(users.deletedAt)];
 
   if (filters.tenantId) {
     conditions.push(eq(users.orgId, filters.tenantId));
@@ -383,14 +388,17 @@ export async function searchTargets(filters: {
   }));
 }
 
-/** Lightweight tenant list for the picker — non-platform, non-archived. */
+/**
+ * Lightweight tenant list for the picker — every non-archived tenant.
+ * We deliberately do NOT exclude the platform tenant here: the
+ * start-session guard already blocks targets in it, and excluding it
+ * would zero out the picker in dev where the demo tenant happens to
+ * share the platform UUID.
+ */
 export async function listTenantsForPicker(
   q?: string,
 ): Promise<Array<{ id: string; name: string; slug: string; status: string }>> {
-  const conditions = [
-    sql`${tenants.id} != ${PLATFORM_TENANT_ID}::uuid`,
-    sql`${tenants.status} != 'archived'`,
-  ];
+  const conditions = [sql`${tenants.status} != 'archived'`];
   if (q) {
     const raw = q.trim();
     if (raw.length > 0) {

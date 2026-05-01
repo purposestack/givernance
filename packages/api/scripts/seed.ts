@@ -25,6 +25,41 @@ const TENANT_SLUG = "givernance";
 const TENANT_NAME = "Givernance Demo NPO";
 /** Fixed UUID referenced by the seeded Keycloak user's `org_id` attribute. */
 const TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
+
+/**
+ * Second dev tenant used to test impersonation flows. The `PLATFORM_TENANT_ID`
+ * security guard in `impersonation-service.ts` rejects targets in the
+ * platform tenant, so we need at least one non-platform tenant with real
+ * users for the operator to practise against. UUID is deliberately distant
+ * from `TENANT_ID` so it's obvious in test fixtures and audit logs.
+ */
+const DEMO_TENANT_ID = "00000000-0000-0000-0000-0000000000b1";
+const DEMO_TENANT_SLUG = "givernance-demo";
+const DEMO_TENANT_NAME = "Demo Workspace (impersonation playground)";
+
+const DEMO_USERS = [
+  {
+    keycloakId: "00000000-0000-0000-0000-0000000000b1",
+    firstName: "Camille",
+    lastName: "Bernard",
+    email: "camille.bernard@demo.givernance.local",
+    role: "org_admin",
+  },
+  {
+    keycloakId: "00000000-0000-0000-0000-0000000000b2",
+    firstName: "Léo",
+    lastName: "Martin",
+    email: "leo.martin@demo.givernance.local",
+    role: "user",
+  },
+  {
+    keycloakId: "00000000-0000-0000-0000-0000000000b3",
+    firstName: "Inès",
+    lastName: "Dubois",
+    email: "ines.dubois@demo.givernance.local",
+    role: "viewer",
+  },
+] as const;
 /**
  * Fixed Keycloak `sub` for the seeded super-admin user. Pinned to the
  * `id` field on `admin@givernance.org` in `infra/keycloak/realm-givernance.json`.
@@ -336,11 +371,52 @@ async function seedAdminUser(orgId: string): Promise<void> {
   console.log(`[seed] Inserted admin user ${ADMIN_EMAIL}`);
 }
 
+/**
+ * Seed the impersonation-playground tenant + 3 users in distinct roles.
+ * Idempotent: skips when the tenant or users already exist.
+ */
+async function seedDemoTenant(): Promise<void> {
+  const [existing] = await db.select().from(tenants).where(eq(tenants.id, DEMO_TENANT_ID));
+  if (!existing) {
+    await db.insert(tenants).values({
+      id: DEMO_TENANT_ID,
+      name: DEMO_TENANT_NAME,
+      slug: DEMO_TENANT_SLUG,
+      plan: "starter",
+      status: "active",
+    });
+    console.log(`[seed] Created demo tenant ${DEMO_TENANT_SLUG} (${DEMO_TENANT_ID})`);
+  } else {
+    console.log(`[seed] Reusing demo tenant ${DEMO_TENANT_SLUG} (${DEMO_TENANT_ID})`);
+  }
+
+  for (const u of DEMO_USERS) {
+    const [present] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.keycloakId, u.keycloakId))
+      .limit(1);
+    if (present) continue;
+    await withTenantContext(DEMO_TENANT_ID, async (tx) => {
+      await tx.insert(users).values({
+        orgId: DEMO_TENANT_ID,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        role: u.role,
+        keycloakId: u.keycloakId,
+      });
+    });
+    console.log(`[seed] Inserted demo user ${u.email} (${u.role})`);
+  }
+}
+
 async function main() {
   console.log("[seed] Starting Givernance dev seed…");
   const orgId = await findOrCreateTenant();
   await seedAdminUser(orgId);
   await seedOrgData(orgId);
+  await seedDemoTenant();
   console.log("[seed] Done.");
   process.exit(0);
 }
