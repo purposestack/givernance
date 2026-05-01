@@ -26,6 +26,16 @@ export interface ImpersonationSessionDTO {
   userAgent: string | null;
   createdAt: string;
   isActive: boolean;
+  // Enrichment fields — null when the joined `users` / `tenants` row is
+  // missing (e.g. off-boarded operator). UI falls back to keycloak_id.
+  targetFirstName: string | null;
+  targetLastName: string | null;
+  targetEmail: string | null;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  impersonatorFirstName: string | null;
+  impersonatorLastName: string | null;
+  impersonatorEmail: string | null;
 }
 
 export interface StartSessionInput {

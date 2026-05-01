@@ -81,6 +81,58 @@ function EmptyState({ label }: { label: string }) {
   );
 }
 
+/**
+ * Renders a person + (optional) tenant + UUID side-note in a single
+ * column cell. Falls back gracefully:
+ *   - No first/last name → render the email if we have it, otherwise the
+ *     keycloak_id raw (and skip the side-note since it's the same).
+ *   - The side-note is the keycloak_id, mono and dim, for ops who need
+ *     to copy/paste an identifier into a debugger or a Loki query.
+ */
+function UserCell({
+  firstName,
+  lastName,
+  email,
+  tenantName,
+  tenantSlug,
+  keycloakId,
+}: {
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  keycloakId: string;
+}) {
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  const hasName = fullName.length > 0;
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-sm font-medium">
+        {hasName ? fullName : (email ?? <code className="font-mono text-xs">{keycloakId}</code>)}
+      </span>
+      {(email || tenantName) && (
+        <span className="text-xs text-muted-foreground">
+          {hasName && email ? email : null}
+          {hasName && email && tenantName ? " · " : null}
+          {tenantName ? (
+            <>
+              {tenantName}
+              {tenantSlug ? <span className="opacity-60"> ({tenantSlug})</span> : null}
+            </>
+          ) : null}
+        </span>
+      )}
+      {hasName && (
+        <code className="font-mono text-[10px] text-muted-foreground/70" title={keycloakId}>
+          {keycloakId}
+        </code>
+      )}
+    </div>
+  );
+}
+
 async function SessionTable({
   rows,
   showActions,
@@ -163,8 +215,27 @@ async function SessionRow({
           {isPure ? t("badgeImpersonation") : t("badgeDelegation")}
         </span>
       </td>
-      <td className="px-4 py-3 font-mono text-xs">{session.targetKeycloakId}</td>
-      <td className="px-4 py-3 font-mono text-xs">{session.impersonatorKeycloakId}</td>
+      <td className="px-4 py-3">
+        <UserCell
+          firstName={session.targetFirstName}
+          lastName={session.targetLastName}
+          email={session.targetEmail}
+          tenantName={session.tenantName}
+          tenantSlug={session.tenantSlug}
+          keycloakId={session.targetKeycloakId}
+        />
+      </td>
+      <td className="px-4 py-3">
+        <UserCell
+          firstName={session.impersonatorFirstName}
+          lastName={session.impersonatorLastName}
+          email={session.impersonatorEmail}
+          // Operator is super_admin → no tenant context worth surfacing.
+          tenantName={null}
+          tenantSlug={null}
+          keycloakId={session.impersonatorKeycloakId}
+        />
+      </td>
       <td className="px-4 py-3 max-w-[240px]">
         <span className="line-clamp-2 text-xs">{session.reason}</span>
       </td>
