@@ -73,6 +73,7 @@ import { validateTenantSlug } from "@givernance/shared/validators";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import pino from "pino";
 import { db, systemDb } from "../../lib/db.js";
+import { isUniqueViolation } from "../../lib/db-errors.js";
 import {
   type KeycloakAdminClient,
   KeycloakAdminError,
@@ -156,15 +157,6 @@ function splitEmail(email: string): { local: string; domain: string } | null {
 /** 122-bit random token — stored as the `invitations.token` uuid. */
 function generateVerificationToken(): string {
   return randomUUID();
-}
-
-/** Is the given error a Postgres unique-violation (23505)? */
-function isUniqueViolation(err: unknown, constraintHint?: RegExp): boolean {
-  if (typeof err !== "object" || err === null) return false;
-  const e = err as { code?: string; constraint?: string; message?: string };
-  if (e.code !== "23505") return false;
-  if (!constraintHint) return true;
-  return constraintHint.test(e.constraint ?? "") || constraintHint.test(e.message ?? "");
 }
 
 // ─── Signup ─────────────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ import {
 } from "@givernance/shared/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
+import { isUniqueViolation } from "../../lib/db-errors.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -630,14 +631,6 @@ export async function runExpireJob(now = new Date()): Promise<ExpireJobResult> {
   }
 
   return { confirmedOrgIds: confirmed, skippedOrgIds: skipped };
-}
-
-function isUniqueViolation(err: unknown, constraintHint?: RegExp): boolean {
-  if (typeof err !== "object" || err === null) return false;
-  const e = err as { code?: string; constraint?: string; message?: string };
-  if (e.code !== "23505") return false;
-  if (!constraintHint) return true;
-  return constraintHint.test(e.constraint ?? "") || constraintHint.test(e.message ?? "");
 }
 
 /**
