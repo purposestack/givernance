@@ -43,6 +43,25 @@ export interface StartSessionResponse {
   targetUserId: string;
 }
 
+export interface ImpersonationTargetCandidate {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+  keycloakId: string | null;
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+}
+
+export interface ImpersonationTenantOption {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+}
+
 export const ImpersonationService = {
   async listSessions(
     client: ApiClient,
@@ -79,5 +98,24 @@ export const ImpersonationService = {
     targetUserId: string,
   ): Promise<{ data: { revokedSessionIds: string[] } }> {
     return client.delete(`/v1/admin/impersonation/user/${encodeURIComponent(targetUserId)}`);
+  },
+
+  async searchTargets(
+    client: ApiClient,
+    opts: { q?: string; tenantId?: string; limit?: number } = {},
+  ): Promise<{ data: ImpersonationTargetCandidate[] }> {
+    return client.get("/v1/admin/impersonation/targets", {
+      params: {
+        q: opts.q,
+        tenantId: opts.tenantId,
+        limit: opts.limit,
+      },
+    });
+  },
+
+  async listTenants(client: ApiClient, q?: string): Promise<{ data: ImpersonationTenantOption[] }> {
+    return client.get("/v1/admin/impersonation/tenants", {
+      params: { q },
+    });
   },
 };

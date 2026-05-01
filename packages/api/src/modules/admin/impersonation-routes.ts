@@ -50,7 +50,9 @@ import {
   hashIp,
   ImpersonationServiceError,
   listSessions,
+  listTenantsForPicker,
   revokeSessionsForTarget,
+  searchTargets,
   startSession,
 } from "./impersonation-service.js";
 
@@ -154,6 +156,88 @@ export async function impersonationRoutes(app: FastifyInstance) {
           isActive: !s.endedAt && s.expiresAt.getTime() > now,
         })),
       };
+    },
+  );
+
+  /**
+   * GET /v1/admin/impersonation/targets — picker-scoped user search for the
+   * start-session form. Cross-tenant; excludes platform-tenant members
+   * (they can't be impersonated) and soft-deleted users. Matches:
+   *   - first/last/email substring (case-insensitive ILIKE)
+   *   - exact UUID on `users.id` or `users.keycloak_id`
+   * Optional `tenantId` narrows to a single workspace.
+   */
+  app.get(
+    "/admin/impersonation/targets",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Admin", "Impersonation"],
+        querystring: Type.Object({
+          q: Type.Optional(Type.String({ maxLength: 255 })),
+          tenantId: Type.Optional(UuidSchema),
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, default: 20 })),
+        }),
+        response: {
+          200: Type.Object({
+            data: Type.Array(
+              Type.Object({
+                id: UuidSchema,
+                firstName: Type.String(),
+                lastName: Type.String(),
+                email: Type.String(),
+                role: Type.String(),
+                keycloakId: Type.Union([Type.String(), Type.Null()]),
+                tenantId: UuidSchema,
+                tenantName: Type.String(),
+                tenantSlug: Type.String(),
+              }),
+            ),
+          }),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request) => {
+      const query = request.query as { q?: string; tenantId?: string; limit?: number };
+      const data = await searchTargets(query);
+      return { data };
+    },
+  );
+
+  /**
+   * GET /v1/admin/impersonation/tenants — lightweight tenant list for the
+   * picker's tenant selector. Smaller surface than `/v1/superadmin/tenants`
+   * (no plan / status / domain detail), excludes platform + archived rows.
+   */
+  app.get(
+    "/admin/impersonation/tenants",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Admin", "Impersonation"],
+        querystring: Type.Object({
+          q: Type.Optional(Type.String({ maxLength: 255 })),
+        }),
+        response: {
+          200: Type.Object({
+            data: Type.Array(
+              Type.Object({
+                id: UuidSchema,
+                name: Type.String(),
+                slug: Type.String(),
+                status: Type.String(),
+              }),
+            ),
+          }),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request) => {
+      const { q } = request.query as { q?: string };
+      const data = await listTenantsForPicker(q);
+      return { data };
     },
   );
 
