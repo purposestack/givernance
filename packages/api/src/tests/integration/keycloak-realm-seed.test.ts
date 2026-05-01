@@ -216,3 +216,75 @@ describe("Keycloak realm seed (issue #114 — Organizations migration)", () => {
     expect(userOrgId).toBe(orgOrgId);
   });
 });
+
+/**
+ * Realm-import field length guards.
+ *
+ * Keycloak's relational schema persists most string fields as
+ * `VARCHAR(255)` (e.g. `CLIENT.DESCRIPTION`, `CLIENT.NAME`,
+ * `KEYCLOAK_ROLE.DESCRIPTION`, `ORG.NAME`, `ORG.DESCRIPTION`). When the
+ * realm JSON ships a value longer than 255 chars, `kc.sh start --import`
+ * silently writes the row but then aborts the next batch with
+ * `value too long for type character varying(255)` — observed when the
+ * `givernance-impersonation` client description shipped at 396 chars on
+ * a fresh `pnpm dev:up`.
+ *
+ * Static contract: walk the known-bounded paths and assert ≤255 chars.
+ * Cap at 250 in practice to leave headroom for any encoding overhead the
+ * Liquibase importer adds.
+ */
+describe("Keycloak realm seed — VARCHAR(255) field length guards", () => {
+  const MAX = 250;
+
+  function assertMax(label: string, value: unknown): void {
+    if (typeof value !== "string") return;
+    expect(value.length, `${label} (${value.length} chars) must be ≤ ${MAX}`).toBeLessThanOrEqual(
+      MAX,
+    );
+  }
+
+  it("realm.clients[*].clientId / .name / .description fit varchar(255)", () => {
+    for (const client of realm.clients) {
+      const c = client as KeycloakClient & {
+        name?: string;
+        description?: string;
+      };
+      assertMax(`clients[${c.clientId}].clientId`, c.clientId);
+      assertMax(`clients[${c.clientId}].name`, c.name);
+      assertMax(`clients[${c.clientId}].description`, c.description);
+    }
+  });
+
+  it("realm.organizations[*].name / .alias / .description fit varchar(255)", () => {
+    for (const org of realm.organizations ?? []) {
+      const o = org as KeycloakOrganization & { description?: string };
+      assertMax(`organizations[${o.alias}].name`, o.name);
+      assertMax(`organizations[${o.alias}].alias`, o.alias);
+      assertMax(`organizations[${o.alias}].description`, o.description);
+    }
+  });
+
+  it("realm.users[*].username / firstName / lastName / email fit varchar(255)", () => {
+    for (const user of realm.users) {
+      const u = user as RealmSeed["users"][number] & {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+      };
+      assertMax(`users[${u.username}].username`, u.username);
+      assertMax(`users[${u.username}].firstName`, u.firstName);
+      assertMax(`users[${u.username}].lastName`, u.lastName);
+      assertMax(`users[${u.username}].email`, u.email);
+    }
+  });
+
+  it("realm.roles[*].realm[].name / .description fit varchar(255)", () => {
+    const roles =
+      (realm as unknown as { roles?: { realm?: Array<{ name: string; description?: string }> } })
+        .roles?.realm ?? [];
+    for (const role of roles) {
+      assertMax(`roles.realm[${role.name}].name`, role.name);
+      assertMax(`roles.realm[${role.name}].description`, role.description);
+    }
+  });
+});
