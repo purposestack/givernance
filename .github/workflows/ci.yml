@@ -66,6 +66,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # ADR-015 (i18n): fail CI if any locale drifts from the source `fr` in
+      # either the web (next-intl) or API (RFC 9457 / email) message tree.
+      - name: Check translation key parity
+        run: pnpm check:translations
+
       - name: Build
         run: pnpm build
 
