@@ -11,7 +11,6 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-005: NATS JetStream — Deferred to Phase 4](./adrs/adr-005-nats-jetstream-deferred-to-phase-4.md)
 - [ADR-007: Reject Convex.dev and Supabase as All-in-One Backend Replacements](./adrs/adr-007-reject-convex-dev-and-supabase-as-all-in-one-backend-replacements.md)
 - [ADR-008: Job Queue System (pg-boss)](./adrs/adr-008-job-queue-system-pg-boss.md)
-- [ADR-007: Reject Convex.dev and Supabase as All-in-One Backend Replacements (Updated Context)](./adrs/adr-007-reject-convex-dev-and-supabase-as-all-in-one-backend-replacements-updated-context.md)
 - [ADR-011: Layered Service Architecture over MVC for Frontend](./adrs/adr-011-layered-service-architecture-over-mvc-for-frontend.md)
 - [ADR-012: shadcn/ui + TanStack Ecosystem for UI Components](./adrs/adr-012-shadcn-ui-tanstack-ecosystem-for-ui-components.md)
 - [ADR-013: Frontend Type Boundary — No Drizzle Imports in Web Package](./adrs/adr-013-frontend-type-boundary-no-drizzle-imports-in-web-package.md)
