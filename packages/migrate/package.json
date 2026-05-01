@@ -11,11 +11,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.712.0",
+    "@aws-sdk/client-s3": "^3.1040.0",
     "@givernance/shared": "workspace:*",
     "commander": "^12.1.0",
     "csv-parse": "^5.6.0",
-    "drizzle-orm": "^0.36.4",
+    "drizzle-orm": "^0.45.2",
     "pg": "^8.13.1"
   },
   "devDependencies": {

@@ -17,18 +17,18 @@
     "db:seed:funds": "tsx --env-file=../../.env scripts/seed-funds.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.712.0",
-    "@aws-sdk/s3-request-presigner": "^3.1030.0",
+    "@aws-sdk/client-s3": "^3.1040.0",
+    "@aws-sdk/s3-request-presigner": "^3.1040.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^10.0.2",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.4.2",
-    "@fastify/swagger-ui": "^5.2.1",
+    "@fastify/swagger-ui": "^5.2.6",
     "@givernance/shared": "workspace:*",
     "@sinclair/typebox": "^0.34.12",
-    "bullmq": "^5.31.0",
-    "drizzle-orm": "^0.36.4",
-    "fastify": "^5.2.1",
+    "bullmq": "^5.76.4",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.8.5",
     "fastify-plugin": "^5.0.1",
     "ioredis": "^5.4.2",
     "jose": "^6.2.2",
@@ -40,7 +40,7 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "@types/pg": "^8.20.0",
-    "drizzle-kit": "^0.30.1",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

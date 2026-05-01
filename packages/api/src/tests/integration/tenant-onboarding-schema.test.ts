@@ -12,7 +12,7 @@
  * - Each DB sub-suite is `describe.sequential` to lock in the intended
  *   per-`it` state transitions.
  * - Constraint names are stable error-string API; if migration 0021 is ever
- *   superseded, the matching regex in each `.rejects.toThrow` MUST be updated.
+ *   superseded, the matching regex in each `expectQueryToReject` MUST be updated.
  */
 
 import {
@@ -27,6 +27,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db, withTenantContext } from "../../lib/db.js";
 import { ensureTestTenants } from "../helpers/auth.js";
+import { expectQueryToReject } from "../helpers/db-errors.js";
 
 // Dedicated tenants for this suite so shared fixtures (ORG_A, ORG_B) aren't
 // polluted with our ad-hoc users and dispute rows.
@@ -250,37 +251,42 @@ describe.sequential("tenants back-fill (migration 0021)", () => {
   });
 
   it("tenants.status CHECK rejects an unknown status", async () => {
-    await expect(
+    await expectQueryToReject(
       db.execute(sql`UPDATE tenants SET status = 'bogus' WHERE id = ${ONBOARD_A}`),
-    ).rejects.toThrow(/tenants_status_chk/);
+      /tenants_status_chk/,
+    );
   });
 
   it("tenants.created_via CHECK rejects an unknown provenance", async () => {
-    await expect(
+    await expectQueryToReject(
       db.execute(sql`UPDATE tenants SET created_via = 'martian' WHERE id = ${ONBOARD_A}`),
-    ).rejects.toThrow(/tenants_created_via_chk/);
+      /tenants_created_via_chk/,
+    );
   });
 
   it("tenants.primary_domain CHECK rejects uppercase", async () => {
-    await expect(
+    await expectQueryToReject(
       db.execute(sql`UPDATE tenants SET primary_domain = 'UPPER.org' WHERE id = ${ONBOARD_A}`),
-    ).rejects.toThrow(/tenants_primary_domain_lower_chk/);
+      /tenants_primary_domain_lower_chk/,
+    );
   });
 
   it("tenants.keycloak_org_id CHECK rejects non-UUID values", async () => {
-    await expect(
+    await expectQueryToReject(
       db.execute(sql`UPDATE tenants SET keycloak_org_id = 'not-a-uuid' WHERE id = ${ONBOARD_A}`),
-    ).rejects.toThrow(/tenants_keycloak_org_id_uuid_chk/);
+      /tenants_keycloak_org_id_uuid_chk/,
+    );
   });
 
   it("self-serve tenants require either provisional status or a verified_at", async () => {
-    await expect(
+    await expectQueryToReject(
       db.execute(sql`
         UPDATE tenants
         SET created_via = 'self_serve', status = 'active', verified_at = NULL
         WHERE id = ${ONBOARD_A}
       `),
-    ).rejects.toThrow(/tenants_self_serve_requires_verification_chk/);
+      /tenants_self_serve_requires_verification_chk/,
+    );
   });
 
   it("tenants.keycloak_org_id partial unique index enforces one-per-tenant", async () => {
@@ -288,9 +294,10 @@ describe.sequential("tenants back-fill (migration 0021)", () => {
     await db.execute(sql`
       UPDATE tenants SET keycloak_org_id = ${KC_ID} WHERE id = ${ONBOARD_A}
     `);
-    await expect(
+    await expectQueryToReject(
       db.execute(sql`UPDATE tenants SET keycloak_org_id = ${KC_ID} WHERE id = ${ONBOARD_B}`),
-    ).rejects.toThrow(/tenants_keycloak_org_id_uniq/);
+      /tenants_keycloak_org_id_uniq/,
+    );
     // NULLs are allowed to coexist (partial index scope).
     await expect(
       db.execute(sql`UPDATE tenants SET keycloak_org_id = NULL WHERE id = ${ONBOARD_A}`),
@@ -336,7 +343,7 @@ describe.sequential("tenant_domains", () => {
       });
     });
 
-    await expect(
+    await expectQueryToReject(
       withTenantContext(ONBOARD_B, async (tx) => {
         await tx.insert(tenantDomains).values({
           orgId: ONBOARD_B,
@@ -344,7 +351,8 @@ describe.sequential("tenant_domains", () => {
           dnsTxtValue: txt("dup-b"),
         });
       }),
-    ).rejects.toThrow(/tenant_domains_active_domain_uniq/);
+      /tenant_domains_active_domain_uniq/,
+    );
   });
 
   it("revoked rows free the domain slot", async () => {
@@ -377,33 +385,36 @@ describe.sequential("tenant_domains", () => {
         .insert(tenantDomains)
         .values({ orgId: ONBOARD_A, domain: dom1, dnsTxtValue: sharedTxt });
     });
-    await expect(
+    await expectQueryToReject(
       withTenantContext(ONBOARD_B, async (tx) => {
         await tx
           .insert(tenantDomains)
           .values({ orgId: ONBOARD_B, domain: dom2, dnsTxtValue: sharedTxt });
       }),
-    ).rejects.toThrow(/tenant_domains_active_txt_uniq/);
+      /tenant_domains_active_txt_uniq/,
+    );
   });
 
   it("CHECK forces lowercase domains", async () => {
-    await expect(
+    await expectQueryToReject(
       withTenantContext(ONBOARD_A, async (tx) => {
         await tx
           .insert(tenantDomains)
           .values({ orgId: ONBOARD_A, domain: "UPPER.test", dnsTxtValue: txt("upper") });
       }),
-    ).rejects.toThrow(/tenant_domains_lowercase_chk/);
+      /tenant_domains_lowercase_chk/,
+    );
   });
 
   it("CHECK rejects low-entropy DNS TXT values", async () => {
-    await expect(
+    await expectQueryToReject(
       withTenantContext(ONBOARD_A, async (tx) => {
         await tx
           .insert(tenantDomains)
           .values({ orgId: ONBOARD_A, domain: d("weak"), dnsTxtValue: "short" });
       }),
-    ).rejects.toThrow(/tenant_domains_dns_txt_entropy_chk/);
+      /tenant_domains_dns_txt_entropy_chk/,
+    );
   });
 
   it("updated_at advances on every UPDATE (trigger)", async () => {
@@ -457,7 +468,7 @@ describe.sequential("tenant_admin_disputes", () => {
   });
 
   it("one-open-per-tenant partial unique index rejects a second open dispute", async () => {
-    await expect(
+    await expectQueryToReject(
       withTenantContext(ONBOARD_A, async (tx) => {
         await tx.insert(tenantAdminDisputes).values({
           orgId: ONBOARD_A,
@@ -466,7 +477,8 @@ describe.sequential("tenant_admin_disputes", () => {
           reason: "Second open dispute should fail",
         });
       }),
-    ).rejects.toThrow(/tenant_admin_disputes_one_open_per_tenant/);
+      /tenant_admin_disputes_one_open_per_tenant/,
+    );
   });
 
   it("allows a new dispute after the previous one is resolved", async () => {
@@ -490,7 +502,7 @@ describe.sequential("tenant_admin_disputes", () => {
   });
 
   it("rejects a dispute where disputer equals provisional admin (when both set)", async () => {
-    await expect(
+    await expectQueryToReject(
       withTenantContext(ONBOARD_B, async (tx) => {
         await tx.insert(tenantAdminDisputes).values({
           orgId: ONBOARD_B,
@@ -499,23 +511,26 @@ describe.sequential("tenant_admin_disputes", () => {
           reason: "Self-dispute",
         });
       }),
-    ).rejects.toThrow(/tenant_admin_disputes_different_actors_chk/);
+      /tenant_admin_disputes_different_actors_chk/,
+    );
   });
 
   it("rejects resolution set without resolved_at (and vice-versa)", async () => {
-    await expect(
+    await expectQueryToReject(
       db.execute(
         sql`UPDATE tenant_admin_disputes SET resolution = 'kept', resolved_at = NULL WHERE org_id = ${ONBOARD_A}`,
       ),
-    ).rejects.toThrow(/tenant_admin_disputes_resolved_consistency_chk/);
+      /tenant_admin_disputes_resolved_consistency_chk/,
+    );
   });
 
   it("CHECK rejects unknown resolution values", async () => {
-    await expect(
+    await expectQueryToReject(
       db.execute(
         sql`UPDATE tenant_admin_disputes SET resolution = 'bogus' WHERE org_id = ${ONBOARD_A}`,
       ),
-    ).rejects.toThrow(/tenant_admin_disputes_resolution_chk/);
+      /tenant_admin_disputes_resolution_chk/,
+    );
   });
 
   it("serialises concurrent open-dispute inserts — exactly one wins", async () => {
@@ -543,7 +558,11 @@ describe.sequential("tenant_admin_disputes", () => {
     expect(rejected).toBe(1);
     const rejectedResult = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
     expect(rejectedResult).toBeDefined();
-    expect(String(rejectedResult?.reason)).toMatch(/tenant_admin_disputes_one_open_per_tenant/);
+    const reason = rejectedResult?.reason as
+      | { message?: string; cause?: { message?: string } }
+      | undefined;
+    const probe = reason?.cause?.message ?? reason?.message ?? String(rejectedResult?.reason);
+    expect(probe).toMatch(/tenant_admin_disputes_one_open_per_tenant/);
   });
 });
 
@@ -553,12 +572,13 @@ describe.sequential("users_one_first_admin_per_org", () => {
   it("rejects a second first_admin=true user in the same org", async () => {
     // USER_A_FIRST_ADMIN already carries first_admin=true.
     const EXTRA = "00000000-0000-0000-0000-00000000ca99";
-    await expect(
+    await expectQueryToReject(
       db.execute(sql`
         INSERT INTO users (id, org_id, email, first_name, last_name, role, first_admin)
         VALUES (${EXTRA}, ${ONBOARD_A}, 'second-admin@example.org', 'Second', 'Admin', 'org_admin', true)
       `),
-    ).rejects.toThrow(/users_one_first_admin_per_org/);
+      /users_one_first_admin_per_org/,
+    );
   });
 });
 
@@ -566,13 +586,14 @@ describe.sequential("users_one_first_admin_per_org", () => {
 
 describe.sequential("users provisional-admin fields", () => {
   it("CHECK prevents provisional_until without first_admin", async () => {
-    await expect(
+    await expectQueryToReject(
       db.execute(sql`
         UPDATE users
         SET first_admin = false, provisional_until = now() + interval '7 days'
         WHERE id = ${USER_A_DISPUTER}
       `),
-    ).rejects.toThrow(/users_provisional_requires_first_admin_chk/);
+      /users_provisional_requires_first_admin_chk/,
+    );
   });
 
   it("allows provisional_until when first_admin is true", async () => {

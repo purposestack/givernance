@@ -21,6 +21,7 @@ import { outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
+import { expectQueryToReject } from "../helpers/db-errors.js";
 
 const trackedTenants = new Set<string>();
 
@@ -66,14 +67,14 @@ describe("tenants.country CHECK constraint (issue #153)", () => {
   });
 
   it("rejects a lowercase code", async () => {
-    await expect(insertTenant({ country: "fr" })).rejects.toThrow(/tenants_country_alpha2_chk/);
+    await expectQueryToReject(insertTenant({ country: "fr" }), /tenants_country_alpha2_chk/);
   });
 
   it("rejects a numeric 2-char value", async () => {
     // Defence in depth on top of the varchar(2) length check — the regex
     // CHECK ensures every position is `[A-Z]`, so a `'12'` insert is
     // rejected by the constraint, not silently truncated.
-    await expect(insertTenant({ country: "12" })).rejects.toThrow(/tenants_country_alpha2_chk/);
+    await expectQueryToReject(insertTenant({ country: "12" }), /tenants_country_alpha2_chk/);
   });
 
   it("accepts NULL", async () => {
@@ -106,21 +107,20 @@ describe("tenants.default_locale defaults and CHECK (issue #153)", () => {
   });
 
   it("rejects an unsupported locale", async () => {
-    await expect(insertTenant({ defaultLocale: "de" })).rejects.toThrow(
-      /tenants_default_locale_chk/,
-    );
+    await expectQueryToReject(insertTenant({ defaultLocale: "de" }), /tenants_default_locale_chk/);
   });
 });
 
 describe("users.locale CHECK constraint (issue #153)", () => {
   it("rejects an unsupported locale via direct INSERT", async () => {
     const tenantId = await insertTenant({});
-    await expect(
+    await expectQueryToReject(
       db.execute(
         sql`INSERT INTO users (org_id, email, first_name, last_name, role, locale)
             VALUES (${tenantId}, 'bad-locale@example.org', 'Bad', 'Locale', 'user', 'de')`,
       ),
-    ).rejects.toThrow(/users_locale_chk/);
+      /users_locale_chk/,
+    );
   });
 
   it("accepts NULL (inherits tenant default)", async () => {
