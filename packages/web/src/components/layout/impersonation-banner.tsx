@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { ImpersonationInfo } from "@/lib/auth";
-import { useAuth } from "@/lib/auth";
+import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 interface ImpersonationBannerProps {
   impersonation: ImpersonationInfo | undefined;
@@ -28,8 +30,42 @@ function formatRemaining(seconds: number, expiredLabel: string, lessThanMinLabel
  * hydrated client-side for countdown and end-session action.
  */
 export function ImpersonationBanner({ impersonation, userName }: ImpersonationBannerProps) {
-  const { endImpersonation } = useAuth();
   const t = useTranslations("appShell.impersonation");
+  const [ending, setEnding] = useState(false);
+
+  /**
+   * End the impersonation session and reload onto /login.
+   *
+   * Inlined here (not delegated to `useAuth().endImpersonation`) because:
+   *   - `useAuth` reads the session id off `/v1/users/me`, which doesn't
+   *     include `imp_session_id` — the value would always be undefined
+   *     and the call would silently no-op.
+   *   - The banner already has `impersonation.sessionId` via SSR props,
+   *     so the SSR path is the source of truth and doesn't need a
+   *     client-side round-trip to discover it.
+   */
+  async function onEndSession() {
+    const sessionId = impersonation?.sessionId;
+    if (!sessionId || ending) return;
+    setEnding(true);
+    try {
+      const csrf = readCsrfTokenFromDocumentCookie();
+      const headers: Record<string, string> = {};
+      if (csrf) headers[getCsrfHeaderName()] = csrf;
+      await fetch(`${API_URL}/v1/admin/impersonation/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers,
+      });
+    } catch {
+      // Even on network error, the cookie-clear redirect below is the
+      // right UX — the operator wants out of the session.
+    }
+    // Hard reload past the now-cleared cookie so SSR re-renders without
+    // the impersonation banner. Landing on /login is correct: the
+    // impersonation cookie was the only auth, and it's gone.
+    window.location.href = "/login";
+  }
 
   const [remaining, setRemaining] = useState<string>(() => {
     if (!impersonation?.expiresAt) return "";
@@ -87,8 +123,15 @@ export function ImpersonationBanner({ impersonation, userName }: ImpersonationBa
         )}
       </span>
       {remaining && <span className="font-mono text-xs">{remaining}</span>}
-      <Button type="button" size="sm" variant="ghost" onClick={endImpersonation} className="ml-2">
-        {t("endSession")}
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={onEndSession}
+        disabled={ending}
+        className="ml-2"
+      >
+        {ending ? t("ending") : t("endSession")}
       </Button>
     </div>
   );
