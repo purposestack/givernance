@@ -1,408 +1,327 @@
-# 19 — Impersonation Strategy
+# 19 — Impersonation Strategy (Two Modes)
 
-> **Status**: Spike / Analysis — Phase 1 implementation target
+> **Status**: Implemented — issue #24
 > **Owner**: Impersonation Engineer agent (`.claude/agents/impersonation-engineer.md`)
 > **Related**: `02-reference-architecture.md`, `03-data-model.md`, `06-security-compliance.md`, `15-infra-adr.md`, `17-log-management.md`
-> **Closes**: #6
+> **Closes**: #6, #24
+
+## 0. Two coexisting modes — at a glance
+
+Givernance supports **two distinct support-session flavours**. They share most of their plumbing (token shape, audit double-attribution, session record, banner) but diverge on session lifetime, RBAC behaviour, and write access. The mode is chosen explicitly when the operator starts the session.
+
+| Aspect | `delegation` | `impersonation` (pure) |
+|---|---|---|
+| Use case | Operator does support / config work **on behalf of** a tenant. | Operator **reproduces a bug** as the user — see what the user sees. |
+| `sub` in JWT | Target user's Keycloak `sub` | Target user's Keycloak `sub` |
+| `act.sub` in JWT | Operator's Keycloak `sub` (RFC 8693) | Operator's Keycloak `sub` (RFC 8693) |
+| `imp_mode` in JWT | `"delegation"` | `"impersonation"` |
+| RBAC rights | `super_admin` retained → "extended rights" | Target user's role only |
+| Writes (POST/PUT/PATCH/DELETE) | Allowed | **Blocked** at the middleware (default-deny, narrow allowlist) |
+| Default TTL | 2 h (capped at 4 h) | 30 min (capped at 1 h) |
+| Banner colour | Amber | Red |
+| Audit `impersonation_mode` column | `"delegation"` | `"impersonation"` |
+
+Both modes carry the RFC 8693 `act` claim — the RFC's "delegation" / "impersonation" terminology is about token shape, not our product modes. We always emit `act` so the audit chain is complete.
+
+**Why both must coexist**: a one-mode design forces a tradeoff between "operator can do support work" and "operator can safely browse a user's account without changing anything". Delegation answers the first; pure impersonation answers the second. Conflating them is what the RFC 8693 spec writers explicitly warned against (§4.1).
 
 ## 1. Goals
 
-The impersonation system must allow a platform admin (`super_admin`) to:
+The platform must let a `super_admin` operator:
 
-1. **Act as any user** on any tenant — with exactly the same permissions, RBAC, feature flags, and RLS data scope as the real user
-2. **Leave a full audit trail** — every action is double-attributed: the impersonated user (data integrity) and the real admin (accountability)
-3. **Be time-limited and step-up authenticated** — impersonation requires TOTP re-verification and a mandatory reason; sessions expire after 2 hours
-4. **Preserve user trust** — the impersonated user can optionally be notified; every impersonation session is exportable as part of GDPR Art. 15 data
+1. **Configure or remediate** a tenant on behalf of staff (`delegation` mode) with full audit attribution.
+2. **Reproduce a user-reported bug** by taking the user's view (`impersonation` mode) without any risk of incidental writes.
+3. Leave a full **double-attributed audit trail** — every action persists both the impersonated user (data integrity) and the operator (accountability), plus the mode discriminator.
+4. Be **time-limited** and **step-up authenticated** — sessions require recent re-auth (with MFA when configured) and a mandatory reason.
+5. Preserve user trust — the impersonated user can be notified post-session; sessions are exportable as part of GDPR Art. 15 data.
 
-## 2. Architecture Overview
+## 2. Architecture overview
 
 ```
-┌───────────────────────────────────────────────────────────────────────┐
-│                          super_admin browser                           │
-│                                                                        │
-│   1. POST /admin/impersonation { targetUserId, reason, stepUpCode }   │
-│      ← impersonation token (JWT, max 2h, httpOnly cookie)             │
-│                                                                        │
-│   2. All subsequent API calls use impersonation token                 │
-│      ← impersonation banner rendered in root layout (non-dismissable) │
-│                                                                        │
-│   3. DELETE /admin/impersonation/:sessionId  (or auto-expire after 2h)│
-└──────────────────────────┬────────────────────────────────────────────┘
-                           │
-┌──────────────────────────▼────────────────────────────────────────────┐
-│                      Fastify 5 API                                     │
-│                                                                        │
-│  Auth middleware:                                                      │
-│   - Decode JWT → extract sub (impersonated user), act.sub (admin),    │
-│     imp_session_id                                                     │
-│   - Validate session is still active in Redis                         │
-│   - Set RLS context from impersonated user's org_id                   │
-│                                                                        │
-│  Audit plugin:                                                         │
-│   - buildAuditEntry() → actor_user_id = sub (impersonated user)       │
-│                          impersonator_id = act.sub (admin UUID)        │
-│                          impersonation_session_id = imp_session_id     │
-└──────────────────────────┬────────────────────────────────────────────┘
-                           │
-          ┌────────────────┴──────────────────┐
-          │                                   │
-┌─────────▼────────┐                ┌─────────▼────────┐
-│  Redis (session  │                │   PostgreSQL     │
-│  TTL store)      │                │   audit_logs +   │
-│  SaaS: Scaleway  │                │   impersonation_ │
-│  Managed Redis   │                │   sessions       │
-└──────────────────┘                └──────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         super_admin browser                                   │
+│                                                                                │
+│   1. Re-auth via Keycloak with `prompt=login` (and `acr_values=2` in prod)   │
+│   2. POST /v1/admin/impersonation { targetUserId, mode, reason }             │
+│      ← 201 Created + Set-Cookie: givernance_jwt=<imp_token>                  │
+│                                                                                │
+│   3. All subsequent calls carry the impersonation cookie                     │
+│      ← banner rendered server-side from JWT claims                           │
+│      ← (impersonation mode) writes 403 unless on explicit allowlist          │
+│                                                                                │
+│   4. DELETE /v1/admin/impersonation/:sessionId  (or auto-expire at TTL)      │
+└──────────────────────────────┬───────────────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼───────────────────────────────────────────────┐
+│                          Fastify 5 API                                         │
+│                                                                                │
+│  Auth plugin (`packages/api/src/plugins/auth.ts`):                            │
+│   - Routes by `iss` claim:                                                    │
+│       "givernance-impersonation" → HS256 + IMPERSONATION_JWT_SECRET           │
+│       <realm-issuer>              → Keycloak JWKS (RS256)                     │
+│   - Validates Redis session record (instant revocation, drift detection)     │
+│   - Populates `request.auth.impersonation = { mode, sessionId, reason, exp }`│
+│                                                                                │
+│  Impersonation plugin (`packages/api/src/plugins/impersonation.ts`):          │
+│   - `mode === "impersonation"` + mutating method → 403 unless allowlisted    │
+│   - `mode === "delegation"`                       → no extra check            │
+│                                                                                │
+│  Audit plugin (`packages/api/src/plugins/audit.ts`):                          │
+│   - userId  = effective subject (target user)                                 │
+│   - actorId = impersonator (from `act.sub`)                                   │
+│   - impersonation_session_id + impersonation_mode (issue #24)                │
+└──────────────────────────────┬───────────────────────────────────────────────┘
+                               │
+                ┌──────────────┴───────────────┐
+                │                              │
+        ┌───────▼────────┐            ┌────────▼────────────┐
+        │  Redis         │            │  PostgreSQL          │
+        │  session +     │            │  impersonation_      │
+        │  rate limit +  │            │  sessions  +         │
+        │  lockout       │            │  audit_logs          │
+        └────────────────┘            └─────────────────────┘
 ```
 
-## 3. Token Design
+## 3. Token design
 
-### Recommended: Keycloak Token Exchange (RFC 8693)
+### Keycloak Token Exchange (RFC 8693) — primary path
 
-Keycloak 24 supports OAuth2 Token Exchange. The super_admin exchanges their own valid access token for a short-lived token representing the target user, with the standard RFC 8693 `act` claim injected via a custom Script Mapper:
+When `IMPERSONATION_USE_KEYCLOAK_EXCHANGE=true`, the API exchanges the operator's access token for a target-user-shaped token via the realm's `urn:ietf:params:oauth:grant-type:token-exchange` endpoint, using the `givernance-impersonation` confidential client (`infra/keycloak/realm-givernance.json`). The realm must have:
 
-```http
-POST /realms/givernance/protocol/openid-connect/token
-Content-Type: application/x-www-form-urlencoded
+1. Token Exchange feature enabled (`features=token-exchange` Keycloak start flag).
+2. `givernance-impersonation` client with `token.exchange.grant.enabled=true`.
+3. The `realm-management/impersonation` role granted to the API service account.
+4. The `infra/keycloak/mappers/impersonation-act-mapper.js` Script Mapper attached to the client — Keycloak 26 (and 26.6 as of writing) does not emit the RFC 8693 `act` claim natively (`keycloak/keycloak#12076`, open since 2022). The mapper reads `imp_mode` / `imp_session_id` / `imp_reason` from the request URL parameters and emits `act` + the `imp_*` claims into the access token.
 
-grant_type=urn:ietf:params:oauth:grant-type:token-exchange
-&subject_token=<super_admin_access_token>
-&subject_token_type=urn:ietf:params:oauth:token-type:access_token
-&requested_token_type=urn:ietf:params:oauth:token-type:access_token
-&requested_subject=<target_user_keycloak_id>
-```
+### App-layer JWT — fallback path (default in dev / CI)
 
-**Keycloak setup required:**
-- Enable `Token Exchange` feature flag in Keycloak realm settings (`Features → token-exchange`)
-- Create a realm policy granting the `impersonation` role only to the `givernance-api` service account (not all clients)
-- Inject the RFC 8693 `act` claim via a Script Mapper on the `givernance-api` client (detects `token-exchange` grant type, injects `act: { sub: <original_subject> }`)
-- **Note**: Token Exchange is an admin-only feature in Keycloak 24 — requires `realm-management` client role on the service account
+When the env var is unset or false, the API signs the impersonation JWT itself with HS256 against `IMPERSONATION_JWT_SECRET`. Both paths surface identical claims to the auth plugin; the discriminator is the `iss` value (`"givernance-impersonation"` for the app-layer path, `<realm-issuer>` for the Keycloak path).
 
-### Fallback: Application-layer impersonation JWT
+Phase rollout: start with the app-layer path, flip the env var on once the realm Script Mapper is deployed and the smoke test confirms `act` is being emitted. Both paths are first-class — dev environments without the realm Script Mapper continue to work indefinitely.
 
-If Keycloak Token Exchange is not configured in Phase 1:
-
-1. `POST /admin/impersonation` validated by the API
-2. API issues a signed short-lived JWT containing the target user's claims + `act` claim + impersonation metadata
-3. JWT stored by reference in Redis: `impersonation:{sessionId}` with TTL = 2h
-4. All subsequent requests validated against Redis (allows instant revocation)
-
-**Migration path**: Start with the application-layer approach in Phase 1; migrate to Keycloak Token Exchange in Phase 2. The token shape is identical either way.
-
-### JWT claims (RFC 8693-compliant)
-
-> **RFC 8693 compliance note**: RFC 8693 Section 4.1 distinguishes **impersonation** (admin identity erased, no `act` claim) from **delegation** (both identities preserved via the `act` claim). Givernance requires double-attribution — both identities must survive in the token for audit. This is semantically **delegation**, so we use the standard `act` claim to carry the actor (admin) identity. Application-specific claims (`imp_session_id`, `imp_reason`) remain as custom top-level claims — the RFC does not define equivalents.
->
-> **Keycloak limitation**: Keycloak 24 (and even 26.2) does not produce the `act` claim natively — `actor_token`/`actor_token_type` parameters are not supported (keycloak/keycloak#12076, open since 2022). Phase 1 (app-layer JWT) injects `act` directly. Phase 2 uses a custom Keycloak Script Mapper (~50 lines JS) to inject `act` during token exchange — no custom Java SPI required.
+### JWT claims
 
 ```json
 {
-  "sub": "<impersonated_user_uuid>",
-  "org_id": "<impersonated_tenant_uuid>",
-  "role": "<impersonated_user_role>",
-  "act": {
-    "sub": "<super_admin_uuid>"
-  },
-  "imp_session_id": "<session_uuid_v7>",
-  "imp_reason": "Support ticket #1234 — user cannot access donations",
+  "sub": "<target_user_keycloak_id>",
+  "org_id": "<target_tenant_uuid>",
+  "role": "<target_user_role>",
+  "email": "<target_user_email>",
+  "act": { "sub": "<operator_keycloak_id>" },
+  "imp_mode": "delegation" | "impersonation",
+  "imp_session_id": "<uuid>",
+  "imp_reason": "Support ticket #1234 — receipt PDF download is failing",
+  "realm_access": { "roles": ["super_admin"] | ["<target_role>"] },
+  "iss": "givernance-impersonation" | "<realm-issuer>",
   "iat": 1712000000,
-  "exp": 1712007200
+  "exp": 1712007200,
+  "jti": "<uuid>"
 }
 ```
 
-Key design decisions:
-- `sub` is the **impersonated user** — RBAC and RLS behave as if the real user is logged in
-- `act.sub` carries the **admin's identity** per RFC 8693 Section 4.1 — the presence of the `act` claim is the canonical signal that a token is a delegation token
-- `imp_session_id` and `imp_reason` are Givernance-specific claims (no RFC equivalent) — shortened from `impersonation_*` to minimize JWT size
-- `exp` is capped at 2h from `iat` — tokens are not renewable, a new INITIATE is required
-- Token is delivered as an `httpOnly` cookie (same as normal session tokens — never `localStorage`)
-- Middleware detects delegation via `decoded.act?.sub` (not a custom claim name) — any RFC 8693-aware tool (OPA policies, SIEM parsers, OAuth2 proxies) will correctly identify these as delegation tokens
+Mode-specific claim differences:
 
-## 4. Session Lifecycle
+- `realm_access.roles` — `delegation` retains `["super_admin"]`; `impersonation` strips it down to the target user's roles only.
+- `exp` — `delegation` defaults to 2 h; `impersonation` defaults to 30 min.
 
-### State machine
+The cookie is `httpOnly; SameSite=Lax; Secure` (in production). Tokens are not renewable — a new INITIATE is required.
+
+## 4. Session lifecycle
 
 ```
-INITIATE ──(step-up OK, reason provided)──► ACTIVE   (endedAt IS NULL, expiresAt > now())
-ACTIVE   ──(admin ends)──────────────────► ENDED    (endedAt SET, endReason='manual')
-ACTIVE   ──(TTL reached)─────────────────► EXPIRED  (expiresAt <= now(), endedAt IS NULL)
-ACTIVE   ──(platform revoke)─────────────► REVOKED  (endedAt SET, endReason='revoked')
+INITIATE ──(mode chosen, reason ≥ 20 chars, step-up OK)──► ACTIVE
+ACTIVE   ──(operator ends own session)─────────────────► ENDED    (end_reason='manual')
+ACTIVE   ──(super_admin revokes someone else's)────────► REVOKED  (end_reason='revoked')
+ACTIVE   ──(TTL reached)───────────────────────────────► EXPIRED  (end_reason IS NULL,
+                                                                    ended_at IS NULL,
+                                                                    expires_at <= now())
 ```
 
-> Status is **derived** from `endedAt` / `expiresAt` / `endReason` — no `status` column stored.
-> This preserves the append-only guarantee: rows are INSERT + one final UPDATE to set endedAt.
+Status is **derived**, never stored. The `impersonation_sessions` row is INSERT + at most one final UPDATE on `(ended_at, end_reason)`. A trigger (`prevent_impersonation_session_mutation` in migration 0033) rejects any other UPDATE and any DELETE — same append-only stance as `audit_logs`.
 
-### `impersonation_sessions` table
-
-```typescript
-export const impersonationSessions = pgTable('impersonation_sessions', {
-  id: uuid('id').primaryKey().$defaultFn(() => uuidv7()),
-  impersonatorId: uuid('impersonator_id').notNull().references(() => users.id),
-  targetUserId: uuid('target_user_id').notNull().references(() => users.id),
-  targetOrgId: uuid('target_org_id').notNull().references(() => tenants.id),
-  reason: text('reason').notNull(),
-  // status is DERIVED (never stored): active = endedAt IS NULL AND expiresAt > now()
-  //                                       ended  = endedAt IS NOT NULL
-  //                                       expired = expiresAt <= now() AND endedAt IS NULL
-  //                                       revoked = endReason = 'revoked'
-  // Do NOT add a status column — it would require UPDATE and break append-only guarantee
-  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
-  endedAt: timestamp('ended_at', { withTimezone: true }),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  endReason: text('end_reason'),              // 'manual' | 'expired' | 'revoked' | null (still active)
-  ipHash: text('ip_hash'),                   // SHA-256 truncated (not raw INET — aligned with doc-17)
-  userAgent: text('user_agent'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (t) => ({
-  // Indexes for common admin queries
-  byImpersonator: index('idx_imp_sessions_impersonator').on(t.impersonatorId),
-  byTarget: index('idx_imp_sessions_target').on(t.targetUserId),
-  byOrg: index('idx_imp_sessions_org').on(t.targetOrgId),
-  byExpiry: index('idx_imp_sessions_expiry').on(t.expiresAt), // for cleanup job
-}));
-```
-
-**Append-only rule**: The `status` column must never be updated via a direct `UPDATE`. Use dedicated columns (`ended_at`, `end_reason`) and reflect status in the application layer. This preserves the append-only nature of audit records and makes DB-level tampering easier to detect.
-
-## 5. Audit Trail: Double-Attribution
-
-### `audit_logs` schema additions
-
-Two nullable columns are added to the existing `audit_log` table (doc-03 uses singular — align during Phase 1 schema reconciliation):
+### `impersonation_sessions` schema
 
 ```sql
-ALTER TABLE audit_log
-  ADD COLUMN impersonator_id           UUID REFERENCES users(id),
-  ADD COLUMN impersonation_session_id  UUID REFERENCES impersonation_sessions(id);
+CREATE TABLE impersonation_sessions (
+  id                          UUID PRIMARY KEY,
+  impersonator_keycloak_id    VARCHAR(255)            NOT NULL,
+  target_keycloak_id          VARCHAR(255)            NOT NULL,
+  target_org_id               UUID                    NOT NULL REFERENCES tenants(id),
+  target_role                 VARCHAR(50)             NOT NULL,
+  mode                        impersonation_mode      NOT NULL,    -- 'delegation' | 'impersonation'
+  reason                      TEXT                    NOT NULL CHECK (length(reason) >= 20),
+  expires_at                  TIMESTAMPTZ             NOT NULL,
+  ended_at                    TIMESTAMPTZ,
+  end_reason                  impersonation_end_reason,             -- 'manual' | 'revoked' | NULL
+  ip_hash                     VARCHAR(64),
+  user_agent                  TEXT,
+  created_at                  TIMESTAMPTZ             NOT NULL DEFAULT NOW()
+);
 ```
 
-- For normal actions: both columns are `NULL`
-- For impersonation actions: both columns are populated
+## 5. Audit trail — double-attribution AND mode discriminator
 
-### What a double-attributed audit entry looks like
+`audit_logs` already carries `actor_id` (the operator) alongside `user_id` (the effective subject) — that's the existing RFC 8693 `act` plumbing. Issue #24 added two more columns:
 
-```json
-{
-  "id": "01950f3a-...",
-  "orgId": "tenant-uuid",
-  "actorUserId": "impersonated-user-uuid",
-  "impersonatorId": "super-admin-uuid",
-  "impersonationSessionId": "session-uuid",
-  "actorRole": "fundraising_manager",
-  "action": "donation.created",
-  "resourceType": "donation",
-  "resourceId": "donation-uuid",
-  "changes": { "after": { "amount": 150, "currency": "EUR" } },
-  "metadata": {
-    "correlationId": "...",
-    "ipHash": "sha256-truncated",
-    "userAgent": "Mozilla/5.0 (truncated)"
-  },
-  "occurredAt": "2026-04-02T09:12:00Z"
-}
+```sql
+ALTER TABLE audit_logs
+  ADD COLUMN impersonation_session_id UUID REFERENCES impersonation_sessions(id),
+  ADD COLUMN impersonation_mode       VARCHAR(32);
 ```
+
+Effect:
+
+- Normal traffic: both new columns NULL. Backwards-compatible with every existing audit query.
+- Inside a support session: both columns populated by the audit plugin. SIEM filters can isolate the full session trail with `WHERE impersonation_session_id = $1` without joining heuristically on `actor_id`, and group/separate by mode for incident review.
 
 ### Audit events catalog
 
-| Event | `action` | Level | `impersonator_id` |
+| Event | `action` | Level | Notes |
 |---|---|---|---|
-| Impersonation started | `impersonation.started` | `warn` | `impersonator_id` = admin UUID; `actor_user_id` = target user UUID (not yet acting, just session open) |
-| Action during impersonation | `<domain_action>` e.g. `donation.created` | `info` | Yes |
-| Impersonation ended | `impersonation.ended_by_admin` | `info` | Yes |
-| Impersonation expired | `impersonation.expired` | `info` | Yes |
-| Impersonation revoked | `impersonation.revoked` | `warn` | Yes |
-| Denied attempt | `impersonation.denied` | `error` | N/A (admin token logged separately) |
+| Session started | `impersonation.started` | warn | `actor_id` = operator; `user_id` = target |
+| Action during session | `<METHOD>:/v1/...` | info | Same shape as normal audit, plus `impersonation_session_id` + `impersonation_mode` |
+| Session ended (operator) | `impersonation.ended_by_admin` | info | |
+| Session revoked (other super_admin) | `impersonation.revoked` | warn | Includes the revoker as `actor_id` |
+| Step-up failure | `impersonation.denied` (logger only — no audit row, since no session was created) | error | Counted into the brute-force lockout |
 
-## 6. Permission Isolation
+## 6. Permission isolation — what each mode does at the boundary
 
-Impersonation must NOT elevate the impersonated session beyond the target user's normal permissions.
-
-| Layer | Behaviour during impersonation | How enforced |
+| Layer | `delegation` | `impersonation` (pure) |
 |---|---|---|
-| RBAC | Target user's role only (e.g. `fundraising_manager`) | JWT `role` claim = target user's role |
-| RLS | Target user's `org_id` only | `SET LOCAL app.current_org_id` from JWT `org_id` claim |
-| Feature flags | Target tenant's overrides | Redis cache keyed by `tenantId` from JWT |
-| MFA-protected routes | Step-up at session start covers MFA requirement | Configurable per operation |
-| super_admin-only routes | **Blocked** — admin temporarily loses super_admin access | JWT `role` = impersonated user's role, not super_admin |
+| RLS context | Target tenant's `org_id` (drives `withTenantContext`) | Target tenant's `org_id` |
+| Application role (`request.auth.role`) | Target user's role | Target user's role |
+| Realm roles array (`request.auth.roles`) | `["super_admin"]` retained | Target user's roles only |
+| `requireSuperAdmin` route guard | Passes (operator retains super_admin) | **Fails** (super_admin stripped) |
+| `requireOrgAdmin` route guard | Pass/fail by target user's role | Pass/fail by target user's role |
+| Mutating methods (POST/PUT/PATCH/DELETE) | Allowed | **Blocked at the impersonation plugin** unless on the explicit allowlist |
+| MFA-protected routes | Step-up at session start covers it | Same |
 
-**Critical**: A super_admin impersonating a `fundraising_manager` must NOT be able to access super_admin routes during that session. The impersonation token replaces — it does not stack on top of — the admin's token.
+The pure-impersonation **write allowlist** (`PURE_IMPERSONATION_WRITE_ALLOWLIST` in `packages/api/src/plugins/impersonation.ts`) currently allows only `DELETE /v1/admin/impersonation/:sessionId` — so the operator can always end their session even from inside it. Add new entries here ONLY when there's a clear product reason; default-deny is the security stance.
 
-## 7. Frontend: Impersonation Banner
+## 7. Step-up authentication
 
-A persistent, non-dismissable banner is rendered in the Next.js root layout whenever an impersonation token is active:
+The operator's pre-impersonation Keycloak access token must satisfy:
 
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│  ⚠️  Impersonating: Marie Dupont · Maison du Cœur                          │
-│     Reason: Support ticket #1234 — user cannot access donations tab        │
-│     Session expires in  1h 47m                         [End session →]     │
-└────────────────────────────────────────────────────────────────────────────┘
-```
+- `auth_time` within the last 5 minutes (`STEP_UP_AUTH_TIME_WINDOW_SECONDS`).
+- `acr >= 2` when `IMPERSONATION_REQUIRE_ACR_2=true` (env hard-fails to true in production).
 
-**Requirements:**
-- Amber/orange background — visually distinct from all other UI states
-- Renders server-side (SSR-safe via JWT claim inspection in root layout)
-- Shows: impersonated user name + org, reason, remaining time (client-side countdown), end button
-- Non-dismissable — cannot be hidden by page or component code
-- "End session" → `DELETE /admin/impersonation/:sessionId` → redirects to super_admin dashboard
-- Banner is **never shown to the impersonated user** — it is only visible to the admin's browser session
+We deliberately **do not** maintain an app-side TOTP secret store. Keycloak is the MFA authority — the realm's `otpPolicy` is configured (`HmacSHA256`, 6-digit, 30 s window), and the operational handbook for production realms requires the platform team to enable a `CONFIGURE_TOTP` required action (or browser-flow MFA step) on the `super_admin` role. Storing TOTP secrets in our DB would duplicate the source of truth.
 
-## 8. Step-Up Authentication
+### Brute-force lockout
 
-Initiating an impersonation session requires re-verifying the admin's TOTP code:
+- 5 failed step-up attempts in 15 minutes → operator locked out (HTTP 423) until the window rolls.
+- Counter and lockout key live in Redis (`impersonation:denied:{operator_sub}`), TTL 15 min.
+- Successful start clears the counter.
 
-```http
-POST /admin/impersonation
-Authorization: Bearer <super_admin_access_token>
-Content-Type: application/json
+### Rate limit
 
-{
-  "targetUserId": "user-uuid",
-  "reason": "Support ticket #1234 — user cannot access the donations tab after plan upgrade",
-  "stepUpCode": "123456"
-}
-```
+- 10 session starts per operator per 24 h (`IMPERSONATION_MAX_STARTS_PER_24H`). Counter at `impersonation:ratelimit:start:{operator_sub}`.
 
-**Validation rules:**
-- `reason` is mandatory, minimum 20 characters (must be meaningful, not "test")
-- `stepUpCode` is mandatory — TOTP verified against the admin's MFA device
-- Rate limit: max 10 impersonation session starts per admin per 24h (Redis counter)
-- A failed `stepUpCode` → `impersonation.denied` audit event (no session created)
-- Brute-force detection: 3 failed attempts in 10 minutes → temporary lockout + security alert
-
-## 9. Administration API
+## 8. API surface
 
 ```
-POST   /admin/impersonation
-         Start a new session. Body: { targetUserId, reason, stepUpCode }
-         Guards: RBAC.SUPER_ADMIN + TOTP step-up
-         Returns: { sessionId, token, expiresAt }
+POST   /v1/admin/impersonation                  Start session. Body: { targetUserId, mode, reason }
+                                                Guards: requireSuperAdmin + step-up + lockout + rate limit.
+                                                Returns 201 with { sessionId, mode, expiresAt, token, ... } and sets cookie.
+                                                Returns 423 when locked out, 429 when rate-limited.
 
-GET    /admin/impersonation
-         List all active impersonation sessions (platform-wide)
-         Guards: RBAC.SUPER_ADMIN
-
-GET    /admin/impersonation/:sessionId
-         Session details including all audit events
-         Guards: RBAC.SUPER_ADMIN
-
-DELETE /admin/impersonation/:sessionId
-         End a specific session
-         Guards: RBAC.SUPER_ADMIN
-
-DELETE /admin/impersonation/user/:targetUserId
-         Revoke all active sessions for a specific user (emergency)
-         Guards: RBAC.SUPER_ADMIN
-
-GET    /admin/impersonation/:sessionId/audit
-         All audit_log entries for this session
-         Guards: RBAC.SUPER_ADMIN
+GET    /v1/admin/impersonation                  List active sessions (?all=true for full history).
+GET    /v1/admin/impersonation/:sessionId       Session detail.
+DELETE /v1/admin/impersonation/:sessionId       End a session — manual or revoked depending on caller.
+DELETE /v1/admin/impersonation/user/:userId     Bulk revoke ALL active sessions for a target user (emergency).
 ```
 
-All mutating endpoints: audit logged (even if the action is the admin ending their own session).
+## 9. Frontend
 
-## 10. GDPR Considerations
+- **`ImpersonationBanner`** (`packages/web/src/components/layout/impersonation-banner.tsx`) — server-rendered from JWT claims; client-hydrated for countdown + end button. Two visual variants:
+  - `delegation` → amber palette, badge `DELEGATION`, label "acting on behalf of {name} with extended rights"
+  - `impersonation` → red palette, badge `IMPERSONATION`, label "viewing as {name} (read-only)"
+- **`/admin/impersonation`** — list of active sessions with End/Revoke per row (super_admin only).
+- **`/admin/impersonation/new`** — form to start a session: target user UUID, mode picker, reason ≥ 20 chars.
+- The banner is **not shown** in the impersonated user's own browser — it lives in the operator's session only.
+
+## 10. BullMQ propagation
+
+`outbox_events.metadata` carries an optional `impersonationSessionId` + `impersonationMode` + `impersonatorKeycloakId` triplet (`buildOutboxMetadata` in `packages/api/src/lib/trace-context.ts`). The relay forwards them into the BullMQ job payload; worker processors that write to `audit_logs` should call `readImpersonationMeta(job.data)` and pass the result through `impersonationAuditFields()` (in `packages/worker/src/lib/impersonation-meta.ts`) so async work mutating tenant state carries the same double-attribution.
+
+Pure-impersonation requests can't reach this code path — they're blocked at the plugin boundary. Only delegation requests legitimately produce outbox writes.
+
+## 11. GDPR considerations
 
 | Concern | Decision |
 |---|---|
-| Legal basis for impersonation | Legitimate interest (Art. 6(1)(f)) — support and platform integrity; document in the privacy policy |
-| `reason` field | Mandatory, non-blank — creates an auditable paper trail of why the admin accessed the account |
-| Art. 15 data export | `impersonation_sessions` rows included in both: the impersonated user's export (they have the right to know their account was accessed) AND the admin's activity export |
-| `act.sub` (impersonator) visible in user's audit export | Yes — transparency is required. The user can see "a platform admin accessed your account on <date> for reason <reason>" |
-| User notification | Platform-configurable (default: off). When enabled: post-session email to impersonated user. Notification is sent **after** the session ends, not during (to avoid tipping off a user being investigated for abuse). |
-| Right to erasure | `impersonation_sessions` rows are **audit records exempt from erasure** (same principle as `audit_logs`). Document this exception explicitly in `docs/06-security-compliance.md`. |
-| Retention | 7–10 years (aligned with `audit_logs` retention policy from doc-17) |
-| IP address | Stored as SHA-256 truncated hash — not raw INET (consistent with doc-17 §7.2 audit log approach) |
-| DPA/DPIA | If impersonation allows access to special-category data (case notes, health data), a DPIA entry is recommended. Add to the risk register (`docs/09-risk-register.md`). |
+| Legal basis | Legitimate interest (Art. 6(1)(f)) — support and platform integrity. Document in privacy policy. |
+| `reason` field | Mandatory, ≥ 20 chars (`CHECK` constraint). Auditable paper trail. |
+| Art. 15 export | `impersonation_sessions` rows included in BOTH the impersonated user's export and the operator's activity export. |
+| `act.sub` (impersonator) visible in user export | Yes — transparency required. The user can see "a platform admin accessed your account on <date> for reason <text>". |
+| User notification | Platform-configurable. Default: off. Notification (when enabled) is sent **after** session end so an active fraud investigation can't be tipped off. |
+| Right to erasure | `impersonation_sessions` are **audit records exempt from erasure** (same principle as `audit_logs`). Documented in `docs/06-security-compliance.md`. |
+| Retention | 7–10 years (aligned with `audit_logs` retention from doc-17). |
+| IP storage | SHA-256 truncated hash, never raw INET. |
+| DPIA | Required if impersonation can access special-category data (case notes, health data). Add to `docs/09-risk-register.md`. |
 
-## 11. Cross-Agent Rules
+## 12. Cross-agent rules
 
-### For MVP Engineer
+### MVP Engineer
 
-- `POST /admin/impersonation` must require `RBAC.SUPER_ADMIN` + TOTP step-up before issuing any token
-- The delegation token must include the RFC 8693 `act` claim: `act: { sub: <admin_uuid> }` — detect delegation via `decoded.act?.sub`, not a custom claim
-- Every Drizzle audit write helper must accept optional `impersonatorId` (extracted from `act.sub`) and `impersonationSessionId` (from `imp_session_id`) parameters and pass them to the `audit_logs` insert
-- BullMQ `job.data._meta` must include `impersonatorId` and `impersonationSessionId` when jobs are enqueued during an impersonation session — workers must propagate these to their own audit writes
-- The impersonation token is delivered as `httpOnly` cookie — never exposed to JavaScript
-- Reason field minimum length: 20 characters — enforced with a TypeBox validator in `packages/shared/validators`
+- `POST /v1/admin/impersonation` requires `requireSuperAdmin` + step-up + non-locked-out + within rate limit. All checks before the session row is inserted.
+- Both modes' tokens must include `act: { sub: <operator_uuid> }` — detect impersonation via `decoded.act?.sub`, never via a custom claim name.
+- Every Drizzle audit write helper must propagate `impersonator_id` (from `act.sub`) and `impersonation_session_id` + `impersonation_mode` (from `request.auth.impersonation`) when writing to `audit_logs`.
+- BullMQ job data carries `impersonationSessionId` / `impersonationMode` / `impersonatorKeycloakId`; worker processors that do tenant-data audit writes must propagate.
+- Reason field minimum length: 20 characters — TypeBox validator + DB `CHECK` constraint (defence in depth).
 
-### For QA Engineer
+### QA Engineer
 
-- Test: impersonated session cannot access resources outside the target tenant (RLS still fully enforced)
-- Test: impersonated session cannot call super_admin-only routes (JWT `role` claim = impersonated user's role)
-- Test: every write during impersonation produces an `audit_logs` row with both `actor_user_id` and `impersonator_id` (from `act.sub`) non-null
-- Test: session expires after 2h TTL and subsequent requests return 401
-- Test: `POST /admin/impersonation` with `reason` shorter than 20 chars returns 400
-- Test: `POST /admin/impersonation` with wrong TOTP returns 401 + `impersonation.denied` audit event
-- Test: non-super_admin calling `POST /admin/impersonation` returns 403
-- Test: impersonation banner renders in root layout during impersonation session
-- Test: `DELETE /admin/impersonation/:sessionId` invalidates the Redis key and subsequent requests return 401
+- Test: pure-impersonation token blocked from POST/PUT/PATCH/DELETE on every business route (RBAC/RLS still enforced underneath).
+- Test: pure-impersonation token CAN call `DELETE /v1/admin/impersonation/:sessionId` (allowlisted).
+- Test: delegation token can write inside the target tenant.
+- Test: delegation token retains `super_admin` realm role; pure-impersonation token does NOT.
+- Test: nested impersonation (target.role === 'super_admin') is rejected with 400.
+- Test: starting a second session from inside an impersonation session returns 409.
+- Test: `auth_time` older than 5 min returns 401 + counts toward the lockout.
+- Test: 11th start in 24 h returns 429.
+- Test: 5 consecutive failed step-ups return 423.
+- Test: `DELETE /v1/admin/impersonation/:sessionId` invalidates Redis and subsequent requests return 401 with `impersonation_revoked` discriminator.
+- Test: every audit row written during a session has `impersonation_session_id` AND `impersonation_mode` populated AND `actor_id != user_id`.
 
-### For Security Architect
+### Security Architect
 
-- Impersonation token must be signed with the same key as standard JWTs — no weaker signature curve or key length
-- `impersonation_sessions` rows must be append-only — no `UPDATE` on `status`; use `ended_at` + `end_reason`
-- Redis key format: `impersonation:{sessionId}` — session UUID prevents key collisions
-- Rate limit: max 10 impersonation starts per admin per 24h (Redis counter: `impersonation:ratelimit:{adminId}`, TTL 24h)
-- Security alert if `impersonation.denied` > 3 in 10 minutes for the same admin
-- Brute-force lockout: after 5 consecutive failed TOTP attempts on impersonation start, lock the admin account for 15 minutes
+- Impersonation tokens are HS256 (`IMPERSONATION_JWT_SECRET`) on the app-layer path or RS256 on the Keycloak path — never weaker.
+- `impersonation_sessions` is append-only at the DB level (trigger).
+- Redis keys use the session UUID (`impersonation:session:{uuid}`) — UUIDv4 collision risk negligible.
+- Rate limit: 10 starts/op/24h. Lockout: 5 fails/op/15min.
+- Production env hard-fails when `IMPERSONATION_JWT_SECRET` or `IMPERSONATION_REQUIRE_ACR_2=true` are missing.
 
-### For Data Architect
+### Data Architect
 
-- Add `impersonator_id UUID` and `impersonation_session_id UUID` nullable columns to `audit_logs` in `packages/shared/src/schema/`
-- `impersonation_sessions` is a platform table — no tenant-scoped RLS needed
-- Include `impersonation_sessions` rows in GDPR Art. 15 export for both impersonated user and admin
-- Add exemption note to erasure flow documentation: `impersonation_sessions` rows cannot be erased (audit record integrity)
-- Partition `impersonation_sessions` by `started_at` if volume is expected to be high
+- Migration 0033 adds `impersonation_session_id` and `impersonation_mode` to `audit_logs` (both nullable, additive).
+- `impersonation_sessions` is platform-level — no tenant-scoped RLS, queries flow through `systemDb` (BYPASSRLS).
+- Include `impersonation_sessions` rows in GDPR Art. 15 export for both impersonated user and operator.
+- Erasure exemption: `impersonation_sessions` rows survive Art. 17 — document in `docs/06-security-compliance.md`.
 
-### For Log Analyst
+### Log Analyst
 
-- `impersonation.started` and `impersonation.revoked` must be logged at `warn` level with `audit: true`
-- All log lines during an impersonation session must include both `userId` (impersonated, from `sub`) and `impersonatorId` (from `act.sub`) fields
-- Add `body.stepUpCode` and `body.step_up_code` to the Pino redact paths — TOTP codes must never appear in logs
-- Add `impersonation.*` events to the audit events catalog in `docs/17-log-management.md`
-- Log the impersonation session ID as a structured field (`impersonationSessionId`) for LogQL correlation
+- `impersonation.started` and `impersonation.revoked` are logged at `warn` with `audit: true`.
+- Every audit logger line during a session includes `impersonationMode` + `impersonationSessionId` (top-level structured fields).
+- `body.stepUpCode` / `body.step_up_code` are **not stored** anywhere in this design — TOTP lives in Keycloak — but the redact path lists are kept just in case a future helper accepts one. No code change needed there.
+- `impersonation.*` events are listed in `docs/17-log-management.md` audit catalog.
 
-### For Feature Flag Engineer
+### Feature Flag Engineer
 
-- Flag evaluation during impersonation uses the **impersonated tenant's** overrides — no change needed if Redis cache is keyed by `tenantId` (already correct)
-- No feature flag is needed to gate the impersonation feature itself — it is always available to `super_admin`
+- Flag evaluation during a session uses the **target tenant's** overrides (Redis cache keyed by `tenantId` from `request.auth.orgId`, which is already the target's). No code change required.
+- The impersonation feature itself is not flagged — it's always available to `super_admin`.
 
-## 12. Open Questions
+## 13. Open / settled questions
 
-- [ ] **Keycloak Token Exchange vs. app-layer JWT**: Which to implement in Phase 1? Proposal: app-layer JWT (simpler), migrate to Keycloak Token Exchange in Phase 2. Decision needed.
-- [ ] **User notification**: default off or default on? Proposal: default off (notification may interfere with abuse investigations), configurable per platform policy in org settings.
-- [ ] **Notification timing**: if enabled, should the user be notified at session start or at session end? Proposal: session end — avoids alerting the user during an active investigation.
-- [ ] **Nested impersonation**: can a super_admin impersonate another super_admin? Proposal: no — block it explicitly (if `targetUser.role === 'super_admin'`, return 400).
-- [ ] **Read-only impersonation mode**: should there be an option to impersonate in a read-only mode (no writes allowed)? Useful for UI debugging without risk of accidental data mutation.
-- [ ] **DPIA requirement**: does impersonation access to special-category data (case notes, health records) trigger a mandatory DPIA under GDPR Art. 35? Consult DPO.
-- [ ] **Concurrent sessions**: should a super_admin be allowed to have multiple simultaneous impersonation sessions? Proposal: max 1 active session per admin at a time.
+- ~~Keycloak Token Exchange vs app-layer JWT~~ — both shipped, picked at runtime via `IMPERSONATION_USE_KEYCLOAK_EXCHANGE`.
+- ~~Nested impersonation~~ — blocked: `target.role === 'super_admin'` returns 400; starting a second session from inside one returns 409.
+- ~~Read-only impersonation mode~~ — that's `mode === "impersonation"` (issue #24).
+- **User notification** — default off. To be wired when product chooses default-on policy. Out of scope for #24 (no functional gap).
+- **DPIA requirement** — open until DPO sign-off; risk register entry added.
+- **Concurrent sessions per operator** — currently allowed up to the 10/24h cap. Not bounded to 1 because revoking on switch would surprise the operator mid-investigation; the rate limit handles abuse.
 
-## 13. Implementation Phases
+## 14. Migration history
 
-### Phase 1 (Core impersonation — app-layer JWT)
-
-- [ ] `impersonation_sessions` Drizzle schema in `packages/shared`
-- [ ] Add `impersonator_id` + `impersonation_session_id` columns to `audit_logs` schema
-- [ ] `POST /admin/impersonation` — TOTP step-up + reason validation + session creation
-- [ ] Impersonation middleware in `packages/api/src/lib/auth/impersonation.middleware.ts`
-- [ ] Dual-attribution in `buildAuditEntry()` audit plugin
-- [ ] Redis session store with 2h TTL
-- [ ] `DELETE /admin/impersonation/:sessionId` — end session + Redis invalidation
-- [ ] `GET /admin/impersonation` — list active sessions
-- [ ] Rate limiting (10 starts per admin per 24h)
-- [ ] Frontend `ImpersonationBanner` component in root layout
-- [ ] `getImpersonationContext()` SSR utility
-- [ ] BullMQ `_meta` propagation for impersonation fields
-- [ ] Integration tests (see cross-agent rules for QA Engineer)
-- [ ] `impersonation.*` events added to doc-17 audit catalog
-
-### Phase 2 (Keycloak Token Exchange)
-
-- [ ] Enable Token Exchange in Keycloak realm configuration
-- [ ] Custom Keycloak Script Mapper to inject RFC 8693 `act` claim (`act: { sub: <original_subject> }`) on `token-exchange` grant type — ~50 lines JS, no custom Java SPI required
-- [ ] Pass `imp_session_id` and `imp_reason` as custom request parameters to the Script Mapper
-- [ ] Migrate `POST /admin/impersonation` to use Keycloak Token Exchange (token shape is identical — `act` claim already used in Phase 1)
-- [ ] Retain Redis session store for instant revocation (Keycloak tokens cannot be instantly revoked)
-- [ ] User notification system (configurable per platform policy)
-- [ ] Admin impersonation dashboard with session history
-- [ ] Monitor keycloak/keycloak#12076 — when native `act` claim support lands, remove the custom Script Mapper
+- Migration `0033_impersonation_sessions.sql` — adds the table, mode/end_reason enums, append-only trigger, audit_logs columns, indexes.
+- Realm config (`infra/keycloak/realm-givernance.json`) — adds the `givernance-impersonation` confidential client with Token Exchange grant + the Script Mapper reference; adds `otpPolicy` for MFA enrolment.
+- Script Mapper (`infra/keycloak/mappers/impersonation-act-mapper.js`) — JS provider that emits `act` + `imp_*` claims on Token Exchange responses; retire when keycloak/keycloak#12076 lands native support.

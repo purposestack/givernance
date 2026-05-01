@@ -33,6 +33,7 @@ import { userRoutes } from "./modules/users/routes.js";
 import { auditPlugin } from "./plugins/audit.js";
 import { authPlugin } from "./plugins/auth.js";
 import { idempotencyPlugin } from "./plugins/idempotency.js";
+import { impersonationPlugin } from "./plugins/impersonation.js";
 
 /**
  * Optional overrides — currently used by integration tests to inject a
@@ -148,6 +149,9 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
 
   // --- Custom plugins ---
   await app.register(authPlugin);
+  // Impersonation plugin runs as a preHandler — must register AFTER auth so
+  // `request.auth.impersonation` is already populated when its hook fires.
+  await app.register(impersonationPlugin);
   await app.register(idempotencyPlugin);
   await app.register(auditPlugin);
 

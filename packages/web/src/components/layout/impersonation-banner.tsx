@@ -55,21 +55,37 @@ export function ImpersonationBanner({ impersonation, userName }: ImpersonationBa
   if (!impersonation) return null;
 
   const displayName = userName ?? t("fallbackUser");
+  // Issue #24 — visually distinguish the two modes. Delegation uses the
+  // existing amber palette ("you have extra power, be careful"); pure
+  // impersonation uses a heavier red to make it obvious that writes are
+  // blocked and the operator is in observation mode. Falls back to amber
+  // for legacy single-mode tokens that don't carry `mode`.
+  const isPure = impersonation.mode === "impersonation";
+  const containerClass = isPure
+    ? "flex items-center justify-center gap-3 border-b border-error-border bg-error-light px-4 py-2 text-sm font-medium text-error-text"
+    : "flex items-center justify-center gap-3 border-b border-amber-border bg-amber-light px-4 py-2 text-sm font-medium text-amber-text";
+  const badgeClass = isPure
+    ? "rounded bg-error-text/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-error-text"
+    : "rounded bg-amber-dark/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-dark";
+  const badgeText = isPure ? t("modeBadgeImpersonation") : t("modeBadgeDelegation");
+  const labelKey = isPure ? "impersonationLabel" : "delegationLabel";
 
   return (
     <div
-      className="flex items-center justify-center gap-3 border-b border-amber-border bg-amber-light px-4 py-2 text-sm font-medium text-amber-text"
+      className={containerClass}
       role="alert"
       aria-live="polite"
+      data-impersonation-mode={impersonation.mode}
     >
       <ShieldAlert size={16} aria-hidden="true" className="shrink-0" />
+      <span className={badgeClass}>{badgeText}</span>
       <span>
-        {t("browsingAs", { name: displayName })}
+        {t(labelKey, { name: displayName })}
         {impersonation.reason && (
           <span className="ml-1 text-xs font-normal">— {impersonation.reason}</span>
         )}
       </span>
-      {remaining && <span className="font-mono text-xs text-amber-dark">{remaining}</span>}
+      {remaining && <span className="font-mono text-xs">{remaining}</span>}
       <button
         type="button"
         onClick={endImpersonation}

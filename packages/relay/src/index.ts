@@ -70,6 +70,13 @@ async function relayPendingEvents(): Promise<number> {
           // traceId/spanId. Jobs written before this change have null metadata.
           traceparent: row.metadata?.traceparent,
           tracestate: row.metadata?.tracestate,
+          // Issue #24 — forward impersonation context to the worker so
+          // async audit writes can carry the same double-attribution as
+          // the originating request. Optional on every job; only delegation
+          // mode produces non-null values (pure-impersonation can't write).
+          impersonationSessionId: row.metadata?.impersonationSessionId,
+          impersonationMode: row.metadata?.impersonationMode,
+          impersonatorKeycloakId: row.metadata?.impersonatorKeycloakId,
         },
         {
           jobId: row.id,

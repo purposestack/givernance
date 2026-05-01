@@ -69,6 +69,42 @@ const EnvSchema = Type.Object({
   STRIPE_WEBHOOK_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   /** ExchangeRate-API key used for currency conversion refreshes */
   EXCHANGE_RATE_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /**
+   * Symmetric secret used to sign the app-layer impersonation JWT (HS256).
+   * The impersonation token is short-lived (≤2h) and scoped to a single
+   * support session — using a separate secret from the realm's RS256 keys
+   * lets us key-rotate impersonation independently and keeps the blast
+   * radius of a leaked secret bounded to existing-session abuse.
+   * Required in production; auto-generated stub in dev/CI.
+   */
+  IMPERSONATION_JWT_SECRET: Type.Optional(Type.String({ minLength: 32 })),
+  /**
+   * When true, POST /admin/impersonation requires the operator's access token
+   * to carry `acr >= 2` (i.e. a recent MFA-backed Keycloak login). Defaults
+   * to false in dev/CI where MFA is not configured. Production should set
+   * `IMPERSONATION_REQUIRE_ACR_2=true`.
+   */
+  IMPERSONATION_REQUIRE_ACR_2: Type.Boolean({ default: false }),
+  /**
+   * When true, the API issues impersonation tokens via Keycloak Token
+   * Exchange (RFC 8693) instead of the app-layer HS256 path. Both flows
+   * produce the same JWT shape (sub/act/imp_*), but the Keycloak path
+   * defers signing/issuance to the realm and keeps audit trail in
+   * Keycloak's event log. Defaults false; flip on once the realm has the
+   * `impersonation-act-mapper.js` Script Mapper deployed.
+   */
+  IMPERSONATION_USE_KEYCLOAK_EXCHANGE: Type.Boolean({ default: false }),
+  /**
+   * TTL (seconds) for delegation sessions. Default 7200 = 2h. The route
+   * caps at 14400 (4h) regardless of this value to bound exposure.
+   */
+  IMPERSONATION_DELEGATION_TTL_SECONDS: Type.Number({ default: 7200 }),
+  /**
+   * TTL (seconds) for pure-impersonation sessions. Default 1800 = 30m —
+   * shorter than delegation because the use case is bug-reproduction, not
+   * configuration. Capped at 3600 (1h) by the route.
+   */
+  IMPERSONATION_IMPERSONATION_TTL_SECONDS: Type.Number({ default: 1800 }),
 });
 
 export type ApiEnv = Static<typeof EnvSchema>;
@@ -90,6 +126,20 @@ if (process.env.NODE_ENV === "production" && !value.DATABASE_URL_APP) {
 if (process.env.NODE_ENV === "production" && !value.KEYCLOAK_ADMIN_CLIENT_SECRET) {
   console.error(
     "[api] KEYCLOAK_ADMIN_CLIENT_SECRET is strictly required in production for tenant onboarding (ADR-016 / issue #107).",
+  );
+  process.exit(1);
+}
+
+if (process.env.NODE_ENV === "production" && !value.IMPERSONATION_JWT_SECRET) {
+  console.error(
+    "[api] IMPERSONATION_JWT_SECRET is strictly required in production — without it the support-session API can't sign impersonation tokens (issue #24).",
+  );
+  process.exit(1);
+}
+
+if (process.env.NODE_ENV === "production" && !value.IMPERSONATION_REQUIRE_ACR_2) {
+  console.error(
+    "[api] IMPERSONATION_REQUIRE_ACR_2 must be `true` in production — step-up MFA is the only barrier between a stolen super-admin cookie and an arbitrary impersonation session (issue #24).",
   );
   process.exit(1);
 }

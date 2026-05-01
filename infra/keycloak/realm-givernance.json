@@ -17,6 +17,21 @@
   "bruteForceProtected": true,
   "passwordPolicy": "length(12) and notUsername",
   "organizationsEnabled": true,
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA256",
+  "otpPolicyDigits": 6,
+  "otpPolicyLookAheadWindow": 1,
+  "otpPolicyPeriod": 30,
+  "otpSupportedApplications": [
+    "totpAppFreeOTPName",
+    "totpAppGoogleName",
+    "totpAppMicrosoftAuthenticatorName"
+  ],
+  "browserSecurityHeaders": {
+    "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';",
+    "xContentTypeOptions": "nosniff",
+    "referrerPolicy": "no-referrer"
+  },
   "components": {
     "org.keycloak.userprofile.UserProfileProvider": [
       {
@@ -127,6 +142,37 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
       "description": "Service-account client for Keycloak Admin API calls from the Givernance backend (ADR-016 / issue #107). Scoped to realm-management roles: manage-realm, manage-users, manage-identity-providers, view-clients."
+    },
+    {
+      "clientId": "givernance-impersonation",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "ci-test-impersonation-secret-do-not-use-in-production",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "description": "Issue #24 — confidential client used by the API to mint impersonation tokens via OAuth2 Token Exchange (RFC 8693). Token Exchange is only granted on this client to keep the realm-management `impersonation` role narrowly scoped. The Script Mapper at infra/keycloak/mappers/impersonation-act-mapper.js injects the `act` claim that Keycloak 26 still does not emit natively (keycloak/keycloak#12076).",
+      "attributes": {
+        "token.exchange.grant.enabled": "true",
+        "standard.token.exchange.enabled": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "impersonation-act-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-script-based-protocol-mapper",
+          "consentRequired": false,
+          "config": {
+            "script": "/opt/keycloak/providers/scripts/impersonation-act-mapper.js",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false",
+            "multivalued": "false"
+          }
+        }
+      ]
     },
     {
       "clientId": "givernance-web",

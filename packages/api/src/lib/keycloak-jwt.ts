@@ -12,6 +12,10 @@ export interface KeycloakJwtClaims {
   jti?: string;
   /** Expiry (seconds-epoch). */
   exp?: number;
+  /** Seconds-epoch when the user authenticated; needed for step-up checks (issue #24). */
+  auth_time?: number;
+  /** Authentication Context Class Reference — `"2"` ⇒ MFA-backed login. */
+  acr?: string;
 }
 
 const KEYCLOAK_ISSUER = env.KEYCLOAK_ISSUER ?? `${env.KEYCLOAK_URL}/realms/${env.KEYCLOAK_REALM}`;

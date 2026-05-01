@@ -29,11 +29,21 @@ export const outboxEvents = pgTable("outbox_events", {
 });
 
 /**
- * Shape of `outbox_events.metadata` — W3C trace-context plus future hooks.
- * `traceparent` is optional on read so pre-PR rows (metadata = null OR {})
- * deserialise cleanly; writers should always populate it when available.
+ * Shape of `outbox_events.metadata` — W3C trace-context plus impersonation
+ * context (issue #24). `traceparent` is optional on read so pre-PR rows
+ * (metadata = null OR {}) deserialise cleanly; writers should always
+ * populate it when available.
+ *
+ * `impersonationSessionId` + `impersonationMode` propagate through the
+ * relay → BullMQ job → worker so async audit writes can carry the same
+ * double-attribution that the request-scoped audit plugin already does
+ * (see `packages/api/src/plugins/audit.ts`). Workers without an audit
+ * write don't have to read these — they're optional.
  */
 export interface OutboxMetadata {
   traceparent?: string;
   tracestate?: string;
+  impersonationSessionId?: string;
+  impersonationMode?: "delegation" | "impersonation";
+  impersonatorKeycloakId?: string;
 }
