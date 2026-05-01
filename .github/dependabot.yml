@@ -1,4 +1,10 @@
 version: 2
+
+# Security PRs must always open individually so a CVE never gets batched with
+# cosmetic minor/patch bumps and lost in the weekly grouped PR. The
+# `applies-to: version-updates` key on every group confines grouping to the
+# routine update flow and excludes Dependabot security updates. See:
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot-yml-file#groups
 updates:
   - package-ecosystem: npm
     directory: /
@@ -7,6 +13,7 @@ updates:
     open-pull-requests-limit: 10
     groups:
       minor-and-patch:
+        applies-to: version-updates
         update-types:
           - minor
           - patch
@@ -17,6 +24,7 @@ updates:
       interval: weekly
     groups:
       actions:
+        applies-to: version-updates
         update-types:
           - minor
           - patch

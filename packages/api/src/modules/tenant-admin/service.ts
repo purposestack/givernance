@@ -40,6 +40,7 @@ import {
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, withTenantContext } from "../../lib/db.js";
+import { isUniqueViolation } from "../../lib/db-errors.js";
 import {
   createSystemTxtResolver,
   generateDnsTxtValue,
@@ -1393,14 +1394,6 @@ export async function revokeFirstEnterpriseInvitation(input: {
 }
 
 // ─── Error helpers ──────────────────────────────────────────────────────────
-
-function isUniqueViolation(err: unknown, constraintHint?: RegExp): boolean {
-  if (typeof err !== "object" || err === null) return false;
-  const e = err as { code?: string; constraint?: string; message?: string };
-  if (e.code !== "23505") return false;
-  if (!constraintHint) return true;
-  return constraintHint.test(e.constraint ?? "") || constraintHint.test(e.message ?? "");
-}
 
 function isKeycloakConflict(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
