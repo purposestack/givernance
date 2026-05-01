@@ -80,13 +80,25 @@ export default async function ImpersonationSessionDetailPage({
         </Field>
         <Field label={t("fieldStatus")}>{statusLabel}</Field>
         <Field label={t("fieldTarget")}>
-          <code className="text-xs">{sessionData.targetKeycloakId}</code>
-          <div className="text-xs text-muted-foreground">
-            {t("targetRole", { role: sessionData.targetRole })} · {sessionData.targetOrgId}
-          </div>
+          <PersonBlock
+            firstName={sessionData.targetFirstName}
+            lastName={sessionData.targetLastName}
+            email={sessionData.targetEmail}
+            tenantName={sessionData.tenantName}
+            tenantSlug={sessionData.tenantSlug}
+            keycloakId={sessionData.targetKeycloakId}
+            secondaryLine={t("targetRole", { role: sessionData.targetRole })}
+          />
         </Field>
         <Field label={t("fieldOperator")}>
-          <code className="text-xs">{sessionData.impersonatorKeycloakId}</code>
+          <PersonBlock
+            firstName={sessionData.impersonatorFirstName}
+            lastName={sessionData.impersonatorLastName}
+            email={sessionData.impersonatorEmail}
+            tenantName={null}
+            tenantSlug={null}
+            keycloakId={sessionData.impersonatorKeycloakId}
+          />
         </Field>
         <Field label={t("fieldStarted")}>
           <span className="text-xs">{new Date(sessionData.createdAt).toLocaleString()}</span>
@@ -157,6 +169,58 @@ function Field({
     <div className={fullSpan ? "sm:col-span-2" : undefined}>
       <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Detail-page sibling of the list page's `UserCell`. Renders name +
+ * tenant + a small mono UUID side-note. Same fallback ladder: name
+ * preferred, then email, then keycloak_id.
+ */
+function PersonBlock({
+  firstName,
+  lastName,
+  email,
+  tenantName,
+  tenantSlug,
+  keycloakId,
+  secondaryLine,
+}: {
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  keycloakId: string;
+  secondaryLine?: string;
+}) {
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  const hasName = fullName.length > 0;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-sm font-medium">
+        {hasName ? fullName : (email ?? <code className="font-mono text-xs">{keycloakId}</code>)}
+      </span>
+      {(email || tenantName || secondaryLine) && (
+        <span className="text-xs text-muted-foreground">
+          {hasName && email ? email : null}
+          {hasName && email && (tenantName || secondaryLine) ? " · " : null}
+          {tenantName ? (
+            <>
+              {tenantName}
+              {tenantSlug ? <span className="opacity-60"> ({tenantSlug})</span> : null}
+            </>
+          ) : null}
+          {tenantName && secondaryLine ? " · " : null}
+          {secondaryLine ? <span>{secondaryLine}</span> : null}
+        </span>
+      )}
+      {hasName && (
+        <code className="font-mono text-[10px] text-muted-foreground/70" title={keycloakId}>
+          {keycloakId}
+        </code>
+      )}
     </div>
   );
 }

@@ -67,5 +67,17 @@ export const ImpersonationSessionSchema = Type.Object({
   createdAt: Type.String({ format: "date-time" }),
   /** Derived field — true when `endedAt IS NULL AND expiresAt > now()`. */
   isActive: Type.Boolean(),
+  // ── Enrichment fields (LEFT-JOIN'd from `users` + `tenants`) ──────────
+  // Nullable when the joined row is missing — most realistic case is an
+  // off-boarded operator whose `users` row was hard-deleted. The UI falls
+  // back to the keycloak_id when null.
+  targetFirstName: Type.Union([Type.String(), Type.Null()]),
+  targetLastName: Type.Union([Type.String(), Type.Null()]),
+  targetEmail: Type.Union([Type.String(), Type.Null()]),
+  tenantName: Type.Union([Type.String(), Type.Null()]),
+  tenantSlug: Type.Union([Type.String(), Type.Null()]),
+  impersonatorFirstName: Type.Union([Type.String(), Type.Null()]),
+  impersonatorLastName: Type.Union([Type.String(), Type.Null()]),
+  impersonatorEmail: Type.Union([Type.String(), Type.Null()]),
 });
 export type ImpersonationSessionDTO = Static<typeof ImpersonationSessionSchema>;

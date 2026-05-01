@@ -17,6 +17,7 @@ import { PLATFORM_TENANT_ID } from "@givernance/shared/constants";
 import { auditLogs, impersonationSessions, tenants, users } from "@givernance/shared/schema";
 import type { ImpersonationModeName } from "@givernance/shared/types";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { env } from "../../env.js";
 import { systemDb, withTenantContext } from "../../lib/db.js";
 import { signImpersonationToken } from "../../lib/impersonation/jwt.js";
@@ -288,14 +289,68 @@ export interface ListSessionsOptions {
   limit?: number;
 }
 
+/**
+ * Selection used for both `listSessions` and `getSession` — we LEFT JOIN
+ * the `users` table twice (once on the target's keycloak_id+org, once on
+ * the operator's keycloak_id) and the `tenants` table once on
+ * target_org_id, so the UI can render human-readable names instead of
+ * raw UUIDs. LEFT JOINs (vs INNER) handle the realistic case where an
+ * operator was off-boarded and their `users` row is gone — we still want
+ * the session row visible, just with `null` operator name and a fallback
+ * to the keycloak_id.
+ */
+const targetUsers = alias(users, "target_users");
+const impersonatorUsers = alias(users, "impersonator_users");
+
+const enrichedSessionSelect = {
+  id: impersonationSessions.id,
+  impersonatorKeycloakId: impersonationSessions.impersonatorKeycloakId,
+  targetKeycloakId: impersonationSessions.targetKeycloakId,
+  targetOrgId: impersonationSessions.targetOrgId,
+  targetRole: impersonationSessions.targetRole,
+  mode: impersonationSessions.mode,
+  reason: impersonationSessions.reason,
+  expiresAt: impersonationSessions.expiresAt,
+  endedAt: impersonationSessions.endedAt,
+  endReason: impersonationSessions.endReason,
+  ipHash: impersonationSessions.ipHash,
+  userAgent: impersonationSessions.userAgent,
+  createdAt: impersonationSessions.createdAt,
+  // Enrichment columns (all nullable — see comment above).
+  targetFirstName: targetUsers.firstName,
+  targetLastName: targetUsers.lastName,
+  targetEmail: targetUsers.email,
+  tenantName: tenants.name,
+  tenantSlug: tenants.slug,
+  impersonatorFirstName: impersonatorUsers.firstName,
+  impersonatorLastName: impersonatorUsers.lastName,
+  impersonatorEmail: impersonatorUsers.email,
+};
+
+function baseEnrichedQuery() {
+  return systemDb
+    .select(enrichedSessionSelect)
+    .from(impersonationSessions)
+    .leftJoin(
+      targetUsers,
+      and(
+        eq(targetUsers.keycloakId, impersonationSessions.targetKeycloakId),
+        eq(targetUsers.orgId, impersonationSessions.targetOrgId),
+      ),
+    )
+    .leftJoin(tenants, eq(tenants.id, impersonationSessions.targetOrgId))
+    .leftJoin(
+      impersonatorUsers,
+      eq(impersonatorUsers.keycloakId, impersonationSessions.impersonatorKeycloakId),
+    );
+}
+
 export async function listSessions(opts: ListSessionsOptions = {}) {
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
   const where = opts.activeOnly
     ? and(isNull(impersonationSessions.endedAt), gt(impersonationSessions.expiresAt, new Date()))
     : undefined;
-  return systemDb
-    .select()
-    .from(impersonationSessions)
+  return baseEnrichedQuery()
     .where(where)
     .orderBy(desc(impersonationSessions.createdAt))
     .limit(limit);
@@ -471,11 +526,7 @@ export async function getSessionAudit(
 }
 
 export async function getSession(sessionId: string) {
-  const [row] = await systemDb
-    .select()
-    .from(impersonationSessions)
-    .where(eq(impersonationSessions.id, sessionId))
-    .limit(1);
+  const [row] = await baseEnrichedQuery().where(eq(impersonationSessions.id, sessionId)).limit(1);
   return row ?? null;
 }
 
