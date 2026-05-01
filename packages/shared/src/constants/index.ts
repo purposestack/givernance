@@ -4,14 +4,6 @@
  * pulling the Drizzle schema (ADR-013 type boundary).
  */
 
-export { isPersonalEmailDomain, PERSONAL_EMAIL_DOMAINS } from "./personal-email-domains";
-
-export { PINO_REDACT_PATHS } from "./pino-redact";
-
-export { isReservedSlug, RESERVED_SLUGS } from "./reserved-slugs";
-
-export { DOMAIN_PATTERN, validateTenantDomain } from "./tenant-domain";
-
 export {
   IMPERSONATION_END_REASON_VALUES,
   IMPERSONATION_MODE_VALUES,
@@ -19,3 +11,7 @@ export {
   type ImpersonationMode,
   PLATFORM_TENANT_ID,
 } from "./impersonation";
+export { isPersonalEmailDomain, PERSONAL_EMAIL_DOMAINS } from "./personal-email-domains";
+export { PINO_REDACT_PATHS } from "./pino-redact";
+export { isReservedSlug, RESERVED_SLUGS } from "./reserved-slugs";
+export { DOMAIN_PATTERN, validateTenantDomain } from "./tenant-domain";
