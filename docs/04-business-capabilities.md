@@ -99,7 +99,7 @@ Givernance NPO Platform
 **Key flows**:
 
 1. **Manual entry** — POST with constituent_id, amount, date, campaign, fund allocation(s).
-2. **Online donation (webhook)** — Stripe/Mollie sends payment webhook → API validates → creates donation + receipt + sends acknowledgement email.
+2. **Online donation (webhook)** — Stripe sends payment webhook → API validates → creates donation + receipt + sends acknowledgement email.
 3. **Batch import** — CSV upload processed async; validation report returned before commit.
 4. **Refund** — PATCH status to `refunded`; original receipt voided; new credit note generated; GL line reversed.
 
@@ -129,7 +129,7 @@ scheduled → [due_date reached] → payment initiated → paid / failed
 ```
 
 **SEPA direct debit flow**:
-1. Constituent signs SEPA mandate (captured via Stripe/Mollie hosted page).
+1. Constituent signs SEPA mandate (captured via Stripe hosted page).
 2. Mandate ref stored on pledge.
 3. Daily job creates installment records for due dates, initiates charge via gateway API.
 4. Webhook confirms/fails; donation record created on success.

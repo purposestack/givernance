@@ -10,7 +10,7 @@ Givernance integrates selectively — only where the integration genuinely repla
 
 - **Additive**: Givernance never requires an integration to function (payment can be manual; email can be SMTP)
 - **Auditable**: Every inbound webhook and outbound push is logged
-- **Replaceable**: integrations are behind adaptor interfaces; swapping Stripe for Mollie requires config change, not code change
+- **Replaceable**: integrations are behind adaptor interfaces; swapping payment providers (if Mollie or others are added later) requires config change, not code change
 
 ---
 

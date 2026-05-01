@@ -102,9 +102,9 @@ This means Givernance **never touches donor funds** — clean separation, no e-m
 | SDK quality | ✅ Good — Node.js SDK, TypeScript support |
 | Webhooks | ✅ Signed, good documentation |
 
-**Assessment**: Mollie is excellent for FR/BE/NL NPOs due to local payment methods, NPO pricing, and simplified NPO verification. Co-primary alongside Stripe for French, Belgian, and Dutch associations from Phase 1. Connect model less mature than Stripe, but sufficient for single-tenant payment flows in these markets.
+**Assessment**: Mollie was initially considered as a co-primary for FR/BE/NL NPOs. However, to minimize technical complexity and focus engineering efforts, Mollie has been put on hold indefinitely. Stripe is the sole automated payment provider for Phase 1.
 
-> **Note:** Mollie integration implementation deferred to Sprint 4 (Issue #62) to keep the initial Stripe MVP PR focused.
+> **Note:** Mollie integration (Issue #62) has been put on hold indefinitely. The project focuses 100% on Stripe for the MVP.
 
 ### 3.3 Mangopay
 

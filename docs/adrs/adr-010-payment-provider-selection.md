@@ -8,7 +8,7 @@
 ### Decision
 
 **Primary: Stripe Connect** for all deployments from Phase 1.
-**Co-primary: Mollie** for FR/BE/NL NPOs from Phase 1, enabled via `ff.payments.mollie` feature flag. Mollie is the recommended default for French, Belgian, and Dutch associations (simplified NPO verification, native EU, NPO pricing).
+**Deferred: Mollie.** Originally planned as a co-primary for FR/BE/NL NPOs to simplify NPO verification, Mollie integration has been put on hold indefinitely. The project focuses exclusively on Stripe Connect to minimize operational complexity for Phase 1. Mollie may be reconsidered in the future, but its use is currently uncertain.
 
 ### Rationale
 
@@ -20,8 +20,8 @@
 4. **Developer experience**: best-in-class Node.js SDK, TypeScript types, Stripe CLI for local webhook testing
 5. **Ecosystem**: Gift Aid claims work on top of Stripe payments; iDEAL/Bancontact/EPS available via single Payment Element
 
-**Mollie as co-primary for FR/BE/NL because:**
-1. **Simplified NPO verification** — Mollie's NPO program offers faster onboarding for French, Belgian, and Dutch associations than Stripe's standard KYB
+**Why Mollie was initially considered:**
+1. **Simplified NPO verification** — Mollie's NPO program offered faster onboarding for French, Belgian, and Dutch associations than Stripe's standard KYB. However, to avoid maintaining two distinct payment gateway integrations, Stripe is the sole provider for Phase 1.
 2. NPO-specific pricing makes it more cost-effective for small FR/BE/NL NPOs
 3. iDEAL/Bancontact are dominant payment methods in NL/BE
 4. EU-native (no SCC needed) is a selling point for privacy-conscious NPOs
@@ -33,7 +33,7 @@
 
 ### Consequences
 
-- `donations.payment_gateway` enum: `stripe | mollie | manual`
+- `donations.payment_gateway` enum: `stripe | manual` (Mollie removed for now)
 - `pledges` table carries both `stripe_customer_id` and `stripe_mandate_id` (Mollie equivalent fields added when Mollie feature ships)
 - All payment flows are abstracted behind a `PaymentGateway` interface in `packages/shared` — concrete implementations are `StripeGateway` and `MollieGateway`
 - Givernance never stores card numbers, CVV, or IBAN — SAQ A scope maintained
@@ -82,15 +82,9 @@ No health data, no case notes, no social/medical information ever reaches Stripe
 | Mollie positioned as first-class alternative (not just DACH fallback) for FR/BE/NL NPOs and any NPO with a strict DPO | Product | ADR-010 update |
 | Document DPO opt-out path: NPOs in public sector or health-adjacent contexts can request Mollie gateway at onboarding — no SCC, full EU | Engineering | Phase 1 onboarding flow |
 
-### Mollie re-positioning
+### Mollie Deprioritization
 
-Mollie is promoted from "DACH/Benelux opt-in" to **"EU-native default for FR/BE/NL tenants and any strict-DPO context"**:
-
-| Tenant context | Recommended gateway |
-|---|---|
-| UK, multi-currency, international fundraising | Stripe (best DX, Gift Aid, multi-currency) |
-| France, Belgium, Netherlands | Mollie (native EU, NPO pricing, iDEAL/Bancontact) |
-| Public sector / health-adjacent NPOs | Mollie (no SCC, clean GDPR posture) |
+Mollie has been removed from the immediate roadmap to reduce integration complexity. All tenants, regardless of region, will use Stripe (with SCCs for GDPR compliance) for Phase 1. |
 | Switzerland | Stripe Phase 1 → Saferpay/TWINT Phase 3 |
 | All others | Stripe (default) |
 
