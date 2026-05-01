@@ -11,12 +11,12 @@ Givernance supports **two distinct support-session flavours**. They share most o
 
 | Aspect | `delegation` | `impersonation` (pure) |
 |---|---|---|
-| Use case | Operator does support / config work **on behalf of** a tenant. | Operator **reproduces a bug** as the user — see what the user sees. |
+| Use case | Operator does support / config work **on behalf of** a tenant. | Operator **reproduces a bug** as the user — see and act exactly as the user does. |
 | `sub` in JWT | Target user's Keycloak `sub` | Target user's Keycloak `sub` |
 | `act.sub` in JWT | Operator's Keycloak `sub` (RFC 8693) | Operator's Keycloak `sub` (RFC 8693) |
 | `imp_mode` in JWT | `"delegation"` | `"impersonation"` |
-| RBAC rights | `super_admin` retained → "extended rights" | Target user's role only |
-| Writes (POST/PUT/PATCH/DELETE) | Allowed | **Blocked** at the middleware (default-deny, narrow allowlist) |
+| RBAC rights | `super_admin` retained → "extended rights" | Target user's role **only** — full parity, no augmentation, no restriction |
+| Writes (POST/PUT/PATCH/DELETE) | Allowed (super_admin) | Allowed **iff target has the write role** — same answer the target would get logging in directly |
 | Default TTL | 2 h (capped at 4 h) | 30 min (capped at 1 h) |
 | Banner colour | Amber | Red |
 | Audit `impersonation_mode` column | `"delegation"` | `"impersonation"` |
@@ -193,10 +193,11 @@ Effect:
 | Realm roles array (`request.auth.roles`) | `["super_admin"]` retained | Target user's roles only |
 | `requireSuperAdmin` route guard | Passes (operator retains super_admin) | **Fails** (super_admin stripped) |
 | `requireOrgAdmin` route guard | Pass/fail by target user's role | Pass/fail by target user's role |
-| Mutating methods (POST/PUT/PATCH/DELETE) | Allowed | **Blocked at the impersonation plugin** unless on the explicit allowlist |
+| `requireWrite` route guard | Passes (super_admin) | Pass/fail by target user's role — `viewer` 403s, `user`/`org_admin` pass |
+| Mutating methods (POST/PUT/PATCH/DELETE) | Allowed | Allowed iff target's role passes the route guard — exact RBAC parity with the target |
 | MFA-protected routes | Step-up at session start covers it | Same |
 
-The pure-impersonation **write allowlist** (`PURE_IMPERSONATION_WRITE_ALLOWLIST` in `packages/api/src/plugins/impersonation.ts`) currently allows only `DELETE /v1/admin/impersonation/:sessionId` — so the operator can always end their session even from inside it. Add new entries here ONLY when there's a clear product reason; default-deny is the security stance.
+There is **no extra write-block on pure impersonation**. The whole purpose of the mode is bug reproduction with full parity to the target user; an extra default-deny on writes would let a "fix" pass tests without ever reproducing the failing write the user reported. Permission isolation is the standard RBAC stack — `requireWrite`, `requireOrgAdmin` etc. — fed the target's roles. The `requireSuperAdmin` guard naturally fails (super_admin stripped from the token), which is the only "extra" behaviour worth calling out. The DELETE-session endpoint accepts both super_admin AND inside-this-session callers via a bespoke check (`checkEndSessionAuth` in `impersonation-routes.ts`) so the operator can always end their own pure-impersonation session.
 
 ## 7. Step-up authentication
 
@@ -272,8 +273,9 @@ Pure-impersonation requests can't reach this code path — they're blocked at th
 
 ### QA Engineer
 
-- Test: pure-impersonation token blocked from POST/PUT/PATCH/DELETE on every business route (RBAC/RLS still enforced underneath).
-- Test: pure-impersonation token CAN call `DELETE /v1/admin/impersonation/:sessionId` (allowlisted).
+- Test: pure-impersonation token writes SUCCEED when the target has the write role (`org_admin`/`user`) — full RBAC parity with the target.
+- Test: pure-impersonation token writes 403 when the target is a `viewer` — same response the target would get logging in directly. There is NO extra "read-only" message; it's the standard RBAC denial.
+- Test: pure-impersonation token CAN end its own session via `DELETE /v1/admin/impersonation/:sessionId` even though super_admin is stripped (the route accepts inside-this-session via the bespoke `checkEndSessionAuth`).
 - Test: delegation token can write inside the target tenant.
 - Test: delegation token retains `super_admin` realm role; pure-impersonation token does NOT.
 - Test: nested impersonation (target.role === 'super_admin') is rejected with 400.
