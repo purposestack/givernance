@@ -19,6 +19,11 @@ import type { ImpersonationModeName } from "./types.js";
 
 export interface KeycloakExchangeArgs {
   operatorAccessToken: string;
+  /** Operator's Keycloak `sub` — passed only as a sanity-check; the mapper
+   * sources the actor identity from the authenticated session, never from
+   * this request param (defence against operator-controlled actor spoof
+   * — review L2). */
+  operatorKeycloakId: string;
   targetKeycloakId: string;
   sessionId: string;
   mode: ImpersonationModeName;
@@ -46,10 +51,12 @@ export async function exchangeTokenViaKeycloak(
     );
   }
 
-  // Custom request parameters (`imp_*`) are read by the Script Mapper
-  // (`infra/keycloak/mappers/impersonation-act-mapper.js`) via
-  // `userSession.getNote("kc.session.note...")`. The mapper copies them
-  // from the access-token request URL parameters into JWT claims.
+  // Custom request parameters (`imp_*`) flow through to the Script Mapper
+  // via Keycloak's note-from-param mechanism. NOTE: the mapper reads the
+  // ACTOR identity from the authenticated session (`userSession.getUser()`)
+  // — NOT from `imp_act_sub` — because URL params are operator-controlled
+  // (review L2). We still set `imp_act_sub` for telemetry / cross-checks
+  // in case the mapper later validates the two match.
   const body = new URLSearchParams({
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
     client_id: env.KEYCLOAK_ADMIN_CLIENT_ID,
@@ -59,6 +66,7 @@ export async function exchangeTokenViaKeycloak(
     requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
     requested_subject: args.targetKeycloakId,
     audience: env.KEYCLOAK_ADMIN_CLIENT_ID,
+    imp_act_sub: args.operatorKeycloakId,
     imp_mode: args.mode,
     imp_session_id: args.sessionId,
     imp_reason: args.reason,

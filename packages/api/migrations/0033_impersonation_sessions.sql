@@ -82,8 +82,23 @@ BEGIN
     RAISE EXCEPTION 'impersonation_sessions: only ended_at and end_reason may be updated';
   END IF;
 
-  IF OLD.ended_at IS NOT NULL AND OLD.ended_at IS DISTINCT FROM NEW.ended_at THEN
-    RAISE EXCEPTION 'impersonation_sessions: ended_at is set-once';
+  -- Set-once semantics on the (ended_at, end_reason) pair. Reviewer H3:
+  --   * once a row is ended, neither column may change again
+  --   * a transition that touches the pair MUST set both to non-NULL —
+  --     no partial updates (e.g. SET end_reason = 'expired' without
+  --     ended_at), no NULL→NULL noop that masks intent
+  IF OLD.ended_at IS NOT NULL THEN
+    IF OLD.ended_at   IS DISTINCT FROM NEW.ended_at
+       OR OLD.end_reason IS DISTINCT FROM NEW.end_reason THEN
+      RAISE EXCEPTION 'impersonation_sessions: ended_at and end_reason are set-once';
+    END IF;
+  ELSE
+    -- OLD.ended_at IS NULL — only legal transition is to non-NULL on BOTH columns.
+    IF OLD.ended_at IS DISTINCT FROM NEW.ended_at OR OLD.end_reason IS DISTINCT FROM NEW.end_reason THEN
+      IF NEW.ended_at IS NULL OR NEW.end_reason IS NULL THEN
+        RAISE EXCEPTION 'impersonation_sessions: ended_at AND end_reason must transition together to non-NULL values';
+      END IF;
+    END IF;
   END IF;
 
   RETURN NEW;
@@ -104,5 +119,30 @@ ALTER TABLE audit_logs
 ALTER TABLE audit_logs
   ADD COLUMN IF NOT EXISTS impersonation_mode VARCHAR(32);
 
+-- Reviewer M3: lock down `audit_logs.impersonation_mode` to the same
+-- domain values as the typed enum on `impersonation_sessions.mode`. Free
+-- text VARCHAR risks "impersonated"/typos drifting in via future code.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'audit_logs_impersonation_mode_chk'
+  ) THEN
+    ALTER TABLE audit_logs
+      ADD CONSTRAINT audit_logs_impersonation_mode_chk
+      CHECK (impersonation_mode IS NULL OR impersonation_mode IN ('delegation', 'impersonation'));
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS audit_logs_imp_session_idx
   ON audit_logs (impersonation_session_id);
+
+-- Reviewer H4: belt-and-suspenders RLS on impersonation_sessions. The app
+-- pool runs as `givernance_app` (NOBYPASSRLS); without this REVOKE, an
+-- accidental query through `db` (instead of `systemDb`) from a future
+-- non-super-admin code path would silently return cross-tenant rows. The
+-- super-admin admin endpoints stay on `systemDb` (BYPASSRLS), so they're
+-- unaffected.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'givernance_app') THEN
+    EXECUTE 'REVOKE ALL ON impersonation_sessions FROM givernance_app';
+  END IF;
+END $$;

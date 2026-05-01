@@ -37,7 +37,13 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  * the security stance.
  */
 const PURE_IMPERSONATION_WRITE_ALLOWLIST: Array<{ method: string; pattern: RegExp }> = [
-  { method: "DELETE", pattern: /^\/v1\/admin\/impersonation\/[^/]+$/ },
+  // Tightened to a UUID slot — review M3 — so it cannot accidentally match
+  // `/v1/admin/impersonation/user/...` or any future sibling route.
+  {
+    method: "DELETE",
+    pattern:
+      /^\/v1\/admin\/impersonation\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  },
 ];
 
 async function impersonation(app: FastifyInstance) {

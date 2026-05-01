@@ -4,6 +4,7 @@ import { ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import type { ImpersonationInfo } from "@/lib/auth";
 import { useAuth } from "@/lib/auth";
 
@@ -86,13 +87,9 @@ export function ImpersonationBanner({ impersonation, userName }: ImpersonationBa
         )}
       </span>
       {remaining && <span className="font-mono text-xs">{remaining}</span>}
-      <button
-        type="button"
-        onClick={endImpersonation}
-        className="ml-2 rounded-md bg-tertiary px-3 py-1 text-xs font-semibold text-on-tertiary transition-colors duration-normal ease-out focus-visible:ring-2 focus-visible:ring-tertiary focus-visible:ring-offset-2"
-      >
+      <Button type="button" size="sm" variant="ghost" onClick={endImpersonation} className="ml-2">
         {t("endSession")}
-      </button>
+      </Button>
     </div>
   );
 }

@@ -7,6 +7,7 @@
  * Redis lookup are exercised end-to-end.
  */
 
+import { PLATFORM_TENANT_ID } from "@givernance/shared/constants";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -36,6 +37,11 @@ const TARGET_USER_APP_ID = "00000000-0000-0000-0000-0000000aaaaa";
 const TARGET_USER_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000aa101";
 const TARGET_SUPER_ADMIN_APP_ID = "00000000-0000-0000-0000-0000000aaaab";
 const TARGET_SUPER_ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000aa102";
+// Platform-tenant target — used by the nested-impersonation test (QA F1)
+// to exercise the service-side guard that rejects targets in the seeded
+// platform tenant. Tenant row is upserted in beforeAll.
+const PLATFORM_TARGET_APP_ID = "00000000-0000-0000-0000-0000000aaa01";
+const PLATFORM_TARGET_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000aa103";
 
 let app: FastifyInstance;
 
@@ -45,15 +51,24 @@ beforeAll(async () => {
 
   await ensureTestTenants();
 
+  // Seed the platform tenant + a member user, so the nested-impersonation
+  // guard test can exercise the structural barrier on `target.orgId`.
+  await db.execute(sql`
+    INSERT INTO tenants (id, name, slug)
+    VALUES (${PLATFORM_TENANT_ID}, 'Givernance Platform', 'platform')
+    ON CONFLICT (id) DO NOTHING
+  `);
+
   // Seed a target user under ORG_A that the operator will impersonate.
   await db.execute(sql`
-    DELETE FROM users WHERE id IN (${TARGET_USER_APP_ID}, ${TARGET_SUPER_ADMIN_APP_ID})
+    DELETE FROM users WHERE id IN (${TARGET_USER_APP_ID}, ${TARGET_SUPER_ADMIN_APP_ID}, ${PLATFORM_TARGET_APP_ID})
   `);
   await db.execute(sql`
     INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
     VALUES
       (${TARGET_USER_APP_ID}, ${ORG_A}, ${TARGET_USER_KEYCLOAK_ID}, 'target@example.org', 'Target', 'User', 'org_admin'),
-      (${TARGET_SUPER_ADMIN_APP_ID}, ${ORG_A}, ${TARGET_SUPER_ADMIN_KEYCLOAK_ID}, 'super@example.org', 'Target', 'SuperAdmin', 'org_admin')
+      (${TARGET_SUPER_ADMIN_APP_ID}, ${ORG_A}, ${TARGET_SUPER_ADMIN_KEYCLOAK_ID}, 'super@example.org', 'Target', 'SuperAdmin', 'org_admin'),
+      (${PLATFORM_TARGET_APP_ID}, ${PLATFORM_TENANT_ID}, ${PLATFORM_TARGET_KEYCLOAK_ID}, 'platform-target@example.org', 'Platform', 'Target', 'org_admin')
   `);
 });
 
@@ -164,18 +179,21 @@ describe("POST /v1/admin/impersonation — RBAC + step-up", () => {
     expect(body).toMatchObject({ status: 400, title: expect.any(String) });
   });
 
-  it("blocks impersonating a super_admin (nested impersonation) with 400", async () => {
-    // Override the target user's role to super_admin for this test.
-    await db.execute(
-      sql`UPDATE users SET role = 'org_admin' WHERE id = ${TARGET_SUPER_ADMIN_APP_ID}`,
-    );
-    // Mark the target as super_admin via realm role indirection — the service
-    // checks `target.role === 'super_admin'` against the app users.role enum;
-    // we don't have that enum value, so instead this test verifies the
-    // "tenant suspended/archived" branch by setting a non-active tenant.
-    // The actual nested-super_admin block is a defence in depth covered by
-    // the service-level guard whose unit-test surface we already exercise.
-    expect(true).toBe(true);
+  it("blocks impersonating a platform-tenant member (nested impersonation) with 400", async () => {
+    const token = superAdminToken();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: PLATFORM_TARGET_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/400",
+      title: "Bad Request",
+      status: 400,
+    });
+    expect((res.json() as { detail?: string }).detail ?? "").toMatch(/platform/i);
   });
 
   it("rejects target user without a Keycloak identity", async () => {
@@ -476,6 +494,102 @@ describe("Rate limit + lockout", () => {
       payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
     });
     expect(res.statusCode).toBe(423);
+  });
+});
+
+// ─── Token claim shape (review QA F12 / F13) ───────────────────────────────
+
+describe("Issued JWT shape", () => {
+  function decodePayload(token: string): Record<string, unknown> {
+    const parts = token.split(".");
+    return JSON.parse(Buffer.from(parts[1] ?? "", "base64url").toString("utf8"));
+  }
+
+  it("delegation token retains `super_admin` realm role", async () => {
+    const operator = superAdminToken();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(operator),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.payload);
+    const payload = decodePayload(body.data.token);
+    const realmRoles =
+      (payload as { realm_access?: { roles?: string[] } }).realm_access?.roles ?? [];
+    expect(realmRoles).toContain("super_admin");
+  });
+
+  it("pure-impersonation token strips `super_admin` and uses target role only", async () => {
+    const operator = superAdminToken();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(operator),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "impersonation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.payload);
+    const payload = decodePayload(body.data.token);
+    const realmRoles =
+      (payload as { realm_access?: { roles?: string[] } }).realm_access?.roles ?? [];
+    expect(realmRoles).not.toContain("super_admin");
+    expect(realmRoles).toContain("org_admin"); // target's role
+  });
+
+  it("both modes carry `act.sub === operator` (RFC 8693 — review F13)", async () => {
+    const operator = superAdminToken();
+    for (const mode of ["delegation", "impersonation"] as const) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/admin/impersonation",
+        headers: authHeader(operator),
+        payload: { targetUserId: TARGET_USER_APP_ID, mode, reason: VALID_REASON },
+      });
+      expect(res.statusCode).toBe(201);
+      const payload = decodePayload(JSON.parse(res.payload).data.token) as {
+        act?: { sub?: string };
+        sub?: string;
+        imp_mode?: string;
+      };
+      expect(payload.act?.sub).toBe(SUPER_ADMIN_KEYCLOAK_ID);
+      expect(payload.sub).toBe(TARGET_USER_KEYCLOAK_ID);
+      expect(payload.imp_mode).toBe(mode);
+    }
+  });
+});
+
+// ─── Cross-tenant RLS isolation (review QA F2) ─────────────────────────────
+
+describe("Cross-tenant RLS isolation", () => {
+  it("pure-impersonation session in ORG_A cannot see ORG_B resources", async () => {
+    // Insert an ORG_B-owned constituent that the impersonator should NOT
+    // be able to see, even though they have super_admin.
+    await db.execute(sql`
+      INSERT INTO constituents (id, org_id, first_name, last_name, type)
+      VALUES ('00000000-0000-0000-0000-000000000bb1', ${ORG_B}, 'OrgB', 'Constituent', 'donor')
+      ON CONFLICT (id) DO NOTHING
+    `);
+
+    const operator = superAdminToken();
+    const start = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(operator),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "impersonation", reason: VALID_REASON },
+    });
+    expect(start.statusCode).toBe(201);
+    const cookie = extractImpersonationCookie(start.headers["set-cookie"]) ?? "";
+
+    // Attempt to read the ORG_B-owned constituent from inside the ORG_A
+    // impersonation session — RLS must shadow it as 404.
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/00000000-0000-0000-0000-000000000bb1",
+      headers: { cookie: `givernance_jwt=${cookie}` },
+    });
+    expect(res.statusCode).toBe(404);
   });
 });
 

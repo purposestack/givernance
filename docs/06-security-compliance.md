@@ -62,6 +62,20 @@ Operational impact:
 - Privileged operations require step-up auth + reason field
 - Break-glass access logged and time-limited
 
+### Impersonation (issue #24, two-mode design)
+
+Two coexisting support-session modes are documented in [`docs/19-impersonation.md`](./19-impersonation.md):
+
+- **Delegation** — operator retains super_admin powers on a tenant's configuration. RFC 8693 `act` claim. Default 2h, capped 4h.
+- **Pure impersonation** — operator assumes the user's identity to reproduce a bug. Writes blocked at the middleware. Default 30m, capped 1h.
+
+**GDPR specifics:**
+
+- `impersonation_sessions` rows are **audit records exempt from Art. 17 erasure** (same principle as `audit_logs`). The append-only DB trigger (`prevent_impersonation_session_mutation`, migration 0033) enforces this at the Postgres level — only `(ended_at, end_reason)` may transition NULL→non-NULL once.
+- A subject's DSAR export under Art. 15 includes `impersonation_sessions` rows where they are EITHER the impersonated user OR the operator — both identities are visible in the export.
+- Reason field is mandatory (≥ 20 chars, DB CHECK constraint) — creates an auditable paper trail of WHY a platform admin accessed an account.
+- Step-up MFA is delegated to Keycloak via OIDC `auth_time` + `acr` (production hard-fails to `IMPERSONATION_REQUIRE_ACR_2=true`); no app-side TOTP store.
+
 ## Security operations
 - SAST/DAST in CI
 - Dependency scanning + SBOM

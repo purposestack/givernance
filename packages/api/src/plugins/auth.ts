@@ -92,6 +92,18 @@ function isAuthExempt(url: string): boolean {
 }
 
 /**
+ * Normalise OIDC `acr` to a scalar string. Keycloak occasionally emits
+ * `["2"]` instead of `"2"` depending on broker / RequestedLevelOfAssurance
+ * configuration — without this normalisation the impersonation step-up
+ * validator would reject legitimate MFA-backed tokens (issue #24, review H2).
+ */
+function normaliseAcr(raw: unknown): string | undefined {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === "string") return raw[0];
+  return undefined;
+}
+
+/**
  * Discriminated outcome of token validation. Each variant maps to a
  * distinct 401 response in the caller (ADR-021).
  *
@@ -178,7 +190,7 @@ async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult>
     role: decoded.role as UserRole | undefined,
     act: decoded.act,
     authTime: typeof decoded.auth_time === "number" ? decoded.auth_time : undefined,
-    acr: typeof decoded.acr === "string" ? decoded.acr : undefined,
+    acr: normaliseAcr(decoded.acr),
   };
   request.jwtJti = decoded.jti ?? null;
   request.jwtExp = typeof decoded.exp === "number" ? decoded.exp : null;

@@ -13,6 +13,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { PLATFORM_TENANT_ID } from "@givernance/shared/constants";
 import { auditLogs, impersonationSessions, tenants, users } from "@givernance/shared/schema";
 import type { ImpersonationModeName } from "@givernance/shared/types";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
@@ -64,14 +65,16 @@ export class ImpersonationServiceError extends Error {
 export async function startSession(input: StartSessionInput): Promise<StartSessionResult> {
   const target = await resolveTarget(input.targetUserId);
 
-  if (target.role === "super_admin") {
-    // Spec doc §12 open-question — we resolve "no" here. Nested super-admin
-    // impersonation breaks the audit trail because the actor chain becomes
-    // ambiguous, and the support flow has no legitimate need for it.
+  // Reject impersonating any user who belongs to the platform tenant
+  // (super-admins live there). The `users.role` enum has no `super_admin`
+  // value — that role is realm-level only — so the structural signal is
+  // the target's `org_id`. Nested operator-on-operator impersonation
+  // breaks the audit chain and has no legitimate support use case.
+  if (target.orgId === PLATFORM_TENANT_ID) {
     throw new ImpersonationServiceError(
       400,
       "TARGET_NESTED_SUPER_ADMIN",
-      "Cannot impersonate another super_admin; nested impersonation is forbidden.",
+      "Cannot impersonate a platform user; nested impersonation is forbidden.",
     );
   }
 
@@ -79,6 +82,13 @@ export async function startSession(input: StartSessionInput): Promise<StartSessi
   const ttlSeconds = plan.ttlSeconds;
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
+  // Insert the session row + the matching `impersonation.started` audit
+  // entry in a single transaction so we never end up with an active
+  // session that has no audit trail (review H1). The Redis record + token
+  // mint stay outside the transaction because (a) they don't share the
+  // Postgres connection, and (b) a later failure there leaves a session
+  // row that the auth plugin will reject (no Redis record → 401), which is
+  // the safer fail-mode.
   const sessionRow = await systemDb.transaction(async (tx) => {
     const [row] = await tx
       .insert(impersonationSessions)
@@ -95,6 +105,21 @@ export async function startSession(input: StartSessionInput): Promise<StartSessi
       })
       .returning();
     if (!row) throw new Error("startSession: insert returned no row");
+
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${target.orgId}, true)`);
+    await tx.insert(auditLogs).values({
+      orgId: target.orgId,
+      userId: target.keycloakId,
+      actorId: input.impersonatorKeycloakId,
+      impersonationSessionId: row.id,
+      impersonationMode: input.mode,
+      action: "impersonation.started",
+      resourceType: "impersonation_session",
+      resourceId: row.id,
+      ipHash: input.ipHash,
+      userAgent: input.userAgent ?? undefined,
+    });
+
     return row;
   });
 
@@ -124,16 +149,8 @@ export async function startSession(input: StartSessionInput): Promise<StartSessi
     jti: token.jti,
   });
 
-  await emitLifecycleAudit({
-    orgId: target.orgId,
-    userId: target.keycloakId,
-    actorId: input.impersonatorKeycloakId,
-    sessionId: sessionRow.id,
-    mode: input.mode,
-    action: "impersonation.started",
-    ipHash: input.ipHash,
-    userAgent: input.userAgent,
-  });
+  // (Lifecycle `impersonation.started` was already audited inside the
+  // session-insert transaction above — review H1.)
 
   return {
     sessionId: sessionRow.id,
@@ -161,6 +178,7 @@ async function mintToken(
   if (env.IMPERSONATION_USE_KEYCLOAK_EXCHANGE) {
     return exchangeTokenViaKeycloak({
       operatorAccessToken: input.operatorAccessToken,
+      operatorKeycloakId: input.impersonatorKeycloakId,
       targetKeycloakId: input.targetKeycloakId,
       sessionId: input.sessionId,
       mode: input.mode,
