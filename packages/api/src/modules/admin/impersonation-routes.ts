@@ -209,33 +209,10 @@ export async function impersonationRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      if (!request.auth) {
-        request.authDenial = { guard: "requireSuperAdmin", reason: "missing_token" };
-        return reply
-          .status(401)
-          .send(problemDetail(401, "Unauthorized", "Authentication required."));
-      }
-      const { sessionId } = request.params as { sessionId: string };
-      const isSuperAdmin = request.auth.roles.includes("super_admin");
-      const isInsideThisSession = request.auth.impersonation?.sessionId === sessionId;
-      if (!isSuperAdmin && !isInsideThisSession) {
-        // 404 mirrors `requireSuperAdmin`'s anti-disclosure stance. Record
-        // the discriminator so SOC dashboards still see RBAC probing, even
-        // though we don't reach the standard guard (this route accepts
-        // self-end from inside a session, hence the bespoke check).
-        request.rbacDenial = {
-          guard: "requireSuperAdmin",
-          requiredRoles: ["super_admin"],
-          actualRole: request.auth.role ?? null,
-        };
-        request.log.warn({ rbacDenial: request.rbacDenial }, "rbac denial");
-        return reply.status(404).send(problemDetail(404, "Not Found", "Not Found"));
-      }
+      const guard = checkEndSessionAuth(request);
+      if (!guard.ok) return reply.status(guard.status).send(guard.body);
 
-      // Allow both: (a) the operator ending their OWN active session
-      // (regular flow — the banner's "End session" button), and (b) any
-      // super_admin revoking ANYONE's session (emergency flow). Use
-      // `revoked` for the latter so the audit trail tells them apart.
+      const { sessionId } = request.params as { sessionId: string };
       const session = await getSession(sessionId);
       if (!session) {
         return reply
@@ -243,40 +220,24 @@ export async function impersonationRoutes(app: FastifyInstance) {
           .send(problemDetail(404, "Not Found", "Impersonation session not found"));
       }
 
+      // Allow both: (a) the operator ending their OWN active session
+      // (regular flow — the banner's "End session" button), and (b) any
+      // super_admin revoking ANYONE's session (emergency flow). Use
+      // `revoked` for the latter so the audit trail tells them apart.
       const isSelfEnd =
-        request.auth.impersonation?.sessionId === sessionId ||
-        session.impersonatorKeycloakId === request.auth.userId;
+        guard.auth.impersonation?.sessionId === sessionId ||
+        session.impersonatorKeycloakId === guard.auth.userId;
       const reason = isSelfEnd ? "manual" : "revoked";
 
       await endSession({
         sessionId,
         reason,
-        byImpersonatorKeycloakId: request.auth.userId,
+        byImpersonatorKeycloakId: guard.auth.userId,
         ipHash: hashIp(request.ip),
         userAgent: request.headers["user-agent"] ?? null,
       });
 
-      // Clear the cookie when the operator ends their own session — keeps
-      // the banner from sticking with a now-revoked token. Mirror the
-      // attribute set on the start path: `Secure` in prod, otherwise the
-      // browser may refuse to overwrite a Secure cookie with a non-Secure
-      // one (review M2).
-      if (isSelfEnd) {
-        const isProd = process.env.NODE_ENV === "production";
-        reply.header(
-          "set-cookie",
-          [
-            `${JWT_COOKIE_NAME}=`,
-            "Path=/",
-            "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
-            "HttpOnly",
-            "SameSite=Lax",
-            isProd ? "Secure" : null,
-          ]
-            .filter(Boolean)
-            .join("; "),
-        );
-      }
+      if (isSelfEnd) applyClearImpersonationCookie(reply);
       return reply.status(204).send();
     },
   );
@@ -432,6 +393,60 @@ async function runStartGates(
   }
 
   return { ok: true, auth, operatorAccessToken };
+}
+
+/**
+ * Bespoke auth check for the DELETE endpoint. Standard `requireSuperAdmin`
+ * would 404 the operator's own end-session attempt because pure-impersonation
+ * tokens deliberately strip the super_admin role. Accept either super_admin
+ * OR an active impersonation token whose sessionId matches the URL; record
+ * the same `rbacDenial` discriminator the standard guard does so SOC
+ * dashboards see probing.
+ */
+function checkEndSessionAuth(
+  request: import("fastify").FastifyRequest,
+):
+  | { ok: true; auth: NonNullable<import("fastify").FastifyRequest["auth"]> }
+  | { ok: false; status: number; body: ReturnType<typeof problemDetail> } {
+  if (!request.auth) {
+    request.authDenial = { guard: "requireSuperAdmin", reason: "missing_token" };
+    return {
+      ok: false,
+      status: 401,
+      body: problemDetail(401, "Unauthorized", "Authentication required."),
+    };
+  }
+  const { sessionId } = request.params as { sessionId: string };
+  const isSuperAdmin = request.auth.roles.includes("super_admin");
+  const isInsideThisSession = request.auth.impersonation?.sessionId === sessionId;
+  if (!isSuperAdmin && !isInsideThisSession) {
+    request.rbacDenial = {
+      guard: "requireSuperAdmin",
+      requiredRoles: ["super_admin"],
+      actualRole: request.auth.role ?? null,
+    };
+    request.log.warn({ rbacDenial: request.rbacDenial }, "rbac denial");
+    return { ok: false, status: 404, body: problemDetail(404, "Not Found", "Not Found") };
+  }
+  return { ok: true, auth: request.auth };
+}
+
+/** Clears the impersonation cookie on self-end. Mirrors `applyImpersonationCookie`'s Secure attribute. */
+function applyClearImpersonationCookie(reply: import("fastify").FastifyReply): void {
+  const isProd = process.env.NODE_ENV === "production";
+  reply.header(
+    "set-cookie",
+    [
+      `${JWT_COOKIE_NAME}=`,
+      "Path=/",
+      "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+      "HttpOnly",
+      "SameSite=Lax",
+      isProd ? "Secure" : null,
+    ]
+      .filter(Boolean)
+      .join("; "),
+  );
 }
 
 /** Sets the impersonation cookie on a successful start. httpOnly + Secure (in prod). */

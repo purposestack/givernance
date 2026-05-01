@@ -309,7 +309,9 @@ async function resolveActiveMembership(sub: string, orgId: string): Promise<bool
     await setActiveUserCache(sub, orgId, isActive ? "active" : "missing");
     return isActive;
   } catch (err) {
-    // biome-ignore lint/suspicious/noConsole: structured logging plumbed via pino at the request scope; logger here is module-scoped
+    // Module-scoped fallback log — the request-scoped pino logger isn't
+    // reachable from the auth-resolver helper. Failing open returns true
+    // so a transient DB blip doesn't lock everyone out.
     console.error({ err, sub, orgId }, "auth: active-row resolution failed — failing open");
     return true;
   }
