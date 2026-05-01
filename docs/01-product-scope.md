@@ -141,7 +141,7 @@ These are the non-negotiable capabilities for v1. Any platform missing these can
 | Pledge balance tracking | MUST | Outstanding balance = pledge total − paid installments |
 | In-kind gift (non-cash, with estimated value) | MUST | Can record in-kind with type and valuation; excluded from cash totals |
 | Matching gift tracking (employer match request, confirmation) | SHOULD | Match linked to original donation; shows as separate gift from employer org |
-| SEPA direct debit (EU standard recurring payment) | MUST | Integration with Stripe/Mollie SEPA; mandate reference on record |
+| SEPA direct debit (EU standard recurring payment) | MUST | Integration with Stripe SEPA; mandate reference on record |
 | Stripe Connect integration (NPO's own Stripe account) | MUST | NPO onboards via Stripe Connect OAuth; Givernance never handles funds directly |
 | Gift acknowledgement / receipt (EU tax receipt format) | MUST | Auto-generates PDF receipt with charity registration number, GDPR notice |
 | Fund allocation (split gift across restricted funds) | MUST | One donation split to multiple funds with amounts |

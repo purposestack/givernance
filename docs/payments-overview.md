@@ -297,7 +297,7 @@ If we want to revisit this in light of new information (a partnership opportunit
 This document describes the architecture that is **implemented today**. Several extensions are tracked but not built:
 
 - **Auto-promote to live mode** when `account.updated.charges_enabled = true` — [issue #62](https://github.com/purposestack/givernance/issues/62).
-- **Mollie as co-primary** for FR/BE/NL (lower fee on iDEAL/Bancontact) — [issue #62](https://github.com/purposestack/givernance/issues/62), gated by `ff.payments.mollie`.
+- **Mollie integration (Hold)**: Originally planned for FR/BE/NL, Mollie has been put on hold indefinitely to focus on Stripe. (lower fee on iDEAL/Bancontact) — [issue #62](https://github.com/purposestack/givernance/issues/62), gated by `ff.payments.mollie`.
 - **SEPA Direct Debit** for recurring donations — [issue #26](https://github.com/purposestack/givernance/issues/26).
 - **Per-tenant fee** (driven by plan instead of a constant) — pending pricing finalisation in [docs/08-pricing-packaging.md](08-pricing-packaging.md).
 - **Restricted Stripe keys with scoped permissions** for the live key — see [20-payment-strategy.md §6](20-payment-strategy.md#6-pci-dss-compliance).
