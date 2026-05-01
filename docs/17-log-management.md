@@ -232,6 +232,7 @@ Several JSONB columns across the schema require special GDPR handling because th
 | Security | rate_limit_hit, cors_violation, invalid_jwt, ip_blocklist | Yes | Yes (warn) |
 | AI actions | ai.suggestion_generated, ai.action_executed, ai.action_blocked, ai.guard_denied | Yes | Yes (info for generated/executed, warn for blocked/denied) |
 | Migration | migration.started, migration.batch_loaded, migration.validation_error, migration.completed | Yes | Yes |
+| Impersonation (issue #24) | impersonation.started, impersonation.ended_by_admin, impersonation.revoked, impersonation.expired, impersonation.denied, impersonation.write_blocked | Yes (lifecycle) | Yes (warn for started/revoked/denied/write_blocked, info for ended_by_admin/expired) |
 
 ### 7.2.1 Auth + RBAC denial discriminators (issue #182, refined PR #185)
 

@@ -257,11 +257,24 @@ export async function impersonationRoutes(app: FastifyInstance) {
       });
 
       // Clear the cookie when the operator ends their own session — keeps
-      // the banner from sticking with a now-revoked token.
+      // the banner from sticking with a now-revoked token. Mirror the
+      // attribute set on the start path: `Secure` in prod, otherwise the
+      // browser may refuse to overwrite a Secure cookie with a non-Secure
+      // one (review M2).
       if (isSelfEnd) {
+        const isProd = process.env.NODE_ENV === "production";
         reply.header(
           "set-cookie",
-          `${JWT_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax`,
+          [
+            `${JWT_COOKIE_NAME}=`,
+            "Path=/",
+            "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+            "HttpOnly",
+            "SameSite=Lax",
+            isProd ? "Secure" : null,
+          ]
+            .filter(Boolean)
+            .join("; "),
         );
       }
       return reply.status(204).send();
@@ -289,16 +302,16 @@ export async function impersonationRoutes(app: FastifyInstance) {
           .send(problemDetail(401, "Unauthorized", "Authentication required."));
       }
       const { targetUserId } = request.params as { targetUserId: string };
-      // Resolve the keycloak_id from the app users.id — same lookup pattern as
-      // the start endpoint, but without the role/email checks (we just need
-      // the Keycloak sub for the bulk revoke).
-      const session = await getSession(targetUserId).catch(() => null);
-      const targetKeycloakIdFromSession = session?.targetKeycloakId ?? null;
-      const targetKeycloakId =
-        targetKeycloakIdFromSession ?? (await resolveKeycloakIdForUser(targetUserId));
+
+      // Resolve the keycloak_id from the app users.id. Anti-enumeration: we
+      // ALWAYS return 200 with `revokedSessionIds: []` on a missing target
+      // user — distinguishing "user not found" from "user has no sessions"
+      // would let a super_admin probe the platform's user UUID space.
+      // Reviewer C1.
+      const targetKeycloakId = await resolveKeycloakIdForUser(targetUserId);
 
       if (!targetKeycloakId) {
-        return reply.status(404).send(problemDetail(404, "Not Found", "Target user not found"));
+        return reply.status(200).send({ data: { revokedSessionIds: [] } });
       }
 
       const revokedSessionIds = await revokeSessionsForTarget({

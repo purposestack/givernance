@@ -10,3 +10,4 @@
 | Support burden at launch | M | M | Onboarding playbooks + knowledge base |
 | Node.js TypeScript performance vs compiled languages | L | M | Fastify 5 (one of fastest Node.js frameworks), connection pooling via PgBouncer, horizontal scaling |
 | Type safety at runtime | M | M | TypeBox validation at API boundaries + Drizzle ORM type-safe queries |
+| Impersonation access to special-category data triggers DPIA (issue #24) | M | H | Step-up MFA + double-attribution audit + reason-mandatory + 7-10y retention. DPIA scoping pending DPO sign-off; tracked in `docs/19-impersonation.md` §11. |
