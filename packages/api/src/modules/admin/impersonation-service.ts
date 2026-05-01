@@ -301,6 +301,118 @@ export async function listSessions(opts: ListSessionsOptions = {}) {
     .limit(limit);
 }
 
+/**
+ * Picker-scoped user search for the start-impersonation form (super-admin
+ * only). Cross-tenant by definition; runs through `systemDb` (BYPASSRLS)
+ * since super-admin operates outside any tenant context. Excludes
+ * platform-tenant users (they can't be impersonated — see startSession).
+ */
+export interface ImpersonationTargetCandidate {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+  keycloakId: string | null;
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+}
+
+export async function searchTargets(filters: {
+  q?: string;
+  tenantId?: string;
+  limit?: number;
+}): Promise<ImpersonationTargetCandidate[]> {
+  const limit = Math.min(Math.max(filters.limit ?? 20, 1), 50);
+  const conditions = [isNull(users.deletedAt), sql`${users.orgId} != ${PLATFORM_TENANT_ID}::uuid`];
+
+  if (filters.tenantId) {
+    conditions.push(eq(users.orgId, filters.tenantId));
+  }
+
+  if (filters.q) {
+    const raw = filters.q.trim();
+    if (raw.length > 0) {
+      const like = `%${raw.toLowerCase()}%`;
+      // Exact UUID match short-circuits via OR — paste-the-UUID flow still
+      // works for operators who already have one. Otherwise ILIKE on the
+      // first/last/email substring; case folded in SQL so it works
+      // regardless of the value's stored casing.
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRe.test(raw)) {
+        conditions.push(
+          sql`(${users.id} = ${raw}::uuid OR ${users.keycloakId} = ${raw} OR lower(${users.email}) LIKE ${like})`,
+        );
+      } else {
+        conditions.push(
+          sql`(lower(${users.firstName}) LIKE ${like} OR lower(${users.lastName}) LIKE ${like} OR lower(${users.email}) LIKE ${like})`,
+        );
+      }
+    }
+  }
+
+  const rows = await systemDb
+    .select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      email: users.email,
+      role: users.role,
+      keycloakId: users.keycloakId,
+      tenantId: tenants.id,
+      tenantName: tenants.name,
+      tenantSlug: tenants.slug,
+    })
+    .from(users)
+    .innerJoin(tenants, eq(tenants.id, users.orgId))
+    .where(and(...conditions))
+    .orderBy(users.lastName, users.firstName)
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    firstName: r.firstName,
+    lastName: r.lastName,
+    email: r.email,
+    role: r.role,
+    keycloakId: r.keycloakId ?? null,
+    tenantId: r.tenantId,
+    tenantName: r.tenantName,
+    tenantSlug: r.tenantSlug,
+  }));
+}
+
+/** Lightweight tenant list for the picker — non-platform, non-archived. */
+export async function listTenantsForPicker(
+  q?: string,
+): Promise<Array<{ id: string; name: string; slug: string; status: string }>> {
+  const conditions = [
+    sql`${tenants.id} != ${PLATFORM_TENANT_ID}::uuid`,
+    sql`${tenants.status} != 'archived'`,
+  ];
+  if (q) {
+    const raw = q.trim();
+    if (raw.length > 0) {
+      const like = `%${raw.toLowerCase()}%`;
+      conditions.push(
+        sql`(lower(${tenants.name}) LIKE ${like} OR lower(${tenants.slug}) LIKE ${like})`,
+      );
+    }
+  }
+  return systemDb
+    .select({
+      id: tenants.id,
+      name: tenants.name,
+      slug: tenants.slug,
+      status: tenants.status,
+    })
+    .from(tenants)
+    .where(and(...conditions))
+    .orderBy(tenants.name)
+    .limit(50);
+}
+
 export async function getSession(sessionId: string) {
   const [row] = await systemDb
     .select()
