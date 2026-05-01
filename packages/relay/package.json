@@ -11,12 +11,12 @@
   },
   "dependencies": {
     "@givernance/shared": "workspace:*",
-    "bullmq": "^5.31.0",
-    "drizzle-orm": "^0.36.4",
+    "@sinclair/typebox": "^0.34.12",
+    "bullmq": "^5.76.4",
+    "drizzle-orm": "^0.45.2",
     "ioredis": "^5.4.2",
     "pg": "^8.13.1",
-    "pino": "^10.3.1",
-    "@sinclair/typebox": "^0.34.12"
+    "pino": "^10.3.1"
   },
   "devDependencies": {
     "@types/pg": "^8.20.0",
