@@ -421,6 +421,55 @@ export async function listTenantsForPicker(
     .limit(50);
 }
 
+/**
+ * Audit-log entries written during a specific impersonation session.
+ * Cross-tenant — `audit_logs` is RLS-protected, so we go through the
+ * BYPASSRLS systemDb pool. Ordered chronologically so the detail page
+ * can render a timeline.
+ */
+export async function getSessionAudit(
+  sessionId: string,
+  limit = 500,
+): Promise<
+  Array<{
+    id: string;
+    orgId: string;
+    userId: string | null;
+    actorId: string | null;
+    impersonationMode: string | null;
+    action: string;
+    resourceType: string | null;
+    resourceId: string | null;
+    ipHash: string | null;
+    userAgent: string | null;
+    createdAt: string;
+  }>
+> {
+  const rows = await systemDb
+    .select({
+      id: auditLogs.id,
+      orgId: auditLogs.orgId,
+      userId: auditLogs.userId,
+      actorId: auditLogs.actorId,
+      impersonationMode: auditLogs.impersonationMode,
+      action: auditLogs.action,
+      resourceType: auditLogs.resourceType,
+      resourceId: auditLogs.resourceId,
+      ipHash: auditLogs.ipHash,
+      userAgent: auditLogs.userAgent,
+      createdAt: auditLogs.createdAt,
+    })
+    .from(auditLogs)
+    .where(eq(auditLogs.impersonationSessionId, sessionId))
+    .orderBy(auditLogs.createdAt)
+    .limit(Math.min(Math.max(limit, 1), 1000));
+
+  return rows.map((r) => ({
+    ...r,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
 export async function getSession(sessionId: string) {
   const [row] = await systemDb
     .select()

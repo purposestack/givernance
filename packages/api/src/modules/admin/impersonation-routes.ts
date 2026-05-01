@@ -47,6 +47,7 @@ import {
 import {
   endSession,
   getSession,
+  getSessionAudit,
   hashIp,
   ImpersonationServiceError,
   listSessions,
@@ -237,6 +238,54 @@ export async function impersonationRoutes(app: FastifyInstance) {
     async (request) => {
       const { q } = request.query as { q?: string };
       const data = await listTenantsForPicker(q);
+      return { data };
+    },
+  );
+
+  /**
+   * GET /v1/admin/impersonation/:sessionId/audit — every audit_log row
+   * written during a specific session, chronological. Used by the admin
+   * detail page to render the timeline of what the operator did under
+   * the impersonation cookie. Spec doc-19 §10.
+   */
+  app.get(
+    "/admin/impersonation/:sessionId/audit",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Admin", "Impersonation"],
+        params: SessionIdParams,
+        response: {
+          200: Type.Object({
+            data: Type.Array(
+              Type.Object({
+                id: UuidSchema,
+                orgId: UuidSchema,
+                userId: Type.Union([Type.String(), Type.Null()]),
+                actorId: Type.Union([Type.String(), Type.Null()]),
+                impersonationMode: Type.Union([Type.String(), Type.Null()]),
+                action: Type.String(),
+                resourceType: Type.Union([Type.String(), Type.Null()]),
+                resourceId: Type.Union([Type.String(), Type.Null()]),
+                ipHash: Type.Union([Type.String(), Type.Null()]),
+                userAgent: Type.Union([Type.String(), Type.Null()]),
+                createdAt: Type.String({ format: "date-time" }),
+              }),
+            ),
+          }),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { sessionId } = request.params as { sessionId: string };
+      const session = await getSession(sessionId);
+      if (!session) {
+        return reply
+          .status(404)
+          .send(problemDetail(404, "Not Found", "Impersonation session not found"));
+      }
+      const data = await getSessionAudit(sessionId);
       return { data };
     },
   );
