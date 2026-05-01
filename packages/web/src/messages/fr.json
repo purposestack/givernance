@@ -275,7 +275,8 @@
       "admin": {
         "section": "Back-office",
         "tenants": "Tenants",
-        "disputes": "Litiges"
+        "disputes": "Litiges",
+        "impersonation": "Sessions de support"
       }
     },
     "topbar": {

@@ -9,6 +9,7 @@ import {
   Megaphone,
   RefreshCw,
   ShieldAlert,
+  UserCog,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -40,7 +41,7 @@ interface NavItem {
 
 interface AdminNavItem {
   href: string;
-  labelKey: "tenants" | "disputes";
+  labelKey: "tenants" | "disputes" | "impersonation";
   icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 }
 
@@ -64,6 +65,7 @@ const NAV_ITEMS: NavItem[] = [
 const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin/tenants", labelKey: "tenants", icon: Building2 },
   { href: "/admin/disputes", labelKey: "disputes", icon: ShieldAlert },
+  { href: "/admin/impersonation", labelKey: "impersonation", icon: UserCog },
 ];
 
 interface SidebarProps {
