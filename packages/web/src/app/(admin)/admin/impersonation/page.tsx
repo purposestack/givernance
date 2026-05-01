@@ -11,67 +11,153 @@ import {
 
 export const dynamic = "force-dynamic";
 
+type DerivedStatus = "active" | "ended" | "revoked" | "expired";
+
+function deriveStatus(s: ImpersonationSessionDTO): DerivedStatus {
+  if (s.isActive) return "active";
+  if (s.endReason === "revoked") return "revoked";
+  if (s.endReason === "manual" || s.endReason === "switched") return "ended";
+  // No endReason + expired-by-time → derived expired (TTL reached, no
+  // explicit DELETE recorded). Matches doc-19 §4 state machine.
+  return "expired";
+}
+
 /**
- * Active support sessions list (issue #24).
+ * Cross-operator support-session listing (issue #24).
  *
- * Shows the currently-running delegation/impersonation sessions across the
- * platform. End/revoke actions live on the row; starting a new session
- * goes through `/admin/impersonation/new`.
+ * Lists every session across the platform — active AND historical — for
+ * any super_admin to inspect. The backend has no impersonator filter on
+ * `listSessions`, so a super_admin can audit a colleague's sessions
+ * (useful when the originating super_admin is on holiday and an incident
+ * needs to be investigated).
  */
 export default async function ImpersonationListPage() {
   const t = await getTranslations("admin.impersonation");
   const client = await createServerApiClient();
-  const { data } = await ImpersonationService.listSessions(client, { all: false });
+  // ?all=true returns historical sessions too — newest-first.
+  const { data } = await ImpersonationService.listSessions(client, { all: true, limit: 200 });
+
+  const active = data.filter((s) => deriveStatus(s) === "active");
+  const past = data.filter((s) => deriveStatus(s) !== "active");
 
   return (
-    <main id="main-content" className="mx-auto max-w-6xl space-y-6 p-6">
+    <main id="main-content" className="mx-auto max-w-6xl space-y-8 p-6">
       <header className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{t("listTitle")}</h1>
-          <p className="text-sm text-muted-foreground">{t("listSubtitle")}</p>
+          <p className="text-sm text-muted-foreground">{t("listSubtitleAll")}</p>
         </div>
         <Button asChild>
           <Link href="/admin/impersonation/new">{t("startNew")}</Link>
         </Button>
       </header>
 
-      {data.length === 0 ? (
-        <div className="rounded-lg border border-border bg-surface px-6 py-10 text-center text-sm text-muted-foreground">
-          {t("emptyState")}
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-surface">
-          <table className="min-w-full text-sm">
-            <thead className="bg-surface-variant text-left text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">{t("colMode")}</th>
-                <th className="px-4 py-3">{t("colTarget")}</th>
-                <th className="px-4 py-3">{t("colImpersonator")}</th>
-                <th className="px-4 py-3">{t("colReason")}</th>
-                <th className="px-4 py-3">{t("colExpires")}</th>
-                <th className="px-4 py-3 text-right">{t("colActions")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {data.map((session) => (
-                <SessionRow key={session.id} session={session} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold">{t("sectionActive", { count: active.length })}</h2>
+        {active.length === 0 ? (
+          <EmptyState label={t("emptyActive")} />
+        ) : (
+          <SessionTable rows={active} showActions />
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold">{t("sectionHistory", { count: past.length })}</h2>
+        {past.length === 0 ? (
+          <EmptyState label={t("emptyHistory")} />
+        ) : (
+          <SessionTable rows={past} showActions={false} />
+        )}
+      </section>
     </main>
   );
 }
 
-async function SessionRow({ session }: { session: ImpersonationSessionDTO }) {
+function EmptyState({ label }: { label: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface px-6 py-8 text-center text-sm text-muted-foreground">
+      {label}
+    </div>
+  );
+}
+
+async function SessionTable({
+  rows,
+  showActions,
+}: {
+  rows: ImpersonationSessionDTO[];
+  showActions: boolean;
+}) {
   const t = await getTranslations("admin.impersonation");
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-surface">
+      <table className="min-w-full text-sm">
+        <thead className="bg-surface-variant text-left text-xs uppercase tracking-wider text-muted-foreground">
+          <tr>
+            <th className="px-4 py-3">{t("colStatus")}</th>
+            <th className="px-4 py-3">{t("colMode")}</th>
+            <th className="px-4 py-3">{t("colTarget")}</th>
+            <th className="px-4 py-3">{t("colImpersonator")}</th>
+            <th className="px-4 py-3">{t("colReason")}</th>
+            <th className="px-4 py-3">{t("colWhen")}</th>
+            <th className="px-4 py-3 text-right">{t("colActions")}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((session) => (
+            <SessionRow key={session.id} session={session} showActions={showActions} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+async function SessionRow({
+  session,
+  showActions,
+}: {
+  session: ImpersonationSessionDTO;
+  showActions: boolean;
+}) {
+  const t = await getTranslations("admin.impersonation");
+  const status = deriveStatus(session);
   const isPure = session.mode === "impersonation";
+
   const modeBadgeClass = isPure
     ? "rounded bg-error-light px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-error-text"
     : "rounded bg-amber-light px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-text";
+
+  const statusBadgeClass = {
+    active:
+      "rounded bg-green-50 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-green-text",
+    ended:
+      "rounded bg-surface-container px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground",
+    revoked:
+      "rounded bg-error-light px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-error-text",
+    expired:
+      "rounded bg-surface-container px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground",
+  }[status];
+
+  const statusLabel = {
+    active: t("statusActive"),
+    ended: t("statusEnded"),
+    revoked: t("statusRevoked"),
+    expired: t("statusExpired"),
+  }[status];
+
+  const whenLabel =
+    status === "active"
+      ? t("whenExpiresAt", { time: new Date(session.expiresAt).toLocaleString() })
+      : session.endedAt
+        ? t("whenEndedAt", { time: new Date(session.endedAt).toLocaleString() })
+        : new Date(session.expiresAt).toLocaleString();
+
   return (
-    <tr>
+    <tr className="hover:bg-surface-variant/40">
+      <td className="px-4 py-3">
+        <span className={statusBadgeClass}>{statusLabel}</span>
+      </td>
       <td className="px-4 py-3">
         <span className={modeBadgeClass}>
           {isPure ? t("badgeImpersonation") : t("badgeDelegation")}
@@ -79,10 +165,19 @@ async function SessionRow({ session }: { session: ImpersonationSessionDTO }) {
       </td>
       <td className="px-4 py-3 font-mono text-xs">{session.targetKeycloakId}</td>
       <td className="px-4 py-3 font-mono text-xs">{session.impersonatorKeycloakId}</td>
-      <td className="px-4 py-3 text-xs">{session.reason}</td>
-      <td className="px-4 py-3 text-xs">{new Date(session.expiresAt).toLocaleString()}</td>
+      <td className="px-4 py-3 max-w-[240px]">
+        <span className="line-clamp-2 text-xs">{session.reason}</span>
+      </td>
+      <td className="px-4 py-3 text-xs">{whenLabel}</td>
       <td className="px-4 py-3 text-right">
-        <EndImpersonationSessionButton sessionId={session.id} />
+        <div className="flex items-center justify-end gap-2">
+          <Button asChild size="sm" variant="ghost">
+            <Link href={`/admin/impersonation/${session.id}`} prefetch={false}>
+              {t("view")}
+            </Link>
+          </Button>
+          {showActions && <EndImpersonationSessionButton sessionId={session.id} />}
+        </div>
       </td>
     </tr>
   );

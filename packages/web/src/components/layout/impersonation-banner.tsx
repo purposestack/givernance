@@ -61,10 +61,12 @@ export function ImpersonationBanner({ impersonation, userName }: ImpersonationBa
       // Even on network error, the cookie-clear redirect below is the
       // right UX — the operator wants out of the session.
     }
-    // Hard reload past the now-cleared cookie so SSR re-renders without
-    // the impersonation banner. Landing on /login is correct: the
-    // impersonation cookie was the only auth, and it's gone.
-    window.location.href = "/login";
+    // Land back on the session list. The cookie was just cleared, so
+    // SSR will see no auth → middleware redirects to /login → Keycloak
+    // SSO auto-relogs the operator (their underlying Keycloak session
+    // is still alive at the IdP) → land on /admin/impersonation. From
+    // the operator's POV: one click, end up where they started.
+    window.location.href = "/admin/impersonation";
   }
 
   const [remaining, setRemaining] = useState<string>(() => {

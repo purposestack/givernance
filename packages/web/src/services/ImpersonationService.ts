@@ -118,4 +118,25 @@ export const ImpersonationService = {
       params: { q },
     });
   },
+
+  async getSessionAudit(
+    client: ApiClient,
+    sessionId: string,
+  ): Promise<{
+    data: Array<{
+      id: string;
+      orgId: string;
+      userId: string | null;
+      actorId: string | null;
+      impersonationMode: string | null;
+      action: string;
+      resourceType: string | null;
+      resourceId: string | null;
+      ipHash: string | null;
+      userAgent: string | null;
+      createdAt: string;
+    }>;
+  }> {
+    return client.get(`/v1/admin/impersonation/${encodeURIComponent(sessionId)}/audit`);
+  },
 };
