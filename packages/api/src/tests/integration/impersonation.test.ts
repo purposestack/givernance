@@ -150,7 +150,12 @@ describe("POST /v1/admin/impersonation — RBAC + step-up", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("super_admin without auth_time is rejected and counted toward lockout", async () => {
+  // In dev (the default test env, IMPERSONATION_REQUIRE_ACR_2=false) the
+  // step-up gate is permissive: auth_time freshness is a proxy for "recent
+  // MFA challenge," and there's no MFA in dev, so it doesn't fire.
+  // The production-mode behaviour (both gates fire together) is covered by
+  // the `validateStepUp` unit test in step-up.test.ts.
+  it("permissive step-up in dev: missing auth_time still succeeds", async () => {
     const token = superAdminToken({ auth_time: undefined });
     const res = await app.inject({
       method: "POST",
@@ -158,11 +163,10 @@ describe("POST /v1/admin/impersonation — RBAC + step-up", () => {
       headers: authHeader(token),
       payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
     });
-    expect(res.statusCode).toBe(401);
-    expect(JSON.parse(res.payload)).toMatchObject({ status: 401, title: "Unauthorized" });
+    expect(res.statusCode).toBe(201);
   });
 
-  it("super_admin with stale auth_time (>5min) is rejected", async () => {
+  it("permissive step-up in dev: stale auth_time still succeeds", async () => {
     const token = superAdminToken({ auth_time: Math.floor(Date.now() / 1000) - 600 });
     const res = await app.inject({
       method: "POST",
@@ -170,7 +174,7 @@ describe("POST /v1/admin/impersonation — RBAC + step-up", () => {
       headers: authHeader(token),
       payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
     });
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(201);
   });
 
   it("reason shorter than 20 chars returns 400 with field error", async () => {
