@@ -13,6 +13,7 @@
     "test": "pnpm -r --workspace-concurrency=1 test",
     "test:watch": "vitest",
     "typecheck": "pnpm -r run typecheck",
+    "check:translations": "node scripts/check-translations.mjs",
     "db:generate": "pnpm --filter @givernance/api run db:generate",
     "db:migrate": "pnpm --filter @givernance/api run db:migrate",
     "docker:up": "docker compose up -d",
