@@ -197,6 +197,9 @@ function PersonBlock({
 }) {
   const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
   const hasName = fullName.length > 0;
+  // Detail page keeps email visible — list page strips it for density,
+  // but the detail page is investigation-mode where every identifier
+  // matters.
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-sm font-medium">

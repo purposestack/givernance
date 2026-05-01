@@ -112,16 +112,10 @@ function UserCell({
       <span className="text-sm font-medium">
         {hasName ? fullName : (email ?? <code className="font-mono text-xs">{keycloakId}</code>)}
       </span>
-      {(email || tenantName) && (
+      {tenantName && (
         <span className="text-xs text-muted-foreground">
-          {hasName && email ? email : null}
-          {hasName && email && tenantName ? " · " : null}
-          {tenantName ? (
-            <>
-              {tenantName}
-              {tenantSlug ? <span className="opacity-60"> ({tenantSlug})</span> : null}
-            </>
-          ) : null}
+          {tenantName}
+          {tenantSlug ? <span className="opacity-60"> ({tenantSlug})</span> : null}
         </span>
       )}
       {hasName && (
