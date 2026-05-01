@@ -295,6 +295,7 @@
       "modeBadgeDelegation": "DÉLÉGATION",
       "modeBadgeImpersonation": "IMPERSONATION",
       "endSession": "Terminer",
+      "ending": "Fermeture…",
       "expired": "expirée",
       "lessThanMinute": "< 1m",
       "fallbackUser": "utilisateur"
