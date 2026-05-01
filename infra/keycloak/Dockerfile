@@ -16,3 +16,12 @@ FROM quay.io/keycloak/keycloak:26.6.1
 # Copy the Givernance login theme. Keycloak discovers themes by scanning
 # /opt/keycloak/themes/ on startup.
 COPY themes/givernance /opt/keycloak/themes/givernance
+
+# Issue #24 — Script Mapper that injects the RFC 8693 `act` claim plus
+# `imp_mode` / `imp_session_id` / `imp_reason` into tokens minted via
+# OAuth2 Token Exchange. Keycloak 26 does NOT emit `act` natively
+# (keycloak/keycloak#12076 — open since 2022); the JS provider is the
+# minimal-effort path until upstream lands native support. The script
+# itself is read in dynamically by the realm config (`protocolMappers`
+# on the `givernance-impersonation` client).
+COPY mappers/impersonation-act-mapper.js /opt/keycloak/providers/scripts/impersonation-act-mapper.js

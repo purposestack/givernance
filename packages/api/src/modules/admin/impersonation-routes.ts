@@ -1,41 +1,489 @@
-/** Admin impersonation routes — manage impersonation sessions (super_admin only) */
+/**
+ * Support-session API (issue #24).
+ *
+ * Two coexisting modes — pick at session start. See docs/19-impersonation.md
+ * for the operational model and `impersonation-service.ts` for behaviour.
+ *
+ * Cookie shape:
+ *   - On START, we set the impersonation token as `givernance_jwt` cookie
+ *     (same name the auth plugin already reads). The web tier swaps cookies
+ *     atomically — the operator's normal token is overwritten until END.
+ *   - On END, we clear the cookie so the next request bounces to login.
+ *     This keeps the impersonation banner from sticking around with a stale
+ *     token in flight.
+ *
+ * Step-up:
+ *   - The operator's access token must carry `auth_time` within the last
+ *     5 minutes. In production with `IMPERSONATION_REQUIRE_ACR_2=true`,
+ *     `acr` must also be `>= 2` (Keycloak's MFA-backed login).
+ */
 
+import type { ImpersonationStartBody } from "@givernance/shared/validators";
+import {
+  ImpersonationSessionSchema,
+  ImpersonationStartBodySchema,
+  ImpersonationStartResponseSchema,
+} from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+import { env } from "../../env.js";
 import { requireSuperAdmin } from "../../lib/guards.js";
-import { ErrorResponses, UuidSchema } from "../../lib/schemas.js";
+import {
+  clearDeniedAttempts,
+  IMPERSONATION_DENIED_LOCKOUT_THRESHOLD,
+  IMPERSONATION_MAX_STARTS_PER_24H,
+  incrementStartRateLimit,
+  isLockedOut,
+  recordDeniedAttempt,
+} from "../../lib/impersonation/redis-store.js";
+import { validateStepUp } from "../../lib/impersonation/step-up.js";
+import {
+  DataArrayResponseNoPagination,
+  DataResponse,
+  ErrorResponses,
+  problemDetail,
+  UuidSchema,
+} from "../../lib/schemas.js";
+import {
+  endSession,
+  getSession,
+  hashIp,
+  ImpersonationServiceError,
+  listSessions,
+  revokeSessionsForTarget,
+  startSession,
+} from "./impersonation-service.js";
 
+const JWT_COOKIE_NAME = "givernance_jwt";
 const SessionIdParams = Type.Object({ sessionId: UuidSchema });
+const TargetUserIdParams = Type.Object({ targetUserId: UuidSchema });
 
 export async function impersonationRoutes(app: FastifyInstance) {
-  /** DELETE /admin/impersonation/:sessionId — end an impersonation session (super_admin only) */
-  app.delete(
+  /** POST /v1/admin/impersonation — start a new support session (delegation OR impersonation) */
+  app.post(
+    "/admin/impersonation",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Admin", "Impersonation"],
+        body: ImpersonationStartBodySchema,
+        response: {
+          201: DataResponse(ImpersonationStartResponseSchema),
+          ...ErrorResponses,
+          400: ErrorResponses[404],
+          409: ErrorResponses[404],
+          423: ErrorResponses[404],
+          429: ErrorResponses[404],
+        },
+      },
+    },
+    async (request, reply) => {
+      const gateResult = await runStartGates(request);
+      if (!gateResult.ok) {
+        return reply.status(gateResult.status).send(gateResult.body);
+      }
+      const { auth, operatorAccessToken } = gateResult;
+
+      const body = request.body as ImpersonationStartBody;
+      try {
+        const result = await startSession({
+          impersonatorKeycloakId: auth.userId,
+          operatorAccessToken: operatorAccessToken ?? "",
+          targetUserId: body.targetUserId,
+          mode: body.mode,
+          reason: body.reason,
+          ipHash: hashIp(request.ip),
+          userAgent: request.headers["user-agent"] ?? null,
+        });
+
+        await clearDeniedAttempts(auth.userId);
+        applyImpersonationCookie(reply, result.token, result.expiresAt);
+
+        return reply.status(201).send({
+          data: {
+            sessionId: result.sessionId,
+            mode: body.mode,
+            expiresAt: result.expiresAt.toISOString(),
+            token: result.token,
+            targetOrgId: result.targetOrgId,
+            targetUserId: body.targetUserId,
+          },
+        });
+      } catch (err) {
+        if (err instanceof ImpersonationServiceError) {
+          return reply
+            .status(err.status)
+            .send(problemDetail(err.status, mapTitle(err.status), err.message));
+        }
+        request.log.error({ err }, "impersonation: unexpected start failure");
+        throw err;
+      }
+    },
+  );
+
+  /** GET /v1/admin/impersonation — list sessions (active by default; pass ?all=true for full history) */
+  app.get(
+    "/admin/impersonation",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Admin", "Impersonation"],
+        querystring: Type.Object({
+          all: Type.Optional(Type.Boolean({ default: false })),
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+        }),
+        response: {
+          200: DataArrayResponseNoPagination(ImpersonationSessionSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request) => {
+      const query = request.query as { all?: boolean; limit?: number };
+      const sessions = await listSessions({
+        activeOnly: !query.all,
+        limit: query.limit,
+      });
+      const now = Date.now();
+      return {
+        data: sessions.map((s) => ({
+          ...s,
+          expiresAt: s.expiresAt.toISOString(),
+          endedAt: s.endedAt?.toISOString() ?? null,
+          createdAt: s.createdAt.toISOString(),
+          isActive: !s.endedAt && s.expiresAt.getTime() > now,
+        })),
+      };
+    },
+  );
+
+  /** GET /v1/admin/impersonation/:sessionId — single session detail */
+  app.get(
     "/admin/impersonation/:sessionId",
     {
       preHandler: requireSuperAdmin,
       schema: {
-        tags: ["Admin"],
+        tags: ["Admin", "Impersonation"],
+        params: SessionIdParams,
+        response: { 200: DataResponse(ImpersonationSessionSchema), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const { sessionId } = request.params as { sessionId: string };
+      const session = await getSession(sessionId);
+      if (!session) {
+        return reply
+          .status(404)
+          .send(problemDetail(404, "Not Found", "Impersonation session not found"));
+      }
+      return {
+        data: {
+          ...session,
+          expiresAt: session.expiresAt.toISOString(),
+          endedAt: session.endedAt?.toISOString() ?? null,
+          createdAt: session.createdAt.toISOString(),
+          isActive: !session.endedAt && session.expiresAt.getTime() > Date.now(),
+        },
+      };
+    },
+  );
+
+  /**
+   * DELETE /v1/admin/impersonation/:sessionId — end a session.
+   *
+   * Cannot use the standard `requireSuperAdmin` preHandler: pure-impersonation
+   * tokens deliberately strip the operator's super_admin role from
+   * `roles[]`, so the operator would 404 on their own End-Session button.
+   * Instead, accept BOTH:
+   *   - a super_admin (for the cross-session revoke flow), or
+   *   - an active impersonation token whose `sessionId` matches the URL.
+   * Both branches reach the same lookup + audit path below.
+   */
+  app.delete(
+    "/admin/impersonation/:sessionId",
+    {
+      schema: {
+        tags: ["Admin", "Impersonation"],
         params: SessionIdParams,
         response: { 204: Type.Null(), ...ErrorResponses },
       },
     },
     async (request, reply) => {
+      if (!request.auth) {
+        request.authDenial = { guard: "requireSuperAdmin", reason: "missing_token" };
+        return reply
+          .status(401)
+          .send(problemDetail(401, "Unauthorized", "Authentication required."));
+      }
       const { sessionId } = request.params as { sessionId: string };
+      const isSuperAdmin = request.auth.roles.includes("super_admin");
+      const isInsideThisSession = request.auth.impersonation?.sessionId === sessionId;
+      if (!isSuperAdmin && !isInsideThisSession) {
+        // 404 mirrors `requireSuperAdmin`'s anti-disclosure stance. Record
+        // the discriminator so SOC dashboards still see RBAC probing, even
+        // though we don't reach the standard guard (this route accepts
+        // self-end from inside a session, hence the bespoke check).
+        request.rbacDenial = {
+          guard: "requireSuperAdmin",
+          requiredRoles: ["super_admin"],
+          actualRole: request.auth.role ?? null,
+        };
+        request.log.warn({ rbacDenial: request.rbacDenial }, "rbac denial");
+        return reply.status(404).send(problemDetail(404, "Not Found", "Not Found"));
+      }
 
-      // Phase 2: look up session in Redis and validate ownership
-      // For now, log the session termination and clear the JWT cookie
-      request.log.info(
-        { sessionId, actor: request.auth?.userId },
-        "Impersonation session terminated",
-      );
+      // Allow both: (a) the operator ending their OWN active session
+      // (regular flow — the banner's "End session" button), and (b) any
+      // super_admin revoking ANYONE's session (emergency flow). Use
+      // `revoked` for the latter so the audit trail tells them apart.
+      const session = await getSession(sessionId);
+      if (!session) {
+        return reply
+          .status(404)
+          .send(problemDetail(404, "Not Found", "Impersonation session not found"));
+      }
 
-      return reply
-        .header(
+      const isSelfEnd =
+        request.auth.impersonation?.sessionId === sessionId ||
+        session.impersonatorKeycloakId === request.auth.userId;
+      const reason = isSelfEnd ? "manual" : "revoked";
+
+      await endSession({
+        sessionId,
+        reason,
+        byImpersonatorKeycloakId: request.auth.userId,
+        ipHash: hashIp(request.ip),
+        userAgent: request.headers["user-agent"] ?? null,
+      });
+
+      // Clear the cookie when the operator ends their own session — keeps
+      // the banner from sticking with a now-revoked token.
+      if (isSelfEnd) {
+        reply.header(
           "set-cookie",
-          "token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax",
-        )
-        .status(204)
-        .send();
+          `${JWT_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax`,
+        );
+      }
+      return reply.status(204).send();
     },
   );
+
+  /** DELETE /v1/admin/impersonation/user/:targetUserId — revoke ALL active sessions for a user (emergency) */
+  app.delete(
+    "/admin/impersonation/user/:targetUserId",
+    {
+      preHandler: requireSuperAdmin,
+      schema: {
+        tags: ["Admin", "Impersonation"],
+        params: TargetUserIdParams,
+        response: {
+          200: Type.Object({ data: Type.Object({ revokedSessionIds: Type.Array(UuidSchema) }) }),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.auth) {
+        return reply
+          .status(401)
+          .send(problemDetail(401, "Unauthorized", "Authentication required."));
+      }
+      const { targetUserId } = request.params as { targetUserId: string };
+      // Resolve the keycloak_id from the app users.id — same lookup pattern as
+      // the start endpoint, but without the role/email checks (we just need
+      // the Keycloak sub for the bulk revoke).
+      const session = await getSession(targetUserId).catch(() => null);
+      const targetKeycloakIdFromSession = session?.targetKeycloakId ?? null;
+      const targetKeycloakId =
+        targetKeycloakIdFromSession ?? (await resolveKeycloakIdForUser(targetUserId));
+
+      if (!targetKeycloakId) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Target user not found"));
+      }
+
+      const revokedSessionIds = await revokeSessionsForTarget({
+        targetKeycloakId,
+        byImpersonatorKeycloakId: request.auth.userId,
+        ipHash: hashIp(request.ip),
+        userAgent: request.headers["user-agent"] ?? null,
+      });
+
+      return reply.status(200).send({ data: { revokedSessionIds } });
+    },
+  );
+}
+
+type GateOk = {
+  ok: true;
+  auth: NonNullable<import("fastify").FastifyRequest["auth"]>;
+  operatorAccessToken: string | null;
+};
+type GateFail = { ok: false; status: number; body: ReturnType<typeof problemDetail> };
+
+/**
+ * All the pre-flight checks that must pass BEFORE the route inserts a
+ * session row. Extracted so the route handler stays under the cognitive-
+ * complexity budget — each check still lives next to its sibling logic
+ * here rather than smeared across files.
+ */
+async function runStartGates(
+  request: import("fastify").FastifyRequest,
+): Promise<GateOk | GateFail> {
+  const auth = request.auth;
+  if (!auth) {
+    return {
+      ok: false,
+      status: 401,
+      body: problemDetail(401, "Unauthorized", "Authentication required."),
+    };
+  }
+
+  // Block impersonation-from-impersonation: the operator must hold a
+  // non-impersonated super_admin session before they can start a new
+  // support session, or the audit chain becomes meaningless.
+  if (auth.impersonation) {
+    return {
+      ok: false,
+      status: 409,
+      body: problemDetail(
+        409,
+        "Conflict",
+        "Cannot start a new impersonation session from inside another impersonation session.",
+      ),
+    };
+  }
+
+  // Lockout check runs BEFORE rate-limit increment so a locked-out
+  // operator can't keep burning their daily counter.
+  if (await isLockedOut(auth.userId)) {
+    return {
+      ok: false,
+      status: 423,
+      body: problemDetail(
+        423,
+        "Locked",
+        `Account temporarily locked after ${IMPERSONATION_DENIED_LOCKOUT_THRESHOLD} failed step-up attempts. Try again later.`,
+      ),
+    };
+  }
+
+  const stepUp = validateStepUp({ auth_time: auth.authTime, acr: auth.acr });
+  if (!stepUp.ok) {
+    const denied = await recordDeniedAttempt(auth.userId);
+    request.log.warn(
+      {
+        actorId: auth.userId,
+        stepUp,
+        deniedCount: denied.count,
+        audit: "impersonation.denied",
+      },
+      "impersonation: step-up failed",
+    );
+    return {
+      ok: false,
+      status: 401,
+      body: problemDetail(
+        401,
+        "Unauthorized",
+        denied.lockedOut
+          ? "Step-up authentication failed and account is now locked."
+          : "Step-up authentication required — re-authenticate (with MFA when configured) and retry.",
+      ),
+    };
+  }
+
+  const rate = await incrementStartRateLimit(auth.userId);
+  if (rate.exceeded) {
+    return {
+      ok: false,
+      status: 429,
+      body: problemDetail(
+        429,
+        "Too Many Requests",
+        `Impersonation start cap reached: max ${IMPERSONATION_MAX_STARTS_PER_24H} sessions per admin per 24h.`,
+      ),
+    };
+  }
+
+  const operatorAccessToken = extractRawAccessToken(request);
+  if (env.IMPERSONATION_USE_KEYCLOAK_EXCHANGE && !operatorAccessToken) {
+    return {
+      ok: false,
+      status: 401,
+      body: problemDetail(
+        401,
+        "Unauthorized",
+        "Keycloak Token Exchange path requires the operator's raw access token; none found.",
+      ),
+    };
+  }
+
+  return { ok: true, auth, operatorAccessToken };
+}
+
+/** Sets the impersonation cookie on a successful start. httpOnly + Secure (in prod). */
+function applyImpersonationCookie(
+  reply: import("fastify").FastifyReply,
+  token: string,
+  expiresAt: Date,
+): void {
+  const ttlSeconds = Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+  const isProd = process.env.NODE_ENV === "production";
+  reply.header(
+    "set-cookie",
+    [
+      `${JWT_COOKIE_NAME}=${token}`,
+      "Path=/",
+      `Max-Age=${ttlSeconds}`,
+      "HttpOnly",
+      "SameSite=Lax",
+      isProd ? "Secure" : null,
+    ]
+      .filter(Boolean)
+      .join("; "),
+  );
+}
+
+function mapTitle(status: number): string {
+  switch (status) {
+    case 400:
+      return "Bad Request";
+    case 401:
+      return "Unauthorized";
+    case 403:
+      return "Forbidden";
+    case 404:
+      return "Not Found";
+    case 409:
+      return "Conflict";
+    case 429:
+      return "Too Many Requests";
+    default:
+      return "Error";
+  }
+}
+
+function extractRawAccessToken(request: {
+  headers: Record<string, unknown>;
+  cookies?: Record<string, string | undefined>;
+}): string | null {
+  const auth = request.headers.authorization;
+  if (typeof auth === "string" && auth.startsWith("Bearer ")) {
+    return auth.slice("Bearer ".length).trim();
+  }
+  return request.cookies?.[JWT_COOKIE_NAME] ?? null;
+}
+
+async function resolveKeycloakIdForUser(userId: string): Promise<string | null> {
+  // Reuse the systemDb query from the service layer rather than re-importing
+  // schema. Inline to avoid an extra service round-trip.
+  const { systemDb } = await import("../../lib/db.js");
+  const { users } = await import("@givernance/shared/schema");
+  const { eq } = await import("drizzle-orm");
+  const [row] = await systemDb
+    .select({ keycloakId: users.keycloakId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.keycloakId ?? null;
 }

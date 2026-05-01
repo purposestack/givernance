@@ -381,6 +381,19 @@ export const auditLogs = pgTable(
      * auth, distinct under delegation/impersonation.
      */
     actorId: varchar("actor_id", { length: 255 }),
+    /**
+     * FK to impersonation_sessions when the action was performed inside a
+     * support session (issue #24). NULL on normal traffic. Lets readers join
+     * audit_logs ↔ impersonation_sessions to reconstruct the full session
+     * trail without re-deriving from `actor_id` heuristics.
+     */
+    impersonationSessionId: uuid("impersonation_session_id"),
+    /**
+     * Mode discriminator — "delegation" | "impersonation" | NULL. Stored
+     * alongside `impersonation_session_id` so SIEM filters can group by mode
+     * without joining. Always NULL when `impersonation_session_id` is NULL.
+     */
+    impersonationMode: varchar("impersonation_mode", { length: 32 }),
     action: varchar("action", { length: 255 }).notNull(),
     resourceType: varchar("resource_type", { length: 100 }),
     resourceId: varchar("resource_id", { length: 255 }),
@@ -395,6 +408,7 @@ export const auditLogs = pgTable(
     index("audit_logs_user_id_idx").on(table.userId),
     index("audit_logs_actor_id_idx").on(table.actorId),
     index("audit_logs_resource_idx").on(table.resourceType, table.resourceId),
+    index("audit_logs_imp_session_idx").on(table.impersonationSessionId),
   ],
 );
 
@@ -458,6 +472,58 @@ export const exchangeRates = pgTable(
 // ─── Constituents ─────────────────────────────────────────────────────────────
 
 export { type OutboxMetadata, outboxEvents } from "./outbox";
+
+// ─── Impersonation sessions (issue #24) ──────────────────────────────────────
+import {
+  IMPERSONATION_END_REASON_VALUES as _IMPERSONATION_END_REASON_VALUES,
+  IMPERSONATION_MODE_VALUES as _IMPERSONATION_MODE_VALUES,
+} from "../constants/impersonation";
+
+export {
+  IMPERSONATION_END_REASON_VALUES,
+  IMPERSONATION_MODE_VALUES,
+  type ImpersonationEndReason,
+  type ImpersonationMode,
+} from "../constants/impersonation";
+
+export const impersonationModeEnum = pgEnum("impersonation_mode", [..._IMPERSONATION_MODE_VALUES]);
+
+export const impersonationEndReasonEnum = pgEnum("impersonation_end_reason", [
+  ..._IMPERSONATION_END_REASON_VALUES,
+]);
+
+/**
+ * Platform-level table tracking every super-admin support session against
+ * a tenant. Two coexisting modes — see docs/19-impersonation.md. Append-
+ * only at the DB level (trigger from migration 0033).
+ */
+export const impersonationSessions = pgTable(
+  "impersonation_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    impersonatorKeycloakId: varchar("impersonator_keycloak_id", { length: 255 }).notNull(),
+    targetKeycloakId: varchar("target_keycloak_id", { length: 255 }).notNull(),
+    targetOrgId: uuid("target_org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    targetRole: varchar("target_role", { length: 50 }).notNull(),
+    mode: impersonationModeEnum("mode").notNull(),
+    reason: text("reason").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endReason: impersonationEndReasonEnum("end_reason"),
+    ipHash: varchar("ip_hash", { length: 64 }),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("imp_sessions_impersonator_idx").on(table.impersonatorKeycloakId),
+    index("imp_sessions_target_user_idx").on(table.targetKeycloakId),
+    index("imp_sessions_target_org_idx").on(table.targetOrgId),
+    index("imp_sessions_expires_at_idx").on(table.expiresAt),
+    index("imp_sessions_mode_idx").on(table.mode),
+  ],
+);
 
 /** Constituents — donors, volunteers, members, beneficiaries */
 export const constituents = pgTable("constituents", {

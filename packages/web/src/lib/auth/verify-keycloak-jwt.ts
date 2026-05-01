@@ -15,7 +15,13 @@ export interface KeycloakJwtPayload {
   act?: { sub: string };
   imp_session_id?: string;
   imp_reason?: string;
+  /** Issue #24 — discriminator between delegation and pure impersonation. */
+  imp_mode?: "delegation" | "impersonation";
   exp?: number;
+  /** Seconds-epoch when the user authenticated; populated for step-up checks. */
+  auth_time?: number;
+  /** OIDC `acr` — `"2"` ⇒ MFA-backed login. */
+  acr?: string;
 }
 
 const keycloakJwks = createRemoteJWKSet(new URL(KEYCLOAK_JWKS_URL));

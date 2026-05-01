@@ -14,6 +14,11 @@ const AuditLogResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
   userId: Type.Union([UuidSchema, Type.Null()]),
+  /** Issue #24 — `act.sub` of the impersonating operator, when applicable. */
+  actorId: Type.Union([Type.String(), Type.Null()]),
+  /** Issue #24 — FK to impersonation_sessions when the row was written inside a session. */
+  impersonationSessionId: Type.Union([UuidSchema, Type.Null()]),
+  impersonationMode: Type.Union([Type.String(), Type.Null()]),
   action: Type.String(),
   resourceType: Type.Union([Type.String(), Type.Null()]),
   resourceId: Type.Union([UuidSchema, Type.Null()]),

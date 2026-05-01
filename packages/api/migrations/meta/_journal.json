@@ -232,6 +232,13 @@
       "when": 1777366800000,
       "tag": "0032_user_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1777400000000,
+      "tag": "0033_impersonation_sessions",
+      "breakpoints": true
     }
   ]
 }

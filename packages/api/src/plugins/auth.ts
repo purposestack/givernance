@@ -9,6 +9,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import { withTenantContext } from "../lib/db.js";
+import { looksLikeImpersonationToken, verifyImpersonationToken } from "../lib/impersonation/jwt.js";
+import { getActiveSession } from "../lib/impersonation/redis-store.js";
 import { verifyKeycloakJwt } from "../lib/keycloak-jwt.js";
 import { problemDetail } from "../lib/schemas.js";
 import {
@@ -47,6 +49,15 @@ async function auth(app: FastifyInstance) {
     const tokenResult = await applyAuthFromToken(request);
     if (tokenResult === "session_revoked") {
       return reply.status(401).send(problemDetail(401, "Unauthorized", "Session revoked."));
+    }
+    if (tokenResult === "impersonation_revoked") {
+      // Issue #24 — the impersonation session was ended/revoked since the
+      // cookie was issued. Distinct response from `session_revoked` so the
+      // banner-end flow can detect "your session is gone, drop the cookie"
+      // and the audit log can attribute correctly.
+      return reply
+        .status(401)
+        .send(problemDetail(401, "Unauthorized", "Impersonation session ended or expired."));
     }
     if (tokenResult === "user_revoked") {
       // ADR-021 — the user's Keycloak `sub` was blocklisted at app
@@ -98,11 +109,27 @@ function isAuthExempt(url: string): boolean {
  * tenant id since the realm mapper can't omit the claim). A JWT without
  * `org_id` is rejected upstream and surfaces here as `"none"`.
  */
-type TokenResult = "ok" | "none" | "session_revoked" | "user_revoked" | "no_active_membership";
+type TokenResult =
+  | "ok"
+  | "none"
+  | "session_revoked"
+  | "user_revoked"
+  | "no_active_membership"
+  | "impersonation_revoked";
 
 async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult> {
   const token = extractToken(request);
   if (!token) return "none";
+
+  // Issue #24 — impersonation tokens carry a distinct `iss` so we route
+  // them through their own verifier (HS256 + Redis active-session check)
+  // instead of feeding them through the realm JWKS. The `iss` peek is
+  // unverified (signature is checked inside verifyImpersonationToken), so
+  // a normal Keycloak token spoofing the issuer string just falls into
+  // the failure branch below.
+  if (looksLikeImpersonationToken(token)) {
+    return applyImpersonationFromToken(request, token);
+  }
 
   let decoded: Awaited<ReturnType<typeof verifyKeycloakJwt>>;
   try {
@@ -150,9 +177,87 @@ async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult>
     email: decoded.email,
     role: decoded.role as UserRole | undefined,
     act: decoded.act,
+    authTime: typeof decoded.auth_time === "number" ? decoded.auth_time : undefined,
+    acr: typeof decoded.acr === "string" ? decoded.acr : undefined,
   };
   request.jwtJti = decoded.jti ?? null;
   request.jwtExp = typeof decoded.exp === "number" ? decoded.exp : null;
+  return "ok";
+}
+
+/**
+ * Verify and apply an app-layer impersonation token (issue #24). Distinct
+ * code path from the Keycloak verifier because:
+ *   - signature is HS256 against IMPERSONATION_JWT_SECRET, not the realm JWKS
+ *   - the session must still be active in Redis (instant revocation)
+ *   - `request.auth.impersonation` carries the mode discriminator that the
+ *     impersonation plugin reads to decide whether to block writes
+ */
+async function applyImpersonationFromToken(
+  request: FastifyRequest,
+  token: string,
+): Promise<TokenResult> {
+  let decoded: Awaited<ReturnType<typeof verifyImpersonationToken>>;
+  try {
+    decoded = await verifyImpersonationToken(token);
+  } catch {
+    return "none";
+  }
+
+  const session = await getActiveSession(decoded.imp_session_id);
+  if (!session) {
+    // Token is cryptographically valid but Redis says the session is gone
+    // (DELETE, REVOKE, or expired-and-evicted). Return a distinct discriminator
+    // so the response message is precise and audit can attribute correctly.
+    return "impersonation_revoked";
+  }
+
+  // Cross-check critical claims against the Redis record — defense in depth
+  // against a stolen token whose signing secret leaked. The session record
+  // is rewritten on every start, so any drift here is an integrity violation.
+  if (
+    session.targetKeycloakId !== decoded.sub ||
+    session.targetOrgId !== decoded.org_id ||
+    session.mode !== decoded.imp_mode ||
+    session.impersonatorKeycloakId !== decoded.act.sub
+  ) {
+    request.log.warn(
+      {
+        sessionId: decoded.imp_session_id,
+        jwt: {
+          sub: decoded.sub,
+          org_id: decoded.org_id,
+          mode: decoded.imp_mode,
+          actor: decoded.act.sub,
+        },
+        redis: {
+          sub: session.targetKeycloakId,
+          org_id: session.targetOrgId,
+          mode: session.mode,
+          actor: session.impersonatorKeycloakId,
+        },
+      },
+      "impersonation: token/session field mismatch — rejecting",
+    );
+    return "impersonation_revoked";
+  }
+
+  request.auth = {
+    userId: decoded.sub,
+    orgId: decoded.org_id,
+    roles: decoded.realm_access.roles,
+    email: decoded.email,
+    role: decoded.role as UserRole | undefined,
+    act: decoded.act,
+    impersonation: {
+      sessionId: decoded.imp_session_id,
+      mode: decoded.imp_mode,
+      reason: decoded.imp_reason,
+      expiresAt: decoded.exp,
+    },
+  };
+  request.jwtJti = decoded.jti;
+  request.jwtExp = decoded.exp;
   return "ok";
 }
 

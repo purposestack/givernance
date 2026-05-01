@@ -289,6 +289,10 @@
     },
     "impersonation": {
       "browsingAs": "Vous naviguez en tant que {name}",
+      "delegationLabel": "Délégation — vous agissez pour le compte de {name} avec des droits étendus",
+      "impersonationLabel": "Impersonation — vous visualisez comme {name} (lecture seule)",
+      "modeBadgeDelegation": "DÉLÉGATION",
+      "modeBadgeImpersonation": "IMPERSONATION",
       "endSession": "Terminer",
       "expired": "expirée",
       "lessThanMinute": "< 1m",
@@ -309,6 +313,37 @@
     }
   },
   "admin": {
+    "impersonation": {
+      "listTitle": "Sessions de support actives",
+      "listSubtitle": "Sessions de délégation et d'impersonation en cours sur tous les tenants. Mettre fin ou révoquer pour invalider le jeton immédiatement.",
+      "startNew": "Démarrer une nouvelle session",
+      "emptyState": "Aucune session de support active.",
+      "colMode": "Mode",
+      "colTarget": "Utilisateur cible",
+      "colImpersonator": "Opérateur",
+      "colReason": "Motif",
+      "colExpires": "Expiration",
+      "colActions": "Actions",
+      "badgeDelegation": "Délégation",
+      "badgeImpersonation": "Impersonation",
+      "endSession": "Terminer",
+      "ending": "Fermeture…",
+      "new": {
+        "title": "Démarrer une session de support",
+        "subtitle": "Choisissez l'utilisateur cible et le mode approprié. La MFA de step-up a été vérifiée à votre connexion ; cette soumission la réaffirme.",
+        "targetUserIdLabel": "ID utilisateur cible (UUID)",
+        "modeLegend": "Mode",
+        "delegationLabel": "Délégation — conservez vos droits super-admin",
+        "delegationHelp": "À utiliser pour configurer quelque chose dans le tenant pour le compte d'un utilisateur. L'audit conserve votre identité d'opérateur.",
+        "impersonationLabel": "Impersonation — lecture seule comme l'utilisateur",
+        "impersonationHelp": "À utiliser pour reproduire un bug ou un problème UX. Les écritures sont bloquées ; vous voyez exactement ce que voit l'utilisateur.",
+        "reasonLabel": "Motif",
+        "reasonPlaceholder": "Ticket de support #1234 — l'utilisateur n'arrive pas à télécharger son reçu",
+        "reasonHelp": "Obligatoire, minimum {min} caractères. Enregistré tel quel dans le journal d'audit.",
+        "submit": "Démarrer la session",
+        "submitting": "Démarrage…"
+      }
+    },
     "disputes": {
       "list": {
         "title": "Litiges d'admin provisoire",

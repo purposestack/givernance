@@ -289,6 +289,10 @@
     },
     "impersonation": {
       "browsingAs": "You are browsing as {name}",
+      "delegationLabel": "Delegation — acting on behalf of {name} with extended rights",
+      "impersonationLabel": "Impersonation — viewing as {name} (read-only)",
+      "modeBadgeDelegation": "DELEGATION",
+      "modeBadgeImpersonation": "IMPERSONATION",
       "endSession": "End session",
       "expired": "expired",
       "lessThanMinute": "< 1m",
@@ -309,6 +313,37 @@
     }
   },
   "admin": {
+    "impersonation": {
+      "listTitle": "Active support sessions",
+      "listSubtitle": "Live delegation and impersonation sessions across all tenants. End or revoke a session to invalidate its token immediately.",
+      "startNew": "Start a new session",
+      "emptyState": "No active support sessions.",
+      "colMode": "Mode",
+      "colTarget": "Target user",
+      "colImpersonator": "Operator",
+      "colReason": "Reason",
+      "colExpires": "Expires",
+      "colActions": "Actions",
+      "badgeDelegation": "Delegation",
+      "badgeImpersonation": "Impersonation",
+      "endSession": "End session",
+      "ending": "Ending…",
+      "new": {
+        "title": "Start a support session",
+        "subtitle": "Pick a target user and the mode appropriate for the work. Step-up MFA was checked when you signed in; this submission re-asserts it.",
+        "targetUserIdLabel": "Target user ID (UUID)",
+        "modeLegend": "Mode",
+        "delegationLabel": "Delegation — keep your super-admin powers",
+        "delegationHelp": "Use when you need to configure something inside the tenant on behalf of staff. Audit trail still records you as the operator.",
+        "impersonationLabel": "Impersonation — read-only as the user",
+        "impersonationHelp": "Use to reproduce a bug or UX issue. Writes are blocked; you see exactly what the user sees.",
+        "reasonLabel": "Reason",
+        "reasonPlaceholder": "Support ticket #1234 — receipt PDF download is failing for this user",
+        "reasonHelp": "Mandatory, minimum {min} characters. Recorded verbatim in the audit log.",
+        "submit": "Start session",
+        "submitting": "Starting…"
+      }
+    },
     "disputes": {
       "list": {
         "title": "Provisional-admin disputes",

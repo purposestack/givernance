@@ -4,6 +4,16 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { isReservedSlug } from "../constants/reserved-slugs";
 
+export {
+  IMPERSONATION_REASON_MAX_LENGTH,
+  IMPERSONATION_REASON_MIN_LENGTH,
+  type ImpersonationSessionDTO,
+  ImpersonationSessionSchema,
+  type ImpersonationStartBody,
+  ImpersonationStartBodySchema,
+  ImpersonationStartResponseSchema,
+} from "./impersonation";
+
 /**
  * Tenant slug: 2–50 chars, lowercase alnum + single internal dashes, no leading/
  * trailing dash. The regex requires ≥2 characters (minLength is also set on the

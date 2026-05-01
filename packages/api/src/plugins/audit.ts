@@ -58,6 +58,12 @@ async function audit(app: FastifyInstance) {
           // who want the effective actor compute `COALESCE(actor_id, user_id)`.
           // (PR #142 review M2.)
           actorId: request.auth?.act?.sub ?? null,
+          // Issue #24 — when the request was authenticated through an
+          // impersonation token, persist the session id and mode so SIEM
+          // filters can isolate the full session trail without having to
+          // reconstruct it heuristically from `actor_id`.
+          impersonationSessionId: request.auth?.impersonation?.sessionId ?? null,
+          impersonationMode: request.auth?.impersonation?.mode ?? null,
           action: `${request.method}:${routeUrl}`,
           resourceType: extractResourceType(routeUrl),
           resourceId: extractResourceId(request.url),
@@ -92,6 +98,15 @@ async function audit(app: FastifyInstance) {
         userId: request.auth.userId,
         actorId: request.auth.act?.sub ?? null,
         orgId: request.auth.orgId,
+        // Issue #24 — log the impersonation discriminators alongside auth
+        // metadata so LogQL `audit{impersonationMode="..."}` lights up the
+        // full session trail without joining audit_logs.
+        ...(request.auth.impersonation
+          ? {
+              impersonationMode: request.auth.impersonation.mode,
+              impersonationSessionId: request.auth.impersonation.sessionId,
+            }
+          : {}),
         // Issue #182 + PR #185 review PJD-5 / L2: split discriminators.
         // `authDenial` for the 401 branch (missing/invalid token) so SOC
         // dashboards filtering for RBAC probing can EXCLUDE these as
