@@ -34,14 +34,16 @@
  * `tenants` row exists at it (ADR-022).
  */
 
-import { randomBytes } from "node:crypto";
+import { APP_DEFAULT_LOCALE } from "@givernance/shared/i18n";
 import {
   auditLogs,
+  invitations,
+  outboxEvents,
   platformAdmins,
   type platformAdmins as platformAdminsTable,
   users,
 } from "@givernance/shared/schema";
-import { and, asc, desc, eq, ilike, isNotNull, isNull, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, isNotNull, isNull, or, type SQL, sql } from "drizzle-orm";
 import pino from "pino";
 import { systemDb } from "../../lib/db.js";
 import { KeycloakUserExistsError, keycloakAdmin } from "../../lib/keycloak-admin.js";
@@ -246,36 +248,46 @@ export async function getPlatformAdminById(
   return row ?? null;
 }
 
-// ─── Create ──────────────────────────────────────────────────────────────────
+// ─── Invite (create flow, post-PR-#253-smoke-feedback refactor) ──────────────
 
 /**
- * Create a new platform admin end-to-end:
- *
- *   1. Identity-invariant check — refuse if the email belongs to an
- *      existing `users` row (active OR soft-deleted; ADR-022).
- *   2. Pre-flight Keycloak realm-role lookup — fail fast if `super_admin`
- *      is missing rather than half-create the user.
- *   3. Pre-flight Keycloak Organization lookup — fail fast if the platform
- *      Org is missing.
- *   4. `kcAdmin.createUser` — random temporary password (the user never
- *      sees it; UPDATE_PASSWORD email forces them to set their own).
- *   5. `kcAdmin.assignRealmRoleToUser(super_admin)`.
- *   6. `kcAdmin.attachUserToOrg(platformOrgId, kcUserId)`.
- *   7. `kcAdmin.sendExecuteActionsEmail(["UPDATE_PASSWORD"])`.
- *   8. INSERT `platform_admins` row + `audit_logs.platform_admin.created`
- *      in a single transaction.
- *
- * On any KC-side failure after step 4, attempts a best-effort
- * compensating `deleteUser` so the realm doesn't keep an orphan account.
- * If the compensating delete itself fails, the orphan is logged so an
- * operator can clean it up — we don't rollback further than KC will let
- * us. The DB insert is the last step, so a DB failure leaves a fully
- * provisioned KC user but no app row; the operator retries with the same
- * email and the create call fails on the KC `getUserByEmail` lookup. We
- * return a typed `EMAIL_TAKEN_BY_KEYCLOAK` so the route can surface a
- * recoverable 409.
+ * Result of `invitePlatformAdmin`. Returns the invitation id (NOT a
+ * `platform_admins.id` — the row doesn't exist yet) so the caller can
+ * surface "invitation sent" without exposing identity-surface state
+ * before the invitee accepts.
  */
-export async function createPlatformAdmin(input: CreateInput): Promise<PlatformAdminRow> {
+export interface InviteResult {
+  invitationId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  expiresAt: Date;
+}
+
+/**
+ * Issue an invitation for a new platform admin (issue #254, refactor
+ * fix-commit 4 after KC `execute-actions-email` smoke-test issues).
+ *
+ * Behaviour:
+ *   1. Identity-invariant check — refuse if email belongs to a tenant
+ *      `users` row (ADR-022) or another active platform admin.
+ *   2. Insert an `invitations` row (purpose = `platform_admin_invite`)
+ *      under the platform sentinel tenant with a fresh token.
+ *   3. Emit `platform_admin.invited` to the outbox so the worker sends
+ *      the email out-of-band.
+ *   4. Audit `platform_admin.invited` under the platform sentinel
+ *      tenant.
+ *
+ * The KC user, role assignment, Org membership, and `platform_admins`
+ * row all land at *accept* time (`acceptPlatformAdminInvitation`),
+ * triggered when the invitee submits the password form on the public
+ * accept page. This avoids KC's `execute-actions-email` flow entirely
+ * — which had three compounding issues in dev (KC_RESTART cookie
+ * timeout, broken back-link in `info.ftl`, "already authenticated as
+ * different user" rejection). The Givernance-side accept page handles
+ * the session-conflict UX gracefully, same posture as `team_invite`.
+ */
+export async function invitePlatformAdmin(input: CreateInput): Promise<InviteResult> {
   const email = input.email.trim().toLowerCase();
 
   // Identity invariant — ADR-022. A Keycloak person is either a platform
@@ -294,7 +306,6 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     );
   }
 
-  // Same-table collision: another active platform admin holds this email.
   const [collisionAdmin] = await systemDb
     .select({ id: platformAdmins.id })
     .from(platformAdmins)
@@ -308,9 +319,193 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     );
   }
 
-  // Pre-flight KC role + organization. Fail fast before we mutate KC state
-  // — a missing role / org points at a misconfigured realm and is an
-  // operator-visible 502 rather than a half-finished provision.
+  // Same-table collision on a pending (not-yet-accepted, not-yet-expired)
+  // invitation: don't issue duplicates. The operator can re-trigger the
+  // existing invitation via the (separate) reset-invitation endpoint —
+  // out of scope for this fix.
+  const [pendingInvite] = await systemDb
+    .select({ id: invitations.id })
+    .from(invitations)
+    .where(
+      and(
+        eq(invitations.purpose, "platform_admin_invite"),
+        sql`lower(${invitations.email}) = ${email}`,
+        isNull(invitations.acceptedAt),
+        gt(invitations.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  if (pendingInvite) {
+    throw new PlatformAdminServiceError(
+      409,
+      "EMAIL_TAKEN_BY_PLATFORM_ADMIN",
+      "A pending platform-admin invitation already exists for this email.",
+    );
+  }
+
+  const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
+
+  return systemDb.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(invitations)
+      .values({
+        orgId: PLATFORM_AUDIT_ORG_ID,
+        email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        // `users.role` enum doesn't have `super_admin`; the realm role
+        // is the source of truth for super-admin RBAC. Stamping
+        // `org_admin` here for parity with team_invite and so the
+        // schema constraint is satisfied. The accept flow ignores it.
+        role: "org_admin",
+        purpose: "platform_admin_invite",
+        expiresAt,
+      })
+      .returning({
+        id: invitations.id,
+        email: invitations.email,
+        firstName: invitations.firstName,
+        lastName: invitations.lastName,
+        expiresAt: invitations.expiresAt,
+      });
+    if (!row) throw new Error("invitePlatformAdmin: insert returned no row");
+
+    // Outbox event → relay → BullMQ → worker `processPlatformAdminInviteEmail`.
+    // Same SEC-7 posture as team_invite: do NOT put the raw token in the
+    // outbox payload — the worker reads it back from the row inside its
+    // own trust boundary.
+    await tx.insert(outboxEvents).values({
+      tenantId: PLATFORM_AUDIT_ORG_ID,
+      type: "platform_admin.invited",
+      payload: {
+        tenantId: PLATFORM_AUDIT_ORG_ID,
+        invitationId: row.id,
+        email: row.email,
+        inviterKeycloakId: input.actorKeycloakId,
+        expiresAt: row.expiresAt.toISOString(),
+        // Locale: platform admins don't have a stored preference at
+        // invite time; default to APP_DEFAULT_LOCALE. The worker can
+        // override at send time if it has a better signal.
+        locale: APP_DEFAULT_LOCALE,
+      },
+    });
+
+    await tx.execute(
+      sql`SELECT set_config('app.current_organization_id', ${PLATFORM_AUDIT_ORG_ID}, true)`,
+    );
+    await tx.insert(auditLogs).values({
+      orgId: PLATFORM_AUDIT_ORG_ID,
+      // The invitee's KC sub doesn't exist yet — leave userId null until
+      // the accept flow lands the platform_admins row.
+      userId: null,
+      actorId: input.actorKeycloakId,
+      action: "platform_admin.invited",
+      resourceType: "invitation",
+      resourceId: row.id,
+      newValues: { purpose: "platform_admin_invite" },
+      ipHash: input.ipHash,
+      userAgent: input.userAgent ?? undefined,
+    });
+
+    return {
+      invitationId: row.id,
+      email: row.email,
+      firstName: row.firstName ?? input.firstName,
+      lastName: row.lastName ?? input.lastName,
+      expiresAt: row.expiresAt,
+    };
+  });
+}
+
+const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// ─── Accept (public flow, no auth required) ───────────────────────────────────
+
+export interface InvitationDetail {
+  email: string;
+  firstName: string;
+  lastName: string;
+  expiresAt: Date;
+}
+
+/**
+ * Public read of an invitation by token. Returns enough to render the
+ * accept page; never returns the token itself or any sensitive
+ * metadata. Returns null on missing / expired / accepted so the route
+ * surfaces a single 404 (anti-enumeration of valid token shape).
+ */
+export async function getPlatformAdminInvitationByToken(
+  token: string,
+): Promise<InvitationDetail | null> {
+  const [row] = await systemDb
+    .select({
+      email: invitations.email,
+      firstName: invitations.firstName,
+      lastName: invitations.lastName,
+      acceptedAt: invitations.acceptedAt,
+      expiresAt: invitations.expiresAt,
+    })
+    .from(invitations)
+    .where(and(eq(invitations.token, token), eq(invitations.purpose, "platform_admin_invite")))
+    .limit(1);
+  if (!row) return null;
+  if (row.acceptedAt) return null;
+  if (row.expiresAt.getTime() <= Date.now()) return null;
+  return {
+    email: row.email,
+    firstName: row.firstName ?? "",
+    lastName: row.lastName ?? "",
+    expiresAt: row.expiresAt,
+  };
+}
+
+export interface AcceptInput {
+  token: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  ipHash: string | null;
+  userAgent: string | null;
+}
+
+/**
+ * Accept a platform-admin invitation:
+ *   1. Validate token + state (must be unaccepted + unexpired).
+ *   2. Pre-flight Keycloak realm-role + Organization lookup.
+ *   3. `kcAdmin.createUser` with the invitee's chosen password
+ *      (NOT temporary — they just typed it; KC respects it as their
+ *      working credential).
+ *   4. Assign `super_admin` realm role + attach to platform Org.
+ *   5. INSERT `platform_admins` row + mark invitation accepted +
+ *      audit `platform_admin.created`. All in one transaction.
+ *
+ * Compensating delete on KC failure mirrors the previous create path.
+ */
+export async function acceptPlatformAdminInvitation(input: AcceptInput): Promise<PlatformAdminRow> {
+  // Validate the invitation first — atomic with the eventual
+  // accepted_at write further below to prevent double-accept.
+  const [invite] = await systemDb
+    .select({
+      id: invitations.id,
+      email: invitations.email,
+      acceptedAt: invitations.acceptedAt,
+      expiresAt: invitations.expiresAt,
+    })
+    .from(invitations)
+    .where(
+      and(eq(invitations.token, input.token), eq(invitations.purpose, "platform_admin_invite")),
+    )
+    .limit(1);
+  if (!invite) {
+    throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation not found.");
+  }
+  if (invite.acceptedAt) {
+    throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation has already been accepted.");
+  }
+  if (invite.expiresAt.getTime() <= Date.now()) {
+    throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation has expired.");
+  }
+
   const [role, org] = await Promise.all([
     keycloakAdmin().getRealmRole(SUPER_ADMIN_ROLE_NAME),
     keycloakAdmin().getOrganizationByAlias(PLATFORM_ORG_ALIAS),
@@ -330,32 +525,21 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     );
   }
 
-  // Provision the KC user. The throwaway password is `temporary: true` so
-  // even if the UPDATE_PASSWORD email-trigger path fails afterward, the
-  // user CANNOT log in with it — KC will force them through the password
-  // reset on first login regardless. Defense-in-depth (security review m4).
-  //
-  // The `org_id` user attribute is what makes the JWT carry a top-level
-  // `org_id` claim — `verifyKeycloakJwt` (api + web) requires it on every
-  // token. The seeded `admin@givernance.org` has the same attribute set
-  // in `realm-givernance.json`. Without this, a freshly-invited admin
-  // logs in successfully on the KC side but every Givernance route 401s
-  // with `missing_org_id` (caught in dev: PR #253 review feedback).
-  // The matching `role` attribute is set for parity with the seed; the
-  // realm role `super_admin` is what actually drives RBAC, so the value
-  // here is informational.
+  // KC create with the user's chosen password. NOT temporary — they
+  // just typed it; KC respects it as their working credential.
   let kcUserId: string;
   try {
     const out = await keycloakAdmin().createUser({
-      email,
+      email: invite.email,
       firstName: input.firstName,
       lastName: input.lastName,
-      // 32 bytes of entropy in hex — never logged or transmitted; KC will
-      // force UPDATE_PASSWORD on first login because `temporary: true`.
-      password: cryptoRandomPassword(),
+      password: input.password,
       emailVerified: true,
-      temporary: true,
+      temporary: false,
       attributes: {
+        // Same `org_id` user attribute as the seeded admin so the JWT
+        // carries the flat `org_id` claim that `verifyKeycloakJwt`
+        // requires. (See PR #253 review feedback.)
         org_id: [PLATFORM_AUDIT_ORG_ID],
         role: ["org_admin"],
       },
@@ -372,15 +556,11 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     throw err;
   }
 
-  // Phase 1 — assign the realm role + Org membership. Both are required
-  // for the user to function as a super-admin. A mid-flight failure here
-  // means the user has no super-admin authority and must be rolled back
-  // (otherwise the realm accumulates orphans with partial state).
   try {
     await keycloakAdmin().assignRealmRoleToUser(kcUserId, role);
     await keycloakAdmin().attachUserToOrg(org.id, kcUserId);
   } catch (err) {
-    await compensatingKcDelete(kcUserId, "role/org-assignment-failed");
+    await compensatingKcDelete(kcUserId, "accept-side-effects-failed");
     if (err instanceof PlatformAdminServiceError) throw err;
     throw new PlatformAdminServiceError(
       502,
@@ -389,41 +569,33 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     );
   }
 
-  // Phase 2 — trigger the UPDATE_PASSWORD email. The user is fully
-  // provisioned at this point (role + Org membership). If the email
-  // delivery fails (transient SMTP, KC 5xx) we DO NOT roll back the KC
-  // user — instead we proceed to insert the `platform_admins` row and
-  // surface a 502 to the operator. The operator can re-trigger the
-  // email via `POST /v1/admin/platform-admins/:id/reset-password`
-  // (platform review M2). Tearing down the KC user on a transient SMTP
-  // outage would force the operator to recreate the row with a new
-  // `platform_admins.id` and lose audit-trail continuity.
-  let emailDeliveryFailed: Error | null = null;
-  try {
-    await keycloakAdmin().sendExecuteActionsEmail(kcUserId, ["UPDATE_PASSWORD"], {
-      lifespanSec: PASSWORD_RESET_LIFESPAN_SEC,
-      // No `clientId` / `redirectUri` — see the comment block above for
-      // why. KC's info.ftl handles the "you're done, go log in" UX.
-    });
-  } catch (err) {
-    emailDeliveryFailed = err as Error;
-  }
+  // DB writes + invitation marking + audit in one transaction. The
+  // `acceptedAt` clause in the UPDATE prevents double-accept races.
+  return systemDb.transaction(async (tx) => {
+    const updateRes = await tx
+      .update(invitations)
+      .set({ acceptedAt: new Date() })
+      .where(and(eq(invitations.id, invite.id), isNull(invitations.acceptedAt)))
+      .returning({ id: invitations.id });
+    if (updateRes.length === 0) {
+      // Another request accepted between our SELECT and UPDATE.
+      throw new PlatformAdminServiceError(
+        409,
+        "NOT_FOUND",
+        "Invitation has already been accepted.",
+      );
+    }
 
-  // DB row + audit in one transaction — if either fails the KC user is
-  // already provisioned. The `EMAIL_TAKEN_BY_KEYCLOAK` recovery path on
-  // retry handles this case (the operator gets a structured 409 they can
-  // act on instead of a 500 cascade).
-  const created = await systemDb.transaction(async (tx) => {
     const [row] = await tx
       .insert(platformAdmins)
       .values({
         keycloakId: kcUserId,
-        email,
+        email: invite.email,
         firstName: input.firstName,
         lastName: input.lastName,
       })
       .returning();
-    if (!row) throw new Error("createPlatformAdmin: insert returned no row");
+    if (!row) throw new Error("acceptPlatformAdminInvitation: insert returned no row");
 
     await tx.execute(
       sql`SELECT set_config('app.current_organization_id', ${PLATFORM_AUDIT_ORG_ID}, true)`,
@@ -431,7 +603,11 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     await tx.insert(auditLogs).values({
       orgId: PLATFORM_AUDIT_ORG_ID,
       userId: kcUserId,
-      actorId: input.actorKeycloakId,
+      // No `actorId` — the invitee accepted the invitation themselves.
+      // The original inviter is recorded on the `platform_admin.invited`
+      // audit row, joinable by `resource_id` (invitation.id) ↔
+      // (the prior audit row's resourceId).
+      actorId: null,
       action: "platform_admin.created",
       resourceType: "platform_admin",
       resourceId: row.id,
@@ -440,21 +616,6 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     });
     return row;
   });
-
-  // Surface the email-delivery failure as a 502 AFTER the row is in place,
-  // so the operator gets a structured signal but the row exists for them
-  // to retry against via `/reset-password`. The compensating-delete path
-  // is NOT taken here — the user has a temporary password they cannot
-  // use, the role + Org are correct, the row is queryable.
-  if (emailDeliveryFailed) {
-    throw new PlatformAdminServiceError(
-      502,
-      "KEYCLOAK_FAILURE",
-      `Platform admin provisioned (id=${created.id}), but the UPDATE_PASSWORD email failed to send. Use POST /v1/admin/platform-admins/${created.id}/reset-password to retry. Original error: ${emailDeliveryFailed.message}`,
-    );
-  }
-
-  return created;
 }
 
 // ─── Rename ──────────────────────────────────────────────────────────────────
@@ -693,11 +854,4 @@ async function compensatingKcDelete(kcUserId: string, reason: string): Promise<v
       "platform_admin: ORPHAN — compensating KC delete failed; realm has a super_admin user with no DB row, manual cleanup required",
     );
   }
-}
-
-function cryptoRandomPassword(): string {
-  // 32 bytes of entropy → 64 hex chars. Far above any reasonable realm
-  // password policy (the seed realm enforces length(12) and notUsername).
-  // Never logged or surfaced; immediately invalidated by UPDATE_PASSWORD.
-  return randomBytes(32).toString("hex");
 }

@@ -53,6 +53,21 @@ export interface CreatePlatformAdminInput {
   lastName: string;
 }
 
+/**
+ * Response shape from `POST /v1/admin/platform-admins` (issue #254
+ * fix-commit 4 refactor). The endpoint inserts an invitation row and
+ * sends an email; the actual `platform_admins` row lands at accept time.
+ * The UI renders "invitation sent" from this — it does NOT have a real
+ * admin id to link to.
+ */
+export interface PlatformAdminInvitationSummary {
+  invitationId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  expiresAt: string;
+}
+
 export interface UpdatePlatformAdminInput {
   firstName: string;
   lastName: string;

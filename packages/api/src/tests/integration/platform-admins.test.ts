@@ -160,11 +160,62 @@ describe("RBAC anti-disclosure", () => {
   });
 });
 
-// ─── Create ─────────────────────────────────────────────────────────────────
+// ─── Helpers (post-fix-commit-4 invitation flow) ───────────────────────────
 
-describe("POST /v1/admin/platform-admins", () => {
-  it("creates a platform admin: KC user + role + Org membership + UPDATE_PASSWORD email + audit row", async () => {
-    const email = `new-admin-${randomUUID().slice(0, 8)}@example.org`;
+/**
+ * Drive an invitation through to a fully-provisioned platform_admins row
+ * via the public accept endpoint. Encapsulates: POST invite → DB-read the
+ * token → POST accept → return id + keycloakId. Used by the rename /
+ * reset / delete tests that need an admin to operate on.
+ */
+async function inviteAndAccept(opts: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  password?: string;
+}): Promise<{ id: string; keycloakId: string; invitationId: string }> {
+  const invite = await app.inject({
+    method: "POST",
+    url: "/v1/admin/platform-admins",
+    headers: authHeader(superAdminToken()),
+    payload: { email: opts.email, firstName: opts.firstName, lastName: opts.lastName },
+  });
+  if (invite.statusCode !== 201) {
+    throw new Error(`inviteAndAccept: invite failed ${invite.statusCode} ${invite.payload}`);
+  }
+  const inviteBody = invite.json() as { data: { invitationId: string } };
+  const invitationId = inviteBody.data.invitationId;
+
+  // Read the token directly from the DB — it's never returned in any
+  // API response (SEC-7), and the email is sent out-of-band via the
+  // worker which we don't run here.
+  const tokenRows = await systemDb.execute<{ token: string }>(
+    sql`SELECT token FROM invitations WHERE id = ${invitationId}`,
+  );
+  const token = tokenRows.rows[0]?.token;
+  if (!token) throw new Error("inviteAndAccept: token missing");
+
+  const accept = await app.inject({
+    method: "POST",
+    url: `/v1/public/platform-admins/invitations/${token}/accept`,
+    payload: {
+      firstName: opts.firstName,
+      lastName: opts.lastName,
+      password: opts.password ?? "Test-Password-1234",
+    },
+  });
+  if (accept.statusCode !== 201) {
+    throw new Error(`inviteAndAccept: accept failed ${accept.statusCode} ${accept.payload}`);
+  }
+  const acceptBody = accept.json() as { data: { id: string; keycloakId: string } };
+  return { id: acceptBody.data.id, keycloakId: acceptBody.data.keycloakId, invitationId };
+}
+
+// ─── Create (invitation flow) ───────────────────────────────────────────────
+
+describe("POST /v1/admin/platform-admins (issue invitation)", () => {
+  it("inserts an invitation row + outbox event + audit row; does NOT touch Keycloak", async () => {
+    const email = `invitee-${randomUUID().slice(0, 8)}@example.org`;
     const res = await app.inject({
       method: "POST",
       url: "/v1/admin/platform-admins",
@@ -172,31 +223,31 @@ describe("POST /v1/admin/platform-admins", () => {
       payload: { email, firstName: "New", lastName: "Admin" },
     });
     expect(res.statusCode).toBe(201);
-    const body = res.json() as { data: { id: string; keycloakId: string; email: string } };
+    const body = res.json() as {
+      data: { invitationId: string; email: string; expiresAt: string };
+    };
     expect(body.data.email).toBe(email);
-    expect(typeof body.data.keycloakId).toBe("string");
+    expect(body.data.invitationId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
 
-    // KC side-effects all fired.
-    expect(kcCreateUser).toHaveBeenCalledTimes(1);
-    // The `org_id` user attribute MUST be set on the new admin or the
-    // JWT will lack the top-level `org_id` claim that
-    // `verifyKeycloakJwt` requires (caught in dev: PR #253 review).
-    expect(kcCreateUser.mock.calls[0]?.[0]?.attributes).toMatchObject({
-      org_id: [PLATFORM_TENANT_ID],
-    });
-    expect(kcAssignRealmRole).toHaveBeenCalledTimes(1);
-    expect(kcAssignRealmRole.mock.calls[0]?.[1]).toMatchObject({ name: "super_admin" });
-    expect(kcAttachUserToOrg).toHaveBeenCalledTimes(1);
-    expect(kcSendExecuteActions).toHaveBeenCalledTimes(1);
-    expect(kcSendExecuteActions.mock.calls[0]?.[1]).toEqual(["UPDATE_PASSWORD"]);
+    // Post fix-commit-4: KC is NOT contacted at invite time. The row
+    // materialises at accept time when the invitee submits the password.
+    expect(kcCreateUser).not.toHaveBeenCalled();
+    expect(kcAssignRealmRole).not.toHaveBeenCalled();
+    expect(kcAttachUserToOrg).not.toHaveBeenCalled();
+    expect(kcSendExecuteActions).not.toHaveBeenCalled();
 
-    // Audit row was written under the platform sentinel tenant.
-    const auditRows = await systemDb.execute<{
-      action: string;
-      org_id: string;
-      actor_id: string;
-    }>(
-      sql`SELECT action, org_id, actor_id FROM audit_logs WHERE resource_id = ${body.data.id} AND action = 'platform_admin.created'`,
+    // Outbox event was inserted for the worker to pick up.
+    const outboxRows = await systemDb.execute<{ type: string; payload: { invitationId: string } }>(
+      sql`SELECT type, payload FROM outbox_events WHERE payload->>'invitationId' = ${body.data.invitationId}`,
+    );
+    expect(outboxRows.rows.length).toBe(1);
+    expect(outboxRows.rows[0]?.type).toBe("platform_admin.invited");
+
+    // Audit row written under the platform sentinel tenant.
+    const auditRows = await systemDb.execute<{ org_id: string; actor_id: string }>(
+      sql`SELECT org_id, actor_id FROM audit_logs WHERE resource_id = ${body.data.invitationId} AND action = 'platform_admin.invited'`,
     );
     expect(auditRows.rows.length).toBe(1);
     expect(auditRows.rows[0]?.org_id).toBe(PLATFORM_TENANT_ID);
@@ -204,7 +255,6 @@ describe("POST /v1/admin/platform-admins", () => {
   });
 
   it("refuses (409 + RFC 9457) when the email belongs to a tenant user (ADR-022 invariant)", async () => {
-    // user-a@example.org is seeded by `ensureTestTenants` in setup.ts.
     const res = await app.inject({
       method: "POST",
       url: "/v1/admin/platform-admins",
@@ -218,105 +268,137 @@ describe("POST /v1/admin/platform-admins", () => {
       status: 409,
     });
     expect((res.json() as { detail?: string }).detail ?? "").toMatch(/tenant member/i);
-    // KC must not be touched on the invariant rejection — fail fast.
-    expect(kcCreateUser).not.toHaveBeenCalled();
   });
 
-  it("returns 502 when the super_admin realm role is missing in Keycloak (operator-visible misconfig)", async () => {
-    kcGetRealmRole.mockResolvedValueOnce(null);
-    const res = await app.inject({
+  it("refuses a duplicate pending invitation for the same email", async () => {
+    const email = `dup-${randomUUID().slice(0, 8)}@example.org`;
+    const first = await app.inject({
       method: "POST",
       url: "/v1/admin/platform-admins",
       headers: authHeader(superAdminToken()),
-      payload: {
-        email: `kc-fail-${randomUUID().slice(0, 8)}@example.org`,
-        firstName: "X",
-        lastName: "Y",
-      },
+      payload: { email, firstName: "X", lastName: "Y" },
     });
-    // Lock the RFC 9457 body shape on this error path (QA M1).
-    expect(res.statusCode).toBe(502);
-    expect(res.json()).toMatchObject({
-      type: "https://httpproblems.com/http-status/502",
-      title: "Bad Gateway",
-      status: 502,
-    });
-    expect((res.json() as { detail?: string }).detail ?? "").toMatch(/role.*super_admin/);
-    expect(kcCreateUser).not.toHaveBeenCalled();
-  });
-
-  it("rolls back the KC user when assignRealmRole fails mid-flight (locks 502 body shape)", async () => {
-    kcAssignRealmRole.mockRejectedValueOnce(new Error("simulated KC failure"));
-    const res = await app.inject({
+    expect(first.statusCode).toBe(201);
+    const second = await app.inject({
       method: "POST",
       url: "/v1/admin/platform-admins",
       headers: authHeader(superAdminToken()),
-      payload: {
-        email: `compensating-role-${randomUUID().slice(0, 8)}@example.org`,
-        firstName: "X",
-        lastName: "Y",
-      },
+      payload: { email, firstName: "X", lastName: "Y" },
     });
-    // Lock the RFC 9457 body shape on the compensating-delete path (QA M1 + M2).
-    expect(res.statusCode).toBe(502);
-    expect(res.json()).toMatchObject({
-      type: "https://httpproblems.com/http-status/502",
-      title: "Bad Gateway",
-      status: 502,
-    });
-    expect(kcDeleteUser).toHaveBeenCalledTimes(1);
+    expect(second.statusCode).toBe(409);
+    expect((second.json() as { detail?: string }).detail ?? "").toMatch(/pending/i);
   });
+});
 
-  // QA review M2 — extend compensating-delete coverage from 1 of 3 KC
-  // failure points to 2 of 3. The third (sendExecuteActionsEmail) now has
-  // distinct semantics post-fix-commit-1 (no rollback), so it gets its
-  // own dedicated test below.
-  it("rolls back the KC user when attachUserToOrg fails mid-flight", async () => {
-    kcAttachUserToOrg.mockRejectedValueOnce(new Error("simulated KC org failure"));
-    const res = await app.inject({
+// ─── Public accept ──────────────────────────────────────────────────────────
+
+describe("Public accept flow", () => {
+  it("GET token returns invitation details for a valid token", async () => {
+    const email = `probe-${randomUUID().slice(0, 8)}@example.org`;
+    const invite = await app.inject({
       method: "POST",
       url: "/v1/admin/platform-admins",
       headers: authHeader(superAdminToken()),
-      payload: {
-        email: `compensating-org-${randomUUID().slice(0, 8)}@example.org`,
-        firstName: "X",
-        lastName: "Y",
-      },
+      payload: { email, firstName: "Probe", lastName: "Admin" },
     });
-    expect(res.statusCode).toBe(502);
-    expect(kcDeleteUser).toHaveBeenCalledTimes(1);
-  });
-
-  it("does NOT roll back the KC user on email-delivery failure — row is created and 502 references it", async () => {
-    // Platform review M2 — sendExecuteActionsEmail failure used to nuke
-    // the whole KC user. Post-fix-commit-1, the row is preserved and the
-    // operator can retry via /reset-password.
-    kcSendExecuteActions.mockRejectedValueOnce(new Error("simulated SMTP failure"));
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/admin/platform-admins",
-      headers: authHeader(superAdminToken()),
-      payload: {
-        email: `email-fail-${randomUUID().slice(0, 8)}@example.org`,
-        firstName: "X",
-        lastName: "Y",
-      },
-    });
-    expect(res.statusCode).toBe(502);
-    // Compensating delete must NOT have fired — KC user retained.
-    expect(kcDeleteUser).not.toHaveBeenCalled();
-    // The detail message references `/reset-password` so the operator
-    // knows the retry path.
-    expect((res.json() as { detail?: string }).detail ?? "").toMatch(/reset-password/);
-    // The row exists in the DB and is queryable. Extract the id from
-    // the detail string (`id=<uuid>`).
-    const detail = (res.json() as { detail?: string }).detail ?? "";
-    const idMatch = /id=([0-9a-f-]{36})/.exec(detail);
-    expect(idMatch?.[1]).toBeTruthy();
-    const rows = await systemDb.execute(
-      sql`SELECT id FROM platform_admins WHERE id = ${idMatch?.[1]} AND deleted_at IS NULL`,
+    const invitationId = (invite.json() as { data: { invitationId: string } }).data.invitationId;
+    const tokenRows = await systemDb.execute<{ token: string }>(
+      sql`SELECT token FROM invitations WHERE id = ${invitationId}`,
     );
-    expect(rows.rows.length).toBe(1);
+    const token = tokenRows.rows[0]?.token;
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/public/platform-admins/invitations/${token}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: { email: string; firstName: string; lastName: string } };
+    expect(body.data.email).toBe(email);
+    expect(body.data.firstName).toBe("Probe");
+    expect(body.data.lastName).toBe("Admin");
+  });
+
+  it("GET token returns 404 with RFC 9457 body for a missing/expired token", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/public/platform-admins/invitations/00000000-0000-0000-0000-000000000000",
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/404",
+      title: "Not Found",
+      status: 404,
+    });
+  });
+
+  it("POST accept provisions the KC user + role + Org + platform_admins row + audit", async () => {
+    const email = `acceptee-${randomUUID().slice(0, 8)}@example.org`;
+    const result = await inviteAndAccept({ email, firstName: "Acc", lastName: "Eptee" });
+
+    // KC side-effects fired at accept time.
+    expect(kcCreateUser).toHaveBeenCalledTimes(1);
+    // The `org_id` user attribute MUST be set on the new admin.
+    expect(kcCreateUser.mock.calls[0]?.[0]?.attributes).toMatchObject({
+      org_id: [PLATFORM_TENANT_ID],
+    });
+    // Password is NOT temporary — the invitee just typed it.
+    expect(kcCreateUser.mock.calls[0]?.[0]?.temporary).toBe(false);
+    expect(kcAssignRealmRole).toHaveBeenCalledTimes(1);
+    expect(kcAttachUserToOrg).toHaveBeenCalledTimes(1);
+
+    // platform_admins row exists.
+    const rows = await systemDb.execute<{ email: string }>(
+      sql`SELECT email FROM platform_admins WHERE id = ${result.id}`,
+    );
+    expect(rows.rows[0]?.email).toBe(email);
+
+    // Invitation marked accepted.
+    const inviteRows = await systemDb.execute<{ accepted_at: string | null }>(
+      sql`SELECT accepted_at FROM invitations WHERE id = ${result.invitationId}`,
+    );
+    expect(inviteRows.rows[0]?.accepted_at).not.toBeNull();
+
+    // Audit `platform_admin.created` written; actor_id null (the invitee
+    // accepted themselves; the inviter is on the prior `invited` row).
+    const auditRows = await systemDb.execute<{ actor_id: string | null }>(
+      sql`SELECT actor_id FROM audit_logs WHERE resource_id = ${result.id} AND action = 'platform_admin.created'`,
+    );
+    expect(auditRows.rows.length).toBe(1);
+    expect(auditRows.rows[0]?.actor_id).toBeNull();
+  });
+
+  it("POST accept on an already-accepted token returns 404 + RFC 9457 body", async () => {
+    const email = `dbl-${randomUUID().slice(0, 8)}@example.org`;
+    const invite = await app.inject({
+      method: "POST",
+      url: "/v1/admin/platform-admins",
+      headers: authHeader(superAdminToken()),
+      payload: { email, firstName: "Once", lastName: "Twice" },
+    });
+    const invitationId = (invite.json() as { data: { invitationId: string } }).data.invitationId;
+    const tokenRows = await systemDb.execute<{ token: string }>(
+      sql`SELECT token FROM invitations WHERE id = ${invitationId}`,
+    );
+    const token = tokenRows.rows[0]?.token;
+
+    const first = await app.inject({
+      method: "POST",
+      url: `/v1/public/platform-admins/invitations/${token}/accept`,
+      payload: { firstName: "Once", lastName: "Twice", password: "Test-Password-1234" },
+    });
+    expect(first.statusCode).toBe(201);
+
+    const second = await app.inject({
+      method: "POST",
+      url: `/v1/public/platform-admins/invitations/${token}/accept`,
+      payload: { firstName: "Once", lastName: "Twice", password: "Test-Password-1234" },
+    });
+    expect(second.statusCode).toBe(404);
+    expect(second.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/404",
+      title: "Not Found",
+      status: 404,
+    });
   });
 });
 
@@ -325,14 +407,12 @@ describe("POST /v1/admin/platform-admins", () => {
 describe("PATCH /v1/admin/platform-admins/:id", () => {
   it("renames a platform admin and writes an audit row with old/new values", async () => {
     const email = `rename-${randomUUID().slice(0, 8)}@example.org`;
-    const create = await app.inject({
-      method: "POST",
-      url: "/v1/admin/platform-admins",
-      headers: authHeader(superAdminToken()),
-      payload: { email, firstName: "Before", lastName: "Name" },
+    const { id } = await inviteAndAccept({
+      email,
+      firstName: "Before",
+      lastName: "Name",
     });
-    expect(create.statusCode).toBe(201);
-    const id = (create.json() as { data: { id: string } }).data.id;
+    kcUpdateUser.mockClear();
 
     const res = await app.inject({
       method: "PATCH",
@@ -361,14 +441,7 @@ describe("PATCH /v1/admin/platform-admins/:id", () => {
 describe("POST /v1/admin/platform-admins/:id/reset-password", () => {
   it("triggers a fresh UPDATE_PASSWORD email and writes an audit row", async () => {
     const email = `reset-${randomUUID().slice(0, 8)}@example.org`;
-    const create = await app.inject({
-      method: "POST",
-      url: "/v1/admin/platform-admins",
-      headers: authHeader(superAdminToken()),
-      payload: { email, firstName: "X", lastName: "Y" },
-    });
-    expect(create.statusCode).toBe(201);
-    const id = (create.json() as { data: { id: string } }).data.id;
+    const { id } = await inviteAndAccept({ email, firstName: "X", lastName: "Y" });
     kcSendExecuteActions.mockClear();
 
     const res = await app.inject({
@@ -411,19 +484,11 @@ describe("DELETE /v1/admin/platform-admins/:id", () => {
     // Create a second admin first, then remove the seeded one — that
     // succeeds — but immediately re-attempt to remove the only remaining
     // admin and expect 400.
-    const second = await app.inject({
-      method: "POST",
-      url: "/v1/admin/platform-admins",
-      headers: authHeader(superAdminToken()),
-      payload: {
-        email: `second-${randomUUID().slice(0, 8)}@example.org`,
-        firstName: "Second",
-        lastName: "Admin",
-      },
+    const { id: secondId, keycloakId: secondKc } = await inviteAndAccept({
+      email: `second-${randomUUID().slice(0, 8)}@example.org`,
+      firstName: "Second",
+      lastName: "Admin",
     });
-    expect(second.statusCode).toBe(201);
-    const secondId = (second.json() as { data: { id: string } }).data.id;
-    const secondKc = (second.json() as { data: { keycloakId: string } }).data.keycloakId;
 
     // Use a fresh token signed as the *second* admin to soft-delete the
     // original (the original cannot self-remove). The second admin has the
@@ -465,20 +530,11 @@ describe("DELETE /v1/admin/platform-admins/:id", () => {
   });
 
   it("soft-deletes a platform admin: KC user deleted, sub blocklisted, audit row, deleted_at set, keycloak_id cleared", async () => {
-    const created = await app.inject({
-      method: "POST",
-      url: "/v1/admin/platform-admins",
-      headers: authHeader(superAdminToken()),
-      payload: {
-        email: `target-${randomUUID().slice(0, 8)}@example.org`,
-        firstName: "Target",
-        lastName: "User",
-      },
+    const { id, keycloakId: targetKc } = await inviteAndAccept({
+      email: `target-${randomUUID().slice(0, 8)}@example.org`,
+      firstName: "Target",
+      lastName: "User",
     });
-    expect(created.statusCode).toBe(201);
-    const id = (created.json() as { data: { id: string } }).data.id;
-    const targetKc = (created.json() as { data: { keycloakId: string } }).data.keycloakId;
-
     kcDeleteUser.mockClear();
 
     const res = await app.inject({

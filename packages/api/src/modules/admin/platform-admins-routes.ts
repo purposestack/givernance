@@ -28,8 +28,10 @@ import { requireSuperAdmin } from "../../lib/guards.js";
 import { DataResponse, ErrorResponses, problemDetail, UuidSchema } from "../../lib/schemas.js";
 import { hashIp } from "./impersonation-service.js";
 import {
-  createPlatformAdmin,
+  acceptPlatformAdminInvitation,
   getPlatformAdminById,
+  getPlatformAdminInvitationByToken,
+  invitePlatformAdmin,
   listPlatformAdmins,
   PLATFORM_ADMIN_SORT_FIELDS,
   PlatformAdminServiceError,
@@ -90,6 +92,31 @@ const UpdateBody = Type.Object(
   },
   { minProperties: 1, additionalProperties: false },
 );
+
+const InvitationSummarySchema = Type.Object({
+  invitationId: UuidSchema,
+  email: Type.String(),
+  firstName: Type.String(),
+  lastName: Type.String(),
+  expiresAt: Type.String(),
+});
+
+/**
+ * Public invitation read shape — surfaces only what the accept page needs
+ * to render. NEVER returns the token itself or any internal-id fields.
+ */
+const PublicInvitationSchema = Type.Object({
+  email: Type.String(),
+  firstName: Type.String(),
+  lastName: Type.String(),
+  expiresAt: Type.String(),
+});
+
+const AcceptBody = Type.Object({
+  password: Type.String({ minLength: 12, maxLength: 255 }),
+  firstName: Type.String({ minLength: 1, maxLength: 255 }),
+  lastName: Type.String({ minLength: 1, maxLength: 255 }),
+});
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -204,7 +231,18 @@ export async function platformAdminsRoutes(app: FastifyInstance) {
     },
   );
 
-  /** POST /v1/admin/platform-admins — create + KC provisioning */
+  /**
+   * POST /v1/admin/platform-admins — issue an invitation.
+   *
+   * Post fix-commit-4 refactor (PR #253): no longer creates the KC user
+   * synchronously. Inserts an invitations row + outbox event; the worker
+   * sends the email; the invitee accepts on the public page which then
+   * does the KC create + role + Org + platform_admins insert.
+   *
+   * Response shape: returns the invitation id + email + expiresAt so the
+   * UI can render "invitation sent" without leaking identity-surface
+   * state before the invitee accepts.
+   */
   app.post(
     "/admin/platform-admins",
     {
@@ -213,7 +251,7 @@ export async function platformAdminsRoutes(app: FastifyInstance) {
         tags: ["Admin", "Platform Admins"],
         body: CreateBody,
         response: {
-          201: DataResponse(PlatformAdminSchema),
+          201: DataResponse(InvitationSummarySchema),
           ...ErrorResponses,
           409: ErrorResponses[404],
           502: ErrorResponses[404],
@@ -223,18 +261,110 @@ export async function platformAdminsRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const body = request.body as { email: string; firstName: string; lastName: string };
       try {
-        const row = await createPlatformAdmin({
+        const result = await invitePlatformAdmin({
           email: body.email,
           firstName: body.firstName,
           lastName: body.lastName,
           ...actorContext(request),
+        });
+        return reply.status(201).send({
+          data: {
+            invitationId: result.invitationId,
+            email: result.email,
+            firstName: result.firstName,
+            lastName: result.lastName,
+            expiresAt: result.expiresAt.toISOString(),
+          },
+        });
+      } catch (err) {
+        if (err instanceof PlatformAdminServiceError) {
+          return reply.status(err.status).send(mapErrorToProblem(err));
+        }
+        request.log.error({ err }, "platform-admins: invite failed");
+        throw err;
+      }
+    },
+  );
+
+  // ─── Public accept flow ──────────────────────────────────────────────────
+  //
+  // Two public routes — no JWT required — that handle the invitee's
+  // session-conflict-friendly acceptance. The web app's
+  // `/admin/platform-admins/accept?token=...` page reads from these.
+  //
+  // Anti-enumeration: every state that isn't "pending + unaccepted +
+  // unexpired" returns 404 with the same body. The token itself is the
+  // capability — a valid token reveals invitee email + name; an invalid
+  // one reveals nothing.
+
+  /** GET /v1/public/platform-admins/invitations/:token — read invitation */
+  app.get(
+    "/public/platform-admins/invitations/:token",
+    {
+      schema: {
+        tags: ["Public", "Platform Admins"],
+        params: Type.Object({ token: Type.String({ format: "uuid" }) }),
+        response: {
+          200: DataResponse(PublicInvitationSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const invite = await getPlatformAdminInvitationByToken(token);
+      if (!invite) {
+        return reply
+          .status(404)
+          .send(
+            problemDetail(404, "Not Found", "Invitation not found, expired, or already accepted."),
+          );
+      }
+      return {
+        data: {
+          email: invite.email,
+          firstName: invite.firstName,
+          lastName: invite.lastName,
+          expiresAt: invite.expiresAt.toISOString(),
+        },
+      };
+    },
+  );
+
+  /** POST /v1/public/platform-admins/invitations/:token/accept — accept + provision KC */
+  app.post(
+    "/public/platform-admins/invitations/:token/accept",
+    {
+      schema: {
+        tags: ["Public", "Platform Admins"],
+        params: Type.Object({ token: Type.String({ format: "uuid" }) }),
+        body: AcceptBody,
+        response: {
+          201: DataResponse(PlatformAdminSchema),
+          ...ErrorResponses,
+          409: ErrorResponses[404],
+          502: ErrorResponses[404],
+        },
+      },
+    },
+    async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const body = request.body as { password: string; firstName: string; lastName: string };
+      try {
+        const row = await acceptPlatformAdminInvitation({
+          token,
+          password: body.password,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          ipHash: hashIp(request.ip),
+          userAgent: request.headers["user-agent"] ?? null,
         });
         return reply.status(201).send({ data: serialize(row) });
       } catch (err) {
         if (err instanceof PlatformAdminServiceError) {
           return reply.status(err.status).send(mapErrorToProblem(err));
         }
-        request.log.error({ err }, "platform-admins: create failed");
+        request.log.error({ err }, "platform-admins: accept failed");
         throw err;
       }
     },
