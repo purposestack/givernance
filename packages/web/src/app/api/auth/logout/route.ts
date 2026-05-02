@@ -14,9 +14,17 @@ import {
  * Allowlist of safe `return_to` paths. Prevents open-redirect by restricting
  * the post-logout destination to known in-app routes that benefit from a
  * round-trip (e.g. the `/invite/accept` flow per PR #154 follow-up — the
- * invitee may have arrived while another user was signed in).
+ * invitee may have arrived while another user was signed in). Each new
+ * accept-style path that wants the same session-conflict UX (an operator
+ * clicking a fresh invitation link while still signed in as someone else)
+ * needs to be added here explicitly — `parsed.pathname` is exact-matched.
  */
-const RETURN_TO_PATH_ALLOWLIST = new Set<string>(["/invite/accept"]);
+const RETURN_TO_PATH_ALLOWLIST = new Set<string>([
+  "/invite/accept",
+  // Issue #254: the platform-admin invitation accept page. The session-
+  // conflict prompt round-trips through this allowlist after sign-out.
+  "/admin/platform-admins/accept",
+]);
 
 /**
  * POST /api/auth/logout
