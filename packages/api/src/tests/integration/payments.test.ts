@@ -22,9 +22,10 @@ const {
 
 // Mock BullMQ Queue to avoid needing a real Redis queue connection for route tests
 vi.mock("bullmq", () => ({
-  Queue: vi.fn().mockImplementation(() => ({
-    add: mockQueueAdd,
-  })),
+  // biome-ignore lint/complexity/useArrowFunction: constructor mock; vitest 4 rejects arrow impls when called with `new` (`() => ({...}) is not a constructor`)
+  Queue: vi.fn().mockImplementation(function () {
+    return { add: mockQueueAdd };
+  }),
 }));
 
 // Mock only Stripe signature verification — we can't call real Stripe APIs.
