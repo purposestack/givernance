@@ -8,10 +8,28 @@ import {
   generateRandom,
   KEYCLOAK_CLIENT_ID,
   OIDC_NONCE_COOKIE,
+  OIDC_RETURN_TO_COOKIE,
   OIDC_STATE_COOKIE,
   OIDC_VERIFIER_COOKIE,
   oidcFlowCookieOptions,
 } from "@/lib/auth/keycloak";
+
+/**
+ * Same-origin path validator for the OIDC `return_to` parameter (issue
+ * #250). Only the path part is honoured — never the host or scheme — so
+ * a malicious caller can't craft `/api/auth/login?return_to=https://evil.example`
+ * and turn the callback into an open-redirect oracle.
+ */
+function safeReturnToPath(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  // Reject control chars / CRLF / null bytes — defence-in-depth against
+  // header smuggling if the value were ever echoed in a Set-Cookie or
+  // Location header without re-encoding.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: explicit defence-in-depth filter (CRLF / null-byte smuggling)
+  if (/[\x00-\x1f\x7f]/.test(raw)) return null;
+  return raw;
+}
 
 /**
  * Extracts the Keycloak Organization alias from the request Host header.
@@ -93,6 +111,23 @@ export async function GET(request: NextRequest) {
     params.set("kc_org", orgAlias);
   }
 
+  // Step-up MFA support (issue #250). The impersonation form redirects
+  // here with `acr_values=2` + `prompt=login` to force a fresh MFA-backed
+  // re-auth. Both params are pass-throughs to Keycloak — the realm's
+  // browser-with-step-up flow + acr.loa.map handle the OTP prompt and
+  // ACR claim mapping. Only allow-listed values are forwarded so a
+  // malicious caller can't smuggle arbitrary OIDC params into the
+  // upstream auth request.
+  const url = new URL(request.url);
+  const acrValues = url.searchParams.get("acr_values");
+  if (acrValues === "2") {
+    params.set("acr_values", "2");
+  }
+  const prompt = url.searchParams.get("prompt");
+  if (prompt === "login") {
+    params.set("prompt", "login");
+  }
+
   // Drive the Keycloak login page language from the app's selected locale.
   // Priority: ?locale query param (set by the /login page picker) → NEXT_LOCALE
   // cookie (persisted preference). Keycloak sets its own KEYCLOAK_LOCALE cookie
@@ -115,6 +150,16 @@ export async function GET(request: NextRequest) {
   jar.set(OIDC_STATE_COOKIE, state, opts);
   jar.set(OIDC_VERIFIER_COOKIE, codeVerifier, opts);
   jar.set(OIDC_NONCE_COOKIE, nonce, opts);
+
+  // Persist the post-callback redirect target across the OIDC round-trip
+  // (issue #250). Same 5-min TTL as the other flow cookies — if the user
+  // doesn't complete re-auth in time, the cookie expires and the callback
+  // falls back to its default landing page (/select-organization).
+  // Validated as a same-origin path; nothing else is accepted.
+  const returnTo = safeReturnToPath(url.searchParams.get("return_to"));
+  if (returnTo) {
+    jar.set(OIDC_RETURN_TO_COOKIE, returnTo, opts);
+  }
 
   return NextResponse.redirect(`${AUTH_ENDPOINT}?${params.toString()}`);
 }

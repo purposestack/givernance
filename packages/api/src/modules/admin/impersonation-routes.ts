@@ -486,6 +486,14 @@ async function runStartGates(
       },
       "impersonation: step-up failed",
     );
+    // Extend the RFC 9457 problem detail with two extension members the
+    // web side discriminates on (issue #250). `reason` is the machine-
+    // readable validateStepUp() outcome — without it, the form can't tell
+    // "needs step-up MFA" from a generic 401 (auth missing, cookie expired,
+    // etc.) and degrades to a useless toast. `step_up_required` is the
+    // hint the form keys off to trigger the Keycloak re-auth redirect with
+    // `acr_values=2`. Lockout still wins (no step-up retry available) so
+    // we suppress the redirect hint in that case.
     return {
       ok: false,
       status: 401,
@@ -494,7 +502,11 @@ async function runStartGates(
         "Unauthorized",
         denied.lockedOut
           ? "Step-up authentication failed and account is now locked."
-          : "Step-up authentication required — re-authenticate (with MFA when configured) and retry.",
+          : "Step-up authentication required — re-authenticate with MFA and retry.",
+        {
+          reason: stepUp.reason ?? "step_up_required",
+          step_up_required: !denied.lockedOut,
+        },
       ),
     };
   }

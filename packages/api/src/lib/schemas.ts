@@ -85,13 +85,25 @@ export const ErrorResponses = {
   404: ProblemDetailSchema,
 };
 
-/** Helper to create an RFC 9457 problem detail object */
-export function problemDetail(status: number, title: string, detail: string) {
+/**
+ * Helper to create an RFC 9457 problem detail object. Optional `extensions`
+ * are spread into the body — RFC 9457 §3.2 explicitly allows additional
+ * members (e.g. `reason`, `step_up_required` on the impersonation 401 in
+ * issue #250). Keep extension keys snake_case to match the wire-format
+ * convention used elsewhere in problem responses.
+ */
+export function problemDetail(
+  status: number,
+  title: string,
+  detail: string,
+  extensions?: Record<string, unknown>,
+) {
   return {
     type: `https://httpproblems.com/http-status/${status}`,
     title,
     status,
     detail,
+    ...extensions,
   };
 }
 

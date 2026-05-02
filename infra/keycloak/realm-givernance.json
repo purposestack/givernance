@@ -32,6 +32,98 @@
     "xContentTypeOptions": "nosniff",
     "referrerPolicy": "no-referrer"
   },
+  "attributes": {
+    "acr.loa.map": "{\"1\": 1, \"2\": 2}"
+  },
+  "browserFlow": "browser-with-step-up",
+  "authenticationFlows": [
+    {
+      "alias": "browser-with-step-up",
+      "description": "Browser flow with conditional step-up MFA — fires OTP when client requests acr_values=2 (issue #250). Top-level flow assigned as the realm browserFlow.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "requirement": "ALTERNATIVE",
+          "priority": 25,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "flowAlias": "browser-with-step-up forms",
+          "userSetupAllowed": false,
+          "autheticatorFlow": true
+        }
+      ]
+    },
+    {
+      "alias": "browser-with-step-up forms",
+      "description": "Username/password followed by a Conditional-LoA sub-flow that prompts for OTP when LoA 2 is requested.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "flowAlias": "browser-with-step-up loa-2",
+          "userSetupAllowed": false,
+          "autheticatorFlow": true
+        }
+      ]
+    },
+    {
+      "alias": "browser-with-step-up loa-2",
+      "description": "Fires OTP when the client requested acr_values=2 (or equivalent claims param) AND the operator has not satisfied LoA 2 within max-age. Skipped on normal LoA 1 logins.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "loa-2-config",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "loa-2-config",
+      "config": {
+        "loa": "2",
+        "max_age": "3600"
+      }
+    }
+  ],
   "components": {
     "org.keycloak.userprofile.UserProfileProvider": [
       {
@@ -71,6 +163,9 @@
       ],
       "realmRoles": [
         "super_admin"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
       ]
     },
     {

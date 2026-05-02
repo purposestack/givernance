@@ -8,6 +8,7 @@ import {
   jwtCookieOptions,
   KEYCLOAK_CLIENT_ID,
   OIDC_NONCE_COOKIE,
+  OIDC_RETURN_TO_COOKIE,
   OIDC_STATE_COOKIE,
   OIDC_VERIFIER_COOKIE,
   REFRESH_TOKEN_COOKIE_NAME,
@@ -16,6 +17,20 @@ import {
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
 import { verifyKeycloakJwt } from "@/lib/auth/verify-keycloak-jwt";
+
+/**
+ * Same-origin path validator for the OIDC `return_to` cookie (issue
+ * #250). Mirrors `safeReturnToPath` in the login route — re-validating
+ * here as defence-in-depth so a stale or tampered cookie can't become
+ * an open-redirect oracle.
+ */
+function safeReturnToCookie(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: explicit defence-in-depth filter (CRLF / null-byte smuggling)
+  if (/[\x00-\x1f\x7f]/.test(raw)) return null;
+  return raw;
+}
 
 /** Map Keycloak errors to safe, fixed error codes — never reflect upstream error text. */
 function sanitizeError(error: string): string {
@@ -56,11 +71,18 @@ export async function GET(request: NextRequest) {
 
   const jar = await cookies();
 
+  // Post-callback redirect target (issue #250 step-up). Pulled before
+  // cleanup runs; re-validated via the same allow-list as the login
+  // route writes against — a stale or tampered cookie falls back to the
+  // default landing page rather than becoming an open-redirect oracle.
+  const returnTo = safeReturnToCookie(jar.get(OIDC_RETURN_TO_COOKIE)?.value ?? null);
+
   // Clean up OIDC flow cookies regardless of outcome
   const cleanup = () => {
     jar.delete(OIDC_STATE_COOKIE);
     jar.delete(OIDC_VERIFIER_COOKIE);
     jar.delete(OIDC_NONCE_COOKIE);
+    jar.delete(OIDC_RETURN_TO_COOKIE);
   };
 
   // Keycloak returned an error — map to safe error code, never reflect raw text
@@ -152,6 +174,14 @@ export async function GET(request: NextRequest) {
     }
     if (tokens.refresh_token) {
       jar.set(REFRESH_TOKEN_COOKIE_NAME, tokens.refresh_token, jwtCookieOptions(sessionMaxAge));
+    }
+
+    // Step-up MFA flow (issue #250): if the operator was redirected here
+    // mid-task (e.g. from POST /v1/admin/impersonation 401), drop them
+    // back where they were instead of routing through the org picker.
+    // Falls through to the default landing page when no return_to is set.
+    if (returnTo) {
+      return NextResponse.redirect(new URL(returnTo, APP_URL).toString());
     }
 
     // FE-2: send every newly-authenticated user through `/select-organization`.

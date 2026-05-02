@@ -162,6 +162,219 @@ else
   log "Realm fields (passwordPolicy, loginTheme, i18n, locales) already match — no change."
 fi
 
+# 1.c Reconcile the step-up MFA flow (issue #250).
+#
+# The realm JSON declares `browser-with-step-up` (top-level + 2 nested
+# sub-flows + a `loa-2-config` authenticator config) and assigns it as
+# the browserFlow + sets `attributes."acr.loa.map"`. On a fresh realm
+# import these all land. On an EXISTING realm the import is a no-op
+# (IGNORE_EXISTING — see 1.b above) and the API's
+# IMPERSONATION_REQUIRE_ACR_2 boot check fires correctly but the route
+# always 401s `acr_insufficient` because Keycloak has no flow that emits
+# acr=2. This block reconstructs the flow on existing realms via the
+# Authentication REST API so a deploy fix can land without wiping the KC
+# database.
+#
+# Idempotent: every step checks current state first. If the flow already
+# matches, nothing is touched. Failing partway through (e.g. half a
+# sub-flow created) is recoverable by re-running — the existence check
+# will see the partial flow and the script will skip; an operator must
+# manually delete the partial flow from the Admin UI before re-running.
+# That's an acceptable failure mode for a one-time provisioning step.
+KC_URL="$KC_URL" REALM="$REALM" ADMIN_TOKEN="$ADMIN_TOKEN" \
+python3 <<'PY' || warn "step-up flow reconciliation hit an error — see trace above."
+import json, os, sys, urllib.request, urllib.error
+
+KC = os.environ["KC_URL"]
+REALM = os.environ["REALM"]
+TOKEN = os.environ["ADMIN_TOKEN"]
+HEADERS = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
+FLOW_ALIAS = "browser-with-step-up"
+FORMS_ALIAS = "browser-with-step-up forms"
+LOA_ALIAS = "browser-with-step-up loa-2"
+LOA_CONFIG_ALIAS = "loa-2-config"
+ACR_LOA_MAP = '{"1": 1, "2": 2}'
+
+def call(method, path, body=None):
+    url = f"{KC}{path}"
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method, headers=HEADERS)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            raw = resp.read()
+            return resp.status, (json.loads(raw) if raw else None)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")
+        return e.code, body
+
+def log(msg): print(f"   {msg}")
+
+# 1. Realm attributes (acr.loa.map) — required so KC translates the
+#    Conditional-LoA authenticator's emitted level to acr="2" in the token.
+status, realm = call("GET", f"/admin/realms/{REALM}")
+if status != 200:
+    log(f"could not GET realm — HTTP {status}; aborting step-up sync")
+    sys.exit(0)
+attrs = realm.get("attributes") or {}
+if attrs.get("acr.loa.map") != ACR_LOA_MAP:
+    attrs["acr.loa.map"] = ACR_LOA_MAP
+    realm["attributes"] = attrs
+    s, _ = call("PUT", f"/admin/realms/{REALM}", realm)
+    log(f"Set realm attribute acr.loa.map (HTTP {s}).")
+else:
+    log("Realm attribute acr.loa.map already correct.")
+
+# 2. Authenticator config `loa-2-config` (referenced by the conditional
+#    sub-flow's execution). Must exist before the flow execution that
+#    references it; created in step 4 below if missing.
+status, configs = call("GET", f"/admin/realms/{REALM}/authentication/config-description/conditional-level-of-authentication")
+# We don't actually need the description; we'll create the config inline
+# next to the execution. Skip.
+
+# 3. Top-level flow + sub-flows. If the top-level flow exists we trust
+#    the entire sub-tree (idempotent re-runs short-circuit here).
+status, flows = call("GET", f"/admin/realms/{REALM}/authentication/flows")
+existing = {f["alias"]: f for f in (flows or [])}
+flow_created = False
+if FLOW_ALIAS not in existing:
+    s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows", {
+        "alias": FLOW_ALIAS,
+        "description": "Browser flow with conditional step-up MFA (issue #250).",
+        "providerId": "basic-flow",
+        "topLevel": True,
+        "builtIn": False,
+    })
+    log(f"Created top-level flow '{FLOW_ALIAS}' (HTTP {s}).")
+    if s not in (200, 201):
+        log("flow create failed — aborting step-up sync")
+        sys.exit(0)
+    flow_created = True
+
+    # cookie + IdP redirector at ALTERNATIVE
+    for provider, prio in [("auth-cookie", 10), ("identity-provider-redirector", 25)]:
+        s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions/execution",
+                    {"provider": provider})
+        if s not in (200, 201):
+            log(f"  add {provider}: HTTP {s}")
+
+    # forms sub-flow
+    s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions/flow", {
+        "alias": FORMS_ALIAS,
+        "type": "basic-flow",
+        "description": "Username/password + conditional LoA-2 sub-flow.",
+        "provider": "registration-page-form",
+    })
+    log(f"  Created sub-flow '{FORMS_ALIAS}' (HTTP {s}).")
+
+    # username-password inside forms
+    s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FORMS_ALIAS}/executions/execution",
+                {"provider": "auth-username-password-form"})
+
+    # LoA-2 sub-flow inside forms
+    s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FORMS_ALIAS}/executions/flow", {
+        "alias": LOA_ALIAS,
+        "type": "basic-flow",
+        "description": "Fires OTP when client requests acr_values=2.",
+        "provider": "registration-page-form",
+    })
+    log(f"  Created sub-flow '{LOA_ALIAS}' (HTTP {s}).")
+
+    # conditional-LoA + OTP form inside loa-2 sub-flow
+    for provider in ["conditional-level-of-authentication", "auth-otp-form"]:
+        s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{LOA_ALIAS}/executions/execution",
+                    {"provider": provider})
+
+    # Walk the resulting executions list to fix requirements + attach the
+    # LoA-2 authenticator config. Default requirement on POST is DISABLED;
+    # we PATCH each execution to its target requirement.
+    s, execs = call("GET", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions")
+    if s == 200 and isinstance(execs, list):
+        targets = {
+            "auth-cookie": "ALTERNATIVE",
+            "identity-provider-redirector": "ALTERNATIVE",
+            FORMS_ALIAS: "ALTERNATIVE",
+            "auth-username-password-form": "REQUIRED",
+            LOA_ALIAS: "CONDITIONAL",
+            "conditional-level-of-authentication": "REQUIRED",
+            "auth-otp-form": "REQUIRED",
+        }
+        for ex in execs:
+            key = ex.get("displayName") or ex.get("providerId") or ex.get("authenticator") or ex.get("flowAlias")
+            # The /executions endpoint returns sub-flow rows by their alias
+            # in `displayName`. Match on either provider or alias.
+            tgt = None
+            for k, v in targets.items():
+                if k == key or k == ex.get("providerId") or k == ex.get("authenticator") or k == ex.get("displayName"):
+                    tgt = v
+                    break
+            if tgt and ex.get("requirement") != tgt:
+                ex["requirement"] = tgt
+                s2, _ = call("PUT", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions", ex)
+                log(f"  set {key} requirement={tgt} (HTTP {s2})")
+
+            # Create + attach the LoA-2 config to the conditional-loa execution
+            if (ex.get("providerId") == "conditional-level-of-authentication"
+                    and not ex.get("authenticationConfig")):
+                s2, cfg = call("POST",
+                               f"/admin/realms/{REALM}/authentication/executions/{ex['id']}/config",
+                               {"alias": LOA_CONFIG_ALIAS, "config": {"loa": "2", "max_age": "3600"}})
+                log(f"  Created authenticatorConfig '{LOA_CONFIG_ALIAS}' (HTTP {s2}).")
+else:
+    log(f"Flow '{FLOW_ALIAS}' already exists — skipping creation. "
+        "Edit via Admin UI if its structure needs updating.")
+
+# 4. Set realm.browserFlow once the flow exists.
+status, realm = call("GET", f"/admin/realms/{REALM}")
+if status == 200 and realm.get("browserFlow") != FLOW_ALIAS:
+    realm["browserFlow"] = FLOW_ALIAS
+    s, _ = call("PUT", f"/admin/realms/{REALM}", realm)
+    log(f"Set realm.browserFlow = '{FLOW_ALIAS}' (HTTP {s}).")
+elif status == 200:
+    log(f"Realm browserFlow already '{FLOW_ALIAS}'.")
+PY
+
+# 1.d Force CONFIGURE_TOTP on the seed super-admin user (issue #250).
+#     The realm JSON declares `requiredActions: ["CONFIGURE_TOTP"]` on
+#     the seed user, but that's only honoured on a fresh import. On an
+#     existing realm we patch the live user — but only when the user
+#     hasn't already enrolled OTP (otherwise we'd reset their MFA on
+#     every deploy). Skipped silently for non-seed deployments where
+#     the seed user doesn't exist.
+seed_user_resp=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users?username=$(urlencode "$SEED_USERNAME")&exact=true")
+seed_uid=$(printf '%s' "$seed_user_resp" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')
+if [ -n "$seed_uid" ]; then
+  seed_creds=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users/${seed_uid}/credentials")
+  has_otp=$(printf '%s' "$seed_creds" | python3 -c 'import sys,json; print("yes" if any(c.get("type")=="otp" for c in json.load(sys.stdin)) else "no")')
+  if [ "$has_otp" = "yes" ]; then
+    log "Seed super-admin has OTP credential — leaving requiredActions untouched."
+  else
+    seed_full=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users/${seed_uid}")
+    needs_totp=$(printf '%s' "$seed_full" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+ra = d.get("requiredActions") or []
+print("no" if "CONFIGURE_TOTP" in ra else "yes")
+')
+    if [ "$needs_totp" = "yes" ]; then
+      patched_seed=$(printf '%s' "$seed_full" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+ra = d.get("requiredActions") or []
+if "CONFIGURE_TOTP" not in ra:
+    ra.append("CONFIGURE_TOTP")
+d["requiredActions"] = ra
+print(json.dumps(d))
+')
+      curl -sS -o /dev/null -w 'seed user CONFIGURE_TOTP: HTTP %{http_code}\n' \
+        -X PUT "${KC_URL}/admin/realms/${REALM}/users/${seed_uid}" \
+        "${auth[@]}" -H "Content-Type: application/json" -d "$patched_seed"
+      log "Added CONFIGURE_TOTP required action to seed super-admin '${SEED_USERNAME}'."
+    else
+      log "Seed super-admin already has CONFIGURE_TOTP queued."
+    fi
+  fi
+fi
+
 # 2. Ensure the `organization` client scope is the single home for all
 #    org-related claims (`org_id`, `role`, `organization` membership), then
 #    attach it to `givernance-web` (default) and `admin-cli` (optional).

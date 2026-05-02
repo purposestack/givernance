@@ -76,6 +76,16 @@ Two coexisting support-session modes are documented in [`docs/19-impersonation.m
 - Reason field is mandatory (≥ 20 chars, DB CHECK constraint) — creates an auditable paper trail of WHY a platform admin accessed an account.
 - Step-up MFA is delegated to Keycloak via OIDC `auth_time` + `acr` (production hard-fails to `IMPERSONATION_REQUIRE_ACR_2=true`); no app-side TOTP store.
 
+### Operator MFA enrolment & recovery (issue #250)
+
+Super-admins **must** enrol a TOTP authenticator (FreeOTP / Google Authenticator / Microsoft Authenticator) before they can start an impersonation session in any deployed environment. Mechanics:
+
+- The realm JSON ships `requiredActions: ["CONFIGURE_TOTP"]` on every seed super-admin user, and `scripts/keycloak-sync-realm.sh` re-applies that required action on existing realms whenever the user has no `otp` credential — so a forgotten enrolment self-heals on the next deploy.
+- First login: Keycloak presents the QR-code enrolment screen under the Givernance theme. The operator scans, enters one verification code, and proceeds into the app normally.
+- Step-up: when the operator hits the impersonation form, the API's 401 response triggers a re-auth through Keycloak with `acr_values=2`, which fires the realm's Conditional-LoA → OTP form sub-flow. The flow design and the realm JSON details live in [`docs/19-impersonation.md`](./19-impersonation.md) §7.
+- **Recovery (lost device)**: any operator with realm-management `manage-users` access opens the user in the Keycloak admin console (e.g. `https://auth.staging.givernance.org/admin/master/console/`), Credentials tab → delete the OTP credential → re-add `CONFIGURE_TOTP` to required actions. Next login walks the user through fresh enrolment.
+- **Why no self-serve "I lost my phone" flow**: the same TOTP gates the impersonation route into every tenant's data, so account-takeover via SMS recovery / email reset would defeat the purpose of step-up. Manual recovery via Keycloak admin is the deliberate fail-safe.
+
 ## Security operations
 - SAST/DAST in CI
 - Dependency scanning + SBOM

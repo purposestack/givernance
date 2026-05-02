@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
+import { buildStepUpRedirectUrl, type StepUpRequiredResponse } from "@/lib/auth/step-up";
 import { cn } from "@/lib/utils";
 import {
   ImpersonationService,
@@ -71,10 +72,22 @@ export function StartImpersonationForm() {
       });
 
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as {
-          detail?: string;
-          title?: string;
-        };
+        const body = (await res.json().catch(() => ({}))) as StepUpRequiredResponse;
+
+        // Step-up MFA required (issue #250). Send the operator through
+        // /api/auth/login with `acr_values=2` so Keycloak fires the
+        // Conditional-LoA sub-flow (OTP prompt). The login route persists
+        // `return_to` in a cookie; the callback will land them back on
+        // this page after the fresh acr=2 token is set, and they re-submit.
+        // Suppressed when `step_up_required` is false (lockout case — the
+        // operator is locked out, redirecting to re-auth would just loop).
+        if (res.status === 401 && body.step_up_required) {
+          window.location.assign(
+            buildStepUpRedirectUrl(window.location.origin, "/admin/impersonation/new"),
+          );
+          return;
+        }
+
         setError(body.detail ?? body.title ?? `Request failed: ${res.status}`);
         return;
       }
