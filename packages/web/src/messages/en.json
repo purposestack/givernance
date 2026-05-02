@@ -699,25 +699,20 @@
         "title": "Platform admins",
         "subtitle": "Givernance staff with super-admin access. New admins receive a password-reset email and choose their password on first login.",
         "createCta": "Invite a platform admin",
-        "search": {
-          "label": "Search",
-          "placeholder": "Search by name or email"
-        },
-        "includeDeleted": "Show offboarded admins",
         "columns": {
           "name": "Name",
           "email": "Email",
           "createdAt": "Created",
           "lastLoginAt": "Last login",
-          "status": "Status",
-          "actions": "Actions"
+          "status": "Status"
         },
         "status": {
           "active": "Active",
           "removed": "Removed"
         },
         "lastLoginNever": "Never",
-        "empty": "No platform admins yet."
+        "empty": "No platform admins yet.",
+        "fetchFailed": "Couldn't load platform admins. Refresh the page to try again."
       },
       "new": {
         "back": "← Platform admins",
@@ -732,6 +727,8 @@
         "submitting": "Sending…",
         "cancel": "Cancel",
         "errors": {
+          "emailRequired": "Email is required.",
+          "emailFormat": "Enter a valid email address.",
           "emailTakenByTenant": "This email belongs to a tenant member; the same Keycloak person cannot be both a platform admin and a tenant user.",
           "emailTakenByAdmin": "A platform admin already exists with this email.",
           "emailTakenByKeycloak": "A Keycloak user with this email already exists. An operator must clean it up before retrying.",

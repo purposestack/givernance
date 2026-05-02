@@ -1,21 +1,13 @@
 "use client";
 
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
-import { Eye, MoreHorizontal, ShieldCheck } from "lucide-react";
-import Link from "next/link";
+import { ShieldCheck } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useTransition } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
-import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type {
   PlatformAdmin,
   PlatformAdminSortField,
@@ -119,28 +111,10 @@ export function PlatformAdminsTable({ admins, total, sort, order }: Props) {
           );
         },
       },
-      {
-        id: "actions",
-        header: () => <span className="sr-only">{t("columns.actions")}</span>,
-        enableSorting: false,
-        cell: ({ row }) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="justify-center">
-                <MoreHorizontal size={16} aria-hidden="true" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href={`/admin/platform-admins/${row.original.id}`}>
-                  <Eye size={16} aria-hidden="true" className="mr-2" />
-                  {t("columns.actions")}
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ),
-      },
+      // No actions column — the entire row is clickable via `onRowClick`
+      // and navigates to the detail page (same pattern as `tenants-table`
+      // when an admin opens a detail-only resource). Frontend review
+      // M3/M4 dropped the redundant dropdown that duplicated the row click.
     ],
     [t],
   );
