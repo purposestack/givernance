@@ -29,6 +29,29 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 const REASON_MIN_LENGTH = 20;
 const SEARCH_DEBOUNCE_MS = 250;
 
+/**
+ * sessionStorage key + 5-minute TTL for the form payload that survives
+ * the MFA round-trip. The operator fills out the form, hits Submit,
+ * the API returns 401 (`step_up_required`), the form redirects through
+ * /api/auth/login → KC's Conditional-LoA-2 → TOTP prompt, and the
+ * callback drops them back here. Without this, the form is empty after
+ * the round-trip and the operator has to refill (target, reason, mode)
+ * from scratch (PR #251 dev-feedback). The TTL matches
+ * STEP_UP_AUTH_TIME_WINDOW_SECONDS in the API's step-up validator
+ * (`packages/api/src/lib/impersonation/step-up.ts`) — past that, the
+ * server would reject the resubmit anyway, so a stale stash isn't
+ * useful.
+ */
+const STASH_KEY = "gv-impersonation-resubmit";
+const STASH_TTL_MS = 5 * 60 * 1000;
+
+interface StashedPayload {
+  target: ImpersonationTargetCandidate;
+  mode: Mode;
+  reason: string;
+  expiresAt: number;
+}
+
 type Mode = "delegation" | "impersonation";
 
 /**
@@ -54,9 +77,17 @@ export function StartImpersonationForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!target) return;
+  /**
+   * Pure submit logic — takes the values explicitly so it can be invoked
+   * from both the form's onSubmit AND the post-MFA auto-resubmit effect
+   * below (where React state hasn't necessarily flushed by the time we
+   * want to re-fire the request).
+   */
+  async function executeStart(
+    submittedTarget: ImpersonationTargetCandidate,
+    submittedMode: Mode,
+    submittedReason: string,
+  ) {
     setError(null);
     setSubmitting(true);
     try {
@@ -68,7 +99,11 @@ export function StartImpersonationForm() {
         method: "POST",
         credentials: "include",
         headers,
-        body: JSON.stringify({ targetUserId: target.id, mode, reason }),
+        body: JSON.stringify({
+          targetUserId: submittedTarget.id,
+          mode: submittedMode,
+          reason: submittedReason,
+        }),
       });
 
       if (!res.ok) {
@@ -78,10 +113,29 @@ export function StartImpersonationForm() {
         // /api/auth/login with `acr_values=2` so Keycloak fires the
         // Conditional-LoA sub-flow (OTP prompt). The login route persists
         // `return_to` in a cookie; the callback will land them back on
-        // this page after the fresh acr=2 token is set, and they re-submit.
+        // this page after the fresh acr=2 token is set, and the
+        // mount-effect below auto-resubmits the stashed payload.
         // Suppressed when `step_up_required` is false (lockout case — the
         // operator is locked out, redirecting to re-auth would just loop).
         if (res.status === 401 && body.step_up_required) {
+          // Stash the payload so the post-MFA mount-effect can pick it up
+          // and resubmit without making the operator re-fill (target,
+          // mode, reason). 5-min TTL matches the API's auth_time
+          // freshness window — past that, a resubmit would 401 again
+          // and we'd be back in this branch anyway.
+          try {
+            const stash: StashedPayload = {
+              target: submittedTarget,
+              mode: submittedMode,
+              reason: submittedReason,
+              expiresAt: Date.now() + STASH_TTL_MS,
+            };
+            sessionStorage.setItem(STASH_KEY, JSON.stringify(stash));
+          } catch {
+            // sessionStorage may be unavailable (privacy mode, quota).
+            // Fall back to the legacy "operator refills the form"
+            // behaviour — annoying but not broken.
+          }
           // Reset the disabled state BEFORE the redirect so a back-button
           // / bfcache restore doesn't leave the submit button stuck on
           // "Starting…" (review I-8). The `finally` below would also
@@ -117,6 +171,51 @@ export function StartImpersonationForm() {
       setSubmitting(false);
     }
   }
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!target) return;
+    await executeStart(target, mode, reason);
+  }
+
+  // Post-MFA auto-resubmit. After Keycloak completes the step-up dance
+  // and the callback drops the operator back on /admin/impersonation/new,
+  // this effect picks up the stashed payload and resubmits — saving the
+  // operator from re-filling target / mode / reason. Single-use: we
+  // remove the stash before resubmitting so a refresh doesn't infinite-
+  // loop. Stale stashes (past STASH_TTL_MS) are also cleaned up.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only auto-resubmit; including executeStart in the deps would re-fire on every render and stamp duplicate impersonation sessions.
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(STASH_KEY);
+      if (raw) sessionStorage.removeItem(STASH_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    let stash: StashedPayload;
+    try {
+      stash = JSON.parse(raw) as StashedPayload;
+    } catch {
+      return;
+    }
+    if (
+      typeof stash.expiresAt !== "number" ||
+      stash.expiresAt < Date.now() ||
+      !stash.target ||
+      !stash.reason ||
+      (stash.mode !== "delegation" && stash.mode !== "impersonation")
+    ) {
+      return;
+    }
+    // Hydrate state so the form reflects what's about to be submitted —
+    // a moment of "we're working on it" feedback while the fetch flies.
+    setTarget(stash.target);
+    setMode(stash.mode);
+    setReason(stash.reason);
+    void executeStart(stash.target, stash.mode, stash.reason);
+  }, []);
 
   const reasonValid = reason.length >= REASON_MIN_LENGTH;
 
