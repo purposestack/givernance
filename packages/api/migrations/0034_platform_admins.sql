@@ -59,3 +59,34 @@ DO $$ BEGIN
     EXECUTE 'REVOKE ALL ON platform_admins FROM givernance_app';
   END IF;
 END $$;
+
+-- Sentinel platform tenant (ADR-022 amendment).
+--
+-- `audit_logs.org_id` is `NOT NULL REFERENCES tenants(id)`. Platform-level
+-- lifecycle events (super-admin onboarded/removed/etc., issue #254) need
+-- a tenant id to FK against — they do not belong to any customer tenant
+-- by definition. We keep ONE row in `tenants` at the platform id (`…a1`)
+-- as the FK target.
+--
+-- This insert is idempotent (`ON CONFLICT DO NOTHING`) and runs on every
+-- environment (dev / staging / prod) so the first call to
+-- `createPlatformAdmin` never fails on FK. The dev seed reconciles the
+-- row's name/slug/status if any drifted; production deploys use this
+-- migration as the single source of truth.
+--
+-- Distinguishing properties:
+--   - `slug = '__platform__'` — double-underscore is reserved (ADR-016
+--     reserved-slugs guard) so it cannot collide with a customer slug.
+--   - `status = 'archived'` — every customer-facing list endpoint already
+--     filters `status != 'archived'`, so the row is structurally invisible.
+--   - `name = 'Givernance Platform (sentinel)'` — human-readable for SOC
+--     reviewers grepping the audit table.
+INSERT INTO tenants (id, name, slug, plan, status)
+VALUES (
+  '00000000-0000-0000-0000-0000000000a1',
+  'Givernance Platform (sentinel)',
+  '__platform__',
+  'starter',
+  'archived'
+)
+ON CONFLICT (id) DO NOTHING;

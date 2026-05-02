@@ -87,6 +87,15 @@ export interface CreateUserInput {
   password: string;
   emailVerified?: boolean;
   /**
+   * When `true`, KC marks the credential as temporary so the user must
+   * UPDATE_PASSWORD on first login regardless of any email-delivery
+   * outcome. Defense-in-depth for flows that rely on the
+   * `sendExecuteActionsEmail` follow-up step (issue #254 platform-admin
+   * create). Default `false` for backward compatibility with the existing
+   * signup / invitation paths that set the user's chosen password.
+   */
+  temporary?: boolean;
+  /**
    * Realm-user profile attributes set at creation time. Keycloak emits
    * configured ones (e.g. `org_id`, `role`) into the access/ID/userinfo token
    * via `oidc-usermodel-attribute-mapper` on the `organization` client scope —
@@ -643,7 +652,15 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
       await adminRequest<void>("POST", `/organizations/${e(orgId)}/identity-providers`, { alias });
     },
 
-    createUser: async ({ email, firstName, lastName, password, emailVerified, attributes }) => {
+    createUser: async ({
+      email,
+      firstName,
+      lastName,
+      password,
+      emailVerified,
+      temporary,
+      attributes,
+    }) => {
       const normalisedEmail = email.trim().toLowerCase();
       try {
         const out = await adminRequest<KeycloakUser & { __locationHeader?: string }>(
@@ -656,7 +673,7 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
             lastName,
             enabled: true,
             emailVerified: emailVerified ?? false,
-            credentials: [{ type: "password", value: password, temporary: false }],
+            credentials: [{ type: "password", value: password, temporary: temporary ?? false }],
             ...(attributes ? { attributes } : {}),
           },
         );

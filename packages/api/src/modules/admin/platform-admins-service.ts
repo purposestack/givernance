@@ -42,9 +42,13 @@ import {
   users,
 } from "@givernance/shared/schema";
 import { and, asc, desc, eq, ilike, isNotNull, isNull, or, type SQL, sql } from "drizzle-orm";
+import pino from "pino";
+import { env } from "../../env.js";
 import { systemDb } from "../../lib/db.js";
 import { KeycloakUserExistsError, keycloakAdmin } from "../../lib/keycloak-admin.js";
 import { blocklistUser } from "../session/service.js";
+
+const logger = pino({ name: "platform-admins-service" });
 
 /**
  * The Keycloak "Givernance Platform" Organization's `org_id` attribute —
@@ -66,6 +70,18 @@ const PASSWORD_RESET_LIFESPAN_SEC = 4 * 60 * 60;
 
 const SUPER_ADMIN_ROLE_NAME = "super_admin";
 const PLATFORM_ORG_ALIAS = "platform";
+
+/** Keycloak client id the password-reset email link should land on. */
+const KC_WEB_CLIENT_ID = "givernance-web";
+
+/**
+ * Where the UPDATE_PASSWORD email link redirects after password set.
+ * Resolves from `APP_URL` so dev / staging / prod each land the new admin
+ * on the right back-office origin. KC will reject a redirect that isn't
+ * registered on `givernance-web` — the realm seed already lists
+ * `<APP_URL>/*` for every environment.
+ */
+const KC_PLATFORM_ADMIN_REDIRECT_URL = `${env.APP_URL.replace(/\/$/, "")}/admin/platform-admins`;
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
@@ -204,11 +220,22 @@ export async function listPlatformAdmins(filters: ListFilters): Promise<ListResu
   return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
-export async function getPlatformAdminById(id: string): Promise<PlatformAdminRow | null> {
+export async function getPlatformAdminById(
+  id: string,
+  opts: { includeDeleted?: boolean } = {},
+): Promise<PlatformAdminRow | null> {
+  const conditions: SQL[] = [eq(platformAdmins.id, id)];
+  if (!opts.includeDeleted) {
+    // Default: hide offboarded admins from the detail surface — same
+    // posture as `listPlatformAdmins`. Routes that explicitly want the
+    // historical record opt in via `includeDeleted: true`. Closes the
+    // data-architect minor #6.
+    conditions.push(isNull(platformAdmins.deletedAt));
+  }
   const [row] = await systemDb
     .select()
     .from(platformAdmins)
-    .where(eq(platformAdmins.id, id))
+    .where(and(...conditions))
     .limit(1);
   return row ?? null;
 }
@@ -297,19 +324,21 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     );
   }
 
-  // Provision the KC user. The temporary password is a high-entropy
-  // throwaway — the user never sees it because we immediately trigger
-  // UPDATE_PASSWORD which forces them to set their own.
+  // Provision the KC user. The throwaway password is `temporary: true` so
+  // even if the UPDATE_PASSWORD email-trigger path fails afterward, the
+  // user CANNOT log in with it — KC will force them through the password
+  // reset on first login regardless. Defense-in-depth (security review m4).
   let kcUserId: string;
   try {
     const out = await keycloakAdmin().createUser({
       email,
       firstName: input.firstName,
       lastName: input.lastName,
-      // 32 bytes of entropy in hex — never logged or transmitted; immediately
-      // overwritten by the UPDATE_PASSWORD flow before first login.
+      // 32 bytes of entropy in hex — never logged or transmitted; KC will
+      // force UPDATE_PASSWORD on first login because `temporary: true`.
       password: cryptoRandomPassword(),
       emailVerified: true,
+      temporary: true,
     });
     kcUserId = out.id;
   } catch (err) {
@@ -323,22 +352,44 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     throw err;
   }
 
-  // From here on, any failure must compensate by deleting the KC user
-  // we just created — otherwise the realm accumulates orphans.
+  // Phase 1 — assign the realm role + Org membership. Both are required
+  // for the user to function as a super-admin. A mid-flight failure here
+  // means the user has no super-admin authority and must be rolled back
+  // (otherwise the realm accumulates orphans with partial state).
   try {
     await keycloakAdmin().assignRealmRoleToUser(kcUserId, role);
     await keycloakAdmin().attachUserToOrg(org.id, kcUserId);
-    await keycloakAdmin().sendExecuteActionsEmail(kcUserId, ["UPDATE_PASSWORD"], {
-      lifespanSec: PASSWORD_RESET_LIFESPAN_SEC,
-    });
   } catch (err) {
-    await compensatingKcDelete(kcUserId);
+    await compensatingKcDelete(kcUserId, "role/org-assignment-failed");
     if (err instanceof PlatformAdminServiceError) throw err;
     throw new PlatformAdminServiceError(
       502,
       "KEYCLOAK_FAILURE",
       `Keycloak provisioning failed mid-flight; rolled back the realm user. Original error: ${(err as Error).message}`,
     );
+  }
+
+  // Phase 2 — trigger the UPDATE_PASSWORD email. The user is fully
+  // provisioned at this point (role + Org membership). If the email
+  // delivery fails (transient SMTP, KC 5xx) we DO NOT roll back the KC
+  // user — instead we proceed to insert the `platform_admins` row and
+  // surface a 502 to the operator. The operator can re-trigger the
+  // email via `POST /v1/admin/platform-admins/:id/reset-password`
+  // (platform review M2). Tearing down the KC user on a transient SMTP
+  // outage would force the operator to recreate the row with a new
+  // `platform_admins.id` and lose audit-trail continuity.
+  let emailDeliveryFailed: Error | null = null;
+  try {
+    await keycloakAdmin().sendExecuteActionsEmail(kcUserId, ["UPDATE_PASSWORD"], {
+      lifespanSec: PASSWORD_RESET_LIFESPAN_SEC,
+      // Land the new admin on the back-office login page after they
+      // finish the UPDATE_PASSWORD flow (platform review M3). Without
+      // this, KC dumps them on the bare account console.
+      clientId: KC_WEB_CLIENT_ID,
+      ...(KC_PLATFORM_ADMIN_REDIRECT_URL ? { redirectUri: KC_PLATFORM_ADMIN_REDIRECT_URL } : {}),
+    });
+  } catch (err) {
+    emailDeliveryFailed = err as Error;
   }
 
   // DB row + audit in one transaction — if either fails the KC user is
@@ -372,6 +423,19 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
     });
     return row;
   });
+
+  // Surface the email-delivery failure as a 502 AFTER the row is in place,
+  // so the operator gets a structured signal but the row exists for them
+  // to retry against via `/reset-password`. The compensating-delete path
+  // is NOT taken here — the user has a temporary password they cannot
+  // use, the role + Org are correct, the row is queryable.
+  if (emailDeliveryFailed) {
+    throw new PlatformAdminServiceError(
+      502,
+      "KEYCLOAK_FAILURE",
+      `Platform admin provisioned (id=${created.id}), but the UPDATE_PASSWORD email failed to send. Use POST /v1/admin/platform-admins/${created.id}/reset-password to retry. Original error: ${emailDeliveryFailed.message}`,
+    );
+  }
 
   return created;
 }
@@ -454,9 +518,12 @@ export async function resetPlatformAdminPassword(input: ResetPasswordInput): Pro
 // ─── Soft-delete ─────────────────────────────────────────────────────────────
 
 export async function softDeletePlatformAdmin(input: SoftDeleteInput): Promise<void> {
-  const existing = await getActiveAdminOrThrow(input.id);
-
-  if (existing.keycloakId === input.actorKeycloakId) {
+  // Self-removal guard — fast pre-flight before opening a transaction.
+  // The active-row + last-admin checks happen inside the SERIALIZABLE
+  // transaction below so two concurrent operators racing on the
+  // second-to-last admin can't both pass the count gate.
+  const preflight = await getActiveAdminOrThrow(input.id);
+  if (preflight.keycloakId === input.actorKeycloakId) {
     throw new PlatformAdminServiceError(
       400,
       "SELF_REMOVAL_FORBIDDEN",
@@ -464,55 +531,104 @@ export async function softDeletePlatformAdmin(input: SoftDeleteInput): Promise<v
     );
   }
 
-  // Last-admin guard. Refuse the soft-delete that would leave zero
-  // active platform admins. Counting on `systemDb` is fine — the table
-  // is platform-level and has no RLS.
-  const counts = await systemDb
-    .select({ count: sql<number>`COUNT(*)::int` })
-    .from(platformAdmins)
-    .where(isNull(platformAdmins.deletedAt));
-  const activeCount = counts[0]?.count ?? 0;
-  if (activeCount <= 1) {
-    throw new PlatformAdminServiceError(
-      400,
-      "LAST_ADMIN_FORBIDDEN",
-      "Cannot remove the last active platform admin. At least one super-admin must remain.",
+  // Atomic delete + last-admin guard + audit insert in one SERIALIZABLE
+  // transaction (security review M1, QA M4, data architect #13). The
+  // count + UPDATE happen against the same snapshot; concurrent removers
+  // serialize on the platform_admins lock and the loser sees activeCount
+  // = 1 and gets a 400.
+  //
+  // We also row-lock the target admin's row (`FOR UPDATE`) so two
+  // operators racing on the SAME id can't both enter — Postgres queues
+  // them and the second sees `keycloak_id = null` after the first commits.
+  const targetKeycloakId = await systemDb.transaction(
+    async (tx) => {
+      // Re-read the row INSIDE the tx, locked. If two requests target the
+      // same admin id, the second blocks until the first commits, then sees
+      // the post-soft-delete state and exits with NOT_FOUND.
+      const lockedRows = await tx.execute<{
+        keycloak_id: string;
+      }>(sql`
+        SELECT keycloak_id
+        FROM platform_admins
+        WHERE id = ${input.id}
+          AND deleted_at IS NULL
+          AND keycloak_id IS NOT NULL
+        FOR UPDATE
+      `);
+      const locked = lockedRows.rows[0];
+      if (!locked) {
+        throw new PlatformAdminServiceError(
+          404,
+          "NOT_FOUND",
+          "Platform admin not found or already removed.",
+        );
+      }
+      const lockedKeycloakId = locked.keycloak_id;
+
+      // Atomic last-admin guard — count active rows under the same
+      // tx-snapshot. If we're the second-to-last and a sibling tx also
+      // targets the last admin, one of us serializes and aborts.
+      const counts = await tx
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(platformAdmins)
+        .where(isNull(platformAdmins.deletedAt));
+      const activeCount = counts[0]?.count ?? 0;
+      if (activeCount <= 1) {
+        throw new PlatformAdminServiceError(
+          400,
+          "LAST_ADMIN_FORBIDDEN",
+          "Cannot remove the last active platform admin. At least one super-admin must remain.",
+        );
+      }
+
+      // Soft-delete the row + null keycloak_id (ADR-021 mirror). Audit
+      // row inside the same tx so audit chain and lifecycle land
+      // atomically.
+      await tx
+        .update(platformAdmins)
+        .set({ deletedAt: new Date(), keycloakId: null, updatedAt: new Date() })
+        .where(eq(platformAdmins.id, input.id));
+
+      await tx.execute(
+        sql`SELECT set_config('app.current_organization_id', ${PLATFORM_AUDIT_ORG_ID}, true)`,
+      );
+      await tx.insert(auditLogs).values({
+        orgId: PLATFORM_AUDIT_ORG_ID,
+        userId: lockedKeycloakId,
+        actorId: input.actorKeycloakId,
+        action: "platform_admin.removed",
+        resourceType: "platform_admin",
+        resourceId: input.id,
+        ipHash: input.ipHash,
+        userAgent: input.userAgent ?? undefined,
+      });
+      return lockedKeycloakId;
+    },
+    { isolationLevel: "serializable" },
+  );
+
+  // Token revocation lives outside the DB tx — a Redis or KC failure
+  // here is independent of the soft-delete commit. The blocklist is set
+  // before KC.deleteUser so the ADR-021 zero-second propagation window
+  // closes immediately, even if the KC delete fails. If KC.deleteUser
+  // fails (5xx), the row is already soft-deleted in the DB and the sub
+  // is on the blocklist — operator can manually clean up the realm.
+  try {
+    await blocklistUser(targetKeycloakId);
+  } catch (err) {
+    logger.error(
+      { err, kcSub: targetKeycloakId, adminId: input.id },
+      "platform_admin: soft-delete committed but blocklist write failed; access revocation falls back to KC user delete",
     );
   }
-
-  // Mirror the user-lifecycle pattern (ADR-021): blocklist the KC `sub`
-  // first (zero-second propagation), then KC delete, then DB soft-delete +
-  // audit.
-  await blocklistUser(existing.keycloakId!);
-  await keycloakAdmin().deleteUser(existing.keycloakId!);
-
-  await systemDb.transaction(async (tx) => {
-    await tx
-      .update(platformAdmins)
-      .set({
-        deletedAt: new Date(),
-        // ADR-021 mirror — null the keycloak_id so a stale FK can never
-        // resolve to a live KC user. The audit row still references the
-        // historical sub via `auditLogs.userId`.
-        keycloakId: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(platformAdmins.id, input.id));
-
-    await tx.execute(
-      sql`SELECT set_config('app.current_organization_id', ${PLATFORM_AUDIT_ORG_ID}, true)`,
+  try {
+    await keycloakAdmin().deleteUser(targetKeycloakId);
+  } catch (err) {
+    logger.error(
+      { err, kcSub: targetKeycloakId, adminId: input.id },
+      "platform_admin: soft-delete committed but KC user delete failed; orphan KC user remains, manual cleanup required",
     );
-    await tx.insert(auditLogs).values({
-      orgId: PLATFORM_AUDIT_ORG_ID,
-      userId: existing.keycloakId,
-      actorId: input.actorKeycloakId,
-      action: "platform_admin.removed",
-      resourceType: "platform_admin",
-      resourceId: input.id,
-      ipHash: input.ipHash,
-      userAgent: input.userAgent ?? undefined,
-    });
-  });
+  }
 }
 
 // ─── Internals ───────────────────────────────────────────────────────────────
@@ -539,14 +655,25 @@ async function getActiveAdminOrThrow(id: string): Promise<PlatformAdminRow> {
   return row;
 }
 
-async function compensatingKcDelete(kcUserId: string): Promise<void> {
+async function compensatingKcDelete(kcUserId: string, reason: string): Promise<void> {
   try {
     await keycloakAdmin().deleteUser(kcUserId);
-  } catch {
+    logger.warn(
+      { kcUserId, reason },
+      "platform_admin: compensating KC user delete after partial create",
+    );
+  } catch (err) {
     // Don't bubble — the original failure is what the caller should see.
-    // The route layer logs the original error with full context; the
-    // compensating delete is best-effort. If it fails, the realm keeps
-    // an orphan user that an operator can clean up manually.
+    // BUT we MUST log the orphan loud so SOC has a structured signal:
+    // a KC user with `super_admin` realm role + platform Org membership
+    // exists with no `platform_admins` row and the operator was told the
+    // create failed. This is the worst-case scenario this module can
+    // produce; an unattended orphan retains realm-level super-admin
+    // authority. (Platform review C1, security review m2.)
+    logger.error(
+      { err, kcUserId, reason },
+      "platform_admin: ORPHAN — compensating KC delete failed; realm has a super_admin user with no DB row, manual cleanup required",
+    );
   }
 }
 
