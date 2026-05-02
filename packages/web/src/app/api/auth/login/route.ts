@@ -12,23 +12,45 @@ import {
   OIDC_STATE_COOKIE,
   OIDC_VERIFIER_COOKIE,
   oidcFlowCookieOptions,
+  returnToCookieOptions,
 } from "@/lib/auth/keycloak";
+import { STEP_UP_ACR_VALUE } from "@/lib/auth/step-up";
 
 /**
  * Same-origin path validator for the OIDC `return_to` parameter (issue
- * #250). Only the path part is honoured — never the host or scheme — so
- * a malicious caller can't craft `/api/auth/login?return_to=https://evil.example`
- * and turn the callback into an open-redirect oracle.
+ * #250). Only same-origin paths are honoured — never an absolute host
+ * or scheme — so a malicious caller can't craft
+ * `/api/auth/login?return_to=https://evil.example` (or
+ * `?return_to=/%2fevil.example` / `/%5cevil.example`) and turn the
+ * callback into an open-redirect oracle.
+ *
+ * Validation strategy: parse via `new URL(raw, APP_URL)` so the URL
+ * parser's normalisation does the heavy lifting (decodes percent-
+ * encoded `/` and `\`, resolves protocol-relative `//host`, rejects
+ * `javascript:` etc.), then compare the resolved origin to APP_URL's
+ * origin. An earlier draft used a hand-rolled `startsWith("//")`
+ * check, which review caught as bypassable via percent-encoding.
  */
 function safeReturnToPath(raw: string | null): string | null {
   if (!raw) return null;
-  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  if (!raw.startsWith("/")) return null;
   // Reject control chars / CRLF / null bytes — defence-in-depth against
   // header smuggling if the value were ever echoed in a Set-Cookie or
   // Location header without re-encoding.
   // biome-ignore lint/suspicious/noControlCharactersInRegex: explicit defence-in-depth filter (CRLF / null-byte smuggling)
   if (/[\x00-\x1f\x7f]/.test(raw)) return null;
-  return raw;
+  let resolved: URL;
+  let appOrigin: URL;
+  try {
+    resolved = new URL(raw, APP_URL);
+    appOrigin = new URL(APP_URL);
+  } catch {
+    return null;
+  }
+  if (resolved.origin !== appOrigin.origin) return null;
+  // Only return the resolved path (no host/scheme echo) so the cookie
+  // value is the path the callback expects — never an absolute URL.
+  return resolved.pathname + resolved.search + resolved.hash;
 }
 
 /**
@@ -117,13 +139,18 @@ export async function GET(request: NextRequest) {
   // browser-with-step-up flow + acr.loa.map handle the OTP prompt and
   // ACR claim mapping. Only allow-listed values are forwarded so a
   // malicious caller can't smuggle arbitrary OIDC params into the
-  // upstream auth request.
+  // upstream auth request. The literal acr value lives in step-up.ts so
+  // a future LoA bump (`"3"`, `"high"`) lands in one place.
   const url = new URL(request.url);
   const acrValues = url.searchParams.get("acr_values");
-  if (acrValues === "2") {
-    params.set("acr_values", "2");
+  if (acrValues === STEP_UP_ACR_VALUE) {
+    params.set("acr_values", STEP_UP_ACR_VALUE);
   }
   const prompt = url.searchParams.get("prompt");
+  // Only `login` is forwarded. A caller could craft `?prompt=login` to
+  // force re-auth on a normal user — annoying but not a security hole;
+  // any other value (`none`, `consent`, `select_account`) is silently
+  // dropped to keep the upstream auth request clean.
   if (prompt === "login") {
     params.set("prompt", "login");
   }
@@ -156,9 +183,15 @@ export async function GET(request: NextRequest) {
   // doesn't complete re-auth in time, the cookie expires and the callback
   // falls back to its default landing page (/select-organization).
   // Validated as a same-origin path; nothing else is accepted.
+  //
+  // Always clear any stale value first: if the operator started step-up,
+  // abandoned it, and triggered a fresh non-step-up login within the 5-min
+  // TTL, the previous return_to would otherwise still bounce them after
+  // re-auth instead of the default landing page (review N-2).
+  jar.delete(OIDC_RETURN_TO_COOKIE);
   const returnTo = safeReturnToPath(url.searchParams.get("return_to"));
   if (returnTo) {
-    jar.set(OIDC_RETURN_TO_COOKIE, returnTo, opts);
+    jar.set(OIDC_RETURN_TO_COOKIE, returnTo, returnToCookieOptions());
   }
 
   return NextResponse.redirect(`${AUTH_ENDPOINT}?${params.toString()}`);
