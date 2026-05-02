@@ -706,6 +706,41 @@ describe("POST /v1/admin/impersonation — strict step-up (issue #250)", () => {
       step_up_required: false,
     });
   });
+
+  // Mode parity — the gate sits in `runStartGates` before the mode-specific
+  // session plan branches in `buildSessionPlan`. The tests above all use
+  // `mode: "delegation"`; these assertions lock that `mode: "impersonation"`
+  // traverses the *same* gate. Without this coverage, a future refactor
+  // that wraps step-up in `if (mode === "delegation") { ... }` would skip
+  // MFA on pure impersonation and silently ship — both modes equally
+  // dangerous from a target-tenant's perspective.
+  it("impersonation mode + acr=1 → same 401 shape as delegation", async () => {
+    const token = superAdminToken({ acr: "1", auth_time: Math.floor(Date.now() / 1000) - 30 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "impersonation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({
+      reason: "acr_insufficient",
+      step_up_required: true,
+    });
+  });
+
+  it("impersonation mode + acr=2 + fresh auth_time → 201 (happy path parity)", async () => {
+    const token = superAdminToken({ acr: "2", auth_time: Math.floor(Date.now() / 1000) - 30 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "impersonation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.payload);
+    expect(body.data.mode).toBe("impersonation");
+  });
 });
 
 // ─── Token claim shape (review QA F12 / F13) ───────────────────────────────
