@@ -36,16 +36,17 @@
       flow KC has consumed that cookie — clicking the link landed the
       user on a "Restart login cookie not found" error page.
 
-      Resolution chain:
+      Resolution chain (must NEVER hardcode an absolute URL — multi-env
+      theme):
         1. `client.baseUrl` if a `client_id` was scoped on the action
            AND the client has an absolute `baseUrl`. Stable, doesn't
            depend on auth-session state.
-        2. `properties.gvAppLoginUrl` from `theme.properties`.
-        3. Hardcoded dev fallback `http://localhost:3000/login`. KC's
-           per-process theme cache makes (2) unreliable across container
-           restarts; the hardcode guarantees a working button in dev
-           regardless. Production deployments override this template
-           (or set the property reliably) per environment.
+        2. `properties.gvAppLoginUrl` from `theme.properties`. The dev
+           value lives in this repo's `theme.properties`; staging/prod
+           override that file at deploy time (see infra docs).
+        3. No button — render text-only instructions. Defensive: better
+           to show "open the app to sign in" than a broken link, and
+           better than a hardcoded URL that breaks staging/prod.
 
       Rendered as a primary button so the user can't miss it — pre-fix
       the page just said "Your account has been updated" with no
@@ -57,13 +58,18 @@
         <#assign gvBackUrl = client.baseUrl />
       <#elseif properties.gvAppLoginUrl?? && properties.gvAppLoginUrl?has_content>
         <#assign gvBackUrl = properties.gvAppLoginUrl />
-      <#else>
-        <#assign gvBackUrl = "http://localhost:3000/login" />
       </#if>
-      <a class="gv-btn gv-btn--primary" href="${gvBackUrl}"
-         style="display:block;text-align:center;margin-top:20px;">
-        ${msg("backToLogin")}
-      </a>
+
+      <#if gvBackUrl?has_content>
+        <a class="gv-btn gv-btn--primary" href="${gvBackUrl}"
+           style="display:block;text-align:center;margin-top:20px;">
+          ${msg("backToLogin")}
+        </a>
+      <#else>
+        <p style="margin-top:20px;text-align:center;font-size:0.875rem;color:var(--gv-text-secondary);line-height:1.5;">
+          ${msg("backToLoginInstructions")}
+        </p>
+      </#if>
     </#if>
   </#if>
 
