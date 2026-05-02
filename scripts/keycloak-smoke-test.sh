@@ -257,4 +257,51 @@ if [ "$has_admin" != "yes" ]; then
 fi
 ok "User '${SEED_USERNAME}' is a member of '${SEED_ORG_ALIAS}'."
 
+# Step-up MFA flow checks (issue #250). Without these, a sync-script
+# regression that drops the browser-with-step-up flow / acr.loa.map /
+# browserFlow assignment only surfaces the next time someone tries to
+# impersonate — which on staging means a confused operator filing a
+# bug, not a smoke-test failure. These checks lock the contract:
+#   - the realm.attributes."acr.loa.map" attribute exists and maps "2"
+#   - the realm.browserFlow points at the custom flow
+#   - the custom flow is present in the authentication/flows list
+realm_repr=$(curl -sS -H "Authorization: Bearer ${master_token}" \
+  "${KC_URL}/admin/realms/${REALM}")
+acr_loa_map=$(printf '%s' "$realm_repr" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+attrs = d.get("attributes") or {}
+print(attrs.get("acr.loa.map", ""))
+')
+case "$acr_loa_map" in
+  *'"2"'*':'*|*'\"2\"'*':'*)
+    ok "Realm attribute acr.loa.map maps acr=2."
+    ;;
+  *)
+    fail "Realm attribute acr.loa.map missing or doesn't map acr=2 (value='${acr_loa_map}'). The Conditional-LoA authenticator's emitted level won't translate to the acr claim — every impersonation attempt will 401 acr_insufficient."
+    ;;
+esac
+
+browser_flow=$(printf '%s' "$realm_repr" | python3 -c '
+import json, sys
+print(json.load(sys.stdin).get("browserFlow", ""))
+')
+if [ "$browser_flow" != "browser-with-step-up" ]; then
+  fail "Realm.browserFlow='${browser_flow}', expected 'browser-with-step-up'. The custom step-up flow won't fire on login."
+fi
+ok "Realm.browserFlow points at the custom step-up flow."
+
+flows=$(curl -sS -H "Authorization: Bearer ${master_token}" \
+  "${KC_URL}/admin/realms/${REALM}/authentication/flows")
+has_flow=$(printf '%s' "$flows" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+flows = d if isinstance(d, list) else []
+print("yes" if any(f.get("alias") == "browser-with-step-up" for f in flows) else "no")
+')
+if [ "$has_flow" != "yes" ]; then
+  fail "Authentication flow 'browser-with-step-up' not found. Custom step-up flow missing — the sync script's flow-creation block didn't run or failed mid-way."
+fi
+ok "Authentication flow 'browser-with-step-up' exists."
+
 printf '\n Keycloak smoke test passed.\n'

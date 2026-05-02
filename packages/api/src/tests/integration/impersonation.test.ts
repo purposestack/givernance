@@ -670,6 +670,21 @@ describe("POST /v1/admin/impersonation — strict step-up (issue #250)", () => {
     expect(res.statusCode).toBe(201);
   });
 
+  // KC emits `acr` as `["2"]` in some broker configs; `normaliseAcr` in
+  // the auth plugin handles both shapes (issue #24 review H2). Locking
+  // the array variant here so a future refactor that drops the array
+  // branch doesn't silently break broker-mediated logins.
+  it('acr=["2"] (broker array variant) + fresh auth_time → 201', async () => {
+    const token = superAdminToken({ acr: ["2"], auth_time: Math.floor(Date.now() / 1000) - 30 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
   it("step-up failure that triggers lockout → 401 with step_up_required=false (no redirect loop)", async () => {
     // Pre-seed the counter to N-1 so the next failure flips the lockout.
     await redis.set(
