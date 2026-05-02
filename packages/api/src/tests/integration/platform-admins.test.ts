@@ -228,27 +228,93 @@ describe("POST /v1/admin/platform-admins", () => {
         lastName: "Y",
       },
     });
+    // Lock the RFC 9457 body shape on this error path (QA M1).
     expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/502",
+      title: "Bad Gateway",
+      status: 502,
+    });
     expect((res.json() as { detail?: string }).detail ?? "").toMatch(/role.*super_admin/);
     expect(kcCreateUser).not.toHaveBeenCalled();
   });
 
-  it("rolls back the KC user when a side-effect (assignRealmRole) fails mid-flight", async () => {
+  it("rolls back the KC user when assignRealmRole fails mid-flight (locks 502 body shape)", async () => {
     kcAssignRealmRole.mockRejectedValueOnce(new Error("simulated KC failure"));
     const res = await app.inject({
       method: "POST",
       url: "/v1/admin/platform-admins",
       headers: authHeader(superAdminToken()),
       payload: {
-        email: `compensating-${randomUUID().slice(0, 8)}@example.org`,
+        email: `compensating-role-${randomUUID().slice(0, 8)}@example.org`,
+        firstName: "X",
+        lastName: "Y",
+      },
+    });
+    // Lock the RFC 9457 body shape on the compensating-delete path (QA M1 + M2).
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/502",
+      title: "Bad Gateway",
+      status: 502,
+    });
+    expect(kcDeleteUser).toHaveBeenCalledTimes(1);
+  });
+
+  // QA review M2 — extend compensating-delete coverage from 1 of 3 KC
+  // failure points to 2 of 3. The third (sendExecuteActionsEmail) now has
+  // distinct semantics post-fix-commit-1 (no rollback), so it gets its
+  // own dedicated test below.
+  it("rolls back the KC user when attachUserToOrg fails mid-flight", async () => {
+    kcAttachUserToOrg.mockRejectedValueOnce(new Error("simulated KC org failure"));
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/platform-admins",
+      headers: authHeader(superAdminToken()),
+      payload: {
+        email: `compensating-org-${randomUUID().slice(0, 8)}@example.org`,
         firstName: "X",
         lastName: "Y",
       },
     });
     expect(res.statusCode).toBe(502);
-    // Compensating delete fired.
     expect(kcDeleteUser).toHaveBeenCalledTimes(1);
   });
+
+  it(
+    "does NOT roll back the KC user on email-delivery failure — row is created and 502 references it",
+    async () => {
+      // Platform review M2 — sendExecuteActionsEmail failure used to nuke
+      // the whole KC user. Post-fix-commit-1, the row is preserved and the
+      // operator can retry via /reset-password.
+      kcSendExecuteActions.mockRejectedValueOnce(new Error("simulated SMTP failure"));
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/admin/platform-admins",
+        headers: authHeader(superAdminToken()),
+        payload: {
+          email: `email-fail-${randomUUID().slice(0, 8)}@example.org`,
+          firstName: "X",
+          lastName: "Y",
+        },
+      });
+      expect(res.statusCode).toBe(502);
+      // Compensating delete must NOT have fired — KC user retained.
+      expect(kcDeleteUser).not.toHaveBeenCalled();
+      // The detail message references `/reset-password` so the operator
+      // knows the retry path.
+      expect((res.json() as { detail?: string }).detail ?? "").toMatch(/reset-password/);
+      // The row exists in the DB and is queryable. Extract the id from
+      // the detail string (`id=<uuid>`).
+      const detail = (res.json() as { detail?: string }).detail ?? "";
+      const idMatch = /id=([0-9a-f-]{36})/.exec(detail);
+      expect(idMatch?.[1]).toBeTruthy();
+      const rows = await systemDb.execute(
+        sql`SELECT id FROM platform_admins WHERE id = ${idMatch?.[1]} AND deleted_at IS NULL`,
+      );
+      expect(rows.rows.length).toBe(1);
+    },
+  );
 });
 
 // ─── Rename ─────────────────────────────────────────────────────────────────
@@ -327,7 +393,13 @@ describe("DELETE /v1/admin/platform-admins/:id", () => {
       url: `/v1/admin/platform-admins/${SUPER_ADMIN_PLATFORM_ROW_ID}`,
       headers: authHeader(superAdminToken()),
     });
+    // Lock RFC 9457 body shape (QA M1).
     expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/400",
+      title: "Bad Request",
+      status: 400,
+    });
     expect((res.json() as { detail?: string }).detail ?? "").toMatch(/own platform-admin row/i);
     expect(kcDeleteUser).not.toHaveBeenCalled();
   });
@@ -379,7 +451,13 @@ describe("DELETE /v1/admin/platform-admins/:id", () => {
       url: `/v1/admin/platform-admins/${secondId}`,
       headers: authHeader(thirdToken),
     });
+    // Lock RFC 9457 body shape on the last-admin path (QA M1).
     expect(removeSecond.statusCode).toBe(400);
+    expect(removeSecond.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/400",
+      title: "Bad Request",
+      status: 400,
+    });
     expect((removeSecond.json() as { detail?: string }).detail ?? "").toMatch(/last active/i);
   });
 
