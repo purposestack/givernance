@@ -119,8 +119,8 @@
     {
       "alias": "loa-2-config",
       "config": {
-        "loa": "2",
-        "max_age": "3600"
+        "loa-condition-level": "2",
+        "loa-max-age": "300"
       }
     }
   ],
