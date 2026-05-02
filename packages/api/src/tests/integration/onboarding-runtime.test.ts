@@ -35,6 +35,7 @@ import { redis } from "../../lib/redis.js";
 import { openDispute, resolveDispute, runExpireJob } from "../../modules/disputes/service.js";
 import {
   isSessionBlocklisted,
+  listUserOrganizations,
   recordOrgSwitch,
   sessionBlocklistKey,
 } from "../../modules/session/service.js";
@@ -46,7 +47,7 @@ import {
   verifyDomain,
 } from "../../modules/tenant-admin/service.js";
 import { createServer } from "../../server.js";
-import { authHeader, ensureTestTenants, signToken } from "../helpers/auth.js";
+import { authHeader, ensureTestTenants, ORG_A, ORG_B, signToken } from "../helpers/auth.js";
 
 let app: FastifyInstance;
 
@@ -609,6 +610,70 @@ describe("runExpireJob", () => {
     const res = await runExpireJob(new Date());
     expect(res.skippedOrgIds).toContain(orgId);
     expect(res.confirmedOrgIds).not.toContain(orgId);
+  });
+});
+
+// ─── listUserOrganizations — cross-tenant semantics ────────────────────────
+
+/**
+ * Lock the cross-tenant contract: `listUserOrganizations` must return EVERY
+ * tenant the caller belongs to, regardless of any current tenant context.
+ * The function runs on `systemDb` (BYPASSRLS) by design — without that, a
+ * deployment with `DATABASE_URL_APP` set hits the app role's RLS policy
+ * (`org_id = app_current_organization_id()`) on a query with no
+ * `set_config` GUC, returning ZERO rows for every authenticated user. PR
+ * #253 surfaced this latent bug via the `(app)/layout.tsx` fail-loud
+ * guard (gilbert.durand@croix-rouge.org first-login regression).
+ *
+ * This suite asserts the SEMANTIC contract (multi-tenant return + archive
+ * filter); the test runner can't directly exercise the RLS-block branch
+ * because tests/setup.ts intentionally uses the owner role for fixture
+ * setup (see `tests/setup.ts:11-13`). The matching source-code comment
+ * on `listUserOrganizations` calls out the BYPASSRLS requirement
+ * explicitly so future refactors can't silently swap `systemDb` for `db`.
+ */
+describe("listUserOrganizations — cross-tenant semantics", () => {
+  it("returns every tenant the user belongs to (multi-tenant)", async () => {
+    const sub = randomUUID();
+    const userA = randomUUID();
+    const userB = randomUUID();
+    const email = `multi-tenant-${sub}@example.org`;
+    await db.execute(sql`
+      INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+      VALUES
+        (${userA}, ${ORG_A}, ${sub}, ${email}, 'Multi', 'Tenant', 'org_admin'),
+        (${userB}, ${ORG_B}, ${sub}, ${email}, 'Multi', 'Tenant', 'viewer')
+    `);
+    try {
+      const orgs = await listUserOrganizations(sub);
+      expect(orgs.map((o) => o.orgId).sort()).toEqual([ORG_A, ORG_B].sort());
+      expect(orgs.find((o) => o.orgId === ORG_A)?.role).toBe("org_admin");
+      expect(orgs.find((o) => o.orgId === ORG_B)?.role).toBe("viewer");
+    } finally {
+      await db.execute(sql`DELETE FROM users WHERE id IN (${userA}, ${userB})`);
+    }
+  });
+
+  it("excludes archived tenants (revoked-org never shows in picker)", async () => {
+    const sub = randomUUID();
+    const userId = randomUUID();
+    const archivedTenantId = randomUUID();
+    const archivedSlug = slug(`arch-${sub.slice(0, 6)}`);
+    await db.execute(sql`
+      INSERT INTO tenants (id, name, slug, status)
+      VALUES (${archivedTenantId}, 'Archived', ${archivedSlug}, 'archived')
+    `);
+    createdTenantIds.add(archivedTenantId);
+    await db.execute(sql`
+      INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+      VALUES (${userId}, ${archivedTenantId}, ${sub}, ${`arch-${sub}@example.org`}, 'Arch', 'User', 'org_admin')
+    `);
+    try {
+      const orgs = await listUserOrganizations(sub);
+      expect(orgs.find((o) => o.orgId === archivedTenantId)).toBeUndefined();
+    } finally {
+      await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+    }
   });
 });
 

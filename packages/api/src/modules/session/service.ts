@@ -19,7 +19,7 @@ import { auditLogs, outboxEvents, tenants, users } from "@givernance/shared/sche
 import { and, eq, sql } from "drizzle-orm";
 import pino from "pino";
 import { env } from "../../env.js";
-import { db, withTenantContext } from "../../lib/db.js";
+import { systemDb, withTenantContext } from "../../lib/db.js";
 import { redis } from "../../lib/redis.js";
 
 const logger = pino({ name: "session", level: env.LOG_LEVEL });
@@ -41,9 +41,16 @@ export interface OrgMembership {
 /**
  * List every tenant the user belongs to (by Keycloak `sub`). Suspended /
  * archived tenants are excluded so a revoked org never shows in the picker.
+ *
+ * Cross-tenant by design — runs on the owner role (`systemDb`, BYPASSRLS).
+ * Using the app-role pool would silently return zero rows because no
+ * `app.current_organization_id` is set: the whole point of this query is
+ * to enumerate ALL tenants the caller belongs to, before any single
+ * tenant context exists. The `keycloakSub` is the security boundary
+ * (sourced from a verified JWT in the route handler), not RLS.
  */
 export async function listUserOrganizations(keycloakSub: string): Promise<OrgMembership[]> {
-  const rows = await db
+  const rows = await systemDb
     .select({
       orgId: tenants.id,
       slug: tenants.slug,
@@ -116,7 +123,13 @@ export async function recordOrgSwitch(input: SwitchOrgInput): Promise<SwitchOrgR
     return { ok: false, error: "not_a_member" };
   }
 
-  const [target] = await db
+  // Cross-tenant membership probe — same rationale as `listUserOrganizations`
+  // above: the caller hasn't entered the target tenant yet, so we have no
+  // `app.current_organization_id` to set. The `(keycloakSub, targetOrgId)`
+  // pair is the authority gate. Subsequent writes use `withTenantContext`
+  // once the tenant is resolved, so RLS still isolates the audit/outbox
+  // inserts.
+  const [target] = await systemDb
     .select({
       orgId: tenants.id,
       slug: tenants.slug,
