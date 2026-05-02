@@ -42,6 +42,11 @@ describe("StartImpersonationForm — step-up 401 handling (issue #250)", () => {
   let assignMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    // Clear the post-MFA stash so a previous test's redirect-branch
+    // sessionStorage write doesn't auto-resubmit the next mount and
+    // pre-fill the form (the form's mount-effect reads `gv-impersonation
+    // -resubmit` and re-fires the fetch when present).
+    sessionStorage.clear();
     originalLocation = window.location;
     assignMock = vi.fn();
     Object.defineProperty(window, "location", {
@@ -129,5 +134,93 @@ describe("StartImpersonationForm — step-up 401 handling (issue #250)", () => {
     // Lockout error from the i18n bundle, NOT the API's English `detail`.
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/temporarily locked/i));
     expect(assignMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Locks the post-MFA auto-resubmit (PR #251 dev-feedback). The MFA
+ * round-trip used to drop the operator back on an empty form and force
+ * them to refill target / mode / reason. The form now stashes the
+ * payload before the redirect and resubmits on the next mount.
+ *
+ * This test covers the "after KC drop-back" path:
+ *   1. Pre-populate sessionStorage with a fresh stash (as the redirect
+ *      branch would have done).
+ *   2. Mount the form.
+ *   3. Expect the fetch to fire automatically with the stashed payload.
+ *   4. Expect the stash to be cleared (single-use — a refresh must not
+ *      stamp a second session).
+ */
+describe("StartImpersonationForm — post-MFA auto-resubmit (issue #251 dev-feedback)", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    vi.mocked(ImpersonationService.listTenants).mockResolvedValue({ data: [] });
+    vi.mocked(ImpersonationService.searchTargets).mockResolvedValue({ data: [TARGET] });
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("picks up a fresh sessionStorage stash on mount and resubmits", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        data: { sessionId: "sess-1", token: "tok", mode: "delegation" },
+      }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    sessionStorage.setItem(
+      "gv-impersonation-resubmit",
+      JSON.stringify({
+        target: TARGET,
+        mode: "delegation",
+        reason: "Reproducing receipt PDF download issue — ticket #5678",
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+
+    render(<StartImpersonationForm />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse(String(init?.body));
+    expect(body).toMatchObject({
+      targetUserId: TARGET.id,
+      mode: "delegation",
+      reason: "Reproducing receipt PDF download issue — ticket #5678",
+    });
+    // Single-use — a page refresh after the auto-resubmit must not
+    // re-stamp the same session.
+    expect(sessionStorage.getItem("gv-impersonation-resubmit")).toBeNull();
+  });
+
+  it("ignores a stale stash (past TTL) without resubmitting", async () => {
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    sessionStorage.setItem(
+      "gv-impersonation-resubmit",
+      JSON.stringify({
+        target: TARGET,
+        mode: "delegation",
+        reason: "stale stash from yesterday's session",
+        expiresAt: Date.now() - 60_000, // expired 1 min ago
+      }),
+    );
+
+    render(<StartImpersonationForm />);
+
+    // Give the mount-effect a tick to fire (or not).
+    await new Promise((r) => setTimeout(r, 30));
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Stale stash is still cleaned up — single-use applies even on
+    // expiry, so a page refresh doesn't keep tripping the same dead
+    // entry.
+    expect(sessionStorage.getItem("gv-impersonation-resubmit")).toBeNull();
   });
 });
