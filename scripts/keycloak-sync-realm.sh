@@ -181,9 +181,41 @@ fi
 # will see the partial flow and the script will skip; an operator must
 # manually delete the partial flow from the Admin UI before re-running.
 # That's an acceptable failure mode for a one-time provisioning step.
+#
+# Flow shape (mirrors KC 26 docs §"Creating a browser login flow with
+# step-up mechanism"; reviewed against
+# services/.../authentication/authenticators/conditional/ConditionalLoaAuthenticator.java
+# at tag 26.6.1):
+#
+#   browser-with-step-up                     [topLevel basic-flow]
+#     ├─ auth-cookie                         ALTERNATIVE
+#     ├─ identity-provider-redirector        ALTERNATIVE
+#     └─ browser-with-step-up forms          ALTERNATIVE      [sub-flow]
+#         ├─ browser-with-step-up loa-1      CONDITIONAL      [sub-flow]
+#         │   ├─ Conditional-LoA (loa-1-config: level=1, max=36000)  REQUIRED
+#         │   └─ auth-username-password-form REQUIRED
+#         └─ browser-with-step-up loa-2      CONDITIONAL      [sub-flow]
+#             ├─ Conditional-LoA (loa-2-config: level=2, max=300)    REQUIRED
+#             └─ auth-otp-form               REQUIRED   (userSetupAllowed=true)
+#
+# Why two CONDITIONAL wrappers and not "password REQUIRED + LoA-2 CONDITIONAL"?
+# ConditionalLoaAuthenticator.matchCondition() short-circuits to TRUE when
+#   currentAuthenticationLoa < Constants.MINIMUM_LOA  (i.e. -1 < 0)
+# which is the case at the start of EVERY fresh authentication — the auth
+# session has no LEVEL_OF_AUTHENTICATION note yet. With the old structure
+# (password-as-sibling), that short-circuit meant the LoA-2 conditional
+# fired on every login regardless of acr_values, routing every user
+# straight to CONFIGURE_TOTP. The two-conditional pattern is the only one
+# documented to give "MFA only when client asks for it": the LoA-1
+# wrapper consumes the short-circuit (runs password, sets LoA=1), and the
+# LoA-2 wrapper then evaluates `requestedLoa(-1) < configuredLoa(2)` and
+# correctly skips OTP. Confirmed by KC docs:
+# "the first configured subflow with the Conditional - Level Of
+#  Authentication is always executed (regardless of the requested level)
+#  as the user does not yet have any level."
 KC_URL="$KC_URL" REALM="$REALM" ADMIN_TOKEN="$ADMIN_TOKEN" \
 python3 <<'PY' || warn "step-up flow reconciliation hit an error — see trace above."
-import json, os, sys, urllib.request, urllib.error
+import json, os, sys, urllib.parse, urllib.request, urllib.error
 
 KC = os.environ["KC_URL"]
 REALM = os.environ["REALM"]
@@ -191,12 +223,28 @@ TOKEN = os.environ["ADMIN_TOKEN"]
 HEADERS = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 FLOW_ALIAS = "browser-with-step-up"
 FORMS_ALIAS = "browser-with-step-up forms"
-LOA_ALIAS = "browser-with-step-up loa-2"
-LOA_CONFIG_ALIAS = "loa-2-config"
-ACR_LOA_MAP = '{"2": 2}'
+LOA1_ALIAS = "browser-with-step-up loa-1"
+LOA2_ALIAS = "browser-with-step-up loa-2"
+LOA1_CONFIG_ALIAS = "loa-1-config"
+LOA2_CONFIG_ALIAS = "loa-2-config"
+LOA1_DESIRED = {"loa-condition-level": "1", "loa-max-age": "36000"}
+LOA2_DESIRED = {"loa-condition-level": "2", "loa-max-age": "300"}
+# Map both LoA 1 and LoA 2 so KC emits the numeric ACR claim cleanly on
+# both normal logins (acr=1) and step-up (acr=2). KC reads acr.loa.map
+# for the OUTBOUND mapping (level → acr string) AND the inbound mapping
+# (claims.acr.values "1"/"2" → numeric requested level). Without "1"
+# in the map a normal login would emit acr=1 by passthrough but the JSON
+# still needs it for round-tripped acr_values=1 requests to resolve.
+ACR_LOA_MAP = '{"1": 1, "2": 2}'
 
 def call(method, path, body=None):
-    url = f"{KC}{path}"
+    # Percent-encode any space in flow / sub-flow alias path segments.
+    # Python 3.9's http.client refuses URLs with raw spaces, and KC's flow
+    # aliases legitimately contain them ("browser-with-step-up forms").
+    # quote(safe="/") preserves the path delimiters while escaping the
+    # space — same behaviour as `curl --url-encoded` would give us.
+    safe_path = urllib.parse.quote(path, safe="/?&=:")
+    url = f"{KC}{safe_path}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers=HEADERS)
     try:
@@ -209,8 +257,8 @@ def call(method, path, body=None):
 
 def log(msg): print(f"   {msg}")
 
-# 1. Realm attributes (acr.loa.map) — required so KC translates the
-#    Conditional-LoA authenticator's emitted level to acr="2" in the token.
+# 1. Realm attributes (acr.loa.map). Drives both directions of the
+#    level ↔ acr translation.
 status, realm = call("GET", f"/admin/realms/{REALM}")
 if status != 200:
     log(f"could not GET realm — HTTP {status}; aborting step-up sync")
@@ -220,23 +268,79 @@ if attrs.get("acr.loa.map") != ACR_LOA_MAP:
     attrs["acr.loa.map"] = ACR_LOA_MAP
     realm["attributes"] = attrs
     s, _ = call("PUT", f"/admin/realms/{REALM}", realm)
-    log(f"Set realm attribute acr.loa.map (HTTP {s}).")
+    log(f"Set realm attribute acr.loa.map={ACR_LOA_MAP} (HTTP {s}).")
 else:
     log("Realm attribute acr.loa.map already correct.")
 
-# 2. Authenticator config `loa-2-config` (referenced by the conditional
-#    sub-flow's execution). Must exist before the flow execution that
-#    references it; created in step 4 below if missing.
-status, configs = call("GET", f"/admin/realms/{REALM}/authentication/config-description/conditional-level-of-authentication")
-# We don't actually need the description; we'll create the config inline
-# next to the execution. Skip.
+# 2. Detect a stale flow shape and rebuild from scratch. Without this,
+#    a realm that imported the v1 flow (password as a REQUIRED sibling
+#    of a single LoA-2 conditional) keeps the broken "OTP on every login"
+#    behaviour after a sync-script-only upgrade. We can't surgically
+#    reorder executions via the REST API (no execute-as-child move is
+#    safe), so we delete the top-level flow and rebuild it.
+def expected_shape_ok(execs):
+    """Return True iff the executions list matches the new two-conditional shape.
 
-# 3. Top-level flow + sub-flows. If the top-level flow exists we trust
-#    the entire sub-tree (idempotent re-runs short-circuit here).
+    KC's /authentication/flows/{alias}/executions returns a flat list with
+    `level` (depth) and `index` (sibling position). We assert the exact
+    set of (depth, providerId|displayName) we expect — anything else, even
+    a partial old shape, triggers a rebuild.
+    """
+    expected = {
+        # (level, identifier)
+        (0, "auth-cookie"),
+        (0, "identity-provider-redirector"),
+        (0, FORMS_ALIAS),
+        (1, LOA1_ALIAS),
+        (1, LOA2_ALIAS),
+        (2, "conditional-level-of-authentication"),
+        (2, "auth-username-password-form"),
+        (2, "auth-otp-form"),
+    }
+    seen = set()
+    for ex in execs:
+        ident = ex.get("providerId") or ex.get("displayName") or ""
+        seen.add((ex.get("level"), ident))
+    # Old shape had auth-username-password-form at level 1 (sibling of
+    # the LoA-2 conditional). The new shape has it at level 2 (inside
+    # the LoA-1 conditional). Comparing both directions gives a clean
+    # "matches" / "doesn't match" answer.
+    if (1, "auth-username-password-form") in seen:
+        return False  # legacy shape detected
+    if LOA1_ALIAS not in {ident for _, ident in seen}:
+        return False  # missing the LoA-1 wrapper
+    # All expected nodes must be present. (Allow extra nodes — e.g. an
+    # operator added a custom WebAuthn step — but rebuild if any of ours
+    # are missing.)
+    return expected.issubset(seen)
+
 status, flows = call("GET", f"/admin/realms/{REALM}/authentication/flows")
 existing = {f["alias"]: f for f in (flows or [])}
-flow_created = False
-if FLOW_ALIAS not in existing:
+
+needs_build = True
+if FLOW_ALIAS in existing:
+    s, execs = call("GET", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions")
+    if s == 200 and isinstance(execs, list) and expected_shape_ok(execs):
+        log(f"Flow '{FLOW_ALIAS}' already matches the expected two-conditional shape.")
+        needs_build = False
+    else:
+        log(f"Flow '{FLOW_ALIAS}' exists but its shape is stale — rebuilding.")
+        # If the realm currently uses this as the browserFlow, swap it
+        # back to the built-in `browser` flow before deleting; KC refuses
+        # to delete a flow that is bound as the realm's browserFlow.
+        s2, realm_now = call("GET", f"/admin/realms/{REALM}")
+        if s2 == 200 and realm_now.get("browserFlow") == FLOW_ALIAS:
+            realm_now["browserFlow"] = "browser"
+            s3, _ = call("PUT", f"/admin/realms/{REALM}", realm_now)
+            log(f"  Temporarily reset realm.browserFlow to 'browser' to allow delete (HTTP {s3}).")
+        # Delete the stale flow. KC cascades the delete to all child
+        # executions, sub-flows, and authenticator-config rows linked to
+        # this flow's executions.
+        flow_id = existing[FLOW_ALIAS]["id"]
+        s4, _ = call("DELETE", f"/admin/realms/{REALM}/authentication/flows/{flow_id}")
+        log(f"  Deleted stale top-level flow id={flow_id} (HTTP {s4}).")
+
+if needs_build:
     s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows", {
         "alias": FLOW_ALIAS,
         "description": "Browser flow with conditional step-up MFA (issue #250).",
@@ -248,10 +352,10 @@ if FLOW_ALIAS not in existing:
     if s not in (200, 201):
         log("flow create failed — aborting step-up sync")
         sys.exit(0)
-    flow_created = True
 
-    # cookie + IdP redirector at ALTERNATIVE
-    for provider, prio in [("auth-cookie", 10), ("identity-provider-redirector", 25)]:
+    # cookie + IdP redirector at the top level (will become ALTERNATIVE
+    # via the requirement-PATCH walk below).
+    for provider in ["auth-cookie", "identity-provider-redirector"]:
         s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions/execution",
                     {"provider": provider})
         if s not in (200, 201):
@@ -259,128 +363,152 @@ if FLOW_ALIAS not in existing:
 
     # forms sub-flow. `provider` is intentionally omitted: KC's
     # AuthenticationManagementResource.addExecutionFlow only consumes
-    # `provider` when `type == "form-flow"`; for `basic-flow` it's
-    # ignored, and the realm-import JSON correctly leaves it absent.
-    # An earlier draft used `"registration-page-form"` here — review
-    # caught it as misleading + a future-KC compat hazard.
+    # `provider` when `type == "form-flow"`; for `basic-flow` it's ignored.
     s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions/flow", {
         "alias": FORMS_ALIAS,
         "type": "basic-flow",
-        "description": "Username/password + conditional LoA-2 sub-flow.",
+        "description": "Two Conditional-LoA wrappers (LoA 1 → password, LoA 2 → OTP).",
     })
     log(f"  Created sub-flow '{FORMS_ALIAS}' (HTTP {s}).")
 
-    # username-password inside forms
-    s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FORMS_ALIAS}/executions/execution",
-                {"provider": "auth-username-password-form"})
-
-    # LoA-2 sub-flow inside forms (same provider-omission reasoning as above).
+    # LoA-1 sub-flow (CONDITIONAL): condition + username/password.
     s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FORMS_ALIAS}/executions/flow", {
-        "alias": LOA_ALIAS,
+        "alias": LOA1_ALIAS,
         "type": "basic-flow",
-        "description": "Fires OTP when client requests acr_values=2.",
+        "description": "Always fires on first auth (currentLoa=-1 < MINIMUM_LOA=0). Runs username/password and sets LoA=1.",
     })
-    log(f"  Created sub-flow '{LOA_ALIAS}' (HTTP {s}).")
-
-    # conditional-LoA + OTP form inside loa-2 sub-flow
-    for provider in ["conditional-level-of-authentication", "auth-otp-form"]:
-        s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{LOA_ALIAS}/executions/execution",
+    log(f"  Created sub-flow '{LOA1_ALIAS}' (HTTP {s}).")
+    for provider in ["conditional-level-of-authentication", "auth-username-password-form"]:
+        s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{LOA1_ALIAS}/executions/execution",
                     {"provider": provider})
+        if s not in (200, 201):
+            log(f"  add {provider} → {LOA1_ALIAS}: HTTP {s}")
 
-    # Walk the resulting executions list to fix requirements + attach the
-    # LoA-2 authenticator config. Default requirement on POST is DISABLED;
-    # we PATCH each execution to its target requirement.
-    s, execs = call("GET", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions")
-    if s == 200 and isinstance(execs, list):
-        targets = {
-            "auth-cookie": "ALTERNATIVE",
-            "identity-provider-redirector": "ALTERNATIVE",
-            FORMS_ALIAS: "ALTERNATIVE",
-            "auth-username-password-form": "REQUIRED",
-            LOA_ALIAS: "CONDITIONAL",
-            "conditional-level-of-authentication": "REQUIRED",
-            "auth-otp-form": "REQUIRED",
-        }
-        for ex in execs:
-            key = ex.get("displayName") or ex.get("providerId") or ex.get("authenticator") or ex.get("flowAlias")
-            # The /executions endpoint returns sub-flow rows by their alias
-            # in `displayName`. Match on either provider or alias.
-            tgt = None
-            for k, v in targets.items():
-                if k == key or k == ex.get("providerId") or k == ex.get("authenticator") or k == ex.get("displayName"):
-                    tgt = v
-                    break
-            if tgt and ex.get("requirement") != tgt:
-                ex["requirement"] = tgt
-                s2, _ = call("PUT", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions", ex)
-                log(f"  set {key} requirement={tgt} (HTTP {s2})")
+    # LoA-2 sub-flow (CONDITIONAL): condition + OTP.
+    s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FORMS_ALIAS}/executions/flow", {
+        "alias": LOA2_ALIAS,
+        "type": "basic-flow",
+        "description": "Fires only when client requested acr_values=2 (or claims.id_token.acr.values maps to 2). Skipped on normal LoA 1 logins.",
+    })
+    log(f"  Created sub-flow '{LOA2_ALIAS}' (HTTP {s}).")
+    for provider in ["conditional-level-of-authentication", "auth-otp-form"]:
+        s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{LOA2_ALIAS}/executions/execution",
+                    {"provider": provider})
+        if s not in (200, 201):
+            log(f"  add {provider} → {LOA2_ALIAS}: HTTP {s}")
 
-            # Create + attach the LoA-2 config to the conditional-loa execution
-            # Config keys MUST be `loa-condition-level` and `loa-max-age`
-            # — these are the constants ConditionalLoaAuthenticator reads
-            # via getConfig().get(LEVEL/MAX_AGE) in KC 26 source. An
-            # earlier draft used `loa` / `max_age`, which the authenticator
-            # silently ignores → conditional always evaluates to false →
-            # OTP step is skipped → staging keeps 401-ing acr_insufficient,
-            # exactly the bug this PR is meant to fix. Caught by review.
-            # max-age=300 also matches the API's STEP_UP_AUTH_TIME_WINDOW
-            # so the realm's "fresh enough MFA" window doesn't outlast
-            # the API's `auth_time` freshness check.
-            if (ex.get("providerId") == "conditional-level-of-authentication"
-                    and not ex.get("authenticationConfig")):
-                s2, cfg = call(
-                    "POST",
-                    f"/admin/realms/{REALM}/authentication/executions/{ex['id']}/config",
-                    {
-                        "alias": LOA_CONFIG_ALIAS,
-                        "config": {"loa-condition-level": "2", "loa-max-age": "300"},
-                    },
-                )
-                log(f"  Created authenticatorConfig '{LOA_CONFIG_ALIAS}' (HTTP {s2}).")
-else:
-    log(f"Flow '{FLOW_ALIAS}' already exists — skipping creation. "
-        "Edit via Admin UI if its structure needs updating.")
+# 3. ALWAYS reconcile execution requirements + auth-otp-form userSetupAllowed.
+#    Runs even when the shape was already correct — covers the case where a
+#    realm import landed the right structure but a downstream tweak (e.g. an
+#    operator opening the Admin UI) flipped a requirement.
+#    Default requirement on POST is DISABLED, so this is mandatory after a
+#    REST rebuild and a no-op when the shape is already correct.
+targets_by_provider = {
+    "auth-cookie": "ALTERNATIVE",
+    "identity-provider-redirector": "ALTERNATIVE",
+    "auth-username-password-form": "REQUIRED",
+    "conditional-level-of-authentication": "REQUIRED",
+    "auth-otp-form": "REQUIRED",
+}
+targets_by_alias = {
+    FORMS_ALIAS: "ALTERNATIVE",
+    LOA1_ALIAS: "CONDITIONAL",
+    LOA2_ALIAS: "CONDITIONAL",
+}
+s, execs = call("GET", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions")
+if s == 200 and isinstance(execs, list):
+    for ex in execs:
+        tgt = (
+            targets_by_provider.get(ex.get("providerId"))
+            or targets_by_alias.get(ex.get("displayName"))
+        )
+        if tgt and ex.get("requirement") != tgt:
+            # IMPORTANT: only mutate `requirement` on the PUT body. Adding
+            # `userSetupAllowed` to the same payload has Keycloak 26 reply
+            # 400 on OTP-form executions (the AuthenticationExecution-
+            # InfoRepresentation parser rejects the combo). The OTP form's
+            # userSetupAllowed lives in the realm-import JSON; on a
+            # REST-rebuilt flow we set it via a follow-up PATCH below.
+            ex["requirement"] = tgt
+            key = ex.get("displayName") or ex.get("providerId")
+            s2, _ = call("PUT", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions", ex)
+            log(f"  set {key} requirement={tgt} (HTTP {s2}).")
 
-# 3.5. ALWAYS reconcile the conditional-level-of-authentication config,
-#      regardless of whether the flow was just created or imported by KC.
-#      This is the fix for the "OTP prompted on every login" bug: KC's
-#      realm import of `authenticatorConfig: "loa-2-config"` (alias-by-
-#      string) doesn't always resolve the link between the execution and
-#      the config. When the link is missing, getConfiguredLoa() returns 0,
-#      and the conditional matches for any user not yet at LoA 0 — i.e.,
-#      everyone post-username-password — firing OTP enrolment on every
-#      normal login. Reconciling here means a fresh `down -v` deploy or
-#      an existing realm both end up with the config properly attached.
+    # NOTE on lazy OTP enrolment (issue #250). The realm JSON sets
+    # `userSetupAllowed: true` on the auth-otp-form execution. That field
+    # is a JSON-import concept that the KC 26 Admin REST API will not
+    # accept on its AuthenticationExecutionInfoRepresentation PUT (returns
+    # 400 "Unrecognized field"), and there is no other endpoint that
+    # toggles it on a built-in authenticator post-hoc. Crucially that
+    # doesn't matter: DefaultAuthenticationFlow.processSingleFlowExecutionModel
+    # (KC 26.6.1) gates self-enrolment on `factory.isUserSetupAllowed()`,
+    # not on the execution model field — and OTPFormAuthenticatorFactory
+    # hardcodes `isUserSetupAllowed() = true`. So a REST-rebuilt LoA-2
+    # sub-flow self-enrols a user with no TOTP credential the same way a
+    # JSON-imported one does. Verified manually: a step-up login as the
+    # admin user (no TOTP yet) redirects to CONFIGURE_TOTP after the
+    # password form, exactly as the realm-import path does.
+
+# 4. ALWAYS reconcile both LoA configs. KC's realm-import sometimes fails
+#    to resolve the `authenticatorConfig: "loa-2-config"` alias-by-string
+#    link, leaving the conditional with no config (configuredLoa→null→0,
+#    matches everyone). This block walks the executions and either
+#    creates the missing config or updates the values to match desired.
 status, execs = call("GET", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions")
 if status == 200 and isinstance(execs, list):
+    # Pair each conditional-level-of-authentication execution with its
+    # parent sub-flow alias so we know which level config to attach. The
+    # /executions endpoint returns a flat list with `level` (depth); we
+    # walk it in order, tracking the most recent sub-flow at each depth.
+    parent_at_depth = {}
     for ex in execs:
+        depth = ex.get("level", 0)
+        if ex.get("authenticationFlow"):
+            parent_at_depth[depth] = ex.get("displayName") or ""
+            # A new sub-flow shadows any deeper-stale entries.
+            for d in list(parent_at_depth):
+                if d > depth:
+                    del parent_at_depth[d]
+            continue
         if ex.get("providerId") != "conditional-level-of-authentication":
             continue
+        # Parent sub-flow alias is at depth-1 (the conditional itself is
+        # at depth, its enclosing CONDITIONAL sub-flow is at depth-1).
+        parent_alias = parent_at_depth.get(depth - 1) or ""
+        if parent_alias == LOA1_ALIAS:
+            desired, alias = LOA1_DESIRED, LOA1_CONFIG_ALIAS
+        elif parent_alias == LOA2_ALIAS:
+            desired, alias = LOA2_DESIRED, LOA2_CONFIG_ALIAS
+        else:
+            log(f"  skip conditional under unknown sub-flow '{parent_alias}'")
+            continue
         current_cfg_id = ex.get("authenticationConfig")
-        desired = {"loa-condition-level": "2", "loa-max-age": "300"}
         if not current_cfg_id:
             s, _ = call(
                 "POST",
                 f"/admin/realms/{REALM}/authentication/executions/{ex['id']}/config",
-                {"alias": LOA_CONFIG_ALIAS, "config": desired},
+                {"alias": alias, "config": desired},
             )
-            log(f"Attached missing LoA-2 config to conditional execution (HTTP {s}). "
-                "This was the 'OTP prompted on every login' regression.")
+            log(f"Attached missing {alias} to {parent_alias} (HTTP {s}).")
         else:
             s, current = call("GET", f"/admin/realms/{REALM}/authentication/config/{current_cfg_id}")
             if s == 200 and isinstance(current, dict):
                 actual = current.get("config") or {}
-                if actual != desired:
+                # Reconcile the alias too — KC silently appends a numeric
+                # suffix on collision (e.g. "loa-2-config-2") if the alias
+                # was changed mid-flight; this PUT restores it.
+                if actual != desired or current.get("alias") != alias:
                     s2, _ = call(
                         "PUT",
                         f"/admin/realms/{REALM}/authentication/config/{current_cfg_id}",
-                        {"alias": LOA_CONFIG_ALIAS, "config": desired},
+                        {"alias": alias, "config": desired},
                     )
-                    log(f"Reconciled LoA-2 config values (HTTP {s2}).")
+                    log(f"Reconciled {alias} on {parent_alias} (HTTP {s2}).")
                 else:
-                    log("LoA-2 config already correct — no change.")
+                    log(f"{alias} on {parent_alias} already correct — no change.")
 
-# 4. Set realm.browserFlow once the flow exists.
+# 5. Set realm.browserFlow (re-set after any rebuild that swapped it back
+#    to "browser").
 status, realm = call("GET", f"/admin/realms/{REALM}")
 if status == 200 and realm.get("browserFlow") != FLOW_ALIAS:
     realm["browserFlow"] = FLOW_ALIAS

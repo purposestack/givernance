@@ -304,4 +304,143 @@ if [ "$has_flow" != "yes" ]; then
 fi
 ok "Authentication flow 'browser-with-step-up' exists."
 
+# Lock the EXACT two-conditional shape from the KC 26 docs §"Creating a
+# browser login flow with step-up mechanism". A single-conditional shape
+# (where username/password is a REQUIRED sibling of the LoA-2 conditional)
+# triggers OTP enrolment on EVERY login because
+# ConditionalLoaAuthenticator.matchCondition() short-circuits to TRUE
+# whenever currentAuthenticationLoa < MINIMUM_LOA — which is the case at
+# the start of every fresh authentication. This check would have caught
+# the regression that blocked PR #251 for 6 iterations.
+exec_list=$(curl -sS -H "Authorization: Bearer ${master_token}" \
+  "${KC_URL}/admin/realms/${REALM}/authentication/flows/browser-with-step-up/executions")
+shape_ok=$(printf '%s' "$exec_list" | python3 -c '
+import json, sys
+try:
+    execs = json.load(sys.stdin)
+except Exception:
+    print("no")
+    sys.exit(0)
+if not isinstance(execs, list):
+    print("no")
+    sys.exit(0)
+required = {
+    (0, "auth-cookie"),
+    (0, "identity-provider-redirector"),
+    (0, "browser-with-step-up forms"),
+    (1, "browser-with-step-up loa-1"),
+    (1, "browser-with-step-up loa-2"),
+    (2, "auth-username-password-form"),
+    (2, "auth-otp-form"),
+    (2, "conditional-level-of-authentication"),
+}
+seen = set()
+legacy = False
+for ex in execs:
+    ident = ex.get("providerId") or ex.get("displayName") or ""
+    seen.add((ex.get("level"), ident))
+    if ex.get("level") == 1 and ex.get("providerId") == "auth-username-password-form":
+        legacy = True  # username/password as direct child of "forms"
+print("legacy" if legacy else ("yes" if required.issubset(seen) else "no"))
+')
+case "$shape_ok" in
+  yes)
+    ok "Step-up flow has the documented two-conditional shape (LoA-1 → password, LoA-2 → OTP)."
+    ;;
+  legacy)
+    fail "Step-up flow has the LEGACY single-conditional shape (auth-username-password-form is a direct child of 'browser-with-step-up forms'). Every normal login will be intercepted by CONFIGURE_TOTP because ConditionalLoaAuthenticator.matchCondition() returns true whenever currentAuthenticationLoa < MINIMUM_LOA. Re-run scripts/keycloak-sync-realm.sh to rebuild the flow."
+    ;;
+  *)
+    printf '   executions list:\n%s\n' "$exec_list" >&2
+    fail "Step-up flow shape doesn't match the expected two-conditional layout (missing one of: loa-1 sub-flow, loa-2 sub-flow, conditional execution at depth 2)."
+    ;;
+esac
+
+# Lock the LoA configs so a future regression that drops loa-1-config or
+# loses the loa-2-config attachment is caught here, not in production.
+config_check=$(printf '%s' "$exec_list" | python3 -c '
+import json, sys
+execs = json.load(sys.stdin)
+parents = {}
+results = {"loa-1": None, "loa-2": None}
+for ex in execs:
+    depth = ex.get("level", 0)
+    if ex.get("authenticationFlow"):
+        parents[depth] = ex.get("displayName") or ""
+        for d in list(parents):
+            if d > depth:
+                del parents[d]
+        continue
+    if ex.get("providerId") != "conditional-level-of-authentication":
+        continue
+    parent = parents.get(depth - 1) or ""
+    cfg = ex.get("authenticationConfig")
+    if parent.endswith("loa-1"):
+        results["loa-1"] = cfg
+    elif parent.endswith("loa-2"):
+        results["loa-2"] = cfg
+print(json.dumps(results))
+')
+loa1_cfg=$(printf '%s' "$config_check" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("loa-1") or "")')
+loa2_cfg=$(printf '%s' "$config_check" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("loa-2") or "")')
+if [ -z "$loa1_cfg" ]; then
+  fail "Conditional under 'browser-with-step-up loa-1' has no authenticatorConfig attached. Without it the LoA-1 conditional doesn't push currentLoa to 1 and the LoA-2 conditional fires on every login."
+fi
+if [ -z "$loa2_cfg" ]; then
+  fail "Conditional under 'browser-with-step-up loa-2' has no authenticatorConfig attached. Without it the LoA-2 conditional defaults to MINIMUM_LOA=0 and fires on every login."
+fi
+loa1_body=$(curl -sS -H "Authorization: Bearer ${master_token}" \
+  "${KC_URL}/admin/realms/${REALM}/authentication/config/${loa1_cfg}")
+loa2_body=$(curl -sS -H "Authorization: Bearer ${master_token}" \
+  "${KC_URL}/admin/realms/${REALM}/authentication/config/${loa2_cfg}")
+loa1_level=$(printf '%s' "$loa1_body" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("config") or {}).get("loa-condition-level",""))')
+loa2_level=$(printf '%s' "$loa2_body" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("config") or {}).get("loa-condition-level",""))')
+if [ "$loa1_level" != "1" ]; then
+  fail "loa-1 conditional has loa-condition-level='${loa1_level}', expected '1'."
+fi
+if [ "$loa2_level" != "2" ]; then
+  fail "loa-2 conditional has loa-condition-level='${loa2_level}', expected '2'."
+fi
+ok "Step-up LoA configs locked: loa-1=level 1, loa-2=level 2."
+
+# End-to-end: a normal login (no acr_values) MUST NOT be redirected to
+# CONFIGURE_TOTP. This is the inverse of the bug PR #251 fixes — the
+# checks above confirm the static realm shape is correct, and this curl
+# confirms the runtime behaviour matches.
+COOKIE_JAR=$(mktemp)
+trap "rm -f \"$COOKIE_JAR\"" EXIT
+LOGIN_PAGE=$(curl -sS -c "$COOKIE_JAR" \
+  "${KC_URL}/realms/${REALM}/protocol/openid-connect/auth?client_id=givernance-web&response_type=code&scope=openid&redirect_uri=http://localhost:3000/api/auth/callback&state=smoke&nonce=smoke")
+ACTION_URL=$(printf '%s' "$LOGIN_PAGE" | python3 -c '
+import sys, re, html
+m = re.search(r"<form[^>]*id=\"kc-form-login\"[^>]*action=\"([^\"]+)\"", sys.stdin.read())
+if not m:
+    sys.exit(0)
+print(html.unescape(m.group(1)))
+')
+if [ -z "$ACTION_URL" ]; then
+  fail "Could not extract login form action URL from KC login page — login UI may be broken."
+fi
+LOGIN_RESP=$(curl -sS -i -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
+  -X POST "$ACTION_URL" \
+  --data-urlencode "username=${SEED_USERNAME}" \
+  --data-urlencode "password=${SEED_PASSWORD}" \
+  --data-urlencode "credentialId=" \
+  -H "Content-Type: application/x-www-form-urlencoded")
+LOC=$(printf '%s' "$LOGIN_RESP" | awk -F': ' 'tolower($1)=="location"{print $2}' | tr -d '\r' | head -1)
+case "$LOC" in
+  *"required-action"*"CONFIGURE_TOTP"*)
+    fail "Normal login (no acr_values) was intercepted by CONFIGURE_TOTP. The step-up MFA flow is firing OTP enrolment on every login. Location: ${LOC}"
+    ;;
+  *"http://localhost:3000/api/auth/callback"*|*"localhost:3000/api/auth/callback"*)
+    ok "Normal login (no acr_values) completes without OTP — redirected straight to the app callback."
+    ;;
+  "")
+    fail "Normal login produced no Location header. Response head:\n$(printf '%s' "$LOGIN_RESP" | head -20)"
+    ;;
+  *)
+    fail "Normal login redirected to an unexpected URL: ${LOC}"
+    ;;
+esac
+
 printf '\n Keycloak smoke test passed.\n'

@@ -33,7 +33,7 @@
     "referrerPolicy": "no-referrer"
   },
   "attributes": {
-    "acr.loa.map": "{\"2\": 2}"
+    "acr.loa.map": "{\"1\": 1, \"2\": 2}"
   },
   "browserFlow": "browser-with-step-up",
   "authenticationFlows": [
@@ -69,17 +69,17 @@
     },
     {
       "alias": "browser-with-step-up forms",
-      "description": "Username/password followed by a Conditional-LoA sub-flow that prompts for OTP when LoA 2 is requested.",
+      "description": "Two Conditional-LoA sub-flows wrapping username/password (LoA 1) and OTP (LoA 2). Mirrors the official KC 26 step-up pattern from server_admin#_step-up-flow.",
       "providerId": "basic-flow",
       "topLevel": false,
       "builtIn": false,
       "authenticationExecutions": [
         {
-          "authenticator": "auth-username-password-form",
-          "requirement": "REQUIRED",
+          "requirement": "CONDITIONAL",
           "priority": 10,
+          "flowAlias": "browser-with-step-up loa-1",
           "userSetupAllowed": false,
-          "autheticatorFlow": false
+          "autheticatorFlow": true
         },
         {
           "requirement": "CONDITIONAL",
@@ -91,8 +91,32 @@
       ]
     },
     {
+      "alias": "browser-with-step-up loa-1",
+      "description": "LoA-1: consumes the ConditionalLoaAuthenticator short-circuit (currentLoa<MINIMUM_LOA always matches on fresh auth) and runs username/password. See sync script comment for full rationale.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "loa-1-config",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "auth-username-password-form",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        }
+      ]
+    },
+    {
       "alias": "browser-with-step-up loa-2",
-      "description": "Fires OTP when the client requested acr_values=2 (or equivalent claims param) AND the operator has not satisfied LoA 2 within max-age. Skipped on normal LoA 1 logins.",
+      "description": "LoA-2: runs OTP only when client requests acr_values=2 AND operator not yet at LoA 2 within max-age=300s. Skipped on normal logins (requestedLoa=-1 < configuredLoa=2). See sync script for details.",
       "providerId": "basic-flow",
       "topLevel": false,
       "builtIn": false,
@@ -116,6 +140,13 @@
     }
   ],
   "authenticatorConfig": [
+    {
+      "alias": "loa-1-config",
+      "config": {
+        "loa-condition-level": "1",
+        "loa-max-age": "36000"
+      }
+    },
     {
       "alias": "loa-2-config",
       "config": {
