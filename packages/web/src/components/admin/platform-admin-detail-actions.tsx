@@ -6,6 +6,14 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/shared/form-field";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -77,8 +85,11 @@ export function PlatformAdminDetailActions({ admin, operatorKeycloakId }: Props)
       toast.success(t("toast.renamed"));
       setEditOpen(false);
       router.refresh();
-    } catch (err) {
-      toast.error(err instanceof ApiProblem ? t("errors.generic") : t("errors.generic"));
+    } catch {
+      // The rename endpoint has no specific error path beyond the
+      // 404-not-found and the generic 502/500. Surface a generic toast;
+      // the user can retry or hard-refresh the page.
+      toast.error(t("errors.generic"));
     }
   }
 
@@ -152,12 +163,14 @@ export function PlatformAdminDetailActions({ admin, operatorKeycloakId }: Props)
             <DialogTitle>{t("editDialog.title")}</DialogTitle>
             <DialogDescription>{t("editDialog.description")}</DialogDescription>
           </DialogHeader>
-          <form
-            id="platform-admin-rename"
-            onSubmit={editForm.handleSubmit(onEditSubmit)}
-            className="space-y-4"
-          >
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Form {...editForm}>
+            <form
+              id="platform-admin-rename"
+              onSubmit={editForm.handleSubmit(onEditSubmit)}
+              className="space-y-4"
+            >
+              {/* Email is shown read-only as context — outside the
+                  FormField provider since it's not a controlled field. */}
               <div className="block text-sm">
                 <label
                   htmlFor="platform-admin-edit-email"
@@ -167,34 +180,40 @@ export function PlatformAdminDetailActions({ admin, operatorKeycloakId }: Props)
                 </label>
                 <Input id="platform-admin-edit-email" value={admin.email} disabled />
               </div>
-              <div />
-              <div className="block text-sm">
-                <label
-                  htmlFor="platform-admin-edit-first-name"
-                  className="mb-1 block text-on-surface-variant"
-                >
-                  {tFields("firstName")}
-                </label>
-                <Input
-                  id="platform-admin-edit-first-name"
-                  {...editForm.register("firstName", { required: true, maxLength: 255 })}
-                  autoFocus
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <FormField
+                  control={editForm.control}
+                  name="firstName"
+                  rules={{ required: true, minLength: 1, maxLength: 255 }}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{tFields("firstName")}</FormLabel>
+                      <FormControl>
+                        {/* biome-ignore lint/a11y/noAutofocus: dialog focus convention */}
+                        <Input {...field} autoFocus autoComplete="given-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="lastName"
+                  rules={{ required: true, minLength: 1, maxLength: 255 }}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{tFields("lastName")}</FormLabel>
+                      <FormControl>
+                        <Input {...field} autoComplete="family-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
-              <div className="block text-sm">
-                <label
-                  htmlFor="platform-admin-edit-last-name"
-                  className="mb-1 block text-on-surface-variant"
-                >
-                  {tFields("lastName")}
-                </label>
-                <Input
-                  id="platform-admin-edit-last-name"
-                  {...editForm.register("lastName", { required: true, maxLength: 255 })}
-                />
-              </div>
-            </div>
-          </form>
+            </form>
+          </Form>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditOpen(false)}>
               {t("editDialog.cancel")}

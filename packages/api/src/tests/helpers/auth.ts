@@ -119,6 +119,14 @@ export async function ensureTestTenants() {
   await db.execute(
     sql`INSERT INTO tenants (id, name, slug) VALUES (${ORG_B}, 'Org B', 'test-org-b') ON CONFLICT (id) DO NOTHING`,
   );
+  // Sentinel platform tenant (ADR-022 amendment) — required as the
+  // FK target for any audit_logs row written under PLATFORM_AUDIT_ORG_ID
+  // (e.g. platform-admin lifecycle events from issue #254). Migration
+  // 0034 inserts it idempotently for prod/dev; we mirror the insert
+  // here so a fresh test DB doesn't trip FK on the first audit write.
+  await db.execute(
+    sql`INSERT INTO tenants (id, name, slug, status) VALUES ('00000000-0000-0000-0000-0000000000a1', 'Givernance Platform (sentinel)', '__platform__', 'archived') ON CONFLICT (id) DO NOTHING`,
+  );
   // Seed users matching the synthetic JWT subjects used by `signToken` /
   // `signTokenB`. The auth plugin's active-row check requires
   // `(keycloak_id, org_id, deleted_at IS NULL)` to resolve — without

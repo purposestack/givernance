@@ -82,14 +82,10 @@ beforeAll(async () => {
   app = await createServer();
   await app.ready();
   _setKeycloakAdminSingleton(fakeKeycloakAdmin);
-
-  // Seed the platform sentinel tenant — required as the FK target for
-  // every audit row written by this module (ADR-022 amendment). Idempotent.
-  await db.execute(sql`
-    INSERT INTO tenants (id, name, slug, status)
-    VALUES (${PLATFORM_TENANT_ID}, 'Givernance Platform (sentinel)', '__platform__', 'archived')
-    ON CONFLICT (id) DO NOTHING
-  `);
+  // Sentinel platform tenant is seeded centrally by `ensureTestTenants`
+  // in `tests/setup.ts` (data-architect minor #7). Migration 0034 also
+  // inserts it idempotently for dev/prod.
+  void PLATFORM_TENANT_ID;
 });
 
 afterAll(async () => {
