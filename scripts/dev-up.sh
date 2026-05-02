@@ -101,7 +101,28 @@ docker compose restart keycloak > /dev/null
 echo "Waiting for Keycloak realm '${KEYCLOAK_REALM:-givernance}' to be reachable..."
 KC_URL="${KEYCLOAK_URL:-http://localhost:${KEYCLOAK_PORT:-8080}}"
 REALM_NAME="${KEYCLOAK_REALM:-givernance}"
-until curl -sf -o /dev/null "${KC_URL}/realms/${REALM_NAME}/.well-known/openid-configuration"; do
+
+# Fail-fast on a Keycloak import error instead of polling forever (the
+# behaviour that hung for ~10 min during the PR #251 iteration when a
+# realm-JSON description exceeded the varchar(255) limit on
+# AUTHENTICATION_FLOW.DESCRIPTION). Bound the wait at 90s and, if the
+# realm endpoint still isn't up, surface KC's own ERROR lines so the
+# operator sees the actual import failure (e.g. "value too long for
+# type character varying(255)") instead of a generic timeout.
+KC_WAIT_DEADLINE=$(($(date +%s) + 90))
+while ! curl -sf -o /dev/null "${KC_URL}/realms/${REALM_NAME}/.well-known/openid-configuration"; do
+  if [ "$(date +%s)" -ge "$KC_WAIT_DEADLINE" ]; then
+    echo ""
+    echo "✗ Keycloak realm '${REALM_NAME}' did not become reachable within 90s." >&2
+    echo "  Likely cause: realm import failed. Recent KC ERROR lines:" >&2
+    docker compose logs keycloak --tail 200 2>&1 | grep -E "ERROR|Exception" | tail -10 | sed 's/^/    /' >&2
+    echo "" >&2
+    echo "  Common fixes:" >&2
+    echo "    - varchar(255) overflow on alias/description: check infra/keycloak/realm-givernance.json" >&2
+    echo "    - bad authenticatorConfig alias reference" >&2
+    echo "    - syntactically invalid realm JSON (run \`python3 -c 'import json; json.load(open(\"infra/keycloak/realm-givernance.json\"))'\`)" >&2
+    exit 1
+  fi
   sleep 2
 done
 
