@@ -217,6 +217,51 @@ export const users = pgTable(
   ],
 );
 
+// ─── Platform admins (ADR-022) ────────────────────────────────────────────────
+
+/**
+ * Platform admins — Givernance staff with the Keycloak realm role
+ * `super_admin`. Disjoint from `users`: a Keycloak person is either a
+ * platform admin or a tenant member, never both (ADR-022). The table sits
+ * outside RLS — all reads/writes go through `systemDb` (BYPASSRLS) — and
+ * the migration explicitly REVOKEs ALL from the app role so an accidental
+ * query through the NOBYPASSRLS pool fails loud rather than returning rows.
+ *
+ * No `org_id`: platform admins do not belong to any tenant. The Keycloak
+ * "Givernance Platform" Organization remains as a logical staff grouping
+ * upstream, but it has no app-DB mirror in `tenants` (ADR-022).
+ *
+ * Soft-delete only (universal Givernance rule, ADR-021): the audit story
+ * "list every super-admin we have ever had" must include offboarded staff.
+ * The partial unique index on `keycloak_id WHERE deleted_at IS NULL` lets
+ * a Keycloak id be re-bound after offboarding without conflict.
+ */
+export const platformAdmins = pgTable(
+  "platform_admins",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    keycloakId: varchar("keycloak_id", { length: 255 }),
+    email: varchar("email", { length: 255 }).notNull(),
+    firstName: varchar("first_name", { length: 255 }).notNull(),
+    lastName: varchar("last_name", { length: 255 }).notNull(),
+    /** Optional last-login marker so the audit story can answer "who's been active". */
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    /** Soft-delete marker (ADR-021 universal). Listing endpoints filter `deleted_at IS NULL`. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("platform_admins_deleted_at_idx").on(table.deletedAt),
+    // Drizzle Kit doesn't model partial indexes — the migration declares the
+    // partial-unique on `keycloak_id WHERE deleted_at IS NULL` and on
+    // `lower(email) WHERE deleted_at IS NULL` directly. The unconditional
+    // unique here gives type-side parity for the Drizzle query builder.
+    unique("platform_admins_keycloak_id_uniq").on(table.keycloakId),
+    unique("platform_admins_email_uniq").on(table.email),
+  ],
+);
+
 // ─── Invitations ──────────────────────────────────────────────────────────────
 
 /** Purpose discriminator for invitation rows — team invite vs self-serve signup verification (migration 0022). */

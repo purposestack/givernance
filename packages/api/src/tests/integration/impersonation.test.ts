@@ -7,7 +7,6 @@
  * Redis lookup are exercised end-to-end.
  */
 
-import { PLATFORM_TENANT_ID } from "@givernance/shared/constants";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -37,9 +36,13 @@ const TARGET_USER_APP_ID = "00000000-0000-0000-0000-0000000aaaaa";
 const TARGET_USER_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000aa101";
 const TARGET_SUPER_ADMIN_APP_ID = "00000000-0000-0000-0000-0000000aaaab";
 const TARGET_SUPER_ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000aa102";
-// Platform-tenant target — used by the nested-impersonation test (QA F1)
-// to exercise the service-side guard that rejects targets in the seeded
-// platform tenant. Tenant row is upserted in beforeAll.
+// Platform-admin target — used by the nested-impersonation test (QA F1)
+// to exercise the service-side guard that rejects targets which are
+// platform admins (ADR-022). The fixture inserts BOTH a `platform_admins`
+// row keyed on PLATFORM_TARGET_KEYCLOAK_ID AND a regular `users` row in
+// ORG_A sharing that keycloak_id, so the impersonation service resolves
+// a tenant user (it looks up `users` by app id) but the
+// `isPlatformAdmin(target.keycloakId)` post-check fires.
 const PLATFORM_TARGET_APP_ID = "00000000-0000-0000-0000-0000000aaa01";
 const PLATFORM_TARGET_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000aa103";
 // Viewer-role target — used to verify pure-impersonation honours the
@@ -57,15 +60,10 @@ beforeAll(async () => {
 
   await ensureTestTenants();
 
-  // Seed the platform tenant + a member user, so the nested-impersonation
-  // guard test can exercise the structural barrier on `target.orgId`.
-  await db.execute(sql`
-    INSERT INTO tenants (id, name, slug)
-    VALUES (${PLATFORM_TENANT_ID}, 'Givernance Platform', 'platform')
-    ON CONFLICT (id) DO NOTHING
-  `);
-
-  // Seed a target user under ORG_A that the operator will impersonate.
+  // Seed target users for ORG_A. The PLATFORM_TARGET fixture lives in
+  // ORG_A like a normal customer-tenant member; the
+  // `isPlatformAdmin(keycloakId)` guard (ADR-022) is what rejects it,
+  // not its tenant binding.
   await db.execute(sql`
     DELETE FROM users WHERE id IN (${TARGET_USER_APP_ID}, ${TARGET_SUPER_ADMIN_APP_ID}, ${PLATFORM_TARGET_APP_ID}, ${VIEWER_TARGET_APP_ID})
   `);
@@ -74,8 +72,17 @@ beforeAll(async () => {
     VALUES
       (${TARGET_USER_APP_ID}, ${ORG_A}, ${TARGET_USER_KEYCLOAK_ID}, 'target@example.org', 'Target', 'User', 'org_admin'),
       (${TARGET_SUPER_ADMIN_APP_ID}, ${ORG_A}, ${TARGET_SUPER_ADMIN_KEYCLOAK_ID}, 'super@example.org', 'Target', 'SuperAdmin', 'org_admin'),
-      (${PLATFORM_TARGET_APP_ID}, ${PLATFORM_TENANT_ID}, ${PLATFORM_TARGET_KEYCLOAK_ID}, 'platform-target@example.org', 'Platform', 'Target', 'org_admin'),
+      (${PLATFORM_TARGET_APP_ID}, ${ORG_A}, ${PLATFORM_TARGET_KEYCLOAK_ID}, 'platform-target@example.org', 'Platform', 'Target', 'org_admin'),
       (${VIEWER_TARGET_APP_ID}, ${ORG_A}, ${VIEWER_TARGET_KEYCLOAK_ID}, 'viewer-target@example.org', 'Viewer', 'Target', 'viewer')
+  `);
+
+  // ADR-022: insert a `platform_admins` row sharing the
+  // PLATFORM_TARGET_KEYCLOAK_ID so the nested-impersonation guard fires.
+  // Idempotent — `ON CONFLICT DO NOTHING` so the test suite is re-runnable.
+  await db.execute(sql`
+    INSERT INTO platform_admins (keycloak_id, email, first_name, last_name)
+    VALUES (${PLATFORM_TARGET_KEYCLOAK_ID}, 'platform-admin-fixture@example.org', 'Platform', 'AdminFixture')
+    ON CONFLICT DO NOTHING
   `);
 });
 
@@ -190,7 +197,7 @@ describe("POST /v1/admin/impersonation — RBAC + step-up", () => {
     expect(body).toMatchObject({ status: 400, title: expect.any(String) });
   });
 
-  it("blocks impersonating a platform-tenant member (nested impersonation) with 400", async () => {
+  it("blocks impersonating a platform admin (nested impersonation) with 400", async () => {
     const token = superAdminToken();
     const res = await app.inject({
       method: "POST",
@@ -204,7 +211,7 @@ describe("POST /v1/admin/impersonation — RBAC + step-up", () => {
       title: "Bad Request",
       status: 400,
     });
-    expect((res.json() as { detail?: string }).detail ?? "").toMatch(/platform/i);
+    expect((res.json() as { detail?: string }).detail ?? "").toMatch(/platform admin/i);
   });
 
   it("rejects target user without a Keycloak identity", async () => {

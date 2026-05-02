@@ -2,11 +2,11 @@
 
 import { createHash } from "node:crypto";
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
-import { auditLogs, outboxEvents, tenants, users } from "@givernance/shared/schema";
+import { auditLogs, outboxEvents, platformAdmins, tenants, users } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { withTenantContext } from "../../lib/db.js";
+import { systemDb, withTenantContext } from "../../lib/db.js";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
 import { keycloakAdmin } from "../../lib/keycloak-admin.js";
@@ -120,6 +120,59 @@ export async function userRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
+      const isSuperAdmin = request.auth?.roles?.includes("super_admin") ?? false;
+
+      // ADR-022 — platform admins are a disjoint identity surface. They
+      // have no `users` row and no app-DB tenant. Resolve via
+      // `platform_admins` and synthesise the tenant-shaped fields from
+      // the JWT's `org_id` claim (which mirrors the Keycloak "platform"
+      // Organization id) so the existing MeProfile contract on the
+      // client stays a single shape.
+      if (isSuperAdmin) {
+        const [admin] = await systemDb
+          .select({
+            id: platformAdmins.id,
+            keycloakId: platformAdmins.keycloakId,
+            email: platformAdmins.email,
+            firstName: platformAdmins.firstName,
+            lastName: platformAdmins.lastName,
+            createdAt: platformAdmins.createdAt,
+            updatedAt: platformAdmins.updatedAt,
+          })
+          .from(platformAdmins)
+          .where(and(eq(platformAdmins.keycloakId, userId), isNull(platformAdmins.deletedAt)))
+          .limit(1);
+
+        if (!admin) {
+          const t = resolveTranslations(request);
+          return reply.status(404).send({
+            type: "https://httpproblems.com/http-status/404",
+            title: "Not Found",
+            status: 404,
+            detail: t("errors.notFound", { resource: t("resources.user") }),
+          });
+        }
+
+        return reply.send({
+          data: {
+            id: admin.id,
+            orgId,
+            keycloakId: admin.keycloakId,
+            email: admin.email,
+            firstName: admin.firstName,
+            lastName: admin.lastName,
+            role: "super_admin",
+            firstAdmin: false,
+            provisionalUntil: null,
+            locale: null,
+            tenantDefaultLocale: "en" as const,
+            orgSlug: "platform",
+            orgName: "Givernance Platform",
+            createdAt: admin.createdAt.toISOString(),
+            updatedAt: admin.updatedAt.toISOString(),
+          },
+        });
+      }
 
       const row = await withTenantContext(orgId, async (tx) => {
         const [r] = await tx

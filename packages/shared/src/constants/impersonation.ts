@@ -16,12 +16,3 @@ export const IMPERSONATION_END_REASON_VALUES = [
   "switched",
 ] as const;
 export type ImpersonationEndReason = (typeof IMPERSONATION_END_REASON_VALUES)[number];
-
-/**
- * Sentinel tenant id for the seeded platform organization that hosts
- * super-admin users (`infra/keycloak/realm-givernance.json` — see the
- * `platform` Organization). Used by the impersonation service to refuse
- * starting a session against a target who belongs to the platform tenant
- * — that's the structural barrier against operator → operator nesting.
- */
-export const PLATFORM_TENANT_ID = "00000000-0000-0000-0000-0000000000a1";

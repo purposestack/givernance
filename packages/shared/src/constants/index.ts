@@ -9,7 +9,6 @@ export {
   IMPERSONATION_MODE_VALUES,
   type ImpersonationEndReason,
   type ImpersonationMode,
-  PLATFORM_TENANT_ID,
 } from "./impersonation";
 export { isPersonalEmailDomain, PERSONAL_EMAIL_DOMAINS } from "./personal-email-domains";
 export { PINO_REDACT_PATHS } from "./pino-redact";
