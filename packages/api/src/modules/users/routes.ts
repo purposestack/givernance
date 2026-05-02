@@ -121,6 +121,18 @@ export async function userRoutes(app: FastifyInstance) {
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
       const isSuperAdmin = request.auth?.roles?.includes("super_admin") ?? false;
+      // Impersonation tokens carry the TARGET as `sub`/`org_id` and the
+      // operator only as `act.sub`. Even when the operator is a platform
+      // admin running in delegation mode (super_admin retained in
+      // `realm_access.roles`), `/v1/users/me` answers from the target's
+      // perspective: the UI's job during a session is to show the org
+      // and identity the operator is acting AS. Routing into the
+      // `platform_admins` branch here would 404 every delegation session
+      // (the target's keycloak_id has no platform_admins row), wiping
+      // the org name + role on the client and silently degrading the
+      // sidebar settings link. The `act` claim is the canonical
+      // "this is an impersonation/delegation session" discriminator.
+      const isImpersonationSession = !!request.auth?.impersonation;
 
       // ADR-022 — platform admins are a disjoint identity surface. They
       // have no `users` row and no app-DB tenant. Resolve via
@@ -128,7 +140,7 @@ export async function userRoutes(app: FastifyInstance) {
       // the JWT's `org_id` claim (which mirrors the Keycloak "platform"
       // Organization id) so the existing MeProfile contract on the
       // client stays a single shape.
-      if (isSuperAdmin) {
+      if (isSuperAdmin && !isImpersonationSession) {
         const [admin] = await systemDb
           .select({
             id: platformAdmins.id,
