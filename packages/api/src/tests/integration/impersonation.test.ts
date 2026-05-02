@@ -10,6 +10,7 @@
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { env } from "../../env.js";
 import { db } from "../../lib/db.js";
 import {
   IMPERSONATION_DENIED_LOCKOUT_THRESHOLD,
@@ -585,6 +586,110 @@ describe("Rate limit + lockout", () => {
       payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
     });
     expect(res.statusCode).toBe(423);
+  });
+});
+
+// ─── Strict step-up (production-mode) ──────────────────────────────────────
+//
+// Production sets IMPERSONATION_REQUIRE_ACR_2=true (env.ts boot check).
+// These tests flip the runtime env flag for the duration of the block to
+// exercise the strict-mode 401 response shape that issue #250 added —
+// the web side keys off `step_up_required` to redirect the operator
+// through Keycloak with `acr_values=2`. Without this coverage the new
+// extension members can silently regress to undefined and the form
+// degrades to a generic-error toast (the original bug).
+
+describe("POST /v1/admin/impersonation — strict step-up (issue #250)", () => {
+  let originalRequireAcr2: boolean;
+
+  beforeAll(() => {
+    originalRequireAcr2 = env.IMPERSONATION_REQUIRE_ACR_2;
+    env.IMPERSONATION_REQUIRE_ACR_2 = true;
+  });
+
+  afterAll(() => {
+    env.IMPERSONATION_REQUIRE_ACR_2 = originalRequireAcr2;
+  });
+
+  it("acr=1 (LoA insufficient) → 401 with reason=acr_insufficient + step_up_required=true", async () => {
+    const token = superAdminToken({ acr: "1", auth_time: Math.floor(Date.now() / 1000) - 30 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/401",
+      title: "Unauthorized",
+      status: 401,
+      reason: "acr_insufficient",
+      step_up_required: true,
+    });
+  });
+
+  it("acr=2 but auth_time stale → 401 with reason=auth_time_stale + step_up_required=true", async () => {
+    const token = superAdminToken({ acr: "2", auth_time: Math.floor(Date.now() / 1000) - 600 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({
+      reason: "auth_time_stale",
+      step_up_required: true,
+    });
+  });
+
+  it("missing auth_time → 401 with reason=no_auth_time", async () => {
+    const token = superAdminToken({ acr: "2", auth_time: undefined });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({
+      reason: "no_auth_time",
+      step_up_required: true,
+    });
+  });
+
+  it("acr=2 + fresh auth_time → 201 (happy path)", async () => {
+    const token = superAdminToken({ acr: "2", auth_time: Math.floor(Date.now() / 1000) - 30 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("step-up failure that triggers lockout → 401 with step_up_required=false (no redirect loop)", async () => {
+    // Pre-seed the counter to N-1 so the next failure flips the lockout.
+    await redis.set(
+      `impersonation:denied:${SUPER_ADMIN_KEYCLOAK_ID}`,
+      String(IMPERSONATION_DENIED_LOCKOUT_THRESHOLD - 1),
+      "EX",
+      15 * 60,
+    );
+    const token = superAdminToken({ acr: "1", auth_time: Math.floor(Date.now() / 1000) - 30 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({
+      reason: "acr_insufficient",
+      step_up_required: false,
+    });
   });
 });
 

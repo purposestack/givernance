@@ -71,6 +71,8 @@ export function oidcFlowCookieOptions() {
 export const OIDC_STATE_COOKIE = "oidc_state";
 export const OIDC_VERIFIER_COOKIE = "oidc_code_verifier";
 export const OIDC_NONCE_COOKIE = "oidc_nonce";
+/** Same-origin path the callback redirects to after a successful re-auth (issue #250 step-up). */
+export const OIDC_RETURN_TO_COOKIE = "oidc_return_to";
 
 /** Generate a cryptographically random URL-safe string. */
 export function generateRandom(bytes = 32): string {

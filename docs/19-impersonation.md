@@ -206,7 +206,50 @@ The operator's pre-impersonation Keycloak access token must satisfy:
 - `auth_time` within the last 5 minutes (`STEP_UP_AUTH_TIME_WINDOW_SECONDS`).
 - `acr >= 2` when `IMPERSONATION_REQUIRE_ACR_2=true` (env hard-fails to true in production).
 
-We deliberately **do not** maintain an app-side TOTP secret store. Keycloak is the MFA authority — the realm's `otpPolicy` is configured (`HmacSHA256`, 6-digit, 30 s window), and the operational handbook for production realms requires the platform team to enable a `CONFIGURE_TOTP` required action (or browser-flow MFA step) on the `super_admin` role. Storing TOTP secrets in our DB would duplicate the source of truth.
+We deliberately **do not** maintain an app-side TOTP secret store. Keycloak is the MFA authority — the realm's `otpPolicy` is configured (`HmacSHA256`, 6-digit, 30 s window), and the realm config wires a `CONFIGURE_TOTP` required action onto the seed super-admin so they're forced to enrol an authenticator app on first login. Storing TOTP secrets in our DB would duplicate the source of truth.
+
+### Realm flow that emits `acr=2` (issue #250)
+
+The default Keycloak browser flow only issues `acr=1` — there's no built-in mechanism that translates "the user just typed an OTP" into a level-of-assurance claim. The realm JSON ships a custom flow + `acr.loa.map` attribute that closes that gap:
+
+```
+browser-with-step-up                                       (top-level, browserFlow)
+├── auth-cookie                          ALTERNATIVE
+├── identity-provider-redirector         ALTERNATIVE
+└── browser-with-step-up forms           ALTERNATIVE   (sub-flow)
+    ├── auth-username-password-form      REQUIRED
+    └── browser-with-step-up loa-2       CONDITIONAL   (sub-flow)
+        ├── conditional-level-of-authentication  REQUIRED   [config: loa=2, max_age=3600]
+        └── auth-otp-form                          REQUIRED
+```
+
+The conditional sub-flow only fires when the OIDC client requests a higher LoA than the operator's current session can prove — so a regular admin login still goes through username/password only. When the impersonation form's POST fails, the web side redirects through `/api/auth/login?acr_values=2&prompt=login&return_to=...` and Keycloak fires the OTP prompt to satisfy LoA 2. Realm `attributes.acr.loa.map = {"1": 1, "2": 2}` translates the conditional authenticator's emitted level into the `acr` claim the API's `validateStepUp` keys off.
+
+### End-to-end web flow (HTTP 401 → step-up redirect)
+
+1. Operator opens `/admin/impersonation/new`, picks a target + mode + reason, submits.
+2. `POST /v1/admin/impersonation` runs `validateStepUp({ auth_time, acr })`. With `IMPERSONATION_REQUIRE_ACR_2=true`, an `acr=1` token returns 401 with an extended RFC 9457 body:
+   ```json
+   {
+     "type":  "https://httpproblems.com/http-status/401",
+     "title": "Unauthorized",
+     "status": 401,
+     "detail": "Step-up authentication required …",
+     "reason": "acr_insufficient",
+     "step_up_required": true
+   }
+   ```
+   `reason` discriminates `acr_insufficient` / `auth_time_stale` / `no_auth_time`. `step_up_required` is `false` when the same failure tipped the operator into the 5-fail lockout — sending them through Keycloak again would just loop.
+3. The form keys off `step_up_required: true` and `window.location.assign`s `/api/auth/login?acr_values=2&prompt=login&return_to=/admin/impersonation/new`.
+4. The login route's allow-list forwards `acr_values=2` + `prompt=login` to Keycloak verbatim (no other values pass) and persists `return_to` in a 5-minute httpOnly cookie next to the existing PKCE/state/nonce cookies.
+5. Keycloak runs the browser-with-step-up flow. The Conditional-LoA sub-flow sees the request asking for LoA 2, prompts for OTP, and (on success) issues a token with `acr=2` + fresh `auth_time`.
+6. The callback route validates state/nonce/PKCE as usual, sets the session cookie, then — finding the `oidc_return_to` cookie — redirects to the impersonation form instead of the default `/select-organization`. Operator re-submits and the call now returns 201.
+
+### TOTP enrolment + recovery
+
+- The seed super-admin user carries `requiredActions: ["CONFIGURE_TOTP"]` in the realm JSON. On their next login Keycloak's built-in TOTP enrolment screen renders under the Givernance theme; they scan a QR with FreeOTP / Google Authenticator / Microsoft Authenticator and verify a code before being let into the app.
+- `scripts/keycloak-sync-realm.sh` reconciles this on existing realms — if the seed super-admin doesn't yet have an `otp` credential AND `CONFIGURE_TOTP` isn't already queued, the script PUTs `requiredActions += ["CONFIGURE_TOTP"]`. Once the user has enrolled, the script leaves their requiredActions alone (so a deploy doesn't reset their MFA).
+- **Recovery (lost device):** any operator with realm-management `manage-users` access opens the user in the Keycloak admin console (`https://auth.staging.givernance.org/admin/master/console/`), Credentials tab → delete the OTP credential → re-add `CONFIGURE_TOTP` to required actions. The operator's next login walks them through fresh enrolment. Recovery is intentionally a manual step gated on Keycloak admin access; we don't ship a self-serve "I lost my phone" path because the same credential gates the impersonation route into every tenant's data.
 
 ### Brute-force lockout
 
