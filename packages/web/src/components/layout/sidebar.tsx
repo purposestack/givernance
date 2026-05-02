@@ -107,11 +107,13 @@ export function Sidebar({
   const canManageOrgSettings = hasAppRole("org_admin");
   // Super-admins live in `platform_admins` with no tenant memberships
   // (ADR-022), so "Change organisation" is meaningless noise for them.
-  // Tenant users still see it whenever they're in more than one workspace
-  // (or when membershipCount hasn't loaded yet — show by default to avoid
-  // a flicker that hides the link from multi-tenant users on initial paint).
+  // Tenant users see it only when they're in more than one workspace.
+  // Strict numeric check — an undefined / 0 membership count for a
+  // non-super-admin is a broken state caught upstream in `(app)/layout.tsx`
+  // (it throws so we can investigate); silently falling back to "show
+  // the link" used to paper over that bug class.
   const canSwitchOrganization =
-    !isSuperAdmin && (typeof membershipCount !== "number" || membershipCount > 1);
+    !isSuperAdmin && typeof membershipCount === "number" && membershipCount > 1;
 
   const initials = user
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
