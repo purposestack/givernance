@@ -105,7 +105,13 @@ export function Sidebar({
   // guard). Hide the dropdown link for everyone else so they don't dead-end
   // on a 404.
   const canManageOrgSettings = hasAppRole("org_admin");
-  const canSwitchOrganization = typeof membershipCount !== "number" || membershipCount > 1;
+  // Super-admins live in `platform_admins` with no tenant memberships
+  // (ADR-022), so "Change organisation" is meaningless noise for them.
+  // Tenant users still see it whenever they're in more than one workspace
+  // (or when membershipCount hasn't loaded yet — show by default to avoid
+  // a flicker that hides the link from multi-tenant users on initial paint).
+  const canSwitchOrganization =
+    !isSuperAdmin && (typeof membershipCount !== "number" || membershipCount > 1);
 
   const initials = user
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
