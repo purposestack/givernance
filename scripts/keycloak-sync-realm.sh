@@ -341,6 +341,45 @@ else:
     log(f"Flow '{FLOW_ALIAS}' already exists — skipping creation. "
         "Edit via Admin UI if its structure needs updating.")
 
+# 3.5. ALWAYS reconcile the conditional-level-of-authentication config,
+#      regardless of whether the flow was just created or imported by KC.
+#      This is the fix for the "OTP prompted on every login" bug: KC's
+#      realm import of `authenticatorConfig: "loa-2-config"` (alias-by-
+#      string) doesn't always resolve the link between the execution and
+#      the config. When the link is missing, getConfiguredLoa() returns 0,
+#      and the conditional matches for any user not yet at LoA 0 — i.e.,
+#      everyone post-username-password — firing OTP enrolment on every
+#      normal login. Reconciling here means a fresh `down -v` deploy or
+#      an existing realm both end up with the config properly attached.
+status, execs = call("GET", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions")
+if status == 200 and isinstance(execs, list):
+    for ex in execs:
+        if ex.get("providerId") != "conditional-level-of-authentication":
+            continue
+        current_cfg_id = ex.get("authenticationConfig")
+        desired = {"loa-condition-level": "2", "loa-max-age": "300"}
+        if not current_cfg_id:
+            s, _ = call(
+                "POST",
+                f"/admin/realms/{REALM}/authentication/executions/{ex['id']}/config",
+                {"alias": LOA_CONFIG_ALIAS, "config": desired},
+            )
+            log(f"Attached missing LoA-2 config to conditional execution (HTTP {s}). "
+                "This was the 'OTP prompted on every login' regression.")
+        else:
+            s, current = call("GET", f"/admin/realms/{REALM}/authentication/config/{current_cfg_id}")
+            if s == 200 and isinstance(current, dict):
+                actual = current.get("config") or {}
+                if actual != desired:
+                    s2, _ = call(
+                        "PUT",
+                        f"/admin/realms/{REALM}/authentication/config/{current_cfg_id}",
+                        {"alias": LOA_CONFIG_ALIAS, "config": desired},
+                    )
+                    log(f"Reconciled LoA-2 config values (HTTP {s2}).")
+                else:
+                    log("LoA-2 config already correct — no change.")
+
 # 4. Set realm.browserFlow once the flow exists.
 status, realm = call("GET", f"/admin/realms/{REALM}")
 if status == 200 and realm.get("browserFlow") != FLOW_ALIAS:
