@@ -80,6 +80,10 @@ const fakeKeycloakAdmin: KeycloakAdminClient = {
   deleteUser: vi.fn(async () => {}),
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
+  // Issue #254 — platform-admin CRUD helpers. Signup flow never calls them.
+  getRealmRole: vi.fn(async () => null),
+  assignRealmRoleToUser: vi.fn(async () => {}),
+  sendExecuteActionsEmail: vi.fn(async () => {}),
   _circuitState: () => "closed",
 };
 

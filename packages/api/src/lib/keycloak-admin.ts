@@ -248,9 +248,47 @@ export interface KeycloakAdminClient {
   createIdentityProvider(idp: KeycloakIdentityProvider): Promise<void>;
   deleteIdentityProvider(alias: string): Promise<void>;
 
+  // Realm-role assignment (issue #254 — platform admin CRUD)
+  /**
+   * Look up a realm role by name and return its id + name. Returns null if
+   * the role doesn't exist. The id is required by `assignRealmRoleToUser`
+   * because Keycloak's `POST /users/{id}/role-mappings/realm` body needs
+   * BOTH `id` and `name` fields populated — sending name-only is silently
+   * rejected on KC 26.
+   */
+  getRealmRole(name: string): Promise<{ id: string; name: string } | null>;
+  /**
+   * Assign a realm role to a user. Idempotent on the KC side — assigning
+   * an already-held role is a 204 no-op.
+   */
+  assignRealmRoleToUser(userId: string, role: { id: string; name: string }): Promise<void>;
+  /**
+   * Trigger a Keycloak required-actions email (e.g. UPDATE_PASSWORD). The
+   * user clicks the link in their inbox and KC walks them through the
+   * required actions — for UPDATE_PASSWORD that means setting a new
+   * password. Lifespan defaults to KC's realm setting; pass `lifespanSec`
+   * to override per call.
+   */
+  sendExecuteActionsEmail(
+    userId: string,
+    actions: ExecuteAction[],
+    opts?: { lifespanSec?: number; clientId?: string; redirectUri?: string },
+  ): Promise<void>;
+
   // Test hooks
   _circuitState(): "closed" | "open" | "half-open";
 }
+
+/**
+ * Required-actions Keycloak supports out-of-the-box. We only use
+ * UPDATE_PASSWORD today (issue #254) but the type is open so the same
+ * helper covers a future "verify email" or "configure TOTP" flow.
+ */
+export type ExecuteAction =
+  | "UPDATE_PASSWORD"
+  | "VERIFY_EMAIL"
+  | "CONFIGURE_TOTP"
+  | "UPDATE_PROFILE";
 
 /**
  * Create a Keycloak Admin API client. Factory style (not a singleton) so tests
@@ -693,6 +731,42 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
         value: password,
         temporary: false,
       });
+    },
+
+    getRealmRole: async (name) => {
+      try {
+        const role = await adminRequest<{ id: string; name: string } | null>(
+          "GET",
+          `/roles/${e(name)}`,
+        );
+        return role && role.id && role.name ? { id: role.id, name: role.name } : null;
+      } catch (err) {
+        // 404 = role doesn't exist; surface as null instead of throwing so
+        // callers can decide how to handle (typically: build error message).
+        if (err instanceof KeycloakAdminError && err.status === 404) return null;
+        throw err;
+      }
+    },
+
+    assignRealmRoleToUser: async (userId, role) => {
+      // KC 26 expects an ARRAY of {id,name} on this POST. Idempotent on KC's
+      // side — re-assigning an already-held role is a 204 no-op.
+      await adminRequest<void>("POST", `/users/${e(userId)}/role-mappings/realm`, [
+        { id: role.id, name: role.name },
+      ]);
+    },
+
+    sendExecuteActionsEmail: async (userId, actions, opts) => {
+      // Path: PUT /admin/realms/{realm}/users/{id}/execute-actions-email
+      // Body: ["UPDATE_PASSWORD", ...]
+      // Optional query params: client_id, redirect_uri, lifespan (seconds).
+      const params = new URLSearchParams();
+      if (opts?.clientId) params.set("client_id", opts.clientId);
+      if (opts?.redirectUri) params.set("redirect_uri", opts.redirectUri);
+      if (opts?.lifespanSec) params.set("lifespan", String(opts.lifespanSec));
+      const qs = params.toString();
+      const path = `/users/${e(userId)}/execute-actions-email${qs ? `?${qs}` : ""}`;
+      await adminRequest<void>("PUT", path, actions);
     },
 
     setUserAttributes: async (userId, attributes) => {

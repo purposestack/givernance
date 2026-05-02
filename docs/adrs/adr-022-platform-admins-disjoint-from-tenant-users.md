@@ -96,6 +96,23 @@ The application no longer creates a `tenants` row at `…a1`. The `org_id` claim
 
 The Keycloak realm-import keeps the seeded admin user's `org_id` attribute at `…a1` (matching the platform Organization). The app DB has no row at `…a1`; the auth plugin's super-admin exemption makes this fine.
 
+### Amendment (issue #254): sentinel platform tenant row for audit FK integrity
+
+The original ADR-022 statement "drop the synthetic platform `tenants` row" was tightened during PR #253 + #254 implementation. `audit_logs.org_id` is `NOT NULL REFERENCES tenants(id)`, so platform-level lifecycle events (the new platform-admin CRUD writes `platform_admin.created`, `platform_admin.renamed`, `platform_admin.password_reset_sent`, `platform_admin.removed` audit rows) need a tenant id to FK against.
+
+We keep ONE row in `tenants` at the platform id (`…a1`), distinguished from customer tenants by:
+
+- `slug = '__platform__'` — double-underscore is reserved (ADR-016 reserved-slugs guard) so it cannot collide with a user-facing slug.
+- `status = 'archived'` — every customer-facing list endpoint filters `status != 'archived'` already, so the row is structurally invisible.
+- `name = 'Givernance Platform (sentinel)'` — human-readable so an SOC reviewer grepping `audit_logs` recognises the row.
+
+This row is **not** a tenant in any operational sense:
+- No `users` row points at it (super-admins live in `platform_admins`; the invariant "every `users.org_id` resolves to a customer tenant" still holds because customer-facing code filters by status).
+- No constituents / campaigns / donations / impersonation sessions reference it.
+- The dev seed creates it idempotently; production deployments must apply the same insert as part of the deploy bootstrap.
+
+The amendment is the minimum-viable compromise: ADR-022's core wins (disjoint identity surface, no `PLATFORM_TENANT_ID` constant in app code, no UUID-equality magic in the impersonation guard) are preserved.
+
 ### Consequences
 
 **Wins:**

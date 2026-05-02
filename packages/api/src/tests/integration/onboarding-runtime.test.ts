@@ -83,6 +83,11 @@ function makeKcStub(overrides: Partial<KeycloakAdminClient> = {}): KeycloakAdmin
     getOrganizationByAlias: async () => null,
     createIdentityProvider: async () => {},
     deleteIdentityProvider: async () => {},
+    // Issue #254 — platform-admin CRUD helpers. Stubbed for parity; this
+    // suite never exercises the platform-admins flow.
+    getRealmRole: async () => null,
+    assignRealmRoleToUser: async () => {},
+    sendExecuteActionsEmail: async () => {},
     _circuitState: () => "closed" as const,
   };
   return { ...base, ...overrides };
