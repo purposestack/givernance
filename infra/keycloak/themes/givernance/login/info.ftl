@@ -1,8 +1,8 @@
 <#--
   Givernance — Keycloak Login Theme — info.ftl
-  Shown after successful actions that don't redirect immediately (e.g., email
-  sent for verification / password reset). Wraps the KC info state in the
-  Givernance layout instead of the default shell.
+  Shown after successful actions that don't redirect immediately (e.g.,
+  email sent for verification / password reset). Wraps the KC info
+  state in the Givernance layout instead of the default shell.
 -->
 <#import "template.ftl" as layout>
 <@layout.registrationLayout displayMessage=true; section>
@@ -28,36 +28,42 @@
     </#if>
 
     <#--
-      Back-to-login link.
+      Back-to-login button.
 
-      Pre-PR-#253-smoke-fix: this rendered `${url.loginUrl}`, which is a
+      Pre-PR-#253-smoke-fix this rendered `${url.loginUrl}`, which is a
       `/realms/{realm}/login-actions/...` URL that requires the auth
       session cookie. After an `execute-actions-email` UPDATE_PASSWORD
-      flow, KC has consumed that cookie — clicking the link landed the
+      flow KC has consumed that cookie — clicking the link landed the
       user on a "Restart login cookie not found" error page.
 
       Resolution chain:
-        1. `client.baseUrl` if the email passed `client_id` AND the
-           client has an absolute `baseUrl` configured. Stable, doesn't
-           depend on auth-session state. (Same posture error.ftl uses.)
-        2. `properties.gvAppLoginUrl` from theme.properties — a
-           hardcoded SPA login URL per environment. The dev value
-           lives in `theme.properties`.
-        3. No link at all. The user closes the window and navigates
-           manually. Defensive — info.ftl never errors.
+        1. `client.baseUrl` if a `client_id` was scoped on the action
+           AND the client has an absolute `baseUrl`. Stable, doesn't
+           depend on auth-session state.
+        2. `properties.gvAppLoginUrl` from `theme.properties`.
+        3. Hardcoded dev fallback `http://localhost:3000/login`. KC's
+           per-process theme cache makes (2) unreliable across container
+           restarts; the hardcode guarantees a working button in dev
+           regardless. Production deployments override this template
+           (or set the property reliably) per environment.
+
+      Rendered as a primary button so the user can't miss it — pre-fix
+      the page just said "Your account has been updated" with no
+      affordance to continue (caught in dev: PR #253 smoke-test feedback).
     -->
     <#if !(skipLink?? && skipLink)>
+      <#assign gvBackUrl = "" />
       <#if client?? && client.baseUrl?has_content>
-        <a class="gv-link" href="${client.baseUrl}"
-           style="display:block;text-align:center;margin-top:12px;font-size:0.8125rem;">
-          ${msg("backToLogin")}
-        </a>
+        <#assign gvBackUrl = client.baseUrl />
       <#elseif properties.gvAppLoginUrl?? && properties.gvAppLoginUrl?has_content>
-        <a class="gv-link" href="${properties.gvAppLoginUrl}"
-           style="display:block;text-align:center;margin-top:12px;font-size:0.8125rem;">
-          ${msg("backToLogin")}
-        </a>
+        <#assign gvBackUrl = properties.gvAppLoginUrl />
+      <#else>
+        <#assign gvBackUrl = "http://localhost:3000/login" />
       </#if>
+      <a class="gv-btn gv-btn--primary" href="${gvBackUrl}"
+         style="display:block;text-align:center;margin-top:20px;">
+        ${msg("backToLogin")}
+      </a>
     </#if>
   </#if>
 
