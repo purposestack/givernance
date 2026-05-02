@@ -17,8 +17,8 @@
     "db:seed:funds": "tsx --env-file=../../.env scripts/seed-funds.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1040.0",
-    "@aws-sdk/s3-request-presigner": "^3.1040.0",
+    "@aws-sdk/client-s3": "^3.1041.0",
+    "@aws-sdk/s3-request-presigner": "^3.1041.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/rate-limit": "^10.3.0",
@@ -31,11 +31,11 @@
     "fastify": "^5.8.5",
     "fastify-plugin": "^5.0.1",
     "ioredis": "^5.4.2",
-    "jose": "^6.2.2",
+    "jose": "^6.2.3",
     "nats.ws": "^1.29.2",
     "pg": "^8.13.1",
     "pino": "10.3.1",
-    "stripe": "^22.0.1"
+    "stripe": "^22.1.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
