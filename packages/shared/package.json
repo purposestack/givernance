@@ -14,7 +14,7 @@
     "./i18n": "./src/i18n/locales.ts"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup src/index.ts --format esm",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -23,6 +23,6 @@
   },
   "devDependencies": {
     "@types/pg": "^8.20.0",
-    "typescript": "^5.7.2"
+    "typescript": "^6.0.3"
   }
 }
