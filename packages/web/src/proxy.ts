@@ -35,6 +35,15 @@ const PUBLIC_PREFIXES = [
   "/api/auth",
   "/_next",
   "/favicon.ico",
+  // Issue #254: the platform-admin invitation accept page lives under
+  // `/admin/platform-admins/accept` because it's adjacent to the
+  // operator-side CRUD, but it's PUBLIC by design — invitees aren't
+  // authenticated yet. Without this entry, `/admin` in
+  // `PROTECTED_PREFIXES` (one line below) catches the path and bounces
+  // the invitee to `/login`, losing the `?token=…` query and stranding
+  // them with no password set. The `isPublic` check fires before
+  // `isProtected`, so this entry takes precedence.
+  "/admin/platform-admins/accept",
 ];
 
 /**
