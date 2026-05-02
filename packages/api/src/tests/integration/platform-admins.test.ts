@@ -178,6 +178,12 @@ describe("POST /v1/admin/platform-admins", () => {
 
     // KC side-effects all fired.
     expect(kcCreateUser).toHaveBeenCalledTimes(1);
+    // The `org_id` user attribute MUST be set on the new admin or the
+    // JWT will lack the top-level `org_id` claim that
+    // `verifyKeycloakJwt` requires (caught in dev: PR #253 review).
+    expect(kcCreateUser.mock.calls[0]?.[0]?.attributes).toMatchObject({
+      org_id: [PLATFORM_TENANT_ID],
+    });
     expect(kcAssignRealmRole).toHaveBeenCalledTimes(1);
     expect(kcAssignRealmRole.mock.calls[0]?.[1]).toMatchObject({ name: "super_admin" });
     expect(kcAttachUserToOrg).toHaveBeenCalledTimes(1);

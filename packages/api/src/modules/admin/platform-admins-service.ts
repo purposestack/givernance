@@ -328,6 +328,16 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
   // even if the UPDATE_PASSWORD email-trigger path fails afterward, the
   // user CANNOT log in with it — KC will force them through the password
   // reset on first login regardless. Defense-in-depth (security review m4).
+  //
+  // The `org_id` user attribute is what makes the JWT carry a top-level
+  // `org_id` claim — `verifyKeycloakJwt` (api + web) requires it on every
+  // token. The seeded `admin@givernance.org` has the same attribute set
+  // in `realm-givernance.json`. Without this, a freshly-invited admin
+  // logs in successfully on the KC side but every Givernance route 401s
+  // with `missing_org_id` (caught in dev: PR #253 review feedback).
+  // The matching `role` attribute is set for parity with the seed; the
+  // realm role `super_admin` is what actually drives RBAC, so the value
+  // here is informational.
   let kcUserId: string;
   try {
     const out = await keycloakAdmin().createUser({
@@ -339,6 +349,10 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
       password: cryptoRandomPassword(),
       emailVerified: true,
       temporary: true,
+      attributes: {
+        org_id: [PLATFORM_AUDIT_ORG_ID],
+        role: ["org_admin"],
+      },
     });
     kcUserId = out.id;
   } catch (err) {
