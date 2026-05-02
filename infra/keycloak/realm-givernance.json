@@ -33,7 +33,7 @@
     "referrerPolicy": "no-referrer"
   },
   "attributes": {
-    "acr.loa.map": "{\"1\": 1, \"2\": 2}"
+    "acr.loa.map": "{\"2\": 2}"
   },
   "browserFlow": "browser-with-step-up",
   "authenticationFlows": [
