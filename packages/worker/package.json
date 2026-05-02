@@ -11,24 +11,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1040.0",
-    "@aws-sdk/lib-storage": "^3.1040.0",
+    "@aws-sdk/client-s3": "^3.1041.0",
+    "@aws-sdk/lib-storage": "^3.1041.0",
     "@givernance/shared": "workspace:*",
     "@sinclair/typebox": "^0.34.12",
     "bullmq": "^5.76.4",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.4.2",
-    "nodemailer": "^8.0.6",
+    "nodemailer": "^8.0.7",
     "pdfkit": "^0.18.0",
     "pg": "^8.13.1",
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
     "resend": "^6.12.2",
-    "stripe": "^22.0.1"
+    "stripe": "^22.1.0"
   },
   "devDependencies": {
     "@types/nodemailer": "^8.0.0",
-    "@types/pdfkit": "^0.17.5",
+    "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
     "tsx": "^4.19.2",
