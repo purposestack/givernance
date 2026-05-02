@@ -223,7 +223,7 @@ browser-with-step-up                                       (top-level, browserFl
         └── auth-otp-form                          REQUIRED
 ```
 
-The conditional sub-flow only fires when the OIDC client requests a higher LoA than the operator's current session can prove — so a regular admin login still goes through username/password only. When the impersonation form's POST fails, the web side redirects through `/api/auth/login?acr_values=2&prompt=login&return_to=...` and Keycloak fires the OTP prompt to satisfy LoA 2. Realm `attributes.acr.loa.map = {"1": 1, "2": 2}` translates the conditional authenticator's emitted level into the `acr` claim the API's `validateStepUp` keys off.
+The conditional sub-flow only fires when the OIDC client requests a higher LoA than the operator's current session can prove — so a regular admin login still goes through username/password only. When the impersonation form's POST fails, the web side redirects through `/api/auth/login?acr_values=2&prompt=login&return_to=...` and Keycloak fires the OTP prompt to satisfy LoA 2. Realm `attributes.acr.loa.map = {"2": 2}` translates the conditional authenticator's emitted level into the `acr` claim the API's `validateStepUp` keys off — note we deliberately map ONLY the level we step up to (no `"1": 1` baseline). Including `"1": 1` was the cause of the "OTP prompted on every login" regression on staging: KC interprets the lowest mapped level as the implicit default requested LoA when the client doesn't specify `acr_values`, which trips the conditional even on plain logins.
 
 ### End-to-end web flow (HTTP 401 → step-up redirect)
 

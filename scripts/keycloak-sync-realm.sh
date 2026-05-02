@@ -193,7 +193,7 @@ FLOW_ALIAS = "browser-with-step-up"
 FORMS_ALIAS = "browser-with-step-up forms"
 LOA_ALIAS = "browser-with-step-up loa-2"
 LOA_CONFIG_ALIAS = "loa-2-config"
-ACR_LOA_MAP = '{"1": 1, "2": 2}'
+ACR_LOA_MAP = '{"2": 2}'
 
 def call(method, path, body=None):
     url = f"{KC}{path}"
