@@ -18,15 +18,19 @@ let stripeClient: Stripe | null = null;
  *
  * On the version suffix: Stripe's API versions follow `YYYY-MM-DD.<codename>`,
  * where the codename is the *release-train* identifier, NOT a "preview"
- * marker. `2026-03-25.dahlia` is the GA stable version that ships with
- * `stripe@22.0.1` — see https://docs.stripe.com/upgrades for the schedule.
+ * marker. `2026-04-22.dahlia` is the GA stable version that ships with
+ * `stripe@22.1.0` — see https://docs.stripe.com/upgrades for the schedule.
+ * `2026-03-25.dahlia` was the first Dahlia release (introduced breaking
+ * changes from prior trains); subsequent monthly Dahlia versions are
+ * backward-compatible and add features (new tax IDs, additional payment
+ * methods, Managed Payments) — none of which touch our donation flow.
  * (PR #193 review, finding #7: the codename suffix can read like a preview
  * channel, so noting it here.) Upgrading is a coordinated change: bump the
  * SDK in `package.json`, update this constant, re-run the worker tests
  * against the new payload shapes, and check the Stripe upgrade-guide
  * deltas for `payment_intent.succeeded` / `charge.refunded` / `account.*`.
  */
-const STRIPE_API_VERSION = "2026-03-25.dahlia" as const;
+const STRIPE_API_VERSION = "2026-04-22.dahlia" as const;
 
 export function getStripe(): Stripe {
   if (!env.STRIPE_SECRET_KEY) {
