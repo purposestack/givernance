@@ -69,14 +69,17 @@ export function ImpersonationBanner({ impersonation, userName }: ImpersonationBa
     window.location.href = "/admin/impersonation";
   }
 
-  const [remaining, setRemaining] = useState<string>(() => {
-    if (!impersonation?.expiresAt) return "";
-    return formatRemaining(
-      impersonation.expiresAt - Math.floor(Date.now() / 1000),
-      t("expired"),
-      t("lessThanMinute"),
-    );
-  });
+  // Initial value MUST be deterministic across SSR + client to avoid the
+  // hydration mismatch React reports as "server rendered text didn't
+  // match the client". The countdown was previously computed inside the
+  // `useState` initializer using `Math.floor(Date.now() / 1000)`, which
+  // runs on both the server (during SSR) and the client (during initial
+  // hydration). Even a one-minute drift between those two moments
+  // produces a different "Xh YYm" string and trips the dev warning. The
+  // `useEffect` below already runs the same calculation on mount, so
+  // the practical UX is unchanged: the time appears within a frame of
+  // hydration completing, just rendered exclusively on the client.
+  const [remaining, setRemaining] = useState<string>("");
 
   useEffect(() => {
     if (!impersonation?.expiresAt) return;
