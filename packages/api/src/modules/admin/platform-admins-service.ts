@@ -43,7 +43,6 @@ import {
 } from "@givernance/shared/schema";
 import { and, asc, desc, eq, ilike, isNotNull, isNull, or, type SQL, sql } from "drizzle-orm";
 import pino from "pino";
-import { env } from "../../env.js";
 import { systemDb } from "../../lib/db.js";
 import { KeycloakUserExistsError, keycloakAdmin } from "../../lib/keycloak-admin.js";
 import { blocklistUser } from "../session/service.js";
@@ -71,17 +70,22 @@ const PASSWORD_RESET_LIFESPAN_SEC = 4 * 60 * 60;
 const SUPER_ADMIN_ROLE_NAME = "super_admin";
 const PLATFORM_ORG_ALIAS = "platform";
 
-/** Keycloak client id the password-reset email link should land on. */
-const KC_WEB_CLIENT_ID = "givernance-web";
-
 /**
- * Where the UPDATE_PASSWORD email link redirects after password set.
- * Resolves from `APP_URL` so dev / staging / prod each land the new admin
- * on the right back-office origin. KC will reject a redirect that isn't
- * registered on `givernance-web` — the realm seed already lists
- * `<APP_URL>/*` for every environment.
+ * Keycloak client id the password-reset email link is associated with.
+ * KC uses this to render the "Back to application" button on the
+ * success page after UPDATE_PASSWORD completes.
+ *
+ * We deliberately do NOT pass `redirect_uri` to `sendExecuteActionsEmail`:
+ * KC's inline redirect-after-action depends on the transient `KC_RESTART`
+ * cookie, which has its own short TTL independent of the email
+ * `lifespan` and gets dropped by some browser cookie policies. Without
+ * `redirect_uri`, KC shows a standard success page with the "Back to
+ * application" button (sourced from this client's `baseUrl` /
+ * redirectUris), and the user starts a fresh OIDC code flow from there.
+ * Robust against the KC_RESTART cookie issue. (Caught in dev: PR #253
+ * smoke-test feedback.)
  */
-const KC_PLATFORM_ADMIN_REDIRECT_URL = `${env.APP_URL.replace(/\/$/, "")}/admin/platform-admins`;
+const KC_WEB_CLIENT_ID = "givernance-web";
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
@@ -396,11 +400,11 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
   try {
     await keycloakAdmin().sendExecuteActionsEmail(kcUserId, ["UPDATE_PASSWORD"], {
       lifespanSec: PASSWORD_RESET_LIFESPAN_SEC,
-      // Land the new admin on the back-office login page after they
-      // finish the UPDATE_PASSWORD flow (platform review M3). Without
-      // this, KC dumps them on the bare account console.
+      // `client_id` only — KC's success page after UPDATE_PASSWORD
+      // shows a "Back to application" button pointing at this client's
+      // base URL. See the comment on KC_WEB_CLIENT_ID for why we don't
+      // pass `redirectUri` here.
       clientId: KC_WEB_CLIENT_ID,
-      ...(KC_PLATFORM_ADMIN_REDIRECT_URL ? { redirectUri: KC_PLATFORM_ADMIN_REDIRECT_URL } : {}),
     });
   } catch (err) {
     emailDeliveryFailed = err as Error;
@@ -510,6 +514,9 @@ export async function resetPlatformAdminPassword(input: ResetPasswordInput): Pro
 
   await keycloakAdmin().sendExecuteActionsEmail(existing.keycloakId!, ["UPDATE_PASSWORD"], {
     lifespanSec: PASSWORD_RESET_LIFESPAN_SEC,
+    // Same posture as the create flow — `client_id` only, no
+    // `redirectUri`. See KC_WEB_CLIENT_ID comment.
+    clientId: KC_WEB_CLIENT_ID,
   });
 
   await systemDb.transaction(async (tx) => {
