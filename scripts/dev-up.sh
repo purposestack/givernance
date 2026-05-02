@@ -105,23 +105,53 @@ REALM_NAME="${KEYCLOAK_REALM:-givernance}"
 # Fail-fast on a Keycloak import error instead of polling forever (the
 # behaviour that hung for ~10 min during the PR #251 iteration when a
 # realm-JSON description exceeded the varchar(255) limit on
-# AUTHENTICATION_FLOW.DESCRIPTION). Bound the wait at 90s and, if the
-# realm endpoint still isn't up, surface KC's own ERROR lines so the
-# operator sees the actual import failure (e.g. "value too long for
-# type character varying(255)") instead of a generic timeout.
+# AUTHENTICATION_FLOW.DESCRIPTION). Two failure surfaces:
+#   - Container state: if `docker compose ps` reports the keycloak service
+#     as `exited` or `restarting`, KC has crashed during boot — exit
+#     IMMEDIATELY (no point polling for a realm endpoint that will never
+#     come up). 99% of import failures land here within 5-15s, so the
+#     dev's median wait on a broken JSON drops from "90s timeout" to
+#     "5-10s container crash detected".
+#   - 90s upper bound: covers the "container is running but cold-boot is
+#     unusually slow" case (e.g. first-time image pull). Treat hitting
+#     the deadline the same way as the crash path — surface the recent
+#     ERROR lines from KC so the operator sees the actual cause.
+fail_with_kc_logs() {
+  echo "" >&2
+  echo "✗ Keycloak failed to come up: $1" >&2
+  echo "  Recent KC ERROR / Exception lines:" >&2
+  docker compose logs keycloak --tail 200 2>&1 | grep -E "ERROR|Exception" | tail -10 | sed 's/^/    /' >&2
+  echo "" >&2
+  echo "  Common fixes:" >&2
+  echo "    - varchar(255) overflow on alias/description: check infra/keycloak/realm-givernance.json" >&2
+  echo "    - bad authenticatorConfig alias reference" >&2
+  echo "    - syntactically invalid realm JSON (run \`python3 -c 'import json; json.load(open(\"infra/keycloak/realm-givernance.json\"))'\`)" >&2
+  exit 1
+}
+
 KC_WAIT_DEADLINE=$(($(date +%s) + 90))
 while ! curl -sf -o /dev/null "${KC_URL}/realms/${REALM_NAME}/.well-known/openid-configuration"; do
+  # Container-state check first — short-circuits the wait when KC has
+  # already crashed. `--format {{.State}}` returns one of: running |
+  # restarting | exited | created | paused. Empty result means the
+  # service entry is missing entirely (compose down ran in another shell).
+  kc_state=$(docker compose ps keycloak --format "{{.State}}" 2>/dev/null | head -1 | tr -d '[:space:]')
+  case "$kc_state" in
+    running)
+      ;; # still booting — keep polling
+    exited|restarting)
+      fail_with_kc_logs "container state is '${kc_state}' (crashed during boot)."
+      ;;
+    "")
+      fail_with_kc_logs "keycloak service is not present in \`docker compose ps\` (was the stack torn down?)."
+      ;;
+    *)
+      fail_with_kc_logs "container is in unexpected state '${kc_state}'."
+      ;;
+  esac
+
   if [ "$(date +%s)" -ge "$KC_WAIT_DEADLINE" ]; then
-    echo ""
-    echo "✗ Keycloak realm '${REALM_NAME}' did not become reachable within 90s." >&2
-    echo "  Likely cause: realm import failed. Recent KC ERROR lines:" >&2
-    docker compose logs keycloak --tail 200 2>&1 | grep -E "ERROR|Exception" | tail -10 | sed 's/^/    /' >&2
-    echo "" >&2
-    echo "  Common fixes:" >&2
-    echo "    - varchar(255) overflow on alias/description: check infra/keycloak/realm-givernance.json" >&2
-    echo "    - bad authenticatorConfig alias reference" >&2
-    echo "    - syntactically invalid realm JSON (run \`python3 -c 'import json; json.load(open(\"infra/keycloak/realm-givernance.json\"))'\`)" >&2
-    exit 1
+    fail_with_kc_logs "realm '${REALM_NAME}' did not become reachable within 90s (container is ${kc_state} but realm endpoint is silent)."
   fi
   sleep 2
 done
