@@ -245,4 +245,11 @@ accessories:
         - KEYCLOAK_ADMIN_PASSWORD
     files:
       - infra/keycloak/realm-givernance.json:/opt/keycloak/data/import/realm.json
+      # Staging-specific theme.properties — overrides the dev value
+      # baked into the custom Keycloak image (`infra/keycloak/Dockerfile`)
+      # so `info.ftl` resolves `${properties.gvAppLoginUrl}` to the
+      # staging SPA URL. Without this mount the post-action page would
+      # link new admins at `http://localhost:3000/login` (issue #254
+      # PR #253 smoke-test feedback).
+      - infra/keycloak/themes/givernance/login/theme.staging.properties:/opt/keycloak/themes/givernance/login/theme.properties
     cmd: start-dev --import-realm
