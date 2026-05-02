@@ -17,16 +17,14 @@ vi.mock("@/lib/api/client-browser", () => ({
 describe("NewPlatformAdminForm", () => {
   it("submits the create payload and toasts success", async () => {
     const user = userEvent.setup();
+    // Post fix-commit-4 refactor: create returns an invitation summary,
+    // not a `PlatformAdmin` row (the row materialises at accept time).
     vi.mocked(PlatformAdminService.create).mockResolvedValue({
-      id: "00000000-0000-0000-0000-0000000aaaaa",
-      keycloakId: "kc-123",
+      invitationId: "00000000-0000-0000-0000-0000000aaaaa",
       email: "ada@example.org",
       firstName: "Ada",
       lastName: "Lovelace",
-      lastLoginAt: null,
-      deletedAt: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     });
 
     render(<NewPlatformAdminForm />);

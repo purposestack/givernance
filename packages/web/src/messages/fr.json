@@ -220,6 +220,40 @@
         "keepCurrent": "Rester connecté·e"
       }
     },
+    "platformAdminAccept": {
+      "title": "Accepter votre invitation d'admin plateforme",
+      "subtitle": "Confirmez votre nom et choisissez un mot de passe pour rejoindre Givernance comme admin plateforme.",
+      "submit": "Créer mon compte admin",
+      "submitting": "Création du compte…",
+      "successTitle": "Bienvenue",
+      "successBody": "Redirection vers la connexion…",
+      "errorTitle": "Problème d'invitation",
+      "backToLogin": "Retour à la connexion",
+      "fields": {
+        "firstName": "Prénom",
+        "lastName": "Nom",
+        "password": "Choisissez un mot de passe",
+        "passwordHint": "Au moins {min} caractères. Vous l'utiliserez à l'écran suivant pour vous connecter.",
+        "passwordConfirm": "Confirmez le mot de passe"
+      },
+      "errors": {
+        "invalid": "Ce lien d'invitation n'est pas valide.",
+        "expired": "Ce lien d'invitation n'est pas valide, a expiré, ou a déjà été accepté. Demandez un nouvel envoi.",
+        "missingToken": "Aucun token d'invitation fourni.",
+        "namesRequired": "Veuillez saisir votre prénom et votre nom.",
+        "passwordTooShort": "Utilisez un mot de passe d'au moins {min} caractères.",
+        "passwordMismatch": "Les deux mots de passe ne correspondent pas.",
+        "conflict": "Un compte existe déjà avec cet email.",
+        "generic": "Nous n'avons pas pu accepter cette invitation. Réessayez ou demandez un nouvel envoi."
+      },
+      "sessionCheck": {
+        "checking": "Vérification de votre session…",
+        "title": "Déconnectez-vous pour accepter cette invitation",
+        "signedInAs": "Vous êtes actuellement connecté·e en tant que {name} ({email}).",
+        "body": "Accepter une invitation d'admin plateforme crée une nouvelle session. Déconnectez-vous d'abord pour que la prochaine connexion ouvre le bon compte.",
+        "signOut": "Se déconnecter et continuer"
+      }
+    },
     "selectOrganization": {
       "title": "Quel espace souhaitez-vous ouvrir ?",
       "subtitle": "Votre compte est associé à plusieurs associations.",
@@ -735,7 +769,7 @@
           "keycloakMisconfig": "Le realm Keycloak est mal configuré (le rôle super_admin ou l'Organization plateforme est absent). Ré-importez le realm.",
           "generic": "Une erreur est survenue. Veuillez réessayer."
         },
-        "success": "Invitation envoyée — le nouvel admin recevra un email de réinitialisation."
+        "success": "Invitation envoyée — le nouvel admin recevra un email pour définir son mot de passe et accepter."
       },
       "detail": {
         "back": "← Admins plateforme",

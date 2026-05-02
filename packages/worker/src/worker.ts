@@ -11,6 +11,7 @@ import { extractTraceId } from "./lib/trace-context.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
+import { processPlatformAdminInviteEmail } from "./processors/platform-admin-invite-email.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import {
   processSignupVerificationEmail,
@@ -158,6 +159,19 @@ async function processDomainEvent(job: Job): Promise<void> {
     };
     const result = await processTeamInviteEmail(emailPayload);
     log.info({ invitationId, eventType: type, ...result }, "Team-invite email dispatched");
+    return;
+  }
+
+  // Issue #254 — platform-admin invitation. Distinct from `team_invite`
+  // because the accept URL points at `/admin/platform-admins/accept`
+  // (super-admin onboarding), not `/invite/accept`.
+  if (type === "platform_admin.invited") {
+    const invitationId = payload.invitationId as string;
+    const result = await processPlatformAdminInviteEmail({
+      invitationId,
+      locale: resolvePayloadLocale(payload),
+    });
+    log.info({ invitationId, eventType: type, ...result }, "Platform-admin invite dispatched");
     return;
   }
 

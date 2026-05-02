@@ -12,6 +12,7 @@ import type {
   CreatePlatformAdminInput,
   PlatformAdmin,
   PlatformAdminDetailResponse,
+  PlatformAdminInvitationSummary,
   PlatformAdminListQuery,
   PlatformAdminListResponse,
   UpdatePlatformAdminInput,
@@ -40,8 +41,20 @@ export const PlatformAdminService = {
     return res.data;
   },
 
-  async create(client: ApiClient, input: CreatePlatformAdminInput): Promise<PlatformAdmin> {
-    const res = await client.post<PlatformAdminDetailResponse>("/v1/admin/platform-admins", input);
+  /**
+   * POST /v1/admin/platform-admins — issue an invitation. Post fix-commit-4
+   * refactor (PR #253), this returns an invitation summary, NOT a
+   * `PlatformAdmin` row — the row materialises at accept time when the
+   * invitee submits their password. (Issue #254.)
+   */
+  async create(
+    client: ApiClient,
+    input: CreatePlatformAdminInput,
+  ): Promise<PlatformAdminInvitationSummary> {
+    const res = await client.post<{ data: PlatformAdminInvitationSummary }>(
+      "/v1/admin/platform-admins",
+      input,
+    );
     return res.data;
   },
 

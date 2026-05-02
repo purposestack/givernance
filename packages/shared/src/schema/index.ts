@@ -265,7 +265,22 @@ export const platformAdmins = pgTable(
 // ─── Invitations ──────────────────────────────────────────────────────────────
 
 /** Purpose discriminator for invitation rows — team invite vs self-serve signup verification (migration 0022). */
-export const INVITATION_PURPOSE_VALUES = ["team_invite", "signup_verification"] as const;
+export const INVITATION_PURPOSE_VALUES = [
+  "team_invite",
+  "signup_verification",
+  /**
+   * Platform-admin invitation (issue #254). Sent when a super-admin
+   * invites a new Givernance staffer via the back-office; the invitee
+   * accepts on a public Givernance page that handles the
+   * "already-authenticated-as-different-user" UX gracefully.
+   *
+   * Distinct from `team_invite` because the accept flow does NOT
+   * insert into `users` — it inserts into `platform_admins` (ADR-022).
+   * The `org_id` on the invitations row is the platform sentinel
+   * tenant `…a1` (the FK target only; no actual tenant scoping).
+   */
+  "platform_admin_invite",
+] as const;
 export type InvitationPurpose = (typeof INVITATION_PURPOSE_VALUES)[number];
 
 /**

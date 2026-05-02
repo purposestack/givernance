@@ -246,3 +246,91 @@ const TEAM_INVITE_TEMPLATES: Record<Locale, (input: TeamInviteTemplateInput) => 
 export function renderTeamInviteEmail(input: TeamInviteTemplateInput): RenderedEmail {
   return TEAM_INVITE_TEMPLATES[input.locale](input);
 }
+
+// ─── Platform-admin invite templates (issue #254 fix-commit 4) ──────────────
+
+export interface PlatformAdminInviteTemplateInput {
+  /** Pre-filled at invite time; the invitee can edit it on the accept page. */
+  inviteeFirstName: string;
+  acceptUrl: string;
+  expiresAt: Date;
+  locale: Locale;
+}
+
+function renderPlatformAdminInviteEn(input: PlatformAdminInviteTemplateInput): RenderedEmail {
+  const expires = input.expiresAt.toUTCString();
+  const safeUrl = escapeHtml(input.acceptUrl);
+  const greeting = input.inviteeFirstName ? `Hi ${escapeHtml(input.inviteeFirstName)},` : `Hello,`;
+  return {
+    subject: "You're invited to join Givernance as a platform admin",
+    text: [
+      `${input.inviteeFirstName ? `Hi ${input.inviteeFirstName},` : "Hello,"}`,
+      ``,
+      `You've been invited to join Givernance as a platform admin (super-admin staff).`,
+      ``,
+      `Accept the invitation by clicking this link and choosing your password:`,
+      ``,
+      input.acceptUrl,
+      ``,
+      `This link expires on ${expires}.`,
+      ``,
+      `If you weren't expecting this invitation, ignore this message — nothing has been activated.`,
+    ].join("\n"),
+    html: `<!doctype html><html lang="en"><body style="font-family:-apple-system,system-ui,sans-serif;line-height:1.6;color:#111;max-width:560px;margin:32px auto;padding:0 16px">
+<h1 style="font-size:20px;margin:0 0 16px">Join Givernance as a platform admin</h1>
+<p>${greeting}</p>
+<p>You've been invited to join Givernance as a <strong>platform admin</strong> (super-admin staff).</p>
+<p style="margin:24px 0"><a href="${safeUrl}" style="display:inline-block;padding:12px 20px;background:#1a56db;color:#fff;border-radius:6px;text-decoration:none;font-weight:500">Accept the invitation</a></p>
+<p style="font-size:13px;color:#555">Or copy this link into your browser:<br><span style="word-break:break-all">${safeUrl}</span></p>
+<p style="font-size:13px;color:#555">This link expires on ${expires}.</p>
+<p style="font-size:12px;color:#888;margin-top:32px;border-top:1px solid #eee;padding-top:16px">If you weren't expecting this invitation, ignore this message — nothing has been activated.</p>
+</body></html>`,
+  };
+}
+
+function renderPlatformAdminInviteFr(input: PlatformAdminInviteTemplateInput): RenderedEmail {
+  const expires = input.expiresAt.toUTCString();
+  const safeUrl = escapeHtml(input.acceptUrl);
+  const greeting = input.inviteeFirstName
+    ? `Bonjour ${escapeHtml(input.inviteeFirstName)},`
+    : `Bonjour,`;
+  return {
+    subject: "Vous êtes invité·e à rejoindre Givernance comme admin plateforme",
+    text: [
+      `${input.inviteeFirstName ? `Bonjour ${input.inviteeFirstName},` : "Bonjour,"}`,
+      ``,
+      `Vous avez été invité·e à rejoindre Givernance en tant qu'admin plateforme (équipe super-admin).`,
+      ``,
+      `Acceptez l'invitation en cliquant sur ce lien et en choisissant votre mot de passe :`,
+      ``,
+      input.acceptUrl,
+      ``,
+      `Ce lien expire le ${expires}.`,
+      ``,
+      `Si vous n'attendiez pas cette invitation, ignorez ce message — aucune action n'a été effectuée.`,
+    ].join("\n"),
+    html: `<!doctype html><html lang="fr"><body style="font-family:-apple-system,system-ui,sans-serif;line-height:1.6;color:#111;max-width:560px;margin:32px auto;padding:0 16px">
+<h1 style="font-size:20px;margin:0 0 16px">Rejoindre Givernance comme admin plateforme</h1>
+<p>${greeting}</p>
+<p>Vous avez été invité·e à rejoindre Givernance en tant qu'<strong>admin plateforme</strong> (équipe super-admin).</p>
+<p style="margin:24px 0"><a href="${safeUrl}" style="display:inline-block;padding:12px 20px;background:#1a56db;color:#fff;border-radius:6px;text-decoration:none;font-weight:500">Accepter l'invitation</a></p>
+<p style="font-size:13px;color:#555">Ou copiez ce lien dans votre navigateur :<br><span style="word-break:break-all">${safeUrl}</span></p>
+<p style="font-size:13px;color:#555">Ce lien expire le ${expires}.</p>
+<p style="font-size:12px;color:#888;margin-top:32px;border-top:1px solid #eee;padding-top:16px">Si vous n'attendiez pas cette invitation, ignorez ce message — aucune action n'a été effectuée.</p>
+</body></html>`,
+  };
+}
+
+const PLATFORM_ADMIN_INVITE_TEMPLATES: Record<
+  Locale,
+  (input: PlatformAdminInviteTemplateInput) => RenderedEmail
+> = {
+  en: renderPlatformAdminInviteEn,
+  fr: renderPlatformAdminInviteFr,
+};
+
+export function renderPlatformAdminInviteEmail(
+  input: PlatformAdminInviteTemplateInput,
+): RenderedEmail {
+  return PLATFORM_ADMIN_INVITE_TEMPLATES[input.locale](input);
+}
