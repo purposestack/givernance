@@ -34,9 +34,10 @@ vi.mock("../../modules/payments/service.js", async (importOriginal) => {
 });
 
 vi.mock("bullmq", () => ({
-  Queue: vi.fn().mockImplementation(() => ({
-    add: mockQueueAdd,
-  })),
+  // biome-ignore lint/complexity/useArrowFunction: constructor mock; vitest 4 rejects arrow impls when called with `new` (`() => ({...}) is not a constructor`)
+  Queue: vi.fn().mockImplementation(function () {
+    return { add: mockQueueAdd };
+  }),
 }));
 
 let app: FastifyInstance;

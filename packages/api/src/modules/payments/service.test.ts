@@ -34,15 +34,18 @@ const { mockAccountsCreate, mockAccountsUpdate, mockAccountLinksCreate } = vi.ho
 // Mock only the Stripe SDK — keep the real DB writes so we can assert
 // `tenants.stripe_account_id` is persisted on the create path.
 vi.mock("stripe", () => {
-  const StripeMock = vi.fn().mockImplementation(() => ({
-    accounts: {
-      create: mockAccountsCreate,
-      update: mockAccountsUpdate,
-    },
-    accountLinks: {
-      create: mockAccountLinksCreate,
-    },
-  }));
+  // biome-ignore lint/complexity/useArrowFunction: constructor mock; vitest 4 rejects arrow impls when called with `new` (`() => ({...}) is not a constructor`)
+  const StripeMock = vi.fn().mockImplementation(function () {
+    return {
+      accounts: {
+        create: mockAccountsCreate,
+        update: mockAccountsUpdate,
+      },
+      accountLinks: {
+        create: mockAccountLinksCreate,
+      },
+    };
+  });
   return { default: StripeMock };
 });
 
