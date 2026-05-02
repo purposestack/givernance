@@ -398,7 +398,7 @@
       },
       "new": {
         "title": "Démarrer une session de support",
-        "subtitle": "Choisissez l'utilisateur cible et le mode approprié. La MFA de step-up a été vérifiée à votre connexion ; cette soumission la réaffirme.",
+        "subtitle": "Choisissez un utilisateur cible et le mode adapté à votre intervention. La soumission re-confirme l'authentification renforcée — vous serez invité à saisir un code OTP si votre dernier challenge date de plus de cinq minutes.",
         "tenantLabel": "Tenant (optionnel)",
         "tenantHelp": "Restreint la recherche à un seul espace de travail. Laisser vide pour chercher sur tous les tenants.",
         "tenantPlaceholder": "Tous les tenants",
@@ -421,7 +421,10 @@
         "reasonPlaceholder": "Ticket de support #1234 — l'utilisateur n'arrive pas à télécharger son reçu",
         "reasonHelp": "Obligatoire, minimum {min} caractères. Enregistré tel quel dans le journal d'audit.",
         "submit": "Démarrer la session",
-        "submitting": "Démarrage…"
+        "submitting": "Démarrage…",
+        "stepUpRedirecting": "Authentification renforcée requise — redirection vers la page de connexion…",
+        "errorStepUpFailed": "Échec de l'authentification renforcée. Re-authentifiez-vous avec MFA puis réessayez.",
+        "errorLockout": "Trop de tentatives d'authentification renforcée échouées. Votre compte est temporairement verrouillé — réessayez dans 15 minutes."
       }
     },
     "disputes": {

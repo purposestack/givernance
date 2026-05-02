@@ -82,9 +82,25 @@ export function StartImpersonationForm() {
         // Suppressed when `step_up_required` is false (lockout case — the
         // operator is locked out, redirecting to re-auth would just loop).
         if (res.status === 401 && body.step_up_required) {
+          // Reset the disabled state BEFORE the redirect so a back-button
+          // / bfcache restore doesn't leave the submit button stuck on
+          // "Starting…" (review I-8). The `finally` below would also
+          // run, but explicit ordering avoids a race with the navigation.
+          setSubmitting(false);
+          setError(t("stepUpRedirecting"));
           window.location.assign(
             buildStepUpRedirectUrl(window.location.origin, "/admin/impersonation/new"),
           );
+          return;
+        }
+
+        // Translated error copy for the step-up 401 lockout path
+        // (review I-7) — the API's RFC 9457 `detail` field is English-
+        // only since the API isn't locale-aware. The redirect branch
+        // above already handles `step_up_required: true`, so this 401
+        // branch is reached only when the 5-fail counter tipped.
+        if (res.status === 401 && body.step_up_required === false) {
+          setError(t("errorLockout"));
           return;
         }
 

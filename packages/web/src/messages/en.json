@@ -398,7 +398,7 @@
       },
       "new": {
         "title": "Start a support session",
-        "subtitle": "Pick a target user and the mode appropriate for the work. Step-up MFA was checked when you signed in; this submission re-asserts it.",
+        "subtitle": "Pick a target user and the mode appropriate for the work. Submitting this form re-asserts step-up MFA — you'll be prompted for an OTP if your last challenge is older than five minutes.",
         "tenantLabel": "Tenant (optional)",
         "tenantHelp": "Narrow the user search to one workspace. Leave empty to search across all tenants.",
         "tenantPlaceholder": "All tenants",
@@ -421,7 +421,10 @@
         "reasonPlaceholder": "Support ticket #1234 — receipt PDF download is failing for this user",
         "reasonHelp": "Mandatory, minimum {min} characters. Recorded verbatim in the audit log.",
         "submit": "Start session",
-        "submitting": "Starting…"
+        "submitting": "Starting…",
+        "stepUpRedirecting": "Step-up MFA required — redirecting to sign in…",
+        "errorStepUpFailed": "Step-up authentication failed. Re-authenticate with MFA and try again.",
+        "errorLockout": "Too many failed step-up attempts. Your account is temporarily locked — try again in 15 minutes."
       }
     },
     "disputes": {
