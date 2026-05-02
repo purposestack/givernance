@@ -351,47 +351,17 @@ elif status == 200:
     log(f"Realm browserFlow already '{FLOW_ALIAS}'.")
 PY
 
-# 1.d Force CONFIGURE_TOTP on the seed super-admin user (issue #250).
-#     The realm JSON declares `requiredActions: ["CONFIGURE_TOTP"]` on
-#     the seed user, but that's only honoured on a fresh import. On an
-#     existing realm we patch the live user — but only when the user
-#     hasn't already enrolled OTP (otherwise we'd reset their MFA on
-#     every deploy). Skipped silently for non-seed deployments where
-#     the seed user doesn't exist.
-seed_user_resp=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users?username=$(urlencode "$SEED_USERNAME")&exact=true")
-seed_uid=$(printf '%s' "$seed_user_resp" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')
-if [ -n "$seed_uid" ]; then
-  seed_creds=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users/${seed_uid}/credentials")
-  has_otp=$(printf '%s' "$seed_creds" | python3 -c 'import sys,json; print("yes" if any(c.get("type")=="otp" for c in json.load(sys.stdin)) else "no")')
-  if [ "$has_otp" = "yes" ]; then
-    log "Seed super-admin has OTP credential — leaving requiredActions untouched."
-  else
-    seed_full=$(curl -sS "${auth[@]}" "${KC_URL}/admin/realms/${REALM}/users/${seed_uid}")
-    needs_totp=$(printf '%s' "$seed_full" | python3 -c '
-import sys, json
-d = json.load(sys.stdin)
-ra = d.get("requiredActions") or []
-print("no" if "CONFIGURE_TOTP" in ra else "yes")
-')
-    if [ "$needs_totp" = "yes" ]; then
-      patched_seed=$(printf '%s' "$seed_full" | python3 -c '
-import sys, json
-d = json.load(sys.stdin)
-ra = d.get("requiredActions") or []
-if "CONFIGURE_TOTP" not in ra:
-    ra.append("CONFIGURE_TOTP")
-d["requiredActions"] = ra
-print(json.dumps(d))
-')
-      curl -sS -o /dev/null -w 'seed user CONFIGURE_TOTP: HTTP %{http_code}\n' \
-        -X PUT "${KC_URL}/admin/realms/${REALM}/users/${seed_uid}" \
-        "${auth[@]}" -H "Content-Type: application/json" -d "$patched_seed"
-      log "Added CONFIGURE_TOTP required action to seed super-admin '${SEED_USERNAME}'."
-    else
-      log "Seed super-admin already has CONFIGURE_TOTP queued."
-    fi
-  fi
-fi
+# OTP enrolment is intentionally LAZY (issue #250). We don't pre-add
+# `CONFIGURE_TOTP` to anyone — the `auth-otp-form` execution in the
+# `browser-with-step-up loa-2` sub-flow has `userSetupAllowed: true`,
+# so when a super-admin is bounced into step-up the first time and
+# has no OTP credential, KC's OTP form transparently routes them
+# through the enrolment screen, then continues the flow. This means
+# normal logins (no acr_values=2 → conditional sub-flow skipped) are
+# never disrupted, even for super-admin users who haven't enrolled.
+# An earlier draft of this script forced CONFIGURE_TOTP onto the seed
+# user proactively; reverted because it surprised existing operators
+# at their next login regardless of whether they were impersonating.
 
 # 2. Ensure the `organization` client scope is the single home for all
 #    org-related claims (`org_id`, `role`, `organization` membership), then
