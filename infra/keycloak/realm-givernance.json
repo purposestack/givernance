@@ -109,7 +109,7 @@
           "authenticator": "auth-otp-form",
           "requirement": "REQUIRED",
           "priority": 20,
-          "userSetupAllowed": false,
+          "userSetupAllowed": true,
           "autheticatorFlow": false
         }
       ]
@@ -163,9 +163,6 @@
       ],
       "realmRoles": [
         "super_admin"
-      ],
-      "requiredActions": [
-        "CONFIGURE_TOTP"
       ]
     },
     {

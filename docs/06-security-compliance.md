@@ -78,12 +78,12 @@ Two coexisting support-session modes are documented in [`docs/19-impersonation.m
 
 ### Operator MFA enrolment & recovery (issue #250)
 
-Super-admins **must** enrol a TOTP authenticator (FreeOTP / Google Authenticator / Microsoft Authenticator) before they can start an impersonation session in any deployed environment. Mechanics:
+MFA is **only** required for impersonation and delegation — every other flow (normal login, dashboard, donations, settings, etc.) works unchanged for every user, including super-admins. Enrolment is lazy: nobody is force-enrolled at normal login.
 
-- The realm JSON ships `requiredActions: ["CONFIGURE_TOTP"]` on every seed super-admin user, and `scripts/keycloak-sync-realm.sh` re-applies that required action on existing realms whenever the user has no `otp` credential — so a forgotten enrolment self-heals on the next deploy.
-- First login: Keycloak presents the QR-code enrolment screen under the Givernance theme. The operator scans, enters one verification code, and proceeds into the app normally.
-- Step-up: when the operator hits the impersonation form, the API's 401 response triggers a re-auth through Keycloak with `acr_values=2`, which fires the realm's Conditional-LoA → OTP form sub-flow. The flow design and the realm JSON details live in [`docs/19-impersonation.md`](./19-impersonation.md) §7.
-- **Recovery (lost device)**: any operator with realm-management `manage-users` access opens the user in the Keycloak admin console (e.g. `https://auth.staging.givernance.org/admin/master/console/`), Credentials tab → delete the OTP credential → re-add `CONFIGURE_TOTP` to required actions. Next login walks the user through fresh enrolment.
+- Normal login: the realm's `browser-with-step-up` flow is the default browserFlow, but its Conditional-LoA sub-flow only fires when the OIDC client requests `acr_values=2`. Without that param, the conditional evaluates skip and the OTP step is bypassed entirely — same UX as before this PR.
+- First impersonation attempt for a super-admin who hasn't enrolled: the API 401s `acr_insufficient`, the web bounces them to Keycloak with `acr_values=2`, and the OTP form's `userSetupAllowed: true` flag transparently routes them through KC's built-in TOTP enrolment screen (FreeOTP / Google Authenticator / Microsoft Authenticator) under the Givernance theme. After enrolment + verification, the flow continues, an `acr=2` token is issued, and they're returned to the impersonation form. Full sequence + realm JSON details in [`docs/19-impersonation.md`](./19-impersonation.md) §7.
+- Subsequent impersonation attempts: within the 5-minute `loa-max-age` window, the user is already at LoA 2 and the OTP prompt is skipped. Past that window, they're prompted only for the OTP code.
+- **Recovery (lost device)**: any operator with realm-management `manage-users` access opens the user in the Keycloak admin console (e.g. `https://auth.staging.givernance.org/admin/master/console/`), Credentials tab → delete the OTP credential. Next impersonation attempt routes them through fresh enrolment automatically (no extra step needed because of `userSetupAllowed: true`).
 - **Why no self-serve "I lost my phone" flow**: the same TOTP gates the impersonation route into every tenant's data, so account-takeover via SMS recovery / email reset would defeat the purpose of step-up. Manual recovery via Keycloak admin is the deliberate fail-safe.
 
 ## Security operations

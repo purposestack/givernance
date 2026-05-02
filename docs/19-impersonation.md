@@ -206,7 +206,7 @@ The operator's pre-impersonation Keycloak access token must satisfy:
 - `auth_time` within the last 5 minutes (`STEP_UP_AUTH_TIME_WINDOW_SECONDS`).
 - `acr >= 2` when `IMPERSONATION_REQUIRE_ACR_2=true` (env hard-fails to true in production).
 
-We deliberately **do not** maintain an app-side TOTP secret store. Keycloak is the MFA authority — the realm's `otpPolicy` is configured (`HmacSHA256`, 6-digit, 30 s window), and the realm config wires a `CONFIGURE_TOTP` required action onto the seed super-admin so they're forced to enrol an authenticator app on first login. Storing TOTP secrets in our DB would duplicate the source of truth.
+We deliberately **do not** maintain an app-side TOTP secret store. Keycloak is the MFA authority — the realm's `otpPolicy` is configured (`HmacSHA256`, 6-digit, 30 s window), and the OTP form's `userSetupAllowed: true` flag lets new super-admins enrol an authenticator app on the fly the first time they hit step-up (no proactive `CONFIGURE_TOTP` required action — see TOTP enrolment + recovery below). Storing TOTP secrets in our DB would duplicate the source of truth.
 
 ### Realm flow that emits `acr=2` (issue #250)
 
@@ -247,9 +247,16 @@ The conditional sub-flow only fires when the OIDC client requests a higher LoA t
 
 ### TOTP enrolment + recovery
 
-- The seed super-admin user carries `requiredActions: ["CONFIGURE_TOTP"]` in the realm JSON. On their next login Keycloak's built-in TOTP enrolment screen renders under the Givernance theme; they scan a QR with FreeOTP / Google Authenticator / Microsoft Authenticator and verify a code before being let into the app.
-- `scripts/keycloak-sync-realm.sh` reconciles this on existing realms — if the seed super-admin doesn't yet have an `otp` credential AND `CONFIGURE_TOTP` isn't already queued, the script PUTs `requiredActions += ["CONFIGURE_TOTP"]`. Once the user has enrolled, the script leaves their requiredActions alone (so a deploy doesn't reset their MFA).
-- **Recovery (lost device):** any operator with realm-management `manage-users` access opens the user in the Keycloak admin console (`https://auth.staging.givernance.org/admin/master/console/`), Credentials tab → delete the OTP credential → re-add `CONFIGURE_TOTP` to required actions. The operator's next login walks them through fresh enrolment. Recovery is intentionally a manual step gated on Keycloak admin access; we don't ship a self-serve "I lost my phone" path because the same credential gates the impersonation route into every tenant's data.
+Enrolment is **lazy** — nobody is force-enrolled at normal login. The flow is:
+
+- A super-admin who has never enrolled TOTP submits the impersonation form. The API 401s `acr_insufficient`. The web side bounces them to Keycloak with `acr_values=2`.
+- The Conditional-LoA sub-flow fires the `auth-otp-form` execution, which carries `userSetupAllowed: true`. Since the user has no `otp` credential yet, KC routes them through its built-in TOTP enrolment screen under the Givernance theme — scan QR, enter one verification code, done.
+- Flow continues to issue the `acr=2` token; the callback redirects them back to the impersonation form; they re-submit and the call returns 201.
+- Subsequent impersonation attempts within the `loa-max-age=300` window skip the OTP entirely (already at LoA 2). Past that window, they're prompted only for the OTP code (no re-enrol).
+
+This is deliberate — an earlier draft forced `CONFIGURE_TOTP` onto the seed super-admin proactively, which surprised existing operators at their next login even when they weren't impersonating. The lazy-enrolment design keeps the rule "MFA only for impersonation/delegation" clean: normal logins, dashboard work, donations, settings, etc. are completely untouched for every user, including super-admins.
+
+**Recovery (lost device):** any operator with realm-management `manage-users` access opens the user in the Keycloak admin console (e.g. `https://auth.staging.givernance.org/admin/master/console/`), Credentials tab → delete the OTP credential. Next time the user hits impersonation step-up, they're routed through fresh enrolment automatically (because `userSetupAllowed: true`). Recovery is intentionally a manual step gated on Keycloak admin access; we don't ship a self-serve "I lost my phone" path because the same credential gates the impersonation route into every tenant's data.
 
 ### Brute-force lockout
 
