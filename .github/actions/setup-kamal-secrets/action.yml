@@ -42,6 +42,14 @@ runs:
         # (see docs/dev/stripe-local-setup.md → Staging deployment).
         STRIPE_SECRET="${STRIPE_SECRET_KEY:-}"
         STRIPE_WEBHOOK_SEC="${STRIPE_WEBHOOK_SECRET:-}"
+        # Impersonation JWT signing secret (issue #24). Production env
+        # check in packages/api/src/env.ts requires this be present and
+        # ≥32 chars — without it the api container exits 1 on boot, which
+        # was the regression from 1e49f8e that took staging down on every
+        # push to main. Staging fallback is non-load-bearing, exactly 32
+        # ASCII chars (HS256 doesn't care about charset). Production must
+        # override; rotate by setting the GH secret and redeploying.
+        IMPERSONATION_JWT="${IMPERSONATION_JWT_SECRET:-staging_impersonation_jwt_secret_32}"
         # MinIO server-side AES256 encryption key. Format
         # `<key-name>:<base64-32-byte-secret>`; generate with
         # `openssl rand -base64 32`. The base64 portion MUST decode to
@@ -74,4 +82,5 @@ runs:
         RESEND_API_KEY=$RESEND_KEY
         STRIPE_SECRET_KEY=$STRIPE_SECRET
         STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SEC
+        IMPERSONATION_JWT_SECRET=$IMPERSONATION_JWT
         EOF

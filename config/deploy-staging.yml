@@ -85,6 +85,14 @@ env:
     # inbox without needing a separate verified subdomain.
     EMAIL_PROVIDER: resend
     EMAIL_FROM: Givernance Staging <noreply@givernance.org>
+    # Impersonation step-up gate (issue #24). The API refuses to boot in
+    # production mode without this flag set to "true" — it's the only
+    # barrier between a stolen super-admin cookie and an arbitrary
+    # impersonation session. Staging runs `NODE_ENV=production`, so the
+    # boot check fires here too. The route still 403s if the realm hasn't
+    # issued an `acr=2` token, which is the intended behavior; we'd
+    # rather fail closed on staging than silently weaken the gate.
+    IMPERSONATION_REQUIRE_ACR_2: "true"
   secret:
     - POSTGRES_PASSWORD
     - REDIS_PASSWORD
@@ -107,6 +115,14 @@ env:
     # session). See docs/dev/stripe-local-setup.md → Staging.
     - STRIPE_SECRET_KEY
     - STRIPE_WEBHOOK_SECRET
+    # Symmetric HS256 secret the API uses to sign app-layer impersonation
+    # JWTs and the web SSR uses to verify them (issue #24). Required in
+    # production — the boot check in packages/api/src/env.ts exits 1
+    # without it, which is what took the api role down on every deploy
+    # after 1e49f8e. Set via GH Actions staging environment; non-load-
+    # bearing fallback in setup-kamal-secrets/action.yml so a fresh fork
+    # still boots.
+    - IMPERSONATION_JWT_SECRET
 
 # Configure builder setup.
 builder:
