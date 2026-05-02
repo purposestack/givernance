@@ -272,31 +272,61 @@ async function findOrCreateTenant(): Promise<string> {
 }
 
 /**
- * Best-effort cleanup of the legacy `…a1` synthetic platform tenant that
- * pre-ADR-022 seeds created. If a developer pulls this branch with their
- * existing `pnpm db:seed` state, the old row will still be present —
- * archive it (ADR cascading) so it's invisible to listing endpoints
- * without touching its history. New seeds skip this entirely.
+ * Sentinel platform tenant row (ADR-022 amendment).
+ *
+ * `audit_logs.org_id` is `NOT NULL REFERENCES tenants(id)` — every audit
+ * row needs a tenant to FK against. Platform-level lifecycle events
+ * (super-admin onboarded/removed/etc., issue #254) don't belong to any
+ * customer tenant by definition, so we keep ONE row in `tenants` at the
+ * platform id (`…a1`) purely as the FK target for those audit rows.
+ *
+ * Distinguishing properties:
+ *   - `status = 'archived'` so customer-facing listing endpoints
+ *     (which already filter `status != 'archived'`) never surface it.
+ *   - `slug = '__platform__'` (double-underscore is reserved by ADR-016
+ *     reserved-slugs guard) so it cannot collide with any user-facing slug.
+ *   - `name` is human-readable for SOC reviewers grepping the audit table.
+ *
+ * Other invariants preserved by ADR-022 (still true):
+ *   - No super-admin `users` row in this tenant. Platform admins live in
+ *     `platform_admins`.
+ *   - No constituents / campaigns / donations are seeded under this id.
+ *   - Customer-facing tenant lookups exclude `status = 'archived'`.
  */
-async function archiveLegacyPlatformTenant(): Promise<void> {
-  const LEGACY_PLATFORM_TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
-  const [legacy] = await db
-    .select({ id: tenants.id, status: tenants.status })
+const PLATFORM_TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
+const PLATFORM_TENANT_SLUG = "__platform__";
+const PLATFORM_TENANT_NAME = "Givernance Platform (sentinel)";
+
+async function ensurePlatformSentinelTenant(): Promise<void> {
+  const [existing] = await db
+    .select({ id: tenants.id, status: tenants.status, slug: tenants.slug })
     .from(tenants)
-    .where(eq(tenants.id, LEGACY_PLATFORM_TENANT_ID));
-  if (!legacy) return;
-  if (legacy.status === "archived") {
-    console.log(
-      `[seed] Legacy platform tenant ${LEGACY_PLATFORM_TENANT_ID} already archived — skipping`,
-    );
+    .where(eq(tenants.id, PLATFORM_TENANT_ID));
+  if (existing) {
+    // Reconcile to the canonical sentinel state in case a previous seed
+    // left it in a different shape. Idempotent on a no-op.
+    if (existing.status !== "archived" || existing.slug !== PLATFORM_TENANT_SLUG) {
+      await db
+        .update(tenants)
+        .set({ status: "archived", slug: PLATFORM_TENANT_SLUG, name: PLATFORM_TENANT_NAME })
+        .where(eq(tenants.id, PLATFORM_TENANT_ID));
+      console.log(
+        `[seed] Reconciled platform sentinel tenant to canonical shape (${PLATFORM_TENANT_ID})`,
+      );
+    } else {
+      console.log(`[seed] Platform sentinel tenant present (${PLATFORM_TENANT_ID})`);
+    }
     return;
   }
-  await db
-    .update(tenants)
-    .set({ status: "archived" })
-    .where(eq(tenants.id, LEGACY_PLATFORM_TENANT_ID));
-  console.warn(
-    `[seed] Archived legacy platform tenant ${LEGACY_PLATFORM_TENANT_ID} (ADR-022). It remains in the DB for history but is invisible to listing endpoints.`,
+  await db.insert(tenants).values({
+    id: PLATFORM_TENANT_ID,
+    name: PLATFORM_TENANT_NAME,
+    slug: PLATFORM_TENANT_SLUG,
+    plan: "starter",
+    status: "archived",
+  });
+  console.log(
+    `[seed] Created platform sentinel tenant ${PLATFORM_TENANT_ID} (audit FK target only).`,
   );
 }
 
@@ -482,7 +512,7 @@ async function seedDemoTenant(): Promise<void> {
 
 async function main() {
   console.log("[seed] Starting Givernance dev seed…");
-  await archiveLegacyPlatformTenant();
+  await ensurePlatformSentinelTenant();
   const orgId = await findOrCreateTenant();
   await seedPlatformAdmin();
   await seedOrgData(orgId);

@@ -276,7 +276,8 @@
         "section": "Back office",
         "tenants": "Tenants",
         "disputes": "Disputes",
-        "impersonation": "Support sessions"
+        "impersonation": "Support sessions",
+        "platformAdmins": "Platform admins"
       }
     },
     "topbar": {
@@ -690,6 +691,104 @@
             "copyFailed": "Couldn't copy the link to your clipboard.",
             "formInviteFailed": "Tenant created, but the first-admin invitation failed. Send it again below."
           }
+        }
+      }
+    },
+    "platformAdmins": {
+      "list": {
+        "title": "Platform admins",
+        "subtitle": "Givernance staff with super-admin access. New admins receive a password-reset email and choose their password on first login.",
+        "createCta": "Invite a platform admin",
+        "search": {
+          "label": "Search",
+          "placeholder": "Search by name or email"
+        },
+        "includeDeleted": "Show offboarded admins",
+        "columns": {
+          "name": "Name",
+          "email": "Email",
+          "createdAt": "Created",
+          "lastLoginAt": "Last login",
+          "status": "Status",
+          "actions": "Actions"
+        },
+        "status": {
+          "active": "Active",
+          "removed": "Removed"
+        },
+        "lastLoginNever": "Never",
+        "empty": "No platform admins yet."
+      },
+      "new": {
+        "back": "← Platform admins",
+        "title": "Invite a platform admin",
+        "subtitle": "Provisions a Keycloak account with the super-admin role and sends a password-reset email so the new admin sets their own password.",
+        "fields": {
+          "firstName": "First name",
+          "lastName": "Last name",
+          "email": "Email"
+        },
+        "submit": "Send invitation",
+        "submitting": "Sending…",
+        "cancel": "Cancel",
+        "errors": {
+          "emailTakenByTenant": "This email belongs to a tenant member; the same Keycloak person cannot be both a platform admin and a tenant user.",
+          "emailTakenByAdmin": "A platform admin already exists with this email.",
+          "emailTakenByKeycloak": "A Keycloak user with this email already exists. An operator must clean it up before retrying.",
+          "keycloakMisconfig": "Keycloak realm is misconfigured (the super_admin role or platform Organization is missing). Re-import the realm.",
+          "generic": "Something went wrong. Please retry."
+        },
+        "success": "Invitation sent — the new admin will receive a password-reset email."
+      },
+      "detail": {
+        "back": "← Platform admins",
+        "title": "{firstName} {lastName}",
+        "subtitleActive": "Active platform admin.",
+        "subtitleRemoved": "This admin was removed on {date} and no longer has access.",
+        "fields": {
+          "email": "Email",
+          "createdAt": "Created",
+          "lastLoginAt": "Last login",
+          "lastLoginNever": "Never",
+          "removedAt": "Removed",
+          "keycloakId": "Keycloak subject"
+        },
+        "actions": {
+          "editName": "Edit name",
+          "resetPassword": "Re-send password reset",
+          "remove": "Remove admin",
+          "saving": "Saving…",
+          "sending": "Sending…",
+          "removing": "Removing…"
+        },
+        "editDialog": {
+          "title": "Edit admin name",
+          "description": "Update the display name. The change is mirrored in Keycloak immediately.",
+          "save": "Save",
+          "cancel": "Cancel"
+        },
+        "resetDialog": {
+          "title": "Re-send password reset",
+          "description": "Sends a new UPDATE_PASSWORD email to {email}. The previous link is invalidated.",
+          "confirm": "Send email",
+          "cancel": "Cancel"
+        },
+        "removeDialog": {
+          "title": "Remove platform admin",
+          "description": "Soft-deletes the admin in the application database, deletes their Keycloak account, and revokes their existing tokens within seconds. This cannot be undone.",
+          "confirm": "Remove admin",
+          "cancel": "Cancel"
+        },
+        "toast": {
+          "renamed": "Admin name updated.",
+          "passwordResetSent": "Password-reset email sent.",
+          "removed": "Admin removed."
+        },
+        "errors": {
+          "selfRemoval": "You cannot remove your own admin account. Ask another super-admin.",
+          "lastAdmin": "You cannot remove the last active platform admin. Invite another super-admin first.",
+          "notFound": "This admin no longer exists.",
+          "generic": "Something went wrong. Please retry."
         }
       }
     }

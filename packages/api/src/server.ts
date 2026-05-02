@@ -12,6 +12,7 @@ import { env } from "./env.js";
 import { redis } from "./lib/redis.js";
 import { PROBLEM_JSON, problemDetail } from "./lib/schemas.js";
 import { impersonationRoutes } from "./modules/admin/impersonation-routes.js";
+import { platformAdminsRoutes } from "./modules/admin/platform-admins-routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
 import { campaignRoutes } from "./modules/campaigns/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
@@ -172,6 +173,7 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(signupRoutes, { prefix: "/v1" });
   await app.register(reportsRoutes, { prefix: "/v1" });
   await app.register(impersonationRoutes, { prefix: "/v1" });
+  await app.register(platformAdminsRoutes, { prefix: "/v1" });
   await app.register(tenantAdminRoutes, { prefix: "/v1" });
   await app.register(sessionRoutes, { prefix: "/v1" });
   await app.register(disputeRoutes, { prefix: "/v1" });

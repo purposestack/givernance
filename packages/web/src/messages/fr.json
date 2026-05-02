@@ -276,7 +276,8 @@
         "section": "Back-office",
         "tenants": "Tenants",
         "disputes": "Litiges",
-        "impersonation": "Sessions de support"
+        "impersonation": "Sessions de support",
+        "platformAdmins": "Admins plateforme"
       }
     },
     "topbar": {
@@ -690,6 +691,104 @@
             "copyFailed": "Impossible de copier le lien dans le presse-papiers.",
             "formInviteFailed": "Tenant créé, mais l’invitation du premier admin a échoué. Renvoyez-la ci-dessous."
           }
+        }
+      }
+    },
+    "platformAdmins": {
+      "list": {
+        "title": "Admins plateforme",
+        "subtitle": "Personnel Givernance avec accès super-admin. Les nouveaux admins reçoivent un email de réinitialisation et choisissent leur mot de passe à la première connexion.",
+        "createCta": "Inviter un admin plateforme",
+        "search": {
+          "label": "Recherche",
+          "placeholder": "Rechercher par nom ou email"
+        },
+        "includeDeleted": "Afficher les admins retirés",
+        "columns": {
+          "name": "Nom",
+          "email": "Email",
+          "createdAt": "Créé le",
+          "lastLoginAt": "Dernière connexion",
+          "status": "Statut",
+          "actions": "Actions"
+        },
+        "status": {
+          "active": "Actif",
+          "removed": "Retiré"
+        },
+        "lastLoginNever": "Jamais",
+        "empty": "Aucun admin plateforme pour le moment."
+      },
+      "new": {
+        "back": "← Admins plateforme",
+        "title": "Inviter un admin plateforme",
+        "subtitle": "Provisionne un compte Keycloak avec le rôle super-admin et envoie un email de réinitialisation pour que le nouvel admin choisisse son mot de passe.",
+        "fields": {
+          "firstName": "Prénom",
+          "lastName": "Nom",
+          "email": "Email"
+        },
+        "submit": "Envoyer l'invitation",
+        "submitting": "Envoi…",
+        "cancel": "Annuler",
+        "errors": {
+          "emailTakenByTenant": "Cet email appartient à un membre d'un tenant ; la même personne Keycloak ne peut pas être à la fois admin plateforme et utilisateur tenant.",
+          "emailTakenByAdmin": "Un admin plateforme existe déjà avec cet email.",
+          "emailTakenByKeycloak": "Un utilisateur Keycloak existe déjà avec cet email. Un opérateur doit le supprimer avant de réessayer.",
+          "keycloakMisconfig": "Le realm Keycloak est mal configuré (le rôle super_admin ou l'Organization plateforme est absent). Ré-importez le realm.",
+          "generic": "Une erreur est survenue. Veuillez réessayer."
+        },
+        "success": "Invitation envoyée — le nouvel admin recevra un email de réinitialisation."
+      },
+      "detail": {
+        "back": "← Admins plateforme",
+        "title": "{firstName} {lastName}",
+        "subtitleActive": "Admin plateforme actif.",
+        "subtitleRemoved": "Cet admin a été retiré le {date} et n'a plus accès.",
+        "fields": {
+          "email": "Email",
+          "createdAt": "Créé le",
+          "lastLoginAt": "Dernière connexion",
+          "lastLoginNever": "Jamais",
+          "removedAt": "Retiré",
+          "keycloakId": "Sujet Keycloak"
+        },
+        "actions": {
+          "editName": "Modifier le nom",
+          "resetPassword": "Renvoyer la réinitialisation",
+          "remove": "Retirer l'admin",
+          "saving": "Enregistrement…",
+          "sending": "Envoi…",
+          "removing": "Suppression…"
+        },
+        "editDialog": {
+          "title": "Modifier le nom de l'admin",
+          "description": "Met à jour le nom affiché. Le changement est répercuté dans Keycloak immédiatement.",
+          "save": "Enregistrer",
+          "cancel": "Annuler"
+        },
+        "resetDialog": {
+          "title": "Renvoyer la réinitialisation",
+          "description": "Envoie un nouvel email UPDATE_PASSWORD à {email}. Le lien précédent est invalidé.",
+          "confirm": "Envoyer l'email",
+          "cancel": "Annuler"
+        },
+        "removeDialog": {
+          "title": "Retirer l'admin plateforme",
+          "description": "Effectue un soft-delete de l'admin dans la base, supprime son compte Keycloak et révoque ses tokens existants en quelques secondes. Cette action est irréversible.",
+          "confirm": "Retirer l'admin",
+          "cancel": "Annuler"
+        },
+        "toast": {
+          "renamed": "Nom de l'admin mis à jour.",
+          "passwordResetSent": "Email de réinitialisation envoyé.",
+          "removed": "Admin retiré."
+        },
+        "errors": {
+          "selfRemoval": "Vous ne pouvez pas retirer votre propre compte admin. Demandez à un autre super-admin.",
+          "lastAdmin": "Vous ne pouvez pas retirer le dernier admin plateforme actif. Invitez un autre super-admin d'abord.",
+          "notFound": "Cet admin n'existe plus.",
+          "generic": "Une erreur est survenue. Veuillez réessayer."
         }
       }
     }
