@@ -504,7 +504,13 @@ async function runStartGates(
           ? "Step-up authentication failed and account is now locked."
           : "Step-up authentication required — re-authenticate with MFA and retry.",
         {
-          reason: stepUp.reason ?? "step_up_required",
+          // `validateStepUp` always sets `reason` on the failure variant
+          // today; the fallback exists so a future regression that
+          // returns `{ok:false}` without a reason is visible in logs as
+          // a distinct sentinel rather than silently colliding with the
+          // generic `step_up_required` boolean. Don't reuse the redirect
+          // hint name here — it's a separate signal (review I-2).
+          reason: stepUp.reason ?? "unknown_step_up_failure",
           step_up_required: !denied.lockedOut,
         },
       ),

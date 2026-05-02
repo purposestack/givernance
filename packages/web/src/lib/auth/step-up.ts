@@ -14,6 +14,15 @@
  */
 
 /**
+ * The single source of truth for the LoA value the impersonation flow
+ * requests. Used by both the client (form → step-up redirect) and the
+ * server (login route's allow-list) so a future LoA bump (`"3"`, `"high"`)
+ * lands in one place — without this, an out-of-sync literal would
+ * silently no-op the redirect and infinite-loop the operator.
+ */
+export const STEP_UP_ACR_VALUE = "2";
+
+/**
  * Build the URL the browser should `window.location.assign` to so the
  * operator gets sent through Keycloak step-up and lands back at
  * `returnTo` afterwards. `returnTo` MUST be a same-origin path —
@@ -21,7 +30,7 @@
  */
 export function buildStepUpRedirectUrl(origin: string, returnTo: string): string {
   const url = new URL("/api/auth/login", origin);
-  url.searchParams.set("acr_values", "2");
+  url.searchParams.set("acr_values", STEP_UP_ACR_VALUE);
   url.searchParams.set("prompt", "login");
   url.searchParams.set("return_to", returnTo);
   return url.toString();

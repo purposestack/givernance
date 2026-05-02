@@ -67,6 +67,19 @@ export function oidcFlowCookieOptions() {
   };
 }
 
+/**
+ * Cookie options for the post-callback `return_to` cookie (issue #250).
+ * Same TTL/security flags as the other OIDC flow cookies, but scoped to
+ * `/api/auth` so it only round-trips between the login + callback routes
+ * — defence-in-depth on top of the httpOnly flag.
+ */
+export function returnToCookieOptions() {
+  return {
+    ...oidcFlowCookieOptions(),
+    path: "/api/auth",
+  };
+}
+
 /** OIDC flow cookie names. */
 export const OIDC_STATE_COOKIE = "oidc_state";
 export const OIDC_VERIFIER_COOKIE = "oidc_code_verifier";
