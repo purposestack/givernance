@@ -416,6 +416,53 @@ describe("Permission isolation honours the target's role (no extra write-block)"
     });
     expect([200, 201]).toContain(res.statusCode);
   });
+
+  // GET /v1/users/me used to route by realm role: any token carrying
+  // `super_admin` was answered out of `platform_admins`. Delegation mode
+  // KEEPS `super_admin` in `realm_access.roles` (that's the whole point of
+  // delegation — the operator's super-powers travel with the session) but
+  // the JWT's `sub` is the TARGET, who has no `platform_admins` row. The
+  // route therefore 404'd every delegation session, blanking the org name
+  // and role on the client and silently degrading the sidebar's settings
+  // link. The fix routes by `auth.impersonation` (the canonical "this is
+  // a session" discriminator), so /me always answers from the target's
+  // perspective during a session — regardless of which realm role the
+  // operator brought in.
+  it("delegation /v1/users/me returns the TARGET's tenant profile (not 404)", async () => {
+    const { cookie } = await startSession(TARGET_USER_APP_ID, "delegation");
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/users/me",
+      headers: { cookie: `givernance_jwt=${cookie}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.data).toMatchObject({
+      keycloakId: TARGET_USER_KEYCLOAK_ID,
+      role: "org_admin",
+      orgId: ORG_A,
+    });
+    // orgName comes from the tenants table; just assert it's non-empty so
+    // the sidebar's `user?.orgName ?? placeholder` branch resolves.
+    expect(typeof body.data.orgName).toBe("string");
+    expect(body.data.orgName.length).toBeGreaterThan(0);
+  });
+
+  it("pure impersonation /v1/users/me returns the TARGET's tenant profile", async () => {
+    const { cookie } = await startSession(TARGET_USER_APP_ID, "impersonation");
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/users/me",
+      headers: { cookie: `givernance_jwt=${cookie}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.data).toMatchObject({
+      keycloakId: TARGET_USER_KEYCLOAK_ID,
+      role: "org_admin",
+      orgId: ORG_A,
+    });
+  });
 });
 
 // ─── Audit double-attribution ──────────────────────────────────────────────
