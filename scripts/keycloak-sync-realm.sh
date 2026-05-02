@@ -257,12 +257,16 @@ if FLOW_ALIAS not in existing:
         if s not in (200, 201):
             log(f"  add {provider}: HTTP {s}")
 
-    # forms sub-flow
+    # forms sub-flow. `provider` is intentionally omitted: KC's
+    # AuthenticationManagementResource.addExecutionFlow only consumes
+    # `provider` when `type == "form-flow"`; for `basic-flow` it's
+    # ignored, and the realm-import JSON correctly leaves it absent.
+    # An earlier draft used `"registration-page-form"` here — review
+    # caught it as misleading + a future-KC compat hazard.
     s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FLOW_ALIAS}/executions/flow", {
         "alias": FORMS_ALIAS,
         "type": "basic-flow",
         "description": "Username/password + conditional LoA-2 sub-flow.",
-        "provider": "registration-page-form",
     })
     log(f"  Created sub-flow '{FORMS_ALIAS}' (HTTP {s}).")
 
@@ -270,12 +274,11 @@ if FLOW_ALIAS not in existing:
     s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FORMS_ALIAS}/executions/execution",
                 {"provider": "auth-username-password-form"})
 
-    # LoA-2 sub-flow inside forms
+    # LoA-2 sub-flow inside forms (same provider-omission reasoning as above).
     s, _ = call("POST", f"/admin/realms/{REALM}/authentication/flows/{FORMS_ALIAS}/executions/flow", {
         "alias": LOA_ALIAS,
         "type": "basic-flow",
         "description": "Fires OTP when client requests acr_values=2.",
-        "provider": "registration-page-form",
     })
     log(f"  Created sub-flow '{LOA_ALIAS}' (HTTP {s}).")
 
@@ -313,11 +316,26 @@ if FLOW_ALIAS not in existing:
                 log(f"  set {key} requirement={tgt} (HTTP {s2})")
 
             # Create + attach the LoA-2 config to the conditional-loa execution
+            # Config keys MUST be `loa-condition-level` and `loa-max-age`
+            # — these are the constants ConditionalLoaAuthenticator reads
+            # via getConfig().get(LEVEL/MAX_AGE) in KC 26 source. An
+            # earlier draft used `loa` / `max_age`, which the authenticator
+            # silently ignores → conditional always evaluates to false →
+            # OTP step is skipped → staging keeps 401-ing acr_insufficient,
+            # exactly the bug this PR is meant to fix. Caught by review.
+            # max-age=300 also matches the API's STEP_UP_AUTH_TIME_WINDOW
+            # so the realm's "fresh enough MFA" window doesn't outlast
+            # the API's `auth_time` freshness check.
             if (ex.get("providerId") == "conditional-level-of-authentication"
                     and not ex.get("authenticationConfig")):
-                s2, cfg = call("POST",
-                               f"/admin/realms/{REALM}/authentication/executions/{ex['id']}/config",
-                               {"alias": LOA_CONFIG_ALIAS, "config": {"loa": "2", "max_age": "3600"}})
+                s2, cfg = call(
+                    "POST",
+                    f"/admin/realms/{REALM}/authentication/executions/{ex['id']}/config",
+                    {
+                        "alias": LOA_CONFIG_ALIAS,
+                        "config": {"loa-condition-level": "2", "loa-max-age": "300"},
+                    },
+                )
                 log(f"  Created authenticatorConfig '{LOA_CONFIG_ALIAS}' (HTTP {s2}).")
 else:
     log(f"Flow '{FLOW_ALIAS}' already exists — skipping creation. "
