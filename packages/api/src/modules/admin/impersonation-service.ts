@@ -13,8 +13,13 @@
  */
 
 import { createHash } from "node:crypto";
-import { PLATFORM_TENANT_ID } from "@givernance/shared/constants";
-import { auditLogs, impersonationSessions, tenants, users } from "@givernance/shared/schema";
+import {
+  auditLogs,
+  impersonationSessions,
+  platformAdmins,
+  tenants,
+  users,
+} from "@givernance/shared/schema";
 import type { ImpersonationModeName } from "@givernance/shared/types";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -66,16 +71,17 @@ export class ImpersonationServiceError extends Error {
 export async function startSession(input: StartSessionInput): Promise<StartSessionResult> {
   const target = await resolveTarget(input.targetUserId);
 
-  // Reject impersonating any user who belongs to the platform tenant
-  // (super-admins live there). The `users.role` enum has no `super_admin`
-  // value — that role is realm-level only — so the structural signal is
-  // the target's `org_id`. Nested operator-on-operator impersonation
-  // breaks the audit chain and has no legitimate support use case.
-  if (target.orgId === PLATFORM_TENANT_ID) {
+  // Reject impersonating any platform admin (ADR-022). Nested
+  // operator-on-operator impersonation breaks the audit chain and has no
+  // legitimate support use case. Platform admins are a first-class
+  // identity surface (`platform_admins` table) — disjoint from `users`
+  // by invariant — so a normal customer-tenant member can no longer
+  // structurally collide with a Givernance staffer.
+  if (await isPlatformAdmin(target.keycloakId)) {
     throw new ImpersonationServiceError(
       400,
       "TARGET_NESTED_SUPER_ADMIN",
-      "Cannot impersonate a platform user; nested impersonation is forbidden.",
+      "Cannot impersonate a platform admin; nested impersonation is forbidden.",
     );
   }
 
@@ -206,6 +212,22 @@ interface ResolvedTarget {
   orgId: string;
   role: string;
   email: string;
+}
+
+/**
+ * Returns true if the given Keycloak `sub` corresponds to an active
+ * `platform_admins` row (ADR-022). Used by the impersonation guard to
+ * refuse operator-on-operator nesting. Single indexed lookup against the
+ * BYPASSRLS pool — `platform_admins` has no RLS policy and the migration
+ * REVOKEs the app role's access (0034_platform_admins.sql).
+ */
+async function isPlatformAdmin(keycloakId: string): Promise<boolean> {
+  const rows = await systemDb
+    .select({ id: platformAdmins.id })
+    .from(platformAdmins)
+    .where(and(eq(platformAdmins.keycloakId, keycloakId), isNull(platformAdmins.deletedAt)))
+    .limit(1);
+  return rows.length > 0;
 }
 
 async function resolveTarget(targetUserId: string): Promise<ResolvedTarget> {
@@ -359,8 +381,9 @@ export async function listSessions(opts: ListSessionsOptions = {}) {
 /**
  * Picker-scoped user search for the start-impersonation form (super-admin
  * only). Cross-tenant by definition; runs through `systemDb` (BYPASSRLS)
- * since super-admin operates outside any tenant context. Excludes
- * platform-tenant users (they can't be impersonated — see startSession).
+ * since super-admin operates outside any tenant context. Platform admins
+ * (ADR-022) live in `platform_admins`, not `users`, so they are
+ * structurally absent from the picker — no filter needed.
  */
 export interface ImpersonationTargetCandidate {
   id: string;
@@ -380,11 +403,11 @@ export async function searchTargets(filters: {
   limit?: number;
 }): Promise<ImpersonationTargetCandidate[]> {
   const limit = Math.min(Math.max(filters.limit ?? 20, 1), 50);
-  // The picker shows every active user; the platform-tenant block lives at
-  // start-session time (`startSession` rejects with 400 + the
-  // TARGET_NESTED_SUPER_ADMIN code). Filtering it out here would zero out
-  // the picker in dev environments where the demo tenant shares the
-  // platform UUID (see packages/api/scripts/seed.ts).
+  // The picker shows every active tenant user. Platform admins live in
+  // `platform_admins` (ADR-022) and are structurally absent from `users`,
+  // so no filter is needed here. The defense-in-depth check at start-time
+  // (`isPlatformAdmin`) still rejects with TARGET_NESTED_SUPER_ADMIN if a
+  // future code path ever crosses the surfaces.
   const conditions = [isNull(users.deletedAt)];
 
   if (filters.tenantId) {
@@ -445,10 +468,8 @@ export async function searchTargets(filters: {
 
 /**
  * Lightweight tenant list for the picker — every non-archived tenant.
- * We deliberately do NOT exclude the platform tenant here: the
- * start-session guard already blocks targets in it, and excluding it
- * would zero out the picker in dev where the demo tenant happens to
- * share the platform UUID.
+ * Post-ADR-022 there is no synthetic platform tenant: every tenant in
+ * `tenants` is a real customer tenant, and no filter is required.
  */
 export async function listTenantsForPicker(
   q?: string,

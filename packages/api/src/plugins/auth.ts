@@ -117,9 +117,11 @@ function normaliseAcr(raw: unknown): string | undefined {
  *
  * Note on the absent `no_org_claim` discriminator: `verifyKeycloakJwt`
  * already requires `org_id` to be present (every Keycloak token in this
- * realm carries it; super_admin tokens too — they reuse a placeholder
- * tenant id since the realm mapper can't omit the claim). A JWT without
- * `org_id` is rejected upstream and surfaces here as `"none"`.
+ * realm carries it). For super_admin tokens the claim is sourced from the
+ * Keycloak "Givernance Platform" Organization's `org_id` attribute and
+ * does NOT correspond to any app-DB `tenants` row by design (ADR-022) —
+ * the active-row check below is exempted on the `super_admin` realm role.
+ * A JWT without `org_id` is rejected upstream and surfaces here as `"none"`.
  */
 type TokenResult =
   | "ok"
@@ -171,12 +173,14 @@ async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult>
   const realmRoles = decoded.realm_access?.roles ?? [];
   const isSuperAdmin = realmRoles.includes("super_admin");
 
-  // ADR-021 — active-row check for tenant-scoped principals. Super_admin
-  // is platform-level (no app-side users row required), so it's
-  // exempted; everyone else must resolve an active `users` row for
-  // `(sub, org_id)`. Closes the soft-delete + tenant-removal window
-  // where the JWT is still cryptographically valid but the subject is
-  // gone.
+  // ADR-021 + ADR-022 — active-row check for tenant-scoped principals.
+  // Super_admin is platform-level: post-ADR-022 super-admins live in
+  // `platform_admins` (no `users` row, no `tenants` row), so the
+  // tenant-membership check is exempted. The `/v1/users/me` endpoint
+  // resolves super-admins through `platform_admins` directly. Tenant
+  // members must still resolve an active `users` row for `(sub, org_id)`
+  // — this closes the soft-delete + tenant-removal window where the JWT
+  // is still cryptographically valid but the subject is gone.
   if (!isSuperAdmin) {
     const isActive = await resolveActiveMembership(decoded.sub, decoded.org_id);
     if (!isActive) return "no_active_membership";

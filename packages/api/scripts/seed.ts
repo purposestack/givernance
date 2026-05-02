@@ -1,37 +1,58 @@
 /**
- * Development database seed — populates the `givernance` tenant with
- * realistic but fake constituents, campaigns, and donations so the
- * frontend (issue #41, PR-B2) has data to render.
+ * Development database seed — populates the "Givernance Demo NPO" tenant
+ * with realistic but fake constituents, campaigns, and donations so the
+ * frontend (issue #41, PR-B2) has data to render, plus a second empty
+ * tenant ("Demo Workspace") that exists purely as an impersonation
+ * playground.
  *
  * Run with:
  *   pnpm --filter @givernance/api run db:seed
  *
- * Tenant invariant: the row with id = TENANT_ID is the authoritative
- * "givernance" tenant. This matches the seeded Keycloak user's `org_id`
- * attribute (see `infra/keycloak/realm-givernance.json`). If a pre-existing
- * tenant holds the slug under a different id (e.g. created via the signup
- * flow), its slug is renamed to free the fixture slot rather than reused —
- * this prevents Keycloak/DB id drift that otherwise yields 404s on
- * tenant-scoped admin routes. Constituents/campaigns/donations are
- * inserted fresh on every run. Intended for local dev only — never run
- * against production.
+ * Tenancy layout (ADR-022):
+ *   - **Demo NPO** (`…c1`) — realistic data; the operator practises support
+ *     scenarios here. This is a regular customer tenant, not a platform
+ *     tenant, so org-admins inside it are valid impersonation targets.
+ *   - **Demo Workspace** (`…b1`) — empty tenant with three pre-seeded users
+ *     (org_admin / user / viewer) for clean-flow impersonation testing.
+ *   - **Super-admin** lands in `platform_admins` (no `org_id`, no tenant
+ *     row). The Keycloak side keeps the "Givernance Platform" Organization
+ *     with `org_id` attribute `…a1` for the OIDC mapper, but no app-DB
+ *     `tenants` row exists at that id by design.
+ *
+ * If a pre-existing tenant holds the Demo NPO slug under a different id
+ * (e.g. created via the signup flow), its slug is renamed to free the
+ * fixture slot rather than reused — this prevents id drift that otherwise
+ * yields 404s on tenant-scoped admin routes. Constituents/campaigns/donations
+ * are inserted fresh on every run. Intended for local dev only — never
+ * run against production.
  */
 
-import { campaigns, constituents, donations, tenants, users } from "@givernance/shared/schema";
-import { eq } from "drizzle-orm";
-import { db, withTenantContext } from "../src/lib/db.js";
+import {
+  campaigns,
+  constituents,
+  donations,
+  platformAdmins,
+  tenants,
+  users,
+} from "@givernance/shared/schema";
+import { and, eq, isNull } from "drizzle-orm";
+import { db, systemDb, withTenantContext } from "../src/lib/db.js";
 
 const TENANT_SLUG = "givernance";
 const TENANT_NAME = "Givernance Demo NPO";
-/** Fixed UUID referenced by the seeded Keycloak user's `org_id` attribute. */
-const TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
+/**
+ * Fresh UUID for "Givernance Demo NPO" — a regular customer tenant that
+ * holds the seeded realistic data. Deliberately NOT `…a1` (which is the
+ * Keycloak platform Organization's `org_id` attribute, no longer mirrored
+ * in `tenants`; ADR-022).
+ */
+const TENANT_ID = "00000000-0000-0000-0000-0000000000c1";
 
 /**
- * Second dev tenant used to test impersonation flows. The `PLATFORM_TENANT_ID`
- * security guard in `impersonation-service.ts` rejects targets in the
- * platform tenant, so we need at least one non-platform tenant with real
- * users for the operator to practise against. UUID is deliberately distant
- * from `TENANT_ID` so it's obvious in test fixtures and audit logs.
+ * Second dev tenant — empty impersonation playground. Three pre-seeded
+ * users in distinct roles so the operator can practise pure-impersonation
+ * vs delegation flows without the noise of realistic data. Distinct UUID
+ * (`…b1`) so it's obvious in fixtures and audit logs.
  */
 const DEMO_TENANT_ID = "00000000-0000-0000-0000-0000000000b1";
 const DEMO_TENANT_SLUG = "givernance-demo";
@@ -61,12 +82,13 @@ const DEMO_USERS = [
   },
 ] as const;
 /**
- * Fixed Keycloak `sub` for the seeded super-admin user. Pinned to the
- * `id` field on `admin@givernance.org` in `infra/keycloak/realm-givernance.json`.
- * The `users` row inserted below carries this in `keycloak_id` so that
- * `GET /v1/users/me` (which inner-joins `users` ↔ `tenants` on the JWT
- * `sub` + `org_id`) resolves a real row for the super admin and the sidebar
- * renders the tenant name instead of the placeholder.
+ * Fixed Keycloak `sub` for the seeded super-admin (ADR-022). Pinned to
+ * the `id` field on `admin@givernance.org` in
+ * `infra/keycloak/realm-givernance.json`. The `platform_admins` row inserted
+ * below carries this in `keycloak_id` so that `GET /v1/users/me` resolves
+ * the platform-admin profile when the super-admin logs in. Platform admins
+ * have no `users` row and no tenant binding — their identity surface is
+ * disjoint from tenant members by invariant.
  */
 const ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-000000000ad1";
 const ADMIN_EMAIL = "admin@givernance.org";
@@ -211,10 +233,8 @@ function emailFromName(first: string, last: string, suffix: number): string {
 }
 
 async function findOrCreateTenant(): Promise<string> {
-  // The seeded Keycloak user's `org_id` attribute points at TENANT_ID
-  // (see infra/keycloak/realm-givernance.json). Lookup must be by id, not
-  // by slug, so signup-created tenants sharing the slug don't win the lookup
-  // and leave the Keycloak user orphaned.
+  // Lookup must be by id, not by slug, so signup-created tenants sharing
+  // the slug don't win the lookup and leave the seed misaligned.
   const [byId] = await db.select().from(tenants).where(eq(tenants.id, TENANT_ID));
   if (byId) {
     console.log(`[seed] Reusing tenant ${TENANT_SLUG} (${byId.id})`);
@@ -249,6 +269,35 @@ async function findOrCreateTenant(): Promise<string> {
 
   console.log(`[seed] Created tenant ${TENANT_SLUG} (${created.id})`);
   return created.id;
+}
+
+/**
+ * Best-effort cleanup of the legacy `…a1` synthetic platform tenant that
+ * pre-ADR-022 seeds created. If a developer pulls this branch with their
+ * existing `pnpm db:seed` state, the old row will still be present —
+ * archive it (ADR cascading) so it's invisible to listing endpoints
+ * without touching its history. New seeds skip this entirely.
+ */
+async function archiveLegacyPlatformTenant(): Promise<void> {
+  const LEGACY_PLATFORM_TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
+  const [legacy] = await db
+    .select({ id: tenants.id, status: tenants.status })
+    .from(tenants)
+    .where(eq(tenants.id, LEGACY_PLATFORM_TENANT_ID));
+  if (!legacy) return;
+  if (legacy.status === "archived") {
+    console.log(
+      `[seed] Legacy platform tenant ${LEGACY_PLATFORM_TENANT_ID} already archived — skipping`,
+    );
+    return;
+  }
+  await db
+    .update(tenants)
+    .set({ status: "archived" })
+    .where(eq(tenants.id, LEGACY_PLATFORM_TENANT_ID));
+  console.warn(
+    `[seed] Archived legacy platform tenant ${LEGACY_PLATFORM_TENANT_ID} (ADR-022). It remains in the DB for history but is invisible to listing endpoints.`,
+  );
 }
 
 function buildConstituent(index: number) {
@@ -342,33 +391,53 @@ async function seedOrgData(orgId: string) {
 }
 
 /**
- * Idempotently seed a `users` row for the super-admin so `GET /v1/users/me`
- * can resolve a row when admin@givernance.org logs in. The Keycloak realm
- * import creates the user on the IdP side; the application DB needs a
- * matching row keyed on `keycloak_id` for the sidebar / org switcher to work.
+ * Idempotently seed a `platform_admins` row for the super-admin so
+ * `GET /v1/users/me` can resolve a profile when admin@givernance.org logs
+ * in (ADR-022). The Keycloak realm import creates the user on the IdP
+ * side; the application DB needs a matching `platform_admins` row keyed
+ * on `keycloak_id` for the sidebar / chrome to render.
+ *
+ * Also detects-and-soft-deletes any legacy `users` row that pre-ADR-022
+ * seeds may have inserted for the super-admin in the synthetic platform
+ * tenant — soft-delete preserves the audit history while making the row
+ * invisible to listing endpoints. New seeds skip this entirely.
  */
-async function seedAdminUser(orgId: string): Promise<void> {
-  const [existing] = await db
+async function seedPlatformAdmin(): Promise<void> {
+  // Soft-delete any legacy `users` row from a pre-ADR-022 seed.
+  const legacyUsers = await systemDb
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.keycloakId, ADMIN_KEYCLOAK_ID))
+    .where(and(eq(users.keycloakId, ADMIN_KEYCLOAK_ID), isNull(users.deletedAt)))
+    .limit(1);
+  if (legacyUsers.length > 0) {
+    await systemDb
+      .update(users)
+      .set({ deletedAt: new Date(), keycloakId: null })
+      .where(eq(users.keycloakId, ADMIN_KEYCLOAK_ID));
+    console.warn(
+      `[seed] Soft-deleted legacy admin user row (keycloakId=${ADMIN_KEYCLOAK_ID}) — ADR-022 moves super-admins to platform_admins.`,
+    );
+  }
+
+  const [existing] = await systemDb
+    .select({ id: platformAdmins.id })
+    .from(platformAdmins)
+    .where(
+      and(eq(platformAdmins.keycloakId, ADMIN_KEYCLOAK_ID), isNull(platformAdmins.deletedAt)),
+    )
     .limit(1);
   if (existing) {
-    console.log(`[seed] Admin user already present (keycloakId=${ADMIN_KEYCLOAK_ID})`);
+    console.log(`[seed] Platform admin already present (keycloakId=${ADMIN_KEYCLOAK_ID})`);
     return;
   }
 
-  await withTenantContext(orgId, async (tx) => {
-    await tx.insert(users).values({
-      orgId,
-      email: ADMIN_EMAIL,
-      firstName: ADMIN_FIRST_NAME,
-      lastName: ADMIN_LAST_NAME,
-      role: "org_admin",
-      keycloakId: ADMIN_KEYCLOAK_ID,
-    });
+  await systemDb.insert(platformAdmins).values({
+    email: ADMIN_EMAIL,
+    firstName: ADMIN_FIRST_NAME,
+    lastName: ADMIN_LAST_NAME,
+    keycloakId: ADMIN_KEYCLOAK_ID,
   });
-  console.log(`[seed] Inserted admin user ${ADMIN_EMAIL}`);
+  console.log(`[seed] Inserted platform admin ${ADMIN_EMAIL}`);
 }
 
 /**
@@ -413,8 +482,9 @@ async function seedDemoTenant(): Promise<void> {
 
 async function main() {
   console.log("[seed] Starting Givernance dev seed…");
+  await archiveLegacyPlatformTenant();
   const orgId = await findOrCreateTenant();
-  await seedAdminUser(orgId);
+  await seedPlatformAdmin();
   await seedOrgData(orgId);
   await seedDemoTenant();
   console.log("[seed] Done.");

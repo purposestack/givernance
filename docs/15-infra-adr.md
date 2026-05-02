@@ -23,3 +23,4 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-019: Cross-Tenant Foreign-Key Violations Return 404 (Not 422)](./adrs/adr-019-cross-tenant-foreign-key-violations-return-404-not-422.md)
 - [ADR-020: BullMQ Dead-Letter Strategy — `failed` Set + Structured Alerting for Phase 1](./adrs/adr-020-bullmq-dead-letter-strategy-failed-set-structured-alerting-for-phase-1.md)
 - [ADR-021: User Lifecycle — Soft-delete in App, Hard-delete in Keycloak, Anonymisation for GDPR](./adrs/adr-021-user-lifecycle-soft-delete-in-app-hard-delete-in-keycloak-anonymisation-for-gdpr.md)
+- [ADR-022: Platform Admins Disjoint from Tenant Users — `platform_admins` Table over `PLATFORM_TENANT_ID` Sentinel](./adrs/adr-022-platform-admins-disjoint-from-tenant-users.md)
