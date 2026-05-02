@@ -121,10 +121,14 @@ export function NewPlatformAdminForm() {
           control={form.control}
           name="email"
           rules={{
-            required: true,
+            required: t("errors.emailRequired"),
             pattern: {
               value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-              message: "",
+              // Frontend review C1: an empty message produced
+              // aria-invalid="true" with no FormMessage text — a screen
+              // reader landed on the field with no reason. Now we surface
+              // a translated message via FormMessage.
+              message: t("errors.emailFormat"),
             },
             maxLength: 255,
           }}

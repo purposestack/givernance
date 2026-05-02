@@ -699,25 +699,20 @@
         "title": "Admins plateforme",
         "subtitle": "Personnel Givernance avec accès super-admin. Les nouveaux admins reçoivent un email de réinitialisation et choisissent leur mot de passe à la première connexion.",
         "createCta": "Inviter un admin plateforme",
-        "search": {
-          "label": "Recherche",
-          "placeholder": "Rechercher par nom ou email"
-        },
-        "includeDeleted": "Afficher les admins retirés",
         "columns": {
           "name": "Nom",
           "email": "Email",
           "createdAt": "Créé le",
           "lastLoginAt": "Dernière connexion",
-          "status": "Statut",
-          "actions": "Actions"
+          "status": "Statut"
         },
         "status": {
           "active": "Actif",
           "removed": "Retiré"
         },
         "lastLoginNever": "Jamais",
-        "empty": "Aucun admin plateforme pour le moment."
+        "empty": "Aucun admin plateforme pour le moment.",
+        "fetchFailed": "Impossible de charger les admins plateforme. Rafraîchissez la page pour réessayer."
       },
       "new": {
         "back": "← Admins plateforme",
@@ -732,6 +727,8 @@
         "submitting": "Envoi…",
         "cancel": "Annuler",
         "errors": {
+          "emailRequired": "L'email est requis.",
+          "emailFormat": "Saisissez une adresse email valide.",
           "emailTakenByTenant": "Cet email appartient à un membre d'un tenant ; la même personne Keycloak ne peut pas être à la fois admin plateforme et utilisateur tenant.",
           "emailTakenByAdmin": "Un admin plateforme existe déjà avec cet email.",
           "emailTakenByKeycloak": "Un utilisateur Keycloak existe déjà avec cet email. Un opérateur doit le supprimer avant de réessayer.",
