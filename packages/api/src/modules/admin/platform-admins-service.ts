@@ -70,22 +70,24 @@ const PASSWORD_RESET_LIFESPAN_SEC = 4 * 60 * 60;
 const SUPER_ADMIN_ROLE_NAME = "super_admin";
 const PLATFORM_ORG_ALIAS = "platform";
 
-/**
- * Keycloak client id the password-reset email link is associated with.
- * KC uses this to render the "Back to application" button on the
- * success page after UPDATE_PASSWORD completes.
- *
- * We deliberately do NOT pass `redirect_uri` to `sendExecuteActionsEmail`:
- * KC's inline redirect-after-action depends on the transient `KC_RESTART`
- * cookie, which has its own short TTL independent of the email
- * `lifespan` and gets dropped by some browser cookie policies. Without
- * `redirect_uri`, KC shows a standard success page with the "Back to
- * application" button (sourced from this client's `baseUrl` /
- * redirectUris), and the user starts a fresh OIDC code flow from there.
- * Robust against the KC_RESTART cookie issue. (Caught in dev: PR #253
- * smoke-test feedback.)
- */
-const KC_WEB_CLIENT_ID = "givernance-web";
+// Note on `sendExecuteActionsEmail` parameters:
+//
+// We deliberately pass NEITHER `client_id` NOR `redirect_uri` to KC's
+// `execute-actions-email` endpoint. Both attempt to re-enter an auth
+// flow after the action completes — `redirect_uri` does an inline
+// redirect, and `client_id` triggers a server-side hop to the client's
+// authorize URL. Both require the auth-session cookie KC consumed
+// during UPDATE_PASSWORD to still be present, which is fragile (short
+// TTL, browser cookie policies, multi-tab).
+//
+// Without either param, KC ends the flow on the standard "info" page
+// (`info.ftl`). The custom Givernance theme renders that page with a
+// stable link to the SPA login that does NOT depend on auth-session
+// state. The user clicks it, lands on the SPA, kicks off a fresh OIDC
+// code flow with their freshly-set password — works every time.
+//
+// Caught in dev: PR #253 smoke-test feedback (KC_RESTART cookie missing
+// after UPDATE_PASSWORD).
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
@@ -400,11 +402,8 @@ export async function createPlatformAdmin(input: CreateInput): Promise<PlatformA
   try {
     await keycloakAdmin().sendExecuteActionsEmail(kcUserId, ["UPDATE_PASSWORD"], {
       lifespanSec: PASSWORD_RESET_LIFESPAN_SEC,
-      // `client_id` only — KC's success page after UPDATE_PASSWORD
-      // shows a "Back to application" button pointing at this client's
-      // base URL. See the comment on KC_WEB_CLIENT_ID for why we don't
-      // pass `redirectUri` here.
-      clientId: KC_WEB_CLIENT_ID,
+      // No `clientId` / `redirectUri` — see the comment block above for
+      // why. KC's info.ftl handles the "you're done, go log in" UX.
     });
   } catch (err) {
     emailDeliveryFailed = err as Error;
@@ -514,9 +513,7 @@ export async function resetPlatformAdminPassword(input: ResetPasswordInput): Pro
 
   await keycloakAdmin().sendExecuteActionsEmail(existing.keycloakId!, ["UPDATE_PASSWORD"], {
     lifespanSec: PASSWORD_RESET_LIFESPAN_SEC,
-    // Same posture as the create flow — `client_id` only, no
-    // `redirectUri`. See KC_WEB_CLIENT_ID comment.
-    clientId: KC_WEB_CLIENT_ID,
+    // No `clientId` / `redirectUri` — see the create flow's comment.
   });
 
   await systemDb.transaction(async (tx) => {
