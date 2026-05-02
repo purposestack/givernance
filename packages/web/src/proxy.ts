@@ -223,7 +223,30 @@ export async function proxy(request: NextRequest) {
   let refreshedSession: RefreshedSession | null = null;
   let cookieHeader = request.headers.get("cookie") ?? undefined;
 
-  if (refreshToken && shouldRefreshToken(jwt)) {
+  // Refresh the access token when:
+  //  (a) JWT is present and within `SESSION_REFRESH_GRACE_S` of expiry
+  //      (the original auto-refresh path), OR
+  //  (b) JWT is MISSING but a refresh_token cookie is still alive.
+  //
+  // Case (b) covers the post-impersonation-end flow: the API's
+  // `applyClearImpersonationCookie` only clears `givernance_jwt`, leaving
+  // the operator's KC `givernance_refresh_token` (which the impersonation
+  // start never touched) intact. Without (b), the next request after
+  // end-session lands on the proxy with no JWT, falls through to the
+  // protected-route guard below, and bounces the operator to `/login`.
+  // `/login` is the static form page — it does NOT auto-trigger the OIDC
+  // dance — so the operator sees the sign-in form despite their KC SSO
+  // session still being alive at the IdP. Refreshing here mints fresh
+  // operator KC tokens from the still-valid refresh_token, restoring the
+  // pre-impersonation session in one round-trip.
+  //
+  // The same path also restores any browser tab that lost only its
+  // access-token cookie (e.g. after a server-side `cookies.delete()` that
+  // didn't propagate everywhere). Explicit logout via /api/auth/logout
+  // clears the refresh_token too, so we won't auto-relog a user who chose
+  // to sign out.
+  const jwtExpired = !jwt;
+  if (refreshToken && (jwtExpired || shouldRefreshToken(jwt))) {
     refreshedSession = await refreshSession(refreshToken);
     if (refreshedSession) {
       jwt = refreshedSession.accessToken;
@@ -234,7 +257,7 @@ export async function proxy(request: NextRequest) {
           ? { [REFRESH_TOKEN_COOKIE_NAME]: refreshedSession.refreshToken }
           : {}),
       });
-    } else if ((decodeJwtExp(jwt ?? "") ?? 0) <= Math.floor(Date.now() / 1000)) {
+    } else if (jwtExpired || (decodeJwtExp(jwt ?? "") ?? 0) <= Math.floor(Date.now() / 1000)) {
       jwt = undefined;
       cookieHeader = upsertCookieHeader(request, {
         [JWT_COOKIE_NAME]: undefined,
