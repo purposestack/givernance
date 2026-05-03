@@ -424,7 +424,11 @@
         "submitting": "Démarrage…",
         "stepUpRedirecting": "Authentification renforcée requise — redirection vers la page de connexion…",
         "errorStepUpFailed": "Échec de l'authentification renforcée. Re-authentifiez-vous avec MFA puis réessayez.",
-        "errorLockout": "Trop de tentatives d'authentification renforcée échouées. Votre compte est temporairement verrouillé — réessayez dans 15 minutes."
+        "errorLockout": "Trop de tentatives d'authentification renforcée échouées. Votre compte est temporairement verrouillé — réessayez dans 15 minutes.",
+        "resumeBannerTitle": "Authentification renforcée terminée — vérifiez puis reprenez",
+        "resumeBannerBody": "Votre vérification en deux étapes a réussi. Vérifiez les détails de la session ci-dessous et cliquez sur Reprendre pour démarrer, ou Annuler pour lancer une autre session.",
+        "resumeAction": "Reprendre la session",
+        "resumeCancel": "Annuler"
       }
     },
     "disputes": {

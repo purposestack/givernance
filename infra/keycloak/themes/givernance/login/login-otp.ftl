@@ -37,8 +37,11 @@
            read-only line so they remember which device they registered. -->
       <#if otpLogin.userOtpCredentials??>
         <#if (otpLogin.userOtpCredentials?size > 1)>
+          <#-- Picker copy is distinct from the read-only single-credential
+               label below — "Choose authenticator" reads as an action,
+               where the single-credential variant is just an FYI. -->
           <fieldset class="gv-field" id="kc-otp-credential-picker">
-            <legend class="gv-label">${msg("loginOtpDeviceLabel")}</legend>
+            <legend class="gv-label">${msg("loginOtpDevicePickLabel")}</legend>
             <#list otpLogin.userOtpCredentials as otpCredential>
               <label class="gv-radio-label" for="kc-otp-credential-${otpCredential?index}">
                 <input
@@ -59,10 +62,12 @@
                Submit the credential id as a hidden input so KC's flow
                receives the same shape it would in the multi-credential
                case (defence against an empty `selectedCredentialId` on
-               edge KC versions). -->
+               edge KC versions). The label is static once rendered, so
+               no `aria-live` (it would announce nothing on revalidation
+               and add noise).  -->
           <div class="gv-field">
             <span class="gv-label">${msg("loginOtpDeviceLabel")}</span>
-            <p class="gv-otp-device" aria-live="polite">
+            <p class="gv-otp-device">
               ${otpLogin.userOtpCredentials[0].userLabel}
             </p>
           </div>
@@ -71,7 +76,10 @@
         </#if>
       </#if>
 
-      <#-- One-time code input. -->
+      <#-- One-time code input. `aria-describedby` programmatically links
+           the input to the error span when revalidation surfaces a wrong
+           code, so AT users hear the message tied to the field rather
+           than as a detached announcement (WCAG 3.3.1 Error Identification). -->
       <div class="gv-field">
         <label for="otp" class="gv-label">${msg("loginOtpOneTime")}</label>
         <input
@@ -83,9 +91,10 @@
           autofocus
           class="gv-input<#if messagesPerField.existsError('totp')> gv-input--error</#if>"
           aria-invalid="${messagesPerField.existsError('totp')?string('true','false')}"
+          <#if messagesPerField.existsError('totp')>aria-describedby="otp-error"</#if>
         >
         <#if messagesPerField.existsError('totp')>
-          <span class="gv-field-error" role="alert">
+          <span id="otp-error" class="gv-field-error" role="alert">
             ${kcSanitize(messagesPerField.getFirstError('totp'))?no_esc}
           </span>
         </#if>

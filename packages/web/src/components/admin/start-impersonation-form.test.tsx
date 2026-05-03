@@ -163,7 +163,37 @@ describe("StartImpersonationForm — post-MFA auto-resubmit (issue #251 dev-feed
     vi.restoreAllMocks();
   });
 
-  it("picks up a fresh sessionStorage stash on mount and resubmits", async () => {
+  it("picks up a fresh sessionStorage stash on mount, hydrates state, and shows the Resume CTA WITHOUT auto-firing the fetch", async () => {
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    sessionStorage.setItem(
+      "gv-impersonation-resubmit",
+      JSON.stringify({
+        target: TARGET,
+        mode: "delegation",
+        reason: "Reproducing receipt PDF download issue — ticket #5678",
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+
+    render(<StartImpersonationForm />);
+
+    // The Resume banner appears (region with the title), the fetch does
+    // NOT fire — multi-agent review I-4 (PR #251) wanted the operator
+    // to confirm intent after the MFA round-trip rather than have the
+    // session start under their feet.
+    const resumeBtn = await screen.findByRole("button", { name: /Resume session/i });
+    expect(resumeBtn).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // Single-use — stash is removed on mount regardless of whether the
+    // operator clicks Resume or Cancel, so a refresh leaves the form in
+    // its normal empty state.
+    expect(sessionStorage.getItem("gv-impersonation-resubmit")).toBeNull();
+  });
+
+  it("clicking Resume fires the fetch with the hydrated payload", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 201,
@@ -183,7 +213,10 @@ describe("StartImpersonationForm — post-MFA auto-resubmit (issue #251 dev-feed
       }),
     );
 
+    const user = userEvent.setup();
     render(<StartImpersonationForm />);
+    const resumeBtn = await screen.findByRole("button", { name: /Resume session/i });
+    await user.click(resumeBtn);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
@@ -194,9 +227,31 @@ describe("StartImpersonationForm — post-MFA auto-resubmit (issue #251 dev-feed
       mode: "delegation",
       reason: "Reproducing receipt PDF download issue — ticket #5678",
     });
-    // Single-use — a page refresh after the auto-resubmit must not
-    // re-stamp the same session.
-    expect(sessionStorage.getItem("gv-impersonation-resubmit")).toBeNull();
+  });
+
+  it("clicking Cancel discards the hydrated payload and the fetch never fires", async () => {
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    sessionStorage.setItem(
+      "gv-impersonation-resubmit",
+      JSON.stringify({
+        target: TARGET,
+        mode: "delegation",
+        reason: "Reproducing receipt PDF download issue — ticket #5678",
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<StartImpersonationForm />);
+    const cancelBtn = await screen.findByRole("button", { name: "Cancel" });
+    await user.click(cancelBtn);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    // After cancel, the Resume banner is gone — operator can pick a
+    // different target/mode/reason from a clean slate.
+    expect(screen.queryByRole("button", { name: /Resume session/i })).toBeNull();
   });
 
   it("ignores a stale stash (past TTL) without resubmitting", async () => {
