@@ -137,10 +137,32 @@ if (process.env.NODE_ENV === "production" && !value.IMPERSONATION_JWT_SECRET) {
   process.exit(1);
 }
 
-if (process.env.NODE_ENV === "production" && !value.IMPERSONATION_REQUIRE_ACR_2) {
-  console.error(
-    "[api] IMPERSONATION_REQUIRE_ACR_2 must be `true` in production — step-up MFA is the only barrier between a stolen super-admin cookie and an arbitrary impersonation session (issue #24).",
-  );
+// Extracted as a pure function so the contract is unit-testable without
+// having to spawn a Node child process (multi-agent review API-2,
+// PR #251). The boot-time invocation below stays inline so a misconfig
+// still fails fast at startup; the test in
+// `packages/api/src/lib/env-asserts.test.ts` exercises this function
+// directly with synthesised env shapes.
+export function assertImpersonationStepUpRequired(input: {
+  nodeEnv: string | undefined;
+  requireAcr2: boolean;
+}): { ok: true } | { ok: false; reason: string } {
+  if (input.nodeEnv === "production" && !input.requireAcr2) {
+    return {
+      ok: false,
+      reason:
+        "[api] IMPERSONATION_REQUIRE_ACR_2 must be `true` in production — step-up MFA is the only barrier between a stolen super-admin cookie and an arbitrary impersonation session (issue #24).",
+    };
+  }
+  return { ok: true };
+}
+
+const stepUpAssert = assertImpersonationStepUpRequired({
+  nodeEnv: process.env.NODE_ENV,
+  requireAcr2: value.IMPERSONATION_REQUIRE_ACR_2,
+});
+if (!stepUpAssert.ok) {
+  console.error(stepUpAssert.reason);
   process.exit(1);
 }
 
