@@ -85,6 +85,20 @@ beforeAll(async () => {
     VALUES (${PLATFORM_TARGET_KEYCLOAK_ID}, 'platform-admin-fixture@example.org', 'Platform', 'AdminFixture')
     ON CONFLICT DO NOTHING
   `);
+
+  // The test's operator super-admin is identified by SUPER_ADMIN_KEYCLOAK_ID
+  // and lives in `platform_admins` (post-ADR-022 — super-admins no
+  // longer have a `users` row). The session-list enrichment LEFT JOINs
+  // BOTH tables and `coalesce`s the name fields so super-admin
+  // operators get rendered with their first/last/email instead of a
+  // bare UUID. Without this fixture every "list sessions" test would
+  // see null impersonator-name fields and the regression test below
+  // wouldn't have anything to assert against.
+  await db.execute(sql`
+    INSERT INTO platform_admins (keycloak_id, email, first_name, last_name)
+    VALUES (${SUPER_ADMIN_KEYCLOAK_ID}, 'operator-super-admin@example.org', 'Operator', 'SuperAdmin')
+    ON CONFLICT DO NOTHING
+  `);
 });
 
 afterAll(async () => {
@@ -870,6 +884,49 @@ describe("GET /v1/admin/impersonation", () => {
     expect(Array.isArray(body.data)).toBe(true);
     expect(body.data.length).toBeGreaterThan(0);
     expect(body.data[0]).toMatchObject({ isActive: true });
+  });
+
+  // Locks the operator-name enrichment from `platform_admins` (PR #251
+  // user feedback). Pre-fix, the query only LEFT-JOINed `users`, which
+  // misses every super-admin operator (they live in `platform_admins`
+  // post-ADR-022) — the UI fell back to the raw UUID. The new
+  // `coalesce(users.first_name, platform_admins.first_name)` shape
+  // means a super-admin-initiated session lists with the operator's
+  // human-readable identity AND the keycloakId so the UI can render
+  // "Operator SuperAdmin · UUID" matching the target column.
+  it("enriches super-admin operator from platform_admins (first/last/email)", async () => {
+    const token = superAdminToken();
+    const start = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(start.statusCode).toBe(201);
+    const startedSessionId = JSON.parse(start.payload).data.sessionId;
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+    });
+    expect(list.statusCode).toBe(200);
+    const body = JSON.parse(list.payload);
+    const session = (
+      body.data as Array<{
+        id: string;
+        impersonatorKeycloakId: string;
+        impersonatorFirstName: string | null;
+        impersonatorLastName: string | null;
+        impersonatorEmail: string | null;
+      }>
+    ).find((s) => s.id === startedSessionId);
+    expect(session).toBeDefined();
+    if (!session) return;
+    expect(session.impersonatorKeycloakId).toBe(SUPER_ADMIN_KEYCLOAK_ID);
+    expect(session.impersonatorFirstName).toBe("Operator");
+    expect(session.impersonatorLastName).toBe("SuperAdmin");
+    expect(session.impersonatorEmail).toBe("operator-super-admin@example.org");
   });
 });
 
