@@ -463,13 +463,24 @@ async function runStartGates(
   // Lockout check runs BEFORE rate-limit increment so a locked-out
   // operator can't keep burning their daily counter.
   if (await isLockedOut(auth.userId)) {
+    request.log.warn(
+      {
+        actorId: auth.userId,
+        audit: "impersonation.lockout_hit",
+        lockSource: "app_5fail_15min",
+      },
+      "impersonation: locked-out operator attempted to start a session",
+    );
     return {
       ok: false,
       status: 423,
       body: problemDetail(
         423,
         "Locked",
-        `Account temporarily locked after ${IMPERSONATION_DENIED_LOCKOUT_THRESHOLD} failed step-up attempts. Try again later.`,
+        `Account temporarily locked after ${IMPERSONATION_DENIED_LOCKOUT_THRESHOLD} failed step-up attempts. Try again in 15 minutes. If the lock persists past that window, the Keycloak brute-force protection may also have engaged — see docs/19-impersonation.md §Lockout recovery for the runbook.`,
+        {
+          lock_source: "app_5fail_15min",
+        },
       ),
     };
   }
@@ -477,15 +488,36 @@ async function runStartGates(
   const stepUp = validateStepUp({ auth_time: auth.authTime, acr: auth.acr });
   if (!stepUp.ok) {
     const denied = await recordDeniedAttempt(auth.userId);
-    request.log.warn(
-      {
-        actorId: auth.userId,
-        stepUp,
-        deniedCount: denied.count,
-        audit: "impersonation.denied",
-      },
-      "impersonation: step-up failed",
-    );
+    // Distinct discriminator + level for the moment the counter trips
+    // over the threshold (multi-agent review Logs-2). Below threshold
+    // is `audit: "impersonation.step_up_denied"` at warn; the
+    // transition is `audit: "impersonation.step_up_lockout"` at error
+    // because it's the moment the operator becomes unable to retry —
+    // SOC pages should fire on this event, not on every step-up
+    // denial.
+    if (denied.lockedOut) {
+      request.log.error(
+        {
+          actorId: auth.userId,
+          stepUp,
+          deniedCount: denied.count,
+          lockedOut: true,
+          audit: "impersonation.step_up_lockout",
+        },
+        "impersonation: 5-fail step-up lockout engaged",
+      );
+    } else {
+      request.log.warn(
+        {
+          actorId: auth.userId,
+          stepUp,
+          deniedCount: denied.count,
+          lockedOut: false,
+          audit: "impersonation.step_up_denied",
+        },
+        "impersonation: step-up failed",
+      );
+    }
     // Extend the RFC 9457 problem detail with two extension members the
     // web side discriminates on (issue #250). `reason` is the machine-
     // readable validateStepUp() outcome — without it, the form can't tell

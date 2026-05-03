@@ -282,6 +282,31 @@ The lazy-enrolment design has a known weakness: a super-admin who has **never** 
 
 - 10 session starts per operator per 24 h (`IMPERSONATION_MAX_STARTS_PER_24H`). Counter at `impersonation:ratelimit:start:{operator_sub}`.
 
+### Lockout recovery — two distinct sources
+
+When an operator is stuck on the impersonation start, **two independent counters** can be at fault — they need to be cleared separately. The 423 detail string includes a `lock_source` extension so the operator + on-call know which one engaged.
+
+| Source | Trigger | Where it lives | TTL / clear | API symptom |
+|---|---|---|---|---|
+| **App** (`lock_source: "app_5fail_15min"`) | 5 failed `validateStepUp` results in 15 min | Redis `impersonation:denied:{operator_sub}` | 15 min auto-roll, OR `redis-cli DEL impersonation:denied:{sub}` | 423 from `POST /v1/admin/impersonation` |
+| **Keycloak** (no API symptom — KC auth fails directly) | KC realm `bruteForceProtected` thresholds (configurable on the realm; default ~30 fails) | KC's `keycloak_user_login_failure` table | KC admin console → Manage → Brute Force Detection → Find user → Unlock, OR wait for `failureFactor` decay | 401 from `/api/auth/login`, KC sign-in page rejects the password before the OIDC dance starts |
+
+If a normal login works but `POST /v1/admin/impersonation` keeps 423-ing → app lockout; clear the Redis key.
+If a normal login already fails → KC lockout; unlock via KC admin console.
+
+### Observability
+
+Pino emits a structured line on every step-up failure. SOC dashboards filter on `audit:` to separate signal from noise.
+
+| `audit:` discriminator | Level | Fires when | Action |
+|---|---|---|---|
+| `impersonation.step_up_denied` | warn | `acr_insufficient` / `auth_time_stale` / `no_auth_time` — operator just typo'd or arrived with stale tokens. Carries `deniedCount`, `lockedOut: false`. | None unless rate spikes (>10/min sustained = brute-force suspect). |
+| `impersonation.step_up_lockout` | **error** | The 5th failed attempt within 15 min — operator is now unable to retry. Carries `lockedOut: true`. | **Page**. Either a real attack or a confused operator who needs unlocking. |
+| `impersonation.lockout_hit` | warn | Locked-out operator attempted a fresh start (counter still active). Carries `lockSource: "app_5fail_15min"`. | None per event; correlate with the prior `step_up_lockout` to confirm same operator. |
+| `impersonation.denied` | warn | Pre-existing — RBAC denial on the start route (non-super-admin). Distinct from step-up denials. | None unless rate spikes. |
+
+Web-side errors during the OIDC step-up round-trip live in `/api/auth/login` + `/api/auth/callback`. They emit structured warn lines on rejected `return_to`, token-exchange failures, and acr cookie validation failures (see `packages/web/src/app/api/auth/*/route.ts`). On staging, these reach Cockpit/Loki via the Next.js stdout stream.
+
 ## 8. API surface
 
 ```
