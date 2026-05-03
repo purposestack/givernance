@@ -227,7 +227,21 @@ LOA1_ALIAS = "browser-with-step-up loa-1"
 LOA2_ALIAS = "browser-with-step-up loa-2"
 LOA1_CONFIG_ALIAS = "loa-1-config"
 LOA2_CONFIG_ALIAS = "loa-2-config"
+# loa-1 (password sub-flow) max-age is intentionally long-ish (10h):
+# it gates whether KC re-prompts for the password on a returning SSO
+# session at acr_values=1. Setting this very low (e.g. 300s) would
+# force a fresh password every 5 min on normal logins, breaking the
+# session story for users whose KC SSO cookie is still alive. The
+# step-up flow ignores it because `prompt=login` always invalidates
+# the SSO short-circuit. Multi-agent review API-3 (PR #251) flagged
+# the value as "functionally arbitrary" — it is, but only within the
+# space of "longer than the typical KC SSO cookie lifetime"; bumping
+# it shorter degrades UX without adding security.
 LOA1_DESIRED = {"loa-condition-level": "1", "loa-max-age": "36000"}
+# loa-2 (OTP sub-flow) max-age MUST stay aligned with
+# STEP_UP_AUTH_TIME_WINDOW_SECONDS in the API's step-up validator —
+# the API rejects auth_time older than 5 min, so giving KC a longer
+# window would let stale auth_time pass at the API gate.
 LOA2_DESIRED = {"loa-condition-level": "2", "loa-max-age": "300"}
 # Map both LoA 1 and LoA 2 so KC emits a stable string ACR claim on
 # both normal logins (acr="1") and step-up (acr="2"). Values are
@@ -257,7 +271,10 @@ def call(method, path, body=None):
         body = e.read().decode("utf-8", "replace")
         return e.code, body
 
-def log(msg): print(f"   {msg}")
+# Marker prefix lets `grep '\[step-up\]'` slice the step-up flow lines
+# out of CI logs without matching unrelated KC sync output (multi-agent
+# review Logs N-16, PR #251).
+def log(msg): print(f"   [step-up] {msg}")
 
 # 1. Realm attributes (acr.loa.map). Drives both directions of the
 #    level ↔ acr translation.

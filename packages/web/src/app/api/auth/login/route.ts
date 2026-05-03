@@ -15,6 +15,7 @@ import {
   returnToCookieOptions,
   safeReturnToPath,
 } from "@/lib/auth/keycloak";
+import { logAuthEvent } from "@/lib/auth/log";
 import { STEP_UP_ACR_VALUE } from "@/lib/auth/step-up";
 
 /**
@@ -159,7 +160,20 @@ export async function GET(request: NextRequest) {
   // TTL, the previous return_to would otherwise still bounce them after
   // re-auth instead of the default landing page (review N-2).
   jar.delete(OIDC_RETURN_TO_COOKIE);
-  const returnTo = safeReturnToPath(url.searchParams.get("return_to"));
+  const rawReturnTo = url.searchParams.get("return_to");
+  const returnTo = safeReturnToPath(rawReturnTo);
+  if (rawReturnTo && !returnTo) {
+    // Surface attempts to slip a cross-origin / malformed return_to so
+    // an open-redirect probe is visible on Cockpit/Loki dashboards
+    // instead of silently failing closed (multi-agent review Logs-3,
+    // PR #251). We log the rejected raw value (truncated) — useful for
+    // forensics, and not sensitive because the request was already
+    // public.
+    logAuthEvent("warn", "auth.return_to.rejected", {
+      raw: rawReturnTo.slice(0, 256),
+      reason: "not_same_origin_path",
+    });
+  }
   if (returnTo) {
     jar.set(OIDC_RETURN_TO_COOKIE, returnTo, returnToCookieOptions());
   }

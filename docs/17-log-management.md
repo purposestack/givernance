@@ -233,6 +233,7 @@ Several JSONB columns across the schema require special GDPR handling because th
 | AI actions | ai.suggestion_generated, ai.action_executed, ai.action_blocked, ai.guard_denied | Yes | Yes (info for generated/executed, warn for blocked/denied) |
 | Migration | migration.started, migration.batch_loaded, migration.validation_error, migration.completed | Yes | Yes |
 | Impersonation (issue #24) | impersonation.started, impersonation.ended_by_admin, impersonation.revoked, impersonation.expired, impersonation.denied, impersonation.write_blocked | Yes (lifecycle) | Yes (warn for started/revoked/denied/write_blocked, info for ended_by_admin/expired) |
+| Step-up MFA (issue #250) | impersonation.step_up_denied, impersonation.step_up_lockout, impersonation.lockout_hit | No (Pino-only — pre-session, no `audit_logs` row) | Yes (warn for step_up_denied + lockout_hit, **error** for step_up_lockout — SOC pages on the threshold flip from "operator typo'd a few times" to "operator can't retry") |
 
 ### 7.2.1 Auth + RBAC denial discriminators (issue #182, refined PR #185)
 

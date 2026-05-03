@@ -17,12 +17,15 @@ import {
   safeReturnToPath,
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
+import { logAuthEvent } from "@/lib/auth/log";
 import { verifyKeycloakJwt } from "@/lib/auth/verify-keycloak-jwt";
 
 /** Map Keycloak errors to safe, fixed error codes — never reflect upstream error text. */
 function sanitizeError(error: string): string {
   // Log the upstream error for diagnostics; only fixed codes are reflected in the URL.
-  console.error("Keycloak callback error:", error);
+  logAuthEvent("warn", "auth.callback.upstream_error", {
+    upstreamError: error.slice(0, 256),
+  });
   switch (error) {
     case "access_denied":
     case "login_required":
@@ -62,7 +65,18 @@ export async function GET(request: NextRequest) {
   // cleanup runs; re-validated via the same allow-list as the login
   // route writes against — a stale or tampered cookie falls back to the
   // default landing page rather than becoming an open-redirect oracle.
-  const returnTo = safeReturnToPath(jar.get(OIDC_RETURN_TO_COOKIE)?.value ?? null);
+  const rawReturnToCookie = jar.get(OIDC_RETURN_TO_COOKIE)?.value ?? null;
+  const returnTo = safeReturnToPath(rawReturnToCookie);
+  if (rawReturnToCookie && !returnTo) {
+    // Defence-in-depth log: the login route already validates inbound
+    // `return_to`, but a tampered cookie or a cross-deploy session that
+    // crossed an APP_URL change would surface here. Same shape as the
+    // login-route rejection so SOC dashboards can correlate.
+    logAuthEvent("warn", "auth.return_to.rejected", {
+      raw: rawReturnToCookie.slice(0, 256),
+      reason: "cookie_not_same_origin_path",
+    });
+  }
 
   // Clean up OIDC flow cookies regardless of outcome
   const cleanup = () => {
@@ -121,7 +135,10 @@ export async function GET(request: NextRequest) {
 
     if (!tokenRes.ok) {
       const text = await tokenRes.text();
-      console.error("Token Exchange Failed:", tokenRes.status, text);
+      logAuthEvent("error", "auth.callback.token_exchange_failed", {
+        status: tokenRes.status,
+        upstream: text.slice(0, 256),
+      });
       cleanup();
       const loginUrl = new URL("/login", APP_URL);
       loginUrl.searchParams.set("error", "token_exchange_failed");
@@ -139,7 +156,9 @@ export async function GET(request: NextRequest) {
     try {
       await verifyKeycloakJwt(tokens.access_token);
     } catch (error) {
-      console.error("Keycloak access token validation failed:", error);
+      logAuthEvent("error", "auth.callback.access_token_invalid", {
+        message: error instanceof Error ? error.message : String(error).slice(0, 256),
+      });
       cleanup();
       const loginUrl = new URL("/login", APP_URL);
       const errorCode =
@@ -178,7 +197,9 @@ export async function GET(request: NextRequest) {
     // the picker without the callback blocking on a sequential fetch.
     return NextResponse.redirect(new URL("/select-organization", APP_URL).toString());
   } catch (err) {
-    console.error("OIDC Callback Error:", err);
+    logAuthEvent("error", "auth.callback.unexpected_failure", {
+      message: err instanceof Error ? err.message : String(err).slice(0, 256),
+    });
     cleanup();
     const loginUrl = new URL("/login", APP_URL);
     loginUrl.searchParams.set("error", "callback_failed");

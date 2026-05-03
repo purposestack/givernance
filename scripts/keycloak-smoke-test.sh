@@ -257,6 +257,12 @@ if [ "$has_admin" != "yes" ]; then
 fi
 ok "User '${SEED_USERNAME}' is a member of '${SEED_ORG_ALIAS}'."
 
+# === [step-up] === Section banner for greppability in CI logs (multi-
+# agent review Logs N-16, PR #251) — `grep -A 100 '\[step-up\]' ci.log`
+# slices the step-up checks out without mixing with the realm/users
+# checks above.
+printf '\n[step-up] step-up MFA flow checks (issue #250)\n'
+
 # Step-up MFA flow checks (issue #250). Without these, a sync-script
 # regression that drops the browser-with-step-up flow / acr.loa.map /
 # browserFlow assignment only surfaces the next time someone tries to
@@ -265,6 +271,10 @@ ok "User '${SEED_USERNAME}' is a member of '${SEED_ORG_ALIAS}'."
 #   - the realm.attributes."acr.loa.map" attribute exists and maps "2"
 #   - the realm.browserFlow points at the custom flow
 #   - the custom flow is present in the authentication/flows list
+#
+# Step-up checks emit `[step-up]` in their messages so CI logs can be
+# sliced to this section with `grep '\[step-up\]'` (multi-agent review
+# Logs N-16, PR #251).
 realm_repr=$(curl -sS -H "Authorization: Bearer ${master_token}" \
   "${KC_URL}/admin/realms/${REALM}")
 acr_loa_map=$(printf '%s' "$realm_repr" | python3 -c '
@@ -402,6 +412,25 @@ if [ "$loa2_level" != "2" ]; then
   fail "loa-2 conditional has loa-condition-level='${loa2_level}', expected '2'."
 fi
 ok "Step-up LoA configs locked: loa-1=level 1, loa-2=level 2."
+
+# QA-D (multi-agent review, PR #251): the previous shape check only
+# verifies `auth-otp-form` is PRESENT at level 2. A regression that
+# flips its `requirement` enum to DISABLED would silently turn off MFA
+# while passing every other smoke test. Lock the enum to REQUIRED so
+# the next deploy that drops the requirement fails closed.
+otp_requirement=$(printf '%s' "$exec_list" | python3 -c '
+import json, sys
+execs = json.load(sys.stdin)
+for ex in execs:
+    if ex.get("level") == 2 and ex.get("providerId") == "auth-otp-form":
+        print(ex.get("requirement", ""))
+        sys.exit(0)
+print("")
+')
+if [ "$otp_requirement" != "REQUIRED" ]; then
+  fail "Step-up: auth-otp-form at LoA-2 has requirement='${otp_requirement}', expected 'REQUIRED'. MFA is silently off — every acr_values=2 request will skip the OTP prompt."
+fi
+ok "Step-up: auth-otp-form at LoA-2 is REQUIRED (MFA actually fires)."
 
 # End-to-end: a normal login (no acr_values) MUST NOT be redirected to
 # CONFIGURE_TOTP. This is the inverse of the bug PR #251 fixes — the
