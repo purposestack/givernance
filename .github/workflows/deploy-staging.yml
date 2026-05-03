@@ -369,6 +369,13 @@ jobs:
           KC_SMTP_AUTH: "true"
           KC_SMTP_USERNAME: resend
           KC_SMTP_PASSWORD: ${{ secrets.RESEND_API_KEY }}
+          # TOTP QR issuer label (issue #250 / PR #251 user feedback).
+          # Authenticator apps render this as the account header so an
+          # operator with credentials in multiple environments can tell
+          # them apart at a glance — staging credentials show
+          # "givernance-staging: <email>". Production deploys (when
+          # they ship) should set the bare "givernance".
+          KC_REALM_DISPLAY_NAME: givernance-staging
         run: bash scripts/keycloak-sync-realm.sh
 
       - name: Dump Keycloak logs on failure

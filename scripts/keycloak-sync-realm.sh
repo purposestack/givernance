@@ -214,12 +214,24 @@ fi
 #  Authentication is always executed (regardless of the requested level)
 #  as the user does not yet have any level."
 KC_URL="$KC_URL" REALM="$REALM" ADMIN_TOKEN="$ADMIN_TOKEN" \
+KC_REALM_DISPLAY_NAME="${KC_REALM_DISPLAY_NAME:-}" \
 python3 <<'PY' || warn "step-up flow reconciliation hit an error — see trace above."
 import json, os, sys, urllib.parse, urllib.request, urllib.error
 
 KC = os.environ["KC_URL"]
 REALM = os.environ["REALM"]
 TOKEN = os.environ["ADMIN_TOKEN"]
+# Optional. Drives the issuer label embedded in the otpauth:// URI when
+# Keycloak generates the QR code for TOTP enrolment — KC reads
+# `realm.displayName` (falling back to `realm.getName()` when empty),
+# and the authenticator app shows that label as the account header
+# (e.g. "givernance-dev: alice@example.org" vs "givernance-staging:
+# alice@example.org"). Per-environment value lets operators tell which
+# realm an enrolled credential was minted against. Set per-env in:
+#   - dev      → .env (`KC_REALM_DISPLAY_NAME=givernance-dev`)
+#   - staging  → .github/workflows/deploy-staging.yml (`givernance-staging`)
+#   - prod     → deploy-production.yml when it lands (`givernance`)
+DESIRED_DISPLAY_NAME = os.environ.get("KC_REALM_DISPLAY_NAME") or ""
 HEADERS = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 FLOW_ALIAS = "browser-with-step-up"
 FORMS_ALIAS = "browser-with-step-up forms"
@@ -283,13 +295,28 @@ if status != 200:
     log(f"could not GET realm — HTTP {status}; aborting step-up sync")
     sys.exit(0)
 attrs = realm.get("attributes") or {}
+realm_dirty = False
 if attrs.get("acr.loa.map") != ACR_LOA_MAP:
     attrs["acr.loa.map"] = ACR_LOA_MAP
     realm["attributes"] = attrs
-    s, _ = call("PUT", f"/admin/realms/{REALM}", realm)
-    log(f"Set realm attribute acr.loa.map={ACR_LOA_MAP} (HTTP {s}).")
+    realm_dirty = True
+    log(f"Will set realm attribute acr.loa.map={ACR_LOA_MAP}.")
 else:
     log("Realm attribute acr.loa.map already correct.")
+
+# `displayName` drives the TOTP QR-code issuer label per environment.
+# Empty string / unset leaves whatever's currently on the realm — same
+# fall-through KC uses internally (it then renders the realm name).
+if DESIRED_DISPLAY_NAME and realm.get("displayName") != DESIRED_DISPLAY_NAME:
+    realm["displayName"] = DESIRED_DISPLAY_NAME
+    realm_dirty = True
+    log(f"Will set realm.displayName={DESIRED_DISPLAY_NAME!r} (TOTP QR issuer).")
+elif DESIRED_DISPLAY_NAME:
+    log(f"Realm.displayName already {DESIRED_DISPLAY_NAME!r}.")
+
+if realm_dirty:
+    s, _ = call("PUT", f"/admin/realms/{REALM}", realm)
+    log(f"Realm attributes / displayName written (HTTP {s}).")
 
 # 2. Detect a stale flow shape and rebuild from scratch. Without this,
 #    a realm that imported the v1 flow (password as a REQUIRED sibling
