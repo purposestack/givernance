@@ -753,7 +753,12 @@
         },
         "lastLoginNever": "Never",
         "empty": "No platform admins yet.",
-        "fetchFailed": "Couldn't load platform admins. Refresh the page to try again."
+        "fetchFailed": "Couldn't load platform admins. Refresh the page to try again.",
+        "filters": {
+          "searchLabel": "Search platform admins",
+          "searchPlaceholder": "Search by name or email…",
+          "includeDeletedLabel": "Show offboarded admins"
+        }
       },
       "new": {
         "back": "← Platform admins",

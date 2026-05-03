@@ -753,7 +753,12 @@
         },
         "lastLoginNever": "Jamais",
         "empty": "Aucun admin plateforme pour le moment.",
-        "fetchFailed": "Impossible de charger les admins plateforme. Rafraîchissez la page pour réessayer."
+        "fetchFailed": "Impossible de charger les admins plateforme. Rafraîchissez la page pour réessayer.",
+        "filters": {
+          "searchLabel": "Rechercher des admins plateforme",
+          "searchPlaceholder": "Rechercher par nom ou email…",
+          "includeDeletedLabel": "Afficher les admins retirés"
+        }
       },
       "new": {
         "back": "← Admins plateforme",
