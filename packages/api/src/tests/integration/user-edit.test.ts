@@ -53,10 +53,26 @@ const fakeKeycloakAdmin: KeycloakAdminClient = {
   deleteUser: vi.fn(async () => {}),
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
-  // Issue #254 — platform-admin CRUD helpers. User-edit flow never calls them.
-  getRealmRole: vi.fn(async () => null),
-  assignRealmRoleToUser: vi.fn(async () => {}),
-  sendExecuteActionsEmail: vi.fn(async () => {}),
+  // Issue #254 — platform-admin CRUD helpers. The user-edit flow never
+  // calls them, so the fakes throw loud: a future code path that
+  // accidentally wires a super-admin or password-reset-email side-effect
+  // into a tenant-user PATCH surfaces here instead of greenly returning
+  // null/{}. (QA review m4 from PR #253.)
+  getRealmRole: vi.fn(async (name: string) => {
+    throw new Error(
+      `user-edit.test fake: getRealmRole(${name}) called — user-edit must not request realm roles. If a new flow needs this, scope the stub.`,
+    );
+  }),
+  assignRealmRoleToUser: vi.fn(async () => {
+    throw new Error(
+      "user-edit.test fake: assignRealmRoleToUser called — user-edit must not promote tenant users to realm roles. If a new flow needs this, scope the stub.",
+    );
+  }),
+  sendExecuteActionsEmail: vi.fn(async () => {
+    throw new Error(
+      "user-edit.test fake: sendExecuteActionsEmail called — user-edit must not trigger built-in KC action emails. If a new flow needs this, scope the stub.",
+    );
+  }),
   _circuitState: () => "closed",
 };
 

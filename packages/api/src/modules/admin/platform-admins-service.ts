@@ -27,39 +27,49 @@
  * Audit: every mutation writes an `audit_logs` row with the operator's
  * `actor_id`. The lifecycle actions are `platform_admin.created`,
  * `platform_admin.renamed`, `platform_admin.password_reset_sent`,
- * `platform_admin.removed`. Audit rows are written under the *legacy*
- * platform-org id (`PLATFORM_AUDIT_ORG_ID`) so an SOC reviewer can grep
- * one tenant id for the full platform-admin lifecycle without having to
- * UNION across customer tenants. The id is a Keycloak-side constant; no
- * `tenants` row exists at it (ADR-022).
+ * `platform_admin.removed`. Audit rows are written under the platform
+ * sentinel tenant (slug `__platform__`, ADR-022 amendment) so an SOC
+ * reviewer can grep one tenant id for the full platform-admin lifecycle
+ * without UNIONing across customer tenants. The id is resolved at
+ * runtime via `getPlatformOrgId` from the `tenants` row; no magic-UUID
+ * literal is pinned in code.
  */
 
-import { APP_DEFAULT_LOCALE } from "@givernance/shared/i18n";
+import { APP_DEFAULT_LOCALE, type Locale } from "@givernance/shared/i18n";
 import {
   auditLogs,
   invitations,
   outboxEvents,
   platformAdmins,
   type platformAdmins as platformAdminsTable,
+  tenants,
   users,
 } from "@givernance/shared/schema";
 import { and, asc, desc, eq, gt, ilike, isNotNull, isNull, or, type SQL, sql } from "drizzle-orm";
 import pino from "pino";
 import { systemDb } from "../../lib/db.js";
-import { KeycloakUserExistsError, keycloakAdmin } from "../../lib/keycloak-admin.js";
+import {
+  KeycloakAdminError,
+  type KeycloakOrganization,
+  KeycloakUserExistsError,
+  keycloakAdmin,
+} from "../../lib/keycloak-admin.js";
 import { blocklistUser } from "../session/service.js";
 
 const logger = pino({ name: "platform-admins-service" });
 
 /**
- * The Keycloak "Givernance Platform" Organization's `org_id` attribute —
- * mirrors the realm-import seed (`infra/keycloak/realm-givernance.json`).
- * It is **not** an app-DB tenant id (ADR-022 removed the synthetic
- * `tenants` row). Used only as the `audit_logs.org_id` value for the
- * platform-admin lifecycle so a reviewer can scope a query to the
- * platform tenant id and see every super-admin lifecycle event.
+ * Slug used to identify the platform sentinel tenant row (ADR-022
+ * amendment). The row exists solely so `audit_logs.org_id` can FK to a
+ * real `tenants.id` for platform-level lifecycle events; it is hidden
+ * from every customer-facing list endpoint by `status = 'archived'` +
+ * the `__platform__` reserved-slug pattern. We resolve the id from this
+ * slug at runtime (cached per process) instead of pinning the literal
+ * `00000000-0000-0000-0000-0000000000a1` in the codebase — that literal
+ * was the last magic-UUID `PLATFORM_TENANT_ID` carry-over ADR-022
+ * originally set out to remove.
  */
-const PLATFORM_AUDIT_ORG_ID = "00000000-0000-0000-0000-0000000000a1";
+const PLATFORM_TENANT_SLUG = "__platform__";
 
 /**
  * Lifespan for the UPDATE_PASSWORD email link (4 hours). Long enough that
@@ -71,6 +81,69 @@ const PASSWORD_RESET_LIFESPAN_SEC = 4 * 60 * 60;
 
 const SUPER_ADMIN_ROLE_NAME = "super_admin";
 const PLATFORM_ORG_ALIAS = "platform";
+
+// ─── Module-local lookup caches ─────────────────────────────────────────────
+//
+// All three values are realm-lifetime stable (the platform tenant row,
+// the `super_admin` realm role, the `platform` Keycloak Organization).
+// Caching them per process saves a round-trip on every accept / rename /
+// reset / soft-delete. Cache misses re-hit the source so a re-imported
+// realm or a re-seeded sentinel row recovers without a process restart;
+// stale `{id, name}` cache entries that turn into 404s at use-site are
+// invalidated by the call site (see the accept flow's role + org
+// catch-blocks below).
+
+let cachedPlatformOrgId: string | null = null;
+let cachedSuperAdminRole: { id: string; name: string } | null = null;
+let cachedPlatformOrg: KeycloakOrganization | null = null;
+
+async function getPlatformOrgId(): Promise<string> {
+  if (cachedPlatformOrgId) return cachedPlatformOrgId;
+  const [row] = await systemDb
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.slug, PLATFORM_TENANT_SLUG))
+    .limit(1);
+  if (!row) {
+    // Deployment bootstrap missed the sentinel insert. Bail loud — every
+    // platform-admin write needs this row to FK against `audit_logs.org_id`.
+    // (ADR-022 amendment.)
+    throw new Error(
+      `Platform sentinel tenant (slug='${PLATFORM_TENANT_SLUG}') is missing — apply the deploy bootstrap insert (ADR-022 amendment).`,
+    );
+  }
+  cachedPlatformOrgId = row.id;
+  return row.id;
+}
+
+async function getCachedSuperAdminRole(): Promise<{ id: string; name: string } | null> {
+  if (cachedSuperAdminRole) return cachedSuperAdminRole;
+  const role = await keycloakAdmin().getRealmRole(SUPER_ADMIN_ROLE_NAME);
+  if (role) cachedSuperAdminRole = role;
+  return role;
+}
+
+async function getCachedPlatformOrg(): Promise<KeycloakOrganization | null> {
+  if (cachedPlatformOrg) return cachedPlatformOrg;
+  const org = await keycloakAdmin().getOrganizationByAlias(PLATFORM_ORG_ALIAS);
+  if (org) cachedPlatformOrg = org;
+  return org;
+}
+
+function invalidatePlatformLookupCache() {
+  cachedSuperAdminRole = null;
+  cachedPlatformOrg = null;
+  // `cachedPlatformOrgId` is DB-backed off the immutable `__platform__`
+  // slug — no scenario invalidates it short of the row being deleted,
+  // which is itself a deploy-bootstrap regression (see `getPlatformOrgId`).
+}
+
+/**
+ * Test-only escape hatch — drains the module-local caches so a Vitest
+ * `beforeEach` can guarantee a fresh KC round-trip per case. Not exported
+ * from the package barrel; tests reach in by direct file import.
+ */
+export const __testInvalidatePlatformLookupCache = invalidatePlatformLookupCache;
 
 // Note on `sendExecuteActionsEmail` parameters:
 //
@@ -149,6 +222,15 @@ export interface CreateInput {
   /** Hash of operator IP + user-agent for audit_logs. */
   ipHash: string | null;
   userAgent: string | null;
+  /**
+   * Operator's locale (resolved from `Accept-Language` at the route
+   * boundary). Threads through to the outbox payload so the invite email
+   * lands in the language the operator was using when they issued it —
+   * the best signal we have for the new admin's preferred language until
+   * they accept and pick their own. Optional; falls back to
+   * `APP_DEFAULT_LOCALE` when omitted.
+   */
+  locale?: Locale;
 }
 
 export interface UpdateNameInput {
@@ -344,12 +426,20 @@ export async function invitePlatformAdmin(input: CreateInput): Promise<InviteRes
   }
 
   const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
+  const platformOrgId = await getPlatformOrgId();
+
+  // The invite email goes to a brand-new identity that has no stored
+  // language preference yet — the operator's locale (read from the
+  // `Accept-Language` header at the route boundary) is the best signal we
+  // have. Fall back to `APP_DEFAULT_LOCALE` if the route didn't supply
+  // one (test paths, programmatic callers).
+  const inviteLocale = input.locale ?? APP_DEFAULT_LOCALE;
 
   return systemDb.transaction(async (tx) => {
     const [row] = await tx
       .insert(invitations)
       .values({
-        orgId: PLATFORM_AUDIT_ORG_ID,
+        orgId: platformOrgId,
         email,
         firstName: input.firstName,
         lastName: input.lastName,
@@ -375,26 +465,21 @@ export async function invitePlatformAdmin(input: CreateInput): Promise<InviteRes
     // outbox payload — the worker reads it back from the row inside its
     // own trust boundary.
     await tx.insert(outboxEvents).values({
-      tenantId: PLATFORM_AUDIT_ORG_ID,
+      tenantId: platformOrgId,
       type: "platform_admin.invited",
       payload: {
-        tenantId: PLATFORM_AUDIT_ORG_ID,
+        tenantId: platformOrgId,
         invitationId: row.id,
         email: row.email,
         inviterKeycloakId: input.actorKeycloakId,
         expiresAt: row.expiresAt.toISOString(),
-        // Locale: platform admins don't have a stored preference at
-        // invite time; default to APP_DEFAULT_LOCALE. The worker can
-        // override at send time if it has a better signal.
-        locale: APP_DEFAULT_LOCALE,
+        locale: inviteLocale,
       },
     });
 
-    await tx.execute(
-      sql`SELECT set_config('app.current_organization_id', ${PLATFORM_AUDIT_ORG_ID}, true)`,
-    );
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${platformOrgId}, true)`);
     await tx.insert(auditLogs).values({
-      orgId: PLATFORM_AUDIT_ORG_ID,
+      orgId: platformOrgId,
       // The invitee's KC sub doesn't exist yet — leave userId null until
       // the accept flow lands the platform_admins row.
       userId: null,
@@ -466,6 +551,14 @@ export interface AcceptInput {
   lastName: string;
   ipHash: string | null;
   userAgent: string | null;
+  /**
+   * Locale the invitee was viewing the accept page in. Stamped onto the
+   * Keycloak user's `locale` attribute so future emails (e.g. the
+   * reset-password flow) land in the language they picked at first
+   * contact, instead of falling back to the realm-wide default. Optional;
+   * KC simply omits the attribute if absent.
+   */
+  locale?: Locale;
 }
 
 /**
@@ -506,10 +599,9 @@ export async function acceptPlatformAdminInvitation(input: AcceptInput): Promise
     throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation has expired.");
   }
 
-  const [role, org] = await Promise.all([
-    keycloakAdmin().getRealmRole(SUPER_ADMIN_ROLE_NAME),
-    keycloakAdmin().getOrganizationByAlias(PLATFORM_ORG_ALIAS),
-  ]);
+  const platformOrgId = await getPlatformOrgId();
+
+  const [role, org] = await Promise.all([getCachedSuperAdminRole(), getCachedPlatformOrg()]);
   if (!role) {
     throw new PlatformAdminServiceError(
       502,
@@ -539,9 +631,18 @@ export async function acceptPlatformAdminInvitation(input: AcceptInput): Promise
       attributes: {
         // Same `org_id` user attribute as the seeded admin so the JWT
         // carries the flat `org_id` claim that `verifyKeycloakJwt`
-        // requires. (See PR #253 review feedback.)
-        org_id: [PLATFORM_AUDIT_ORG_ID],
+        // requires. (See PR #253 review feedback.) Resolved at runtime
+        // from the platform sentinel `tenants` row (slug `__platform__`)
+        // so the value matches what audit / outbox writes use — no
+        // magic-UUID literal in app code.
+        org_id: [platformOrgId],
         role: ["org_admin"],
+        // KC uses the user's `locale` attribute to pick the email
+        // template language for built-in flows (UPDATE_PASSWORD etc).
+        // We only set it when the invitee picked a non-default locale —
+        // omitting the attribute lets KC fall back to its realm-wide
+        // default, which matches our APP_DEFAULT_LOCALE.
+        ...(input.locale ? { locale: [input.locale] } : {}),
       },
     });
     kcUserId = out.id;
@@ -562,6 +663,27 @@ export async function acceptPlatformAdminInvitation(input: AcceptInput): Promise
   } catch (err) {
     await compensatingKcDelete(kcUserId, "accept-side-effects-failed");
     if (err instanceof PlatformAdminServiceError) throw err;
+
+    // Race against a re-imported (or just-deleted) realm — between the
+    // pre-flight `getCachedSuperAdminRole` / `getCachedPlatformOrg`
+    // lookups above and the writes here, the role/org could vanish or
+    // be replaced with a fresh id. Without this branch the operator
+    // sees a generic `KEYCLOAK_FAILURE` (502) and has to dig through
+    // the wrapped error message to know whether to re-import the realm
+    // or escalate to KC ops. The cached `{id, name}` is stale either
+    // way, so invalidate before bubbling so the next attempt re-fetches.
+    if (err instanceof KeycloakAdminError && err.status === 404) {
+      invalidatePlatformLookupCache();
+      const code = err.path?.includes("/role-mappings/")
+        ? "KEYCLOAK_ROLE_MISSING"
+        : "KEYCLOAK_ORG_MISSING";
+      throw new PlatformAdminServiceError(
+        502,
+        code,
+        `Keycloak ${code === "KEYCLOAK_ROLE_MISSING" ? `realm role '${SUPER_ADMIN_ROLE_NAME}'` : `Organization '${PLATFORM_ORG_ALIAS}'`} disappeared between pre-flight and write — realm needs re-importing.`,
+      );
+    }
+
     throw new PlatformAdminServiceError(
       502,
       "KEYCLOAK_FAILURE",
@@ -597,11 +719,9 @@ export async function acceptPlatformAdminInvitation(input: AcceptInput): Promise
       .returning();
     if (!row) throw new Error("acceptPlatformAdminInvitation: insert returned no row");
 
-    await tx.execute(
-      sql`SELECT set_config('app.current_organization_id', ${PLATFORM_AUDIT_ORG_ID}, true)`,
-    );
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${platformOrgId}, true)`);
     await tx.insert(auditLogs).values({
-      orgId: PLATFORM_AUDIT_ORG_ID,
+      orgId: platformOrgId,
       userId: kcUserId,
       // No `actorId` — the invitee accepted the invitation themselves.
       // The original inviter is recorded on the `platform_admin.invited`
@@ -622,6 +742,7 @@ export async function acceptPlatformAdminInvitation(input: AcceptInput): Promise
 
 export async function updatePlatformAdminName(input: UpdateNameInput): Promise<PlatformAdminRow> {
   const existing = await getActiveAdminOrThrow(input.id);
+  const platformOrgId = await getPlatformOrgId();
 
   await keycloakAdmin().updateUser(existing.keycloakId!, {
     firstName: input.firstName,
@@ -640,11 +761,9 @@ export async function updatePlatformAdminName(input: UpdateNameInput): Promise<P
       .returning();
     if (!row) throw new Error("updatePlatformAdminName: update returned no row");
 
-    await tx.execute(
-      sql`SELECT set_config('app.current_organization_id', ${PLATFORM_AUDIT_ORG_ID}, true)`,
-    );
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${platformOrgId}, true)`);
     await tx.insert(auditLogs).values({
-      orgId: PLATFORM_AUDIT_ORG_ID,
+      orgId: platformOrgId,
       userId: existing.keycloakId,
       actorId: input.actorKeycloakId,
       action: "platform_admin.renamed",
@@ -671,6 +790,7 @@ export async function updatePlatformAdminName(input: UpdateNameInput): Promise<P
 
 export async function resetPlatformAdminPassword(input: ResetPasswordInput): Promise<void> {
   const existing = await getActiveAdminOrThrow(input.id);
+  const platformOrgId = await getPlatformOrgId();
 
   await keycloakAdmin().sendExecuteActionsEmail(existing.keycloakId!, ["UPDATE_PASSWORD"], {
     lifespanSec: PASSWORD_RESET_LIFESPAN_SEC,
@@ -678,11 +798,9 @@ export async function resetPlatformAdminPassword(input: ResetPasswordInput): Pro
   });
 
   await systemDb.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT set_config('app.current_organization_id', ${PLATFORM_AUDIT_ORG_ID}, true)`,
-    );
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${platformOrgId}, true)`);
     await tx.insert(auditLogs).values({
-      orgId: PLATFORM_AUDIT_ORG_ID,
+      orgId: platformOrgId,
       userId: existing.keycloakId,
       actorId: input.actorKeycloakId,
       action: "platform_admin.password_reset_sent",
@@ -709,6 +827,8 @@ export async function softDeletePlatformAdmin(input: SoftDeleteInput): Promise<v
       "Operators cannot soft-delete their own platform-admin row. Ask another super-admin.",
     );
   }
+
+  const platformOrgId = await getPlatformOrgId();
 
   // Atomic delete + last-admin guard + audit insert in one SERIALIZABLE
   // transaction (security review M1, QA M4, data architect #13). The
@@ -769,10 +889,10 @@ export async function softDeletePlatformAdmin(input: SoftDeleteInput): Promise<v
         .where(eq(platformAdmins.id, input.id));
 
       await tx.execute(
-        sql`SELECT set_config('app.current_organization_id', ${PLATFORM_AUDIT_ORG_ID}, true)`,
+        sql`SELECT set_config('app.current_organization_id', ${platformOrgId}, true)`,
       );
       await tx.insert(auditLogs).values({
-        orgId: PLATFORM_AUDIT_ORG_ID,
+        orgId: platformOrgId,
         userId: lockedKeycloakId,
         actorId: input.actorKeycloakId,
         action: "platform_admin.removed",

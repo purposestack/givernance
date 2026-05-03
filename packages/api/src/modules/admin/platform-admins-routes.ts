@@ -25,6 +25,7 @@
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireSuperAdmin } from "../../lib/guards.js";
+import { resolveRequestLocale } from "../../lib/i18n.js";
 import { DataResponse, ErrorResponses, problemDetail, UuidSchema } from "../../lib/schemas.js";
 import { hashIp } from "./impersonation-service.js";
 import {
@@ -266,6 +267,10 @@ export async function platformAdminsRoutes(app: FastifyInstance) {
           firstName: body.firstName,
           lastName: body.lastName,
           ...actorContext(request),
+          // Invite email picks up the operator's locale — best signal
+          // for the invitee's language until they accept and pick their
+          // own (which then writes the KC `locale` user attribute).
+          locale: resolveRequestLocale(request),
         });
         return reply.status(201).send({
           data: {
@@ -358,6 +363,10 @@ export async function platformAdminsRoutes(app: FastifyInstance) {
           lastName: body.lastName,
           ipHash: hashIp(request.ip),
           userAgent: request.headers["user-agent"] ?? null,
+          // Invitee's accept-page locale → KC `locale` user attribute, so
+          // future built-in flows (e.g. UPDATE_PASSWORD via reset) honour
+          // their language without the operator having to set it manually.
+          locale: resolveRequestLocale(request),
         });
         return reply.status(201).send({ data: serialize(row) });
       } catch (err) {

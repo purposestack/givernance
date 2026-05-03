@@ -253,6 +253,13 @@
       "when": 1777750000000,
       "tag": "0035_invitation_purpose_platform_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1777800000000,
+      "tag": "0036_platform_admins_sort_indexes",
+      "breakpoints": true
     }
   ]
 }

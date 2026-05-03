@@ -61,8 +61,8 @@ export default async function TenantListPage({
     <div className="space-y-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-heading text-2xl text-text">{t("title")}</h1>
-          <p className="mt-1 text-sm text-text-secondary">{t("subtitle")}</p>
+          <h1 className="font-heading text-2xl text-on-surface">{t("title")}</h1>
+          <p className="mt-1 text-sm text-on-surface-variant">{t("subtitle")}</p>
         </div>
         <Button asChild>
           <Link href="/admin/tenants/new">{t("createCta")}</Link>

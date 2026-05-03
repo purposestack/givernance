@@ -31,7 +31,7 @@ Platform admins are modeled as a separate identity surface from tenant users. A 
 
 `platform_admins`:
 - `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`
-- `keycloak_id varchar(255) NOT NULL` — the JWT `sub`; nullable only across rejoin (mirrors `users.keycloak_id` semantics)
+- `keycloak_id varchar(255)` — the JWT `sub`. **Nullable** to mirror `users.keycloak_id` semantics: the soft-delete path on `platform_admins` nulls this column at the same time it stamps `deleted_at`, so the offboarded admin's KC `sub` is no longer linkable to the row (the audit chain references it independently via `audit_logs.user_id`). The partial-unique index below scopes uniqueness to active rows, which lets the same KC `sub` be re-issued cleanly if a former admin is re-onboarded.
 - `email varchar(255) NOT NULL`
 - `first_name varchar(255) NOT NULL`
 - `last_name varchar(255) NOT NULL`

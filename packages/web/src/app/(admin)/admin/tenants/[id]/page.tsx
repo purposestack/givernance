@@ -30,7 +30,7 @@ function DetailCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
       <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{label}</p>
-      <p className="mt-2 text-sm text-text">{value}</p>
+      <p className="mt-2 text-sm text-on-surface">{value}</p>
     </div>
   );
 }
@@ -118,10 +118,10 @@ export default async function TenantDetailPage({
             <TableRow key={domain.id}>
               <TableCell>{domain.domain}</TableCell>
               <TableCell>{domain.state}</TableCell>
-              <TableCell className="font-mono text-xs text-text-secondary">
+              <TableCell className="font-mono text-xs text-on-surface-variant">
                 {domain.dnsTxtValue}
               </TableCell>
-              <TableCell className="text-text-secondary">
+              <TableCell className="text-on-surface-variant">
                 {formatAdminDate(domain.verifiedAt)}
               </TableCell>
             </TableRow>
@@ -130,7 +130,7 @@ export default async function TenantDetailPage({
       </Table>
     </div>
   ) : (
-    <p className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-text-secondary">
+    <p className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
       {t("domains.empty")}
     </p>
   );
@@ -151,9 +151,9 @@ export default async function TenantDetailPage({
           {users.map((user) => (
             <TableRow key={user.id}>
               <TableCell>{formatTenantUserName(user.firstName, user.lastName)}</TableCell>
-              <TableCell className="text-text-secondary">{user.email}</TableCell>
+              <TableCell className="text-on-surface-variant">{user.email}</TableCell>
               <TableCell>{user.role}</TableCell>
-              <TableCell className="text-text-secondary">
+              <TableCell className="text-on-surface-variant">
                 {user.firstAdmin
                   ? t("users.flags.firstAdmin")
                   : user.provisionalUntil
@@ -162,7 +162,7 @@ export default async function TenantDetailPage({
                       })
                     : "—"}
               </TableCell>
-              <TableCell className="text-text-secondary">
+              <TableCell className="text-on-surface-variant">
                 {formatAdminDate(user.lastVisitedAt)}
               </TableCell>
             </TableRow>
@@ -171,7 +171,7 @@ export default async function TenantDetailPage({
       </Table>
     </div>
   ) : (
-    <p className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-text-secondary">
+    <p className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
       {t("users.empty")}
     </p>
   );
@@ -191,17 +191,17 @@ export default async function TenantDetailPage({
         <TableBody>
           {recentAudit.map((entry) => (
             <TableRow key={entry.id} className="align-top">
-              <TableCell className="text-text-secondary">
+              <TableCell className="text-on-surface-variant">
                 {formatAdminDate(entry.createdAt)}
               </TableCell>
               <TableCell>{entry.action}</TableCell>
-              <TableCell className="text-text-secondary">
+              <TableCell className="text-on-surface-variant">
                 {[entry.resourceType, entry.resourceId].filter(Boolean).join(" · ") || "—"}
               </TableCell>
-              <TableCell className="font-mono text-xs text-text-secondary">
+              <TableCell className="font-mono text-xs text-on-surface-variant">
                 {entry.userId ?? "—"}
               </TableCell>
-              <TableCell className="text-xs text-text-secondary">
+              <TableCell className="text-xs text-on-surface-variant">
                 <p>{t("audit.oldValues", { value: renderJsonPreview(entry.oldValues) })}</p>
                 <p className="mt-1">
                   {t("audit.newValues", { value: renderJsonPreview(entry.newValues) })}
@@ -213,7 +213,7 @@ export default async function TenantDetailPage({
       </Table>
     </div>
   ) : (
-    <p className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-text-secondary">
+    <p className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
       {t("audit.empty")}
     </p>
   );
@@ -226,8 +226,8 @@ export default async function TenantDetailPage({
         </Link>
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="font-heading text-2xl text-text">{tenant.name}</h1>
-            <p className="mt-1 text-sm text-text-secondary">{tenant.slug}</p>
+            <h1 className="font-heading text-2xl text-on-surface">{tenant.name}</h1>
+            <p className="mt-1 text-sm text-on-surface-variant">{tenant.slug}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <TenantStatusBadge status={tenant.status} label={tenantStatusLabel(t, tenant.status)} />

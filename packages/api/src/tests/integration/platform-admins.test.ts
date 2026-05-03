@@ -105,10 +105,16 @@ afterEach(async () => {
   `);
   // Restore the seeded operator to its canonical active shape — the
   // soft-delete tests null its `keycloak_id` and set `deleted_at`.
+  // The `email` column is included in the ON CONFLICT clause because
+  // `impersonation.test.ts` inserts the same id under a different
+  // email (`operator-super-admin@example.org`); without an email reset
+  // the "super_admin sees the list with at least the seeded operator"
+  // assertion below flakes when this file runs after impersonation.test
+  // in the shared `givernance_test` DB. (Issue #255 fix.)
   await db.execute(sql`
     INSERT INTO platform_admins (id, keycloak_id, email, first_name, last_name)
     VALUES (${SUPER_ADMIN_PLATFORM_ROW_ID}, ${SUPER_ADMIN_KEYCLOAK_ID}, 'super@example.org', 'Super', 'Admin')
-    ON CONFLICT (id) DO UPDATE SET deleted_at = NULL, keycloak_id = ${SUPER_ADMIN_KEYCLOAK_ID}, first_name = 'Super', last_name = 'Admin'
+    ON CONFLICT (id) DO UPDATE SET deleted_at = NULL, keycloak_id = ${SUPER_ADMIN_KEYCLOAK_ID}, email = 'super@example.org', first_name = 'Super', last_name = 'Admin'
   `);
 
   // Wipe any user-blocklist Redis keys the soft-delete tests wrote so
@@ -562,5 +568,290 @@ describe("DELETE /v1/admin/platform-admins/:id", () => {
       sql`SELECT action FROM audit_logs WHERE resource_id = ${id} AND action = 'platform_admin.removed'`,
     );
     expect(auditRows.rows.length).toBe(1);
+  });
+
+  // QA review m1 — boundary case for the last-admin guard. The seeded
+  // operator is soft-deleted (via a second admin); only one active row
+  // remains and the next delete must trip the guard. Pins that the
+  // count clause filters `deleted_at IS NULL` rather than counting all
+  // rows. (Issue #255.)
+  it("last-admin guard counts active rows only: deleting the sole active row when a soft-deleted row exists → 400", async () => {
+    // Step 1: invite + accept admin C.
+    const { id: cId, keycloakId: cKc } = await inviteAndAccept({
+      email: `edge-active-${randomUUID().slice(0, 8)}@example.org`,
+      firstName: "Edge",
+      lastName: "Active",
+    });
+
+    // Step 2: C soft-deletes the seeded operator. After this, the
+    // platform_admins table has:
+    //   - seeded operator: deleted_at IS NOT NULL
+    //   - C:               deleted_at IS NULL  (only active row)
+    const cToken = signToken(app, {
+      sub: cKc,
+      realm_access: { roles: ["super_admin"] },
+      role: undefined,
+    });
+    const removeSeeded = await app.inject({
+      method: "DELETE",
+      url: `/v1/admin/platform-admins/${SUPER_ADMIN_PLATFORM_ROW_ID}`,
+      headers: authHeader(cToken),
+    });
+    expect(removeSeeded.statusCode).toBe(204);
+
+    // Step 3: a third operator (no platform_admins row, just a JWT)
+    // attempts to delete C. The self-removal guard wouldn't fire
+    // (third != C), so this lands directly in the last-admin guard.
+    const thirdToken = signToken(app, {
+      sub: "00000000-0000-0000-0000-0000000000fd",
+      realm_access: { roles: ["super_admin"] },
+      role: undefined,
+    });
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/admin/platform-admins/${cId}`,
+      headers: authHeader(thirdToken),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/400",
+      title: "Bad Request",
+      status: 400,
+    });
+    expect((res.json() as { detail?: string }).detail ?? "").toMatch(/last active/i);
+  });
+
+  // QA review M4 — concurrency invariant for the last-admin guard. With
+  // two active admins, two operators racing to delete *different*
+  // targets must not both succeed (that would leave zero active admins
+  // and brick the platform). The service uses SERIALIZABLE + FOR UPDATE
+  // to make exactly one win — the loser is either rejected by the
+  // count clause (400) or aborted by Postgres SSI (5xx). The test
+  // pins the invariant "exactly one of the two requests succeeds";
+  // either failure mode satisfies that. (Issue #255, security review M1.)
+  it("last-admin guard concurrency: Promise.all on two distinct deletes against the second-to-last admin → exactly one succeeds", async () => {
+    // Step 1: two active admins.
+    const { id: cId } = await inviteAndAccept({
+      email: `race-c-${randomUUID().slice(0, 8)}@example.org`,
+      firstName: "RaceC",
+      lastName: "Admin",
+    });
+
+    // Step 2: two distinct operators (neither is in platform_admins).
+    const opD = signToken(app, {
+      sub: "00000000-0000-0000-0000-0000000000fa",
+      realm_access: { roles: ["super_admin"] },
+      role: undefined,
+    });
+    const opE = signToken(app, {
+      sub: "00000000-0000-0000-0000-0000000000fb",
+      realm_access: { roles: ["super_admin"] },
+      role: undefined,
+    });
+
+    // Step 3: race the two deletes. Op D removes the seeded operator,
+    // op E removes admin C. Both targets are currently active, both
+    // count snapshots see active=2 — the SERIALIZABLE + FOR UPDATE
+    // posture must prevent both from committing.
+    const [resD, resE] = await Promise.all([
+      app.inject({
+        method: "DELETE",
+        url: `/v1/admin/platform-admins/${SUPER_ADMIN_PLATFORM_ROW_ID}`,
+        headers: authHeader(opD),
+      }),
+      app.inject({
+        method: "DELETE",
+        url: `/v1/admin/platform-admins/${cId}`,
+        headers: authHeader(opE),
+      }),
+    ]);
+
+    const successes = [resD.statusCode, resE.statusCode].filter((c) => c === 204);
+    const failures = [resD.statusCode, resE.statusCode].filter((c) => c !== 204);
+    expect(successes.length).toBe(1);
+    expect(failures.length).toBe(1);
+    // Loser is either 400 (count clause won) or 5xx (Postgres serialization
+    // failure bubbled). Either is correct — the invariant is "at least one
+    // active admin remains".
+    expect(failures[0]).toBeGreaterThanOrEqual(400);
+
+    // Final DB state: exactly one active admin.
+    const counts = await systemDb.execute<{ count: number }>(
+      sql`SELECT COUNT(*)::int AS count FROM platform_admins WHERE deleted_at IS NULL`,
+    );
+    expect(Number(counts.rows[0]?.count ?? 0)).toBe(1);
+  });
+});
+
+// ─── Audit attribution (issue #255, QA review M3) ──────────────────────────
+//
+// The PR #253 audit-row tests confirmed *that* a row was written, not
+// *who* it attributes the event to. These tests pin (`actor_id`,
+// `org_id`, `user_id`) on every lifecycle action so a future change to
+// the audit-write call site can't silently lose attribution columns.
+
+describe("Audit attribution", () => {
+  it("platform_admin.password_reset_sent: actor_id = operator, org_id = platform sentinel, user_id = target's KC sub", async () => {
+    const { id, keycloakId: targetKc } = await inviteAndAccept({
+      email: `audit-reset-${randomUUID().slice(0, 8)}@example.org`,
+      firstName: "AuditReset",
+      lastName: "Admin",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/admin/platform-admins/${id}/reset-password`,
+      headers: authHeader(superAdminToken()),
+    });
+    expect(res.statusCode).toBe(204);
+
+    const rows = await systemDb.execute<{
+      actor_id: string | null;
+      org_id: string;
+      user_id: string | null;
+    }>(
+      sql`SELECT actor_id, org_id, user_id FROM audit_logs WHERE resource_id = ${id} AND action = 'platform_admin.password_reset_sent'`,
+    );
+    expect(rows.rows.length).toBe(1);
+    expect(rows.rows[0]?.actor_id).toBe(SUPER_ADMIN_KEYCLOAK_ID);
+    expect(rows.rows[0]?.org_id).toBe(PLATFORM_TENANT_ID);
+    expect(rows.rows[0]?.user_id).toBe(targetKc);
+  });
+
+  it("platform_admin.renamed: actor_id = operator, org_id = platform sentinel, user_id = target's KC sub", async () => {
+    const { id, keycloakId: targetKc } = await inviteAndAccept({
+      email: `audit-rename-${randomUUID().slice(0, 8)}@example.org`,
+      firstName: "AuditRename",
+      lastName: "Before",
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/admin/platform-admins/${id}`,
+      headers: authHeader(superAdminToken()),
+      payload: { firstName: "AuditRename", lastName: "After" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const rows = await systemDb.execute<{
+      actor_id: string | null;
+      org_id: string;
+      user_id: string | null;
+    }>(
+      sql`SELECT actor_id, org_id, user_id FROM audit_logs WHERE resource_id = ${id} AND action = 'platform_admin.renamed'`,
+    );
+    expect(rows.rows.length).toBe(1);
+    expect(rows.rows[0]?.actor_id).toBe(SUPER_ADMIN_KEYCLOAK_ID);
+    expect(rows.rows[0]?.org_id).toBe(PLATFORM_TENANT_ID);
+    expect(rows.rows[0]?.user_id).toBe(targetKc);
+  });
+
+  it("platform_admin.removed: actor_id = operator, org_id = platform sentinel, user_id = target's pre-soft-delete KC sub", async () => {
+    const { id, keycloakId: targetKc } = await inviteAndAccept({
+      email: `audit-remove-${randomUUID().slice(0, 8)}@example.org`,
+      firstName: "AuditRemove",
+      lastName: "Admin",
+    });
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/admin/platform-admins/${id}`,
+      headers: authHeader(superAdminToken()),
+    });
+    expect(res.statusCode).toBe(204);
+
+    const rows = await systemDb.execute<{
+      actor_id: string | null;
+      org_id: string;
+      user_id: string | null;
+    }>(
+      sql`SELECT actor_id, org_id, user_id FROM audit_logs WHERE resource_id = ${id} AND action = 'platform_admin.removed'`,
+    );
+    expect(rows.rows.length).toBe(1);
+    expect(rows.rows[0]?.actor_id).toBe(SUPER_ADMIN_KEYCLOAK_ID);
+    expect(rows.rows[0]?.org_id).toBe(PLATFORM_TENANT_ID);
+    // user_id captures the KC sub at delete time (read inside the
+    // SERIALIZABLE tx before the row's keycloak_id is nulled), so
+    // post-delete the audit row still attributes to the offboarded sub.
+    expect(rows.rows[0]?.user_id).toBe(targetKc);
+  });
+});
+
+// ─── End-to-end happy path (issue #255, QA review m5) ───────────────────────
+//
+// One walk that exercises every endpoint on a single id, in order:
+//   POST invite → accept → GET detail → PATCH rename → POST reset-password
+//   → DELETE soft-delete. Catches regressions where any single endpoint
+//   regresses the invariants of the next (e.g. PATCH not refreshing
+//   `updated_at`, DELETE forgetting to null `keycloak_id`).
+
+describe("E2E happy path", () => {
+  it("invite → accept → GET → PATCH → reset-password → DELETE on the same id", async () => {
+    const email = `e2e-${randomUUID().slice(0, 8)}@example.org`;
+
+    // 1. Invite + accept (helper covers POST + GET-token + POST-accept).
+    const { id, keycloakId } = await inviteAndAccept({
+      email,
+      firstName: "E2E",
+      lastName: "Walk",
+    });
+
+    // 2. GET detail returns the row we just created.
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/v1/admin/platform-admins/${id}`,
+      headers: authHeader(superAdminToken()),
+    });
+    expect(getRes.statusCode).toBe(200);
+    const detail = (getRes.json() as { data: { email: string; firstName: string } }).data;
+    expect(detail.email).toBe(email);
+    expect(detail.firstName).toBe("E2E");
+
+    // 3. PATCH rename — value changes are reflected in the response.
+    const patchRes = await app.inject({
+      method: "PATCH",
+      url: `/v1/admin/platform-admins/${id}`,
+      headers: authHeader(superAdminToken()),
+      payload: { firstName: "Renamed", lastName: "Walk" },
+    });
+    expect(patchRes.statusCode).toBe(200);
+    expect((patchRes.json() as { data: { firstName: string } }).data.firstName).toBe("Renamed");
+
+    // 4. POST reset-password — KC fake observed once.
+    kcSendExecuteActions.mockClear();
+    const resetRes = await app.inject({
+      method: "POST",
+      url: `/v1/admin/platform-admins/${id}/reset-password`,
+      headers: authHeader(superAdminToken()),
+    });
+    expect(resetRes.statusCode).toBe(204);
+    expect(kcSendExecuteActions).toHaveBeenCalledTimes(1);
+    expect(kcSendExecuteActions.mock.calls[0]?.[0]).toBe(keycloakId);
+
+    // 5. DELETE soft-delete — KC user deleted, audit + soft-delete state
+    // applied.
+    kcDeleteUser.mockClear();
+    const delRes = await app.inject({
+      method: "DELETE",
+      url: `/v1/admin/platform-admins/${id}`,
+      headers: authHeader(superAdminToken()),
+    });
+    expect(delRes.statusCode).toBe(204);
+    expect(kcDeleteUser).toHaveBeenCalledWith(keycloakId);
+
+    // The full lifecycle audit chain is queryable on the resource id.
+    const chain = await systemDb.execute<{ action: string }>(
+      sql`SELECT action FROM audit_logs WHERE resource_id = ${id} ORDER BY created_at ASC`,
+    );
+    const actions = chain.rows.map((r) => r.action);
+    // `platform_admin.invited` lands on the *invitation* id (not this
+    // platform_admins.id), so we expect the post-accept lifecycle here:
+    // created → renamed → password_reset_sent → removed.
+    expect(actions).toEqual([
+      "platform_admin.created",
+      "platform_admin.renamed",
+      "platform_admin.password_reset_sent",
+      "platform_admin.removed",
+    ]);
   });
 });

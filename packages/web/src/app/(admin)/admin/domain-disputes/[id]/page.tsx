@@ -41,22 +41,24 @@ export default async function DomainDisputeDetailPage({
         <Link href="/admin/disputes" className="text-xs text-primary hover:underline">
           ← {t("backToList")}
         </Link>
-        <h1 className="mt-2 font-heading text-2xl text-text">
+        <h1 className="mt-2 font-heading text-2xl text-on-surface">
           {t("title", { name: row.orgName })}
         </h1>
-        <p className="mt-1 text-sm text-text-secondary">
+        <p className="mt-1 text-sm text-on-surface-variant">
           {row.orgSlug} · {new Date(row.createdAt).toLocaleString()}
         </p>
       </header>
 
       <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
-        <h2 className="text-sm font-semibold text-text-secondary">{t("reasonLabel")}</h2>
-        <p className="mt-2 whitespace-pre-wrap text-sm text-text">{row.reason ?? t("noReason")}</p>
+        <h2 className="text-sm font-semibold text-on-surface-variant">{t("reasonLabel")}</h2>
+        <p className="mt-2 whitespace-pre-wrap text-sm text-on-surface">
+          {row.reason ?? t("noReason")}
+        </p>
       </section>
 
       <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
-        <h2 className="text-sm font-semibold text-text-secondary">{t("partiesLabel")}</h2>
-        <dl className="mt-2 grid gap-2 text-sm text-text">
+        <h2 className="text-sm font-semibold text-on-surface-variant">{t("partiesLabel")}</h2>
+        <dl className="mt-2 grid gap-2 text-sm text-on-surface">
           <div className="flex justify-between">
             <dt className="text-text-muted">Claimer Email</dt>
             <dd className="font-mono text-xs">{row.claimerEmail ?? "—"}</dd>
@@ -70,14 +72,14 @@ export default async function DomainDisputeDetailPage({
 
       {row.state !== "open" ? (
         <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
-          <h2 className="text-sm font-semibold text-text-secondary">{t("resolvedLabel")}</h2>
-          <p className="mt-2 text-sm text-text">
+          <h2 className="text-sm font-semibold text-on-surface-variant">{t("resolvedLabel")}</h2>
+          <p className="mt-2 text-sm text-on-surface">
             {resolutionLabel(row.state)} —{" "}
             {row.resolvedAt ? new Date(row.resolvedAt).toLocaleString() : ""}
           </p>
         </section>
       ) : (
-        <p className="text-sm text-text-secondary">
+        <p className="text-sm text-on-surface-variant">
           Resolution options via UI not yet implemented. Use API to resolve.
         </p>
       )}
