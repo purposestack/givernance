@@ -153,8 +153,9 @@ export async function GET(request: NextRequest) {
       refresh_expires_in?: number;
     };
 
+    let decoded: Awaited<ReturnType<typeof verifyKeycloakJwt>>;
     try {
-      await verifyKeycloakJwt(tokens.access_token);
+      decoded = await verifyKeycloakJwt(tokens.access_token);
     } catch (error) {
       logAuthEvent("error", "auth.callback.access_token_invalid", {
         message: error instanceof Error ? error.message : String(error).slice(0, 256),
@@ -168,6 +169,7 @@ export async function GET(request: NextRequest) {
       loginUrl.searchParams.set("error", errorCode);
       return NextResponse.redirect(loginUrl.toString());
     }
+    const isSuperAdmin = decoded.realm_access?.roles?.includes("super_admin") ?? false;
 
     const sessionMaxAge = resolveSessionMaxAge(tokens);
 
@@ -190,11 +192,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL(returnTo, APP_URL).toString());
     }
 
-    // FE-2: send every newly-authenticated user through `/select-organization`.
-    // That page server-renders the membership fetch and will 302 to
-    // `/dashboard` immediately if the user belongs to <=1 tenant — so solo-
-    // tenant users pay one extra redirect (cheap) and multi-tenant users get
-    // the picker without the callback blocking on a sequential fetch.
+    // Super-admin landing (PR #251 user feedback). Super-admins live in
+    // `platform_admins`, have no tenant memberships (ADR-022), and would
+    // otherwise hit `/select-organization` → `/login?error=no_tenants`
+    // because the picker treats zero memberships as "broken account".
+    // Send them straight to the back-office tenant list — that's the
+    // canonical operator landing page. The (admin) layout already gates
+    // on `super_admin` realm role, so this redirect is safe even if the
+    // role is ever stripped (the layout would 404 / bounce).
+    if (isSuperAdmin) {
+      return NextResponse.redirect(new URL("/admin/tenants", APP_URL).toString());
+    }
+
+    // FE-2: send every newly-authenticated tenant user through
+    // `/select-organization`. That page server-renders the membership
+    // fetch and will 302 to `/dashboard` immediately if the user belongs
+    // to <=1 tenant — so solo-tenant users pay one extra redirect (cheap)
+    // and multi-tenant users get the picker without the callback blocking
+    // on a sequential fetch.
     return NextResponse.redirect(new URL("/select-organization", APP_URL).toString());
   } catch (err) {
     logAuthEvent("error", "auth.callback.unexpected_failure", {
