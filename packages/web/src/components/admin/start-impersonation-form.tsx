@@ -2,7 +2,7 @@
 
 import { Check, ChevronsUpDown, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -76,6 +76,15 @@ export function StartImpersonationForm() {
   const [mode, setMode] = useState<Mode>("delegation");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True when the form was hydrated from a post-MFA stash — renders a
+  // "Resume" banner above the submit button so the operator confirms
+  // intent before the fetch fires (multi-agent review I-4). Auto-firing
+  // the resubmit is convenient but removes the operator's ability to
+  // abort if the round-trip surfaced new context (e.g., they realised
+  // the wrong target was selected, or KC went weird mid-flow). The
+  // hydrated state means there's no refilling — one click resumes.
+  const [resuming, setResuming] = useState(false);
+  const resumeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   /**
    * Pure submit logic — takes the values explicitly so it can be invoked
@@ -162,6 +171,16 @@ export function StartImpersonationForm() {
           return;
         }
 
+        // Anything else under a 401 (e.g., the auto-resubmit path lands
+        // here when KC didn't actually upgrade the acr — say the user
+        // bailed during enrolment and went Back). Use the localised
+        // step-up-failed copy so the operator gets an actionable hint
+        // instead of the API's English-only `detail`. Multi-agent
+        // review UX-2 (PR #251).
+        if (res.status === 401) {
+          setError(t("errorStepUpFailed"));
+          return;
+        }
         setError(body.detail ?? body.title ?? `Request failed: ${res.status}`);
         return;
       }
@@ -188,13 +207,16 @@ export function StartImpersonationForm() {
     await executeStart(target, mode, reason);
   }
 
-  // Post-MFA auto-resubmit. After Keycloak completes the step-up dance
-  // and the callback drops the operator back on /admin/impersonation/new,
-  // this effect picks up the stashed payload and resubmits — saving the
-  // operator from re-filling target / mode / reason. Single-use: we
-  // remove the stash before resubmitting so a refresh doesn't infinite-
-  // loop. Stale stashes (past STASH_TTL_MS) are also cleaned up.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only auto-resubmit; including executeStart in the deps would re-fire on every render and stamp duplicate impersonation sessions.
+  // Post-MFA hydrate-and-confirm. After Keycloak completes the step-up
+  // dance and the callback drops the operator back on
+  // /admin/impersonation/new, this effect picks up the stashed payload,
+  // hydrates the form state so nothing has to be re-filled, AND flips
+  // `resuming` so the form renders a confirm banner with a "Resume"
+  // CTA. Multi-agent review I-4 (PR #251) — auto-firing the resubmit
+  // removed the operator's ability to abort if KC went weird mid-flow
+  // or they realised the wrong target was selected during the
+  // round-trip. Single-use: stash is removed before any state change so
+  // a refresh leaves the form in its normal empty state.
   useEffect(() => {
     let raw: string | null = null;
     try {
@@ -219,18 +241,73 @@ export function StartImpersonationForm() {
     ) {
       return;
     }
-    // Hydrate state so the form reflects what's about to be submitted —
-    // a moment of "we're working on it" feedback while the fetch flies.
     setTarget(stash.target);
     setMode(stash.mode);
     setReason(stash.reason);
-    void executeStart(stash.target, stash.mode, stash.reason);
+    setResuming(true);
   }, []);
+
+  // When the resume banner mounts, focus the Resume CTA so keyboard /
+  // screen-reader users land on the actionable control, not in the
+  // (now-prefilled) reason textarea. WCAG 2.4.3 Focus Order; multi-
+  // agent review UX-3 (PR #251).
+  useEffect(() => {
+    if (resuming) {
+      resumeButtonRef.current?.focus();
+    }
+  }, [resuming]);
+
+  function handleResume() {
+    if (!target) return;
+    setResuming(false);
+    void executeStart(target, mode, reason);
+  }
+
+  function handleResumeCancel() {
+    // Drop the hydrated values so the operator can pick a different
+    // target/mode/reason without first manually clearing fields.
+    setResuming(false);
+    setTarget(null);
+    setReason("");
+    setMode("delegation");
+    setError(null);
+  }
 
   const reasonValid = reason.length >= REASON_MIN_LENGTH;
 
   return (
     <form className="space-y-5" onSubmit={onSubmit}>
+      {resuming && (
+        <section
+          aria-labelledby="resume-banner-title"
+          className="space-y-3 rounded-md border border-primary bg-primary/5 px-4 py-3 text-sm"
+        >
+          <div>
+            <h2 id="resume-banner-title" className="font-medium text-on-surface">
+              {t("resumeBannerTitle")}
+            </h2>
+            <p className="mt-1 text-on-surface-variant">{t("resumeBannerBody")}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              ref={resumeButtonRef}
+              type="button"
+              onClick={handleResume}
+              disabled={!target || !reasonValid || submitting}
+            >
+              {submitting ? t("submitting") : t("resumeAction")}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleResumeCancel}
+              disabled={submitting}
+            >
+              {t("resumeCancel")}
+            </Button>
+          </div>
+        </section>
+      )}
       <div className="space-y-2">
         <Label>{t("tenantLabel")}</Label>
         <TenantPicker

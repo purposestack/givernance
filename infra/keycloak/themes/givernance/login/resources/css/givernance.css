@@ -372,7 +372,7 @@ body {
   color: var(--gv-text);
   background: var(--gv-surface-low);
   border: 1px solid var(--gv-border);
-  border-radius: var(--gv-radius);
+  border-radius: var(--gv-radius-input);
   word-break: break-word;
 }
 
