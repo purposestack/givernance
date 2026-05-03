@@ -229,13 +229,15 @@ LOA1_CONFIG_ALIAS = "loa-1-config"
 LOA2_CONFIG_ALIAS = "loa-2-config"
 LOA1_DESIRED = {"loa-condition-level": "1", "loa-max-age": "36000"}
 LOA2_DESIRED = {"loa-condition-level": "2", "loa-max-age": "300"}
-# Map both LoA 1 and LoA 2 so KC emits the numeric ACR claim cleanly on
-# both normal logins (acr=1) and step-up (acr=2). KC reads acr.loa.map
-# for the OUTBOUND mapping (level → acr string) AND the inbound mapping
-# (claims.acr.values "1"/"2" → numeric requested level). Without "1"
-# in the map a normal login would emit acr=1 by passthrough but the JSON
-# still needs it for round-tripped acr_values=1 requests to resolve.
-ACR_LOA_MAP = '{"1": 1, "2": 2}'
+# Map both LoA 1 and LoA 2 so KC emits a stable string ACR claim on
+# both normal logins (acr="1") and step-up (acr="2"). Values are
+# strings (NOT numbers) so KC's outbound `acr` claim is consistent
+# across token paths — earlier numeric values caused some token-paths
+# to emit `acr: 2` (number) while others emitted `acr: "2"` (string),
+# which `validateStepUp` survives via `String(acrRaw)` but downstream
+# RP introspection and audit consumers don't expect both shapes.
+# Multi-agent review API-1 (PR #251).
+ACR_LOA_MAP = '{"1": "1", "2": "2"}'
 
 def call(method, path, body=None):
     # Percent-encode any space in flow / sub-flow alias path segments.
