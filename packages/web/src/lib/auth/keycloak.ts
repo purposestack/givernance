@@ -56,6 +56,43 @@ export {
   resolveSessionMaxAge,
 };
 
+/**
+ * Same-origin path validator for the OIDC `return_to` parameter / cookie
+ * (issue #250). Resolves the candidate against `APP_URL` using the
+ * WHATWG URL parser (which normalises `\`/`%5c`/percent-encoded slashes
+ * etc.), then compares the resolved origin to APP_URL's. Returns the
+ * resolved same-origin path (or `null` if cross-origin / malformed /
+ * scheme-bearing).
+ *
+ * Shared by `/api/auth/login` (request-time validation) and
+ * `/api/auth/callback` (cookie-time re-validation as defence-in-depth
+ * against tampering). Multi-agent review I-2 (PR #251) caught the two
+ * routes had divergent validators — a hand-rolled prefix check on the
+ * callback side was missing some of the bypasses the login route's
+ * URL-based check rejected. Sharing the helper makes drift impossible.
+ */
+export function safeReturnToPath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith("/")) return null;
+  // Reject control chars / CRLF / null bytes — defence-in-depth against
+  // header smuggling if the value were ever echoed in a Set-Cookie or
+  // Location header without re-encoding.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: explicit defence-in-depth filter (CRLF / null-byte smuggling)
+  if (/[\x00-\x1f\x7f]/.test(raw)) return null;
+  let resolved: URL;
+  let appOrigin: URL;
+  try {
+    resolved = new URL(raw, APP_URL);
+    appOrigin = new URL(APP_URL);
+  } catch {
+    return null;
+  }
+  if (resolved.origin !== appOrigin.origin) return null;
+  // Return the resolved same-origin path so the caller never echoes an
+  // absolute URL by accident.
+  return resolved.pathname + resolved.search + resolved.hash;
+}
+
 /** Cookie options for short-lived OIDC flow params (state, code_verifier). 5 min TTL. */
 export function oidcFlowCookieOptions() {
   return {

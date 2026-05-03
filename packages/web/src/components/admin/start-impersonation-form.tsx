@@ -90,6 +90,14 @@ export function StartImpersonationForm() {
   ) {
     setError(null);
     setSubmitting(true);
+    // Tracks whether THIS invocation is about to navigate away (step-up
+    // redirect or success → /dashboard). Navigation paths leave the
+    // button disabled so a quick double-click during the in-flight
+    // `window.location.assign(...)` can't stamp a second
+    // `executeStart`. Non-navigating paths (lockout, error) reset
+    // `submitting` so the operator can retry. Multi-agent review UX-4
+    // (PR #251).
+    let willNavigate = false;
     try {
       const csrf = readCsrfTokenFromDocumentCookie();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -136,11 +144,7 @@ export function StartImpersonationForm() {
             // Fall back to the legacy "operator refills the form"
             // behaviour — annoying but not broken.
           }
-          // Reset the disabled state BEFORE the redirect so a back-button
-          // / bfcache restore doesn't leave the submit button stuck on
-          // "Starting…" (review I-8). The `finally` below would also
-          // run, but explicit ordering avoids a race with the navigation.
-          setSubmitting(false);
+          willNavigate = true;
           setError(t("stepUpRedirecting"));
           window.location.assign(
             buildStepUpRedirectUrl(window.location.origin, "/admin/impersonation/new"),
@@ -163,12 +167,18 @@ export function StartImpersonationForm() {
       }
 
       // Fresh `givernance_jwt` cookie scoped to the target tenant — drop
-      // straight into the target user's dashboard.
+      // straight into the target user's dashboard. Mark navigation so
+      // the finally block doesn't unstick the submit button before the
+      // page reloads.
+      willNavigate = true;
       window.location.href = "/dashboard";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
     } finally {
-      setSubmitting(false);
+      // Non-navigating paths reset `submitting` so the operator can
+      // retry; navigating paths keep it disabled until the page
+      // reloads. See `willNavigate` comment above.
+      if (!willNavigate) setSubmitting(false);
     }
   }
 

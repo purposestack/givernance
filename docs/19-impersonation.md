@@ -258,6 +258,20 @@ This is deliberate — an earlier draft forced `CONFIGURE_TOTP` onto the seed su
 
 **Recovery (lost device):** any operator with realm-management `manage-users` access opens the user in the Keycloak admin console (e.g. `https://auth.staging.givernance.org/admin/master/console/`), Credentials tab → delete the OTP credential. Next time the user hits impersonation step-up, they're routed through fresh enrolment automatically (because `userSetupAllowed: true`). Recovery is intentionally a manual step gated on Keycloak admin access; we don't ship a self-serve "I lost my phone" path because the same credential gates the impersonation route into every tenant's data.
 
+### Threat model — residual risk: lazy enrolment + stolen password
+
+The lazy-enrolment design has a known weakness: a super-admin who has **never** enrolled and whose password is phished/leaked can have their first-time TOTP credential seeded by the attacker. KC's `OTPFormAuthenticator.action()` will show the QR screen to whoever holds the password — there is no out-of-band proof of physical possession before the QR is rendered.
+
+**Status: accepted for pre-prod. Not acceptable for production.**
+
+| | |
+|---|---|
+| **Why we accepted it** | A small operator team currently shares the seeded super-admin account during pre-prod testing. There's no out-of-band channel to coordinate a one-time MFA enrolment across all members before the first impersonation attempt. Lazy enrolment is the only practical UX while in this state. |
+| **What it costs an attacker** | A leaked / phished super-admin password (entire credential surface) — same primitive that already gives the attacker normal-login access to whatever the super-admin can see without MFA (notably: read-only realm admin console). |
+| **What it doesn't cost an attacker** | A second factor delivered out-of-band. Anyone who completes a normal super-admin login can enrol an authenticator on first MFA challenge. |
+| **Mitigations in flight** | - Issue #258 — replace lazy enrolment with proactive `CONFIGURE_TOTP` on super-admin role grant before the first production deploy.<br>- Per-operator super-admin accounts via the platform-admin invite flow (PR #253) so the seed account stops being shared. |
+| **Triggers to revisit before prod** | (a) `deploy-production.yml` lands; (b) real beneficiary data lives behind impersonation; (c) more than ~3 operators or rotating staff. |
+
 ### Brute-force lockout
 
 - 5 failed step-up attempts in 15 minutes → operator locked out (HTTP 423) until the window rolls.

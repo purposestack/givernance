@@ -13,45 +13,9 @@ import {
   OIDC_VERIFIER_COOKIE,
   oidcFlowCookieOptions,
   returnToCookieOptions,
+  safeReturnToPath,
 } from "@/lib/auth/keycloak";
 import { STEP_UP_ACR_VALUE } from "@/lib/auth/step-up";
-
-/**
- * Same-origin path validator for the OIDC `return_to` parameter (issue
- * #250). Only same-origin paths are honoured — never an absolute host
- * or scheme — so a malicious caller can't craft
- * `/api/auth/login?return_to=https://evil.example` (or
- * `?return_to=/%2fevil.example` / `/%5cevil.example`) and turn the
- * callback into an open-redirect oracle.
- *
- * Validation strategy: parse via `new URL(raw, APP_URL)` so the URL
- * parser's normalisation does the heavy lifting (decodes percent-
- * encoded `/` and `\`, resolves protocol-relative `//host`, rejects
- * `javascript:` etc.), then compare the resolved origin to APP_URL's
- * origin. An earlier draft used a hand-rolled `startsWith("//")`
- * check, which review caught as bypassable via percent-encoding.
- */
-function safeReturnToPath(raw: string | null): string | null {
-  if (!raw) return null;
-  if (!raw.startsWith("/")) return null;
-  // Reject control chars / CRLF / null bytes — defence-in-depth against
-  // header smuggling if the value were ever echoed in a Set-Cookie or
-  // Location header without re-encoding.
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: explicit defence-in-depth filter (CRLF / null-byte smuggling)
-  if (/[\x00-\x1f\x7f]/.test(raw)) return null;
-  let resolved: URL;
-  let appOrigin: URL;
-  try {
-    resolved = new URL(raw, APP_URL);
-    appOrigin = new URL(APP_URL);
-  } catch {
-    return null;
-  }
-  if (resolved.origin !== appOrigin.origin) return null;
-  // Only return the resolved path (no host/scheme echo) so the cookie
-  // value is the path the callback expects — never an absolute URL.
-  return resolved.pathname + resolved.search + resolved.hash;
-}
 
 /**
  * Extracts the Keycloak Organization alias from the request Host header.
@@ -143,15 +107,21 @@ export async function GET(request: NextRequest) {
   // a future LoA bump (`"3"`, `"high"`) lands in one place.
   const url = new URL(request.url);
   const acrValues = url.searchParams.get("acr_values");
-  if (acrValues === STEP_UP_ACR_VALUE) {
+  const stepUpRequested = acrValues === STEP_UP_ACR_VALUE;
+  if (stepUpRequested) {
     params.set("acr_values", STEP_UP_ACR_VALUE);
   }
+  // `prompt=login` forces a fresh password challenge upstream. We only
+  // honour it when `acr_values=2` is also present so it's coupled to a
+  // legitimate step-up redirect (the impersonation form is the sole
+  // caller). Letting `prompt=login` through in isolation lets a third-
+  // party origin embed a bouncing redirect that re-prompts the user
+  // every page load — annoying-only, but combined with #258's residual
+  // risk (lazy TOTP enrolment) it raises the value of a forced re-auth
+  // primer. Coupling them closes that vector. Multi-agent review I-1
+  // (PR #251).
   const prompt = url.searchParams.get("prompt");
-  // Only `login` is forwarded. A caller could craft `?prompt=login` to
-  // force re-auth on a normal user — annoying but not a security hole;
-  // any other value (`none`, `consent`, `select_account`) is silently
-  // dropped to keep the upstream auth request clean.
-  if (prompt === "login") {
+  if (prompt === "login" && stepUpRequested) {
     params.set("prompt", "login");
   }
 

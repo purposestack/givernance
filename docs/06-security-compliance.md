@@ -86,6 +86,17 @@ MFA is **only** required for impersonation and delegation — every other flow (
 - **Recovery (lost device)**: any operator with realm-management `manage-users` access opens the user in the Keycloak admin console (e.g. `https://auth.staging.givernance.org/admin/master/console/`), Credentials tab → delete the OTP credential. Next impersonation attempt routes them through fresh enrolment automatically (no extra step needed because of `userSetupAllowed: true`).
 - **Why no self-serve "I lost my phone" flow**: the same TOTP gates the impersonation route into every tenant's data, so account-takeover via SMS recovery / email reset would defeat the purpose of step-up. Manual recovery via Keycloak admin is the deliberate fail-safe.
 
+#### Residual risk: lazy enrolment + stolen password (accepted, pre-prod)
+
+`auth-otp-form.userSetupAllowed = true` lets a super-admin who has never enrolled walk through the QR screen on their first `acr_values=2` request. If their password is phished/leaked before they've enrolled, the attacker can scan the QR with their own authenticator, satisfy the step-up gate, and start an impersonation session.
+
+**Why we accepted this in pre-prod:** during initial bootstrap, a small operator team shares the seeded super-admin account and has no out-of-band channel to coordinate a one-time MFA enrolment across all members. Lazy enrolment is the only practical UX while in this state.
+
+**Hardening before production:** issue #258 tracks the Phase 4 work to flip to proactive `CONFIGURE_TOTP` (or an out-of-band enrolment link) before the first production deploy. Triggers for revisiting:
+- `deploy-production.yml` lands
+- Real beneficiary data lives behind impersonation
+- Per-operator super-admin accounts replace the shared seed (via the platform-admin invite flow, PR #253)
+
 ## Security operations
 - SAST/DAST in CI
 - Dependency scanning + SBOM
