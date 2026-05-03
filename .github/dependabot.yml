@@ -48,3 +48,16 @@ updates:
     directory: /packages/worker
     schedule:
       interval: weekly
+
+  # Scans `image:` pins inside Compose files. Covers the local-dev stack
+  # (`docker-compose.yml`: postgres, redis, keycloak, minio, mc, mailpit,
+  # caddy) — none of which sit behind a Dockerfile, so without this block
+  # base-image CVEs in the runtime path are invisible. ADR-017 calls out
+  # per-tool CVE visibility as the corollary of per-tool DB isolation.
+  # `docker-compose` ecosystem went GA Feb 2025; it parses the same set
+  # of Compose files Docker itself does (`docker-compose.yml`,
+  # `compose.yaml`, etc.) under the configured directory.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
