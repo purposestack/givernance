@@ -312,14 +312,27 @@ export interface ListSessionsOptions {
 }
 
 /**
- * Selection used for both `listSessions` and `getSession` — we LEFT JOIN
- * the `users` table twice (once on the target's keycloak_id+org, once on
- * the operator's keycloak_id) and the `tenants` table once on
- * target_org_id, so the UI can render human-readable names instead of
- * raw UUIDs. LEFT JOINs (vs INNER) handle the realistic case where an
- * operator was off-boarded and their `users` row is gone — we still want
- * the session row visible, just with `null` operator name and a fallback
- * to the keycloak_id.
+ * Selection used for both `listSessions` and `getSession` — three LEFT
+ * JOINs feed the enriched columns:
+ *
+ *   1. `users` aliased as `target_users` — target's first/last/email
+ *      keyed on `(keycloak_id, org_id)` so the row is the membership
+ *      inside the target's tenant (a multi-tenant member's row in
+ *      another org is irrelevant here).
+ *   2. `tenants` — target's tenant name + slug for the column header.
+ *   3. `users` aliased as `impersonator_users` AND `platform_admins`
+ *      — the operator can be either an old-shape tenant user (legacy
+ *      seed) OR a platform admin (post-ADR-022, the canonical home for
+ *      super_admin identities). Both joins are LEFT, and the SELECT
+ *      uses `coalesce(...)` to pick whichever found a row. Without the
+ *      `platform_admins` join, every super-admin-initiated session in
+ *      the list shows a bare UUID for the operator (PR #251 user
+ *      feedback).
+ *
+ * LEFT JOINs (vs INNER) handle the realistic case where an operator
+ * was off-boarded and both rows are gone — the session row is still
+ * visible with null name fields and the UI falls back to the
+ * keycloak_id.
  */
 const targetUsers = alias(users, "target_users");
 const impersonatorUsers = alias(users, "impersonator_users");
@@ -344,9 +357,24 @@ const enrichedSessionSelect = {
   targetEmail: targetUsers.email,
   tenantName: tenants.name,
   tenantSlug: tenants.slug,
-  impersonatorFirstName: impersonatorUsers.firstName,
-  impersonatorLastName: impersonatorUsers.lastName,
-  impersonatorEmail: impersonatorUsers.email,
+  // Operator enrichment with the platform_admins fallback. Drizzle
+  // doesn't have a typed `coalesce` builder, so we wrap the SQL
+  // expression and let Postgres pick the first non-null. The cast
+  // keeps the column type consistent across the two source tables
+  // (both columns are `varchar(255)`).
+  impersonatorFirstName: sql<
+    string | null
+  >`coalesce(${impersonatorUsers.firstName}, ${platformAdmins.firstName})`.as(
+    "impersonator_first_name",
+  ),
+  impersonatorLastName: sql<
+    string | null
+  >`coalesce(${impersonatorUsers.lastName}, ${platformAdmins.lastName})`.as(
+    "impersonator_last_name",
+  ),
+  impersonatorEmail: sql<
+    string | null
+  >`coalesce(${impersonatorUsers.email}, ${platformAdmins.email})`.as("impersonator_email"),
 };
 
 function baseEnrichedQuery() {
@@ -364,6 +392,13 @@ function baseEnrichedQuery() {
     .leftJoin(
       impersonatorUsers,
       eq(impersonatorUsers.keycloakId, impersonationSessions.impersonatorKeycloakId),
+    )
+    .leftJoin(
+      platformAdmins,
+      and(
+        eq(platformAdmins.keycloakId, impersonationSessions.impersonatorKeycloakId),
+        isNull(platformAdmins.deletedAt),
+      ),
     );
 }
 
