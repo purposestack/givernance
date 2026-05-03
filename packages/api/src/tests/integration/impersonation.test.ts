@@ -714,7 +714,7 @@ describe("POST /v1/admin/impersonation — strict step-up (issue #250)", () => {
   // that wraps step-up in `if (mode === "delegation") { ... }` would skip
   // MFA on pure impersonation and silently ship — both modes equally
   // dangerous from a target-tenant's perspective.
-  it("impersonation mode + acr=1 → same 401 shape as delegation", async () => {
+  it("impersonation mode + acr=1 → same 401 shape as delegation (full RFC 9457 body locked)", async () => {
     const token = superAdminToken({ acr: "1", auth_time: Math.floor(Date.now() / 1000) - 30 });
     const res = await app.inject({
       method: "POST",
@@ -723,7 +723,16 @@ describe("POST /v1/admin/impersonation — strict step-up (issue #250)", () => {
       payload: { targetUserId: TARGET_USER_APP_ID, mode: "impersonation", reason: VALID_REASON },
     });
     expect(res.statusCode).toBe(401);
+    // Lock the FULL RFC 9457 body — multi-agent review N-7 (PR #251)
+    // flagged that the parity test only checked the extension members
+    // but not `type / title / status`. A regression that returned a
+    // plain-string body or a `{error}` shape would have shipped green
+    // because the extensions still happened to land alphabetically
+    // first in the JSON. Mirror the delegation case at L623-629.
     expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/401",
+      title: "Unauthorized",
+      status: 401,
       reason: "acr_insufficient",
       step_up_required: true,
     });

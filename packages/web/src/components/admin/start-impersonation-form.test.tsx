@@ -151,14 +151,38 @@ describe("StartImpersonationForm — step-up 401 handling (issue #250)", () => {
  *   4. Expect the stash to be cleared (single-use — a refresh must not
  *      stamp a second session).
  */
-describe("StartImpersonationForm — post-MFA auto-resubmit (issue #251 dev-feedback)", () => {
+describe("StartImpersonationForm — post-MFA hydrate + Resume (issue #251 dev-feedback)", () => {
+  // Same `Object.defineProperty(window, "location", ...)` pattern as the
+  // first describe — the auto-resubmit suite previously relied on
+  // ambient state, which review N-6 flagged as bleed-prone. Stub fresh
+  // here so a stray `window.location.assign` from this suite can't
+  // break a sibling test.
+  let originalLocation: Location;
+  let assignMock: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     sessionStorage.clear();
+    originalLocation = window.location;
+    assignMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      writable: true,
+      configurable: true,
+      value: {
+        ...originalLocation,
+        origin: "https://app.givernance.org",
+        assign: assignMock,
+      },
+    });
     vi.mocked(ImpersonationService.listTenants).mockResolvedValue({ data: [] });
     vi.mocked(ImpersonationService.searchTargets).mockResolvedValue({ data: [TARGET] });
   });
 
   afterEach(() => {
+    Object.defineProperty(window, "location", {
+      writable: true,
+      configurable: true,
+      value: originalLocation,
+    });
     sessionStorage.clear();
     vi.restoreAllMocks();
   });
@@ -277,5 +301,110 @@ describe("StartImpersonationForm — post-MFA auto-resubmit (issue #251 dev-feed
     // expiry, so a page refresh doesn't keep tripping the same dead
     // entry.
     expect(sessionStorage.getItem("gv-impersonation-resubmit")).toBeNull();
+  });
+
+  // QA-A (multi-agent review, PR #251): malformed stashes must NOT
+  // hydrate the form or fire fetch. Without these tests, a future
+  // tightening of the predicate would ship green and an attacker who
+  // managed to plant a stash with a missing field could observe the
+  // form's failure mode (fail-open vs fail-closed).
+  describe("rejects malformed stashes without hydrating", () => {
+    const cases: Array<{ name: string; stash: string }> = [
+      { name: "corrupt JSON", stash: "{not-json" },
+      {
+        name: "missing target",
+        stash: JSON.stringify({
+          mode: "delegation",
+          reason: "valid reason of the right length",
+          expiresAt: Date.now() + 60_000,
+        }),
+      },
+      {
+        name: "missing reason",
+        stash: JSON.stringify({
+          target: TARGET,
+          mode: "delegation",
+          expiresAt: Date.now() + 60_000,
+        }),
+      },
+      {
+        name: "unknown mode",
+        stash: JSON.stringify({
+          target: TARGET,
+          mode: "ghost-impersonation",
+          reason: "valid reason of the right length",
+          expiresAt: Date.now() + 60_000,
+        }),
+      },
+      {
+        name: "non-numeric expiresAt",
+        stash: JSON.stringify({
+          target: TARGET,
+          mode: "delegation",
+          reason: "valid reason of the right length",
+          expiresAt: "later",
+        }),
+      },
+    ];
+    for (const { name, stash } of cases) {
+      it(`${name}`, async () => {
+        const fetchMock = vi.fn();
+        global.fetch = fetchMock as unknown as typeof fetch;
+        sessionStorage.setItem("gv-impersonation-resubmit", stash);
+
+        render(<StartImpersonationForm />);
+
+        await new Promise((r) => setTimeout(r, 30));
+        expect(fetchMock).not.toHaveBeenCalled();
+        // Resume CTA must NOT appear — malformed stash should leave the
+        // form in its empty state.
+        expect(screen.queryByRole("button", { name: /Resume session/i })).toBeNull();
+        // Stash is still cleared on mount regardless of validity, so a
+        // refresh doesn't keep tripping the same dead entry.
+        expect(sessionStorage.getItem("gv-impersonation-resubmit")).toBeNull();
+      });
+    }
+  });
+
+  // QA-C (multi-agent review, PR #251): if `sessionStorage.setItem`
+  // throws (privacy mode / quota), the redirect MUST still fire. Loss
+  // of the no-refill UX is acceptable; a broken redirect (operator
+  // stuck on the same page after MFA fails to engage) is not.
+  it("redirect still fires when sessionStorage.setItem throws", async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("QuotaExceededError", "QuotaExceededError");
+    });
+    try {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({
+          type: "https://httpproblems.com/http-status/401",
+          title: "Unauthorized",
+          status: 401,
+          detail: "Step-up authentication required.",
+          reason: "acr_insufficient",
+          step_up_required: true,
+        }),
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      const user = userEvent.setup();
+      render(<StartImpersonationForm />);
+      await user.click(screen.getByRole("button", { name: /Search a user/i }));
+      await user.click(await screen.findByText("Target User"));
+      await user.type(
+        screen.getByLabelText(/Reason/i),
+        "Reproducing a bug in the donations export — ticket #5678",
+      );
+      await user.click(screen.getByRole("button", { name: /Start session/i }));
+
+      await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1));
+      // The setItem throw is silently swallowed — the operator's
+      // post-MFA experience degrades to "refill the form" but the
+      // redirect itself succeeds.
+    } finally {
+      setItemSpy.mockRestore();
+    }
   });
 });
