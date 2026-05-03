@@ -84,11 +84,26 @@ function makeKcStub(overrides: Partial<KeycloakAdminClient> = {}): KeycloakAdmin
     getOrganizationByAlias: async () => null,
     createIdentityProvider: async () => {},
     deleteIdentityProvider: async () => {},
-    // Issue #254 — platform-admin CRUD helpers. Stubbed for parity; this
-    // suite never exercises the platform-admins flow.
-    getRealmRole: async () => null,
-    assignRealmRoleToUser: async () => {},
-    sendExecuteActionsEmail: async () => {},
+    // Issue #254 — platform-admin CRUD helpers. The onboarding-runtime
+    // suite never exercises the platform-admins flow, so the fakes throw
+    // loud: a future code path that accidentally wires a super-admin or
+    // password-reset-email side-effect into onboarding surfaces here
+    // instead of greenly returning null/{}. (QA review m4 from PR #253.)
+    getRealmRole: async (name: string) => {
+      throw new Error(
+        `onboarding-runtime.test fake: getRealmRole(${name}) called — onboarding must not request realm roles. If a new flow needs this, scope the stub.`,
+      );
+    },
+    assignRealmRoleToUser: async () => {
+      throw new Error(
+        "onboarding-runtime.test fake: assignRealmRoleToUser called — onboarding must not promote users to realm roles. If a new flow needs this, scope the stub.",
+      );
+    },
+    sendExecuteActionsEmail: async () => {
+      throw new Error(
+        "onboarding-runtime.test fake: sendExecuteActionsEmail called — onboarding must not trigger built-in KC action emails. If a new flow needs this, scope the stub.",
+      );
+    },
     _circuitState: () => "closed" as const,
   };
   return { ...base, ...overrides };

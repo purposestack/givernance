@@ -23,7 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +59,14 @@ export function PlatformAdminDetailActions({ admin, operatorKeycloakId }: Props)
   const tFields = useTranslations("admin.platformAdmins.new.fields");
   const router = useRouter();
 
+  // Hide-the-button check is intentionally a strict triple-null-guard:
+  // when `operatorKeycloakId` is null (stale page load, refresh dropped
+  // the JWT claim, parallel-tab race where the operator was logged out),
+  // we DON'T treat the row as `isSelf` and the remove button stays
+  // visible. The API guard (`SELF_REMOVAL_FORBIDDEN`) catches the actual
+  // submit and the toast in `onRemoveConfirm` surfaces it. The UX cost
+  // of an extra round-trip beats silently hiding the affordance under a
+  // stale or partial auth state. (Frontend review m3.)
   const isSelf =
     admin.keycloakId !== null &&
     operatorKeycloakId !== null &&
@@ -261,7 +269,7 @@ export function PlatformAdminDetailActions({ admin, operatorKeycloakId }: Props)
             <AlertDialogAction
               onClick={onRemoveConfirm}
               disabled={pendingRemove}
-              className="bg-error text-on-error hover:bg-error/90"
+              className={buttonVariants({ variant: "destructive" })}
             >
               {pendingRemove ? t("actions.removing") : t("removeDialog.confirm")}
             </AlertDialogAction>

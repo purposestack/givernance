@@ -42,19 +42,19 @@ export default async function DisputeListPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="font-heading text-2xl text-text">{t("title")}</h1>
-        <p className="mt-1 text-sm text-text-secondary">{t("subtitle")}</p>
+        <h1 className="font-heading text-2xl text-on-surface">{t("title")}</h1>
+        <p className="mt-1 text-sm text-on-surface-variant">{t("subtitle")}</p>
       </header>
 
       <section aria-labelledby="open-disputes-title">
         <h2
           id="open-disputes-title"
-          className="mb-3 text-sm font-semibold uppercase tracking-wide text-text-secondary"
+          className="mb-3 text-sm font-semibold uppercase tracking-wide text-on-surface-variant"
         >
           {t("openSectionTitle", { count: open.length })}
         </h2>
         {open.length === 0 ? (
-          <p className="rounded-md border border-outline-variant bg-surface-container-lowest p-4 text-sm text-text-secondary">
+          <p className="rounded-md border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
             {t("emptyOpen")}
           </p>
         ) : (
@@ -67,7 +67,7 @@ export default async function DisputeListPage() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-medium text-text">{row.orgName}</p>
+                      <p className="font-medium text-on-surface">{row.orgName}</p>
                       <p className="text-xs text-text-muted">
                         {row.orgSlug} · {new Date(row.createdAt).toLocaleString()}
                       </p>
@@ -77,7 +77,9 @@ export default async function DisputeListPage() {
                     </span>
                   </div>
                   {row.reason && (
-                    <p className="mt-2 line-clamp-2 text-sm text-text-secondary">{row.reason}</p>
+                    <p className="mt-2 line-clamp-2 text-sm text-on-surface-variant">
+                      {row.reason}
+                    </p>
                   )}
                 </Link>
               </li>
@@ -89,12 +91,12 @@ export default async function DisputeListPage() {
       <section aria-labelledby="domain-disputes-title">
         <h2
           id="domain-disputes-title"
-          className="mb-3 mt-12 text-sm font-semibold uppercase tracking-wide text-text-secondary"
+          className="mb-3 mt-12 text-sm font-semibold uppercase tracking-wide text-on-surface-variant"
         >
           {t("domainSectionTitle", { count: domainOpen.length })}
         </h2>
         {domainOpen.length === 0 ? (
-          <p className="rounded-md border border-outline-variant bg-surface-container-lowest p-4 text-sm text-text-secondary">
+          <p className="rounded-md border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
             {t("emptyDomain")}
           </p>
         ) : (
@@ -107,7 +109,7 @@ export default async function DisputeListPage() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-medium text-text">{row.claimerEmail}</p>
+                      <p className="font-medium text-on-surface">{row.claimerEmail}</p>
                       <p className="text-xs text-text-muted">
                         Disputing {row.orgName} ({row.orgSlug}) ·{" "}
                         {new Date(row.createdAt).toLocaleString()}
@@ -118,7 +120,9 @@ export default async function DisputeListPage() {
                     </span>
                   </div>
                   {row.reason && (
-                    <p className="mt-2 line-clamp-2 text-sm text-text-secondary">{row.reason}</p>
+                    <p className="mt-2 line-clamp-2 text-sm text-on-surface-variant">
+                      {row.reason}
+                    </p>
                   )}
                 </Link>
               </li>
@@ -130,12 +134,12 @@ export default async function DisputeListPage() {
       <section aria-labelledby="closed-disputes-title">
         <h2
           id="closed-disputes-title"
-          className="mb-3 text-sm font-semibold uppercase tracking-wide text-text-secondary"
+          className="mb-3 text-sm font-semibold uppercase tracking-wide text-on-surface-variant"
         >
           {t("closedSectionTitle", { count: closed.length })}
         </h2>
         {closed.length === 0 ? (
-          <p className="rounded-md border border-outline-variant bg-surface-container-lowest p-4 text-sm text-text-secondary">
+          <p className="rounded-md border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
             {t("emptyClosed")}
           </p>
         ) : (
@@ -148,13 +152,13 @@ export default async function DisputeListPage() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-medium text-text">{row.orgName}</p>
+                      <p className="font-medium text-on-surface">{row.orgName}</p>
                       <p className="text-xs text-text-muted">
                         {row.orgSlug} ·{" "}
                         {row.resolvedAt ? new Date(row.resolvedAt).toLocaleString() : ""}
                       </p>
                     </div>
-                    <span className="rounded-full bg-surface-container-low px-2 py-0.5 text-xs font-medium text-text-secondary">
+                    <span className="rounded-full bg-surface-container-low px-2 py-0.5 text-xs font-medium text-on-surface-variant">
                       {resolutionLabel(row.resolution)}
                     </span>
                   </div>

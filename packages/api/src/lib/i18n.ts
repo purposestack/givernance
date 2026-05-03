@@ -39,6 +39,19 @@ function loadMessages(locale: Locale): Messages {
   return MESSAGES[locale];
 }
 
+/**
+ * Public-facing variant of {@link resolveLocale} that reads `Accept-Language`
+ * from a Fastify request. Use when an outbound side-effect (an outbox email
+ * payload, a Keycloak user attribute, etc.) needs to inherit the caller's
+ * locale rather than just rendering an immediate Problem Details response.
+ *
+ * Returns the resolved supported locale (`fr`/`en`) — never throws, defaults
+ * to `DEFAULT_LOCALE` when the header is absent or unparseable.
+ */
+export function resolveRequestLocale(request: FastifyRequest): Locale {
+  return resolveLocale(request.headers["accept-language"]);
+}
+
 function resolveLocale(acceptLanguage: string | undefined): Locale {
   if (!acceptLanguage) return DEFAULT_LOCALE;
 

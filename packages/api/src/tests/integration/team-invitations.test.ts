@@ -71,10 +71,25 @@ const fakeKeycloakAdmin: KeycloakAdminClient = {
   createIdentityProvider: vi.fn(async () => {}),
   deleteIdentityProvider: vi.fn(async () => {}),
   // Issue #254 — platform-admin CRUD helpers. The team-invitation flow
-  // never calls them; stubs preserve interface parity.
-  getRealmRole: vi.fn(async () => null),
-  assignRealmRoleToUser: vi.fn(async () => {}),
-  sendExecuteActionsEmail: vi.fn(async () => {}),
+  // never calls them, so the fakes throw loud: a future code path that
+  // accidentally wires a super-admin or password-reset-email side-effect
+  // into team_invite surfaces here instead of greenly returning null/{}.
+  // (QA review m4 from PR #253.)
+  getRealmRole: vi.fn(async (name: string) => {
+    throw new Error(
+      `team-invitations.test fake: getRealmRole(${name}) called — team_invite must not request realm roles. If a new flow needs this, scope the stub.`,
+    );
+  }),
+  assignRealmRoleToUser: vi.fn(async () => {
+    throw new Error(
+      "team-invitations.test fake: assignRealmRoleToUser called — team_invite must not promote users to realm roles. If a new flow needs this, scope the stub.",
+    );
+  }),
+  sendExecuteActionsEmail: vi.fn(async () => {
+    throw new Error(
+      "team-invitations.test fake: sendExecuteActionsEmail called — team_invite must not trigger built-in KC action emails. If a new flow needs this, scope the stub.",
+    );
+  }),
   _circuitState: () => "closed",
 };
 
