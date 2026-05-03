@@ -91,13 +91,38 @@ beforeAll(async () => {
   // longer have a `users` row). The session-list enrichment LEFT JOINs
   // BOTH tables and `coalesce`s the name fields so super-admin
   // operators get rendered with their first/last/email instead of a
-  // bare UUID. Without this fixture every "list sessions" test would
-  // see null impersonator-name fields and the regression test below
-  // wouldn't have anything to assert against.
+  // bare UUID.
+  //
+  // UPSERT (not DO NOTHING) because `platform-admins.test.ts` shares
+  // this DB and inserts a row for the same `keycloak_id` with
+  // different names ("Super" / "Admin"). DO NOTHING would leave THAT
+  // suite's data in place if it ran first, breaking our assertions
+  // here. UPSERT pins our test's expected names regardless of suite
+  // ordering.
+  // The unique on `platform_admins.keycloak_id` is a PARTIAL index
+  // (`WHERE deleted_at IS NULL`, declared in migration 0034 — the
+  // Drizzle schema comment calls this out), so `ON CONFLICT
+  // (keycloak_id) DO UPDATE` fails with Postgres 42P10
+  // "infer_arbiter_indexes" because the inferred constraint must
+  // include the partial predicate. Update by row id is the safe
+  // shape: try a write to the existing row first, then INSERT only if
+  // nothing matched. Idempotent across suite re-runs and cross-suite
+  // ordering.
+  await db.execute(sql`
+    UPDATE platform_admins SET
+      email = 'operator-super-admin@example.org',
+      first_name = 'Operator',
+      last_name = 'SuperAdmin',
+      deleted_at = NULL
+    WHERE keycloak_id = ${SUPER_ADMIN_KEYCLOAK_ID}
+  `);
   await db.execute(sql`
     INSERT INTO platform_admins (keycloak_id, email, first_name, last_name)
-    VALUES (${SUPER_ADMIN_KEYCLOAK_ID}, 'operator-super-admin@example.org', 'Operator', 'SuperAdmin')
-    ON CONFLICT DO NOTHING
+    SELECT ${SUPER_ADMIN_KEYCLOAK_ID}, 'operator-super-admin@example.org', 'Operator', 'SuperAdmin'
+    WHERE NOT EXISTS (
+      SELECT 1 FROM platform_admins
+       WHERE keycloak_id = ${SUPER_ADMIN_KEYCLOAK_ID} AND deleted_at IS NULL
+    )
   `);
 });
 

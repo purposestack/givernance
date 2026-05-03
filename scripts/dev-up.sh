@@ -157,6 +157,10 @@ while ! curl -sf -o /dev/null "${KC_URL}/realms/${REALM_NAME}/.well-known/openid
 done
 
 echo "Syncing Keycloak realm state (idempotent)..."
+# `KC_REALM_DISPLAY_NAME` drives the TOTP QR-code issuer label so an
+# operator scanning a dev QR sees "givernance-dev: <email>" rather
+# than the bare realm name — distinguishes dev / staging / prod
+# credentials in a shared authenticator app.
 KC_SMTP_HOST=mailpit \
   KC_SMTP_PORT=1025 \
   KC_SMTP_FROM="noreply@givernance.org" \
@@ -164,6 +168,7 @@ KC_SMTP_HOST=mailpit \
   KC_SMTP_SSL=false \
   KC_SMTP_STARTTLS=false \
   KC_SMTP_AUTH=false \
+  KC_REALM_DISPLAY_NAME="${KC_REALM_DISPLAY_NAME:-givernance-dev}" \
   KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-sync-realm.sh"
 
 echo "Running Keycloak smoke test (issue #114 acceptance criterion)..."
