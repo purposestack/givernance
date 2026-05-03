@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
 import { buildStepUpRedirectUrl, type StepUpRequiredResponse } from "@/lib/auth/step-up";
+import { useDebounced } from "@/lib/hooks/use-debounced";
 import { cn } from "@/lib/utils";
 import {
   ImpersonationService,
@@ -619,14 +620,4 @@ function ModeOption({
       <span className="ml-6 text-xs text-muted-foreground">{help}</span>
     </label>
   );
-}
-
-/** Trailing-edge debounce — fires on keystroke + holds for `delay` ms. */
-function useDebounced<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return debounced;
 }

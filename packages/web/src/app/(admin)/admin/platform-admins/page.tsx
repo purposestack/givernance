@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { PlatformAdminsFilters } from "@/components/admin/platform-admins-filters";
 import { PlatformAdminsTable } from "@/components/admin/platform-admins-table";
 import { Button } from "@/components/ui/button";
 import { createServerApiClient } from "@/lib/api/client-server";
@@ -32,27 +33,42 @@ function normalizeOrder(value: string | undefined): PlatformAdminSortOrder {
 }
 
 /**
- * Super-admin-only list page for platform admins (issue #254). Search +
- * include-deleted toggle UI are deferred to a follow-up — the API
- * supports both, but until the UI ships there's no point reading the
- * params from the URL (frontend review M2 — drop dead plumbing).
+ * Super-admin-only list page for platform admins (issues #254 + #255 +
+ * #260). Reads the four URL params the API supports — `sort`, `order`,
+ * `q`, `includeDeleted` — server-side and forwards them onto the
+ * `/v1/admin/platform-admins` GET. The filter controls (`q` +
+ * `includeDeleted` toggle) live in the client `PlatformAdminsFilters`
+ * component, which writes back to the URL via `router.replace` so the
+ * server re-fetches on every change.
  */
 export default async function PlatformAdminsListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sort?: string; order?: string }>;
+  searchParams: Promise<{
+    sort?: string;
+    order?: string;
+    q?: string;
+    includeDeleted?: string;
+  }>;
 }) {
   const search = await searchParams;
   const t = await getTranslations("admin.platformAdmins.list");
   const api = await createServerApiClient();
   const sort = normalizeSort(search.sort);
   const order = normalizeOrder(search.order);
+  const q = (search.q ?? "").trim();
+  // Lenient parse on `?includeDeleted=` so a `?includeDeleted` (no
+  // value, the URL-without-explicit-`true` form some browsers emit on
+  // toggled checkboxes) lands as truthy. Anything else → false.
+  const includeDeleted = search.includeDeleted === "true" || search.includeDeleted === "";
 
   let data: PlatformAdminListResponse["data"] | null = null;
   let total = 0;
   let fetchFailed = false;
   try {
     const params = new URLSearchParams({ sort, order, limit: "200" });
+    if (q) params.set("q", q);
+    if (includeDeleted) params.set("includeDeleted", "true");
     const res = await api.get<PlatformAdminListResponse>(
       `/v1/admin/platform-admins?${params.toString()}`,
     );
@@ -76,6 +92,8 @@ export default async function PlatformAdminsListPage({
           <Link href="/admin/platform-admins/new">{t("createCta")}</Link>
         </Button>
       </header>
+
+      <PlatformAdminsFilters initialQ={q} initialIncludeDeleted={includeDeleted} />
 
       {fetchFailed ? (
         <div
