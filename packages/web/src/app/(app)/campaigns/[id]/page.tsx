@@ -21,6 +21,7 @@ import { CampaignService } from "@/services/CampaignService";
 import { DonationService } from "@/services/DonationService";
 
 import { DonationsTable } from "./donations-table";
+import { PostalMailingCard } from "./postal-mailing-card";
 
 const DEFAULT_DONATIONS_PER_PAGE = 25;
 const MAX_DONATIONS_PER_PAGE = 100;
@@ -90,17 +91,32 @@ export default async function CampaignDetailPage({
   const client = await createServerApiClient();
   const campaign = await fetchCampaignOrNotFound(id);
 
-  const [stats, roiMetrics, donationsResult, t, tCampaigns, tDonations, locale] = await Promise.all(
-    [
+  const [stats, roiMetrics, donationsResult, linkedRecipients, t, tCampaigns, tDonations, locale] =
+    await Promise.all([
       CampaignService.getCampaignStats(client, id),
       CampaignService.getCampaignRoi(client, id),
       fetchDonationsOrEmpty(id, donationsPage, donationsPerPage),
+      // Epic #274 — best-effort fetch of the recipient list. A 401/403
+      // shouldn't break the whole detail page; the postal card simply
+      // renders an empty list on permission denial.
+      campaign.type === "nominative_postal"
+        ? CampaignService.listLinkedConstituents(client, id, { page: 1, perPage: 25 }).catch(
+            () => ({
+              data: [],
+              pagination: { page: 1, perPage: 25, total: 0, totalPages: 0 },
+              campaignType: campaign.type,
+            }),
+          )
+        : Promise.resolve({
+            data: [],
+            pagination: { page: 1, perPage: 25, total: 0, totalPages: 0 },
+            campaignType: campaign.type,
+          }),
       getTranslations("campaigns.detail"),
       getTranslations("campaigns"),
       getTranslations("donations"),
       getLocale(),
-    ],
-  );
+    ]);
   const totalCostDisplayValue =
     roiMetrics.totalCostCents > 0
       ? formatCurrency(roiMetrics.totalCostCents, locale)
@@ -185,6 +201,15 @@ export default async function CampaignDetailPage({
             }}
           />
           <CostBreakdownCard metrics={roiMetrics} locale={locale} />
+          {canWrite && campaign.type !== "digital" ? (
+            <PostalMailingCard
+              campaignId={campaign.id}
+              campaignName={campaign.name}
+              campaignType={campaign.type}
+              initialLinked={linkedRecipients.data}
+              initialLinkedTotal={linkedRecipients.pagination.total}
+            />
+          ) : null}
           <DonationBreakdownCard
             campaign={campaign}
             donationsResult={donationsResult}

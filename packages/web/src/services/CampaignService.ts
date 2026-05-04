@@ -91,7 +91,114 @@ export const CampaignService = {
     );
     return mapCampaign(response.data);
   },
+
+  // ── Epic #274 — Constituent linkage and ZIP exports ────────────────────
+
+  async listLinkedConstituents(
+    client: ApiClient,
+    id: string,
+    query: { page?: number; perPage?: number; search?: string } = {},
+  ): Promise<LinkedConstituentsResponse> {
+    const response = await client.get<LinkedConstituentsResponse>(
+      `/v1/campaigns/${encodeURIComponent(id)}/constituents`,
+      {
+        params: {
+          page: query.page,
+          perPage: query.perPage,
+          search: query.search || undefined,
+        },
+      },
+    );
+    return response;
+  },
+
+  async attachConstituents(
+    client: ApiClient,
+    id: string,
+    constituentIds: string[],
+  ): Promise<{ attached: number; skipped: number }> {
+    const response = await client.post<{ data: { attached: number; skipped: number } }>(
+      `/v1/campaigns/${encodeURIComponent(id)}/constituents`,
+      { constituentIds },
+    );
+    return response.data;
+  },
+
+  async detachConstituent(client: ApiClient, id: string, constituentId: string): Promise<void> {
+    await client.delete<void>(
+      `/v1/campaigns/${encodeURIComponent(id)}/constituents/${encodeURIComponent(constituentId)}`,
+    );
+  },
+
+  async createExport(
+    client: ApiClient,
+    id: string,
+    mode: "door_drop" | "nominative",
+  ): Promise<CampaignExportJob> {
+    const response = await client.post<{ data: CampaignExportJob }>(
+      `/v1/campaigns/${encodeURIComponent(id)}/exports`,
+      { mode },
+    );
+    return response.data;
+  },
+
+  async getExport(client: ApiClient, id: string, jobId: string): Promise<CampaignExportJob> {
+    const response = await client.get<{ data: CampaignExportJob }>(
+      `/v1/campaigns/${encodeURIComponent(id)}/exports/${encodeURIComponent(jobId)}`,
+    );
+    return response.data;
+  },
+
+  async listExports(client: ApiClient, id: string): Promise<CampaignExportJob[]> {
+    const response = await client.get<{ data: CampaignExportJob[] }>(
+      `/v1/campaigns/${encodeURIComponent(id)}/exports`,
+    );
+    return response.data;
+  },
+
+  /** Build the absolute browser-side preview PDF URL — used by `<a target="_blank">`. */
+  previewPdfPath(id: string, mode?: "door_drop" | "nominative"): string {
+    const params = mode ? `?mode=${mode}` : "";
+    return `/v1/campaigns/${encodeURIComponent(id)}/preview-pdf${params}`;
+  },
 };
+
+export interface LinkedConstituentRow {
+  id: string;
+  constituentId: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  type: string;
+  addedByUserId: string | null;
+  createdAt: string;
+  reconciledAmountCents: number;
+  reconciledDonationCount: number;
+}
+
+export interface LinkedConstituentsResponse {
+  data: LinkedConstituentRow[];
+  pagination: { page: number; perPage: number; total: number; totalPages: number };
+  campaignType: "nominative_postal" | "door_drop" | "digital";
+}
+
+export interface CampaignExportJob {
+  id: string;
+  orgId: string;
+  campaignId: string;
+  mode: "door_drop" | "nominative";
+  status: "pending" | "processing" | "completed" | "failed";
+  progressTotal: number;
+  progressDone: number;
+  progressPct: number;
+  archiveS3Path: string | null;
+  downloadUrl?: string | null;
+  error: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 function mapCampaign(raw: Campaign): Campaign {
   return {

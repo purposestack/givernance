@@ -31,6 +31,8 @@ const EnvSchema = Type.Object({
   S3_SECRET_ACCESS_KEY: Type.String({ minLength: 1 }),
   /** S3 bucket for receipts */
   S3_RECEIPTS_BUCKET: Type.String({ minLength: 1, default: "receipts" }),
+  /** S3 bucket for campaign documents and ZIP archives (Epic #274) */
+  S3_CAMPAIGNS_BUCKET: Type.String({ minLength: 1, default: "campaigns" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
   /** Keycloak base URL used to derive issuer (public) */

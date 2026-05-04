@@ -45,6 +45,27 @@ export const campaignDocumentStatusEnum = pgEnum("campaign_document_status", [
   "failed",
 ]);
 
+/** Campaign export job status — tracks the asynchronous ZIP archive generation lifecycle (Epic #274). */
+export const CAMPAIGN_EXPORT_JOB_STATUS_VALUES = [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+] as const;
+export type CampaignExportJobStatus = (typeof CAMPAIGN_EXPORT_JOB_STATUS_VALUES)[number];
+
+export const campaignExportJobStatusEnum = pgEnum("campaign_export_job_status", [
+  ...CAMPAIGN_EXPORT_JOB_STATUS_VALUES,
+]);
+
+/** Campaign export mode — distinguishes generic door-drop archives from nominative bundles (Epic #274). */
+export const CAMPAIGN_EXPORT_MODE_VALUES = ["door_drop", "nominative"] as const;
+export type CampaignExportMode = (typeof CAMPAIGN_EXPORT_MODE_VALUES)[number];
+
+export const campaignExportModeEnum = pgEnum("campaign_export_mode", [
+  ...CAMPAIGN_EXPORT_MODE_VALUES,
+]);
+
 // ─── Donation-related Enums ──────────────────────────────────────────────────
 
 export const FUND_TYPE_VALUES = ["restricted", "unrestricted"] as const;
@@ -940,6 +961,91 @@ export const campaignPublicPages = pgTable(
   (table) => [
     index("campaign_public_pages_org_id_idx").on(table.orgId),
     index("campaign_public_pages_campaign_id_idx").on(table.campaignId),
+  ],
+);
+
+// ─── Campaign Constituents (Epic #274) ─────────────────────────────────────
+
+/**
+ * Campaign Constituents — explicit linkage between a campaign and the
+ * constituents on its mailing list. Lets the org build a recipient list
+ * for a postal campaign WITHOUT creating placeholder donations (the prior
+ * workaround discussed in issue #233 / #274).
+ *
+ * `campaign_id, constituent_id` is unique per org so attaching the same
+ * person twice is a no-op (`ON CONFLICT DO NOTHING` in service layer).
+ * `addedByUserId` lets the audit trail say who built the list (GDPR
+ * Art. 5(2) accountability).
+ */
+export const campaignConstituents = pgTable(
+  "campaign_constituents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    constituentId: uuid("constituent_id")
+      .notNull()
+      .references(() => constituents.id, { onDelete: "cascade" }),
+    addedByUserId: uuid("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("campaign_constituents_org_id_idx").on(table.orgId),
+    index("campaign_constituents_campaign_id_idx").on(table.campaignId),
+    index("campaign_constituents_constituent_id_idx").on(table.constituentId),
+    unique("campaign_constituents_campaign_constituent_uniq").on(
+      table.campaignId,
+      table.constituentId,
+    ),
+  ],
+);
+
+// ─── Campaign Export Jobs (Epic #274) ──────────────────────────────────────
+
+/**
+ * Campaign Export Jobs — orchestration record for the ZIP-archive generation
+ * pipeline. The HTTP request returns immediately with the job id; a BullMQ
+ * worker fans out PDF generation, bundles the result, uploads to S3 and
+ * progressively updates `progressTotal` / `progressDone`. The frontend polls
+ * `GET /campaigns/:id/exports/:jobId` to drive a progress bar.
+ *
+ * `mode` mirrors the campaign type at request time (door-drop = single
+ * generic letter, nominative = one PDF per linked constituent). `archiveS3Path`
+ * is the bucket key of the final ZIP; the API mints a short-lived signed URL
+ * on demand so we never persist a public URL.
+ */
+export const campaignExportJobs = pgTable(
+  "campaign_export_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    mode: campaignExportModeEnum("mode").notNull(),
+    status: campaignExportJobStatusEnum("status").notNull().default("pending"),
+    progressTotal: integer("progress_total").notNull().default(0),
+    progressDone: integer("progress_done").notNull().default(0),
+    archiveS3Path: varchar("archive_s3_path", { length: 500 }),
+    error: text("error"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("campaign_export_jobs_org_id_idx").on(table.orgId),
+    index("campaign_export_jobs_campaign_id_idx").on(table.campaignId),
+    index("campaign_export_jobs_status_idx").on(table.status),
   ],
 );
 

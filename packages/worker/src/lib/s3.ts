@@ -61,3 +61,48 @@ export async function uploadCampaignPdf(
   const key = `${tenantId}/campaigns/${campaignId}/${documentId}.pdf`;
   return streamPdfToS3(env.S3_CAMPAIGNS_BUCKET, key, doc);
 }
+
+/**
+ * Upload a campaign export ZIP archive (streamed) to the campaigns bucket.
+ * Returns the S3 key — the API mints a short-lived signed URL on demand
+ * (see `packages/api/src/modules/campaigns/exports-service.ts`).
+ */
+export async function uploadCampaignArchive(
+  tenantId: string,
+  campaignId: string,
+  exportJobId: string,
+  archive: NodeJS.ReadableStream,
+): Promise<string> {
+  const key = `${tenantId}/campaigns/${campaignId}/exports/${exportJobId}.zip`;
+  const upload = new Upload({
+    client: s3,
+    params: {
+      Bucket: env.S3_CAMPAIGNS_BUCKET,
+      Key: key,
+      Body: archive as unknown as Readable,
+      ContentType: "application/zip",
+      ServerSideEncryption: "AES256",
+      ACL: "private",
+    },
+  });
+  await upload.done();
+  return key;
+}
+
+/**
+ * Fetch a previously generated PDF from S3 — used by the export pipeline
+ * to bundle existing per-constituent letters into a ZIP archive without
+ * re-rendering them.
+ */
+export async function getCampaignPdfBody(s3Path: string): Promise<Readable> {
+  const command = new (await import("@aws-sdk/client-s3")).GetObjectCommand({
+    Bucket: env.S3_CAMPAIGNS_BUCKET,
+    Key: s3Path,
+  });
+  const response = await s3.send(command);
+  const body = response.Body as Readable | undefined;
+  if (!body) {
+    throw new Error(`S3 object missing body: ${s3Path}`);
+  }
+  return body;
+}

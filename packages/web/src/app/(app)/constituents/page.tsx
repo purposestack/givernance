@@ -16,6 +16,7 @@ import type {
 } from "@/models/constituent";
 import { ConstituentService } from "@/services/ConstituentService";
 
+import { BulkEmailButton, ConstituentFilterBar } from "./constituents-extras";
 import { ConstituentsTable } from "./constituents-table";
 
 const DEFAULT_PER_PAGE = 20;
@@ -60,6 +61,18 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
   return max ? Math.min(parsed, max) : parsed;
 }
 
+function stringParam(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && raw.length > 0 ? raw : undefined;
+}
+
+function parseAmountCentsParam(value: string | string[] | undefined): number | undefined {
+  const raw = stringParam(value);
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 export default async function ConstituentsPage({ searchParams }: ConstituentsPageProps) {
   const auth = await requireAuth();
   const canManageAdminActions = auth.roles.includes("org_admin");
@@ -82,6 +95,15 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
   const sort = parseSortField(params.sort);
   const order = parseSortOrder(params.order);
 
+  // Epic #274 — pull through the new filter inputs from the URL so the
+  // server-rendered page reflects them and TanStack table doesn't reset
+  // them on the client.
+  const lastDonationFrom = stringParam(params.lastDonationFrom);
+  const lastDonationTo = stringParam(params.lastDonationTo);
+  const totalAmountMinCents = parseAmountCentsParam(params.totalAmountMinCents);
+  const totalAmountMaxCents = parseAmountCentsParam(params.totalAmountMaxCents);
+  const campaignId = stringParam(params.campaignId);
+
   const client = await createServerApiClient();
 
   let result: ConstituentListResponse;
@@ -93,6 +115,11 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
       type: typeValue,
       sort,
       order,
+      lastDonationFrom,
+      lastDonationTo,
+      totalAmountMinCents,
+      totalAmountMaxCents,
+      campaignId,
     });
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
@@ -126,6 +153,17 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
           ) : null
         }
       />
+
+      <ConstituentFilterBar />
+
+      {canWrite && hasAny ? (
+        <div className="mb-4 flex justify-end">
+          <BulkEmailButton
+            visibleIds={result.data.map((c) => c.id)}
+            filteredCount={result.pagination.total}
+          />
+        </div>
+      ) : null}
 
       {hasAny ? (
         <ConstituentsTable

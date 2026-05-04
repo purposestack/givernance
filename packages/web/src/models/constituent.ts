@@ -58,6 +58,14 @@ export interface ConstituentListQuery {
   type?: ConstituentType;
   sort?: ConstituentSortField;
   order?: ConstituentSortOrder;
+  /** Epic #274 — last-donation date window (ISO-8601). */
+  lastDonationFrom?: string;
+  lastDonationTo?: string;
+  /** Epic #274 — cumulative net donation amount window (base-currency cents). */
+  totalAmountMinCents?: number;
+  totalAmountMaxCents?: number;
+  /** Epic #274 — restrict to constituents associated with a campaign. */
+  campaignId?: string;
 }
 
 export function fullName(constituent: Constituent): string {

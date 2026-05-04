@@ -1,6 +1,12 @@
 /** Constituent service — business logic for constituent operations */
 
-import { constituents, donations, mergeHistory, outboxEvents } from "@givernance/shared/schema";
+import {
+  campaignConstituents,
+  constituents,
+  donations,
+  mergeHistory,
+  outboxEvents,
+} from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import {
   and,
@@ -10,6 +16,7 @@ import {
   eq,
   getTableColumns,
   ilike,
+  inArray,
   isNull,
   or,
   type SQL,
@@ -45,6 +52,18 @@ export interface ListConstituentsQuery {
   includeDeleted?: boolean;
   sort?: string;
   order?: string;
+  /** Epic #274 — filters used by the constituents list filter bar. */
+  lastDonationFrom?: string;
+  lastDonationTo?: string;
+  totalAmountMinCents?: number;
+  totalAmountMaxCents?: number;
+  /**
+   * Restrict to constituents linked to this campaign (via
+   * `campaign_constituents`) or who have a donation tied to it. Either
+   * relationship qualifies — the union matches the user mental model
+   * "everyone associated with campaign X".
+   */
+  campaignId?: string;
 }
 
 /**
@@ -119,9 +138,22 @@ export interface ConstituentInput {
 
 /** List constituents for an organization with pagination, search, and filtering */
 export async function listConstituents(orgId: string, query: ListConstituentsQuery) {
-  const { page, perPage, search, tags, type, includeDeleted } = query;
+  const {
+    page,
+    perPage,
+    search,
+    tags,
+    type,
+    includeDeleted,
+    lastDonationFrom,
+    lastDonationTo,
+    totalAmountMinCents,
+    totalAmountMaxCents,
+    campaignId,
+  } = query;
   const offset = (page - 1) * perPage;
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: list endpoint with multiple optional filter shapes (search, tags, type, last-donation window, total-amount window, campaign linkage). Splitting the predicate-building further would just relocate the branches.
   return withTenantContext(orgId, async (tx) => {
     const conditions = [eq(constituents.orgId, orgId)];
 
@@ -154,26 +186,90 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
       conditions.push(arrayOverlaps(constituents.tags, tags));
     }
 
-    const where = and(...conditions);
+    // Campaign linkage filter (Epic #274). Restricts the listing to
+    // constituents who are EITHER linked via `campaign_constituents` OR
+    // have at least one donation tied to the campaign — the union matches
+    // the org's mental model of "people associated with campaign X". We
+    // pre-resolve the id set in a single query rather than appending a
+    // subquery to the WHERE clause to keep the planner's job simple.
+    if (campaignId) {
+      const linkedRows = await tx
+        .select({ id: campaignConstituents.constituentId })
+        .from(campaignConstituents)
+        .where(
+          and(
+            eq(campaignConstituents.orgId, orgId),
+            eq(campaignConstituents.campaignId, campaignId),
+          ),
+        );
+      const donorRows = await tx
+        .selectDistinct({ id: donations.constituentId })
+        .from(donations)
+        .where(and(eq(donations.orgId, orgId), eq(donations.campaignId, campaignId)));
+      const ids = Array.from(
+        new Set([...linkedRows.map((r) => r.id), ...donorRows.map((r) => r.id)]),
+      );
+      if (ids.length === 0) {
+        // No matches — short-circuit with an empty page.
+        return {
+          data: [],
+          pagination: { page, perPage, total: 0, totalPages: 0 } satisfies Pagination,
+        };
+      }
+      conditions.push(inArray(constituents.id, ids));
+    }
+
     const sort = normalizeConstituentSort(query.sort);
     const order = normalizeConstituentOrder(query.order);
 
-    // Aggregate subquery: latest donation date per constituent within
-    // this tenant. LEFT JOINed below so constituents who never donated
-    // appear with `lastDonationAt = NULL`. Pre-aggregating in a subquery
-    // (vs. correlated scalar subquery in SELECT + ORDER BY) lets PG plan
-    // a single hash aggregate over `donations` instead of one indexed
-    // lookup per page row, and reuses the same value in SELECT and
-    // ORDER BY without recomputation. Issue #215.
+    // Aggregate subquery: latest donation date + cumulative cleared/refunded
+    // base cents per constituent within this tenant. Drives both the
+    // `lastDonation` sort and the Epic #274 last-donation / total-amount
+    // filters.
     const latestDonationSq = tx
       .select({
         constituentId: donations.constituentId,
         lastDonationAt: sql<string | null>`max(${donations.donatedAt})`.as("last_donation_at"),
+        totalAmountBaseCents: sql<number | null>`SUM(CASE
+          WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
+          WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}
+          ELSE 0
+        END)`.as("total_amount_base_cents"),
       })
       .from(donations)
       .where(eq(donations.orgId, orgId))
       .groupBy(donations.constituentId)
       .as("latest_donation");
+
+    // Aggregate-driven filters can't go in `conditions` (which only sees
+    // `constituents.*`) — they live in a HAVING-style WHERE on the joined
+    // subquery. Drizzle expresses this as raw SQL fragments referencing
+    // the alias columns.
+    const aggregateConditions: SQL[] = [];
+    if (lastDonationFrom) {
+      aggregateConditions.push(
+        sql`${latestDonationSq.lastDonationAt} >= ${lastDonationFrom}::timestamptz`,
+      );
+    }
+    if (lastDonationTo) {
+      aggregateConditions.push(
+        sql`${latestDonationSq.lastDonationAt} <= ${lastDonationTo}::timestamptz`,
+      );
+    }
+    if (typeof totalAmountMinCents === "number") {
+      aggregateConditions.push(
+        sql`COALESCE(${latestDonationSq.totalAmountBaseCents}, 0) >= ${totalAmountMinCents}`,
+      );
+    }
+    if (typeof totalAmountMaxCents === "number") {
+      aggregateConditions.push(
+        sql`COALESCE(${latestDonationSq.totalAmountBaseCents}, 0) <= ${totalAmountMaxCents}`,
+      );
+    }
+
+    const baseWhere = and(...conditions);
+    const where =
+      aggregateConditions.length > 0 ? and(baseWhere, ...aggregateConditions) : baseWhere;
 
     const [data, countResult] = await Promise.all([
       tx
@@ -187,7 +283,11 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
         .orderBy(...buildConstituentOrderBy(sort, order, latestDonationSq.lastDonationAt))
         .limit(perPage)
         .offset(offset),
-      tx.select({ count: sql<number>`count(*)` }).from(constituents).where(where),
+      tx
+        .select({ count: sql<number>`count(*)` })
+        .from(constituents)
+        .leftJoin(latestDonationSq, eq(latestDonationSq.constituentId, constituents.id))
+        .where(where),
     ]);
 
     const total = Number(countResult[0]?.count ?? 0);
@@ -260,6 +360,63 @@ export async function updateConstituent(
     });
 
     return updated;
+  });
+}
+
+/**
+ * Build an audit-friendly snapshot of an outgoing bulk-email request
+ * (Epic #274). Verifies all constituents belong to the org and emits a
+ * `constituent.bulk_email_requested` outbox event. Actual sending is
+ * delegated to the worker (see `send-constituent-bulk-email` job).
+ *
+ * Returns the count of unique recipients and the count of constituents
+ * with a usable email address — the route surfaces both so the user
+ * can spot the "selected 12, only 9 have email" case before sending.
+ */
+export async function requestConstituentBulkEmail(
+  orgId: string,
+  constituentIds: string[],
+  subject: string,
+  bodyText: string,
+  userId: string,
+): Promise<{ requested: number; reachable: number }> {
+  const uniqueIds = Array.from(new Set(constituentIds));
+  if (uniqueIds.length === 0) {
+    return { requested: 0, reachable: 0 };
+  }
+
+  return withTenantContext(orgId, async (tx) => {
+    const matching = await tx
+      .select({ id: constituents.id, email: constituents.email })
+      .from(constituents)
+      .where(
+        and(
+          eq(constituents.orgId, orgId),
+          isNull(constituents.deletedAt),
+          inArray(constituents.id, uniqueIds),
+        ),
+      );
+
+    if (matching.length !== uniqueIds.length) {
+      throw new Error("One or more constituents were not found in this organization");
+    }
+
+    const reachable = matching.filter((m) => m.email && m.email.trim().length > 0).length;
+
+    await tx.insert(outboxEvents).values({
+      tenantId: orgId,
+      type: "constituent.bulk_email_requested",
+      payload: {
+        constituentIds: uniqueIds,
+        subject,
+        bodyText,
+        requestedBy: userId,
+        requestedCount: uniqueIds.length,
+        reachableCount: reachable,
+      },
+    });
+
+    return { requested: uniqueIds.length, reachable };
   });
 }
 

@@ -9,10 +9,12 @@ import { jobLogger, logger } from "./lib/logger.js";
 import { resolvePayloadLocale } from "./lib/payload-locale.js";
 import { extractTraceId } from "./lib/trace-context.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
+import { processGenerateCampaignExport } from "./processors/campaign-export.js";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processPlatformAdminInviteEmail } from "./processors/platform-admin-invite-email.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
+import { processSendConstituentBulkEmail } from "./processors/send-constituent-bulk-email.js";
 import {
   processSignupVerificationEmail,
   type SignupEmailJobPayload,
@@ -36,6 +38,7 @@ function createRedisConnection() {
 const queueConnection = createRedisConnection();
 const receiptsQueue = new Queue(QUEUE_NAMES.RECEIPTS, { connection: queueConnection });
 const campaignsQueue = new Queue(QUEUE_NAMES.CAMPAIGNS, { connection: queueConnection });
+const emailsQueue = new Queue(QUEUE_NAMES.EMAILS, { connection: queueConnection });
 const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
   connection: queueConnection,
 });
@@ -127,6 +130,53 @@ async function processDomainEvent(job: Job): Promise<void> {
     return;
   }
 
+  if (type === "constituent.bulk_email_requested") {
+    const constituentIds = payload.constituentIds as string[];
+    const subject = payload.subject as string;
+    const bodyText = payload.bodyText as string;
+    const requestedByUserId = payload.requestedBy as string;
+
+    await emailsQueue.add(
+      "send-constituent-bulk-email",
+      {
+        orgId: tenantId,
+        requestedByUserId,
+        constituentIds,
+        subject,
+        bodyText,
+        traceparent,
+      },
+      // Stable jobId based on the outbox event id so duplicate relay
+      // deliveries don't double-send.
+      { jobId: `constituent-bulk-email-${id}` },
+    );
+    log.info({ recipientCount: constituentIds.length }, "Enqueued constituent bulk email");
+    return;
+  }
+
+  if (type === "campaign.export_requested") {
+    const exportJobId = payload.exportJobId as string;
+    const campaignId = payload.campaignId as string;
+    const mode = payload.mode as "door_drop" | "nominative";
+
+    await campaignsQueue.add(
+      "generate-campaign-export",
+      {
+        exportJobId,
+        campaignId,
+        orgId: tenantId,
+        mode,
+        traceparent,
+      },
+      // Stable jobId so a duplicated outbox event doesn't fan-out two parallel
+      // workers stomping on the same `campaign_export_jobs` row.
+      { jobId: `campaign-export-${exportJobId}`, attempts: 1 },
+    );
+
+    log.info({ exportJobId, campaignId, mode }, "Enqueued campaign export job");
+    return;
+  }
+
   if (
     type === "tenant.signup_verification_requested" ||
     type === "tenant.signup_verification_resent"
@@ -192,11 +242,23 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
-  const emailsWorker = new Worker(QUEUE_NAMES.EMAILS, processSendBulkEmail, {
-    connection: createRedisConnection(),
-    concurrency: 2,
-    ...defaultJobOpts,
-  });
+  // Routes by job.name — `send-constituent-bulk-email` (Epic #274 admin
+  // action against an explicit id list) and the legacy
+  // `send-bulk-email` (segment-filter campaigns).
+  const emailsWorker = new Worker(
+    QUEUE_NAMES.EMAILS,
+    async (job) => {
+      if (job.name === "send-constituent-bulk-email") {
+        return processSendConstituentBulkEmail(job as Job);
+      }
+      return processSendBulkEmail(job as Job);
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 2,
+      ...defaultJobOpts,
+    },
+  );
 
   const gdprWorker = new Worker(QUEUE_NAMES.GDPR, processGdprErasure, {
     connection: createRedisConnection(),
@@ -204,11 +266,25 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
-  const campaignsWorker = new Worker(QUEUE_NAMES.CAMPAIGNS, processGenerateCampaignDocuments, {
-    connection: createRedisConnection(),
-    concurrency: 3,
-    ...defaultJobOpts,
-  });
+  // Multi-handler dispatch: the `campaigns` queue carries both the
+  // legacy per-document generation job and the Epic #274 ZIP-export job.
+  // Routing on `job.name` keeps the existing producers untouched while
+  // letting us slot in new job types incrementally.
+  const campaignsWorker = new Worker(
+    QUEUE_NAMES.CAMPAIGNS,
+    async (job) => {
+      if (job.name === "generate-campaign-export") {
+        return processGenerateCampaignExport(job as Job);
+      }
+      // Default: the original per-recipient document generation flow.
+      return processGenerateCampaignDocuments(job as Job);
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 3,
+      ...defaultJobOpts,
+    },
+  );
 
   const eventsWorker = new Worker(QUEUE_NAMES.EVENTS, processDomainEvent, {
     connection: createRedisConnection(),

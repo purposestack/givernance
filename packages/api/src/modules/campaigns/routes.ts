@@ -1,6 +1,9 @@
 /** Campaign routes — full CRUD, stats, ROI, document generation, and eligible funds */
 
+import { randomBytes } from "node:crypto";
 import {
+  CAMPAIGN_EXPORT_JOB_STATUS_VALUES,
+  CAMPAIGN_EXPORT_MODE_VALUES,
   CAMPAIGN_STATUS_VALUES,
   CAMPAIGN_TYPE_VALUES,
   FUND_TYPE_VALUES,
@@ -8,6 +11,7 @@ import {
 import { MULTI_CURRENCY_VALUES } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+import { createCampaignLetterPdfStream } from "../../lib/campaign-pdf.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import {
   DataArrayResponse,
@@ -21,6 +25,18 @@ import {
   SortOrderSchema,
   UuidSchema,
 } from "../../lib/schemas.js";
+import {
+  attachConstituents,
+  CampaignLinkError,
+  detachConstituent,
+  listLinkedConstituents,
+} from "./constituents-service.js";
+import {
+  createExportJob,
+  ExportJobError,
+  getExportJobView,
+  listCampaignExportJobs,
+} from "./exports-service.js";
 import {
   CAMPAIGN_SORT_FIELDS,
   CampaignValidationError,
@@ -509,6 +525,353 @@ export async function campaignRoutes(app: FastifyInstance) {
       // to "generated". Issue #56 API minor.
       reply.header("Location", `/v1/campaigns/${id}`);
       return reply.status(202).send({ data: result });
+    },
+  );
+
+  // ── Epic #274 — Constituent linking, ZIP exports, preview ────────────────
+
+  const LinkedConstituentRow = Type.Object({
+    id: UuidSchema,
+    constituentId: UuidSchema,
+    firstName: Type.String(),
+    lastName: Type.String(),
+    email: Type.Union([Type.Null(), Type.String()]),
+    type: Type.String(),
+    addedByUserId: Type.Union([Type.Null(), UuidSchema]),
+    createdAt: Type.String(),
+    reconciledAmountCents: Type.Integer(),
+    reconciledDonationCount: Type.Integer(),
+  });
+
+  const LinkConstituentsBody = Type.Object({
+    constituentIds: Type.Array(UuidSchema, { minItems: 1, maxItems: 1000 }),
+  });
+
+  const LinkConstituentsResult = Type.Object({
+    attached: Type.Integer(),
+    skipped: Type.Integer(),
+  });
+
+  const CampaignExportModeSchema = Type.Union(
+    CAMPAIGN_EXPORT_MODE_VALUES.map((v) => Type.Literal(v)),
+  );
+
+  const CampaignExportJobStatusSchema = Type.Union(
+    CAMPAIGN_EXPORT_JOB_STATUS_VALUES.map((v) => Type.Literal(v)),
+  );
+
+  const CampaignExportJobResponse = Type.Object({
+    id: UuidSchema,
+    orgId: UuidSchema,
+    campaignId: UuidSchema,
+    mode: CampaignExportModeSchema,
+    status: CampaignExportJobStatusSchema,
+    progressTotal: Type.Integer(),
+    progressDone: Type.Integer(),
+    progressPct: Type.Integer(),
+    archiveS3Path: Type.Union([Type.Null(), Type.String()]),
+    downloadUrl: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+    error: Type.Union([Type.Null(), Type.String()]),
+    startedAt: Type.Union([Type.Null(), Type.String()]),
+    completedAt: Type.Union([Type.Null(), Type.String()]),
+    createdAt: Type.String(),
+    updatedAt: Type.String(),
+  });
+
+  const CreateExportBody = Type.Object({
+    mode: CampaignExportModeSchema,
+  });
+
+  /** GET /campaigns/:id/constituents — list linked recipients */
+  app.get(
+    "/campaigns/:id/constituents",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["Campaigns"],
+        params: IdParams,
+        querystring: Type.Intersect([
+          PaginationQuery,
+          Type.Object({ search: Type.Optional(Type.String({ maxLength: 200 })) }),
+        ]),
+        response: {
+          200: Type.Object({
+            data: Type.Array(LinkedConstituentRow),
+            pagination: Type.Object({
+              page: Type.Integer(),
+              perPage: Type.Integer(),
+              total: Type.Integer(),
+              totalPages: Type.Integer(),
+            }),
+            campaignType: Type.Union(CAMPAIGN_TYPE_VALUES.map((v) => Type.Literal(v))),
+          }),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id } = request.params as { id: string };
+      const query = request.query as { page?: number; perPage?: number; search?: string };
+      try {
+        const result = await listLinkedConstituents(orgId, id, {
+          page: query.page ?? 1,
+          perPage: query.perPage ?? 50,
+          search: query.search,
+        });
+        return result;
+      } catch (err) {
+        if (err instanceof CampaignLinkError && err.code === "campaign_not_found") {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+        }
+        throw err;
+      }
+    },
+  );
+
+  /** POST /campaigns/:id/constituents — attach a list of recipients */
+  app.post(
+    "/campaigns/:id/constituents",
+    {
+      preHandler: requireWrite,
+      schema: {
+        tags: ["Campaigns"],
+        params: IdParams,
+        body: LinkConstituentsBody,
+        response: {
+          200: DataResponse(LinkConstituentsResult),
+          400: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id } = request.params as { id: string };
+      const { constituentIds } = request.body as { constituentIds: string[] };
+      try {
+        const result = await attachConstituents(orgId, id, constituentIds, userId);
+        return { data: result };
+      } catch (err) {
+        if (err instanceof CampaignLinkError) {
+          const status = err.code === "campaign_not_found" ? 404 : 400;
+          return reply.status(status).send(problemDetail(status, err.code, err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  /** DELETE /campaigns/:id/constituents/:constituentId — detach a recipient */
+  app.delete(
+    "/campaigns/:id/constituents/:constituentId",
+    {
+      preHandler: requireWrite,
+      schema: {
+        tags: ["Campaigns"],
+        params: Type.Object({ id: UuidSchema, constituentId: UuidSchema }),
+        response: {
+          204: Type.Any(),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id, constituentId } = request.params as { id: string; constituentId: string };
+      const ok = await detachConstituent(orgId, id, constituentId, userId);
+      if (!ok) {
+        return reply
+          .status(404)
+          .send(problemDetail(404, "Not Found", "Constituent not linked to this campaign"));
+      }
+      return reply.status(204).send();
+    },
+  );
+
+  /** POST /campaigns/:id/exports — start an asynchronous ZIP export */
+  app.post(
+    "/campaigns/:id/exports",
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        tags: ["Campaigns"],
+        params: IdParams,
+        body: CreateExportBody,
+        response: {
+          202: DataResponse(CampaignExportJobResponse),
+          400: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id } = request.params as { id: string };
+      const { mode } = request.body as { mode: "door_drop" | "nominative" };
+      try {
+        const job = await createExportJob(orgId, id, mode, userId);
+        reply.header("Location", `/v1/campaigns/${id}/exports/${job.id}`);
+        return reply.status(202).send({
+          data: {
+            ...job,
+            createdAt: job.createdAt.toISOString(),
+            updatedAt: job.updatedAt.toISOString(),
+            startedAt: job.startedAt?.toISOString() ?? null,
+            completedAt: job.completedAt?.toISOString() ?? null,
+            progressPct: 0,
+            downloadUrl: null,
+          },
+        });
+      } catch (err) {
+        if (err instanceof ExportJobError) {
+          const status = err.code === "campaign_not_found" ? 404 : 400;
+          return reply.status(status).send(problemDetail(status, err.code, err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  /** GET /campaigns/:id/exports — list recent export jobs */
+  app.get(
+    "/campaigns/:id/exports",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["Campaigns"],
+        params: IdParams,
+        response: {
+          200: DataArrayResponseNoPagination(CampaignExportJobResponse),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id } = request.params as { id: string };
+      const jobs = await listCampaignExportJobs(orgId, id);
+      return {
+        data: jobs.map((job) => ({
+          ...job,
+          createdAt: job.createdAt.toISOString(),
+          updatedAt: job.updatedAt.toISOString(),
+          startedAt: job.startedAt?.toISOString() ?? null,
+          completedAt: job.completedAt?.toISOString() ?? null,
+          progressPct:
+            job.status === "completed"
+              ? 100
+              : job.progressTotal > 0
+                ? Math.min(100, Math.floor((job.progressDone / job.progressTotal) * 100))
+                : 0,
+          downloadUrl: null,
+        })),
+      };
+    },
+  );
+
+  /** GET /campaigns/:id/exports/:jobId — poll job status (with signed download URL) */
+  app.get(
+    "/campaigns/:id/exports/:jobId",
+    {
+      preHandler: requireAuth,
+      schema: {
+        tags: ["Campaigns"],
+        params: Type.Object({ id: UuidSchema, jobId: UuidSchema }),
+        response: {
+          200: DataResponse(CampaignExportJobResponse),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id, jobId } = request.params as { id: string; jobId: string };
+      const view = await getExportJobView(orgId, id, jobId);
+      if (!view) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Export job not found"));
+      }
+      return {
+        data: {
+          ...view,
+          createdAt: view.createdAt.toISOString(),
+          updatedAt: view.updatedAt.toISOString(),
+          startedAt: view.startedAt?.toISOString() ?? null,
+          completedAt: view.completedAt?.toISOString() ?? null,
+        },
+      };
+    },
+  );
+
+  /**
+   * GET /campaigns/:id/preview-pdf — synchronous unitary preview with fake
+   * data ("Jean Dupont"). No DB writes, no QR persistence — the QR payload
+   * is a randomly generated placeholder that is NOT registered, so a scan
+   * would resolve to 404. The endpoint exists purely to validate the
+   * letter layout before kicking off a mass export.
+   */
+  app.get(
+    "/campaigns/:id/preview-pdf",
+    {
+      preHandler: requireWrite,
+      schema: {
+        tags: ["Campaigns"],
+        params: IdParams,
+        querystring: Type.Object({
+          mode: Type.Optional(CampaignExportModeSchema),
+        }),
+        response: { ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id } = request.params as { id: string };
+      const { mode } = request.query as { mode?: "door_drop" | "nominative" };
+
+      const campaign = await getCampaign(orgId, id);
+      if (!campaign) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+      }
+
+      const effectiveMode: "door_drop" | "nominative" =
+        mode ?? (campaign.type === "door_drop" ? "door_drop" : "nominative");
+
+      const stream = await createCampaignLetterPdfStream({
+        campaignName: campaign.name,
+        qrPayload: `preview-${randomBytes(8).toString("base64url")}`,
+        constituent:
+          effectiveMode === "door_drop"
+            ? null
+            : { firstName: "Jean", lastName: "Dupont", email: "jean.dupont@example.org" },
+      });
+
+      reply.header("Content-Type", "application/pdf");
+      reply.header("Content-Disposition", `inline; filename="campaign-${campaign.id}-preview.pdf"`);
+      return reply.send(stream);
     },
   );
 }

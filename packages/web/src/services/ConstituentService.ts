@@ -43,6 +43,12 @@ export const ConstituentService = {
       type: query.type,
       sort: query.sort,
       order: query.order,
+      // Epic #274 — pass-through filters; the server validates ranges.
+      lastDonationFrom: query.lastDonationFrom,
+      lastDonationTo: query.lastDonationTo,
+      totalAmountMinCents: query.totalAmountMinCents,
+      totalAmountMaxCents: query.totalAmountMaxCents,
+      campaignId: query.campaignId,
     };
 
     const response = await client.get<ConstituentListResponse>("/v1/constituents", { params });
@@ -51,6 +57,22 @@ export const ConstituentService = {
       data: response.data.map(mapConstituentListRow),
       pagination: response.pagination,
     };
+  },
+
+  /**
+   * Queue a bulk email blast to a fixed set of constituents (Epic #274).
+   * The API responds 202 with a counter snapshot; rendering and sending
+   * happen on the worker.
+   */
+  async sendBulkEmail(
+    client: ApiClient,
+    payload: { constituentIds: string[]; subject: string; bodyText: string },
+  ): Promise<{ requested: number; reachable: number }> {
+    const response = await client.post<{ data: { requested: number; reachable: number } }>(
+      "/v1/constituents/bulk-email",
+      payload,
+    );
+    return response.data;
   },
 
   /**

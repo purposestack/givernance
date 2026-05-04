@@ -24,6 +24,7 @@ import {
   listConstituents,
   MergePreconditionError,
   mergeConstituents,
+  requestConstituentBulkEmail,
   updateConstituent,
 } from "./service.js";
 
@@ -83,8 +84,27 @@ const ListQuery = Type.Intersect([
     includeDeleted: Type.Optional(Type.Boolean({ default: false })),
     sort: Type.Optional(ConstituentSortFieldSchema),
     order: Type.Optional(SortOrderSchema),
+    /** Epic #274 — last-donation date window filters (ISO-8601). */
+    lastDonationFrom: Type.Optional(Type.String({ format: "date-time" })),
+    lastDonationTo: Type.Optional(Type.String({ format: "date-time" })),
+    /** Epic #274 — cumulative net donation amount window (base-currency cents). */
+    totalAmountMinCents: Type.Optional(Type.Integer({ minimum: 0 })),
+    totalAmountMaxCents: Type.Optional(Type.Integer({ minimum: 0 })),
+    /** Epic #274 — restrict to constituents associated with this campaign. */
+    campaignId: Type.Optional(UuidSchema),
   }),
 ]);
+
+const BulkEmailBody = Type.Object({
+  constituentIds: Type.Array(UuidSchema, { minItems: 1, maxItems: 1000 }),
+  subject: Type.String({ minLength: 1, maxLength: 255 }),
+  bodyText: Type.String({ minLength: 1, maxLength: 10000 }),
+});
+
+const BulkEmailResult = Type.Object({
+  requested: Type.Integer(),
+  reachable: Type.Integer(),
+});
 
 const DuplicateSearchQuery = Type.Object({
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
@@ -186,6 +206,11 @@ export async function constituentRoutes(app: FastifyInstance) {
         includeDeleted?: boolean;
         sort?: (typeof CONSTITUENT_SORT_FIELDS)[number];
         order?: "asc" | "desc";
+        lastDonationFrom?: string;
+        lastDonationTo?: string;
+        totalAmountMinCents?: number;
+        totalAmountMaxCents?: number;
+        campaignId?: string;
       };
 
       const tags = query.tags ? (Array.isArray(query.tags) ? query.tags : [query.tags]) : undefined;
@@ -199,9 +224,60 @@ export async function constituentRoutes(app: FastifyInstance) {
         includeDeleted: query.includeDeleted,
         sort: query.sort,
         order: query.order,
+        lastDonationFrom: query.lastDonationFrom,
+        lastDonationTo: query.lastDonationTo,
+        totalAmountMinCents: query.totalAmountMinCents,
+        totalAmountMaxCents: query.totalAmountMaxCents,
+        campaignId: query.campaignId,
       });
 
       return { data: result.data, pagination: result.pagination };
+    },
+  );
+
+  /**
+   * POST /v1/constituents/bulk-email — queue an email blast to selected
+   * constituents (Epic #274). Returns immediately with a counter snapshot
+   * (`requested` total + `reachable` count of constituents with an email).
+   * Actual sending is delegated to a BullMQ worker job, so the route never
+   * blocks on outbound email throughput.
+   */
+  app.post(
+    "/constituents/bulk-email",
+    {
+      preHandler: requireWrite,
+      schema: {
+        tags: ["Constituents"],
+        body: BulkEmailBody,
+        response: {
+          202: DataResponse(BulkEmailResult),
+          400: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const body = request.body as { constituentIds: string[]; subject: string; bodyText: string };
+      try {
+        const result = await requestConstituentBulkEmail(
+          orgId,
+          body.constituentIds,
+          body.subject,
+          body.bodyText,
+          userId,
+        );
+        return reply.status(202).send({ data: result });
+      } catch (err) {
+        if (err instanceof Error) {
+          return reply.status(400).send(problemDetail(400, "Bad Request", err.message));
+        }
+        throw err;
+      }
     },
   );
 
