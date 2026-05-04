@@ -1823,6 +1823,13 @@
       }
     },
     "detail": {
+      "description": {
+        "title": "Campaign description",
+        "subtitle": "Used as the body of postal letters and as the seed copy for the public donation page.",
+        "editAction": "Edit",
+        "emptyEditable": "No description yet — add one to enrich the postal letter and seed your public donation page.",
+        "emptyReadOnly": "No description has been set yet."
+      },
       "stats": {
         "title": "Campaign stats",
         "raised": "Raised",
