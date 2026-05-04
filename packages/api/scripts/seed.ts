@@ -417,6 +417,36 @@ async function seedOrgData(orgId: string) {
       .values(donationRows)
       .returning({ id: donations.id });
     console.log(`[seed] Inserted ${insertedDonations.length} donations`);
+
+    // Users for impersonation testing within a realistic data tenant
+    const npoUsers = [
+      {
+        email: "alice@npo.local",
+        firstName: "Alice",
+        lastName: "NPO",
+        role: "org_admin" as const,
+        keycloakId: "00000000-0000-0000-0000-0000000000c2",
+      },
+      {
+        email: "bob@npo.local",
+        firstName: "Bob",
+        lastName: "Staff",
+        role: "user" as const,
+        keycloakId: "00000000-0000-0000-0000-0000000000c3",
+      }
+    ];
+
+    for (const u of npoUsers) {
+      const [present] = await tx.select({ id: users.id }).from(users).where(eq(users.email, u.email)).limit(1);
+      if (!present) {
+        try {
+          await tx.insert(users).values({ ...u, orgId });
+          console.log(`[seed] Inserted NPO user ${u.email} (${u.role})`);
+        } catch (err) {
+          console.warn(`[seed] Skipped NPO user ${u.email} (already exists or constraint violation)`);
+        }
+      }
+    }
   });
 }
 
@@ -493,20 +523,27 @@ async function seedDemoTenant(): Promise<void> {
     const [present] = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.keycloakId, u.keycloakId))
+      .where(eq(users.email, u.email))
       .limit(1);
-    if (present) continue;
+    if (present) {
+      console.log(`[seed] Demo user ${u.email} already present`);
+      continue;
+    }
     await withTenantContext(DEMO_TENANT_ID, async (tx) => {
-      await tx.insert(users).values({
-        orgId: DEMO_TENANT_ID,
-        email: u.email,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        role: u.role,
-        keycloakId: u.keycloakId,
-      });
+      try {
+        await tx.insert(users).values({
+          orgId: DEMO_TENANT_ID,
+          email: u.email,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          role: u.role,
+          keycloakId: u.keycloakId,
+        });
+        console.log(`[seed] Inserted demo user ${u.email} (${u.role})`);
+      } catch (err) {
+        console.warn(`[seed] Skipped demo user ${u.email}: already exists or constraint violation`);
+      }
     });
-    console.log(`[seed] Inserted demo user ${u.email} (${u.role})`);
   }
 }
 
