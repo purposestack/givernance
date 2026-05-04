@@ -367,7 +367,17 @@ function buildCampaign(index: number) {
   };
 }
 
-async function seedOrgData(orgId: string) {
+/**
+ * Seed the data tables (constituents / campaigns / donations) for a tenant.
+ *
+ * Pure data — no users. Re-runnable inside a fresh tenant, but **not** truly
+ * idempotent: every call appends `CONSTITUENT_COUNT` / `CAMPAIGN_COUNT` /
+ * `DONATION_COUNT` rows, so callers must gate it (the dev-up.sh gate on
+ * `c1.constituents = 0` is the production gate). User seeding is split out
+ * to dedicated helpers so we can re-use this for the demo workspace tenant
+ * without dragging the NPO-specific users along.
+ */
+async function seedOrgData(orgId: string, tenantLabel: string) {
   return withTenantContext(orgId, async (tx) => {
     // Constituents
     const constituentRows = Array.from({ length: CONSTITUENT_COUNT }, (_, i) => ({
@@ -378,7 +388,7 @@ async function seedOrgData(orgId: string) {
       .insert(constituents)
       .values(constituentRows)
       .returning({ id: constituents.id });
-    console.log(`[seed] Inserted ${insertedConstituents.length} constituents`);
+    console.log(`[seed][${tenantLabel}] Inserted ${insertedConstituents.length} constituents`);
 
     // Campaigns
     const campaignRows = Array.from({ length: CAMPAIGN_COUNT }, (_, i) => ({
@@ -389,7 +399,7 @@ async function seedOrgData(orgId: string) {
       .insert(campaigns)
       .values(campaignRows)
       .returning({ id: campaigns.id });
-    console.log(`[seed] Inserted ${insertedCampaigns.length} campaigns`);
+    console.log(`[seed][${tenantLabel}] Inserted ${insertedCampaigns.length} campaigns`);
 
     // Donations — link each to a random constituent + ~80% to a campaign
     const paymentMethods = ["card", "sepa", "check", "cash", "bank_transfer"];
@@ -407,7 +417,10 @@ async function seedOrgData(orgId: string) {
         amountBaseCents: amountCents,
         campaignId: campaign?.id ?? null,
         paymentMethod: randomPick(paymentMethods),
-        paymentRef: `SEED-${Date.now()}-${i.toString().padStart(4, "0")}`,
+        // `paymentRef` includes the tenant label so cross-tenant seeds can't
+        // collide on the `(org_id, paymentMethod, paymentRef)` unique even
+        // if both tenants seed in the same millisecond.
+        paymentRef: `SEED-${tenantLabel}-${Date.now()}-${i.toString().padStart(4, "0")}`,
         donatedAt,
         fiscalYear: donatedAt.getFullYear(),
       };
@@ -416,34 +429,48 @@ async function seedOrgData(orgId: string) {
       .insert(donations)
       .values(donationRows)
       .returning({ id: donations.id });
-    console.log(`[seed] Inserted ${insertedDonations.length} donations`);
+    console.log(`[seed][${tenantLabel}] Inserted ${insertedDonations.length} donations`);
+  });
+}
 
-    // Users for impersonation testing within a realistic data tenant
-    const npoUsers = [
-      {
-        email: "alice@npo.local",
-        firstName: "Alice",
-        lastName: "NPO",
-        role: "org_admin" as const,
-        keycloakId: "00000000-0000-0000-0000-0000000000c2",
-      },
-      {
-        email: "bob@npo.local",
-        firstName: "Bob",
-        lastName: "Staff",
-        role: "user" as const,
-        keycloakId: "00000000-0000-0000-0000-0000000000c3",
-      }
-    ];
+/**
+ * NPO-specific users for the realistic Demo NPO tenant. Pinned Keycloak ids
+ * (`…c2`, `…c3`) so the realm import in `infra/keycloak/realm-givernance.json`
+ * stays in lockstep. Idempotent: skips on email collision per tenant.
+ */
+async function seedNpoUsers(orgId: string) {
+  const npoUsers = [
+    {
+      email: "alice@npo.local",
+      firstName: "Alice",
+      lastName: "NPO",
+      role: "org_admin" as const,
+      keycloakId: "00000000-0000-0000-0000-0000000000c2",
+    },
+    {
+      email: "bob@npo.local",
+      firstName: "Bob",
+      lastName: "Staff",
+      role: "user" as const,
+      keycloakId: "00000000-0000-0000-0000-0000000000c3",
+    },
+  ];
 
+  return withTenantContext(orgId, async (tx) => {
     for (const u of npoUsers) {
-      const [present] = await tx.select({ id: users.id }).from(users).where(eq(users.email, u.email)).limit(1);
+      const [present] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, u.email))
+        .limit(1);
       if (!present) {
         try {
           await tx.insert(users).values({ ...u, orgId });
-          console.log(`[seed] Inserted NPO user ${u.email} (${u.role})`);
-        } catch (err) {
-          console.warn(`[seed] Skipped NPO user ${u.email} (already exists or constraint violation)`);
+          console.log(`[seed][demo-npo] Inserted NPO user ${u.email} (${u.role})`);
+        } catch {
+          console.warn(
+            `[seed][demo-npo] Skipped NPO user ${u.email} (already exists or constraint violation)`,
+          );
         }
       }
     }
@@ -501,10 +528,22 @@ async function seedPlatformAdmin(): Promise<void> {
 }
 
 /**
- * Seed the impersonation-playground tenant + 3 users in distinct roles.
- * Idempotent: skips when the tenant or users already exist.
+ * Seed the secondary "Demo Workspace" tenant (`…b1`) with three pre-seeded
+ * users (org_admin / user / viewer) plus a fresh batch of realistic data
+ * (constituents / campaigns / donations).
+ *
+ * Originally this tenant was an *empty* impersonation playground, but the
+ * empty shell made it useless for picker / list / dashboard testing — an
+ * operator switching into it saw nothing actionable. Seeding the same data
+ * shape as the Demo NPO gives camille / leo / inès a real working surface
+ * while still keeping the keycloak ids and roles disjoint from the NPO
+ * tenant for clean impersonation matrix coverage.
+ *
+ * Tenant + user creation is idempotent (skip-on-existing). The data step is
+ * gated by the caller (`main` runs the data seed only when `c1` is empty,
+ * which is the same fresh-DB signal that the dev-up.sh wrapper checks).
  */
-async function seedDemoTenant(): Promise<void> {
+async function seedDemoTenant(options: { seedData: boolean }): Promise<void> {
   const [existing] = await db.select().from(tenants).where(eq(tenants.id, DEMO_TENANT_ID));
   if (!existing) {
     await db.insert(tenants).values({
@@ -540,10 +579,16 @@ async function seedDemoTenant(): Promise<void> {
           keycloakId: u.keycloakId,
         });
         console.log(`[seed] Inserted demo user ${u.email} (${u.role})`);
-      } catch (err) {
+      } catch {
         console.warn(`[seed] Skipped demo user ${u.email}: already exists or constraint violation`);
       }
     });
+  }
+
+  if (options.seedData) {
+    await seedOrgData(DEMO_TENANT_ID, "demo-workspace");
+  } else {
+    console.log("[seed] Skipping demo workspace data — fixture tenant already populated.");
   }
 }
 
@@ -552,8 +597,14 @@ async function main() {
   await ensurePlatformSentinelTenant();
   const orgId = await findOrCreateTenant();
   await seedPlatformAdmin();
-  await seedOrgData(orgId);
-  await seedDemoTenant();
+  await seedOrgData(orgId, "demo-npo");
+  await seedNpoUsers(orgId);
+  // Demo workspace tenant gets the same data shape as the NPO tenant so
+  // the picker / dashboards / lists are non-empty when the operator
+  // switches into it. The shell-level gate in `dev-up.sh` is the only
+  // re-run guard — once it triggers a seed run, both tenants are
+  // populated together so they stay in lockstep.
+  await seedDemoTenant({ seedData: true });
   console.log("[seed] Done.");
   process.exit(0);
 }

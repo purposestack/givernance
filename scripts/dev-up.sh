@@ -178,27 +178,37 @@ echo "Running Keycloak smoke test (issue #114 acceptance criterion)..."
 # never appear when the smoke test fails.
 KEYCLOAK_URL="$KC_URL" "$SCRIPT_DIR/keycloak-smoke-test.sh"
 
-# Seed the demo tenant only on a truly empty dev DB.
+# Seed the demo tenants only on a truly empty dev DB.
+#
 # The seed script appends on every run (50 constituents + 5 campaigns +
-# 100 donations), so gating it on "no constituents for the fixture org_id"
-# keeps re-runs of dev-up.sh from ballooning the tables.
+# 100 donations PER seeded tenant), so gating it on "no constituents for
+# the realistic-data fixture tenant" keeps re-runs of dev-up.sh from
+# ballooning the tables.
+#
+# `…c1` is the seeded "Givernance Demo NPO" tenant — see
+# `packages/api/scripts/seed.ts` `TENANT_ID`. It is the canonical signal
+# that the dev DB has already been populated.
+# (An earlier version of this gate checked `…a1` — the platform sentinel
+# tenant — which is `status='archived'` by ADR-022 and therefore
+# *always* empty, so the gate effectively never triggered and every
+# `dev-up.sh` run silently double-seeded.)
 #
 # Do NOT wrap this in `|| echo "0"`: a transient psql failure (restarted
 # postgres, auth hiccup) must fail the script loudly rather than silently
 # re-seed into an already-populated DB. Migrations have run above under
 # `set -e`, so the `constituents` table is guaranteed to exist at this point.
-FIXTURE_ORG_ID="00000000-0000-0000-0000-0000000000a1"
+FIXTURE_ORG_ID="00000000-0000-0000-0000-0000000000c1"
 existing_constituents=$(docker compose exec -T postgres psql \
   -U "${POSTGRES_USER:-givernance}" \
   -d "${POSTGRES_DB:-givernance}" \
   -tAc "SELECT count(*) FROM constituents WHERE org_id = '${FIXTURE_ORG_ID}'")
 if [ "${existing_constituents}" = "0" ]; then
   echo ""
-  echo "Seeding demo tenant (50 constituents / 5 campaigns / 100 donations)..."
+  echo "Seeding demo tenants (NPO + Workspace — 50 constituents / 5 campaigns / 100 donations each)..."
   pnpm --filter @givernance/api run db:seed:local
 else
   echo ""
-  echo "Skipping seed — demo tenant already has ${existing_constituents} constituents."
+  echo "Skipping seed — demo NPO already has ${existing_constituents} constituents."
   echo "  (Wipe with \`docker compose down -v\` to reseed from scratch.)"
 fi
 
