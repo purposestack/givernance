@@ -56,6 +56,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { getCurrencySymbol } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Campaign } from "@/models/campaign";
 import { type Constituent, fullName } from "@/models/constituent";
@@ -351,6 +352,7 @@ export function DonationForm(props: DonationFormProps) {
                         }
                       }}
                       placeholder={t("fields.amountPlaceholder")}
+                      currencySymbol={getCurrencySymbol(form.watch("currency"))}
                     />
                   </FormControl>
                   <FormMessage />
@@ -547,6 +549,7 @@ export function DonationForm(props: DonationFormProps) {
                               value={field.value}
                               onChange={(nextValue) => field.onChange(nextValue)}
                               placeholder={t("fields.amountPlaceholder")}
+                              currencySymbol={getCurrencySymbol(form.watch("currency"))}
                             />
                           </FormControl>
                           <FormMessage />

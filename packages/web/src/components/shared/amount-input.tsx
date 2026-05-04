@@ -16,7 +16,7 @@ export interface AmountInputProps {
   onChange: (value: number | null, meta: AmountInputChangeMeta) => void;
   placeholder?: string;
   className?: string;
-  currencySymbol?: string;
+  currencySymbol: string;
   id?: string;
   name?: string;
   disabled?: boolean;
@@ -35,7 +35,7 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(functi
     onChange,
     placeholder,
     className,
-    currencySymbol = "€",
+    currencySymbol,
     id,
     name,
     disabled,

@@ -18,6 +18,34 @@ export function formatCurrency(cents: number, locale: string, currency = "EUR"):
   }).format(cents / 100);
 }
 
+/**
+ * Return the display symbol for a supported donation currency.
+ * Used to drive the `currencySymbol` prop on `<AmountInput>` so the
+ * prefix tracks the selected currency in real time.
+ *
+ * Covers the 8 currencies accepted by the donation form.
+ * Falls back to the ISO code for any unlisted value so new currencies
+ * added to the form don't silently show `€`.
+ */
+export function getCurrencySymbol(currency: string): string {
+  switch (currency.toUpperCase()) {
+    case "GBP":
+      return "£";
+    case "CHF":
+      return "CHF";
+    case "SEK":
+    case "NOK":
+    case "DKK":
+      return "kr";
+    case "PLN":
+      return "zł";
+    case "CZK":
+      return "Kč";
+    default:
+      return "€"; // EUR and any unknown currency
+  }
+}
+
 /** Format a date to a localized string. */
 export function formatDate(
   date: string | Date,

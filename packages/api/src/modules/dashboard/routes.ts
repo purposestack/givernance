@@ -15,6 +15,11 @@ const DashboardStatsSchema = Type.Object({
   totalRaisedCents: PeriodSchema,
   newDonors: PeriodSchema,
   newActiveCampaigns: PeriodSchema,
+  /**
+   * ISO-4217 code of the tenant's base currency.
+   * All totalRaisedCents values are expressed in this currency.
+   */
+  baseCurrency: Type.String({ minLength: 3, maxLength: 3 }),
 });
 
 export async function dashboardRoutes(app: FastifyInstance) {

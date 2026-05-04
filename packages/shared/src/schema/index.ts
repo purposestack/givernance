@@ -513,6 +513,12 @@ export const exchangeRates = pgTable(
     currency: varchar("currency", { length: 3 }).notNull(),
     baseCurrency: varchar("base_currency", { length: 3 }).notNull(),
     rate: numeric("rate", { precision: 18, scale: 8 }).notNull(),
+    /**
+     * Rate provider: 'ecb' | 'exchangerate-api' | 'manual' | 'unknown'.
+     * Added migration 0037 — pre-existing rows default to 'unknown'.
+     * Application layer must set this on every INSERT/UPSERT going forward.
+     */
+    source: varchar("source", { length: 32 }).notNull().default("unknown"),
     date: date("date").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -521,6 +527,11 @@ export const exchangeRates = pgTable(
     index("exchange_rates_currency_idx").on(table.currency),
     index("exchange_rates_base_currency_idx").on(table.baseCurrency),
     index("exchange_rates_date_idx").on(table.date),
+    // Composite index for getRate() ORDER BY date DESC LIMIT 1 (migration 0037).
+    // Drizzle's index() builder produces (currency, base_currency, date ASC) in the
+    // schema definition; the actual migration SQL uses (date DESC) which Postgres can
+    // scan in reverse for "latest rate" queries. Both directions satisfy the query.
+    index("exchange_rates_lookup_idx").on(table.currency, table.baseCurrency, table.date),
     unique("exchange_rates_currency_base_date_uniq").on(
       table.currency,
       table.baseCurrency,
@@ -614,8 +625,46 @@ export const donations = pgTable(
       .notNull()
       .references(() => constituents.id),
     amountCents: integer("amount_cents").notNull(),
+    /** ISO-4217 currency code of the donor's payment (e.g. 'GBP'). */
     currency: varchar("currency", { length: 3 }).notNull().default("EUR"),
-    exchangeRate: numeric("exchange_rate", { precision: 18, scale: 8 }),
+    /**
+     * FX rate applied to convert amountCents → amountBaseCents.
+     * 1.0 for same-currency donations (source = 'parity').
+     * NOT NULL since migration 0037; pre-0037 NULLs were backfilled to 1.0.
+     */
+    exchangeRate: numeric("exchange_rate", { precision: 18, scale: 8 }).notNull(),
+    /**
+     * Calendar date used to look up the rate in exchange_rates.
+     * Allows auditors to replay: JOIN exchange_rates ON
+     * (currency, base_currency_at_donation, exchange_rate_at).
+     * Added migration 0037; pre-migration rows default to their migration run date.
+     */
+    exchangeRateAt: date("exchange_rate_at").notNull().defaultNow(),
+    /**
+     * Snapshot of tenants.base_currency at donation time.
+     * Immutable once set — changing the tenant's base_currency after the
+     * fact must NOT retroactively alter this field, otherwise historical
+     * amountBaseCents become ambiguous.
+     * Added migration 0037; backfilled from current tenants.base_currency.
+     */
+    baseCurrencyAtDonation: varchar("base_currency_at_donation", { length: 3 })
+      .notNull()
+      .default("EUR"),
+    /**
+     * FX rate provider tier:
+     *   same_currency   — no conversion needed; rate = 1
+     *   local_exact     — DB row matched today's date exactly
+     *   api             — fresh exchangerate-api.com response
+     *   api_cache       — in-process TTL cache hit (same data as 'api')
+     *   local_fallback  — most-recent DB row (stale by at least 1 day)
+     *   default_fallback — no rate available; rate forced to 1 (data quality risk)
+     *   unknown         — pre-migration rows; source not recorded
+     * Added migration 0037.
+     */
+    exchangeRateSource: varchar("exchange_rate_source", { length: 32 })
+      .notNull()
+      .default("unknown"),
+    /** Donation amount in the tenant's base currency (baseCurrencyAtDonation). */
     amountBaseCents: integer("amount_base_cents").notNull(),
     campaignId: uuid("campaign_id").references((): AnyPgColumn => campaigns.id, {
       onDelete: "set null",

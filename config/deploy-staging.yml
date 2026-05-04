@@ -123,6 +123,14 @@ env:
     # bearing fallback in setup-kamal-secrets/action.yml so a fresh fork
     # still boots.
     - IMPERSONATION_JWT_SECRET
+    # exchangerate-api.com API key for real-time FX conversion on
+    # multi-currency donations. Without this key, the ExchangeRateService
+    # falls back to local DB rates → then rate=1 (default_fallback),
+    # silently corrupting amountBaseCents for every foreign-currency
+    # donation on staging. Optional in packages/api/src/env.ts (dev runs
+    # without it), but required on staging for data integrity.
+    # Set via GitHub staging environment secret.
+    - EXCHANGE_RATE_API_KEY
 
 # Configure builder setup.
 builder:

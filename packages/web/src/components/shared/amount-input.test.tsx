@@ -17,6 +17,7 @@ describe("AmountInput", () => {
             }
           }}
           placeholder="0.00"
+          currencySymbol="€"
         />
         <button type="button" onClick={() => setValue(4500)}>
           sync
@@ -29,7 +30,7 @@ describe("AmountInput", () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
 
-    render(<AmountInput value={null} onChange={onChange} placeholder="0.00" />);
+    render(<AmountInput value={null} onChange={onChange} placeholder="0.00" currencySymbol="€" />);
 
     const input = screen.getByPlaceholderText("0.00");
 
@@ -50,7 +51,7 @@ describe("AmountInput", () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
 
-    render(<AmountInput value={null} onChange={onChange} placeholder="0.00" />);
+    render(<AmountInput value={null} onChange={onChange} placeholder="0.00" currencySymbol="€" />);
 
     const input = screen.getByPlaceholderText("0.00");
     await user.type(input, "12.345");

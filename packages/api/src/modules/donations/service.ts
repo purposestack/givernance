@@ -156,7 +156,8 @@ function normalizeDonationOrder(value: string | undefined): DonationSortOrder {
  */
 function buildDonationOrderBy(sort: DonationSortField, order: DonationSortOrder) {
   const dir = order === "asc" ? asc : desc;
-  if (sort === "amountCents") return [dir(donations.amountCents), asc(donations.id)];
+  // Sort by amountBaseCents so ordering is comparable across multi-currency donations.
+  if (sort === "amountCents") return [dir(donations.amountBaseCents), asc(donations.id)];
   if (sort === "paymentMethod") {
     // No `sql.raw` — `order` is a typed literal but switching between two
     // pre-built `sql` fragments keeps the safety obvious in review.
@@ -303,8 +304,10 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
 
   if (dateFrom) conditions.push(gte(donations.donatedAt, new Date(dateFrom)));
   if (dateTo) conditions.push(lte(donations.donatedAt, new Date(dateTo)));
-  if (amountMin !== undefined) conditions.push(gte(donations.amountCents, amountMin));
-  if (amountMax !== undefined) conditions.push(lte(donations.amountCents, amountMax));
+  // amountMin/amountMax filter on amountBaseCents (tenant pivot currency) so
+  // comparisons are meaningful across donors who paid in different currencies.
+  if (amountMin !== undefined) conditions.push(gte(donations.amountBaseCents, amountMin));
+  if (amountMax !== undefined) conditions.push(lte(donations.amountBaseCents, amountMax));
   if (constituentId) conditions.push(eq(donations.constituentId, constituentId));
   if (campaignId) conditions.push(eq(donations.campaignId, campaignId));
   if (receiptStatus) {
@@ -505,6 +508,7 @@ export async function createDonation(orgId: string, userId: string, input: Donat
       baseCurrency,
     );
 
+    const donationDate = input.donatedAt ? new Date(input.donatedAt) : new Date();
     const [donation] = await tx
       .insert(donations)
       .values({
@@ -513,11 +517,18 @@ export async function createDonation(orgId: string, userId: string, input: Donat
         amountCents: input.amountCents,
         currency,
         exchangeRate: convertedAmount.exchangeRate.toFixed(8),
+        // Snapshot fields added in migration 0037 — must be set on every INSERT
+        // so the audit trail is complete from the very first donation post-deploy.
+        // exchangeRateAt uses the donation date for same_currency (rate = 1, no
+        // lookup performed) and the actual conversion date for FX donations.
+        exchangeRateAt: donationDate.toISOString().slice(0, 10),
+        baseCurrencyAtDonation: baseCurrency,
+        exchangeRateSource: convertedAmount.source,
         amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: input.campaignId,
         paymentMethod: input.paymentMethod,
         paymentRef: input.paymentRef,
-        donatedAt: input.donatedAt ? new Date(input.donatedAt) : new Date(),
+        donatedAt: donationDate,
         fiscalYear: input.fiscalYear,
       })
       .returning();
@@ -593,6 +604,13 @@ export async function updateDonation(orgId: string, id: string, input: DonationU
         amountCents: input.amountCents,
         currency,
         exchangeRate: convertedAmount.exchangeRate.toFixed(8),
+        // Re-snapshot the rate metadata on update — the rate may have changed
+        // if the currency or amount changed. exchangeRateAt uses today's date
+        // since the conversion is performed now, not at the original donation time.
+        // Always set (including same_currency where rate=1) to keep the column NOT NULL.
+        exchangeRateAt: new Date().toISOString().slice(0, 10),
+        baseCurrencyAtDonation: baseCurrency,
+        exchangeRateSource: convertedAmount.source,
         amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: input.campaignId ?? null,
         paymentMethod: normalizeNullableString(input.paymentMethod) ?? null,

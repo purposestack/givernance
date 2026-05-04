@@ -200,6 +200,7 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
           IMPERSONATION_JWT_SECRET: ${{ secrets.IMPERSONATION_JWT_SECRET }}
+          EXCHANGE_RATE_API_KEY: ${{ secrets.EXCHANGE_RATE_API_KEY }}
 
       - name: Build and push Keycloak image
         if: steps.gates.outputs.run_keycloak == 'true'

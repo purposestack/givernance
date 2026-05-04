@@ -50,6 +50,10 @@ runs:
         # ASCII chars (HS256 doesn't care about charset). Production must
         # override; rotate by setting the GH secret and redeploying.
         IMPERSONATION_JWT="${IMPERSONATION_JWT_SECRET:-staging_impersonation_jwt_secret_32}"
+        # exchangerate-api.com key — empty fallback so a missing secret
+        # doesn't crash the deploy; ExchangeRateService degrades to
+        # local_fallback → default_fallback (rate=1) without it.
+        EXCHANGE_RATE_KEY="${EXCHANGE_RATE_API_KEY:-}"
         # MinIO server-side AES256 encryption key. Format
         # `<key-name>:<base64-32-byte-secret>`; generate with
         # `openssl rand -base64 32`. The base64 portion MUST decode to
@@ -83,4 +87,5 @@ runs:
         STRIPE_SECRET_KEY=$STRIPE_SECRET
         STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SEC
         IMPERSONATION_JWT_SECRET=$IMPERSONATION_JWT
+        EXCHANGE_RATE_API_KEY=$EXCHANGE_RATE_KEY
         EOF

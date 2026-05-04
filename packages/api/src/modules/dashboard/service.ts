@@ -1,6 +1,6 @@
 /** Dashboard service — month-over-month KPI aggregates */
 
-import { campaigns, constituents, donations } from "@givernance/shared/schema";
+import { campaigns, constituents, donations, tenants } from "@givernance/shared/schema";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
@@ -13,6 +13,12 @@ export interface DashboardStats {
   totalRaisedCents: DashboardPeriod;
   newDonors: DashboardPeriod;
   newActiveCampaigns: DashboardPeriod;
+  /**
+   * ISO-4217 code of the tenant's base currency.
+   * All totalRaisedCents values are in this currency (via amountBaseCents).
+   * Returned here so the UI can label KPI cards without a separate tenant fetch.
+   */
+  baseCurrency: string;
 }
 
 interface MonthRanges {
@@ -44,8 +50,11 @@ export async function getDashboardStats(
   return withTenantContext(orgId, async (tx) => {
     const [donationsAgg] = await tx
       .select({
-        currentSum: sql<string>`COALESCE(SUM(${donations.amountCents}) FILTER (WHERE ${donations.donatedAt} >= ${ranges.current.start} AND ${donations.donatedAt} < ${ranges.current.end}), 0)`,
-        previousSum: sql<string>`COALESCE(SUM(${donations.amountCents}) FILTER (WHERE ${donations.donatedAt} >= ${ranges.previous.start} AND ${donations.donatedAt} < ${ranges.previous.end}), 0)`,
+        // Sum amountBaseCents — amounts already converted to the tenant's pivot
+        // currency at donation time. Using amountCents would add incomparable
+        // values across currencies (e.g. 100 GBP + 100 EUR = 200, which is wrong).
+        currentSum: sql<string>`COALESCE(SUM(${donations.amountBaseCents}) FILTER (WHERE ${donations.donatedAt} >= ${ranges.current.start} AND ${donations.donatedAt} < ${ranges.current.end}), 0)`,
+        previousSum: sql<string>`COALESCE(SUM(${donations.amountBaseCents}) FILTER (WHERE ${donations.donatedAt} >= ${ranges.previous.start} AND ${donations.donatedAt} < ${ranges.previous.end}), 0)`,
       })
       .from(donations)
       .where(
@@ -86,6 +95,11 @@ export async function getDashboardStats(
         ),
       );
 
+    const [tenantRow] = await tx
+      .select({ baseCurrency: tenants.baseCurrency })
+      .from(tenants)
+      .where(eq(tenants.id, orgId));
+
     return {
       totalRaisedCents: {
         current: Number(donationsAgg?.currentSum ?? 0),
@@ -99,6 +113,7 @@ export async function getDashboardStats(
         current: Number(campaignsAgg?.currentCount ?? 0),
         previous: Number(campaignsAgg?.previousCount ?? 0),
       },
+      baseCurrency: tenantRow?.baseCurrency ?? "EUR",
     };
   });
 }

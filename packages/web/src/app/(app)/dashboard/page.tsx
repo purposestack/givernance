@@ -29,7 +29,7 @@ import { DashboardService } from "@/services/DashboardService";
 import { DonationService } from "@/services/DonationService";
 
 const RECENT_DONATIONS_LIMIT = 5;
-const KPI_SAMPLE_LIMIT = 100;
+const KPI_SAMPLE_LIMIT = 100; // used for constituents sample
 
 type DashboardT = (key: string, values?: Record<string, unknown>) => string;
 type DashboardTranslate = (key: string, values?: Record<string, string | number>) => string;
@@ -54,12 +54,9 @@ export default async function DashboardPage() {
   const locale = await getLocale();
   const client = await createServerApiClient();
 
-  const [recentDonations, kpiDonations, donorResult, activeCampaigns, stats] = await Promise.all([
+  const [recentDonations, donorResult, activeCampaigns, stats] = await Promise.all([
     getSafeData(() =>
       DonationService.listDonations(client, { page: 1, perPage: RECENT_DONATIONS_LIMIT }),
-    ),
-    getSafeData(() =>
-      DonationService.listDonations(client, { page: 1, perPage: KPI_SAMPLE_LIMIT }),
     ),
     getSafeData(() =>
       ConstituentService.listConstituents(client, {
@@ -76,12 +73,14 @@ export default async function DashboardPage() {
 
   const activeCampaignStats = await getActiveCampaignStats(activeCampaigns?.data ?? []);
   const totalRaisedCents = stats?.totalRaisedCents.current ?? 0;
-  const primaryCurrency = kpiDonations?.data[0]?.currency ?? "EUR";
+  // baseCurrency comes from the dashboard stats endpoint (tenant's pivot currency).
+  // This is authoritative: amountBaseCents values are already converted to this currency.
+  const baseCurrency = stats?.baseCurrency ?? "EUR";
   const newDonorsThisMonth = stats?.newDonors.current ?? 0;
   const activeCampaignCount = activeCampaigns?.pagination.total ?? 0;
   const trendLabel = t("stats.trendLabel");
   const trendRaised = buildTrend(stats?.totalRaisedCents, trendLabel, (cents) =>
-    formatCurrency(cents, locale, primaryCurrency),
+    formatCurrency(cents, locale, baseCurrency),
   );
   const trendCampaigns = buildTrend(stats?.newActiveCampaigns, trendLabel, (n) =>
     formatNumber(n, locale),
@@ -105,7 +104,7 @@ export default async function DashboardPage() {
       >
         <StatCard
           label={t("stats.totalRaised")}
-          value={formatCurrency(totalRaisedCents, locale, primaryCurrency)}
+          value={formatCurrency(totalRaisedCents, locale, baseCurrency)}
           description={t("stats.totalRaisedHint")}
           valueClassName="font-mono"
           icon={Banknote}

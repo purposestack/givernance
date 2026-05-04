@@ -198,6 +198,7 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
                           field.onChange(meta.isValid ? nextValue : (Number.NaN as number))
                         }
                         placeholder={t("fields.goalPlaceholder")}
+                        currencySymbol="€"
                       />
                     </FormControl>
                     <FormDescription>{t("fields.goalHint")}</FormDescription>

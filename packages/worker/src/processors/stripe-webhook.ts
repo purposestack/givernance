@@ -191,6 +191,7 @@ async function handlePaymentIntentSucceeded(
     }
 
     // Create the donation record — ON CONFLICT guards against BullMQ retry duplicates
+    const donatedAt = new Date();
     const [donation] = await tx
       .insert(donations)
       .values({
@@ -199,14 +200,18 @@ async function handlePaymentIntentSucceeded(
         amountCents,
         currency,
         exchangeRate: convertedAmount.exchangeRate.toFixed(8),
+        // Snapshot fields added in migration 0037
+        exchangeRateAt: donatedAt.toISOString().slice(0, 10),
+        baseCurrencyAtDonation: baseCurrency,
+        exchangeRateSource: convertedAmount.source,
         amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: campaignId || undefined,
         status: "cleared",
         platformFeeCents,
         paymentMethod: "stripe",
         paymentRef: paymentIntentId,
-        donatedAt: new Date(),
-        fiscalYear: new Date().getFullYear(),
+        donatedAt,
+        fiscalYear: donatedAt.getFullYear(),
       })
       .onConflictDoNothing()
       .returning();

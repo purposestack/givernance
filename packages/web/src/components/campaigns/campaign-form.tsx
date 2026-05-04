@@ -49,6 +49,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { getCurrencySymbol } from "@/lib/format";
 import type { Campaign, CampaignCurrency, CampaignType } from "@/models/campaign";
 import type { Fund } from "@/models/fund";
 import { CampaignService } from "@/services/CampaignService";
@@ -323,6 +324,7 @@ export function CampaignForm(props: CampaignFormProps) {
                       value={field.value}
                       onChange={(nextValue) => field.onChange(nextValue)}
                       placeholder={t("fields.operationalCostPlaceholder")}
+                      currencySymbol={getCurrencySymbol(form.watch("defaultCurrency"))}
                     />
                   </FormControl>
                   <p className="text-xs text-on-surface-variant">
@@ -343,6 +345,7 @@ export function CampaignForm(props: CampaignFormProps) {
                       value={field.value}
                       onChange={(nextValue) => field.onChange(nextValue)}
                       placeholder={t("fields.goalAmountPlaceholder")}
+                      currencySymbol={getCurrencySymbol(form.watch("defaultCurrency"))}
                     />
                   </FormControl>
                   <p className="text-xs text-on-surface-variant">{t("fields.goalAmountHint")}</p>
