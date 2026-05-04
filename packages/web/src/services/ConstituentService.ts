@@ -43,6 +43,12 @@ export const ConstituentService = {
       type: query.type,
       sort: query.sort,
       order: query.order,
+      // Epic #274 — campaign + lastDonation + lifetime amount filters.
+      campaignId: query.campaignId,
+      lastDonationFrom: query.lastDonationFrom,
+      lastDonationTo: query.lastDonationTo,
+      minLifetimeAmountCents: query.minLifetimeAmountCents,
+      maxLifetimeAmountCents: query.maxLifetimeAmountCents,
     };
 
     const response = await client.get<ConstituentListResponse>("/v1/constituents", { params });
@@ -51,6 +57,25 @@ export const ConstituentService = {
       data: response.data.map(mapConstituentListRow),
       pagination: response.pagination,
     };
+  },
+
+  /**
+   * Bulk-send a transactional email to a selection of constituents (Epic
+   * #274). Returns the queued + skipped counts; the API's 202 response
+   * means the dispatch is now in the outbox, not that mail has been sent.
+   */
+  async sendBulkEmail(
+    client: ApiClient,
+    input: {
+      constituentIds: string[];
+      subject: string;
+      body: string;
+    },
+  ): Promise<{ queued: number; skippedNoEmail: number }> {
+    const response = await client.post<{
+      data: { queued: number; skippedNoEmail: number };
+    }>("/v1/constituents/bulk-email", input);
+    return response.data;
   },
 
   /**

@@ -1452,7 +1452,9 @@
       "email": "Email",
       "lastDonation": "Dernier don",
       "actions": "Actions",
-      "tags": "Tags"
+      "tags": "Tags",
+      "selectAll": "Tout sélectionner sur cette page",
+      "selectRow": "Sélectionner cette ligne"
     },
     "types": {
       "donor": "Donateur",
@@ -1464,13 +1466,47 @@
     "filters": {
       "searchPlaceholder": "Rechercher un contact…",
       "typeLabel": "Type",
-      "allTypes": "Tous les types"
+      "allTypes": "Tous les types",
+      "advancedLabel": "Plus de filtres",
+      "advanced": {
+        "title": "Filtres avancés",
+        "description": "Filtrer par date de dernier don ou par cumul des dons.",
+        "lastDonationFrom": "Dernier don depuis",
+        "lastDonationTo": "Dernier don jusqu'au",
+        "minLifetime": "Cumul minimum",
+        "minLifetimeHint": "Dans votre devise de référence. Inclut les dons reçus, déduits des remboursements.",
+        "apply": "Appliquer",
+        "clear": "Effacer les filtres"
+      }
     },
     "actions": {
       "new": "Nouveau constituant",
       "menu": "Ouvrir les actions pour {name}",
       "edit": "Modifier",
       "delete": "Supprimer"
+    },
+    "bulkEmail": {
+      "action": "{count, plural, =0 {Email à la sélection} one {Email à # constituant} other {Email à # constituants}}",
+      "title": "Envoyer un email groupé",
+      "description": "{count, plural, =0 {Sélectionnez d'abord des constituants.} one {# destinataire sélectionné.} other {# destinataires sélectionnés.}}",
+      "fields": {
+        "subject": "Objet",
+        "subjectPlaceholder": "Un objet court et orienté action",
+        "body": "Message",
+        "bodyPlaceholder": "Saisissez votre message — les destinataires le verront tel quel."
+      },
+      "actions": {
+        "cancel": "Annuler",
+        "send": "{count, plural, =0 {Envoyer} one {Envoyer à # destinataire} other {Envoyer à # destinataires}}",
+        "sending": "Mise en file…"
+      },
+      "success": {
+        "queued": "{queued} email(s) en file · {skipped} ignoré(s) (sans email)"
+      },
+      "errors": {
+        "empty": "Renseignez un objet et un message avant l'envoi.",
+        "send": "Impossible d'envoyer. Veuillez réessayer."
+      }
     },
     "deleteDialog": {
       "title": "Supprimer le constituant",
@@ -1605,6 +1641,88 @@
       "success": {
         "created": "Campagne créée.",
         "updated": "Modifications enregistrées."
+      }
+    },
+    "postal": {
+      "title": "Export postal",
+      "description": "Générez des lettres imprimables avec un QR code pointant vers cette campagne.",
+      "refresh": "Actualiser",
+      "modes": {
+        "personalized": {
+          "title": "Personnalisé",
+          "description": "Une lettre par constituant lié ({count}).",
+          "disabledDoorDrop": "L'envoi personnalisé n'est pas disponible pour les campagnes en boîte aux lettres.",
+          "disabledNoRecipients": "Liez d'abord des constituants à la campagne pour lancer un envoi personnalisé."
+        },
+        "doorDrop": {
+          "title": "Boîte aux lettres (générique)",
+          "description": "Une lettre générique à imprimer en masse pour une distribution par quartier."
+        }
+      },
+      "actions": {
+        "generateZip": "Générer le ZIP",
+        "starting": "Mise en file…",
+        "preview": "Aperçu",
+        "previewing": "Chargement de l'aperçu…"
+      },
+      "toast": {
+        "exportQueued": "Export mis en file — la génération va démarrer.",
+        "exportReady": "Export postal prêt au téléchargement.",
+        "exportFailed": "L'export postal a échoué.",
+        "startFailed": "Impossible de démarrer l'export. Veuillez réessayer.",
+        "refreshFailed": "Impossible d'actualiser la liste des exports.",
+        "previewFailed": "Impossible de charger l'aperçu."
+      },
+      "progress": {
+        "queued": "En attente d'un worker…",
+        "processing": "Génération des lettres en cours…"
+      },
+      "history": {
+        "title": "Exports récents",
+        "download": "Télécharger",
+        "counts": "{progress}/{total}",
+        "mode": {
+          "personalized": "Personnalisé",
+          "door_drop": "Boîte aux lettres"
+        }
+      },
+      "members": {
+        "title": "Constituants liés",
+        "description": "Constituants qui recevront une lettre lors d'un envoi personnalisé.",
+        "doorDropExplanation": "Les campagnes en boîte aux lettres ciblent une zone géographique et n'ont pas de liste de destinataires.",
+        "empty": "Aucun constituant lié pour le moment.",
+        "actions": {
+          "add": "Ajouter des constituants",
+          "remove": "Retirer"
+        },
+        "toast": {
+          "added": "{count, plural, =0 {Aucun ajout} one {# constituant ajouté} other {# constituants ajoutés}}",
+          "removed": "Constituant retiré.",
+          "removeFailed": "Impossible de retirer ce constituant."
+        },
+        "dialog": {
+          "title": "Ajouter des constituants à cette campagne",
+          "description": "Recherchez par nom ou email, puis choisissez les constituants à inclure.",
+          "searchPlaceholder": "Rechercher un constituant…",
+          "loading": "Chargement des constituants…",
+          "empty": "Aucun constituant correspondant.",
+          "cancel": "Annuler",
+          "submitting": "Ajout…",
+          "confirm": "{count, plural, =0 {Ajouter} one {Ajouter # constituant} other {Ajouter # constituants}}",
+          "error": "Impossible d'ajouter les constituants sélectionnés."
+        }
+      },
+      "qrTracking": {
+        "title": "Suivi QR",
+        "description": "Suivez les scans et les dons réconciliés via vos QR codes imprimés.",
+        "metrics": {
+          "totalCodes": "QR codes générés",
+          "totalCodesHint": "Codes imprimés sur l'ensemble des lettres",
+          "scannedCodes": "Codes scannés",
+          "scannedCodesHint": "Codes scannés au moins une fois",
+          "attributedAmount": "Dons réconciliés",
+          "attributedAmountHint": "{count, plural, =0 {Aucun don} one {# don} other {# dons}}"
+        }
       }
     },
     "publicPage": {

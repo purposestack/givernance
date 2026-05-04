@@ -204,6 +204,7 @@ export async function createDonationIntent(
     email: string;
     firstName: string;
     lastName: string;
+    qrCode?: string;
   },
   idempotencyKey?: string,
 ) {
@@ -256,6 +257,34 @@ export async function createDonationIntent(
     // refund-flow follow-up issue.
     const applicationFeeAmount = calculatePlatformFee(body.amountCents);
 
+    // Epic #274 — resolve the optional QR token server-side so attacker-
+    // tainted client input can't smuggle a `qr_code_id` for another tenant
+    // into PaymentIntent metadata. We only stash the id once we've verified
+    // it belongs to *this* campaign (and therefore this tenant).
+    let qrCodeMetadata: { qr_code_id?: string; qr_code_constituent_id?: string } = {};
+    if (body.qrCode) {
+      const [qr] = await tx
+        .select({
+          id: campaignQrCodes.id,
+          campaignId: campaignQrCodes.campaignId,
+          constituentId: campaignQrCodes.constituentId,
+        })
+        .from(campaignQrCodes)
+        .where(
+          and(
+            eq(campaignQrCodes.code, body.qrCode),
+            eq(campaignQrCodes.campaignId, campaignId),
+            eq(campaignQrCodes.orgId, campaign.orgId),
+          ),
+        );
+      if (qr) {
+        qrCodeMetadata = {
+          qr_code_id: qr.id,
+          ...(qr.constituentId ? { qr_code_constituent_id: qr.constituentId } : {}),
+        };
+      }
+    }
+
     const intentParams: Parameters<typeof stripe.paymentIntents.create>[0] = {
       amount: body.amountCents,
       currency: body.currency.toLowerCase(),
@@ -267,6 +296,7 @@ export async function createDonationIntent(
         campaign_default_currency: campaign.defaultCurrency,
         constituent_first_name: body.firstName,
         constituent_last_name: body.lastName,
+        ...qrCodeMetadata,
       },
     };
 

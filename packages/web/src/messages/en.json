@@ -1452,7 +1452,9 @@
       "email": "Email",
       "lastDonation": "Last donation",
       "actions": "Actions",
-      "tags": "Tags"
+      "tags": "Tags",
+      "selectAll": "Select all on this page",
+      "selectRow": "Select this row"
     },
     "types": {
       "donor": "Donor",
@@ -1464,13 +1466,47 @@
     "filters": {
       "searchPlaceholder": "Search a contact…",
       "typeLabel": "Type",
-      "allTypes": "All types"
+      "allTypes": "All types",
+      "advancedLabel": "More filters",
+      "advanced": {
+        "title": "Advanced filters",
+        "description": "Filter by last donation date or cumulative giving.",
+        "lastDonationFrom": "Last donation from",
+        "lastDonationTo": "Last donation to",
+        "minLifetime": "Minimum cumulative giving",
+        "minLifetimeHint": "In your base currency. Counts cleared donations net of refunds.",
+        "apply": "Apply",
+        "clear": "Clear filters"
+      }
     },
     "actions": {
       "new": "New constituent",
       "menu": "Open actions for {name}",
       "edit": "Edit",
       "delete": "Delete"
+    },
+    "bulkEmail": {
+      "action": "{count, plural, =0 {Email selection} one {Email # constituent} other {Email # constituents}}",
+      "title": "Send a bulk email",
+      "description": "{count, plural, =0 {Select constituents first.} one {# recipient selected.} other {# recipients selected.}}",
+      "fields": {
+        "subject": "Subject",
+        "subjectPlaceholder": "A short, action-oriented subject line",
+        "body": "Message",
+        "bodyPlaceholder": "Write your message — donors will see this exactly as typed."
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "send": "{count, plural, =0 {Send} one {Send to # recipient} other {Send to # recipients}}",
+        "sending": "Queueing emails…"
+      },
+      "success": {
+        "queued": "{queued} email(s) queued · {skipped} skipped (no email on file)"
+      },
+      "errors": {
+        "empty": "Please fill in both subject and message before sending.",
+        "send": "Could not queue the bulk email. Please try again."
+      }
     },
     "deleteDialog": {
       "title": "Delete constituent",
@@ -1605,6 +1641,88 @@
       "success": {
         "created": "Campaign created.",
         "updated": "Changes saved."
+      }
+    },
+    "postal": {
+      "title": "Postal export",
+      "description": "Generate printable letters with QR codes pointing at this campaign.",
+      "refresh": "Refresh",
+      "modes": {
+        "personalized": {
+          "title": "Personalized",
+          "description": "One letter per linked constituent ({count}).",
+          "disabledDoorDrop": "Personalized letters are not available for door-drop campaigns.",
+          "disabledNoRecipients": "Add constituents to the campaign before running a personalized export."
+        },
+        "doorDrop": {
+          "title": "Door drop (generic)",
+          "description": "One generic letter you can mass-print and distribute by neighborhood."
+        }
+      },
+      "actions": {
+        "generateZip": "Generate ZIP",
+        "starting": "Queueing…",
+        "preview": "Preview",
+        "previewing": "Loading preview…"
+      },
+      "toast": {
+        "exportQueued": "Export queued — generation will start shortly.",
+        "exportReady": "Postal export ready for download.",
+        "exportFailed": "Postal export failed.",
+        "startFailed": "Could not start the export. Please try again.",
+        "refreshFailed": "Could not refresh the export list.",
+        "previewFailed": "Could not load the preview."
+      },
+      "progress": {
+        "queued": "Queued, waiting for a worker…",
+        "processing": "Generating letters…"
+      },
+      "history": {
+        "title": "Recent exports",
+        "download": "Download",
+        "counts": "{progress}/{total}",
+        "mode": {
+          "personalized": "Personalized",
+          "door_drop": "Door drop"
+        }
+      },
+      "members": {
+        "title": "Linked constituents",
+        "description": "Constituents who will receive a letter when you run a personalized export.",
+        "doorDropExplanation": "Door-drop campaigns target a geographic area instead of a recipient list — there is no membership to manage.",
+        "empty": "No constituents linked yet.",
+        "actions": {
+          "add": "Add constituents",
+          "remove": "Remove"
+        },
+        "toast": {
+          "added": "{count, plural, =0 {Nothing added} one {# constituent added} other {# constituents added}}",
+          "removed": "Constituent removed.",
+          "removeFailed": "Could not remove this constituent."
+        },
+        "dialog": {
+          "title": "Add constituents to this campaign",
+          "description": "Search by name or email, then pick the constituents to include.",
+          "searchPlaceholder": "Search constituents…",
+          "loading": "Loading constituents…",
+          "empty": "No matching constituents.",
+          "cancel": "Cancel",
+          "submitting": "Adding…",
+          "confirm": "{count, plural, =0 {Add} one {Add # constituent} other {Add # constituents}}",
+          "error": "Could not add the selected constituents."
+        }
+      },
+      "qrTracking": {
+        "title": "QR tracking",
+        "description": "Track scans and reconciled donations attributable to your printed QR codes.",
+        "metrics": {
+          "totalCodes": "QR codes generated",
+          "totalCodesHint": "Codes printed across all letters",
+          "scannedCodes": "Codes scanned",
+          "scannedCodesHint": "Codes scanned at least once",
+          "attributedAmount": "Reconciled donations",
+          "attributedAmountHint": "{count, plural, =0 {No gifts yet} one {# gift} other {# gifts}}"
+        }
       }
     },
     "publicPage": {

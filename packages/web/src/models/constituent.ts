@@ -58,6 +58,16 @@ export interface ConstituentListQuery {
   type?: ConstituentType;
   sort?: ConstituentSortField;
   order?: ConstituentSortOrder;
+  /** Epic #274 — restrict to constituents linked to a specific campaign. */
+  campaignId?: string;
+  /** ISO date — `MAX(donations.donatedAt) >= lastDonationFrom`. */
+  lastDonationFrom?: string;
+  /** ISO date — `MAX(donations.donatedAt) <= lastDonationTo`. */
+  lastDonationTo?: string;
+  /** Lifetime cleared base cents (lower bound). */
+  minLifetimeAmountCents?: number;
+  /** Lifetime cleared base cents (upper bound). */
+  maxLifetimeAmountCents?: number;
 }
 
 export function fullName(constituent: Constituent): string {

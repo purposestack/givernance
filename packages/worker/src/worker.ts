@@ -12,6 +12,7 @@ import { processGenerateCampaignDocuments } from "./processors/campaign-document
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processPlatformAdminInviteEmail } from "./processors/platform-admin-invite-email.js";
+import { processGeneratePostalExport } from "./processors/postal-export.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import {
   processSignupVerificationEmail,
@@ -36,6 +37,8 @@ function createRedisConnection() {
 const queueConnection = createRedisConnection();
 const receiptsQueue = new Queue(QUEUE_NAMES.RECEIPTS, { connection: queueConnection });
 const campaignsQueue = new Queue(QUEUE_NAMES.CAMPAIGNS, { connection: queueConnection });
+const postalExportsQueue = new Queue(QUEUE_NAMES.POSTAL_EXPORTS, { connection: queueConnection });
+const emailsQueue = new Queue(QUEUE_NAMES.EMAILS, { connection: queueConnection });
 const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
   connection: queueConnection,
 });
@@ -127,6 +130,50 @@ async function processDomainEvent(job: Job): Promise<void> {
     return;
   }
 
+  if (type === "campaign.postal_export_requested") {
+    const campaignId = payload.campaignId as string;
+    const exportId = payload.exportId as string;
+    const mode = payload.mode as "door_drop" | "personalized";
+
+    await postalExportsQueue.add(
+      "generate-postal-export",
+      {
+        exportId,
+        campaignId,
+        orgId: tenantId,
+        mode,
+        traceparent,
+      },
+      { jobId: `postal-export-${exportId}` },
+    );
+
+    log.info({ exportId, campaignId, mode }, "Enqueued postal export job");
+    return;
+  }
+
+  if (type === "communication.bulk_email_requested") {
+    await emailsQueue.add(
+      "send-bulk-email",
+      {
+        orgId: tenantId,
+        templateId: "ad-hoc-bulk-email",
+        segmentFilter: {
+          subject: payload.subject,
+          body: payload.body,
+          recipients: payload.recipients,
+          requestedBy: payload.requestedBy,
+        },
+        traceparent,
+      },
+      // Per-payload job id so a transactional retry of the outbox row
+      // doesn't fan-out into duplicate sends.
+      { jobId: `bulk-email-${id}` },
+    );
+
+    log.info({ outboxId: id }, "Enqueued bulk email dispatch");
+    return;
+  }
+
   if (
     type === "tenant.signup_verification_requested" ||
     type === "tenant.signup_verification_resent"
@@ -210,6 +257,17 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
+  // Postal-export worker — concurrency 1 per process: each job streams a
+  // multipart S3 upload AND drives PDFKit synchronously through up to a
+  // few thousand recipients, so two concurrent jobs would compete for
+  // both the upload bandwidth and the event loop. Scale by adding worker
+  // pods, not concurrency.
+  const postalExportsWorker = new Worker(QUEUE_NAMES.POSTAL_EXPORTS, processGeneratePostalExport, {
+    connection: createRedisConnection(),
+    concurrency: 1,
+    ...defaultJobOpts,
+  });
+
   const eventsWorker = new Worker(QUEUE_NAMES.EVENTS, processDomainEvent, {
     connection: createRedisConnection(),
     concurrency: 10,
@@ -233,6 +291,7 @@ function startWorkers() {
     emailsWorker,
     gdprWorker,
     campaignsWorker,
+    postalExportsWorker,
     eventsWorker,
     webhooksWorker,
     tenantLifecycleWorker,
