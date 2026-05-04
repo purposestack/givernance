@@ -36,11 +36,39 @@ const ConstituentTypeEnum = Type.Union([
   Type.Literal("partner"),
 ]);
 
+/**
+ * Postal address fields (Epic #274 follow-up). All five are independent
+ * and nullable — the constituent form lets the operator opt in per
+ * recipient; the renderer skips the window-envelope address block when
+ * any required line is missing.
+ *
+ * Null variants come FIRST in every nullable Union for the same ajv
+ * `coerceTypes` pitfall described above on `email` / `phone`.
+ */
+const ConstituentAddressCreateFields = {
+  addressLine1: Type.Optional(Type.String({ maxLength: 255 })),
+  addressLine2: Type.Optional(Type.String({ maxLength: 255 })),
+  postalCode: Type.Optional(Type.String({ maxLength: 20 })),
+  city: Type.Optional(Type.String({ maxLength: 255 })),
+  countryCode: Type.Optional(Type.String({ minLength: 2, maxLength: 2 })),
+};
+
+const ConstituentAddressUpdateFields = {
+  addressLine1: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 255 })])),
+  addressLine2: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 255 })])),
+  postalCode: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 20 })])),
+  city: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 255 })])),
+  countryCode: Type.Optional(
+    Type.Union([Type.Null(), Type.String({ minLength: 2, maxLength: 2 })]),
+  ),
+};
+
 const ConstituentCreateBody = Type.Object({
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
   email: Type.Optional(Type.String({ maxLength: 255 })),
   phone: Type.Optional(Type.String({ maxLength: 50 })),
+  ...ConstituentAddressCreateFields,
   type: Type.Optional(ConstituentTypeEnum),
   tags: Type.Optional(Type.Array(Type.String())),
 });
@@ -61,6 +89,7 @@ const ConstituentUpdateBody = Type.Object(
     lastName: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
     email: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 255 })])),
     phone: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 50 })])),
+    ...ConstituentAddressUpdateFields,
     type: Type.Optional(ConstituentTypeEnum),
     tags: Type.Optional(Type.Array(Type.String())),
   },
@@ -132,6 +161,14 @@ const ConstituentResponse = Type.Object({
   lastName: Type.String(),
   email: Type.Union([Type.Null(), Type.String()]),
   phone: Type.Union([Type.Null(), Type.String()]),
+  // Postal address fields (Epic #274 follow-up). `Type.Optional` so legacy
+  // INSERT...RETURNING paths that don't include the columns still serialise
+  // — same defensive pattern as `tenants.mission` (cf. tenants/routes.ts).
+  addressLine1: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+  addressLine2: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+  postalCode: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+  city: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+  countryCode: Type.Optional(Type.Union([Type.Null(), Type.String()])),
   type: Type.String(),
   tags: Type.Union([Type.Null(), Type.Array(Type.String())]),
   deletedAt: Type.Union([Type.Null(), Type.String()]),
@@ -318,6 +355,11 @@ export async function constituentRoutes(app: FastifyInstance) {
         lastName: string;
         email?: string;
         phone?: string;
+        addressLine1?: string;
+        addressLine2?: string;
+        postalCode?: string;
+        city?: string;
+        countryCode?: string;
         type?: string;
         tags?: string[];
       };
@@ -370,6 +412,11 @@ export async function constituentRoutes(app: FastifyInstance) {
         lastName?: string;
         email?: string | null;
         phone?: string | null;
+        addressLine1?: string | null;
+        addressLine2?: string | null;
+        postalCode?: string | null;
+        city?: string | null;
+        countryCode?: string | null;
         type?: string;
         tags?: string[];
       };

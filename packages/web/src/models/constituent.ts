@@ -15,6 +15,19 @@ export interface Constituent {
   lastName: string;
   email: string | null;
   phone: string | null;
+  /**
+   * Postal address (Epic #274 follow-up). When the three required
+   * fields (`addressLine1`, `postalCode`, `city`) are present, the
+   * postal-letter renderer puts the recipient block in the standard
+   * French DL window position so the letter fits a window envelope
+   * after a Z-fold. NULL on rows seeded before this feature shipped.
+   */
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  /** ISO 3166-1 alpha-2 (e.g. `FR`, `BE`). NULL = no country line printed. */
+  countryCode: string | null;
   type: ConstituentType | string;
   tags: string[] | null;
   deletedAt: string | null;

@@ -63,7 +63,16 @@ async function renderPdfBuffer(args: {
   campaignDescription: string | null;
   qrCode: string;
   qrReference: string;
-  recipient: { firstName: string; lastName: string; email: string | null } | null;
+  recipient: {
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    postalCode: string | null;
+    city: string | null;
+    countryCode: string | null;
+  } | null;
 }): Promise<Buffer> {
   const stream = await createCampaignLetterPdfStream({
     organisationName: args.organisationName,
@@ -147,6 +156,11 @@ export async function processGeneratePostalExport(
                 firstName: constituents.firstName,
                 lastName: constituents.lastName,
                 email: constituents.email,
+                addressLine1: constituents.addressLine1,
+                addressLine2: constituents.addressLine2,
+                postalCode: constituents.postalCode,
+                city: constituents.city,
+                countryCode: constituents.countryCode,
               })
               .from(campaignConstituents)
               .innerJoin(constituents, eq(constituents.id, campaignConstituents.constituentId))
@@ -186,7 +200,16 @@ export async function processGeneratePostalExport(
     qrToken: string;
     constituentId: string | null;
     fileName: string;
-    recipient: { firstName: string; lastName: string; email: string | null } | null;
+    recipient: {
+      firstName: string;
+      lastName: string;
+      email: string | null;
+      addressLine1: string | null;
+      addressLine2: string | null;
+      postalCode: string | null;
+      city: string | null;
+      countryCode: string | null;
+    } | null;
   };
 
   const workItems: WorkItem[] =
@@ -195,7 +218,16 @@ export async function processGeneratePostalExport(
           qrToken: generateQrToken(),
           constituentId: r.id,
           fileName: `${sanitiseFilename(`${r.lastName}-${r.firstName}`)}.pdf`,
-          recipient: { firstName: r.firstName, lastName: r.lastName, email: r.email },
+          recipient: {
+            firstName: r.firstName,
+            lastName: r.lastName,
+            email: r.email,
+            addressLine1: r.addressLine1,
+            addressLine2: r.addressLine2,
+            postalCode: r.postalCode,
+            city: r.city,
+            countryCode: r.countryCode,
+          },
         }))
       : [
           {

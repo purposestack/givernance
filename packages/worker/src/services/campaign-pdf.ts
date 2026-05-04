@@ -27,6 +27,27 @@ const PAGE_WIDTH = 595.28;
 const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2;
 const QR_SIZE = 140;
 
+// See `packages/api/src/modules/campaigns/postal-pdf.ts` for the full
+// rationale behind the window-envelope geometry. Both files MUST stay
+// byte-equivalent in their rendering output.
+const MM_TO_PT = 2.834645;
+const ADDRESS_BLOCK_X = 20 * MM_TO_PT;
+const ADDRESS_BLOCK_Y = 50 * MM_TO_PT;
+const ADDRESS_BLOCK_WIDTH = 90 * MM_TO_PT;
+const ADDRESS_BLOCK_HEIGHT = 35 * MM_TO_PT;
+const CONTENT_TOP_AFTER_ADDRESS = ADDRESS_BLOCK_Y + ADDRESS_BLOCK_HEIGHT + 20;
+
+export interface CampaignLetterRecipient {
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  countryCode: string | null;
+}
+
 export interface CampaignLetterData {
   organisationName: string;
   organisationMission: string | null;
@@ -34,11 +55,14 @@ export interface CampaignLetterData {
   campaignDescription: string | null;
   qrPayload: string;
   qrReference: string;
-  recipient: {
-    firstName: string;
-    lastName: string;
-    email: string | null;
-  } | null;
+  recipient: CampaignLetterRecipient | null;
+}
+
+function hasWindowEnvelopeAddress(recipient: CampaignLetterRecipient | null): boolean {
+  if (!recipient) return false;
+  return Boolean(
+    recipient.addressLine1?.trim() && recipient.postalCode?.trim() && recipient.city?.trim(),
+  );
 }
 
 /**
@@ -66,6 +90,27 @@ export async function createCampaignLetterPdfStream(
       Subject: data.campaignName,
     },
   });
+
+  // ── Recipient block (window envelope, optional) ───────────────────────
+  const renderAddressBlock = hasWindowEnvelopeAddress(data.recipient);
+  if (renderAddressBlock && data.recipient) {
+    doc.save().fillColor("#0f172a").font("Helvetica").fontSize(11);
+    const lines: string[] = [`${data.recipient.firstName} ${data.recipient.lastName}`];
+    if (data.recipient.addressLine1) lines.push(data.recipient.addressLine1);
+    if (data.recipient.addressLine2) lines.push(data.recipient.addressLine2);
+    lines.push(`${data.recipient.postalCode ?? ""} ${data.recipient.city ?? ""}`.trim());
+    if (data.recipient.countryCode && data.recipient.countryCode.trim().toUpperCase() !== "FR") {
+      lines.push(data.recipient.countryCode.trim().toUpperCase());
+    }
+    doc.text(lines.join("\n"), ADDRESS_BLOCK_X, ADDRESS_BLOCK_Y, {
+      width: ADDRESS_BLOCK_WIDTH,
+      lineGap: 1,
+      align: "left",
+    });
+    doc.restore();
+    doc.x = PAGE_MARGIN;
+    doc.y = CONTENT_TOP_AFTER_ADDRESS;
+  }
 
   // ── Letterhead ────────────────────────────────────────────────────────
   doc.fillColor("#0f172a");

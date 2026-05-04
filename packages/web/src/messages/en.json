@@ -1997,6 +1997,10 @@
       "contact": {
         "title": "Contact",
         "description": "Email and phone used for outreach."
+      },
+      "address": {
+        "title": "Postal address",
+        "description": "Used to print this constituent in the window of a standard French DL window envelope, ready to post. Fill at least street, postal code and city for the address to be picked up."
       }
     },
     "fields": {
@@ -2009,7 +2013,17 @@
       "email": "Email",
       "emailPlaceholder": "jane.doe@example.org",
       "phone": "Phone",
-      "phonePlaceholder": "+33 1 23 45 67 89"
+      "phonePlaceholder": "+33 1 23 45 67 89",
+      "addressLine1": "Street address",
+      "addressLine1Placeholder": "12 rue de la République",
+      "addressLine2": "Address line 2 (optional)",
+      "addressLine2Placeholder": "Apt 4B",
+      "postalCode": "Postal code",
+      "postalCodePlaceholder": "75001",
+      "city": "City",
+      "cityPlaceholder": "Paris",
+      "countryCode": "Country (ISO-2)",
+      "countryCodeHint": "Two-letter country code. Defaults to FR; the country line is only printed on the letter for non-FR addresses."
     },
     "actions": {
       "cancel": "Cancel",

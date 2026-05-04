@@ -623,6 +623,19 @@ export const constituents = pgTable("constituents", {
   lastName: varchar("last_name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
+  // ── Postal address (Epic #274 follow-up) ────────────────────────────
+  // Used to render the recipient block in the window of a French DL
+  // window envelope (norme NF Z-10-011). The renderer skips the block
+  // when these are NULL — the resulting PDF still prints, just without
+  // the in-window address. All five fields are independent (a P.O. box
+  // tenant might leave `addressLine1` populated and `addressLine2` NULL)
+  // and the operator opts in per-constituent via the create/edit form.
+  addressLine1: varchar("address_line1", { length: 255 }),
+  addressLine2: varchar("address_line2", { length: 255 }),
+  postalCode: varchar("postal_code", { length: 20 }),
+  city: varchar("city", { length: 255 }),
+  /** ISO 3166-1 alpha-2 country code. Same convention as `tenants.country`. */
+  countryCode: varchar("country_code", { length: 2 }),
   type: varchar("type", { length: 50 }).notNull().default("donor"),
   tags: text("tags").array(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),

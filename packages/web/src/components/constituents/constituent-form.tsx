@@ -61,6 +61,18 @@ interface ConstituentFormValues {
   lastName: string;
   email: string;
   phone: string;
+  /**
+   * Postal address (Epic #274 follow-up). Drives the window-envelope
+   * recipient block on personalised postal letters. All fields are
+   * optional; when the operator fills `addressLine1` + `postalCode` +
+   * `city` the renderer positions the block in the standard French DL
+   * window so the letter fits in a window envelope after a Z-fold.
+   */
+  addressLine1: string;
+  addressLine2: string;
+  postalCode: string;
+  city: string;
+  countryCode: string;
 }
 
 interface DuplicateCandidate {
@@ -88,6 +100,13 @@ export function ConstituentForm(props: ConstituentFormProps) {
     lastName: props.constituent?.lastName ?? "",
     email: props.constituent?.email ?? "",
     phone: props.constituent?.phone ?? "",
+    addressLine1: props.constituent?.addressLine1 ?? "",
+    addressLine2: props.constituent?.addressLine2 ?? "",
+    postalCode: props.constituent?.postalCode ?? "",
+    city: props.constituent?.city ?? "",
+    // Default new-record country to FR so the most common French case
+    // doesn't require the operator to type "FR" every time. Editable.
+    countryCode: props.constituent?.countryCode ?? "FR",
   };
 
   const form = useForm<ConstituentFormValues>({
@@ -290,6 +309,105 @@ export function ConstituentForm(props: ConstituentFormProps) {
             </div>
           </FormSection>
 
+          <FormSection
+            title={t("sections.address.title")}
+            description={t("sections.address.description")}
+          >
+            <div className="grid gap-5 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="addressLine1"
+                render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>{t("fields.addressLine1")}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        autoComplete="address-line1"
+                        placeholder={t("fields.addressLine1Placeholder")}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="addressLine2"
+                render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>{t("fields.addressLine2")}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        autoComplete="address-line2"
+                        placeholder={t("fields.addressLine2Placeholder")}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="postalCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("fields.postalCode")}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        autoComplete="postal-code"
+                        placeholder={t("fields.postalCodePlaceholder")}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("fields.city")}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        autoComplete="address-level2"
+                        placeholder={t("fields.cityPlaceholder")}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="countryCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("fields.countryCode")}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        autoComplete="country"
+                        maxLength={2}
+                        placeholder="FR"
+                        // ISO 3166-1 alpha-2; uppercased on save by the
+                        // payload builder so case-insensitive input stays
+                        // forgiving for the operator.
+                        className="uppercase"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-on-surface-variant">{t("fields.countryCodeHint")}</p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </FormSection>
+
           {rootError ? (
             <p role="alert" className="py-3 text-sm font-medium text-error">
               {rootError}
@@ -401,12 +519,23 @@ function toApiPayload(
   mode: "create" | "edit",
 ): ConstituentCreateInput {
   const emptyOptional = mode === "edit" ? null : undefined;
+  // Country code is a special case: the form defaults to "FR" but the
+  // operator may legitimately want to clear it (international donors who
+  // didn't disclose nationality). Treat empty string as "no value" for
+  // both create and edit so the API receives `undefined` (create) /
+  // `null` (edit) rather than a 1-char string that fails the validator.
+  const trimmedCountry = values.countryCode?.trim().toUpperCase() ?? "";
   return {
     type: values.type,
     firstName: values.firstName?.trim() ?? "",
     lastName: values.lastName?.trim() ?? "",
     email: values.email?.trim() || emptyOptional,
     phone: values.phone?.trim() || emptyOptional,
+    addressLine1: values.addressLine1?.trim() || emptyOptional,
+    addressLine2: values.addressLine2?.trim() || emptyOptional,
+    postalCode: values.postalCode?.trim() || emptyOptional,
+    city: values.city?.trim() || emptyOptional,
+    countryCode: trimmedCountry.length === 2 ? trimmedCountry : emptyOptional,
   };
 }
 
@@ -420,7 +549,18 @@ function parseDuplicates(raw: unknown): DuplicateCandidate[] {
   );
 }
 
-const MAPPED_FIELDS = ["type", "firstName", "lastName", "email", "phone"] as const;
+const MAPPED_FIELDS = [
+  "type",
+  "firstName",
+  "lastName",
+  "email",
+  "phone",
+  "addressLine1",
+  "addressLine2",
+  "postalCode",
+  "city",
+  "countryCode",
+] as const;
 
 function applyFieldErrors(form: UseFormReturn<ConstituentFormValues>, raw: unknown): boolean {
   if (!raw || typeof raw !== "object") return false;
@@ -446,7 +586,17 @@ function buildResolver(schema: TypeboxSchema): Resolver<ConstituentFormValues> {
   const innerResolver = typeboxResolver(schema) as unknown as Resolver<ConstituentFormValues>;
   return async (values, context, options) => {
     const cleaned = { ...values } as Record<string, unknown>;
-    for (const key of ["firstName", "lastName", "email", "phone"] as const) {
+    for (const key of [
+      "firstName",
+      "lastName",
+      "email",
+      "phone",
+      "addressLine1",
+      "addressLine2",
+      "postalCode",
+      "city",
+      "countryCode",
+    ] as const) {
       const v = cleaned[key];
       if (typeof v !== "string") continue;
 

@@ -84,7 +84,17 @@ async function generateConstituentDocument(
   orgId: string,
   campaignId: string,
   ctx: PdfContext,
-  constituent: { id: string; firstName: string; lastName: string; email: string | null },
+  constituent: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    postalCode: string | null;
+    city: string | null;
+    countryCode: string | null;
+  },
 ): Promise<string> {
   const code = generateQrToken();
 
@@ -106,6 +116,11 @@ async function generateConstituentDocument(
       firstName: constituent.firstName,
       lastName: constituent.lastName,
       email: constituent.email,
+      addressLine1: constituent.addressLine1,
+      addressLine2: constituent.addressLine2,
+      postalCode: constituent.postalCode,
+      city: constituent.city,
+      countryCode: constituent.countryCode,
     },
   });
 
@@ -231,6 +246,11 @@ export async function processGenerateCampaignDocuments(
         firstName: constituents.firstName,
         lastName: constituents.lastName,
         email: constituents.email,
+        addressLine1: constituents.addressLine1,
+        addressLine2: constituents.addressLine2,
+        postalCode: constituents.postalCode,
+        city: constituents.city,
+        countryCode: constituents.countryCode,
       })
       .from(constituents)
       .where(and(inArray(constituents.id, constituentIds), eq(constituents.orgId, orgId)));

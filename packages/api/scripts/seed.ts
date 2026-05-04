@@ -330,6 +330,64 @@ async function ensurePlatformSentinelTenant(): Promise<void> {
   );
 }
 
+// French postal-address fixture pool for the seed (Epic #274 follow-up).
+// 80% of constituents get a real-looking address so the postal-export
+// preview demo has enough recipients with full addresses to validate the
+// window-envelope layout end-to-end. The remaining 20% intentionally
+// land without an address so the operator can see the renderer's
+// "no address" branch (no in-window block, generic top-of-page
+// letterhead) in action.
+const STREET_NUMBERS = ["3", "5", "7", "12", "18", "24", "37", "42", "58", "73", "112"];
+const STREET_NAMES = [
+  "rue de la République",
+  "rue Saint-Michel",
+  "avenue Jean Jaurès",
+  "boulevard Voltaire",
+  "rue de la Paix",
+  "rue des Lilas",
+  "rue du Faubourg",
+  "avenue de la Liberté",
+  "rue des Acacias",
+  "rue Pasteur",
+  "place du Marché",
+  "chemin de la Fontaine",
+];
+const FRENCH_CITIES: Array<[string, string]> = [
+  ["75001", "Paris"],
+  ["75011", "Paris"],
+  ["69002", "Lyon"],
+  ["13001", "Marseille"],
+  ["31000", "Toulouse"],
+  ["44000", "Nantes"],
+  ["33000", "Bordeaux"],
+  ["67000", "Strasbourg"],
+  ["59000", "Lille"],
+  ["35000", "Rennes"],
+  ["38000", "Grenoble"],
+  ["34000", "Montpellier"],
+  ["54000", "Nancy"],
+  ["49000", "Angers"],
+];
+
+function buildPostalAddress(): {
+  addressLine1: string;
+  addressLine2: string | null;
+  postalCode: string;
+  city: string;
+  countryCode: string;
+} {
+  const [postalCode, city] = randomPick(FRENCH_CITIES);
+  return {
+    addressLine1: `${randomPick(STREET_NUMBERS)} ${randomPick(STREET_NAMES)}`,
+    // 25% of addresses get a line 2 (apartment / building / floor) so
+    // the renderer's optional second-line branch is exercised.
+    addressLine2: Math.random() > 0.75 ? `Apt ${randomInt(1, 50)}` : null,
+    postalCode,
+    city,
+    countryCode: "FR",
+  };
+}
+
 function buildConstituent(index: number) {
   const isOrganization = index % 5 === 0;
   const types: ConstituentType[] = ["donor", "donor", "donor", "volunteer", "member", "partner"];
@@ -345,11 +403,25 @@ function buildConstituent(index: number) {
   const tags = Math.random() > 0.5 ? [randomPick(TAG_POOL)] : [];
   if (Math.random() > 0.8) tags.push(randomPick(TAG_POOL));
 
+  // 80% of seeded constituents carry a full postal address so the
+  // postal-letter preview demo ships with enough recipients to fill a
+  // window envelope. The renderer skips the address block when these
+  // are NULL — keeping a 20% un-addressed cohort exercises that path.
+  const address = Math.random() > 0.2 ? buildPostalAddress() : null;
+
   return {
     firstName,
     lastName,
     email: Math.random() > 0.1 ? emailFromName(firstName, lastName, index) : null,
-    phone: Math.random() > 0.3 ? `06 ${randomInt(10, 99)} ${randomInt(10, 99)} ${randomInt(10, 99)} ${randomInt(10, 99)}` : null,
+    phone:
+      Math.random() > 0.3
+        ? `06 ${randomInt(10, 99)} ${randomInt(10, 99)} ${randomInt(10, 99)} ${randomInt(10, 99)}`
+        : null,
+    addressLine1: address?.addressLine1 ?? null,
+    addressLine2: address?.addressLine2 ?? null,
+    postalCode: address?.postalCode ?? null,
+    city: address?.city ?? null,
+    countryCode: address?.countryCode ?? null,
     type,
     tags: tags.length > 0 ? [...new Set(tags)] : null,
   };
