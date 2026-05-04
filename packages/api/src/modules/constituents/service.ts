@@ -133,6 +133,13 @@ export interface ConstituentInput {
   // `packages/shared/src/validators/index.ts` (ConstituentUpdateSchema).
   email?: string | null;
   phone?: string | null;
+  // Postal address (Epic #274 follow-up). Drives the window-envelope
+  // recipient block on personalised postal letters.
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  countryCode?: string | null;
   type?: string;
   tags?: string[];
 }

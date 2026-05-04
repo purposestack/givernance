@@ -91,6 +91,40 @@ sequenceDiagram
     API->>DB: Update QR attribution stats
 ```
 
+## 1.ter Window-envelope ready (postal address)
+
+Personalised postal letters are designed to be folded once (Z-fold) and
+slipped straight into a **standard French DL window envelope** (110×220mm,
+norme NF Z-10-011) without any further hand-printing of the address on
+the envelope. The renderer positions the recipient block at the
+canonical 20×50mm offset, sized 90×35mm, so it lands cleanly inside the
+envelope's transparent window after folding.
+
+| Constituent field | DB column | Required for window block | Where it prints |
+|---|---|---|---|
+| First + last name | `first_name` + `last_name` | Yes (always present) | Line 1 of the address block |
+| Street address | `address_line1` | **Yes** | Line 2 |
+| Address complement | `address_line2` | No | Line 3 (skipped when null) |
+| Postal code + city | `postal_code` + `city` | **Yes** (both) | Line 4 (`{postal_code} {city}`) |
+| Country code | `country_code` | No (defaults to `FR`) | Line 5, only printed when ≠ `FR` |
+
+If any of the three required fields (`address_line1`, `postal_code`,
+`city`) is NULL, the renderer **skips the block entirely** and the
+letterhead claims the top of the page as before. This keeps the
+postal-export pipeline forward-compatible with existing constituents who
+have no address yet — the operator gets a usable letter, just not one
+ready for a window envelope.
+
+For door-drop campaigns there's no recipient at all (the letter is
+geographically distributed by hand), so the address block is never
+rendered regardless of campaign-level state.
+
+The seed (`scripts/seed.ts`) ships ~80% of the demo NPO's constituents
+with a full French postal address (a curated pool of Paris/Lyon/
+Marseille/etc. street + postcode/city pairs). The remaining 20%
+intentionally land without an address so the operator can demo both
+branches of the renderer in the same export run.
+
 ## 1.bis Letter content sources (org mission + campaign description)
 
 Two free-form fields drive the actual prose printed on the letter, so the

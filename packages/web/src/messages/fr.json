@@ -1997,6 +1997,10 @@
       "contact": {
         "title": "Coordonnées",
         "description": "Email et téléphone utilisés pour les communications."
+      },
+      "address": {
+        "title": "Adresse postale",
+        "description": "Utilisée pour imprimer ce destinataire dans la fenêtre d'une enveloppe DL à fenêtre standard, prête à poster. Renseignez au minimum la rue, le code postal et la ville pour que l'adresse soit prise en compte."
       }
     },
     "fields": {
@@ -2009,7 +2013,17 @@
       "email": "Email",
       "emailPlaceholder": "marie.dupont@exemple.org",
       "phone": "Téléphone",
-      "phonePlaceholder": "+33 1 23 45 67 89"
+      "phonePlaceholder": "+33 1 23 45 67 89",
+      "addressLine1": "Adresse",
+      "addressLine1Placeholder": "12 rue de la République",
+      "addressLine2": "Complément d'adresse (optionnel)",
+      "addressLine2Placeholder": "Apt 4B",
+      "postalCode": "Code postal",
+      "postalCodePlaceholder": "75001",
+      "city": "Ville",
+      "cityPlaceholder": "Paris",
+      "countryCode": "Pays (ISO-2)",
+      "countryCodeHint": "Code pays sur deux lettres. FR par défaut ; la ligne de pays n'est imprimée sur la lettre que pour les adresses hors France."
     },
     "actions": {
       "cancel": "Annuler",

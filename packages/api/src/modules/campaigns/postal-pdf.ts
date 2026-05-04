@@ -26,10 +26,55 @@ const PAGE_WIDTH = 595.28; // A4 width in points
 const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2;
 const QR_SIZE = 140;
 
+// ── Window-envelope address-block geometry (norme NF Z-10-011) ────────
+//
+// Standard French DL window envelope (110×220mm) has its window at
+// roughly 20mm from left, 45mm from top, 90×35mm. After a Z-fold of an
+// A4 sheet (3 panels of 99mm each), the *top* third of the page lands
+// face-up inside the envelope window. So the recipient block on the A4
+// page must sit at the same offset as the envelope window.
+//
+// 1mm = 2.834645 PDF points. We give the address block a 90×35mm box
+// at (20mm, 50mm) from the top-left, leaving ~5mm of safe-zone padding
+// on each side so a slight envelope misalignment doesn't clip the text.
+const MM_TO_PT = 2.834645;
+const ADDRESS_BLOCK_X = 20 * MM_TO_PT; // ≈ 57pt
+const ADDRESS_BLOCK_Y = 50 * MM_TO_PT; // ≈ 142pt — distance from page top
+const ADDRESS_BLOCK_WIDTH = 90 * MM_TO_PT; // ≈ 255pt
+const ADDRESS_BLOCK_HEIGHT = 35 * MM_TO_PT; // ≈ 99pt
+/** Where the body content starts when the address block was rendered. */
+const CONTENT_TOP_AFTER_ADDRESS = ADDRESS_BLOCK_Y + ADDRESS_BLOCK_HEIGHT + 20;
+
+/**
+ * Truthy when the recipient has the minimum address fields needed to
+ * fit a French DL window envelope. We deliberately don't insist on
+ * `addressLine2` (rare) or `countryCode` (defaults to FR for domestic
+ * mail) — but `addressLine1`, `postalCode`, and `city` are required.
+ */
+function hasWindowEnvelopeAddress(recipient: PostalLetterRecipient | null): boolean {
+  if (!recipient) return false;
+  return Boolean(
+    recipient.addressLine1?.trim() && recipient.postalCode?.trim() && recipient.city?.trim(),
+  );
+}
+
 export interface PostalLetterRecipient {
   firstName: string;
   lastName: string;
   email: string | null;
+  /**
+   * Optional postal address (Epic #274 follow-up). When all of
+   * `addressLine1`, `postalCode`, and `city` are present, the renderer
+   * positions a recipient block in the standard French DL window
+   * (norme NF Z-10-011) so the letter fits in a window envelope after
+   * a Z-fold. When any required line is missing the block is skipped
+   * and the letterhead claims the top of the page as before.
+   */
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  countryCode: string | null;
 }
 
 export interface PostalLetterRenderInput {
@@ -91,6 +136,35 @@ async function buildPostalLetterDoc(
       Subject: input.campaignName,
     },
   });
+
+  // ── Recipient block (window envelope, optional) ───────────────────────
+  // When the recipient has a usable address, we draw the recipient name
+  // + address at the standard French DL window position. The letterhead
+  // then starts BELOW the window so it never overlaps the envelope cut.
+  const renderAddressBlock = hasWindowEnvelopeAddress(input.recipient);
+  if (renderAddressBlock && input.recipient) {
+    doc.save().fillColor("#0f172a").font("Helvetica").fontSize(11);
+    const lines: string[] = [`${input.recipient.firstName} ${input.recipient.lastName}`];
+    if (input.recipient.addressLine1) lines.push(input.recipient.addressLine1);
+    if (input.recipient.addressLine2) lines.push(input.recipient.addressLine2);
+    lines.push(`${input.recipient.postalCode ?? ""} ${input.recipient.city ?? ""}`.trim());
+    if (input.recipient.countryCode && input.recipient.countryCode.trim().toUpperCase() !== "FR") {
+      // Country only printed for non-domestic mail — domestic French
+      // post never needs a country line, and adding one wastes a line
+      // of the small address block.
+      lines.push(input.recipient.countryCode.trim().toUpperCase());
+    }
+    doc.text(lines.join("\n"), ADDRESS_BLOCK_X, ADDRESS_BLOCK_Y, {
+      width: ADDRESS_BLOCK_WIDTH,
+      lineGap: 1,
+      align: "left",
+    });
+    doc.restore();
+    // Park the cursor below the address window so the rest of the
+    // content doesn't try to paint into the envelope cut.
+    doc.x = PAGE_MARGIN;
+    doc.y = CONTENT_TOP_AFTER_ADDRESS;
+  }
 
   // ── Letterhead ────────────────────────────────────────────────────────
   doc.fillColor("#0f172a");

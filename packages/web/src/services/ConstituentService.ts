@@ -20,6 +20,14 @@ export interface ConstituentCreateInput {
   lastName: string;
   email?: string | null;
   phone?: string | null;
+  // Postal address fields (Epic #274 follow-up). All optional. `null`
+  // on update means "clear this column"; `undefined` means "leave alone";
+  // `string` sets it.
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  countryCode?: string | null;
   type?: string;
   tags?: string[];
 }
@@ -145,6 +153,11 @@ function mapConstituent(raw: Constituent): Constituent {
     lastName: raw.lastName,
     email: raw.email,
     phone: raw.phone,
+    addressLine1: raw.addressLine1 ?? null,
+    addressLine2: raw.addressLine2 ?? null,
+    postalCode: raw.postalCode ?? null,
+    city: raw.city ?? null,
+    countryCode: raw.countryCode ?? null,
     type: raw.type,
     tags: raw.tags,
     deletedAt: raw.deletedAt,
@@ -178,6 +191,23 @@ function toRequestBody(input: ConstituentUpdateInput): Record<string, unknown> {
   }
   if (input.phone !== undefined && input.phone !== "") {
     body.phone = input.phone; // string OR null — both flow through
+  }
+  // Postal address fields — same `undefined`/`""` ⇒ drop, `null` ⇒ clear,
+  // non-empty string ⇒ set convention as email/phone above.
+  if (input.addressLine1 !== undefined && input.addressLine1 !== "") {
+    body.addressLine1 = input.addressLine1;
+  }
+  if (input.addressLine2 !== undefined && input.addressLine2 !== "") {
+    body.addressLine2 = input.addressLine2;
+  }
+  if (input.postalCode !== undefined && input.postalCode !== "") {
+    body.postalCode = input.postalCode;
+  }
+  if (input.city !== undefined && input.city !== "") {
+    body.city = input.city;
+  }
+  if (input.countryCode !== undefined && input.countryCode !== "") {
+    body.countryCode = input.countryCode;
   }
   if (input.type !== undefined) body.type = input.type;
   if (input.tags !== undefined) body.tags = input.tags;

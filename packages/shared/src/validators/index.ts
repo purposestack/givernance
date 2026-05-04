@@ -58,12 +58,42 @@ export function validateTenantSlug(
   return { ok: true, slug: normalised };
 }
 
+/**
+ * Postal address (Epic #274 follow-up). All five fields are
+ * independent and nullable on the API side — the constituent form
+ * lets the operator opt in per recipient. The renderer skips the
+ * window-envelope address block when any required line is missing
+ * (no `address_line1`, no `postal_code`+`city`, etc.).
+ *
+ * `country_code` is ISO 3166-1 alpha-2; we validate length but not
+ * the alphabet (a typo "FX" still passes — better than rejecting an
+ * unfamiliar but valid code we'd missed in an enum).
+ */
+const PostalAddressSchemaFields = {
+  addressLine1: Type.Optional(Type.String({ maxLength: 255 })),
+  addressLine2: Type.Optional(Type.String({ maxLength: 255 })),
+  postalCode: Type.Optional(Type.String({ maxLength: 20 })),
+  city: Type.Optional(Type.String({ maxLength: 255 })),
+  countryCode: Type.Optional(Type.String({ minLength: 2, maxLength: 2 })),
+};
+
+const NullablePostalAddressSchemaFields = {
+  addressLine1: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 255 })])),
+  addressLine2: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 255 })])),
+  postalCode: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 20 })])),
+  city: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 255 })])),
+  countryCode: Type.Optional(
+    Type.Union([Type.Null(), Type.String({ minLength: 2, maxLength: 2 })]),
+  ),
+};
+
 /** Schema for creating a new constituent */
 export const ConstituentCreateSchema = Type.Object({
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
   email: Type.Optional(Type.String({ format: "email", maxLength: 255 })),
   phone: Type.Optional(Type.String({ maxLength: 50 })),
+  ...PostalAddressSchemaFields,
   type: Type.Union(
     [
       Type.Literal("donor"),
@@ -95,6 +125,7 @@ export const ConstituentUpdateSchema = Type.Object({
   // coerceTypes coerces runtime `null` to `""` if String comes first.
   email: Type.Optional(Type.Union([Type.Null(), Type.String({ format: "email", maxLength: 255 })])),
   phone: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 50 })])),
+  ...NullablePostalAddressSchemaFields,
   type: Type.Optional(
     Type.Union([
       Type.Literal("donor"),

@@ -444,7 +444,19 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         recipient:
           mode === "door_drop"
             ? null
-            : { firstName: "Jean", lastName: "Dupont", email: "jean.dupont@example.org" },
+            : {
+                firstName: "Jean",
+                lastName: "Dupont",
+                email: "jean.dupont@example.org",
+                // Fake address that fits the French DL window envelope so
+                // the operator can verify the in-window block placement
+                // before kicking off a mass export.
+                addressLine1: "12 rue de la République",
+                addressLine2: null,
+                postalCode: "75001",
+                city: "Paris",
+                countryCode: "FR",
+              },
         qrReference: "PREVIEW-SAMPLE",
         preview: true,
       });
