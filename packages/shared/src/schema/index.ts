@@ -132,6 +132,15 @@ export const tenants = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: varchar("name", { length: 255 }).notNull(),
     slug: varchar("slug", { length: 100 }).notNull().unique(),
+    /**
+     * Mission statement of the organisation (Epic #274 follow-up).
+     * Used as flavour text on generated postal letters and as a reusable
+     * description elsewhere in the app (public donation page footer, AI
+     * assistant context). Free-form, soft-capped at 2000 chars in the
+     * validator layer; NULL until the operator fills the org-settings
+     * form.
+     */
+    mission: text("mission"),
     plan: varchar("plan", { length: 50 }).notNull().default("starter"),
     status: varchar("status", { length: 50 }).notNull().default("active").$type<TenantStatus>(),
     /** How this tenant was provisioned — drives UI affordances, not access. Migration 0021 (ADR-016). */
@@ -838,6 +847,15 @@ export const campaigns = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }).notNull(),
+    /**
+     * Free-form admin-side description of the campaign (Epic #274 follow-up).
+     * Distinct from `campaign_public_pages.description` which is the
+     * donor-facing copy: the admin description is the source of truth used
+     * to enrich postal-letter PDFs and to seed the public page on first
+     * publish. Soft-capped at 2000 chars by the validator. NULL until the
+     * operator fills it.
+     */
+    description: text("description"),
     type: campaignTypeEnum("type").notNull(),
     status: campaignStatusEnum("status").notNull().default("draft"),
     defaultCurrency: varchar("default_currency", { length: 3 }).notNull().default("EUR"),

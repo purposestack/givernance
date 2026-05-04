@@ -46,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
@@ -63,6 +64,12 @@ const CAMPAIGN_CURRENCIES: readonly CampaignCurrency[] = ["EUR", "GBP", "CHF"] a
 
 interface CampaignFormValues {
   name: string;
+  /**
+   * Free-form admin description (Epic #274 follow-up). Drives the
+   * postal-letter body and seeds the public donation page on first
+   * publish. Empty-string in the form maps to NULL on the API.
+   */
+  description: string;
   type: CampaignType;
   defaultCurrency: CampaignCurrency;
   parentId: string;
@@ -88,6 +95,7 @@ export function CampaignForm(props: CampaignFormProps) {
 
   const defaultValues: DefaultValues<CampaignFormValues> = {
     name: props.campaign?.name ?? "",
+    description: props.campaign?.description ?? "",
     type: props.campaign?.type ?? "digital",
     defaultCurrency: props.campaign?.defaultCurrency ?? "EUR",
     parentId: props.campaign?.parentId ?? "",
@@ -218,6 +226,26 @@ export function CampaignForm(props: CampaignFormProps) {
                       aria-invalid={Boolean(form.formState.errors.name)}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>{t("fields.description")}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      value={field.value ?? ""}
+                      placeholder={t("fields.descriptionPlaceholder")}
+                      rows={4}
+                      maxLength={2000}
+                    />
+                  </FormControl>
+                  <p className="text-xs text-on-surface-variant">{t("fields.descriptionHint")}</p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -400,8 +428,14 @@ export function CampaignForm(props: CampaignFormProps) {
 }
 
 function toApiPayload(values: CampaignFormValues) {
+  // Trim the description and forward `null` on empty so the API
+  // explicitly clears the column rather than storing whitespace. The
+  // API treats `undefined` vs. `null` differently — undefined leaves
+  // the existing value alone, null clears it (cf. CampaignUpdateInput).
+  const description = values.description?.trim() ?? "";
   return {
     name: values.name?.trim() ?? "",
+    description: description.length > 0 ? description : null,
     type: values.type,
     defaultCurrency: values.defaultCurrency,
     parentId: values.parentId?.trim() || null,

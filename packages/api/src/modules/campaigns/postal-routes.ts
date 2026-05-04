@@ -16,10 +16,13 @@ import {
   CAMPAIGN_TYPE_VALUES,
   POSTAL_EXPORT_MODE_VALUES,
   POSTAL_EXPORT_STATUS_VALUES,
+  tenants,
 } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
+import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { env } from "../../env.js";
+import { systemDb } from "../../lib/db.js";
 import { requireOrgAdmin } from "../../lib/guards.js";
 import { fetchCampaignObject } from "../../lib/s3.js";
 import {
@@ -417,18 +420,33 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
 
+      // Fetch the operator's organisation so the letterhead carries the real
+      // org name (and mission, if the operator has filled it). systemDb
+      // bypasses RLS — we already established `orgId` belongs to the
+      // authenticated user via `requireOrgAdmin`, and we only read the row's
+      // identity fields, never any secret material.
+      const [tenant] = await systemDb
+        .select({ name: tenants.name, mission: tenants.mission })
+        .from(tenants)
+        .where(eq(tenants.id, orgId))
+        .limit(1);
+
       // Path mirrors the published donation page (`/p/:id`) so the preview
       // QR resolves to the same screen the donor would see in production.
       const previewUrl = `${env.APP_URL}/p/${id}?preview=1`;
 
       const buffer = await renderPostalLetterToBuffer({
+        organisationName: tenant?.name ?? "Your organisation",
+        organisationMission: tenant?.mission ?? null,
         campaignName: campaign.name,
+        campaignDescription: campaign.description ?? null,
         qrPayload: previewUrl,
         recipient:
           mode === "door_drop"
             ? null
             : { firstName: "Jean", lastName: "Dupont", email: "jean.dupont@example.org" },
         qrReference: "PREVIEW-SAMPLE",
+        preview: true,
       });
 
       reply

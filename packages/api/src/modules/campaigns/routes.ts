@@ -66,8 +66,12 @@ const IdempotencyKeyHeader = Type.Object({
   ),
 });
 
+/** Free-form campaign description (Epic #274 follow-up). Soft-cap matches the validator. */
+const CampaignDescriptionSchema = Type.Union([Type.Null(), Type.String({ maxLength: 2000 })]);
+
 const CampaignCreateBody = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
+  description: Type.Optional(CampaignDescriptionSchema),
   type: CampaignTypeSchema,
   defaultCurrency: Type.Optional(CampaignDefaultCurrencySchema),
   parentId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
@@ -79,6 +83,7 @@ const CampaignCreateBody = Type.Object({
 const CampaignUpdateBody = Type.Object(
   {
     name: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+    description: Type.Optional(CampaignDescriptionSchema),
     type: Type.Optional(CampaignTypeSchema),
     defaultCurrency: Type.Optional(CampaignDefaultCurrencySchema),
     status: Type.Optional(
@@ -100,6 +105,7 @@ const CampaignResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
   name: Type.String(),
+  description: Type.Union([Type.Null(), Type.String()]),
   type: CampaignTypeSchema,
   status: CampaignStatusSchema,
   defaultCurrency: CampaignDefaultCurrencySchema,
@@ -230,6 +236,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       const userId = request.auth?.userId;
       const body = request.body as {
         name: string;
+        description?: string | null;
         type: "nominative_postal" | "door_drop" | "digital";
         defaultCurrency?: "EUR" | "GBP" | "CHF";
         parentId?: string | null;
@@ -321,6 +328,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       const { id } = request.params as { id: string };
       const body = request.body as {
         name?: string;
+        description?: string | null;
         type?: "nominative_postal" | "door_drop" | "digital";
         defaultCurrency?: "EUR" | "GBP" | "CHF";
         status?: "draft" | "active" | "closed";

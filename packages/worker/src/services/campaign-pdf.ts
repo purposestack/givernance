@@ -1,14 +1,40 @@
-/** Campaign PDF generation service — renders personalized A4 letters with QR codes */
+/**
+ * Postal-letter PDF renderer — worker variant (Epic #274 + content-
+ * enrichment follow-up).
+ *
+ * **Lockstep duplicate** of `packages/api/src/modules/campaigns/postal-pdf.ts`.
+ * The two files MUST stay byte-equivalent in their rendering output —
+ * the preview the operator sees in the UI MUST match what the worker
+ * actually produces in the bulk export, otherwise we ship a "preview
+ * lies about the print" bug.
+ *
+ * We keep two copies because:
+ *   - `pdfkit` is a heavy Node-only dep and we don't want it in
+ *     `packages/shared` (which is loaded by the web bundle too);
+ *   - cross-package imports `@givernance/api` → `@givernance/worker`
+ *     break the dependency direction (worker should never import api).
+ *
+ * If you change the layout here, change the API copy in lockstep.
+ * A future refactor can extract this to a dedicated `packages/print`
+ * package once we have a second renderer (receipts, statements).
+ */
 
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 
+const PAGE_MARGIN = 50;
+const PAGE_WIDTH = 595.28;
+const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2;
+const QR_SIZE = 140;
+
 export interface CampaignLetterData {
+  organisationName: string;
+  organisationMission: string | null;
   campaignName: string;
-  orgId: string;
-  qrCode: string;
-  /** Constituent info — null for door_drop campaigns */
-  constituent: {
+  campaignDescription: string | null;
+  qrPayload: string;
+  qrReference: string;
+  recipient: {
     firstName: string;
     lastName: string;
     email: string | null;
@@ -16,65 +42,115 @@ export interface CampaignLetterData {
 }
 
 /**
- * Create a campaign letter PDF as a readable PDFKit stream.
- * The caller is responsible for piping this to S3 (or buffering if needed).
+ * Build a postal-letter PDFKit stream. Caller pipes it to S3 (or to an
+ * `archiver.append`) and is responsible for awaiting the stream's `end`
+ * before considering the upload complete.
  */
 export async function createCampaignLetterPdfStream(
   data: CampaignLetterData,
 ): Promise<InstanceType<typeof PDFDocument>> {
-  // Generate QR code as a data URI (PNG)
-  const qrDataUrl = await QRCode.toDataURL(data.qrCode, {
-    width: 150,
+  const qrDataUrl = await QRCode.toDataURL(data.qrPayload, {
+    width: 320,
     margin: 1,
     errorCorrectionLevel: "M",
   });
-
   // biome-ignore lint/style/noNonNullAssertion: data URI from QRCode.toDataURL always contains a comma separator
   const qrBuffer = Buffer.from(qrDataUrl.split(",")[1]!, "base64");
 
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: PAGE_MARGIN,
+    info: {
+      Title: `${data.organisationName} — ${data.campaignName}`,
+      Author: data.organisationName,
+      Subject: data.campaignName,
+    },
+  });
 
-  // Header
-  doc.fontSize(24).text("Givernance", { align: "center" });
-  doc.moveDown(0.5);
-  doc.fontSize(16).text(data.campaignName, { align: "center" });
-  doc.moveDown(2);
-
-  // Personalized content (nominative campaigns)
-  if (data.constituent) {
-    doc.fontSize(14).text("Dear Supporter", { underline: true });
-    doc.fontSize(12).text(`Name: ${data.constituent.firstName} ${data.constituent.lastName}`);
-    if (data.constituent.email) {
-      doc.text(`Email: ${data.constituent.email}`);
-    }
-    doc.moveDown(1.5);
+  // ── Letterhead ────────────────────────────────────────────────────────
+  doc.fillColor("#0f172a");
+  doc.font("Helvetica-Bold").fontSize(22);
+  doc.text(data.organisationName, { align: "center" });
+  if (data.organisationMission && data.organisationMission.trim().length > 0) {
+    doc.moveDown(0.3);
+    doc.font("Helvetica-Oblique").fontSize(10).fillColor("#475569");
+    doc.text(data.organisationMission.trim(), { align: "center" });
   }
 
-  // Body text
+  doc.moveDown(0.8);
+  const ruleY = doc.y;
   doc
-    .fontSize(12)
-    .text(
-      data.constituent
-        ? "Thank you for your continued support. We are reaching out to share our latest campaign and invite you to contribute to our mission."
-        : "We are reaching out to share our latest campaign and invite you to support our mission. Your generosity makes a difference.",
-    );
-  doc.moveDown(1.5);
+    .strokeColor("#e2e8f0")
+    .lineWidth(0.6)
+    .moveTo(PAGE_MARGIN, ruleY)
+    .lineTo(PAGE_MARGIN + CONTENT_WIDTH, ruleY)
+    .stroke();
+  doc.moveDown(1.4);
 
-  doc.text("To learn more or donate, scan the QR code below:");
-  doc.moveDown(1);
+  // ── Campaign title ────────────────────────────────────────────────────
+  doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(16);
+  doc.text(data.campaignName, { align: "left" });
+  doc.moveDown(1.2);
 
-  // Embed QR code image
-  doc.image(qrBuffer, doc.x, doc.y, { width: 150, height: 150 });
-  doc.moveDown(8);
+  // ── Salutation ────────────────────────────────────────────────────────
+  doc.fillColor("#0f172a").font("Helvetica").fontSize(12);
+  if (data.recipient) {
+    doc.text(`Dear ${data.recipient.firstName} ${data.recipient.lastName},`);
+  } else {
+    doc.text("Dear Supporter,");
+  }
+  doc.moveDown(0.8);
 
-  // QR code reference
-  doc.fontSize(10).text(`Reference: ${data.qrCode}`, { align: "center" });
-  doc.moveDown(2);
+  // ── Body ──────────────────────────────────────────────────────────────
+  if (data.campaignDescription && data.campaignDescription.trim().length > 0) {
+    doc.text(data.campaignDescription.trim(), { align: "justify", lineGap: 2 });
+    doc.moveDown(0.8);
+  }
 
-  // Footer
-  doc.fontSize(10).text("This letter was generated by Givernance on behalf of your organization.", {
-    align: "center",
+  doc.text(
+    data.recipient
+      ? "Thank you for your continued support. Your generosity is what makes this campaign possible — every contribution, big or small, makes a tangible difference."
+      : "Your support could make a real difference for this campaign. Every contribution, big or small, helps us go further.",
+    { align: "justify", lineGap: 2 },
+  );
+  doc.moveDown(0.8);
+  doc.text("To learn more or contribute, scan the QR code on the next page:", {
+    align: "justify",
+    lineGap: 2,
   });
+
+  // ── QR panel — pinned near the bottom of the page ─────────────────────
+  const PANEL_HEIGHT = 220;
+  const panelTopY = doc.page.height - PAGE_MARGIN - PANEL_HEIGHT;
+  const qrX = (PAGE_WIDTH - QR_SIZE) / 2;
+  const qrY = panelTopY + 10;
+
+  doc
+    .roundedRect(PAGE_MARGIN, panelTopY, CONTENT_WIDTH, PANEL_HEIGHT, 12)
+    .fillColor("#f8fafc")
+    .fill();
+
+  doc.image(qrBuffer, qrX, qrY, { width: QR_SIZE, height: QR_SIZE });
+
+  const captionY = qrY + QR_SIZE + 10;
+  doc
+    .fillColor("#0f172a")
+    .font("Helvetica-Bold")
+    .fontSize(10)
+    .text(data.qrPayload, PAGE_MARGIN, captionY, {
+      align: "center",
+      width: CONTENT_WIDTH,
+      lineBreak: false,
+    });
+  doc
+    .moveDown(0.4)
+    .fillColor("#64748b")
+    .font("Helvetica")
+    .fontSize(8)
+    .text(`Reference · ${data.qrReference}`, {
+      align: "center",
+      width: CONTENT_WIDTH,
+    });
 
   doc.end();
   return doc;
