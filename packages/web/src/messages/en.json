@@ -1084,7 +1084,10 @@
         "baseCurrencyHint": "This currency is used as the organisation reporting currency.",
         "baseCurrencyHintWithName": "{name} will use this currency for converted totals and reports.",
         "defaultLocale": "Default language",
-        "defaultLocaleHint": "Default language for members who haven't set a personal preference. Members with a personal language keep their choice."
+        "defaultLocaleHint": "Default language for members who haven't set a personal preference. Members with a personal language keep their choice.",
+        "mission": "Organisation mission",
+        "missionPlaceholder": "What does your organisation do? In one or two sentences — this is what donors will read.",
+        "missionHint": "Used as the introduction on postal letters and as a footer on your public donation pages. Plain prose, no jargon — write it for someone who's never heard of you."
       },
       "actions": {
         "save": "Save settings",
@@ -1603,6 +1606,9 @@
       "fields": {
         "name": "Campaign name",
         "namePlaceholder": "Spring appeal 2026",
+        "description": "Campaign description",
+        "descriptionPlaceholder": "What's this campaign about? In a few sentences — what problem does it address, where does the money go?",
+        "descriptionHint": "Used as the body of postal letters and as the donor-facing intro on the public donation page. Plain prose, written for someone who's never heard of this campaign.",
         "type": "Campaign type",
         "defaultCurrency": "Default currency",
         "defaultCurrencyHint": "Preselected when donations are created from this campaign.",

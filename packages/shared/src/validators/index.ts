@@ -147,6 +147,13 @@ export const DonationCreateSchema = Type.Object({
 /** Schema for creating a new campaign */
 export const CampaignCreateSchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
+  /**
+   * Free-form admin description (Epic #274 follow-up). Soft-cap at
+   * 2000 chars matches the postal-letter renderer's expected input.
+   * `Type.Null()` first in the union for the same `coerceTypes` AJV
+   * pitfall as `operationalCostCents` below.
+   */
+  description: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 2000 })])),
   type: Type.Union([
     Type.Literal("nominative_postal"),
     Type.Literal("door_drop"),

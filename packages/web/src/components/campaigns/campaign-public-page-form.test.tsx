@@ -27,6 +27,7 @@ describe("CampaignPublicPageForm", () => {
           id: "11111111-1111-4111-8111-111111111111",
           orgId: "org-1",
           name: "Spring Appeal",
+          description: null,
           type: "digital",
           status: "active",
           defaultCurrency: "EUR",

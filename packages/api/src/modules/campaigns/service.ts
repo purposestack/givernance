@@ -79,6 +79,8 @@ function buildCampaignOrderBy(
 
 export interface CreateCampaignInput {
   name: string;
+  /** Free-form admin-side description (Epic #274 follow-up). Soft-cap 2000 chars. */
+  description?: string | null;
   type: "nominative_postal" | "door_drop" | "digital";
   defaultCurrency?: "EUR" | "GBP" | "CHF";
   parentId?: string | null;
@@ -89,6 +91,7 @@ export interface CreateCampaignInput {
 
 export interface UpdateCampaignInput {
   name?: string;
+  description?: string | null;
   type?: "nominative_postal" | "door_drop" | "digital";
   defaultCurrency?: "EUR" | "GBP" | "CHF";
   status?: "draft" | "active" | "closed";
@@ -112,6 +115,7 @@ function campaignSelectFields() {
     id: campaigns.id,
     orgId: campaigns.orgId,
     name: campaigns.name,
+    description: campaigns.description,
     type: campaigns.type,
     status: campaigns.status,
     defaultCurrency: campaigns.defaultCurrency,
@@ -324,6 +328,7 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput, 
       .values({
         orgId,
         name: input.name,
+        description: input.description ?? null,
         type: input.type,
         defaultCurrency: input.defaultCurrency ?? "EUR",
         parentId: input.parentId ?? null,
@@ -446,6 +451,7 @@ export async function updateCampaign(
       .update(campaigns)
       .set({
         name: input.name,
+        description: input.description,
         type: input.type,
         defaultCurrency: input.defaultCurrency,
         status: input.status,

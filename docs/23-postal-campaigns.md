@@ -91,6 +91,27 @@ sequenceDiagram
     API->>DB: Update QR attribution stats
 ```
 
+## 1.bis Letter content sources (org mission + campaign description)
+
+Two free-form fields drive the actual prose printed on the letter, so the
+operator's voice — not Givernance boilerplate — owns every word the donor
+reads:
+
+| Field | DB column | UI surface | Used in the letter as |
+|---|---|---|---|
+| **Organisation mission** | `tenants.mission` (TEXT, nullable, soft-cap 2000 chars) | `Settings → Organisation` (org_admin only) | Italic subtitle directly under the letterhead — answers "what does this org do" |
+| **Campaign description** | `campaigns.description` (TEXT, nullable, soft-cap 2000 chars) | Campaign create/edit form | Justified paragraph between the salutation and the donate-call — answers "what is this specific campaign about" |
+
+Both are NULL until the operator fills them. The renderer degrades
+gracefully: an empty mission collapses the italic subtitle, and a missing
+campaign description falls back to a generic "Your support could make a
+real difference" line. The organisation **name** (`tenants.name`,
+required) is the letterhead — Givernance never appears on the page.
+
+The same fields are deliberately reusable: they're the canonical place to
+enrich AI-assisted copy generation (planned), the donor-facing public
+page footer, and any future channels (email signature, receipts).
+
 ## 2. Domain model
 
 ```mermaid
@@ -113,6 +134,7 @@ erDiagram
         uuid id PK
         uuid org_id FK
         string name
+        text description "admin source-of-truth for postal copy"
         enum type "nominative_postal | door_drop | digital"
         enum status "draft | active | closed"
     }

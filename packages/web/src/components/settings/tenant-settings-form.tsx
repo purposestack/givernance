@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
@@ -42,6 +43,8 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
   const [initialCurrency, setInitialCurrency] = useState<TenantCurrency>("EUR");
   const [defaultLocale, setDefaultLocale] = useState<Locale>("fr");
   const [initialDefaultLocale, setInitialDefaultLocale] = useState<Locale>("fr");
+  const [mission, setMission] = useState<string>("");
+  const [initialMission, setInitialMission] = useState<string>("");
   const [tenantName, setTenantName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,6 +67,9 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
         setInitialCurrency(tenant.baseCurrency);
         setDefaultLocale(tenant.defaultLocale);
         setInitialDefaultLocale(tenant.defaultLocale);
+        const tenantMission = tenant.mission ?? "";
+        setMission(tenantMission);
+        setInitialMission(tenantMission);
       } catch (error) {
         if (!active) return;
         setErrorMessage(resolveApiErrorMessage(error, t("errors.load")));
@@ -89,15 +95,29 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
     try {
       // Send only the changed fields so a future audit on this PATCH
       // surfaces just the operator's intent, not a no-op of every field.
-      const patch: { baseCurrency?: TenantCurrency; defaultLocale?: Locale } = {};
+      const patch: {
+        baseCurrency?: TenantCurrency;
+        defaultLocale?: Locale;
+        mission?: string | null;
+      } = {};
       if (baseCurrency !== initialCurrency) patch.baseCurrency = baseCurrency;
       if (defaultLocale !== initialDefaultLocale) patch.defaultLocale = defaultLocale;
+      if (mission !== initialMission) {
+        // Empty string ⇒ explicit clear (NULL on the API side); non-empty
+        // string ⇒ set. Trim before send so a stray whitespace-only edit
+        // doesn't pollute the audit trail with a no-op-ish change.
+        const trimmed = mission.trim();
+        patch.mission = trimmed.length > 0 ? trimmed : null;
+      }
       const tenant = await TenantService.updateTenant(createClientApiClient(), tenantOrgId, patch);
       setTenantName(tenant.name);
       setBaseCurrency(tenant.baseCurrency);
       setInitialCurrency(tenant.baseCurrency);
       setDefaultLocale(tenant.defaultLocale);
       setInitialDefaultLocale(tenant.defaultLocale);
+      const nextMission = tenant.mission ?? "";
+      setMission(nextMission);
+      setInitialMission(nextMission);
       toast.success(t("success.updated"));
       // Issue #153: re-run server components so the new tenant default
       // takes effect for users with `users.locale = NULL` without a
@@ -113,7 +133,10 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
     }
   }
 
-  const isDirty = baseCurrency !== initialCurrency || defaultLocale !== initialDefaultLocale;
+  const isDirty =
+    baseCurrency !== initialCurrency ||
+    defaultLocale !== initialDefaultLocale ||
+    mission !== initialMission;
 
   return (
     <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
@@ -186,6 +209,22 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
               </Select>
               <p className="text-xs text-on-surface-variant">{t("fields.defaultLocaleHint")}</p>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="tenant-mission" className="text-sm font-medium text-on-surface">
+              {t("fields.mission")}
+            </label>
+            <Textarea
+              id="tenant-mission"
+              value={mission}
+              onChange={(event) => setMission(event.target.value)}
+              disabled={loading || saving}
+              maxLength={2000}
+              rows={4}
+              placeholder={t("fields.missionPlaceholder")}
+            />
+            <p className="text-xs text-on-surface-variant">{t("fields.missionHint")}</p>
           </div>
 
           {errorMessage ? <p className="text-sm text-error">{errorMessage}</p> : null}

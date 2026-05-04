@@ -33,6 +33,7 @@ import {
   campaignQrCodes,
   campaigns,
   constituents,
+  tenants,
 } from "@givernance/shared/schema";
 import archiver from "archiver";
 import type { Job } from "bullmq";
@@ -56,15 +57,22 @@ function generateQrToken(): string {
 
 /** Render one PDF to a Buffer (so we can pipe it into archiver synchronously). */
 async function renderPdfBuffer(args: {
+  organisationName: string;
+  organisationMission: string | null;
   campaignName: string;
+  campaignDescription: string | null;
   qrCode: string;
+  qrReference: string;
   recipient: { firstName: string; lastName: string; email: string | null } | null;
 }): Promise<Buffer> {
   const stream = await createCampaignLetterPdfStream({
+    organisationName: args.organisationName,
+    organisationMission: args.organisationMission,
     campaignName: args.campaignName,
-    orgId: "n/a",
-    qrCode: args.qrCode,
-    constituent: args.recipient,
+    campaignDescription: args.campaignDescription,
+    qrPayload: args.qrCode,
+    qrReference: args.qrReference,
+    recipient: args.recipient,
   });
   return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -105,55 +113,72 @@ export async function processGeneratePostalExport(
       );
   });
 
-  // ── 2. Load campaign + (optionally) the linked constituents. ────
-  const { campaign, recipients, publicPageUrl } = await withWorkerContext(orgId, async (tx) => {
-    const [campaignRow] = await tx
-      .select({ id: campaigns.id, name: campaigns.name, type: campaigns.type })
-      .from(campaigns)
-      .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+  // ── 2. Load campaign + tenant identity + (optionally) the linked constituents. ────
+  const { campaign, tenant, recipients, publicPageUrl } = await withWorkerContext(
+    orgId,
+    async (tx) => {
+      const [campaignRow] = await tx
+        .select({
+          id: campaigns.id,
+          name: campaigns.name,
+          description: campaigns.description,
+          type: campaigns.type,
+        })
+        .from(campaigns)
+        .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
 
-    if (!campaignRow) {
-      throw new Error(`Campaign ${campaignId} not found for org ${orgId}`);
-    }
+      if (!campaignRow) {
+        throw new Error(`Campaign ${campaignId} not found for org ${orgId}`);
+      }
 
-    const recipientRows =
-      mode === "personalized"
-        ? await tx
-            .select({
-              id: constituents.id,
-              firstName: constituents.firstName,
-              lastName: constituents.lastName,
-              email: constituents.email,
-            })
-            .from(campaignConstituents)
-            .innerJoin(constituents, eq(constituents.id, campaignConstituents.constituentId))
-            .where(
-              and(
-                eq(campaignConstituents.orgId, orgId),
-                eq(campaignConstituents.campaignId, campaignId),
-                isNull(constituents.deletedAt),
-              ),
-            )
-        : [];
+      // Operator's organisation — name + mission drive the letterhead and
+      // the contextual paragraph. RLS lets the app role read its own
+      // tenant row by `id = app_current_organization_id()`.
+      const [tenantRow] = await tx
+        .select({ name: tenants.name, mission: tenants.mission })
+        .from(tenants)
+        .where(eq(tenants.id, orgId));
 
-    // Public-page URL drives the QR redirect target. The opaque token is
-    // appended as a query param at scan-time by the Givernance public site;
-    // here we just compose the canonical `/c/:campaignId` link.
-    const [_publicPage] = await tx
-      .select({ id: campaignPublicPages.id })
-      .from(campaignPublicPages)
-      .where(eq(campaignPublicPages.campaignId, campaignId));
+      const recipientRows =
+        mode === "personalized"
+          ? await tx
+              .select({
+                id: constituents.id,
+                firstName: constituents.firstName,
+                lastName: constituents.lastName,
+                email: constituents.email,
+              })
+              .from(campaignConstituents)
+              .innerJoin(constituents, eq(constituents.id, campaignConstituents.constituentId))
+              .where(
+                and(
+                  eq(campaignConstituents.orgId, orgId),
+                  eq(campaignConstituents.campaignId, campaignId),
+                  isNull(constituents.deletedAt),
+                ),
+              )
+          : [];
 
-    return {
-      campaign: campaignRow,
-      recipients: recipientRows,
-      // The public donation page lives under `/p/:id` (see
-      // `packages/web/src/app/(public)/p/[id]/page.tsx`). An earlier draft
-      // of this code targeted `/c/:id`, which 404s — the QR codes printed
-      // from such a build dropped donors on a "Page not found" screen.
-      publicPageUrl: `${env.APP_URL}/p/${campaignId}`,
-    };
-  });
+      // Public-page URL drives the QR redirect target. The opaque token is
+      // appended at scan-time so the worker just composes the canonical
+      // `/p/:campaignId` link.
+      const [_publicPage] = await tx
+        .select({ id: campaignPublicPages.id })
+        .from(campaignPublicPages)
+        .where(eq(campaignPublicPages.campaignId, campaignId));
+
+      return {
+        campaign: campaignRow,
+        tenant: tenantRow ?? { name: "Your organisation", mission: null },
+        recipients: recipientRows,
+        // The public donation page lives under `/p/:id` (see
+        // `packages/web/src/app/(public)/p/[id]/page.tsx`). An earlier draft
+        // of this code targeted `/c/:id`, which 404s — the QR codes printed
+        // from such a build dropped donors on a "Page not found" screen.
+        publicPageUrl: `${env.APP_URL}/p/${campaignId}`,
+      };
+    },
+  );
 
   // Pre-compute the work list so the ZIP order matches the DB order; the
   // QR tokens are minted now and inserted with their PDFs in step 3.
@@ -216,8 +241,12 @@ export async function processGeneratePostalExport(
       });
 
       const buffer = await renderPdfBuffer({
+        organisationName: tenant.name,
+        organisationMission: tenant.mission,
         campaignName: campaign.name,
+        campaignDescription: campaign.description,
         qrCode: `${publicPageUrl}?qr=${encodeURIComponent(item.qrToken)}`,
+        qrReference: item.qrToken,
         recipient: item.recipient,
       });
 

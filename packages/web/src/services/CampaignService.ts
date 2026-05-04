@@ -98,6 +98,7 @@ function mapCampaign(raw: Campaign): Campaign {
     id: raw.id,
     orgId: raw.orgId,
     name: raw.name,
+    description: raw.description ?? null,
     type: raw.type,
     status: raw.status,
     defaultCurrency: raw.defaultCurrency,
@@ -115,6 +116,7 @@ function toRequestBody(input: CampaignCreateInput | CampaignUpdateInput): Record
   const maybeStatus = input as CampaignUpdateInput;
 
   if (input.name !== undefined) body.name = input.name;
+  if (input.description !== undefined) body.description = input.description;
   if (input.type !== undefined) body.type = input.type;
   if (input.defaultCurrency !== undefined) body.defaultCurrency = input.defaultCurrency;
   if (maybeStatus.status !== undefined) body.status = maybeStatus.status;

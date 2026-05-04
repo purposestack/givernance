@@ -8,6 +8,12 @@ export interface Campaign {
   id: string;
   orgId: string;
   name: string;
+  /**
+   * Free-form admin description (Epic #274 follow-up). Drives the body
+   * of the postal letter and seeds the public donation page on first
+   * publish. NULL when the operator has not filled it yet.
+   */
+  description: string | null;
   type: CampaignType;
   status: CampaignStatus;
   defaultCurrency: CampaignCurrency;
@@ -67,6 +73,8 @@ export interface CampaignDetailResponse {
 
 export interface CampaignCreateInput {
   name: string;
+  /** `null` clears, `undefined` leaves alone, `string` sets. */
+  description?: string | null;
   type: CampaignType;
   defaultCurrency?: CampaignCurrency;
   parentId?: string | null;

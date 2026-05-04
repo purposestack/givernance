@@ -1084,7 +1084,10 @@
         "baseCurrencyHint": "Cette devise est utilisée comme devise de reporting de l'organisation.",
         "baseCurrencyHintWithName": "{name} utilisera cette devise pour les montants convertis et les rapports.",
         "defaultLocale": "Langue par défaut",
-        "defaultLocaleHint": "Langue par défaut pour les membres qui n'ont pas défini de préférence personnelle. Les membres ayant une langue personnelle conservent leur choix."
+        "defaultLocaleHint": "Langue par défaut pour les membres qui n'ont pas défini de préférence personnelle. Les membres ayant une langue personnelle conservent leur choix.",
+        "mission": "Mission de l'organisation",
+        "missionPlaceholder": "Que fait votre organisation ? En une à deux phrases — c'est ce que vos donateurs liront.",
+        "missionHint": "Utilisée comme introduction sur les lettres postales et comme pied de page sur vos pages de don publiques. Phrasé simple, sans jargon — écrivez-le pour quelqu'un qui ne vous connaît pas."
       },
       "actions": {
         "save": "Enregistrer les paramètres",
@@ -1603,6 +1606,9 @@
       "fields": {
         "name": "Nom de la campagne",
         "namePlaceholder": "Campagne de printemps 2026",
+        "description": "Description de la campagne",
+        "descriptionPlaceholder": "De quoi s'agit-il ? En quelques phrases — quel problème elle adresse, où va l'argent ?",
+        "descriptionHint": "Utilisée comme corps des lettres postales et comme introduction visible sur la page de don publique. Phrasé simple, écrit pour quelqu'un qui ne connaît pas cette campagne.",
         "type": "Type de campagne",
         "defaultCurrency": "Devise par défaut",
         "defaultCurrencyHint": "Préremplie lorsque des dons sont créés depuis cette campagne.",

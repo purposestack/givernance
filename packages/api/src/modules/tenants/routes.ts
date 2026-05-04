@@ -33,6 +33,14 @@ const TenantBaseCurrencySchema = Type.Union([
 
 const TenantLocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)));
 
+/**
+ * Free-form mission statement of the organisation (Epic #274 follow-up).
+ * Soft-cap at 2000 chars so the postal-letter renderer doesn't blow past
+ * its letterhead band on a pathologically long input. Nullable so the
+ * operator can clear the field after setting it.
+ */
+const TenantMissionSchema = Type.Union([Type.Null(), Type.String({ maxLength: 2000 })]);
+
 const UpdateTenantBody = Type.Object(
   {
     baseCurrency: Type.Optional(TenantBaseCurrencySchema),
@@ -43,6 +51,11 @@ const UpdateTenantBody = Type.Object(
     // override keep their preference; users with NULL follow the new
     // default on next read.
     defaultLocale: Type.Optional(TenantLocaleSchema),
+    /**
+     * Mission statement — surfaces on postal letters (Epic #274) and the
+     * future donor-facing footer. NULL clears the field.
+     */
+    mission: Type.Optional(TenantMissionSchema),
   },
   { minProperties: 1 },
 );
@@ -54,6 +67,12 @@ const TenantResponse = Type.Object({
   plan: Type.String(),
   baseCurrency: TenantBaseCurrencySchema,
   defaultLocale: TenantLocaleSchema,
+  // `Type.Optional` (not just nullable) — the POST /tenants response
+  // path returns the bare insert row before it ever hits the column;
+  // some legacy code paths build the response object without going
+  // through the schema's full column list, so we let the field be
+  // absent and let consumers treat undefined as "not yet set".
+  mission: Type.Optional(Type.Union([Type.Null(), Type.String()])),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -159,12 +178,15 @@ export async function tenantRoutes(app: FastifyInstance) {
       const body = request.body as {
         baseCurrency?: "EUR" | "GBP" | "CHF";
         defaultLocale?: "en" | "fr";
+        // `null` clears the mission, `string` sets it, `undefined` leaves it alone.
+        mission?: string | null;
       };
       const [updated] = await db
         .update(tenants)
         .set({
           ...(body.baseCurrency ? { baseCurrency: body.baseCurrency } : {}),
           ...(body.defaultLocale ? { defaultLocale: body.defaultLocale } : {}),
+          ...(body.mission !== undefined ? { mission: body.mission } : {}),
           updatedAt: new Date(),
         })
         .where(eq(tenants.id, orgId))

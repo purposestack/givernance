@@ -9,6 +9,7 @@ const parentCampaign: Campaign = {
   id: "11111111-1111-4111-8111-111111111111",
   orgId: "00000000-0000-0000-0000-0000000000a1",
   name: "Regional Appeal",
+  description: null,
   type: "digital",
   status: "active",
   defaultCurrency: "EUR",

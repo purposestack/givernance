@@ -7,6 +7,7 @@ import {
   campaignQrCodes,
   campaigns,
   constituents,
+  tenants,
 } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { and, eq, inArray } from "drizzle-orm";
@@ -70,12 +71,19 @@ function generateQrToken(): string {
 
 type Tx = Parameters<Parameters<typeof withWorkerContext>[1]>[0];
 
+interface PdfContext {
+  organisationName: string;
+  organisationMission: string | null;
+  campaignName: string;
+  campaignDescription: string | null;
+}
+
 /** Generate a single nominative document for one constituent within a campaign */
 async function generateConstituentDocument(
   tx: Tx,
   orgId: string,
   campaignId: string,
-  campaignName: string,
+  ctx: PdfContext,
   constituent: { id: string; firstName: string; lastName: string; email: string | null },
 ): Promise<string> {
   const code = generateQrToken();
@@ -88,10 +96,13 @@ async function generateConstituentDocument(
   });
 
   const pdfStream = await createCampaignLetterPdfStream({
-    campaignName,
-    orgId,
-    qrCode: code,
-    constituent: {
+    organisationName: ctx.organisationName,
+    organisationMission: ctx.organisationMission,
+    campaignName: ctx.campaignName,
+    campaignDescription: ctx.campaignDescription,
+    qrPayload: code,
+    qrReference: code,
+    recipient: {
       firstName: constituent.firstName,
       lastName: constituent.lastName,
       email: constituent.email,
@@ -149,6 +160,19 @@ export async function processGenerateCampaignDocuments(
       throw new Error(`Campaign ${campaignId} not found for org ${orgId}`);
     }
 
+    // Tenant identity drives the letterhead. Same RLS-safe read as
+    // `postal-export.ts` — the app role can read its own tenant row.
+    const [tenantRow] = await tx
+      .select({ name: tenants.name, mission: tenants.mission })
+      .from(tenants)
+      .where(eq(tenants.id, orgId));
+    const ctx: PdfContext = {
+      organisationName: tenantRow?.name ?? "Your organisation",
+      organisationMission: tenantRow?.mission ?? null,
+      campaignName: campaign.name,
+      campaignDescription: campaign.description ?? null,
+    };
+
     if (campaign.type === "door_drop") {
       const code = generateQrToken();
 
@@ -160,10 +184,13 @@ export async function processGenerateCampaignDocuments(
       });
 
       const pdfStream = await createCampaignLetterPdfStream({
-        campaignName: campaign.name,
-        orgId,
-        qrCode: code,
-        constituent: null,
+        organisationName: ctx.organisationName,
+        organisationMission: ctx.organisationMission,
+        campaignName: ctx.campaignName,
+        campaignDescription: ctx.campaignDescription,
+        qrPayload: code,
+        qrReference: code,
+        recipient: null,
       });
 
       const [pendingDoc] = await tx
@@ -216,13 +243,7 @@ export async function processGenerateCampaignDocuments(
     const results = await Promise.allSettled(
       constituentRows.map((constituent) =>
         sem(async () => {
-          const s3Path = await generateConstituentDocument(
-            tx,
-            orgId,
-            campaignId,
-            campaign.name,
-            constituent,
-          );
+          const s3Path = await generateConstituentDocument(tx, orgId, campaignId, ctx, constituent);
           log.debug({ constituentId: constituent.id, s3Path }, "Document generated");
           return s3Path;
         }),
