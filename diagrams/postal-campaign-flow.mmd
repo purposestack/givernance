@@ -1,0 +1,70 @@
+%%{init: {'theme':'default'}}%%
+%% End-to-end postal campaign + QR reconciliation flow (Epic #274).
+%% Companion to `docs/23-postal-campaigns.md`.
+sequenceDiagram
+    autonumber
+    actor Op as Operator (org_admin)
+    participant Web as Next.js (web)
+    participant API as Fastify (api)
+    participant DB as Postgres
+    participant Outbox as Outbox relay
+    participant Worker as BullMQ worker
+    participant S3 as Object storage
+    actor Donor
+
+    rect rgb(245, 248, 250)
+      Note over Op,Web: 1. Curate the recipient list
+      Op->>Web: Add constituents via dialog
+      Web->>API: POST /campaigns/:id/constituents
+      API->>DB: INSERT campaign_constituents (idempotent)
+    end
+
+    rect rgb(245, 248, 250)
+      Note over Op,Web: 2. Validate the layout
+      Op->>Web: Click "Aperçu PDF"
+      Web->>API: POST /campaigns/:id/postal-preview
+      API-->>Web: PDF (Jean Dupont fixture)
+      Web->>Donor: open in new tab
+    end
+
+    rect rgb(255, 248, 230)
+      Note over Op,Worker: 3. Async ZIP generation
+      Op->>Web: Click "Generate ZIP"
+      Web->>API: POST /campaigns/:id/postal-exports
+      API->>DB: INSERT pending row + outbox event
+      API-->>Web: 202 + exportId
+      Outbox->>Worker: Enqueue job
+      Worker->>DB: UPDATE status=processing
+      loop Per recipient
+        Worker->>DB: INSERT campaign_qr_codes
+        Worker->>S3: Stream PDF into archive
+        Worker->>DB: progress_count++ (live)
+      end
+      Worker->>S3: Finalise multipart upload
+      Worker->>DB: UPDATE status=completed
+      Web-->>Op: Download link
+    end
+
+    rect rgb(240, 255, 244)
+      Note over Op,Donor: 4. Print → distribute
+      Op->>Op: Send ZIP to print shop
+      Op->>Donor: Postal letter delivered
+    end
+
+    rect rgb(232, 240, 254)
+      Note over Donor,API: 5. Scan + donate
+      Donor->>Web: Scan QR → /p/:id?qr=<token>
+      Web->>API: GET /v1/public/qr/<token>
+      API->>DB: UPDATE scanned_at (first scan only)
+      API-->>Web: { campaignId, constituentId? }
+      Donor->>Web: Submit donation form
+      Web->>API: POST /v1/public/.../donate { qrCode }
+      API->>API: Resolve qrCode → Stripe metadata<br/>(qr_code_id, qr_code_constituent_id)
+    end
+
+    rect rgb(252, 232, 232)
+      Note over API,DB: 6. Webhook reconciliation
+      API->>API: Stripe webhook checkout.completed
+      API->>DB: INSERT donations<br/>(campaign_id, constituent_id, qr_code_id)
+      API->>DB: Update QR attribution stats
+    end

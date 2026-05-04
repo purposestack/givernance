@@ -26,6 +26,18 @@ erDiagram
   orgs ||--o{ campaigns : "runs"
   campaigns ||--o{ campaigns : "parent-child"
 
+  %% POSTAL CAMPAIGNS (Epic #274) — see docs/23-postal-campaigns.md
+  campaigns ||--o| campaign_public_pages : "donor-facing 0..1"
+  campaigns ||--o{ campaign_constituents : "mailing list"
+  constituents ||--o{ campaign_constituents : "is recipient on"
+  campaigns ||--o{ campaign_postal_exports : "ZIP archive jobs"
+  campaigns ||--o{ campaign_qr_codes : "minted QR tokens"
+  constituents ||--o{ campaign_qr_codes : "scanned by"
+  campaigns ||--o{ campaign_documents : "rendered letter PDFs"
+  campaign_qr_codes ||--o| donations : "attributes via Stripe metadata"
+  users ||--o{ campaign_constituents : "added_by"
+  users ||--o{ campaign_postal_exports : "requested_by"
+
   %% GRANTS
   constituents ||--o{ grants : "funds (as funder org)"
   grants ||--o{ grant_tranches : "disburses"
