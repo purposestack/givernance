@@ -1665,6 +1665,23 @@
         "preview": "Preview",
         "previewing": "Loading preview…"
       },
+      "readiness": {
+        "campaignNotActive": {
+          "title": "Activate the campaign first",
+          "body": "Postal exports can only be generated for active campaigns. Open the campaign status panel and switch the status to Active before queueing an export."
+        },
+        "publicPageMissing": {
+          "title": "Configure a public donation page first",
+          "body": "QR codes printed on your letters point at the campaign's public donation page. Configure and publish the page so donors who scan have somewhere to give."
+        },
+        "publicPageDraft": {
+          "title": "Publish your public donation page first",
+          "body": "Your public donation page is still a draft, so QR-scanned letters would lead to a 404. Publish the page before queueing the export."
+        },
+        "publicPageCta": "Open the public page settings",
+        "activateCampaignFirst": "Activate the campaign before generating an export.",
+        "publishPublicPageFirst": "Publish the public donation page before generating an export."
+      },
       "toast": {
         "exportQueued": "Export queued — generation will start shortly.",
         "exportReady": "Postal export ready for download.",

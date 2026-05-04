@@ -21,7 +21,19 @@ let constituentAId: string;
 let constituentBId: string;
 let constituentNoEmailId: string;
 
-async function createCampaign(name: string, type: "nominative_postal" | "door_drop") {
+/**
+ * Create a campaign in the postal-export-ready state: status=active AND
+ * a published public donation page. Mirrors the readiness gates that
+ * `startPostalExport` enforces (Epic #274). Tests that explicitly
+ * exercise the "not ready yet" branches should pass `{ activate: false }`
+ * or `{ publishPage: false }` to opt out.
+ */
+async function createCampaign(
+  name: string,
+  type: "nominative_postal" | "door_drop",
+  options: { activate?: boolean; publishPage?: boolean } = {},
+) {
+  const { activate = true, publishPage = true } = options;
   const token = signToken(app);
   const res = await app.inject({
     method: "POST",
@@ -30,7 +42,31 @@ async function createCampaign(name: string, type: "nominative_postal" | "door_dr
     payload: { name, type },
   });
   expect(res.statusCode).toBe(201);
-  return res.json<{ data: { id: string } }>().data.id;
+  const id = res.json<{ data: { id: string } }>().data.id;
+
+  if (activate) {
+    const activated = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${id}`,
+      headers: authHeader(token),
+      payload: { status: "active" },
+    });
+    expect(activated.statusCode).toBe(200);
+  }
+
+  if (publishPage) {
+    const upserted = await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${id}/public-page`,
+      headers: authHeader(token),
+      payload: { title: name, status: "published" },
+    });
+    // Some test paths may not have public-page editor wired up yet —
+    // accept either 200 (upsert success) or 201 (first-time create).
+    expect([200, 201]).toContain(upserted.statusCode);
+  }
+
+  return id;
 }
 
 async function createConstituent(firstName: string, lastName: string, email: string | null) {
@@ -203,6 +239,63 @@ describe("Postal exports", () => {
       payload: { mode: "personalized" },
     });
     expect(res.statusCode).toBe(400);
+    expect(res.json<{ title: string }>().title).toBe("no_recipients");
+  });
+
+  it("POST export on a draft campaign returns 400 campaign_not_active", async () => {
+    const token = signToken(app);
+    const draftCampaignId = await createCampaign("Still draft", "door_drop", {
+      activate: false,
+      // publishPage doesn't matter here — the active-campaign gate fires first.
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${draftCampaignId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "door_drop" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ title: string }>().title).toBe("campaign_not_active");
+  });
+
+  it("POST export with no public page returns 400 public_page_missing", async () => {
+    const token = signToken(app);
+    const noPageId = await createCampaign("Active w/o public page", "door_drop", {
+      publishPage: false,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${noPageId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "door_drop" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ title: string }>().title).toBe("public_page_missing");
+  });
+
+  it("POST export with a draft public page returns 400 public_page_draft", async () => {
+    const token = signToken(app);
+    const draftPageId = await createCampaign("Active, draft page", "door_drop", {
+      publishPage: false,
+    });
+    // Upsert as draft (the canonical createCampaign helper publishes; we
+    // call the raw endpoint here to leave the page in `draft` state).
+    const upserted = await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${draftPageId}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Draft page", status: "draft" },
+    });
+    expect([200, 201]).toContain(upserted.statusCode);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${draftPageId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "door_drop" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ title: string }>().title).toBe("public_page_draft");
   });
 
   it("POST door_drop export queues a single-document job for any campaign type", async () => {

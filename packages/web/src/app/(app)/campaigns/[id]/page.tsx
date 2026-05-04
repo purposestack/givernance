@@ -19,6 +19,7 @@ import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
 import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campaign";
 import type { DonationListResponse } from "@/models/donation";
+import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 import { CampaignService } from "@/services/CampaignService";
 import { DonationService } from "@/services/DonationService";
 import {
@@ -112,6 +113,28 @@ async function fetchPostalExportsOrEmpty(
   }
 }
 
+/**
+ * Best-effort fetch of the campaign's admin public-page record (Epic
+ * #274 readiness gate). Returns the page status so the postal export
+ * panel can surface "publish before generating" banners. A 404 means
+ * the operator has not yet configured the public page at all — distinct
+ * from `draft`, and worth a different banner.
+ */
+async function fetchPublicPageStatus(
+  client: Awaited<ReturnType<typeof createServerApiClient>>,
+  id: string,
+  isAdmin: boolean,
+): Promise<"draft" | "published" | "missing"> {
+  if (!isAdmin) return "missing";
+  try {
+    const page = await CampaignPublicPageService.getCampaignPublicPage(client, id);
+    return page.status === "published" ? "published" : "draft";
+  } catch (err) {
+    if (err instanceof ApiProblem && err.status === 404) return "missing";
+    return "missing";
+  }
+}
+
 async function fetchQrStatsOrEmpty(
   client: Awaited<ReturnType<typeof createServerApiClient>>,
   id: string,
@@ -152,6 +175,7 @@ export default async function CampaignDetailPage({
     membersResult,
     postalExports,
     qrStats,
+    publicPageStatus,
     t,
     tCampaigns,
     tDonations,
@@ -163,6 +187,7 @@ export default async function CampaignDetailPage({
     fetchPostalMembersOrEmpty(client, id, isAdmin),
     fetchPostalExportsOrEmpty(client, id, isAdmin),
     fetchQrStatsOrEmpty(client, id, isAdmin),
+    fetchPublicPageStatus(client, id, isAdmin),
     getTranslations("campaigns.detail"),
     getTranslations("campaigns"),
     getTranslations("donations"),
@@ -257,6 +282,8 @@ export default async function CampaignDetailPage({
             <PostalCampaignSection
               campaignId={campaign.id}
               campaignType={campaign.type}
+              campaignStatus={campaign.status}
+              publicPageStatus={publicPageStatus}
               initialMembers={membersResult.data}
               initialMemberTotal={membersResult.total}
               initialExports={postalExports}

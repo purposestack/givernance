@@ -17,12 +17,22 @@ import { useState } from "react";
 
 import { CampaignMembersCard } from "@/components/campaigns/campaign-members-card";
 import { PostalExportPanel } from "@/components/campaigns/postal-export-panel";
-import type { CampaignType } from "@/models/campaign";
+import type { Campaign, CampaignType } from "@/models/campaign";
+
 import type { CampaignMember, PostalExport } from "@/services/PostalCampaignService";
 
 interface PostalCampaignSectionProps {
   campaignId: string;
   campaignType: CampaignType;
+  /** Drives the "campaign must be active" readiness banner (Epic #274). */
+  campaignStatus: Campaign["status"];
+  /**
+   * Drives the "publish your public donation page" readiness banner.
+   * - `missing` — no `campaign_public_pages` row exists yet
+   * - `draft`   — row exists but the donor-facing page returns 404
+   * - `published` — donors can scan postal QR codes and donate
+   */
+  publicPageStatus: "missing" | "draft" | "published";
   initialMembers: CampaignMember[];
   initialMemberTotal: number;
   initialExports: PostalExport[];
@@ -31,6 +41,8 @@ interface PostalCampaignSectionProps {
 export function PostalCampaignSection({
   campaignId,
   campaignType,
+  campaignStatus,
+  publicPageStatus,
   initialMembers,
   initialMemberTotal,
   initialExports,
@@ -49,6 +61,8 @@ export function PostalCampaignSection({
       <PostalExportPanel
         campaignId={campaignId}
         campaignType={campaignType}
+        campaignStatus={campaignStatus}
+        publicPageStatus={publicPageStatus}
         initialExports={initialExports}
         linkedConstituentCount={memberCount}
       />
