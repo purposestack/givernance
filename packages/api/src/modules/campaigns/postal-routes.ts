@@ -265,7 +265,11 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         return reply.status(202).send({ data: result });
       } catch (err) {
         if (err instanceof PostalExportError) {
-          return reply.status(400).send(problemDetail(400, "Bad Request", err.message));
+          // Surface the structured `code` as the problem-detail title so
+          // clients can branch on it (e.g. render specific remediation
+          // banners for `campaign_not_active` / `public_page_draft`).
+          // The free-text message stays in `detail` for direct display.
+          return reply.status(400).send(problemDetail(400, err.code, err.message));
         }
         throw err;
       }

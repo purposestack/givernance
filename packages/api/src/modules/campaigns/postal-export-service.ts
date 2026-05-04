@@ -20,6 +20,7 @@
 import {
   campaignConstituents,
   campaignPostalExports,
+  campaignPublicPages,
   campaigns,
   constituents,
   outboxEvents,
@@ -29,8 +30,25 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 import { resolveInternalUserId } from "../../lib/resolve-user.js";
 
+/**
+ * Structured error code for `startPostalExport` failures so the route
+ * handler can map each cause to a stable problem-detail title and the
+ * frontend can surface specific remediation hints. Free-text `message`
+ * is still the human description.
+ */
+export type PostalExportErrorCode =
+  | "campaign_not_active"
+  | "public_page_missing"
+  | "public_page_draft"
+  | "personalized_on_door_drop"
+  | "no_recipients"
+  | "insert_failed";
+
 export class PostalExportError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly code: PostalExportErrorCode = "insert_failed",
+  ) {
     super(message);
     this.name = "PostalExportError";
   }
@@ -127,23 +145,61 @@ export async function startPostalExport(
 ): Promise<PostalExportRow | null> {
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
-      .select({ id: campaigns.id, type: campaigns.type })
+      .select({ id: campaigns.id, type: campaigns.type, status: campaigns.status })
       .from(campaigns)
       .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
 
     if (!campaign) return null;
+
+    // Readiness gate 1 — campaign must be active. A draft campaign is still
+    // being designed (recipients aren't final, copy may change); a closed
+    // campaign would print QR codes that drive money to a no-longer-running
+    // appeal. Both are user-error states, not engineering failures, so we
+    // surface them with structured codes the UI can render specific banners
+    // for.
+    if (campaign.status !== "active") {
+      throw new PostalExportError(
+        "Campaign must be active before generating a postal export. Activate the campaign first.",
+        "campaign_not_active",
+      );
+    }
+
+    // Readiness gate 2 — the public donation page must be published. The
+    // QR codes printed on the letters resolve to `/p/:campaignId`, which
+    // 404s if the public page is missing or in draft (cf.
+    // `public/service.ts` filters `WHERE status = 'published'`). Catching
+    // this here is far cheaper than catching it in the donor's hand.
+    const [publicPage] = await tx
+      .select({ status: campaignPublicPages.status })
+      .from(campaignPublicPages)
+      .where(eq(campaignPublicPages.campaignId, campaignId));
+
+    if (!publicPage) {
+      throw new PostalExportError(
+        "Public donation page does not exist. Configure and publish it before generating a postal export.",
+        "public_page_missing",
+      );
+    }
+    if (publicPage.status !== "published") {
+      throw new PostalExportError(
+        "Public donation page is in draft. Publish it before generating a postal export — otherwise the QR codes lead to a 404.",
+        "public_page_draft",
+      );
+    }
 
     let totalCount = 0;
     if (mode === "personalized") {
       if (campaign.type === "door_drop") {
         throw new PostalExportError(
           "Cannot run a personalized export on a door-drop campaign — switch the export mode to door_drop or use a nominative campaign",
+          "personalized_on_door_drop",
         );
       }
       totalCount = await countLinkedConstituents(tx, orgId, campaignId);
       if (totalCount === 0) {
         throw new PostalExportError(
           "Personalized export requires at least one linked constituent. Add recipients to the campaign first.",
+          "no_recipients",
         );
       }
     } else {
@@ -172,7 +228,7 @@ export async function startPostalExport(
       .returning();
 
     if (!inserted) {
-      throw new PostalExportError("Failed to enqueue postal export");
+      throw new PostalExportError("Failed to enqueue postal export", "insert_failed");
     }
 
     await tx.insert(outboxEvents).values({

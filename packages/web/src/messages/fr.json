@@ -1665,6 +1665,23 @@
         "preview": "Aperçu",
         "previewing": "Chargement de l'aperçu…"
       },
+      "readiness": {
+        "campaignNotActive": {
+          "title": "Activez la campagne d'abord",
+          "body": "Les exports postaux ne peuvent être générés que pour des campagnes actives. Ouvrez le panneau de statut et passez la campagne en « Active » avant de mettre un export en file."
+        },
+        "publicPageMissing": {
+          "title": "Configurez d'abord la page de don publique",
+          "body": "Les QR codes imprimés sur vos lettres pointent vers la page de don publique de la campagne. Configurez puis publiez cette page pour que les donateurs qui scannent aient une cible."
+        },
+        "publicPageDraft": {
+          "title": "Publiez d'abord la page de don publique",
+          "body": "Votre page de don publique est encore en brouillon : un QR scanné mènerait à une 404. Publiez la page avant de lancer l'export postal."
+        },
+        "publicPageCta": "Ouvrir les réglages de la page publique",
+        "activateCampaignFirst": "Activez la campagne avant de générer un export.",
+        "publishPublicPageFirst": "Publiez la page de don publique avant de générer un export."
+      },
       "toast": {
         "exportQueued": "Export mis en file — la génération va démarrer.",
         "exportReady": "Export postal prêt au téléchargement.",

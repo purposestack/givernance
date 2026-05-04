@@ -1,6 +1,15 @@
 "use client";
 
-import { Download, Eye, FileArchive, Loader2, MailPlus, RefreshCcw } from "lucide-react";
+import {
+  AlertTriangle,
+  Download,
+  Eye,
+  FileArchive,
+  Loader2,
+  MailPlus,
+  RefreshCcw,
+} from "lucide-react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -11,7 +20,7 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
-import type { CampaignType } from "@/models/campaign";
+import type { Campaign, CampaignType } from "@/models/campaign";
 import {
   PostalCampaignService,
   type PostalExport,
@@ -21,6 +30,21 @@ import {
 interface PostalExportPanelProps {
   campaignId: string;
   campaignType: CampaignType;
+  /**
+   * Drives the "campaign must be active" readiness banner. Mirrors the
+   * server-side gate in `startPostalExport` (Epic #274) — a draft or
+   * closed campaign returns `400 campaign_not_active` from the API.
+   */
+  campaignStatus: Campaign["status"];
+  /**
+   * Drives the "publish your public donation page" readiness banner.
+   * Mirrors the server-side gates `public_page_missing` /
+   * `public_page_draft` in `startPostalExport`. We carry the
+   * `missing` / `draft` distinction so the banner copy and CTA match
+   * the operator's actual blocker (configure the page vs. flip its
+   * status).
+   */
+  publicPageStatus: "missing" | "draft" | "published";
   initialExports: PostalExport[];
   /** Number of constituents currently linked — used to disable "personalized" when 0. */
   linkedConstituentCount: number;
@@ -36,6 +60,8 @@ interface PostalExportPanelProps {
 export function PostalExportPanel({
   campaignId,
   campaignType,
+  campaignStatus,
+  publicPageStatus,
   initialExports,
   linkedConstituentCount,
 }: PostalExportPanelProps) {
@@ -166,6 +192,15 @@ export function PostalExportPanel({
 
   const personalizedDisabled = campaignType === "door_drop" || linkedConstituentCount === 0;
 
+  // Readiness gates (Epic #274). The Preview button is intentionally NOT
+  // gated — it produces a fake-data sample with a never-registered QR
+  // token so the operator can validate the layout before publishing the
+  // public donation page. The Generate ZIP button blocks until both
+  // gates pass; the API enforces the same checks (defense-in-depth).
+  const campaignNotActive = campaignStatus !== "active";
+  const publicPageNotReady = publicPageStatus !== "published";
+  const generateBlocked = campaignNotActive || publicPageNotReady;
+
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -188,6 +223,14 @@ export function PostalExportPanel({
         </Button>
       </CardHeader>
       <CardContent className="space-y-5">
+        {generateBlocked ? (
+          <ReadinessBanners
+            campaignId={campaignId}
+            campaignNotActive={campaignNotActive}
+            publicPageStatus={publicPageStatus}
+          />
+        ) : null}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <ModeOption
             active={mode === "personalized"}
@@ -223,7 +266,15 @@ export function PostalExportPanel({
             disabled={
               isStarting ||
               (mode === "personalized" && personalizedDisabled) ||
-              activeJob !== undefined
+              activeJob !== undefined ||
+              generateBlocked
+            }
+            title={
+              generateBlocked
+                ? campaignNotActive
+                  ? t("readiness.activateCampaignFirst")
+                  : t("readiness.publishPublicPageFirst")
+                : undefined
             }
           >
             {isStarting ? (
@@ -380,4 +431,62 @@ function StatusBadge({ status }: { status: PostalExport["status"] }) {
     failed: "Failed",
   };
   return <Badge variant={variants[status]}>{labels[status]}</Badge>;
+}
+
+/**
+ * Readiness banners (Epic #274). Surface the API's `startPostalExport`
+ * pre-conditions in the UI so the operator sees exactly what's missing
+ * — and the CTA to fix it — before clicking Generate.
+ *
+ * The banners are stacked: campaign-status comes first because activating
+ * the campaign is generally the prerequisite to publishing the public
+ * page (a draft campaign is still being scoped). When both are blocked
+ * the operator gets two banners with two distinct CTAs.
+ */
+function ReadinessBanners({
+  campaignId,
+  campaignNotActive,
+  publicPageStatus,
+}: {
+  campaignId: string;
+  campaignNotActive: boolean;
+  publicPageStatus: "missing" | "draft" | "published";
+}) {
+  const t = useTranslations("campaigns.postal.readiness");
+  return (
+    <div className="space-y-3">
+      {campaignNotActive ? (
+        <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-on-surface">
+          <AlertTriangle size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-warning" />
+          <div className="flex-1">
+            <p className="font-medium">{t("campaignNotActive.title")}</p>
+            <p className="mt-1 text-on-surface-variant">{t("campaignNotActive.body")}</p>
+          </div>
+        </div>
+      ) : null}
+      {publicPageStatus !== "published" ? (
+        <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-on-surface">
+          <AlertTriangle size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-warning" />
+          <div className="flex-1">
+            <p className="font-medium">
+              {publicPageStatus === "missing"
+                ? t("publicPageMissing.title")
+                : t("publicPageDraft.title")}
+            </p>
+            <p className="mt-1 text-on-surface-variant">
+              {publicPageStatus === "missing"
+                ? t("publicPageMissing.body")
+                : t("publicPageDraft.body")}
+            </p>
+            <Link
+              href={`/campaigns/${campaignId}/public-page`}
+              className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+            >
+              {t("publicPageCta")}
+            </Link>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
