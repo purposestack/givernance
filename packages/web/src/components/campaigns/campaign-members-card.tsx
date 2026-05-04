@@ -29,6 +29,14 @@ interface CampaignMembersCardProps {
   initialTotal: number;
   /** Disable add/remove for door-drop campaigns (no recipient list by definition). */
   doorDrop: boolean;
+  /**
+   * Notify the parent when the linked-constituent count changes (Epic #274
+   * UX bug). The campaign detail page passes a sibling `PostalExportPanel`
+   * the same count to gate the "Personalized" mode toggle — without this
+   * callback the toggle stays locked on its initial server-rendered value
+   * even after the user attaches recipients client-side.
+   */
+  onTotalChanged?: (next: number) => void;
 }
 
 /**
@@ -43,11 +51,23 @@ export function CampaignMembersCard({
   initialMembers,
   initialTotal,
   doorDrop,
+  onTotalChanged,
 }: CampaignMembersCardProps) {
   const t = useTranslations("campaigns.postal.members");
   const [members, setMembers] = useState<CampaignMember[]>(initialMembers);
   const [total, setTotal] = useState(initialTotal);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  const updateTotal = useCallback(
+    (next: number | ((prev: number) => number)) => {
+      setTotal((prev) => {
+        const resolved = typeof next === "function" ? next(prev) : next;
+        onTotalChanged?.(resolved);
+        return resolved;
+      });
+    },
+    [onTotalChanged],
+  );
 
   const handleRemove = useCallback(
     async (constituentId: string) => {
@@ -55,7 +75,7 @@ export function CampaignMembersCard({
       try {
         await PostalCampaignService.removeMember(client, campaignId, constituentId);
         setMembers((prev) => prev.filter((m) => m.constituentId !== constituentId));
-        setTotal((prev) => Math.max(0, prev - 1));
+        updateTotal((prev) => Math.max(0, prev - 1));
         toast.success(t("toast.removed"));
       } catch (err) {
         const message =
@@ -65,7 +85,7 @@ export function CampaignMembersCard({
         toast.error(message);
       }
     },
-    [campaignId, t],
+    [campaignId, t, updateTotal],
   );
 
   const handleAdded = useCallback(
@@ -76,14 +96,14 @@ export function CampaignMembersCard({
       try {
         const fresh = await PostalCampaignService.listMembers(client, campaignId);
         setMembers(fresh.data);
-        setTotal(fresh.pagination.total);
+        updateTotal(fresh.pagination.total);
         toast.success(t("toast.added", { count: added.length }));
       } catch {
         // Silently swallow refetch errors — the add itself succeeded so the
         // user already got their primary feedback. They can refresh.
       }
     },
-    [campaignId, t],
+    [campaignId, t, updateTotal],
   );
 
   if (doorDrop) {

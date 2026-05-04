@@ -3,10 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
-import { CampaignMembersCard } from "@/components/campaigns/campaign-members-card";
 import { CampaignRoiChart } from "@/components/campaigns/campaign-roi-chart";
 import { CampaignStatusActions } from "@/components/campaigns/campaign-status-actions";
-import { PostalExportPanel } from "@/components/campaigns/postal-export-panel";
+import { PostalCampaignSection } from "@/components/campaigns/postal-campaign-section";
 import { QrTrackingCard } from "@/components/campaigns/qr-tracking-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InfoTooltipButton } from "@/components/shared/info-tooltip-button";
@@ -255,19 +254,12 @@ export default async function CampaignDetailPage({
           <CostBreakdownCard metrics={roiMetrics} locale={locale} />
           {isAdmin && qrStats ? <QrTrackingCard stats={qrStats} /> : null}
           {isAdmin ? (
-            <CampaignMembersCard
-              campaignId={campaign.id}
-              initialMembers={membersResult.data}
-              initialTotal={membersResult.total}
-              doorDrop={campaign.type === "door_drop"}
-            />
-          ) : null}
-          {isAdmin ? (
-            <PostalExportPanel
+            <PostalCampaignSection
               campaignId={campaign.id}
               campaignType={campaign.type}
+              initialMembers={membersResult.data}
+              initialMemberTotal={membersResult.total}
               initialExports={postalExports}
-              linkedConstituentCount={membersResult.total}
             />
           ) : null}
           <DonationBreakdownCard
