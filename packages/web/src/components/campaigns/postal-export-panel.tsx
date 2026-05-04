@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
 import type { CampaignType } from "@/models/campaign";
 import {
   PostalCampaignService,
@@ -129,17 +130,20 @@ export function PostalExportPanel({
     // actual URL once we've gone through the CSRF + cookie hop.
     const previewUrl = PostalCampaignService.previewPdfUrl(campaignId);
     try {
-      const csrf = document.cookie
-        .split("; ")
-        .find((c) => c.startsWith("csrf="))
-        ?.split("=")[1];
+      // The auth plugin's CSRF double-submit guard reads from the
+      // `csrf-token` cookie — NOT a `csrf=` cookie. The previous inline
+      // reader (`c.startsWith("csrf=")`) never matched and the request
+      // went out without the header → auth plugin rejected with 403.
+      // Reuse the canonical helper so the preview path stays in lockstep
+      // with the rest of the app's mutating fetches.
+      const csrf = readCsrfTokenFromDocumentCookie();
 
       const response = await fetch(previewUrl, {
         method: "POST",
         credentials: "include",
         headers: {
           "content-type": "application/json",
-          ...(csrf ? { "x-csrf-token": csrf } : {}),
+          ...(csrf ? { [getCsrfHeaderName()]: csrf } : {}),
         },
         body: JSON.stringify({ mode }),
       });
