@@ -73,7 +73,7 @@ jobs:
           bundler-cache: true
 
       - name: Configure SSH Auth Sock
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: webfactory/ssh-agent@v0.10.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
