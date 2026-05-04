@@ -260,6 +260,13 @@
       "when": 1777800000000,
       "tag": "0036_platform_admins_sort_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1777900000000,
+      "tag": "0037_postal_campaigns_mvp",
+      "breakpoints": true
     }
   ]
 }

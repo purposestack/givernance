@@ -55,6 +55,22 @@ export interface GenerateCampaignDocumentsJob {
   };
 }
 
+/**
+ * Generate the bundled ZIP archive for a postal export (Epic #274).
+ * Streams per-recipient PDFs through `archiver` into S3, ticking the
+ * `campaign_postal_exports.progress_count` row so the frontend's polling
+ * UI can render a real-time progress bar.
+ */
+export interface GeneratePostalExportJob {
+  name: "generate-postal-export";
+  data: {
+    exportId: string;
+    campaignId: string;
+    orgId: string;
+    mode: "door_drop" | "personalized";
+  };
+}
+
 /** Process a Stripe webhook event asynchronously */
 export interface ProcessStripeWebhookJob {
   name: "process-stripe-webhook";
@@ -74,6 +90,7 @@ export type JobDefinition =
   | ExportDataJob
   | GdprErasureJob
   | GenerateCampaignDocumentsJob
+  | GeneratePostalExportJob
   | ProcessStripeWebhookJob;
 
 /** Queue names */
@@ -83,6 +100,14 @@ export const QUEUE_NAMES = {
   EXPORTS: "exports",
   GDPR: "gdpr",
   CAMPAIGNS: "campaigns",
+  /**
+   * Postal exports — separated from the general `campaigns` queue so a long-
+   * running ZIP bundle doesn't head-of-line-block the per-PDF generation
+   * jobs that share the same campaign. Both are CPU-light (PDFKit) but
+   * the export holds a multipart S3 upload open for the duration of the
+   * fan-out and we don't want that to delay routine sends. (Epic #274.)
+   */
+  POSTAL_EXPORTS: "postal_exports",
   EVENTS: "givernance_events",
   WEBHOOKS: "webhooks",
   TENANT_LIFECYCLE: "tenant_lifecycle",

@@ -1,7 +1,15 @@
 "use client";
 
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
-import { MoreHorizontal, Pencil, Search, Trash2, Users } from "lucide-react";
+import {
+  Mail,
+  MoreHorizontal,
+  Pencil,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -21,6 +29,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -34,6 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
@@ -109,6 +126,18 @@ export function ConstituentsTable({
   const initialSearch = searchParams.get("search") ?? "";
   const initialType = searchParams.get("type") ?? "all";
   const [searchTerm, setSearchTerm] = useState(initialSearch);
+  // Epic #274 — bulk-select state lives here, not in the URL: unlike search/
+  // sort/page, a selection is per-tab and not deep-linkable.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+
+  const initialLastDonationFrom = searchParams.get("lastDonationFrom") ?? "";
+  const initialLastDonationTo = searchParams.get("lastDonationTo") ?? "";
+  const initialMinLifetime = searchParams.get("minLifetimeAmountCents") ?? "";
+
+  const hasActiveAdvancedFilters =
+    initialLastDonationFrom !== "" || initialLastDonationTo !== "" || initialMinLifetime !== "";
   // Issue #216: see donations-table.tsx for the pattern.
   const [isPending, startTransition] = useTransition();
 
@@ -213,8 +242,62 @@ export function ConstituentsTable({
     }
   }, [deleteTarget, router, t]);
 
+  const togglePageSelection = useCallback(
+    (rowsOnPage: ConstituentListRow[], checked: boolean) => {
+      const next = new Set(selectedIds);
+      for (const r of rowsOnPage) {
+        if (checked) next.add(r.id);
+        else next.delete(r.id);
+      }
+      setSelectedIds(next);
+    },
+    [selectedIds],
+  );
+
   const columns = useMemo<ColumnDef<ConstituentListRow>[]>(
     () => [
+      ...(canManageAdminActions
+        ? [
+            {
+              id: "select",
+              header: ({ table }) => {
+                const rowsOnPage = table
+                  .getRowModel()
+                  .rows.map((r) => r.original as ConstituentListRow);
+                const allChecked =
+                  rowsOnPage.length > 0 && rowsOnPage.every((r) => selectedIds.has(r.id));
+                return (
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    onChange={(e) => togglePageSelection(rowsOnPage, e.target.checked)}
+                    aria-label={t("columns.selectAll")}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                );
+              },
+              enableSorting: false,
+              cell: ({ row }: { row: { original: ConstituentListRow } }) => {
+                const id = row.original.id;
+                const checked = selectedIds.has(id);
+                return (
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      const next = new Set(selectedIds);
+                      if (e.target.checked) next.add(id);
+                      else next.delete(id);
+                      setSelectedIds(next);
+                    }}
+                    aria-label={t("columns.selectRow")}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                );
+              },
+            } satisfies ColumnDef<ConstituentListRow>,
+          ]
+        : []),
       {
         id: "name",
         accessorFn: (row) => fullName(row),
@@ -313,7 +396,7 @@ export function ConstituentsTable({
           ]
         : []),
     ],
-    [canManageAdminActions, canWrite, locale, t, tType],
+    [canManageAdminActions, canWrite, locale, selectedIds, t, togglePageSelection, tType],
   );
 
   return (
@@ -345,6 +428,28 @@ export function ConstituentsTable({
             <SelectItem value="partner">{tType("partner")}</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          type="button"
+          variant={hasActiveAdvancedFilters ? "primary" : "secondary"}
+          size="sm"
+          onClick={() => setAdvancedFiltersOpen(true)}
+        >
+          <SlidersHorizontal size={16} aria-hidden="true" />
+          {tFilters("advancedLabel")}
+          {hasActiveAdvancedFilters ? <Badge variant="info">•</Badge> : null}
+        </Button>
+        {canManageAdminActions ? (
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={() => setBulkEmailOpen(true)}
+            disabled={selectedIds.size === 0}
+          >
+            <Mail size={16} aria-hidden="true" />
+            {t("bulkEmail.action", { count: selectedIds.size })}
+          </Button>
+        ) : null}
       </div>
 
       <DataTable
@@ -359,6 +464,47 @@ export function ConstituentsTable({
         emptyState={
           <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />
         }
+      />
+
+      <BulkEmailDialog
+        open={bulkEmailOpen}
+        onOpenChange={setBulkEmailOpen}
+        selectedIds={Array.from(selectedIds)}
+        onSent={() => setSelectedIds(new Set())}
+      />
+
+      <AdvancedFiltersDialog
+        open={advancedFiltersOpen}
+        onOpenChange={setAdvancedFiltersOpen}
+        defaults={{
+          lastDonationFrom: initialLastDonationFrom,
+          lastDonationTo: initialLastDonationTo,
+          minLifetimeAmountCents: initialMinLifetime,
+        }}
+        onApply={(values) => {
+          const params = new URLSearchParams(searchParams.toString());
+          if (values.lastDonationFrom) {
+            params.set("lastDonationFrom", values.lastDonationFrom);
+          } else {
+            params.delete("lastDonationFrom");
+          }
+          if (values.lastDonationTo) {
+            params.set("lastDonationTo", values.lastDonationTo);
+          } else {
+            params.delete("lastDonationTo");
+          }
+          if (values.minLifetimeAmountCents) {
+            params.set("minLifetimeAmountCents", values.minLifetimeAmountCents);
+          } else {
+            params.delete("minLifetimeAmountCents");
+          }
+          params.delete("page");
+          const query = params.toString();
+          startTransition(() => {
+            router.replace(query ? `${pathname}?${query}` : pathname);
+          });
+          setAdvancedFiltersOpen(false);
+        }}
       />
 
       <AlertDialog
@@ -393,6 +539,220 @@ export function ConstituentsTable({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+interface BulkEmailDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  selectedIds: string[];
+  onSent: () => void;
+}
+
+function BulkEmailDialog({ open, onOpenChange, selectedIds, onSent }: BulkEmailDialogProps) {
+  const t = useTranslations("constituents.bulkEmail");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = useCallback(async () => {
+    if (subject.trim().length === 0 || body.trim().length === 0) {
+      toast.error(t("errors.empty"));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await ConstituentService.sendBulkEmail(createClientApiClient(), {
+        constituentIds: selectedIds,
+        subject,
+        body,
+      });
+      toast.success(
+        t("success.queued", {
+          queued: result.queued,
+          skipped: result.skippedNoEmail,
+        }),
+      );
+      setSubject("");
+      setBody("");
+      onOpenChange(false);
+      onSent();
+    } catch (err) {
+      const message =
+        err instanceof ApiProblem
+          ? (err.detail ?? err.title ?? t("errors.send"))
+          : t("errors.send");
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [body, onOpenChange, onSent, selectedIds, subject, t]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("title")}</DialogTitle>
+          <DialogDescription>{t("description", { count: selectedIds.length })}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <label className="text-sm font-medium text-on-surface" htmlFor="bulk-email-subject">
+              {t("fields.subject")}
+            </label>
+            <Input
+              id="bulk-email-subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder={t("fields.subjectPlaceholder")}
+              maxLength={200}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-on-surface" htmlFor="bulk-email-body">
+              {t("fields.body")}
+            </label>
+            <Textarea
+              id="bulk-email-body"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder={t("fields.bodyPlaceholder")}
+              rows={8}
+              maxLength={50000}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
+            {t("actions.cancel")}
+          </Button>
+          <Button onClick={() => void handleSubmit()} disabled={submitting}>
+            {submitting ? t("actions.sending") : t("actions.send", { count: selectedIds.length })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface AdvancedFiltersDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  defaults: {
+    lastDonationFrom: string;
+    lastDonationTo: string;
+    minLifetimeAmountCents: string;
+  };
+  onApply: (values: {
+    lastDonationFrom: string;
+    lastDonationTo: string;
+    minLifetimeAmountCents: string;
+  }) => void;
+}
+
+function AdvancedFiltersDialog({
+  open,
+  onOpenChange,
+  defaults,
+  onApply,
+}: AdvancedFiltersDialogProps) {
+  const t = useTranslations("constituents.filters.advanced");
+  const [lastDonationFrom, setLastDonationFrom] = useState(defaults.lastDonationFrom);
+  const [lastDonationTo, setLastDonationTo] = useState(defaults.lastDonationTo);
+  const [minLifetimeEur, setMinLifetimeEur] = useState(() => {
+    const cents = Number.parseInt(defaults.minLifetimeAmountCents, 10);
+    return Number.isFinite(cents) && cents > 0 ? String(cents / 100) : "";
+  });
+
+  // Re-sync when the dialog reopens with fresh defaults (e.g. after URL nav).
+  useEffect(() => {
+    if (open) {
+      setLastDonationFrom(defaults.lastDonationFrom);
+      setLastDonationTo(defaults.lastDonationTo);
+      const cents = Number.parseInt(defaults.minLifetimeAmountCents, 10);
+      setMinLifetimeEur(Number.isFinite(cents) && cents > 0 ? String(cents / 100) : "");
+    }
+  }, [defaults.lastDonationFrom, defaults.lastDonationTo, defaults.minLifetimeAmountCents, open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("title")}</DialogTitle>
+          <DialogDescription>{t("description")}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="text-sm font-medium text-on-surface" htmlFor="lastDonationFrom">
+              {t("lastDonationFrom")}
+            </label>
+            <Input
+              id="lastDonationFrom"
+              type="date"
+              value={lastDonationFrom ? lastDonationFrom.slice(0, 10) : ""}
+              onChange={(e) =>
+                setLastDonationFrom(e.target.value ? `${e.target.value}T00:00:00.000Z` : "")
+              }
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-on-surface" htmlFor="lastDonationTo">
+              {t("lastDonationTo")}
+            </label>
+            <Input
+              id="lastDonationTo"
+              type="date"
+              value={lastDonationTo ? lastDonationTo.slice(0, 10) : ""}
+              onChange={(e) =>
+                setLastDonationTo(e.target.value ? `${e.target.value}T23:59:59.999Z` : "")
+              }
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-sm font-medium text-on-surface" htmlFor="minLifetimeEur">
+              {t("minLifetime")}
+            </label>
+            <Input
+              id="minLifetimeEur"
+              type="number"
+              min="0"
+              step="1"
+              value={minLifetimeEur}
+              onChange={(e) => setMinLifetimeEur(e.target.value)}
+              placeholder="0"
+            />
+            <p className="mt-1 text-xs text-on-surface-variant">{t("minLifetimeHint")}</p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setLastDonationFrom("");
+              setLastDonationTo("");
+              setMinLifetimeEur("");
+              onApply({ lastDonationFrom: "", lastDonationTo: "", minLifetimeAmountCents: "" });
+            }}
+          >
+            {t("clear")}
+          </Button>
+          <Button
+            onClick={() => {
+              const cents = Number.parseFloat(minLifetimeEur);
+              const minLifetimeAmountCents =
+                Number.isFinite(cents) && cents > 0 ? String(Math.round(cents * 100)) : "";
+              onApply({
+                lastDonationFrom,
+                lastDonationTo,
+                minLifetimeAmountCents,
+              });
+            }}
+          >
+            {t("apply")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

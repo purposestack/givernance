@@ -1,6 +1,12 @@
 /** Constituent service — business logic for constituent operations */
 
-import { constituents, donations, mergeHistory, outboxEvents } from "@givernance/shared/schema";
+import {
+  campaignConstituents,
+  constituents,
+  donations,
+  mergeHistory,
+  outboxEvents,
+} from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import {
   and,
@@ -8,9 +14,12 @@ import {
   asc,
   desc,
   eq,
+  exists,
   getTableColumns,
+  gte,
   ilike,
   isNull,
+  lte,
   or,
   type SQL,
   sql,
@@ -45,6 +54,17 @@ export interface ListConstituentsQuery {
   includeDeleted?: boolean;
   sort?: string;
   order?: string;
+  // ── Epic #274 filters ───────────────────────────────────────────────
+  /** Restrict to constituents linked to this campaign (campaign_constituents). */
+  campaignId?: string;
+  /** Inclusive lower bound on `MAX(donations.donatedAt)`. ISO-8601 date string. */
+  lastDonationFrom?: string;
+  /** Inclusive upper bound on `MAX(donations.donatedAt)`. ISO-8601 date string. */
+  lastDonationTo?: string;
+  /** Inclusive lower bound on lifetime cleared-minus-refunded base cents. */
+  minLifetimeAmountCents?: number;
+  /** Inclusive upper bound on lifetime cleared-minus-refunded base cents. */
+  maxLifetimeAmountCents?: number;
 }
 
 /**
@@ -118,11 +138,51 @@ export interface ConstituentInput {
 }
 
 /** List constituents for an organization with pagination, search, and filtering */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: filter branches are flat conditional pushes; splitting them into helper functions would obscure the WHERE composition
 export async function listConstituents(orgId: string, query: ListConstituentsQuery) {
-  const { page, perPage, search, tags, type, includeDeleted } = query;
+  const {
+    page,
+    perPage,
+    search,
+    tags,
+    type,
+    includeDeleted,
+    campaignId,
+    lastDonationFrom,
+    lastDonationTo,
+    minLifetimeAmountCents,
+    maxLifetimeAmountCents,
+  } = query;
   const offset = (page - 1) * perPage;
 
   return withTenantContext(orgId, async (tx) => {
+    // Aggregate subquery: latest donation date per constituent within
+    // this tenant. LEFT JOINed below so constituents who never donated
+    // appear with `lastDonationAt = NULL`. Pre-aggregating in a subquery
+    // (vs. correlated scalar subquery in SELECT + ORDER BY) lets PG plan
+    // a single hash aggregate over `donations` instead of one indexed
+    // lookup per page row, and reuses the same value in SELECT and
+    // ORDER BY without recomputation. Issue #215.
+    //
+    // Epic #274 extends this aggregate with `lifetimeAmountCents` so the
+    // same join can serve `minLifetimeAmountCents` / `maxLifetimeAmountCents`
+    // filters without a second pass over donations. Cleared minus refunded
+    // mirrors the campaign-stats convention.
+    const donationAggregate = tx
+      .select({
+        constituentId: donations.constituentId,
+        lastDonationAt: sql<string | null>`max(${donations.donatedAt})`.as("last_donation_at"),
+        lifetimeAmountCents: sql<number | null>`COALESCE(SUM(CASE
+          WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
+          WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}
+          ELSE 0
+        END), 0)::int`.as("lifetime_amount_cents"),
+      })
+      .from(donations)
+      .where(eq(donations.orgId, orgId))
+      .groupBy(donations.constituentId)
+      .as("donation_agg");
+
     const conditions = [eq(constituents.orgId, orgId)];
 
     if (!includeDeleted) {
@@ -154,40 +214,60 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
       conditions.push(arrayOverlaps(constituents.tags, tags));
     }
 
+    // Epic #274 — campaign membership filter via EXISTS subquery against
+    // campaign_constituents. Avoids a join that would multiply rows when a
+    // constituent is in multiple campaigns.
+    if (campaignId) {
+      conditions.push(
+        exists(
+          tx
+            .select({ one: sql`1` })
+            .from(campaignConstituents)
+            .where(
+              and(
+                eq(campaignConstituents.constituentId, constituents.id),
+                eq(campaignConstituents.campaignId, campaignId),
+                eq(campaignConstituents.orgId, orgId),
+              ),
+            ),
+        ),
+      );
+    }
+
+    if (lastDonationFrom) {
+      conditions.push(gte(donationAggregate.lastDonationAt, lastDonationFrom));
+    }
+    if (lastDonationTo) {
+      conditions.push(lte(donationAggregate.lastDonationAt, lastDonationTo));
+    }
+    if (minLifetimeAmountCents !== undefined) {
+      conditions.push(gte(donationAggregate.lifetimeAmountCents, minLifetimeAmountCents));
+    }
+    if (maxLifetimeAmountCents !== undefined) {
+      conditions.push(lte(donationAggregate.lifetimeAmountCents, maxLifetimeAmountCents));
+    }
+
     const where = and(...conditions);
     const sort = normalizeConstituentSort(query.sort);
     const order = normalizeConstituentOrder(query.order);
-
-    // Aggregate subquery: latest donation date per constituent within
-    // this tenant. LEFT JOINed below so constituents who never donated
-    // appear with `lastDonationAt = NULL`. Pre-aggregating in a subquery
-    // (vs. correlated scalar subquery in SELECT + ORDER BY) lets PG plan
-    // a single hash aggregate over `donations` instead of one indexed
-    // lookup per page row, and reuses the same value in SELECT and
-    // ORDER BY without recomputation. Issue #215.
-    const latestDonationSq = tx
-      .select({
-        constituentId: donations.constituentId,
-        lastDonationAt: sql<string | null>`max(${donations.donatedAt})`.as("last_donation_at"),
-      })
-      .from(donations)
-      .where(eq(donations.orgId, orgId))
-      .groupBy(donations.constituentId)
-      .as("latest_donation");
 
     const [data, countResult] = await Promise.all([
       tx
         .select({
           ...getTableColumns(constituents),
-          lastDonationAt: latestDonationSq.lastDonationAt,
+          lastDonationAt: donationAggregate.lastDonationAt,
         })
         .from(constituents)
-        .leftJoin(latestDonationSq, eq(latestDonationSq.constituentId, constituents.id))
+        .leftJoin(donationAggregate, eq(donationAggregate.constituentId, constituents.id))
         .where(where)
-        .orderBy(...buildConstituentOrderBy(sort, order, latestDonationSq.lastDonationAt))
+        .orderBy(...buildConstituentOrderBy(sort, order, donationAggregate.lastDonationAt))
         .limit(perPage)
         .offset(offset),
-      tx.select({ count: sql<number>`count(*)` }).from(constituents).where(where),
+      tx
+        .select({ count: sql<number>`count(*)` })
+        .from(constituents)
+        .leftJoin(donationAggregate, eq(donationAggregate.constituentId, constituents.id))
+        .where(where),
     ]);
 
     const total = Number(countResult[0]?.count ?? 0);

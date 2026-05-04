@@ -15,6 +15,7 @@ import {
   SortOrderSchema,
   UuidSchema,
 } from "../../lib/schemas.js";
+import { BulkEmailValidationError, dispatchBulkEmail } from "./bulk-email-service.js";
 import {
   CONSTITUENT_SORT_FIELDS,
   createConstituent,
@@ -83,6 +84,19 @@ const ListQuery = Type.Intersect([
     includeDeleted: Type.Optional(Type.Boolean({ default: false })),
     sort: Type.Optional(ConstituentSortFieldSchema),
     order: Type.Optional(SortOrderSchema),
+    /**
+     * Epic #274 — restrict to constituents linked to a specific campaign
+     * via `campaign_constituents`.
+     */
+    campaignId: Type.Optional(UuidSchema),
+    /** ISO-8601 date — `MAX(donations.donatedAt) >= lastDonationFrom`. */
+    lastDonationFrom: Type.Optional(Type.String({ format: "date-time" })),
+    /** ISO-8601 date — `MAX(donations.donatedAt) <= lastDonationTo`. */
+    lastDonationTo: Type.Optional(Type.String({ format: "date-time" })),
+    /** Lifetime cleared-minus-refunded base cents (lower bound). */
+    minLifetimeAmountCents: Type.Optional(Type.Integer({ minimum: 0 })),
+    /** Lifetime cleared-minus-refunded base cents (upper bound). */
+    maxLifetimeAmountCents: Type.Optional(Type.Integer({ minimum: 0 })),
   }),
 ]);
 
@@ -186,6 +200,11 @@ export async function constituentRoutes(app: FastifyInstance) {
         includeDeleted?: boolean;
         sort?: (typeof CONSTITUENT_SORT_FIELDS)[number];
         order?: "asc" | "desc";
+        campaignId?: string;
+        lastDonationFrom?: string;
+        lastDonationTo?: string;
+        minLifetimeAmountCents?: number;
+        maxLifetimeAmountCents?: number;
       };
 
       const tags = query.tags ? (Array.isArray(query.tags) ? query.tags : [query.tags]) : undefined;
@@ -199,6 +218,11 @@ export async function constituentRoutes(app: FastifyInstance) {
         includeDeleted: query.includeDeleted,
         sort: query.sort,
         order: query.order,
+        campaignId: query.campaignId,
+        lastDonationFrom: query.lastDonationFrom,
+        lastDonationTo: query.lastDonationTo,
+        minLifetimeAmountCents: query.minLifetimeAmountCents,
+        maxLifetimeAmountCents: query.maxLifetimeAmountCents,
       });
 
       return { data: result.data, pagination: result.pagination };
@@ -462,6 +486,68 @@ export async function constituentRoutes(app: FastifyInstance) {
                 "The survivor constituent has been modified since you last read it. Refetch and retry.",
               ),
             );
+        }
+        throw err;
+      }
+    },
+  );
+
+  /**
+   * Bulk-send a transactional email to the supplied constituents (Epic #274).
+   *
+   * The HTTP path inserts an outbox event and returns immediately — the
+   * actual delivery happens asynchronously in the `emails` queue worker.
+   * Skipped recipients (no email on file) are reported back so the UI can
+   * surface "12 queued, 3 skipped" without re-querying.
+   *
+   * Rate-limited: a single org-admin spamming the bulk-email button is the
+   * primary unintentional abuse path.
+   */
+  app.post(
+    "/constituents/bulk-email",
+    {
+      preHandler: requireOrgAdmin,
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["Constituents"],
+        body: Type.Object({
+          constituentIds: Type.Array(UuidSchema, { minItems: 1, maxItems: 500 }),
+          subject: Type.String({ minLength: 1, maxLength: 200 }),
+          body: Type.String({ minLength: 1, maxLength: 50000 }),
+        }),
+        response: {
+          202: DataResponse(
+            Type.Object({
+              queued: Type.Integer(),
+              skippedNoEmail: Type.Integer(),
+            }),
+          ),
+          400: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const body = request.body as {
+        constituentIds: string[];
+        subject: string;
+        body: string;
+      };
+      try {
+        const result = await dispatchBulkEmail(orgId, userId, {
+          constituentIds: body.constituentIds,
+          subject: body.subject,
+          body: body.body,
+        });
+        return reply.status(202).send({ data: result });
+      } catch (err) {
+        if (err instanceof BulkEmailValidationError) {
+          return reply.status(400).send(problemDetail(400, "Bad Request", err.message));
         }
         throw err;
       }

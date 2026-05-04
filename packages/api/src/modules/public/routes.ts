@@ -69,6 +69,13 @@ const DonateBody = Type.Object({
   email: Type.String({ format: "email" }),
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
+  /**
+   * Optional opaque QR token (Epic #274). When present and resolvable,
+   * the resulting donation gets `qr_code_id` populated in the webhook
+   * handler so the campaign QR-tracking widget can reconcile postal-scan
+   * donations.
+   */
+  qrCode: Type.Optional(Type.String({ minLength: 10, maxLength: 32 })),
 });
 
 const DonateHeaders = Type.Object({
@@ -240,6 +247,7 @@ export async function publicDonationRoutes(app: FastifyInstance) {
         email: string;
         firstName: string;
         lastName: string;
+        qrCode?: string;
       };
       const idempotencyKey = (request.headers as Record<string, string | undefined>)[
         "idempotency-key"

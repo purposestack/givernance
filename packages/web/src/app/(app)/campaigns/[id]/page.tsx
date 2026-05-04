@@ -3,8 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { CampaignMembersCard } from "@/components/campaigns/campaign-members-card";
 import { CampaignRoiChart } from "@/components/campaigns/campaign-roi-chart";
 import { CampaignStatusActions } from "@/components/campaigns/campaign-status-actions";
+import { PostalExportPanel } from "@/components/campaigns/postal-export-panel";
+import { QrTrackingCard } from "@/components/campaigns/qr-tracking-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InfoTooltipButton } from "@/components/shared/info-tooltip-button";
 import { PageHeader } from "@/components/shared/page-header";
@@ -19,6 +22,12 @@ import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campa
 import type { DonationListResponse } from "@/models/donation";
 import { CampaignService } from "@/services/CampaignService";
 import { DonationService } from "@/services/DonationService";
+import {
+  type CampaignMember,
+  type CampaignQrStats,
+  PostalCampaignService,
+  type PostalExport,
+} from "@/services/PostalCampaignService";
 
 import { DonationsTable } from "./donations-table";
 
@@ -72,6 +81,51 @@ async function fetchDonationsOrEmpty(
   }
 }
 
+/**
+ * The postal-campaign endpoints (Epic #274) are gated to `org_admin`. For
+ * non-admins we short-circuit to empty data so the page still renders the
+ * stats/donations sections without 403 noise.
+ */
+async function fetchPostalMembersOrEmpty(
+  client: Awaited<ReturnType<typeof createServerApiClient>>,
+  id: string,
+  isAdmin: boolean,
+): Promise<{ data: CampaignMember[]; total: number }> {
+  if (!isAdmin) return { data: [], total: 0 };
+  try {
+    const fresh = await PostalCampaignService.listMembers(client, id, { perPage: 25 });
+    return { data: fresh.data, total: fresh.pagination.total };
+  } catch {
+    return { data: [], total: 0 };
+  }
+}
+
+async function fetchPostalExportsOrEmpty(
+  client: Awaited<ReturnType<typeof createServerApiClient>>,
+  id: string,
+  isAdmin: boolean,
+): Promise<PostalExport[]> {
+  if (!isAdmin) return [];
+  try {
+    return await PostalCampaignService.listExports(client, id);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchQrStatsOrEmpty(
+  client: Awaited<ReturnType<typeof createServerApiClient>>,
+  id: string,
+  isAdmin: boolean,
+): Promise<CampaignQrStats | null> {
+  if (!isAdmin) return null;
+  try {
+    return await PostalCampaignService.getQrStats(client, id);
+  } catch {
+    return null;
+  }
+}
+
 export default async function CampaignDetailPage({
   params,
   searchParams,
@@ -90,17 +144,31 @@ export default async function CampaignDetailPage({
   const client = await createServerApiClient();
   const campaign = await fetchCampaignOrNotFound(id);
 
-  const [stats, roiMetrics, donationsResult, t, tCampaigns, tDonations, locale] = await Promise.all(
-    [
-      CampaignService.getCampaignStats(client, id),
-      CampaignService.getCampaignRoi(client, id),
-      fetchDonationsOrEmpty(id, donationsPage, donationsPerPage),
-      getTranslations("campaigns.detail"),
-      getTranslations("campaigns"),
-      getTranslations("donations"),
-      getLocale(),
-    ],
-  );
+  const isAdmin = auth.roles.includes("org_admin");
+
+  const [
+    stats,
+    roiMetrics,
+    donationsResult,
+    membersResult,
+    postalExports,
+    qrStats,
+    t,
+    tCampaigns,
+    tDonations,
+    locale,
+  ] = await Promise.all([
+    CampaignService.getCampaignStats(client, id),
+    CampaignService.getCampaignRoi(client, id),
+    fetchDonationsOrEmpty(id, donationsPage, donationsPerPage),
+    fetchPostalMembersOrEmpty(client, id, isAdmin),
+    fetchPostalExportsOrEmpty(client, id, isAdmin),
+    fetchQrStatsOrEmpty(client, id, isAdmin),
+    getTranslations("campaigns.detail"),
+    getTranslations("campaigns"),
+    getTranslations("donations"),
+    getLocale(),
+  ]);
   const totalCostDisplayValue =
     roiMetrics.totalCostCents > 0
       ? formatCurrency(roiMetrics.totalCostCents, locale)
@@ -185,6 +253,23 @@ export default async function CampaignDetailPage({
             }}
           />
           <CostBreakdownCard metrics={roiMetrics} locale={locale} />
+          {isAdmin && qrStats ? <QrTrackingCard stats={qrStats} /> : null}
+          {isAdmin ? (
+            <CampaignMembersCard
+              campaignId={campaign.id}
+              initialMembers={membersResult.data}
+              initialTotal={membersResult.total}
+              doorDrop={campaign.type === "door_drop"}
+            />
+          ) : null}
+          {isAdmin ? (
+            <PostalExportPanel
+              campaignId={campaign.id}
+              campaignType={campaign.type}
+              initialExports={postalExports}
+              linkedConstituentCount={membersResult.total}
+            />
+          ) : null}
           <DonationBreakdownCard
             campaign={campaign}
             donationsResult={donationsResult}

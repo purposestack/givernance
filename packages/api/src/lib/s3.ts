@@ -44,3 +44,25 @@ export async function fetchReceiptObject(s3Path: string): Promise<{
   }
   return { body, contentLength: response.ContentLength };
 }
+
+/**
+ * Fetch a campaign export ZIP from MinIO/S3 — same streaming-through-API
+ * rationale as `fetchReceiptObject` (issue #214). The route
+ * `GET /v1/campaigns/:id/postal-exports/:exportId/download` pipes this
+ * through `reply.send` with a `content-disposition: attachment` header.
+ */
+export async function fetchCampaignObject(s3Path: string): Promise<{
+  body: Readable;
+  contentLength: number | undefined;
+}> {
+  const command = new GetObjectCommand({
+    Bucket: env.S3_CAMPAIGNS_BUCKET,
+    Key: s3Path,
+  });
+  const response = await s3.send(command);
+  const body = response.Body as Readable | undefined;
+  if (!body) {
+    throw new Error(`S3 object missing body: ${s3Path}`);
+  }
+  return { body, contentLength: response.ContentLength };
+}

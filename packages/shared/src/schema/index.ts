@@ -45,6 +45,25 @@ export const campaignDocumentStatusEnum = pgEnum("campaign_document_status", [
   "failed",
 ]);
 
+/** Postal export modes — `door_drop` (single generic letter), `personalized` (one per linked constituent). */
+export const POSTAL_EXPORT_MODE_VALUES = ["door_drop", "personalized"] as const;
+export type PostalExportMode = (typeof POSTAL_EXPORT_MODE_VALUES)[number];
+
+export const postalExportModeEnum = pgEnum("postal_export_mode", [...POSTAL_EXPORT_MODE_VALUES]);
+
+/** Postal export job lifecycle. `pending` → `processing` → `completed | failed`. */
+export const POSTAL_EXPORT_STATUS_VALUES = [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+] as const;
+export type PostalExportStatus = (typeof POSTAL_EXPORT_STATUS_VALUES)[number];
+
+export const postalExportStatusEnum = pgEnum("postal_export_status", [
+  ...POSTAL_EXPORT_STATUS_VALUES,
+]);
+
 // ─── Donation-related Enums ──────────────────────────────────────────────────
 
 export const FUND_TYPE_VALUES = ["restricted", "unrestricted"] as const;
@@ -620,6 +639,16 @@ export const donations = pgTable(
     campaignId: uuid("campaign_id").references((): AnyPgColumn => campaigns.id, {
       onDelete: "set null",
     }),
+    /**
+     * Optional FK to the printed campaign QR code that produced this gift
+     * (Epic #274). NULL for donations not initiated through a scanned letter.
+     * Surfaces in the campaign QR-tracking widget so the admin can answer
+     * "how many gifts originated from postal scans?". `campaignId` stays the
+     * authoritative campaign attribution; this column carries the channel.
+     */
+    qrCodeId: uuid("qr_code_id").references((): AnyPgColumn => campaignQrCodes.id, {
+      onDelete: "set null",
+    }),
     status: donationStatusEnum("status").notNull().default("cleared"),
     platformFeeCents: integer("platform_fee_cents").notNull().default(0),
     paymentMethod: varchar("payment_method", { length: 50 }),
@@ -636,6 +665,7 @@ export const donations = pgTable(
     index("donations_constituent_id_idx").on(table.constituentId),
     index("donations_donated_at_idx").on(table.donatedAt),
     index("donations_campaign_id_idx").on(table.campaignId),
+    index("donations_qr_code_id_idx").on(table.qrCodeId),
     unique("donations_org_payment_uniq").on(table.orgId, table.paymentMethod, table.paymentRef),
   ],
 );
@@ -908,6 +938,82 @@ export const campaignQrCodes = pgTable(
     index("campaign_qr_codes_org_id_idx").on(table.orgId),
     index("campaign_qr_codes_campaign_id_idx").on(table.campaignId),
     unique("campaign_qr_codes_org_code_uniq").on(table.orgId, table.code),
+  ],
+);
+
+// ─── Campaign Constituents (Epic #274) ─────────────────────────────────────
+
+/**
+ * Campaign Constituents — explicit membership of a constituent in a campaign,
+ * independent of any donation or generated document. Lets the admin build
+ * the postal recipient list before any letter is generated.
+ */
+export const campaignConstituents = pgTable(
+  "campaign_constituents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    constituentId: uuid("constituent_id")
+      .notNull()
+      .references(() => constituents.id, { onDelete: "cascade" }),
+    addedBy: uuid("added_by").references(() => users.id, { onDelete: "set null" }),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("campaign_constituents_org_idx").on(table.orgId),
+    index("campaign_constituents_campaign_idx").on(table.campaignId),
+    index("campaign_constituents_constituent_idx").on(table.constituentId),
+    unique("campaign_constituents_org_campaign_constituent_uniq").on(
+      table.orgId,
+      table.campaignId,
+      table.constituentId,
+    ),
+  ],
+);
+
+// ─── Campaign Postal Exports (Epic #274) ───────────────────────────────────
+
+/**
+ * Campaign Postal Exports — async ZIP-archive generation jobs for postal
+ * campaigns. The frontend polls a row's `status` + `progressCount` to render
+ * a progress bar; the worker mutates them as it streams PDFs through
+ * the ZIP bundler. Final ZIP key is in `zipS3Path`.
+ */
+export const campaignPostalExports = pgTable(
+  "campaign_postal_exports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    mode: postalExportModeEnum("mode").notNull(),
+    status: postalExportStatusEnum("status").notNull().default("pending"),
+    /**
+     * Total expected PDFs (= constituent count for personalized, 1 for
+     * door-drop). Locked at job-start so the progress bar denominator stays
+     * stable even if the campaign membership is mutated mid-job.
+     */
+    totalCount: integer("total_count").notNull().default(0),
+    progressCount: integer("progress_count").notNull().default(0),
+    zipS3Path: varchar("zip_s3_path", { length: 500 }),
+    error: text("error"),
+    requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("campaign_postal_exports_org_idx").on(table.orgId),
+    index("campaign_postal_exports_campaign_idx").on(table.campaignId),
+    index("campaign_postal_exports_created_at_idx").on(table.createdAt),
   ],
 );
 

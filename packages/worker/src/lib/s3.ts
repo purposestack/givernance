@@ -61,3 +61,43 @@ export async function uploadCampaignPdf(
   const key = `${tenantId}/campaigns/${campaignId}/${documentId}.pdf`;
   return streamPdfToS3(env.S3_CAMPAIGNS_BUCKET, key, doc);
 }
+
+/**
+ * Stream an arbitrary binary payload (typically a ZIP archive) to S3 — used
+ * by the postal-export worker to upload the bundled archive once all per-
+ * recipient PDFs have been streamed through `archiver` (Epic #274).
+ *
+ * `Body` is typed as a Node Readable to match `archiver`'s output; the
+ * underlying multipart upload handles any `Readable` the AWS SDK accepts.
+ */
+export async function streamArchiveToS3(
+  bucket: string,
+  key: string,
+  doc: NodeJS.ReadableStream,
+  contentType = "application/zip",
+): Promise<string> {
+  const upload = new Upload({
+    client: s3,
+    params: {
+      Bucket: bucket,
+      Key: key,
+      Body: doc as unknown as Readable,
+      ContentType: contentType,
+      ServerSideEncryption: "AES256",
+      ACL: "private",
+    },
+  });
+  await upload.done();
+  return key;
+}
+
+/** Upload a postal-export ZIP to the campaigns bucket. */
+export async function uploadCampaignZip(
+  tenantId: string,
+  campaignId: string,
+  exportId: string,
+  doc: NodeJS.ReadableStream,
+): Promise<string> {
+  const key = `${tenantId}/campaigns/${campaignId}/exports/${exportId}.zip`;
+  return streamArchiveToS3(env.S3_CAMPAIGNS_BUCKET, key, doc);
+}
