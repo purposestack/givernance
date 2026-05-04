@@ -250,6 +250,11 @@ export default async function CampaignDetailPage({
           <StatusCard campaign={campaign} canManage={auth.roles.includes("org_admin")} />
         </aside>
         <div className="space-y-6">
+          <CampaignDescriptionCard
+            campaignId={campaign.id}
+            description={campaign.description}
+            canEdit={canWrite}
+          />
           <CampaignRoiChart
             costCents={roiMetrics.totalCostCents > 0 ? roiMetrics.totalCostCents : null}
             totalRaisedCents={roiMetrics.rawRaisedCents}
@@ -467,6 +472,64 @@ async function CostBreakdownCard({
         <StatRow label={t("roi.operationalCost")} value={operationalCost} />
         <StatRow label={t("roi.platformFees")} value={platformFees} />
         <StatRow label={t("roi.totalCost")} value={totalCost} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Campaign description card on the internal detail page.
+ *
+ * The same `campaigns.description` string is the source of truth for the
+ * postal letter body (Epic #274) and the donor-facing public page seed.
+ * Surfacing it on the admin detail page lets the operator verify the
+ * copy without opening the edit form, and nudges them to fill it when
+ * empty (an empty description shows a muted prompt + edit CTA so the
+ * postal export doesn't ship with the generic fallback).
+ */
+async function CampaignDescriptionCard({
+  campaignId,
+  description,
+  canEdit,
+}: {
+  campaignId: string;
+  description: string | null;
+  canEdit: boolean;
+}) {
+  const t = await getTranslations("campaigns.detail.description");
+  const trimmed = description?.trim() ?? "";
+  const hasDescription = trimmed.length > 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>{t("title")}</CardTitle>
+            <CardDescription>{t("subtitle")}</CardDescription>
+          </div>
+          {canEdit ? (
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/campaigns/${campaignId}/edit`}>
+                <Pencil size={14} aria-hidden="true" />
+                {t("editAction")}
+              </Link>
+            </Button>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {hasDescription ? (
+          // `whitespace-pre-line` so paragraph breaks the operator typed
+          // render the way they wrote them — important when the same
+          // string flows into the postal letter body (which preserves
+          // newlines in PDFKit's text layout).
+          <p className="whitespace-pre-line text-sm leading-6 text-on-surface">{trimmed}</p>
+        ) : canEdit ? (
+          <p className="text-sm text-on-surface-variant">{t("emptyEditable")}</p>
+        ) : (
+          <p className="text-sm text-on-surface-variant">{t("emptyReadOnly")}</p>
+        )}
       </CardContent>
     </Card>
   );

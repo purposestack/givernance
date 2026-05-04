@@ -141,19 +141,23 @@ async function buildPostalLetterDoc(
     { align: "justify", lineGap: 2 },
   );
   doc.moveDown(0.8);
-  doc.text("To learn more or contribute, scan the QR code on the next page:", {
+  doc.text("To learn more or contribute, scan the QR code below:", {
     align: "justify",
     lineGap: 2,
   });
+  doc.moveDown(0.8);
 
-  // ── QR panel — pinned near the bottom of the page ─────────────────────
-  // We compute the panel's top edge from the page bottom so the QR + URL
-  // line never collides with the body copy above (the previous bug was
-  // `moveDown(8)` blindly which sometimes left the QR on top of the URL).
-  const PANEL_HEIGHT = 220;
-  const panelTopY = doc.page.height - PAGE_MARGIN - PANEL_HEIGHT;
+  // ── QR panel — flows inline after the body. ──────────────────────────
+  // Earlier draft pinned the panel to `page.height - margin - 220`, which
+  // left a fat blank gap when the body was short. Now we draw the panel
+  // exactly under the call-to-scan paragraph so the page reads top-down
+  // without dead space. PDFKit auto-paginates if a particularly long
+  // description pushes the panel below the bottom margin — there's no
+  // overlap risk.
+  const PANEL_HEIGHT = 200;
+  const panelTopY = doc.y;
   const qrX = (PAGE_WIDTH - QR_SIZE) / 2;
-  const qrY = panelTopY + 10;
+  const qrY = panelTopY + 14;
 
   doc
     .roundedRect(PAGE_MARGIN, panelTopY, CONTENT_WIDTH, PANEL_HEIGHT, 12)

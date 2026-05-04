@@ -1823,6 +1823,13 @@
       }
     },
     "detail": {
+      "description": {
+        "title": "Description de la campagne",
+        "subtitle": "Utilisée comme corps des lettres postales et comme texte initial de la page de don publique.",
+        "editAction": "Modifier",
+        "emptyEditable": "Pas encore de description — ajoutez-en une pour enrichir la lettre postale et amorcer votre page de don publique.",
+        "emptyReadOnly": "Aucune description renseignée pour le moment."
+      },
       "stats": {
         "title": "Statistiques de campagne",
         "raised": "Collecté",

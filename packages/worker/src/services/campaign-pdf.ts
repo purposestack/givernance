@@ -114,16 +114,19 @@ export async function createCampaignLetterPdfStream(
     { align: "justify", lineGap: 2 },
   );
   doc.moveDown(0.8);
-  doc.text("To learn more or contribute, scan the QR code on the next page:", {
+  doc.text("To learn more or contribute, scan the QR code below:", {
     align: "justify",
     lineGap: 2,
   });
+  doc.moveDown(0.8);
 
-  // ── QR panel — pinned near the bottom of the page ─────────────────────
-  const PANEL_HEIGHT = 220;
-  const panelTopY = doc.page.height - PAGE_MARGIN - PANEL_HEIGHT;
+  // ── QR panel — flows inline after the body (Epic #274 follow-up). ────
+  // See `packages/api/src/modules/campaigns/postal-pdf.ts` for the full
+  // rationale; both renderers MUST keep this layout in lockstep.
+  const PANEL_HEIGHT = 200;
+  const panelTopY = doc.y;
   const qrX = (PAGE_WIDTH - QR_SIZE) / 2;
-  const qrY = panelTopY + 10;
+  const qrY = panelTopY + 14;
 
   doc
     .roundedRect(PAGE_MARGIN, panelTopY, CONTENT_WIDTH, PANEL_HEIGHT, 12)
