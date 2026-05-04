@@ -182,7 +182,7 @@ export async function startPostalExport(
     }
     if (publicPage.status !== "published") {
       throw new PostalExportError(
-        "Public donation page is in draft. Publish it before generating a postal export — otherwise the QR codes lead to a 404.",
+        "Public donation page is still a draft. Publish it before generating a postal export — otherwise donors scanning the printed QR codes won't reach a working donation page.",
         "public_page_draft",
       );
     }

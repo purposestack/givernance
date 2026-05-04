@@ -1676,7 +1676,7 @@
         },
         "publicPageDraft": {
           "title": "Publish your public donation page first",
-          "body": "Your public donation page is still a draft, so QR-scanned letters would lead to a 404. Publish the page before queueing the export."
+          "body": "Your public donation page is still a draft, so anyone scanning a QR code from the printed letters wouldn't find a working donation page. Publish it before queueing the export."
         },
         "publicPageCta": "Open the public page settings",
         "activateCampaignFirst": "Activate the campaign before generating an export.",
