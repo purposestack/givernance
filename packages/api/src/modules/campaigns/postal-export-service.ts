@@ -27,6 +27,7 @@ import {
 } from "@givernance/shared/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
+import { resolveInternalUserId } from "../../lib/resolve-user.js";
 
 export class PostalExportError extends Error {
   constructor(message: string) {
@@ -149,6 +150,14 @@ export async function startPostalExport(
       totalCount = 1;
     }
 
+    // `userId` is the JWT subject (= keycloak id). `requested_by` is a
+    // FK to `users.id` (internal UUID), so we MUST translate. Falls back
+    // to NULL when the JWT subject doesn't match an active member of
+    // the tenant (impersonated platform admin in delegation mode against
+    // a tenant they don't belong to — the audit trail still captures
+    // `actor_id` and `impersonation_session_id` separately).
+    const requestedByInternal = await resolveInternalUserId(tx, orgId, userId);
+
     const [inserted] = await tx
       .insert(campaignPostalExports)
       .values({
@@ -158,7 +167,7 @@ export async function startPostalExport(
         status: "pending",
         totalCount,
         progressCount: 0,
-        requestedBy: userId,
+        requestedBy: requestedByInternal,
       })
       .returning();
 
@@ -174,6 +183,8 @@ export async function startPostalExport(
         campaignId,
         mode,
         totalCount,
+        // Outbox payload keeps the JWT subject (= keycloak id) — it's an
+        // opaque audit trail value, not an FK.
         requestedBy: userId,
       },
     });

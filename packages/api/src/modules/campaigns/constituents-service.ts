@@ -14,6 +14,7 @@ import {
 import type { Pagination } from "@givernance/shared/types";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
+import { resolveInternalUserId } from "../../lib/resolve-user.js";
 
 export class CampaignMembershipError extends Error {
   constructor(message: string) {
@@ -187,6 +188,14 @@ export async function addCampaignMembers(
       );
     }
 
+    // `userId` is the JWT subject (= keycloak id). `added_by` is a FK to
+    // `users.id` (internal UUID), so we MUST translate. Falls back to
+    // NULL when the subject doesn't match an active member of the tenant
+    // (e.g. delegation by a platform admin against a tenant they don't
+    // belong to — `actor_id` on audit_logs still captures the real
+    // actor for the audit trail).
+    const addedByInternal = await resolveInternalUserId(tx, orgId, userId);
+
     const insertResult = await tx
       .insert(campaignConstituents)
       .values(
@@ -194,7 +203,7 @@ export async function addCampaignMembers(
           orgId,
           campaignId,
           constituentId: cId,
-          addedBy: userId,
+          addedBy: addedByInternal,
         })),
       )
       .onConflictDoNothing({
