@@ -53,6 +53,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 18-feature-flags.md        — Feature flag strategy: schema, evaluation, backend/frontend enforcement, lifecycle
 │   ├── 19-impersonation.md         — Impersonation strategy: token design, session lifecycle, double-attribution, GDPR
 │   ├── 20-payment-strategy.md      — Payment systems: Stripe/Mollie/Mangopay comparison, ADR-010, PCI DSS, GDPR
+│   ├── 23-postal-campaigns.md      — Postal campaigns + QR reconciliation (Epic #274): user flow, domain, readiness gates, attribution
 │   ├── vision/
 │   │   └── conversational-mode.md — Future conversational AI mode (2026-2028)
 │   ├── security/                  — Security audits & RBAC matrices (non-numbered, dated; e.g. rbac-audit-2026-04-27.md)
@@ -61,7 +62,8 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── context.mmd       — C4 system context
 │   ├── container.mmd     — C4 container diagram
 │   ├── core-erd.mmd      — Entity-relationship diagram
-│   └── migration-flow.mmd — Salesforce migration flow
+│   ├── migration-flow.mmd — Salesforce migration flow
+│   └── postal-campaign-flow.mmd — End-to-end postal mailing + QR reconciliation (companion to docs/23)
 └── .claude/agents/        — 12 specialized Claude agents
 ```
 
@@ -127,7 +129,37 @@ Key ADRs for frontend work:
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
 - Terminology: **NPO** (nonprofit organization), not "NGO"
 - GDPR in English docs, RGPD in French docs
-- All docs are in `docs/`, numbered 01-22 for architecture specs
+- All docs are in `docs/`, numbered 01-23 for architecture specs (next free slot: `24-`)
+
+### 🛑 Documentation discipline (CRITICAL FOR ALL DOMAIN WORK)
+
+**Every domain feature in `docs/` is a contract** — with the operator, with prospects evaluating Givernance, and with the future-self maintaining the codebase. Drift between code and doc is a slow-burn outage: prospects evaluate against a doc that no longer matches the product, and onboarding new engineers loses days re-reading source to figure out what the doc forgot.
+
+**For every PR that adds, changes, or removes domain behaviour, you MUST:**
+
+1. **Find the matching `docs/NN-<domain>.md`** before writing code. If none exists for the domain you're touching, create it with the next free `NN-` number. The doc is the spec; the PR is the implementation of that spec.
+2. **Update the doc in the same PR as the code.** A user-facing feature ships with three things: code, tests, and a doc section that explains:
+   - **The user flow** (numbered Mermaid sequence diagram covering happy path + the most important error/edge branch)
+   - **The domain model** (Mermaid `erDiagram` showing every new table + every new relationship to existing tables — and update `diagrams/core-erd.mmd` if a new table joins the core party/giving graph)
+   - **The architecture** (which package owns what, where transactions / outbox / RLS boundaries are, what's sync vs. async)
+   - **Permissions matrix** (every endpoint added, with its guard)
+   - **Privacy / GDPR posture** (PII fields, audit trail, soft-delete propagation, erasure cascade)
+   - **Future work explicitly out of scope** (so a prospect reading the doc understands the MVP vs. roadmap split)
+3. **Cross-link**: every new doc names its related docs at the top (`> Related: …`), references the migration that ships its schema, and is added to the file tree in this CLAUDE.md.
+4. **Diagrams**: a non-trivial flow needs its own `diagrams/<domain>-flow.mmd` companion. Keep `core-erd.mmd` in lockstep for any new tenant table that joins the core graph.
+5. **Style**: follow the conventions of `docs/19-impersonation.md` and `docs/23-postal-campaigns.md` — the `## 0. Why this exists — at a glance` opening section is non-negotiable. A reader (operator, prospect, agent) who reads only that section must already understand what the feature does and why it matters.
+
+**Reviewer checklist** (claude reviewing a domain PR):
+- [ ] `docs/NN-*.md` exists for the domain
+- [ ] User flow diagram is up to date with the actual code paths
+- [ ] ERD reflects the schema after this PR
+- [ ] Permissions matrix lists all new endpoints
+- [ ] CLAUDE.md file tree is updated
+- [ ] Out-of-scope section calls out the deferred work this PR explicitly chose not to do
+
+**Why this is a hard rule**: Givernance is positioned as a transparent alternative to Salesforce NPSP. Prospects compare us on **what we openly explain**, not just what we ship. A feature that exists in the code but not in `docs/` cannot be evaluated, sold, or maintained — it's load-bearing complexity for the team without any external value. Treat the doc as a deliverable equal to the code.
+
+A future user-facing documentation site (for end-customers and prospects) will be generated from these specs. Drift between specs and code propagates straight into the customer-facing surface — keep them in lockstep.
 
 ### 🛑 One Logical Database per Tool (ADR-017)
 
