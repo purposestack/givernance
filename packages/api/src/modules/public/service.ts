@@ -8,7 +8,7 @@ import {
   tenants,
 } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
-import { db, withTenantContext } from "../../lib/db.js";
+import { db, systemDb, withTenantContext } from "../../lib/db.js";
 import { redis } from "../../lib/redis.js";
 import { isUuid } from "../../lib/schemas.js";
 import { getStripe } from "../payments/service.js";
@@ -46,7 +46,15 @@ export async function resolveCampaignQrCode(code: string) {
     return null;
   }
 
-  const [row] = await db
+  // Cross-tenant lookup by opaque token. The endpoint is public + un-
+  // authenticated, so there is no `app.current_organization_id` to set
+  // for RLS — running this through the app pool (`db`, NOBYPASSRLS)
+  // would silently return zero rows because `campaign_qr_codes` has
+  // FORCE ROW LEVEL SECURITY (`org_id = app_current_organization_id()`).
+  // The 120-bit opaque code itself IS the security boundary here: an
+  // attacker can't forge a valid one without scraping a printed letter,
+  // and rate-limiting on the route bounds a brute-force attempt.
+  const [row] = await systemDb
     .select({
       orgId: campaignQrCodes.orgId,
       campaignId: campaignQrCodes.campaignId,
@@ -59,7 +67,7 @@ export async function resolveCampaignQrCode(code: string) {
   if (!row) return null;
 
   if (!row.scannedAt) {
-    await db
+    await systemDb
       .update(campaignQrCodes)
       .set({ scannedAt: sql`now()` })
       .where(and(eq(campaignQrCodes.code, code), eq(campaignQrCodes.orgId, row.orgId)));
