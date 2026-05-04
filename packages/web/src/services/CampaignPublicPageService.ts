@@ -56,6 +56,30 @@ export const CampaignPublicPageService = {
     return response.data;
   },
 
+  /**
+   * Resolve a postal QR token via the public, rate-limited endpoint
+   * (Epic #274). The server stamps `scanned_at` on first contact and
+   * returns `{ campaignId, constituentId }` so the caller can verify
+   * the scan reached the right campaign. Returns `null` for unknown
+   * tokens (the API responds 404; we swallow it because it's a
+   * best-effort tracking call, not a flow-blocking step). Safe to call
+   * from a server component during render — used by `/p/[id]` to log
+   * the scan even if the donor never converts.
+   */
+  async resolvePostalQrToken(
+    client: ApiClient,
+    code: string,
+  ): Promise<{ campaignId: string; constituentId: string | null } | null> {
+    try {
+      const response = await client.get<{
+        data: { campaignId: string; constituentId: string | null };
+      }>(`/v1/public/qr/${encodeURIComponent(code)}`);
+      return response.data;
+    } catch {
+      return null;
+    }
+  },
+
   async createPublicDonationIntent(
     client: ApiClient,
     campaignId: string,
