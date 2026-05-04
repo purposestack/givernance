@@ -46,6 +46,18 @@ export default async function PublicCampaignPage({
   const locale = await getLocale();
   const t = await getTranslations("publicDonationPage");
 
+  // Epic #274 — record the postal-letter scan as soon as the donor lands on
+  // this page, not only when they convert to a donation. The resolver is
+  // idempotent server-side (`scanned_at` is set only on first contact, so
+  // refreshes don't double-count), and returns `null` for unknown tokens —
+  // we never block the render on it. Fire-and-forget pattern (no `await`)
+  // would skip the SSR cycle entirely and stay clean from the user's POV;
+  // we await briefly here so the QR-tracking widget on the admin page picks
+  // up the scan immediately if the operator is watching it during testing.
+  if (qrCode) {
+    await CampaignPublicPageService.resolvePostalQrToken(client, qrCode);
+  }
+
   try {
     const page = await CampaignPublicPageService.getPublishedCampaignPublicPage(client, id);
     const colorPrimary = page.colorPrimary ?? DEFAULT_THEME_COLOR;
