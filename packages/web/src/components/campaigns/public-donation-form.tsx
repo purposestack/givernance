@@ -46,6 +46,13 @@ interface PublicDonationFormProps {
    * donate step itself blocks at 502).
    */
   tenantStripeAccountId: string | null;
+  /**
+   * Opaque QR token resolved from `?qr=` on the public page URL (Epic
+   * #274). When present the donate intent forwards it to the API so the
+   * resulting donation gets reconciled to the printed letter's campaign
+   * and constituent. Undefined for organic visits to the donation page.
+   */
+  qrCode?: string;
 }
 
 interface PublicDonationFormValues {
@@ -107,6 +114,7 @@ export function PublicDonationForm({
   defaultCurrency = "EUR",
   publishableKey,
   tenantStripeAccountId,
+  qrCode,
 }: PublicDonationFormProps) {
   const t = useTranslations("publicDonationPage.form");
   const tPayment = useTranslations("publicDonationPage.payment");
@@ -174,6 +182,9 @@ export function PublicDonationForm({
           email: values.email.trim(),
           firstName: values.firstName.trim(),
           lastName: values.lastName.trim(),
+          // Postal-letter QR attribution (Epic #274) — only forwarded when
+          // present so organic visits stay clean of meaningless qrCode keys.
+          ...(qrCode ? { qrCode } : {}),
         },
         createIdempotencyKey(),
       );

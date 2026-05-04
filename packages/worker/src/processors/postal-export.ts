@@ -147,7 +147,11 @@ export async function processGeneratePostalExport(
     return {
       campaign: campaignRow,
       recipients: recipientRows,
-      publicPageUrl: `${env.APP_URL}/c/${campaignId}`,
+      // The public donation page lives under `/p/:id` (see
+      // `packages/web/src/app/(public)/p/[id]/page.tsx`). An earlier draft
+      // of this code targeted `/c/:id`, which 404s — the QR codes printed
+      // from such a build dropped donors on a "Page not found" screen.
+      publicPageUrl: `${env.APP_URL}/p/${campaignId}`,
     };
   });
 

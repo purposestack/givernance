@@ -49,6 +49,7 @@ describe("PublicCampaignPage", () => {
     render(
       await PublicCampaignPage({
         params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000123" }),
+        searchParams: Promise.resolve({}),
       }),
     );
 

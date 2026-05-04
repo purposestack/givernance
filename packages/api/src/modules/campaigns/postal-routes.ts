@@ -413,7 +413,9 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
 
-      const previewUrl = `${env.APP_URL}/c/${id}?preview=1`;
+      // Path mirrors the published donation page (`/p/:id`) so the preview
+      // QR resolves to the same screen the donor would see in production.
+      const previewUrl = `${env.APP_URL}/p/${id}?preview=1`;
 
       const buffer = await renderPostalLetterToBuffer({
         campaignName: campaign.name,

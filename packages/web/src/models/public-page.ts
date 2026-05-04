@@ -54,6 +54,13 @@ export interface PublicDonationIntentInput {
   email: string;
   firstName: string;
   lastName: string;
+  /**
+   * Opaque QR token from a postal letter (Epic #274). When present, the
+   * API resolves the token server-side and stamps `qr_code_id` /
+   * `qr_code_constituent_id` on the resulting Stripe metadata so the
+   * webhook can attribute the donation back to the QR scan.
+   */
+  qrCode?: string;
 }
 
 export interface PublicDonationIntent {

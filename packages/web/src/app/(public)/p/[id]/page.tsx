@@ -13,12 +13,31 @@ import { CampaignPublicPageService } from "@/services/CampaignPublicPageService"
 
 interface PublicCampaignPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 const DEFAULT_THEME_COLOR = "#096447";
 
-export default async function PublicCampaignPage({ params }: PublicCampaignPageProps) {
+/**
+ * Postal QR token shape: nanoid base64url, 10–32 chars (matches the
+ * server-side validator in `packages/api/src/modules/public/routes.ts`).
+ * Anything else is silently dropped so a tampered URL doesn't reach the
+ * donate endpoint as a 400 — the form still works for organic visits.
+ */
+const QR_TOKEN_PATTERN = /^[A-Za-z0-9_-]{10,32}$/;
+
+function extractQrCode(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && QR_TOKEN_PATTERN.test(raw) ? raw : undefined;
+}
+
+export default async function PublicCampaignPage({
+  params,
+  searchParams,
+}: PublicCampaignPageProps) {
   const { id } = await params;
+  const sp = await searchParams;
+  const qrCode = extractQrCode(sp.qr);
   if (!isUuid(id)) {
     notFound();
   }
@@ -105,6 +124,7 @@ export default async function PublicCampaignPage({ params }: PublicCampaignPageP
               defaultCurrency={page.defaultCurrency}
               publishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null}
               tenantStripeAccountId={page.stripeAccountId}
+              qrCode={qrCode}
             />
           </div>
         </div>
