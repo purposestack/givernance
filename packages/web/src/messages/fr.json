@@ -1676,7 +1676,7 @@
         },
         "publicPageDraft": {
           "title": "Publiez d'abord la page de don publique",
-          "body": "Votre page de don publique est encore en brouillon : un QR scanné mènerait à une 404. Publiez la page avant de lancer l'export postal."
+          "body": "Votre page de don publique est encore en brouillon : si quelqu'un scanne un QR code imprimé sur les lettres, il ne trouvera pas de page de don opérationnelle. Publiez-la avant de lancer l'export postal."
         },
         "publicPageCta": "Ouvrir les réglages de la page publique",
         "activateCampaignFirst": "Activez la campagne avant de générer un export.",
