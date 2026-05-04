@@ -22,7 +22,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Onigam/givernance.git"
+    "url": "git+https://github.com/purposestack/givernance.git"
   },
   "license": "AGPL-3.0",
   "engines": {

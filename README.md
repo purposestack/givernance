@@ -14,7 +14,7 @@ Givernance — purpose-built CRM for European nonprofits. Modular monolith, GDPR
 
 ```bash
 # Clone the repository
-git clone git@github.com:Onigam/givernance.git
+git clone git@github.com:purposestack/givernance.git
 cd givernance
 
 # Node.js 22 LTS + pnpm 9 required
