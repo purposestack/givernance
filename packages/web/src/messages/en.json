@@ -1106,7 +1106,7 @@
     },
     "tenant": {
       "title": "Organisation settings",
-      "description": "Choose the tenant base currency and default language used for reporting and member emails.",
+      "description": "Visual identity, base currency, and default language used for reporting and member emails.",
       "readOnly": "Only organisation admins can update tenant settings.",
       "fields": {
         "baseCurrency": "Base currency",

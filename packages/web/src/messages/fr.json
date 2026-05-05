@@ -1106,7 +1106,7 @@
     },
     "tenant": {
       "title": "Paramètres de l'organisation",
-      "description": "Choisissez la devise de base du tenant et la langue par défaut pour les emails envoyés aux membres.",
+      "description": "Identité visuelle, devise de base et langue par défaut utilisée pour les emails envoyés aux membres.",
       "readOnly": "Seuls les administrateurs de l'organisation peuvent modifier ces paramètres.",
       "fields": {
         "baseCurrency": "Devise de base",
