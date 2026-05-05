@@ -143,8 +143,31 @@ real difference" line. The organisation **name** (`tenants.name`,
 required) is the letterhead — Givernance never appears on the page.
 
 The same fields are deliberately reusable: they're the canonical place to
-enrich AI-assisted copy generation (planned), the donor-facing public
-page footer, and any future channels (email signature, receipts).
+enrich AI-assisted copy generation (planned), the **donor-facing public
+page hero** (org name as UPPERCASE eyebrow above the campaign title, with
+the mission as an italic subline under the description — turns the page
+from "generic donation form" into "I am giving to ${org}"), and any
+future channels (email signature, receipts).
+
+### Locale-driven static copy (`tenants.default_locale`)
+
+Every word in the letter that **isn't** operator-authored — greeting
+("Cher·e Jean Dupont,"), thanks variants, "scan the QR code below",
+reference label, preview watermark — is sourced from a per-locale lookup
+table keyed by the tenant's `default_locale` (`fr` / `en`). FR is the
+fallback when the column is NULL or carries an unsupported locale.
+
+The lookup table lives **twice** by design — once in
+`packages/api/src/modules/campaigns/postal-pdf.ts` (preview path) and
+once in `packages/worker/src/services/campaign-pdf.ts` (bulk-export
+path). Both copies MUST stay byte-equivalent in their rendered output:
+the operator validates a campaign by clicking **Aperçu** and trusts that
+the print shop will receive the same letter. The duplication is
+documented at the top of each file with a "lockstep duplicate" banner;
+a future refactor can collapse it into a `packages/print` package once
+a second renderer (receipts, statements) needs the same shape.
+
+Per-campaign locale override is **out of MVP scope** — see § 9.
 
 ## 2. Domain model
 
@@ -465,7 +488,8 @@ These were considered and **deliberately deferred** — they would have either t
 - **QR-Facture Suisse** — Switzerland's native bank-encoding QR standard. Different layout, mandatory IBAN encoding, separate validation rules (issue #274 explicitly out of scope).
 - **Image upload per campaign** — letterhead branding, embedded photos. The MVP letter is text + QR only; the print shop adds the org's letterhead during printing.
 - **Country-of-impact tagging** — a per-campaign attribute deferred to a later epic.
-- **Multi-language letter templates** — current letters are English-only; FR/DE will need a translation pipeline that respects the same QR-attribution flow.
+- **More locales beyond FR/EN** — the renderer is locale-aware (driven by `tenants.default_locale`, see § 1.bis), and FR + EN ship in MVP. DE/IT/ES are deferred until a customer requests them; adding one is a copy-table extension, not a structural change.
+- **Per-campaign locale override** — today the letter locale follows the tenant's default; a future epic could let the operator pick a locale per campaign (e.g., a Geneva-based French-speaking org doing one English-language ask for diaspora donors).
 - **Per-recipient editorial overrides** — every nominative letter today shares the same body ("Dear supporter…"). A future epic could let the operator override the body per segment (donor tier, last gift date, etc.).
 - **Direct print-shop integration** — current MVP hands the operator a ZIP to upload manually to their printer's portal. A managed print partnership (with API hand-off) is on the long-term roadmap.
 
