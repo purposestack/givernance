@@ -27,9 +27,9 @@ interface InitialLetterAvatarProps {
   tenantId?: string;
   /**
    * Visual size — tracks the rest of the codebase's avatar sizing scale.
-   * `sm` 32 / `md` 40 / `lg` 64 / `xl` 96 px.
+   * `sm` 32 / `md` 40 / `lg` 64 / `xl` 96 / `2xl` 128 px.
    */
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "2xl";
   /** Optional className passthrough — wraps the inline-block container. */
   className?: string;
   /**
@@ -79,6 +79,7 @@ const SIZE_CLASSES: Record<NonNullable<InitialLetterAvatarProps["size"]>, string
   md: "h-10 w-10 text-base",
   lg: "h-16 w-16 text-2xl",
   xl: "h-24 w-24 text-4xl",
+  "2xl": "h-32 w-32 text-5xl",
 };
 
 /**

@@ -250,16 +250,17 @@ export function Sidebar({
         {user?.orgId && user?.orgName ? (
           <div className="flex justify-center px-6 pb-3">
             {readyLogo?.variants?.sidebar?.url ? (
-              <div className="relative h-16 w-16">
+              <div className="relative h-32 w-32">
                 <Image
                   src={readyLogo.variants.sidebar.url}
                   alt={user.orgName}
                   fill
-                  sizes="64px"
+                  sizes="128px"
                   className="object-contain"
-                  // Variants are content-addressed + already at the consumed
-                  // size; optimizer is overhead. Also bails out for the dev
-                  // MinIO host (private-IP block) — see ADR-024.
+                  // 128×128 = the native pixel size of the `sidebar` variant
+                  // produced by the worker pipeline, so the optimizer has
+                  // nothing to add. Also bails out for the dev MinIO host
+                  // (private-IP block) — see ADR-024.
                   unoptimized
                 />
               </div>
@@ -267,7 +268,7 @@ export function Sidebar({
               <InitialLetterAvatar
                 orgName={user.orgName}
                 tenantId={user.orgId}
-                size="lg"
+                size="2xl"
                 ariaLabel={user.orgName}
               />
             )}
