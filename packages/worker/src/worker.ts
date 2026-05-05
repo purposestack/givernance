@@ -1,6 +1,6 @@
 /** BullMQ Worker entry point — registers all job processors */
 
-import { QUEUE_NAMES, TENANT_LIFECYCLE_JOBS } from "@givernance/shared/jobs";
+import { EXCHANGE_RATE_JOBS, QUEUE_NAMES, TENANT_LIFECYCLE_JOBS } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
@@ -12,6 +12,7 @@ import { processGenerateCampaignDocuments } from "./processors/campaign-document
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processPlatformAdminInviteEmail } from "./processors/platform-admin-invite-email.js";
+import { processRefreshExchangeRates } from "./processors/refresh-exchange-rates.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import {
   processSignupVerificationEmail,
@@ -39,6 +40,7 @@ const campaignsQueue = new Queue(QUEUE_NAMES.CAMPAIGNS, { connection: queueConne
 const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
   connection: queueConnection,
 });
+const exchangeRatesQueue = new Queue(QUEUE_NAMES.EXCHANGE_RATES, { connection: queueConnection });
 
 /**
  * Register the nightly provisional-admin expire job.
@@ -58,6 +60,21 @@ async function scheduleRepeatableJobs() {
       removeOnFail: { count: 50 },
     },
   );
+
+  // Nightly exchange-rate refresh at 02:00 UTC — runs before the EU business
+  // day starts. Fixed jobId prevents duplicate schedules across worker restarts.
+  await exchangeRatesQueue.add(
+    EXCHANGE_RATE_JOBS.REFRESH,
+    {},
+    {
+      jobId: "exchange-rates-refresh-nightly",
+      repeat: { pattern: "0 2 * * *", tz: "UTC" },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+
+  logger.info("Scheduled repeatable job: exchange-rates.refresh (daily 02:00 UTC)");
 }
 
 /**
@@ -228,6 +245,12 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
+  const exchangeRatesWorker = new Worker(QUEUE_NAMES.EXCHANGE_RATES, processRefreshExchangeRates, {
+    connection: createRedisConnection(),
+    concurrency: 1,
+    ...defaultJobOpts,
+  });
+
   const workers = [
     receiptsWorker,
     emailsWorker,
@@ -236,6 +259,7 @@ function startWorkers() {
     eventsWorker,
     webhooksWorker,
     tenantLifecycleWorker,
+    exchangeRatesWorker,
   ];
 
   for (const w of workers) {

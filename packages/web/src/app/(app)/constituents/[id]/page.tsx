@@ -1,4 +1,13 @@
-import { Download, FileText, GitMerge, Mail, Pencil, Sparkles, Trash2 } from "lucide-react";
+import {
+  Banknote,
+  Download,
+  FileText,
+  GitMerge,
+  Mail,
+  Pencil,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -101,6 +110,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
 
   const t = await getTranslations("constituentDetail");
   const tType = await getTranslations("constituents.types");
+  const tDonations = await getTranslations("donations");
   const locale = await getLocale();
 
   const totalDonatedCents = donationsResult.data.reduce(
@@ -136,6 +146,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
           merge: t("actions.merge"),
           exportGdpr: t("actions.exportGdpr"),
           delete: t("actions.delete"),
+          newDonation: tDonations("actions.new"),
         }}
       />
       <AiSuggestionCard
@@ -237,6 +248,7 @@ interface ProfileLabels {
   merge: string;
   exportGdpr: string;
   delete: string;
+  newDonation: string;
 }
 
 function ProfileCard({
@@ -362,6 +374,14 @@ function ProfileActions({
           <Link href={`/constituents/${constituentId}/edit`}>
             <Pencil size={16} aria-hidden="true" />
             {labels.edit}
+          </Link>
+        </Button>
+      ) : null}
+      {canWrite ? (
+        <Button asChild variant="secondary" size="sm">
+          <Link href={`/donations/new?constituentId=${constituentId}`}>
+            <Banknote size={16} aria-hidden="true" />
+            {labels.newDonation}
           </Link>
         </Button>
       ) : null}

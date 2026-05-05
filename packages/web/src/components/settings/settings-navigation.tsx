@@ -22,6 +22,11 @@ const SETTINGS_NAV_ITEMS = [
     key: "funds",
     match: (pathname: string) => pathname.startsWith("/settings/funds"),
   },
+  {
+    href: "/settings/currency",
+    key: "currency",
+    match: (pathname: string) => pathname.startsWith("/settings/currency"),
+  },
 ] as const;
 
 export function SettingsNavigation() {

@@ -105,7 +105,16 @@ const DEFAULT_VALUES: DefaultValues<DonationFormValues> = {
   allocations: [],
 };
 
-type CreateMode = { mode: "create"; donation?: undefined };
+type CreateMode = {
+  mode: "create";
+  donation?: undefined;
+  /** Pre-select a constituent (from ?constituentId= query param) */
+  initialConstituentId?: string;
+  /** Pre-select a campaign (from ?campaignId= query param) */
+  initialCampaignId?: string;
+  /** Pre-select a currency (derived from the campaign's defaultCurrency) */
+  initialCurrency?: string;
+};
 type EditMode = { mode: "edit"; donation: DonationDetail };
 
 export type DonationFormProps = CreateMode | EditMode;
@@ -793,7 +802,12 @@ function toUpdateApiPayload(values: DonationFormValues): DonationUpdateInput {
 
 function buildDefaultValues(props: DonationFormProps): DefaultValues<DonationFormValues> {
   if (props.mode === "create") {
-    return DEFAULT_VALUES;
+    return {
+      ...DEFAULT_VALUES,
+      constituentId: props.initialConstituentId ?? DEFAULT_VALUES.constituentId,
+      campaignId: props.initialCampaignId ?? DEFAULT_VALUES.campaignId,
+      currency: (props.initialCurrency as DonationCurrency | undefined) ?? DEFAULT_VALUES.currency,
+    };
   }
 
   return {

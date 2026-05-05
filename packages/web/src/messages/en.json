@@ -844,7 +844,8 @@
       "label": "Organisation settings navigation",
       "organization": "Organisation",
       "members": "Members",
-      "funds": "Funds"
+      "funds": "Funds",
+      "currency": "Currency"
     },
     "members": {
       "title": "Members",
@@ -1180,6 +1181,28 @@
         "load": "Unable to load Stripe status right now.",
         "start": "Unable to start Stripe onboarding right now."
       }
+    },
+    "currency": {
+      "title": "Base Currency",
+      "description": "Set the pivot currency used for reporting and multi-currency aggregates.",
+      "fields": {
+        "baseCurrency": "Base currency",
+        "baseCurrencyPlaceholder": "Choose a currency",
+        "baseCurrencyHint": "Used to aggregate donations received in different currencies.",
+        "baseCurrencyHintWithName": "{name} will use this currency as the pivot for converted amounts."
+      },
+      "actions": {
+        "save": "Save",
+        "saving": "Saving…"
+      },
+      "success": {
+        "updated": "Base currency updated."
+      },
+      "errors": {
+        "load": "Failed to load currency settings.",
+        "save": "Error saving base currency."
+      },
+      "readOnly": "Only an administrator can change the base currency."
     }
   },
   "profile": {

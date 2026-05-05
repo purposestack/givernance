@@ -1,6 +1,7 @@
+import type { BaseCurrency } from "@givernance/shared/constants";
 import type { Locale } from "@givernance/shared/i18n";
 
-export type TenantCurrency = "EUR" | "GBP" | "CHF";
+export type TenantCurrency = BaseCurrency;
 
 export interface Tenant {
   id: string;

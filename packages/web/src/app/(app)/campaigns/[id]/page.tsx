@@ -189,6 +189,8 @@ export default async function CampaignDetailPage({
             campaign={campaign}
             donationsResult={donationsResult}
             donationsLabel={tDonations("title")}
+            canWrite={canWrite}
+            newDonationLabel={tDonations("actions.new")}
           />
         </div>
       </div>
@@ -408,10 +410,14 @@ async function DonationBreakdownCard({
   campaign,
   donationsResult,
   donationsLabel,
+  canWrite,
+  newDonationLabel,
 }: {
   campaign: Campaign;
   donationsResult: DonationListResponse;
   donationsLabel: string;
+  canWrite: boolean;
+  newDonationLabel: string;
 }) {
   const t = await getTranslations("campaigns.detail");
   const { data: donations, pagination } = donationsResult;
@@ -425,11 +431,21 @@ async function DonationBreakdownCard({
             {t("donations.subtitle", { count: pagination.total })}
           </p>
         </div>
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/donations?campaignId=${encodeURIComponent(campaign.id)}`}>
-            {donationsLabel}
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          {canWrite ? (
+            <Button asChild variant="secondary" size="sm">
+              <Link href={`/donations/new?campaignId=${campaign.id}`}>
+                <Gift size={16} aria-hidden="true" />
+                {newDonationLabel}
+              </Link>
+            </Button>
+          ) : null}
+          <Button asChild variant="ghost" size="sm">
+            <Link href={`/donations?campaignId=${encodeURIComponent(campaign.id)}`}>
+              {donationsLabel}
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {donations.length === 0 ? (

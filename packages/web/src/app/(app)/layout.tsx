@@ -4,6 +4,8 @@ import { Toaster } from "@/components/ui/toast";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { AuthProvider } from "@/lib/auth";
 import { requireAuth } from "@/lib/auth/guards";
+import { TenantProvider } from "@/lib/context/tenant-context";
+import { TenantService } from "@/services/TenantService";
 
 /**
  * Authenticated app layout — wraps all protected routes with:
@@ -39,13 +41,26 @@ const fetchMeWithMembership = cache(async () => {
   };
 });
 
+async function fetchTenantBaseCurrency(orgId: string): Promise<string> {
+  try {
+    const api = await createServerApiClient();
+    const tenant = await TenantService.getTenant(api, orgId);
+    return tenant.baseCurrency;
+  } catch {
+    return "EUR";
+  }
+}
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const auth = await requireAuth();
   const isSuperAdmin = auth.roles.includes("super_admin");
 
   const userName = auth.firstName ? `${auth.firstName} ${auth.lastName ?? ""}`.trim() : auth.email;
 
-  const { me, membershipCount } = await fetchMeWithMembership();
+  const [{ me, membershipCount }, baseCurrency] = await Promise.all([
+    fetchMeWithMembership(),
+    auth.orgId ? fetchTenantBaseCurrency(auth.orgId) : Promise.resolve("EUR"),
+  ]);
 
   // Broken state: a non-super-admin reached the authenticated layout but
   // we couldn't resolve their tenant memberships. Two failure modes:
@@ -83,16 +98,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AuthProvider>
-      <AppShell
-        impersonation={auth.impersonation}
-        impersonationUserName={auth.impersonation ? userName : undefined}
-        provisionalAdmin={provisionalAdmin}
-        membershipCount={membershipCount}
-        isSuperAdmin={auth.roles.includes("super_admin")}
-      >
-        {children}
-      </AppShell>
-      <Toaster />
+      <TenantProvider baseCurrency={baseCurrency}>
+        <AppShell
+          impersonation={auth.impersonation}
+          impersonationUserName={auth.impersonation ? userName : undefined}
+          provisionalAdmin={provisionalAdmin}
+          membershipCount={membershipCount}
+          isSuperAdmin={auth.roles.includes("super_admin")}
+        >
+          {children}
+        </AppShell>
+        <Toaster />
+      </TenantProvider>
     </AuthProvider>
   );
 }

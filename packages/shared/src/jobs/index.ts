@@ -86,9 +86,21 @@ export const QUEUE_NAMES = {
   EVENTS: "givernance_events",
   WEBHOOKS: "webhooks",
   TENANT_LIFECYCLE: "tenant_lifecycle",
+  EXCHANGE_RATES: "exchange_rates",
 } as const;
 
 /** Repeatable job names inside TENANT_LIFECYCLE queue. */
 export const TENANT_LIFECYCLE_JOBS = {
   PROVISIONAL_ADMIN_EXPIRE: "tenant.provisional-admin-expire",
 } as const;
+
+/** Repeatable job names inside EXCHANGE_RATES queue. */
+export const EXCHANGE_RATE_JOBS = {
+  REFRESH: "exchange-rates.refresh",
+} as const;
+
+/** Nightly exchange-rate refresh — no data payload needed */
+export interface RefreshExchangeRatesJob {
+  name: typeof EXCHANGE_RATE_JOBS.REFRESH;
+  data: Record<string, never>;
+}

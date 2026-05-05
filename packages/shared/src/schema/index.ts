@@ -678,7 +678,23 @@ export const donationAllocations = pgTable(
     fundId: uuid("fund_id")
       .notNull()
       .references(() => funds.id, { onDelete: "restrict" }),
-    amountCents: integer("amount_cents").notNull(),
+    /**
+     * Fixed amount in donor currency. Nullable since 0038 — only one of
+     * amountCents (mode A) or percentageBp (mode B) is set per row.
+     * A DB CHECK constraint (donation_allocations_amount_or_bp) enforces XOR.
+     */
+    amountCents: integer("amount_cents"),
+    /**
+     * Pre-converted amount in the tenant's pivot currency.
+     * Nullable — backfilled progressively for historical rows.
+     */
+    amountBaseCents: integer("amount_base_cents"),
+    /**
+     * Basis-points split (10 000 bp = 100 %). Used for percentage-mode
+     * allocations where the exact amount is computed at receipt time.
+     * A DB CHECK constraint enforces bp ∈ [1, 10000].
+     */
+    percentageBp: integer("percentage_bp"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

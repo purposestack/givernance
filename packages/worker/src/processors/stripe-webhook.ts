@@ -15,6 +15,7 @@ import type { Job } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 import { env } from "../env.js";
+import { exchangeRateRedisCache } from "../lib/cache-redis.js";
 import { db, withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
 
@@ -137,6 +138,7 @@ async function handlePaymentIntentSucceeded(
   await withWorkerContext(orgId, async (tx) => {
     const exchangeRateService = new ExchangeRateService({
       apiKey: env.EXCHANGE_RATE_API_KEY,
+      cache: exchangeRateRedisCache,
       dbClient: tx,
       logger: log,
     });

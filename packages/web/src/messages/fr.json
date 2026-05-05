@@ -844,7 +844,8 @@
       "label": "Navigation des paramètres de l'organisation",
       "organization": "Organisation",
       "members": "Membres",
-      "funds": "Fonds"
+      "funds": "Fonds",
+      "currency": "Devise"
     },
     "members": {
       "title": "Membres",
@@ -1180,6 +1181,28 @@
         "load": "Impossible de charger le statut Stripe pour le moment.",
         "start": "Impossible de démarrer l'onboarding Stripe pour le moment."
       }
+    },
+    "currency": {
+      "title": "Devise de base",
+      "description": "Définissez la devise pivot utilisée pour les rapports et les agrégats multi-devises.",
+      "fields": {
+        "baseCurrency": "Devise de base",
+        "baseCurrencyPlaceholder": "Choisissez une devise",
+        "baseCurrencyHint": "Cette devise est utilisée pour agréger les dons en devises différentes.",
+        "baseCurrencyHintWithName": "{name} utilisera cette devise comme pivot pour les montants convertis."
+      },
+      "actions": {
+        "save": "Enregistrer",
+        "saving": "Enregistrement…"
+      },
+      "success": {
+        "updated": "Devise de base mise à jour."
+      },
+      "errors": {
+        "load": "Impossible de charger les paramètres de devise.",
+        "save": "Erreur lors de la sauvegarde de la devise."
+      },
+      "readOnly": "Seul un administrateur peut modifier la devise."
     }
   },
   "profile": {

@@ -20,7 +20,16 @@ import { createClientApiClient } from "@/lib/api/client-browser";
 import type { TenantCurrency } from "@/models/tenant";
 import { TenantService } from "@/services/TenantService";
 
-const TENANT_CURRENCIES: TenantCurrency[] = ["EUR", "GBP", "CHF"];
+const TENANT_CURRENCIES: TenantCurrency[] = [
+  "EUR",
+  "GBP",
+  "CHF",
+  "SEK",
+  "NOK",
+  "DKK",
+  "PLN",
+  "CZK",
+];
 
 function resolveApiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiProblem) {

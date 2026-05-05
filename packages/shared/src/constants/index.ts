@@ -5,6 +5,15 @@
  */
 
 export {
+  BASE_CURRENCIES,
+  type BaseCurrency,
+  type Currency as SupportedCurrency,
+  getCurrencySymbol,
+  isBaseCurrency,
+  isSupportedCurrency,
+  SUPPORTED_CURRENCIES,
+} from "./currencies";
+export {
   IMPERSONATION_END_REASON_VALUES,
   IMPERSONATION_MODE_VALUES,
   type ImpersonationEndReason,

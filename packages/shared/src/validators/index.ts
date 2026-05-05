@@ -2,6 +2,7 @@
 
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { BASE_CURRENCIES, SUPPORTED_CURRENCIES } from "../constants/currencies";
 import { isReservedSlug } from "../constants/reserved-slugs";
 
 export {
@@ -107,15 +108,32 @@ export const ConstituentUpdateSchema = Type.Object({
   tags: Type.Optional(Type.Array(Type.String())),
 });
 
-/** Schema for a fund allocation within a donation */
-export const DonationAllocationSchema = Type.Object({
-  fundId: Type.String({ format: "uuid" }),
-  amountCents: Type.Integer({ exclusiveMinimum: 0 }),
-});
+/**
+ * Schema for a fund allocation within a donation.
+ *
+ * Exactly one of `amountCents` (mode A — fixed amount) or `percentageBp`
+ * (mode B — basis-point split) must be supplied per row.
+ * The DB enforces the XOR constraint; this schema validates at API boundary.
+ */
+export const DonationAllocationSchema = Type.Union([
+  Type.Object({
+    fundId: Type.String({ format: "uuid" }),
+    amountCents: Type.Integer({ exclusiveMinimum: 0 }),
+  }),
+  Type.Object({
+    fundId: Type.String({ format: "uuid" }),
+    percentageBp: Type.Integer({ minimum: 1, maximum: 10000 }),
+  }),
+]);
 
-export const MULTI_CURRENCY_VALUES = ["EUR", "GBP", "CHF"] as const;
+/**
+ * @deprecated Use `BASE_CURRENCIES` from `@givernance/shared/constants` instead.
+ * `MULTI_CURRENCY_VALUES` only contained 3 currencies; `BASE_CURRENCIES` has all 8.
+ * This re-export is kept for backwards compatibility until all call-sites are migrated.
+ */
+export const MULTI_CURRENCY_VALUES = BASE_CURRENCIES;
 export const MultiCurrencySchema = Type.Union(
-  MULTI_CURRENCY_VALUES.map((currency) => Type.Literal(currency)),
+  BASE_CURRENCIES.map((currency) => Type.Literal(currency)),
   { default: "EUR" },
 );
 
@@ -124,16 +142,7 @@ export const DonationCreateSchema = Type.Object({
   constituentId: Type.String({ format: "uuid" }),
   amountCents: Type.Integer({ exclusiveMinimum: 0 }),
   currency: Type.Union(
-    [
-      Type.Literal("EUR"),
-      Type.Literal("GBP"),
-      Type.Literal("CHF"),
-      Type.Literal("SEK"),
-      Type.Literal("NOK"),
-      Type.Literal("DKK"),
-      Type.Literal("PLN"),
-      Type.Literal("CZK"),
-    ],
+    SUPPORTED_CURRENCIES.map((c) => Type.Literal(c)),
     { default: "EUR" },
   ),
   campaignId: Type.Optional(Type.String({ format: "uuid" })),
@@ -201,6 +210,12 @@ export type ConstituentCreate = Static<typeof ConstituentCreateSchema>;
 export type ConstituentUpdate = Static<typeof ConstituentUpdateSchema>;
 export type DonationCreate = Static<typeof DonationCreateSchema>;
 export type DonationAllocation = Static<typeof DonationAllocationSchema>;
+/** Helper to check if an allocation is in percentage mode */
+export function isPercentageAllocation(
+  a: DonationAllocation,
+): a is { fundId: string; percentageBp: number } {
+  return "percentageBp" in a;
+}
 export type CampaignCreate = Static<typeof CampaignCreateSchema>;
 export type CampaignUpdate = Static<typeof CampaignUpdateSchema>;
 export type CampaignPublicPage = Static<typeof CampaignPublicPageSchema>;

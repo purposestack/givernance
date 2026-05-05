@@ -1,5 +1,6 @@
 /** Tenant routes — platform-admin CRUD for organizations */
 
+import { BASE_CURRENCIES } from "@givernance/shared/constants";
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { outboxEvents, tenants } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
@@ -25,11 +26,7 @@ const CreateTenantBody = Type.Object({
   ),
 });
 
-const TenantBaseCurrencySchema = Type.Union([
-  Type.Literal("EUR"),
-  Type.Literal("GBP"),
-  Type.Literal("CHF"),
-]);
+const TenantBaseCurrencySchema = Type.Union(BASE_CURRENCIES.map((c) => Type.Literal(c)));
 
 const TenantLocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)));
 
@@ -157,7 +154,7 @@ export async function tenantRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { orgId } = request.params as { orgId: string };
       const body = request.body as {
-        baseCurrency?: "EUR" | "GBP" | "CHF";
+        baseCurrency?: (typeof BASE_CURRENCIES)[number];
         defaultLocale?: "en" | "fr";
       };
       const [updated] = await db

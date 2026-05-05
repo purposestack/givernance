@@ -1,0 +1,166 @@
+"use client";
+
+import { Lock } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "@/components/ui/toast";
+import { ApiProblem } from "@/lib/api";
+import { createClientApiClient } from "@/lib/api/client-browser";
+import type { TenantCurrency } from "@/models/tenant";
+import { TenantService } from "@/services/TenantService";
+
+const TENANT_CURRENCIES: TenantCurrency[] = [
+  "EUR",
+  "GBP",
+  "CHF",
+  "SEK",
+  "NOK",
+  "DKK",
+  "PLN",
+  "CZK",
+];
+
+function resolveApiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiProblem) {
+    return error.detail ?? error.title ?? fallback;
+  }
+  return fallback;
+}
+
+interface CurrencySettingsFormProps {
+  orgId?: string;
+  canManageTenant: boolean;
+}
+
+export function CurrencySettingsForm({ orgId, canManageTenant }: CurrencySettingsFormProps) {
+  const t = useTranslations("settings.currency");
+  const router = useRouter();
+  const [baseCurrency, setBaseCurrency] = useState<TenantCurrency>("EUR");
+  const [initialCurrency, setInitialCurrency] = useState<TenantCurrency>("EUR");
+  const [tenantName, setTenantName] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!orgId || !canManageTenant) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+
+    async function loadTenant(nextOrgId: string) {
+      try {
+        const tenant = await TenantService.getTenant(createClientApiClient(), nextOrgId);
+        if (!active) return;
+        setTenantName(tenant.name);
+        setBaseCurrency(tenant.baseCurrency);
+        setInitialCurrency(tenant.baseCurrency);
+      } catch (error) {
+        if (!active) return;
+        setErrorMessage(resolveApiErrorMessage(error, t("errors.load")));
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadTenant(orgId);
+
+    return () => {
+      active = false;
+    };
+  }, [canManageTenant, t, orgId]);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!orgId || !canManageTenant || saving) return;
+
+    setSaving(true);
+    setErrorMessage(null);
+
+    try {
+      if (baseCurrency !== initialCurrency) {
+        const tenant = await TenantService.updateTenant(createClientApiClient(), orgId, {
+          baseCurrency,
+        });
+        setTenantName(tenant.name);
+        setBaseCurrency(tenant.baseCurrency);
+        setInitialCurrency(tenant.baseCurrency);
+        toast.success(t("success.updated"));
+        router.refresh();
+      }
+    } catch (error) {
+      const message = resolveApiErrorMessage(error, t("errors.save"));
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const isDirty = baseCurrency !== initialCurrency;
+
+  return (
+    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+      <div className="max-w-3xl">
+        <h2 className="font-heading text-2xl leading-tight text-on-surface">{t("title")}</h2>
+        <p className="mt-2 text-sm leading-6 text-on-surface-variant">{t("description")}</p>
+      </div>
+
+      {canManageTenant && orgId ? (
+        <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+          <div className="max-w-xs space-y-2">
+            <label htmlFor="base-currency" className="text-sm font-medium text-on-surface">
+              {t("fields.baseCurrency")}
+            </label>
+            <Select
+              value={baseCurrency}
+              onValueChange={(value) => setBaseCurrency(value as TenantCurrency)}
+              disabled={loading || saving}
+            >
+              <SelectTrigger id="base-currency" aria-label={t("fields.baseCurrency")}>
+                <SelectValue placeholder={t("fields.baseCurrencyPlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {TENANT_CURRENCIES.map((currency) => (
+                  <SelectItem key={currency} value={currency}>
+                    {currency}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-on-surface-variant">
+              {tenantName
+                ? t("fields.baseCurrencyHintWithName", { name: tenantName })
+                : t("fields.baseCurrencyHint")}
+            </p>
+          </div>
+
+          {errorMessage ? <p className="text-sm text-error">{errorMessage}</p> : null}
+
+          <div className="flex items-center justify-end gap-3">
+            <Button type="submit" disabled={loading || saving || !isDirty}>
+              {saving ? t("actions.saving") : t("actions.save")}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-surface-container px-4 py-3 text-sm text-on-surface-variant">
+          <Lock size={16} aria-hidden="true" />
+          <span>{t("readOnly")}</span>
+        </div>
+      )}
+    </section>
+  );
+}

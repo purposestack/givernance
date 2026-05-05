@@ -25,8 +25,21 @@ interface ExchangeRateCacheEntry {
   rate: number | null;
 }
 
+/**
+ * Injectable Redis-backed cache so multiple API/worker processes share the same
+ * rate data instead of each keeping a separate in-process Map.
+ * The shared package must not import ioredis directly (ADR-013 type boundary);
+ * the caller (API or worker) wires in the concrete Redis commands.
+ */
+export interface ExchangeRateCache {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ttlSeconds: number): Promise<void>;
+  del(key: string): Promise<void>;
+}
+
 export interface ExchangeRateServiceOptions {
   apiKey?: string;
+  cache?: ExchangeRateCache;
   cacheTtlMs?: number;
   dbClient: DbClient;
   fetchImpl?: typeof fetch;
@@ -36,7 +49,10 @@ export interface ExchangeRateServiceOptions {
 
 const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 2_000;
+/** Process-local fallback cache — used only when no Redis cache is injected */
 const exchangeRateApiCache = new Map<string, ExchangeRateCacheEntry>();
+
+const REDIS_CACHE_TTL_SECONDS = 3600;
 
 function normalizeCurrency(currency: string) {
   return currency.trim().toUpperCase();
@@ -90,6 +106,7 @@ export function clearExchangeRateApiCache() {
 
 export class ExchangeRateService {
   private readonly apiKey?: string;
+  private readonly redisCache?: ExchangeRateCache;
   private readonly cacheTtlMs: number;
   private readonly dbClient: DbClient;
   private readonly fetchImpl: typeof fetch;
@@ -98,6 +115,7 @@ export class ExchangeRateService {
 
   constructor(options: ExchangeRateServiceOptions) {
     this.apiKey = options.apiKey;
+    this.redisCache = options.cache;
     this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
     this.dbClient = options.dbClient;
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -135,7 +153,17 @@ export class ExchangeRateService {
       return { rate: localRate, source: "local_exact" };
     }
 
-    const cachedRate = readCachedRate(source, target, date);
+    // Redis cache wins over the in-process Map when available
+    if (this.redisCache) {
+      const redisKey = `fx:${source}:${target}:${date}`;
+      const redisHit = await this.redisCache.get(redisKey);
+      if (redisHit) {
+        const redisRate = parseRate(redisHit);
+        if (redisRate) return { rate: redisRate, source: "api_cache" };
+      }
+    }
+
+    const cachedRate = this.redisCache ? null : readCachedRate(source, target, date);
     if (cachedRate?.rate) {
       return { rate: cachedRate.rate, source: "api_cache" };
     }
@@ -226,17 +254,28 @@ export class ExchangeRateService {
           },
         });
 
-      exchangeRateApiCache.set(getCacheKey(source, target, date), {
-        expiresAt: Date.now() + this.cacheTtlMs,
-        rate,
-      });
+      if (this.redisCache) {
+        const redisKey = `fx:${source}:${target}:${date}`;
+        await this.redisCache
+          .set(redisKey, toStoredRate(rate), REDIS_CACHE_TTL_SECONDS)
+          .catch(() => {
+            /* non-fatal: Redis write failure degrades to DB lookup next request */
+          });
+      } else {
+        exchangeRateApiCache.set(getCacheKey(source, target, date), {
+          expiresAt: Date.now() + this.cacheTtlMs,
+          rate,
+        });
+      }
 
       return rate;
     } catch (error) {
-      exchangeRateApiCache.set(getCacheKey(source, target, date), {
-        expiresAt: Date.now() + this.cacheTtlMs,
-        rate: null,
-      });
+      if (!this.redisCache) {
+        exchangeRateApiCache.set(getCacheKey(source, target, date), {
+          expiresAt: Date.now() + this.cacheTtlMs,
+          rate: null,
+        });
+      }
 
       this.logger.warn(
         {
