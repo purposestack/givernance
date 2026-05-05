@@ -83,8 +83,8 @@ const MM_TO_PT = 2.834645;
 const ADDRESS_BLOCK_X = 110 * MM_TO_PT;
 const ADDRESS_BLOCK_Y = 60 * MM_TO_PT;
 const ADDRESS_BLOCK_WIDTH = 80 * MM_TO_PT;
-/** Y-coordinate where the bottom-half (appeal content) starts. */
-const BOTTOM_HALF_TOP = 158 * MM_TO_PT;
+/** Y-coordinate where the campaign content starts (just below address). */
+const CONTENT_TOP = 100 * MM_TO_PT;
 
 export interface CampaignLetterRecipient {
   firstName: string;
@@ -188,9 +188,12 @@ export async function createCampaignLetterPdfStream(
     doc.restore();
   }
 
-  // ── BOTTOM HALF — APPEAL (visible after unfolding) ────────────────────
+  // ── APPEAL CONTENT (flows continuously from just below the address) ──
+  // Starts at y=100mm; the body crosses the fold seamlessly so when the
+  // donor unfolds the letter it reads as one continuous A4 page. See the
+  // api lockstep duplicate for the full rationale.
   doc.x = PAGE_MARGIN;
-  doc.y = BOTTOM_HALF_TOP;
+  doc.y = CONTENT_TOP;
 
   // Campaign title
   doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(16);

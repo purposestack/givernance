@@ -103,21 +103,19 @@ The page layout is split into two zones along the fold:
 
 ```
 ┌───────────── A4 portrait (210×297mm) ─────────────┐
-│                                                   │
-│             [ ORGANISATION NAME — bold ]          │
+│             [ ORGANISATION NAME — bold ]          │  y=25mm
 │             [ Mission summary — italic ]          │
 │                                                   │
-│                                                   │
-│                          ┌─────────────────────┐  │
-│                          │ Recipient name      │  │   <-- C5 window
-│                          │ Street              │  │       zone
+│                          ┌─────────────────────┐  │  y=60mm
+│                          │ Recipient name      │  │  ← C5 window
+│                          │ Street              │  │     zone
 │                          │ Postal code · City  │  │
 │                          └─────────────────────┘  │
 │                                                   │
-│ - - - - - - - - - - FOLD LINE (148.5mm) - - - - - │
-│                                                   │
-│ Campaign title                                    │
+│ Campaign title                                    │  y=100mm
 │ Campaign description (operator's words)           │
+│                                                   │
+│ - - - - - - - - - - fold line (148.5mm) - - - - - │
 │                                                   │
 │ Bonjour Jean Dupont,                              │
 │ [thanks transition]                               │
@@ -132,17 +130,20 @@ The page layout is split into two zones along the fold:
 └───────────────────────────────────────────────────┘
 ```
 
-**Top half (cover, visible through C5 window):**
+The fold is the physical crease that aligns the address with the C5 window envelope; the body **crosses the fold continuously** so when the donor unfolds the letter it reads as one A4 page from top to bottom. Forcing all appeal content below the fold (the original layout) left ~50mm of dead-zone whitespace between the address and the campaign title — the current layout starts the title at y=100mm, just below the address block.
+
+**Cover side (visible through C5 window before unfolding):**
 
 | Element | Position | Notes |
 |---|---|---|
 | Org name | Centered, y=25mm | Bold 22pt — primary visual identity |
 | Mission | Centered, italic, under name | 10pt grey — collapses when `tenants.mission` is empty |
-| Recipient address block | x=110mm, y=60mm, 80×35mm | Right-of-center, middle of top half — aligns with the C5 window cut |
+| Recipient address block | x=110mm, y=60mm, 80×35mm | Right-of-center — aligns with the C5 window cut |
+| **Preview watermark** (operator preview only) | Top of page, y=10mm, fixed-position | Italic 8pt — drawn before flow content so a long body never pushes it onto a 2nd page |
 
-**Bottom half (appeal, visible after unfolding):**
+**Body (flows top-down from y=100mm, crosses the fold):**
 
-Campaign title → campaign description → salutation → thanks transition → call to scan → QR panel. Content flows top-down from y=158mm; PDFKit auto-paginates to a 2nd A4 sheet if a particularly long description pushes the QR below the bottom margin (an explicit length advisory will land in the operator UI in a follow-up).
+Campaign title → campaign description → salutation → thanks transition → call to scan → QR panel. The full appeal fits on a single A4 page for typical descriptions (up to ~50mm of body text); PDFKit auto-paginates only on extreme outliers, in which case the operator should shorten the campaign description.
 
 ### Recipient address block fields
 

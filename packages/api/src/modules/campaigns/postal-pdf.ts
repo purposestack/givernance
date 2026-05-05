@@ -113,15 +113,18 @@ const QR_SIZE = 140;
 //
 // Address block lives in the top half, biased toward the right and
 // vertically centered around the C5 window position. 1mm = 2.834645pt.
-// Geometry: fold line at A4 midpoint (148.5mm); block lives in the top
-// half (cover) at right-of-center, vertically centered around the C5
-// window position; appeal content starts at 158mm (just below the fold).
+// Geometry: fold line at A4 midpoint (148.5mm). Address block sits in the
+// top half (cover) at right-of-center, vertically centered around the C5
+// envelope window. Campaign content flows starting just below the
+// address block at 100mm — the body crosses the fold continuously, which
+// reads as one A4 page when the donor unfolds the letter and avoids a
+// 50mm dead zone between the address and the campaign title.
 const MM_TO_PT = 2.834645;
 const ADDRESS_BLOCK_X = 110 * MM_TO_PT; // ≈ 312pt
 const ADDRESS_BLOCK_Y = 60 * MM_TO_PT; // ≈ 170pt
 const ADDRESS_BLOCK_WIDTH = 80 * MM_TO_PT; // ≈ 227pt
-/** Y-coordinate where the bottom-half (appeal content) starts. */
-const BOTTOM_HALF_TOP = 158 * MM_TO_PT; // ≈ 448pt — small gap below fold
+/** Y-coordinate where the campaign content starts (just below address). */
+const CONTENT_TOP = 100 * MM_TO_PT; // ≈ 283pt
 
 /**
  * Truthy when the recipient has the minimum address fields needed to
@@ -222,6 +225,24 @@ async function buildPostalLetterDoc(
     },
   });
 
+  // ── Preview watermark (fixed-position top banner) ────────────────────
+  // Rendered as a fixed-position element BEFORE any flow content so it
+  // never causes overflow to a 2nd page when the body is long. Drawn
+  // with save()/restore() so the cursor stays put for the rest of the
+  // layout. Production exports never set `preview: true`.
+  if (input.preview) {
+    doc
+      .save()
+      .fillColor("#b45309")
+      .font("Helvetica-Oblique")
+      .fontSize(8)
+      .text(copyForLocale(input.locale).previewWatermark, PAGE_MARGIN, 10 * MM_TO_PT, {
+        align: "center",
+        width: CONTENT_WIDTH,
+      })
+      .restore();
+  }
+
   // ── TOP HALF — COVER (visible through C5 window after fold) ──────────
   //
   // Three elements live above the fold line (y < 148.5mm):
@@ -272,15 +293,17 @@ async function buildPostalLetterDoc(
     doc.restore();
   }
 
-  // ── BOTTOM HALF — APPEAL (visible after unfolding) ────────────────────
+  // ── APPEAL CONTENT (flows continuously from just below the address) ──
   //
-  // Park the cursor at the start of the bottom panel, then flow content
-  // top-down: campaign title, description (operator's words, NEW location
-  // — was previously buried in the body), salutation, thanks, call-to-scan,
-  // QR. PDFKit will auto-paginate if a particularly long description
-  // pushes the QR panel below the page margin.
+  // Starts at y=100mm — just below the address block. The body crosses
+  // the fold line (148.5mm) seamlessly so when the donor unfolds the
+  // letter it reads as one continuous A4 page. Avoids the dead-zone
+  // problem of forcing content to start below the fold (the previous
+  // 158mm offset left ~50mm of awkward whitespace between the address
+  // and the campaign title). Everything fits on a single A4: title +
+  // description + salutation + thanks + call-to-scan + QR panel.
   doc.x = PAGE_MARGIN;
-  doc.y = BOTTOM_HALF_TOP;
+  doc.y = CONTENT_TOP;
 
   // Campaign title
   doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(16);
@@ -372,17 +395,9 @@ async function buildPostalLetterDoc(
       width: CONTENT_WIDTH,
     });
 
-  if (input.preview) {
-    doc
-      .moveDown(0.4)
-      .fillColor("#b45309")
-      .font("Helvetica-Oblique")
-      .fontSize(8)
-      .text(copy.previewWatermark, {
-        align: "center",
-        width: CONTENT_WIDTH,
-      });
-  }
+  // Preview watermark already rendered at the top of the page (fixed
+  // position, before flow content) so the QR panel reaches the bottom
+  // of the page without ever forcing a 2nd-page spillover.
 
   return doc;
 }
