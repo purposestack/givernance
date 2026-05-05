@@ -269,7 +269,7 @@ flowchart LR
     end
 
     subgraph Web["Next.js (BFF / proxy)"]
-        Page[/p/:id route]
+        Page["/p/:id route"]
     end
 
     subgraph API["Fastify API"]
