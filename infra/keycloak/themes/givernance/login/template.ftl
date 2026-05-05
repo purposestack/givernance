@@ -77,7 +77,13 @@
     <div class="gv-auth-header">
       <#-- M1: Only render the logo when the URL starts with https:// to prevent
            loading from arbitrary origins. Add referrerpolicy + crossorigin to
-           avoid leaking the Keycloak auth URL to the logo's origin server. -->
+           avoid leaking the Keycloak auth URL to the logo's origin server.
+           DEV NOTE: in local dev the branding bucket is served from
+           `http://localhost:9000/branding/...` — the HTTPS guard fails
+           closed and the org logo simply doesn't render on the dev
+           Keycloak login screen. This is intentional; production uses
+           Scaleway Object Storage over HTTPS so the guard passes. -->
+
       <#if gvOrgLogoUrl?has_content && gvOrgLogoUrl?starts_with("https://")>
         <img src="${gvOrgLogoUrl}" alt="${gvOrgName}" class="gv-org-logo"
              referrerpolicy="no-referrer" crossorigin="anonymous">

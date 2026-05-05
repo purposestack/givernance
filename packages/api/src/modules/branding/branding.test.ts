@@ -235,13 +235,16 @@ describe("Branding org-logo upload", () => {
     expect(body.data.originalContentType).toBe("image/png");
     expect(body.data.originalUrl).toMatch(/\/branding\//);
 
-    // Outbox events were enqueued.
+    // Outbox events were enqueued. Only `branding.process_asset` —
+    // `branding.activate_logo` is now emitted by the worker AFTER the
+    // pipeline flips the row to `status='ready'` (PR #287 review,
+    // blocker 3) so ordering is causal at the DB level.
     const outbox = await db.execute<{ type: string }>(
       sql`SELECT type FROM outbox_events WHERE tenant_id = ${ORG_A} AND payload->>'assetId' = ${body.data.id}`,
     );
     const types = (outbox.rows ?? []).map((r) => r.type).sort();
     expect(types).toContain("branding.process_asset");
-    expect(types).toContain("branding.activate_logo");
+    expect(types).not.toContain("branding.activate_logo");
   });
 
   it("GET /v1/branding/org-logo enforces RLS isolation between tenants", async () => {
@@ -251,6 +254,46 @@ describe("Branding org-logo upload", () => {
       method: "GET",
       url: "/v1/branding/org-logo",
       headers: authHeader(tokenB),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: unknown }>();
+    expect(body.data).toBeNull();
+  });
+
+  it("RLS isolation is symmetric: org B uploads do not leak to org A", async () => {
+    // Mirror of the previous test (PR #287 review, minor 8). The first
+    // direction caught a hypothetical "tenant A's row visible to tenant
+    // B" leak; this case catches the symmetric "tenant B uploads, but
+    // tenant A's GET reads B's row" leak. Both are necessary because
+    // a typo in the RLS predicate (`org_id = ANY(...)` vs.
+    // `org_id = current_org()`) could fail in only one direction.
+    await db.execute(sql`UPDATE tenants SET logo_asset_id = NULL WHERE id = ${ORG_A}`);
+    await db.execute(sql`UPDATE tenants SET logo_asset_id = NULL WHERE id = ${ORG_B}`);
+    await db.execute(sql`DELETE FROM org_branding_assets WHERE org_id = ${ORG_A}`);
+    await db.execute(sql`DELETE FROM org_branding_assets WHERE org_id = ${ORG_B}`);
+
+    const tokenB = signTokenB(app);
+    const upload = multipartUpload({
+      filename: "logo.png",
+      contentType: "image/png",
+      body: TINY_PNG,
+    });
+    const uploadRes = await app.inject({
+      method: "POST",
+      url: "/v1/branding/org-logo",
+      headers: { ...authHeader(tokenB), ...upload.headers },
+      payload: upload.payload,
+    });
+    expect(uploadRes.statusCode).toBe(201);
+
+    // Org A's GET must NOT see org B's row — RLS predicate must
+    // exclude the row at the SQL level, not just at the application
+    // serialisation layer.
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/branding/org-logo",
+      headers: authHeader(tokenA),
     });
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: unknown }>();

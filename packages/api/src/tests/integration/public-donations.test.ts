@@ -58,6 +58,12 @@ afterAll(async () => {
   await db.execute(
     sql`DELETE FROM campaigns WHERE org_id = ${ORG_A} AND name LIKE 'Public Page Test%'`,
   );
+  // Belt-and-suspenders: the Epic-#286 logo tests clean up after
+  // themselves in their own `finally`, but a mid-test failure could
+  // leave a row + dangling tenants.logo_asset_id behind. Clearing here
+  // keeps the suite re-runnable on a long-lived dev DB.
+  await db.execute(sql`UPDATE tenants SET logo_asset_id = NULL WHERE id = ${ORG_A}`);
+  await db.execute(sql`DELETE FROM org_branding_assets WHERE org_id = ${ORG_A}`);
   await app.close();
 });
 
@@ -377,6 +383,125 @@ describe("GET /v1/public/campaigns/:id/page", () => {
     }>();
     expect(body.detail).toContain("Validation failed");
     expect(body.fieldErrors?.id).toBeDefined();
+  });
+
+  // ── Org branding (Epic #286) ────────────────────────────────────────────
+  // The donor page surfaces the active org logo so postal-letter →
+  // donation-page brand continuity holds (issue's headline value). Two
+  // shapes to lock in: (a) `organisationLogoUrl` is the brandingPublicUrl
+  // of the `public-hero` variant when a ready logo is configured, and
+  // (b) it is `null` when the tenant has no `logo_asset_id` set.
+  // `organisationId` is always present so the frontend can seed the
+  // deterministic colour of the initial-letter fallback regardless of
+  // logo state.
+  describe("org branding payload (Epic #286)", () => {
+    it("exposes organisationLogoUrl when a ready logo asset is active", async () => {
+      const campaign = await createTestCampaign("Public Page Test Logo Active");
+      const token = signToken(app);
+
+      // Insert a logo asset row in `status='ready'` with a valid
+      // variants jsonb keyed by `public-hero` and point the tenant at
+      // it. The branding upload pipeline normally drives this from the
+      // worker; the test substitutes the pipeline output directly so we
+      // exercise the public-page query in isolation.
+      const heroKey = `${ORG_A}/logo/test-hero/public-hero.webp`;
+      const inserted = await db.execute<{ id: string }>(sql`
+        INSERT INTO org_branding_assets (
+          org_id, asset_type, status, original_key, original_content_type,
+          variants
+        ) VALUES (
+          ${ORG_A},
+          'org_logo',
+          'ready',
+          ${`${ORG_A}/logo/test-hero/original.png`},
+          'image/png',
+          ${JSON.stringify({
+            "public-hero": {
+              key: heroKey,
+              contentType: "image/webp",
+              width: 800,
+              height: 800,
+            },
+          })}::jsonb
+        )
+        RETURNING id
+      `);
+      const assetId = inserted.rows?.[0]?.id;
+      expect(assetId).toBeDefined();
+      await db.execute(sql`UPDATE tenants SET logo_asset_id = ${assetId} WHERE id = ${ORG_A}`);
+
+      try {
+        await app.inject({
+          method: "PUT",
+          url: `/v1/campaigns/${campaign.id}/public-page`,
+          headers: authHeader(token),
+          payload: { title: "Logo Campaign", status: "published" },
+        });
+
+        const res = await app.inject({
+          method: "GET",
+          url: `/v1/public/campaigns/${campaign.id}/page`,
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json<{
+          data: {
+            organisationId: string;
+            organisationLogoUrl: string | null;
+          };
+        }>();
+        // organisationId is the tenant uuid — the donor frontend uses
+        // it as the seed for the deterministic-colour initial-letter
+        // avatar fallback.
+        expect(body.data.organisationId).toBe(ORG_A);
+        // organisationLogoUrl is the brandingPublicUrl of the
+        // `public-hero` variant key. The test env points
+        // S3_ENDPOINT/S3_BRANDING_BUCKET at MinIO; the suffix should
+        // be the variant key verbatim.
+        expect(body.data.organisationLogoUrl).not.toBeNull();
+        expect(body.data.organisationLogoUrl).toContain(heroKey);
+      } finally {
+        await db.execute(sql`UPDATE tenants SET logo_asset_id = NULL WHERE id = ${ORG_A}`);
+        if (assetId) {
+          await db.execute(sql`DELETE FROM org_branding_assets WHERE id = ${assetId}`);
+        }
+      }
+    });
+
+    it("returns null organisationLogoUrl when the tenant has no logo configured", async () => {
+      // Belt-and-suspenders — the previous test cleans up after itself
+      // in `finally`, but the cache layer (30s TTL) could carry a stale
+      // payload across describe blocks; work on a fresh campaign id so
+      // we hit `loadPublicPage` fresh.
+      await db.execute(sql`UPDATE tenants SET logo_asset_id = NULL WHERE id = ${ORG_A}`);
+      const campaign = await createTestCampaign("Public Page Test Logo Absent");
+      const token = signToken(app);
+
+      await app.inject({
+        method: "PUT",
+        url: `/v1/campaigns/${campaign.id}/public-page`,
+        headers: authHeader(token),
+        payload: { title: "No Logo Campaign", status: "published" },
+      });
+
+      const res = await app.inject({
+        method: "GET",
+        url: `/v1/public/campaigns/${campaign.id}/page`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{
+        data: {
+          organisationId: string;
+          organisationLogoUrl: string | null;
+        };
+      }>();
+      expect(body.data.organisationId).toBe(ORG_A);
+      // No logo configured → frontend renders the initial-letter
+      // fallback. The shape stays consistent (`null`, not `undefined`)
+      // so the consumer doesn't have to handle the missing-key case.
+      expect(body.data.organisationLogoUrl).toBeNull();
+    });
   });
 });
 

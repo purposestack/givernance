@@ -260,6 +260,12 @@ When a variant's spec changes (e.g. `sidebar` from 128×128 to 256×256 for a fu
 
 There is **no `variants_schema_version` column**, no migration, no versioning stamp. The strategy is captured in [ADR-024](./adrs/adr-024-image-processing-pipeline.md).
 
+### 8.1 Mid-export re-upload semantics
+
+Logo URLs are content-addressed (the `{logo_id}` segment), so an operator who uploads a new logo while a postal export is mid-run **does NOT retroactively update letters already serialised into the in-flight ZIP**. The worker resolves `tenants.logo_asset_id` once at job start and threads the resulting `pdf-letterhead` buffer through every recipient via the LRU cache. New letters generated AFTER the next export run pick up the new logo.
+
+The donor-facing surfaces (sidebar, public donation page, Keycloak login) DO converge on the new logo as soon as the activation event lands — only the in-flight bulk PDF render is "frozen" by design. Operators expecting a hot-swap of an in-progress export should cancel the export, re-upload, and re-trigger; the alternative (mid-run re-resolution) would produce a ZIP with two visually different letterheads, which is worse than either option.
+
 ## 9. Future work (not in MVP)
 
 Explicitly deferred so prospects, operators, and future-self don't assume any of this ships now:

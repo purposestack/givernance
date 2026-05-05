@@ -117,8 +117,13 @@ export function sanitiseSvg(input: Buffer): Buffer {
       RETURN_TRUSTED_TYPE: false,
       // Belt-and-suspenders: forbid the constructs we already
       // pre-checked, in case a future DOMPurify version stops
-      // stripping them by default.
-      FORBID_TAGS: ["script", "foreignObject"],
+      // stripping them by default. `<image>` is added because the
+      // pipeline always rasterises SVG to PNG/WebP — any inline
+      // `<image href="data:...">` would be dead bytes anyway, and
+      // letting it through means an attacker-controlled raster could
+      // ride the operator's brand bucket as if it were the org logo
+      // (low-severity phishing surface flagged in the PR #287 review).
+      FORBID_TAGS: ["script", "foreignObject", "image"],
       FORBID_ATTR: ["onload", "onclick", "onerror", "onmouseover", "onfocus", "onblur"],
     });
   } catch (err) {

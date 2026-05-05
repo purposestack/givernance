@@ -14,13 +14,13 @@
  * the previous (incomplete) variant set without leaving orphans.
  */
 
-import type { BrandingProcessAssetJob } from "@givernance/shared/jobs";
+import { BRANDING_EVENT_TYPES, type BrandingProcessAssetJob } from "@givernance/shared/jobs";
 import {
   type BrandingAssetVariants,
   type BrandingVariantKey,
   orgBrandingAssets,
+  outboxEvents,
 } from "@givernance/shared/schema";
-// no extra imports
 import type { Job } from "bullmq";
 import { and, eq } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
@@ -98,7 +98,15 @@ export async function processBrandingAsset(
       };
     }
 
-    // ── Flip row to ready ────────────────────────────────────────────
+    // ── Flip row to ready + enqueue activation ───────────────────────
+    // Same transaction as the row flip so the relay can never deliver
+    // `branding.activate_logo` before the row is observably `ready`.
+    // This replaces the previous design where the API handler enqueued
+    // both events at upload time and relied on the activate processor
+    // to re-queue itself if it ran first — BullMQ treats a
+    // `{ activated: false }` return as success (no retry), so an out-
+    // of-order delivery silently stranded the tenant pointer at NULL.
+    // PR #287 review (blocker 3).
     await withWorkerContext(orgId, async (tx) => {
       await tx
         .update(orgBrandingAssets)
@@ -110,11 +118,18 @@ export async function processBrandingAsset(
           updatedAt: new Date(),
         })
         .where(and(eq(orgBrandingAssets.id, assetId), eq(orgBrandingAssets.orgId, orgId)));
+
+      await tx.insert(outboxEvents).values({
+        tenantId: orgId,
+        type: BRANDING_EVENT_TYPES.ACTIVATE_LOGO,
+        payload: { assetId, orgId },
+        metadata: traceparent ? { traceparent } : null,
+      });
     });
 
     log.info(
       { assetId, sourceWidth: result.sourceWidth, sourceHeight: result.sourceHeight },
-      "Branding pipeline ready",
+      "Branding pipeline ready; activation enqueued",
     );
     return { status: "ready" };
   } catch (err) {

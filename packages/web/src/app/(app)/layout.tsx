@@ -1,9 +1,11 @@
 import { cache } from "react";
 import { AppShell } from "@/components/layout";
 import { Toaster } from "@/components/ui/toast";
+import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { AuthProvider } from "@/lib/auth";
 import { requireAuth } from "@/lib/auth/guards";
+import type { OrgLogo } from "@/models/branding";
 
 /**
  * Authenticated app layout — wraps all protected routes with:
@@ -39,13 +41,51 @@ const fetchMeWithMembership = cache(async () => {
   };
 });
 
+/**
+ * Resolve the active org logo server-side (Epic #286 / PR #287 review,
+ * major 4). The Sidebar + AddLogoBanner used to each fetch this from
+ * the browser on every navigation, costing 2 GETs per nav and flashing
+ * the initial-letter avatar before the sidebar logo arrived. Hoisting
+ * the fetch into the (app) layout removes both the per-nav refetch and
+ * the flash.
+ *
+ * `React.cache` dedupes the call across the layout tree within a single
+ * server render (the LogoUploadCard sits below this layout but it owns
+ * its own polling + upload state, so it intentionally still fetches
+ * client-side; the initial paint there reuses this server result via
+ * the `initialLogo` prop).
+ *
+ * Returns `null` for super-admins (no orgId) and on any failure path —
+ * the UI falls back to the InitialLetterAvatar.
+ */
+const fetchOrgLogo = cache(async (orgId: string | undefined): Promise<OrgLogo | null> => {
+  if (!orgId) return null;
+  try {
+    const api = await createServerApiClient();
+    const raw = await api.get<{ data: OrgLogo | null } | OrgLogo | null>("/v1/branding/org-logo");
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw === "object" && "data" in raw) {
+      return (raw.data ?? null) as OrgLogo | null;
+    }
+    return raw as OrgLogo;
+  } catch (err) {
+    // Treat 404s + transient failures as "no logo" — never block the
+    // shell's render on a branding fetch.
+    if (err instanceof ApiProblem && err.status === 404) return null;
+    return null;
+  }
+});
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const auth = await requireAuth();
   const isSuperAdmin = auth.roles.includes("super_admin");
 
   const userName = auth.firstName ? `${auth.firstName} ${auth.lastName ?? ""}`.trim() : auth.email;
 
-  const { me, membershipCount } = await fetchMeWithMembership();
+  const [{ me, membershipCount }, orgLogo] = await Promise.all([
+    fetchMeWithMembership(),
+    fetchOrgLogo(auth.orgId),
+  ]);
 
   // Broken state: a non-super-admin reached the authenticated layout but
   // we couldn't resolve their tenant memberships. Two failure modes:
@@ -91,6 +131,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         isSuperAdmin={auth.roles.includes("super_admin")}
         orgId={auth.orgId}
         canManageBranding={auth.roles.includes("org_admin")}
+        orgLogo={orgLogo}
       >
         {children}
       </AppShell>

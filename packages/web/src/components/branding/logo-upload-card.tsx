@@ -18,9 +18,20 @@ const ACCEPTED_INPUT_ATTR = ACCEPTED_MIME_TYPES.join(",");
 const MAX_RASTER_BYTES = 5 * 1024 * 1024; // 5 MB
 const MAX_SVG_BYTES = 1 * 1024 * 1024; // 1 MB
 
-const POLL_INTERVAL_MS = 750;
+/**
+ * Polling cadence (PR #287 review, minor 12). The previous fixed 750 ms
+ * interval issued up to 80 GETs before hitting the 60s ceiling. Exponential
+ * backoff capped at 5 s yields ~10 GETs across the same window — the
+ * pipeline almost always finishes within the first 2-3 ticks anyway.
+ */
+const POLL_BASE_MS = 750;
+const POLL_MAX_MS = 5_000;
 /** Hard ceiling so a stuck variant render doesn't block the UI forever. */
 const POLL_TIMEOUT_MS = 60_000;
+
+function pollDelayMs(attempts: number): number {
+  return Math.min(POLL_BASE_MS * 2 ** Math.min(attempts, 4), POLL_MAX_MS);
+}
 
 interface LogoUploadCardProps {
   /** Org name for the initial-letter fallback. */
@@ -79,11 +90,13 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
   useEffect(() => {
     if (state.kind !== "processing") return;
     let cancelled = false;
+    let attempts = 0;
     const startedAt = Date.now();
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const tick = async () => {
       if (cancelled) return;
+      attempts += 1;
       try {
         const logo = await BrandingService.getOrgLogo();
         if (cancelled) return;
@@ -100,18 +113,18 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
           setState({ kind: "error", message: t("errors.uploadFailed") });
           return;
         }
-        timer = setTimeout(tick, POLL_INTERVAL_MS);
+        timer = setTimeout(tick, pollDelayMs(attempts));
       } catch {
         if (cancelled) return;
         if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
           setState({ kind: "error", message: t("errors.uploadFailed") });
           return;
         }
-        timer = setTimeout(tick, POLL_INTERVAL_MS);
+        timer = setTimeout(tick, pollDelayMs(attempts));
       }
     };
 
-    timer = setTimeout(tick, POLL_INTERVAL_MS);
+    timer = setTimeout(tick, pollDelayMs(0));
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
@@ -162,7 +175,7 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
     void handleFile(file);
   };
 
-  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const onDrop = (event: React.DragEvent<HTMLButtonElement>) => {
     event.preventDefault();
     setIsDragOver(false);
     if (!canManageBranding) return;
@@ -186,13 +199,6 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
     fileInputRef.current?.click();
   };
 
-  const onKeyDownDropzone = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      triggerPicker();
-    }
-  };
-
   // ── Derived UI helpers ──────────────────────────────────────────────
   const currentLogo = state.kind === "ready" ? state.logo : null;
   const isBusy = state.kind === "uploading" || state.kind === "processing";
@@ -202,10 +208,10 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         {/* Preview / fallback */}
         <div className="flex shrink-0 items-center justify-center">
-          {currentLogo ? (
+          {currentLogo && currentLogo.variants?.preview ? (
             <div className="relative h-24 w-24 overflow-hidden rounded-2xl border border-outline-variant bg-surface-container">
               <Image
-                src={currentLogo.variants.preview}
+                src={currentLogo.variants.preview.url}
                 alt={t("previewAlt", { orgName })}
                 fill
                 sizes="96px"
@@ -233,60 +239,54 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
 
           {canManageBranding ? (
             <>
-              {/* Drop zone (always visible — drag-drop AND button per universal best practice).
-                  biome-ignore lint/a11y/useSemanticElements: native <button> cannot contain the
-                  nested <Button> + <input> children; keep the role="button" interactive div. */}
-              <div
-                role="button"
-                tabIndex={canManageBranding && !isBusy ? 0 : -1}
-                aria-disabled={!canManageBranding || isBusy}
+              {/* Drop zone — the entire affordance is one semantic <button>
+                  (PR #287 review, minor 11). The hidden <input type="file">
+                  is hoisted as a sibling so the button can stay a real
+                  <button> element (browsers refuse `<button><input/></button>`
+                  in some HTML5 parsers). Drag handlers work on a <button>
+                  exactly the same as on a <div>. */}
+              <input
+                ref={fileInputRef}
+                id={inputId}
+                type="file"
+                accept={ACCEPTED_INPUT_ATTR}
+                onChange={onInputChange}
+                className="sr-only"
+                aria-label={t("selectFile")}
+                tabIndex={-1}
+              />
+              <button
+                type="button"
+                disabled={isBusy}
                 aria-controls={inputId}
                 aria-label={t("dropzonePrimary")}
-                onClick={() => !isBusy && triggerPicker()}
-                onKeyDown={onKeyDownDropzone}
+                onClick={triggerPicker}
                 onDragOver={(e) => {
                   e.preventDefault();
                   if (!isBusy) setIsDragOver(true);
                 }}
                 onDragLeave={() => setIsDragOver(false)}
                 onDrop={onDrop}
-                className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors duration-normal ease-out focus-visible:outline-none focus-visible:shadow-ring ${
+                className={`flex w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors duration-normal ease-out focus-visible:outline-none focus-visible:shadow-ring ${
                   isDragOver
                     ? "border-primary bg-primary-50/40"
                     : "border-outline-variant bg-surface"
                 } ${isBusy ? "pointer-events-none opacity-60" : "cursor-pointer hover:border-primary"}`}
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
                   <ImagePlus size={20} aria-hidden="true" />
-                </div>
-                <div className="space-y-1">
-                  <p className="font-medium text-on-surface">{t("dropzonePrimary")}</p>
-                  <p className="text-xs text-on-surface-variant">{t("dropzoneSecondary")}</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerPicker();
-                  }}
-                  disabled={isBusy}
-                >
+                </span>
+                <span className="space-y-1">
+                  <span className="block font-medium text-on-surface">{t("dropzonePrimary")}</span>
+                  <span className="block text-xs text-on-surface-variant">
+                    {t("dropzoneSecondary")}
+                  </span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-surface-container-low px-3 py-1 text-xs font-medium text-on-surface">
                   <Upload size={14} aria-hidden="true" />
                   {currentLogo ? t("replace") : t("selectFile")}
-                </Button>
-
-                <input
-                  ref={fileInputRef}
-                  id={inputId}
-                  type="file"
-                  accept={ACCEPTED_INPUT_ATTR}
-                  onChange={onInputChange}
-                  className="sr-only"
-                  aria-label={t("selectFile")}
-                />
-              </div>
+                </span>
+              </button>
 
               <p className="text-xs text-on-surface-variant">{t("coachingCopy")}</p>
 
