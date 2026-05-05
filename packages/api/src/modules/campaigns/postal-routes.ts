@@ -307,11 +307,18 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Get a single postal-export's current status. Designed for short-interval polling. */
+  /**
+   * Get a single postal-export's current status. Designed for short-interval
+   * polling — the frontend hits this every 2s while a job is in-flight.
+   * Rate-limited at 60/min/admin so a buggy client (multiple tabs, runaway
+   * useEffect, leaked credential) can't hammer the endpoint past the
+   * intended polling cadence.
+   */
   app.get(
     "/campaigns/:id/postal-exports/:exportId",
     {
       preHandler: requireOrgAdmin,
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       schema: {
         tags: ["Campaigns"],
         params: CampaignAndExportParams,

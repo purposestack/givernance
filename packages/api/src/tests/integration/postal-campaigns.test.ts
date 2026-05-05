@@ -464,9 +464,16 @@ describe("Bulk email dispatch", () => {
       LIMIT 1
     `);
     expect(outboxRows.rows.length).toBe(1);
-    const payload = (outboxRows.rows[0] as { payload: { recipients?: unknown[] } }).payload;
-    expect(payload.recipients).toBeDefined();
-    expect(Array.isArray(payload.recipients)).toBe(true);
+    const payload = (
+      outboxRows.rows[0] as { payload: { constituentIds?: unknown[]; recipients?: unknown } }
+    ).payload;
+    // The payload carries only the deliverable constituent id list — PII
+    // (email/name) is re-resolved by the worker at send time, never
+    // persisted to outbox or Redis (GDPR Art. 5(1)(e)).
+    expect(payload.constituentIds).toBeDefined();
+    expect(Array.isArray(payload.constituentIds)).toBe(true);
+    expect((payload.constituentIds as string[]).length).toBe(1);
+    expect(payload.recipients).toBeUndefined();
   });
 
   it("rejects empty bulk-email selection with 400", async () => {

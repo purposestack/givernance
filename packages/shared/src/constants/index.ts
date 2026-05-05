@@ -4,6 +4,7 @@
  * pulling the Drizzle schema (ADR-013 type boundary).
  */
 
+export { resolveCountryName } from "./country-names";
 export {
   IMPERSONATION_END_REASON_VALUES,
   IMPERSONATION_MODE_VALUES,

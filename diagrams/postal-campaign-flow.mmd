@@ -21,7 +21,7 @@ sequenceDiagram
 
     rect rgb(245, 248, 250)
       Note over Op,Web: 2. Validate the layout
-      Op->>Web: Click "Aperçu PDF"
+      Op->>Web: Click "Preview PDF"
       Web->>API: POST /campaigns/:id/postal-preview
       API-->>Web: PDF (Jean Dupont fixture)
       Web->>Donor: open in new tab
@@ -64,7 +64,7 @@ sequenceDiagram
 
     rect rgb(252, 232, 232)
       Note over API,DB: 6. Webhook reconciliation
-      API->>API: Stripe webhook checkout.completed
+      API->>API: Stripe webhook payment_intent.succeeded
       API->>DB: INSERT donations<br/>(campaign_id, constituent_id, qr_code_id)
       API->>DB: Update QR attribution stats
     end

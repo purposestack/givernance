@@ -101,8 +101,18 @@ export function PostalExportPanel({
       try {
         const fresh = await PostalCampaignService.getExport(client, campaignId, activeJob.id);
         setExports((prev) => prev.map((e) => (e.id === fresh.id ? fresh : e)));
-        if (fresh.status === "completed") toast.success(t("toast.exportReady"));
-        if (fresh.status === "failed") toast.error(fresh.error ?? t("toast.exportFailed"));
+        // Stop the ticker BEFORE firing the toast — the next 2s tick
+        // can land before the React effect cleanup re-runs, and we'd
+        // otherwise emit a duplicate success/error toast on every
+        // subsequent poll until the parent re-renders.
+        if (fresh.status === "completed") {
+          stopPolling();
+          toast.success(t("toast.exportReady"));
+        }
+        if (fresh.status === "failed") {
+          stopPolling();
+          toast.error(fresh.error ?? t("toast.exportFailed"));
+        }
       } catch (err) {
         if (err instanceof ApiProblem && err.status === 404) {
           stopPolling();
@@ -379,6 +389,7 @@ function ActiveJobProgress({ job }: { job: PostalExport }) {
       <div
         className="mt-2 h-2 overflow-hidden rounded-md bg-surface-container-highest"
         role="progressbar"
+        aria-label={t(job.status === "pending" ? "queued" : "processing")}
         aria-valuenow={cappedPct}
         aria-valuemin={0}
         aria-valuemax={100}

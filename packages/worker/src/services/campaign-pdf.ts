@@ -19,6 +19,7 @@
  * package once we have a second renderer (receipts, statements).
  */
 
+import { resolveCountryName } from "@givernance/shared/constants";
 import type { Locale } from "@givernance/shared/i18n";
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
@@ -31,6 +32,13 @@ const QR_SIZE = 140;
 // Locale-driven static copy — lockstep duplicate of the same table in
 // `packages/api/src/modules/campaigns/postal-pdf.ts`. See that file for
 // the full rationale and per-key documentation.
+//
+// **Intentional divergence vs. the api copy:** the api `LetterCopy` has
+// a `previewWatermark` field that this interface does not. The worker
+// path is the bulk-export pipeline (production print) and never renders
+// a preview, so the watermark string would be dead code here. The api
+// preview path is the only consumer of that field. All OTHER fields
+// MUST stay byte-equivalent across the two files.
 interface LetterCopy {
   greetingNamed: (firstName: string, lastName: string) => string;
   greetingDoorDrop: string;
@@ -178,7 +186,10 @@ export async function createCampaignLetterPdfStream(
     if (data.recipient.addressLine2) lines.push(data.recipient.addressLine2);
     lines.push(`${data.recipient.postalCode ?? ""} ${data.recipient.city ?? ""}`.trim());
     if (data.recipient.countryCode && data.recipient.countryCode.trim().toUpperCase() !== "FR") {
-      lines.push(data.recipient.countryCode.trim().toUpperCase());
+      // ISO → localised country name (UPU S42 cross-border requirement;
+      // see api lockstep duplicate for the full rationale).
+      const countryName = resolveCountryName(data.recipient.countryCode, data.locale);
+      if (countryName) lines.push(countryName);
     }
     doc.text(lines.join("\n"), ADDRESS_BLOCK_X, ADDRESS_BLOCK_Y, {
       width: ADDRESS_BLOCK_WIDTH,

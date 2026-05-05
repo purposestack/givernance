@@ -160,7 +160,11 @@ async function processDomainEvent(job: Job): Promise<void> {
         segmentFilter: {
           subject: payload.subject,
           body: payload.body,
-          recipients: payload.recipients,
+          // Forward only the constituent id list — PII (email, name) is
+          // re-resolved by the processor at send time so it never lives
+          // in Redis. See `bulk-email-service.ts` for the GDPR Art. 5(1)(e)
+          // rationale.
+          constituentIds: payload.constituentIds,
           requestedBy: payload.requestedBy,
         },
         traceparent,

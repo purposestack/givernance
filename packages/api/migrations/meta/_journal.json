@@ -288,6 +288,13 @@
       "when": 1777940000000,
       "tag": "0040_postal_export_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1777950000000,
+      "tag": "0041_campaign_description_length_cap",
+      "breakpoints": true
     }
   ]
 }

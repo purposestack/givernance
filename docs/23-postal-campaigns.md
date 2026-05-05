@@ -3,6 +3,7 @@
 > **Status**: Implemented — Epic #274
 > **Owner**: Mailing Engineer
 > **Related**: `02-reference-architecture.md`, `03-data-model.md`, `04-business-capabilities.md`, `06-security-compliance.md`, `15-infra-adr.md`, `17-log-management.md`
+> **Companion diagram**: [`diagrams/postal-campaign-flow.mmd`](../diagrams/postal-campaign-flow.mmd) — full operator → donor → webhook sequence
 > **Closes**: #274
 
 ## 0. Why this exists — at a glance
@@ -45,7 +46,7 @@ sequenceDiagram
     API->>DB: INSERT outbox_events ('campaign.constituents_added')
 
     Note over Op,Web: 2. Validate the print layout
-    Op->>Web: Click "Aperçu PDF"
+    Op->>Web: Click "Preview PDF"
     Web->>API: POST /v1/campaigns/:id/postal-preview { mode }
     API->>API: Render PDF with "Jean Dupont" fixture<br/>(no DB writes, never-registered QR)
     API-->>Web: application/pdf (inline)
@@ -86,12 +87,12 @@ sequenceDiagram
     API->>Donor: Stripe PaymentIntent (3DS)
 
     Note over API,DB: 6. Reconciliation (Stripe webhook)
-    API->>API: Receive checkout.completed webhook
+    API->>API: Receive payment_intent.succeeded webhook
     API->>DB: INSERT donations (campaignId, constituentId,<br/>qrCodeId from metadata)
     API->>DB: Update QR attribution stats
 ```
 
-## 1.ter Page format and window envelope (A4 → C5)
+## 1.bis Page format and window envelope (A4 → C5)
 
 Postal letters are printed on a **single A4 sheet (210×297mm), folded once
 horizontally at the midline** (y=148.5mm), then slipped into a **standard
@@ -171,7 +172,7 @@ Marseille/etc. street + postcode/city pairs). The remaining 20%
 intentionally land without an address so the operator can demo both
 branches of the renderer in the same export run.
 
-## 1.bis Letter content sources (org mission + campaign description)
+## 1.ter Letter content sources (org mission + campaign description)
 
 Two free-form fields drive the actual prose printed on the letter, so the
 operator's voice — not Givernance boilerplate — owns every word the donor
@@ -179,8 +180,8 @@ reads:
 
 | Field | DB column | UI surface | Used in the letter as |
 |---|---|---|---|
-| **Organisation mission** | `tenants.mission` (TEXT, nullable, soft-cap 2000 chars) | `Settings → Organisation` (org_admin only) | Italic subtitle directly under the letterhead, on the cover (top half) — answers "what does this org do" |
-| **Campaign description** | `campaigns.description` (TEXT, nullable, soft-cap 2000 chars) | Campaign create/edit form | Justified paragraph **directly under the campaign title** (bottom half) — operator's own words about this specific campaign, the prose load of the appeal |
+| **Organisation mission** | `tenants.mission` (TEXT, nullable, **DB cap 1000 chars** via `tenants_mission_length_chk`, mig 0040) | `Settings → Organisation` (org_admin only) | Italic subtitle directly under the letterhead, on the cover (top half) — answers "what does this org do" |
+| **Campaign description** | `campaigns.description` (TEXT, nullable, **DB cap 2000 chars** via `campaigns_description_length_chk`, mig 0041) | Campaign create/edit form | Justified paragraph **directly under the campaign title** (bottom half) — operator's own words about this specific campaign, the prose load of the appeal |
 
 Both are NULL until the operator fills them. The renderer degrades
 gracefully: an empty mission collapses the italic subtitle, and a missing
@@ -198,7 +199,7 @@ future channels (email signature, receipts).
 ### Locale-driven static copy (`tenants.default_locale`)
 
 Every word in the letter that **isn't** operator-authored — greeting
-("Cher·e Jean Dupont,"), thanks variants, "scan the QR code below",
+(`Bonjour Jean Dupont,` for personalised mail, `Bonjour,` for door-drop), thanks variants, "scan the QR code below",
 reference label, preview watermark — is sourced from a per-locale lookup
 table keyed by the tenant's `default_locale` (`fr` / `en`). FR is the
 fallback when the column is NULL or carries an unsupported locale.
@@ -242,10 +243,13 @@ erDiagram
         enum status "draft | active | closed"
     }
     campaign_public_pages {
-        uuid campaign_id PK
+        uuid id PK
+        uuid org_id FK
+        uuid campaign_id FK "unique"
         enum status "draft | published"
         string title
         text description
+        string color_primary "hex, donor-facing theme"
         int goal_amount_cents
     }
     campaign_constituents {
@@ -517,7 +521,7 @@ Distinct from the legacy segment-based `SendBulkEmailJob` (which targets a saved
 | `GET /v1/campaigns/:id/postal-exports[/:id]` | `requireOrgAdmin` | |
 | `GET /v1/campaigns/:id/postal-exports/:id/download` | `requireOrgAdmin` | ZIP streamed through API (no presigned URL) |
 | `POST /v1/campaigns/:id/postal-preview` | `requireOrgAdmin` | Rate-limited 20/min (synchronous PDFKit render) |
-| `GET /v1/campaigns/:id/qr-stats` | `requireAuth` | Read-only, available to all tenant members |
+| `GET /v1/campaigns/:id/qr-stats` | `requireOrgAdmin` | Aggregate KPIs surfaced on the admin dashboard — kept on the same gate as the rest of the postal feature for a coherent permission model |
 | `GET /v1/public/qr/:code` | **Unauthenticated** | Rate-limited 60/min. The opaque token is the security boundary |
 | `POST /v1/public/campaigns/:id/donate` | **Unauthenticated** | Token in body forwarded to Stripe metadata |
 | `POST /v1/constituents/bulk-email` | `requireWrite` | Write-tier — blocked for `viewer` |
@@ -527,7 +531,7 @@ Distinct from the legacy segment-based `SendBulkEmailJob` (which targets a saved
 - **Opaque tokens** — printed QR codes carry no PII. A scrap of paper found in the wild reveals nothing about the recipient or the tenant
 - **`added_by` / `requested_by` audit trail** — every link and every export is traceable to the operator who initiated it (Art. 5(2) accountability)
 - **Soft-delete propagation** — when a constituent is soft-deleted (`constituents.deleted_at IS NOT NULL`), they are filtered out of all postal-export listing endpoints. Their existing `campaign_constituents` rows are kept (audit), but they receive no further mailing
-- **Ressource leak proofing** — the `/public/qr/:code` route returns the same 404 for unknown tokens AND for tokens belonging to soft-deleted constituents, so a scraper can't distinguish the two
+- **Resource leak proofing** — the `/public/qr/:code` route returns the same 404 for unknown tokens AND for tokens belonging to soft-deleted constituents, so a scraper can't distinguish the two
 - **Right to erasure (Art. 17)** — the GDPR-erasure worker (`processGdprErasure`) cascades to `campaign_qr_codes.constituent_id` (set to NULL via FK) and `campaign_constituents` (delete), preserving the campaign-level rollup metrics while removing the personal binding
 
 ## 9. Future work (not in MVP)
@@ -553,4 +557,5 @@ These were considered and **deliberately deferred** — they would have either t
 - Migration `0038_org_mission_campaign_description.sql` — Mission + campaign description columns
 - Migration `0039_constituent_postal_address.sql` — Window-envelope address fields
 - Migration `0040_postal_export_idempotency.sql` — Retry-idempotent QR codes (`export_id` backlink + partial unique index) and `tenants.mission` 1000-char DB cap
+- Migration `0041_campaign_description_length_cap.sql` — `campaigns.description` 2000-char DB cap (defense-in-depth against ETL/raw-SQL bypassing the form-level validator)
 - Mockups: `docs/design/index.html` → "Postal mailing" section
