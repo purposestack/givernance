@@ -459,6 +459,21 @@ function buildResolver(): Resolver<CampaignFormValues> {
       defaultCurrency: values.defaultCurrency,
     };
 
+    // `description` is the source of truth for the postal-letter body
+    // (Epic #274). Earlier the resolver dropped it because it built
+    // `cleaned` field-by-field — the user filled the field, hit save,
+    // the form validated against the typebox schema (which accepts
+    // `description: optional`), but the validated values handed to
+    // `onSubmit` no longer contained the description, so `toApiPayload`
+    // got `undefined` and serialised `null` to the API, silently
+    // wiping the operator's input.
+    //
+    // Always include the trimmed value (even when empty) so the
+    // "user cleared a previously-set description" path round-trips
+    // correctly: empty string lands at `toApiPayload` which converts
+    // it to `null` and the API clears the column.
+    cleaned.description = values.description?.trim() ?? "";
+
     if (values.parentId?.trim() !== "") {
       cleaned.parentId = values.parentId?.trim();
     }
