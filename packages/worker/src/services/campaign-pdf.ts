@@ -44,8 +44,8 @@ interface LetterCopy {
 
 const LETTER_COPY: Record<Locale, LetterCopy> = {
   fr: {
-    greetingNamed: (firstName, lastName) => `Cher·e ${firstName} ${lastName},`,
-    greetingDoorDrop: "Chère donatrice, cher donateur,",
+    greetingNamed: (firstName, lastName) => `Bonjour ${firstName} ${lastName},`,
+    greetingDoorDrop: "Bonjour,",
     thanksWithDescriptionNamed:
       "Merci pour votre soutien — chaque contribution, petite ou grande, fait une différence concrète.",
     thanksWithDescriptionDoorDrop:
