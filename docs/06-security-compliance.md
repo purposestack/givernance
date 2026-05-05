@@ -19,7 +19,24 @@
 | Postgres (`givernance`, `givernance_keycloak`) | Scaleway Managed PostgreSQL EU (SaaS) / self-hosted PG 16 | AES-256, Scaleway-managed KMS (SaaS); LUKS at the volume layer (self-hosted) |
 | Redis (BullMQ + caches) | Scaleway Managed Redis EU (SaaS) / self-hosted Redis 7 | AES-256 by Scaleway default ([Scaleway docs](https://www.scaleway.com/en/docs/managed-databases-for-redis/concepts/#data-encryption)); volume-level encryption (self-hosted). **Outbox/job payloads carrying transient PII (e.g. bulk-email recipient snapshots, postal-export QR seed lists) inherit this protection.** |
 | Object Storage (`receipts`, `campaigns` buckets) | Scaleway Object Storage EU (SaaS) / MinIO (self-hosted) | SSE-S3 AES-256, configured at upload time via `ServerSideEncryption: "AES256"` (`packages/worker/src/lib/s3.ts`). MinIO requires a `MINIO_KMS_SECRET_KEY` to honour the SSE flag — set in `docker-compose.yml`. |
+| Object Storage (`branding` bucket — Epic #286) | Scaleway Object Storage EU (SaaS) / MinIO (self-hosted) | SSE-S3 AES-256, same `ServerSideEncryption: "AES256"` flag on every PutObject. Bucket-level public-read ACL (the only public bucket in the topology — see [ADR-023](./adrs/adr-023-object-storage-bucket-topology.md) and the CLAUDE.md "🛑 One Bucket per Visibility Class" rule). Encryption-at-rest applies to the original AND every derived variant; serving public-read does not weaken at-rest protection on the storage backend. |
 | Keycloak realm export / DB | Scaleway Managed PostgreSQL EU | AES-256 (same as application DB) |
+
+### Image-upload security controls (Epic #286)
+
+The org-logo upload pipeline (`POST /v1/branding/org-logo`, gated by `requireOrgAdmin`) applies five controls **before** any byte reaches S3. Donors cannot upload — only authenticated `org_admin` operators — so the threat model is "compromised operator account" or "operator-provided malformed asset," not "anonymous attacker." Even so, defense-in-depth is non-negotiable for a surface that ends up rendered on the public donation page and the Keycloak login screen:
+
+| Control | What it does | Why |
+|---|---|---|
+| **Magic-byte validation** (`file-type`) | Rejects anything whose actual byte signature isn't `image/png`, `image/jpeg`, `image/webp`, or `image/svg+xml`, regardless of `Content-Type` header. | A `.png`-renamed PHP/HTML/Office payload is rejected at the door before any pixel-aware library touches it. |
+| **Size cap** | 5MB raster, 1MB SVG. | Bounds the worst-case sharp memory; an SVG past 1MB is almost certainly an Illustrator export with embedded raster fallbacks, not a logo. |
+| **Dimension cap** | 4096×4096 px (probed via `sharp({ failOnError: false }).metadata()` before any pixel op). | Prevents pixel-bomb / decompression-bomb DOS through the variant pipeline. |
+| **EXIF stripping** | All EXIF metadata removed from raster originals at upload time. | Operators photographing a printed logo on their phone don't leak GPS coordinates into the public-read bucket and out to the CDN edge. |
+| **SVG sanitisation** | Strict allowlist (`@mattdood/svg-sanitizer` or DOMPurify SVG profile): permitted `svg, g, path, rect, circle, ellipse, line, polyline, polygon, defs, linearGradient, radialGradient, stop, title, desc`; rejected `<script>`, `<foreignObject>`, external `<use href>`, every `on*` event-handler attribute. | XSS via SVG is the realistic attack surface; the allowlist is intentionally narrow. |
+
+**Raw SVG is never served to anonymous donors** in Phase 1: every donor-visible surface (public donation page, postal-letter PDF) consumes a **rasterised** variant (WebP for web, PNG for PDF). The PDF path is constrained by PDFKit (which cannot embed SVG natively) and the web path by the deliberate choice to deny anonymous donor surface area to a sanitised-but-still-XML attack surface. SVG originals are stored for re-derivation but only operator-side surfaces (Settings → Organisation hero card preview, sidebar) ever consume them — and even there, behind authenticated routes.
+
+The encryption-at-rest row for `branding` above covers the storage layer; this subsection covers the upload-time controls. The full pipeline + variant matrix is documented in [`docs/24-branding-assets.md`](./24-branding-assets.md) § 4.3 and [ADR-024](./adrs/adr-024-image-processing-pipeline.md).
 
 ## Database role model (3-role pattern)
 

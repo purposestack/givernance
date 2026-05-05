@@ -90,18 +90,30 @@ export class ApiClient {
     options?: RequestOptions,
   ): Promise<T> {
     const url = this.buildUrl(path, options?.params);
+    // FormData uploads must let the browser set `Content-Type: multipart/...`
+    // itself so the boundary parameter matches the body — pinning JSON here
+    // would cause Fastify's multipart plugin to 415 the request. Detect the
+    // FormData case before merging headers so neither the default
+    // `application/json` nor a stale caller override survives (Epic #286).
+    const isFormData = isFormDataBody(body);
     const headers: Record<string, string> = {
       ...this.defaultHeaders,
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(body !== undefined && !isFormData ? { "Content-Type": "application/json" } : {}),
       ...options?.headers,
     };
+    if (isFormData) {
+      // Defensive: a caller-provided `Content-Type` would still bypass the
+      // browser's auto-boundary. Strip it explicitly.
+      delete headers["Content-Type"];
+      delete headers["content-type"];
+    }
 
     let response: Response;
     try {
       response = await this.fetchFn(url, {
         method,
         headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: resolveRequestBody(body, isFormData),
         signal: options?.signal,
       });
     } catch (err) {
@@ -176,4 +188,21 @@ export class ApiClient {
       detail: `${method} ${path} returned ${response.status}`,
     });
   }
+}
+
+/**
+ * Detect a FormData body so the multipart code path keeps boundaries intact.
+ * `FormData` is a global in both Node 22 (web-fetch) and the browser, but we
+ * still hedge with `typeof` so an unexpected runtime (a hypothetical edge
+ * function without `FormData`) degrades to JSON serialisation rather than
+ * throwing on the type guard.
+ */
+function isFormDataBody(body: unknown): body is FormData {
+  return typeof FormData !== "undefined" && body instanceof FormData;
+}
+
+function resolveRequestBody(body: unknown, isFormData: boolean): BodyInit | undefined {
+  if (body === undefined) return undefined;
+  if (isFormData) return body as FormData;
+  return JSON.stringify(body);
 }

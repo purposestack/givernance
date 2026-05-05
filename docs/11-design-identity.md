@@ -412,16 +412,28 @@ Priority order for UX research sessions:
 
 ---
 
-## 8. Future: white-label and theming
+## 8. White-label and theming
 
 Givernance's design system is built theme-ready from day one:
 
 - All brand colors expressed as CSS custom properties (overridable per tenant)
-- Logo slot in navigation sidebar (org logo replaces Givernance logo for white-label partners)
-- Custom domain support (no Givernance branding visible if tenant requests)
-- Theme configuration stored in org settings; applied server-side to prevent flash
+- **Logo slot in navigation sidebar — implemented (Epic #286)**: the sidebar reads `tenants.logo_asset_id` and renders the `sidebar` variant (128×128 WebP) above the bottom tenant-switcher dropdown. The same source asset feeds the public donation page hero, the postal-letter PDF, and the Keycloak login screen via four pre-generated variants. Full pipeline: [`docs/24-branding-assets.md`](./24-branding-assets.md).
+- Custom domain support (no Givernance branding visible if tenant requests) — *deferred*
+- Theme configuration stored in org settings; applied server-side to prevent flash — `theme_primary_color` already wired to Keycloak; tenant-level theming on the in-app shell is *deferred to v2*.
 
-This is a v2 feature but the architecture must not foreclose it.
+### 8.1 Initial-letter colored fallback (Slack pattern)
+
+Tenants who skip the optional logo-upload step on onboarding don't land on a broken-looking empty state. The fallback is a **colored initial letter**, deterministic per tenant — the same Slack/Notion/Linear pattern.
+
+The hash + palette rules:
+
+- **Color seed**: stable hash of `tenant.id` (UUID v7 / v4 — the time prefix is irrelevant here, the hash is over the full bytes).
+- **Palette**: 8 colors, all WCAG-AA against white text (4.5:1 minimum contrast), chosen to read as "professional but distinct" rather than "saturated and alarming." The palette is a token in the design system; consumers reference it by name (`--gv-tenant-fallback-1` … `--gv-tenant-fallback-8`).
+- **Letter**: the first character of `tenant.name`, uppercased and locale-folded (German "ß" → "S", French "É" → "E"). Non-letter starts (digits, emoji, symbols) fall back to the literal character.
+- **Shape**: rounded square (4px corner radius at `sidebar` size, 12px at `preview` size, 24px at `public-hero` size — proportional to the logo slot).
+- **Determinism**: the same tenant gets the same color forever. Re-uploading and removing a logo does not change the fallback color when the logo is gone again — the operator sees their tenant's "color identity" even before they upload anything.
+
+The fallback is the same component everywhere it renders: sidebar, tenant-switcher card, onboarding mock-preview, and (gradient + initial overlay) the public donation page hero when `tenants.logo_asset_id IS NULL`. Operators who never upload a logo land on a usable, branded-feeling empty state instead of "where the logo would go" placeholder text.
 
 ---
 

@@ -184,6 +184,15 @@ export const tenants = pgTable(
       .default("fr")
       .$type<Locale>(),
     stripeAccountId: varchar("stripe_account_id", { length: 255 }),
+    /**
+     * Active branding logo (Epic #286). FK to `org_branding_assets.id`
+     * with `ON DELETE SET NULL` so a hard-deleted asset row leaves the
+     * tenant pointer dangling-clear, never broken. The pointer is set
+     * by the `branding.activate_logo` worker job after the pipeline
+     * flips the asset to `status='ready'`. NULL = no logo configured;
+     * UI surfaces fall back to the Givernance default + org name.
+     */
+    logoAssetId: uuid("logo_asset_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -562,6 +571,20 @@ export const exchangeRates = pgTable(
 // ─── Constituents ─────────────────────────────────────────────────────────────
 
 export { type OutboxMetadata, outboxEvents } from "./outbox";
+
+// ─── Org branding (Epic #286) ─────────────────────────────────────────────────
+
+export {
+  BRANDING_ASSET_STATUS_VALUES,
+  BRANDING_ASSET_TYPE_VALUES,
+  type BrandingAssetStatus,
+  type BrandingAssetType,
+  type BrandingAssetVariants,
+  type BrandingVariantKey,
+  type NewOrgBrandingAsset,
+  type OrgBrandingAsset,
+  orgBrandingAssets,
+} from "./branding";
 
 // ─── Impersonation sessions (issue #24) ──────────────────────────────────────
 import {

@@ -184,6 +184,18 @@ export interface KeycloakAdminClient {
     attributes?: Record<string, string[]>;
   }): Promise<KeycloakOrganization>;
   getOrganization(id: string): Promise<KeycloakOrganization | null>;
+  /**
+   * Update an Organization's attributes via GET-then-PUT. Used by the
+   * `keycloak.sync_org_logo` worker job to merge `logo_url` into the
+   * org's attribute map without clobbering other attributes
+   * (`theme_primary_color`, `org_id`, …).
+   *
+   * Pass `attributes: { logo_url: [] }` to clear the field — Keycloak
+   * treats an empty array the same as deleting the key, which the
+   * login template's `?has_content` check correctly treats as "no
+   * org logo configured".
+   */
+  updateOrganization(id: string, updates: { attributes?: Record<string, string[]> }): Promise<void>;
   deleteOrganization(id: string): Promise<void>;
   /**
    * Add a domain to an Organization.
@@ -623,6 +635,24 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
         if (err instanceof KeycloakAdminError && err.status === 404) return null;
         throw err;
       }
+    },
+
+    updateOrganization: async (id, updates) => {
+      // GET-then-PUT so we don't clobber attributes the API never set
+      // (e.g. `theme_primary_color` already on the org from issue #114).
+      // Mirrors `setUserAttributes` / `updateUser` exactly so the same
+      // race + retry semantics apply.
+      const current = await adminRequest<KeycloakOrganization>("GET", `/organizations/${e(id)}`);
+      if (!current) {
+        throw new KeycloakAdminError(`Organization ${id} not found`, 404, `/organizations/${id}`);
+      }
+      const mergedAttributes = updates.attributes
+        ? { ...(current.attributes ?? {}), ...updates.attributes }
+        : current.attributes;
+      await adminRequest<void>("PUT", `/organizations/${e(id)}`, {
+        ...current,
+        attributes: mergedAttributes,
+      });
     },
 
     deleteOrganization: async (id) => {

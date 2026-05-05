@@ -223,11 +223,23 @@ Notes on the Keycloak Admin API integration:
 ### 6.3 Organization picker
 
 - Interstitial `/select-organization` shown when `GET /v1/users/me/organizations` returns > 1 org.
-- One card per tenant: logo, name, role badge, last-visited timestamp.
+- One card per tenant: **logo** (reads `tenants.logo_asset_id` and renders the `sidebar` 128×128 WebP variant from the `branding` bucket, falls back to the deterministic initial-letter swatch — see [`docs/11-design-identity.md`](./11-design-identity.md) § 8.1 — when the tenant hasn't uploaded one), name, role badge, last-visited timestamp.
 - Keyboard-navigable; default selection = last-used tenant from the `gv-last-org` cookie.
 - Submitting calls `POST /v1/session/switch-org` and redirects to `/<slug>/dashboard`.
 
-### 6.4 Back-office: tenant management
+### 6.4 Optional logo upload (Epic #286)
+
+The org-logo upload step is **optional** and **not blocking** for signup. Tenants who skip it land on a usable empty state (initial-letter colored swatch — see [`docs/11-design-identity.md`](./11-design-identity.md) § 8.1) and a persistent dismissible **"Add your logo"** banner in the dashboard, visible until they either upload one or dismiss the banner permanently.
+
+The flow:
+
+- During onboarding (after email verification, before "first campaign" prompt): a single optional step "Add your organisation's logo" with a drop-zone + button-click upload component. **Skip** is a primary-style button; the operator is never blocked by the upload step.
+- Settings → Organisation: the visual-identity hero card at the top of the form is the canonical place to upload, replace, or remove the logo at any later point.
+- Persistent dashboard banner: dismissible, rendered while `tenants.logo_asset_id IS NULL`. Self-clears when a logo is uploaded.
+
+The full pipeline (validation, async sharp variants, Keycloak sync) is in [`docs/24-branding-assets.md`](./24-branding-assets.md). Per the doc-discipline rule, this onboarding doc only covers the **wizard surface**; the storage, processing, and rendering details live with the branding doc.
+
+### 6.5 Back-office: tenant management
 
 - Route group `(admin)` gated by `requireRole('super_admin')`.
 - Screens: `/admin/tenants` (list + filters), `/admin/tenants/new` (enterprise-track creation form), `/admin/tenants/:id` (overview, domains tab, IdP tab, users tab, lifecycle tab).

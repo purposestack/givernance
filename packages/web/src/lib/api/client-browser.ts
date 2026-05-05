@@ -20,6 +20,16 @@ export function createBrowserFetch(fetchImpl: typeof fetch = fetch): typeof fetc
       }
     }
 
+    // Multipart safety net (Epic #286): when a caller hands us a FormData
+    // body directly (i.e. bypassing ApiClient.request), the browser only
+    // emits the correct `multipart/form-data; boundary=…` header if no
+    // explicit `Content-Type` is set. ApiClient.request handles this for
+    // its own callers, but stripping it here too keeps direct-fetch users
+    // safe.
+    if (typeof FormData !== "undefined" && init?.body instanceof FormData) {
+      headers.delete("Content-Type");
+    }
+
     return fetchImpl(input, {
       ...init,
       headers,

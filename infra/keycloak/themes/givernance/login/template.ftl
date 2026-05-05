@@ -27,6 +27,13 @@
       <#assign gvPrimary = rawColor>
     </#if>
   </#if>
+  <#-- The `logo_url` Organization attribute is populated by the worker job
+       `packages/worker/src/processors/keycloak-sync-org-logo.ts` (Epic #286).
+       Source of truth: app-DB `tenants.logo_asset_id` → `org_branding_assets`
+       → `s3_key_variants['public-hero']` URL. The sync is async via the
+       outbox-relay (see `docs/24-branding-assets.md` § 4.4 and
+       `docs/05-integration-migration.md` § 5.1). Sub-second drift on the
+       relay is accepted as benign for a non-transactional surface. -->
   <#if (organization.attributes['logo_url']![])?has_content>
     <#assign gvOrgLogoUrl = organization.attributes['logo_url']?first>
   </#if>

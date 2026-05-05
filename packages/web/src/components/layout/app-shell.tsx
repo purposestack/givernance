@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { AddLogoBanner } from "@/components/branding/add-logo-banner";
 import type { ImpersonationInfo } from "@/lib/auth";
 
 import { ImpersonationBanner } from "./impersonation-banner";
@@ -25,6 +26,14 @@ interface AppShellProps {
    * FE-1 (PR #135 review).
    */
   isSuperAdmin?: boolean;
+  /**
+   * Active tenant id — used to scope the "Add your logo" banner's per-org
+   * dismissal key (Epic #286). Optional: when missing (super-admin), the
+   * banner skips its render path.
+   */
+  orgId?: string;
+  /** Whether the current user can act on the "Add your logo" CTA (Epic #286). */
+  canManageBranding?: boolean;
 }
 
 /**
@@ -48,6 +57,8 @@ export function AppShell({
   provisionalAdmin,
   membershipCount,
   isSuperAdmin,
+  orgId,
+  canManageBranding = false,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
@@ -83,6 +94,7 @@ export function AppShell({
       <div className="flex min-h-screen flex-1 flex-col md:ml-[var(--sidebar-width)]">
         <ImpersonationBanner impersonation={impersonation} userName={impersonationUserName} />
         <ProvisionalAdminBanner info={provisionalAdmin} />
+        <AddLogoBanner orgId={orgId} canManageBranding={canManageBranding} />
         <Topbar
           onMenuToggle={handleMenuToggle}
           sidebarOpen={sidebarOpen}

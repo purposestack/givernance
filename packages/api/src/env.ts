@@ -33,8 +33,25 @@ const EnvSchema = Type.Object({
   S3_RECEIPTS_BUCKET: Type.String({ minLength: 1, default: "receipts" }),
   /** S3 bucket for campaign documents (PDFs and bundled ZIP exports). */
   S3_CAMPAIGNS_BUCKET: Type.String({ minLength: 1, default: "campaigns" }),
+  /**
+   * S3 bucket for org branding assets — logos, hero images, etc. (Epic
+   * #286). Public-read at the bucket level so donor-facing surfaces
+   * (Keycloak login template, donation page) can serve directly without
+   * a signed-URL hop. Content is content-addressed (`{org}/logo/{id}/
+   * {variant}.{ext}`) so a stale CDN edge can't leak across logos.
+   */
+  S3_BRANDING_BUCKET: Type.String({ minLength: 1, default: "branding" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
+  /**
+   * Base URL the Keycloak login template uses to build the
+   * `organization.attributes['logo_url']` value (Epic #286 / docs/24).
+   * Defaults to `${S3_ENDPOINT}/${S3_BRANDING_BUCKET}` so local dev
+   * "just works" against MinIO. Production overrides this with the
+   * public CDN base (e.g. `https://cdn.givernance.eu/branding`) so the
+   * KC template's HTTPS-only guard accepts the rendered URL.
+   */
+  KEYCLOAK_LOGO_PUBLIC_URL_BASE: Type.Optional(Type.String({ minLength: 1 })),
   /** Keycloak base URL used to derive issuer (public) */
   KEYCLOAK_URL: Type.String({ minLength: 1, default: "http://localhost:8080" }),
   /** Keycloak internal URL used for server-to-server calls */

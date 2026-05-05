@@ -457,6 +457,48 @@ CREATE TABLE soft_credits (
 
 ### 3.4 Campaign tables
 
+#### `org_branding_assets` (Epic #286 — branding logos)
+
+> **Domain doc**: [`docs/24-branding-assets.md`](./24-branding-assets.md). Migration: `0042_org_branding_assets.sql`. ADRs: [ADR-023](./adrs/adr-023-object-storage-bucket-topology.md) (bucket topology), [ADR-024](./adrs/adr-024-image-processing-pipeline.md) (image pipeline).
+
+```sql
+CREATE TYPE branding_asset_type AS ENUM ('org_logo', 'campaign_hero');
+CREATE TYPE branding_asset_status AS ENUM ('pending', 'ready', 'failed');
+
+CREATE TABLE org_branding_assets (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    asset_type      branding_asset_type NOT NULL,
+    status          branding_asset_status NOT NULL DEFAULT 'pending',
+    s3_bucket       TEXT NOT NULL,                  -- always 'branding' for MVP
+    s3_key_original TEXT NOT NULL,                  -- {org_id}/logo/{logo_id}/original.{ext}
+    s3_key_variants JSONB NOT NULL DEFAULT '{}'::JSONB, -- { sidebar, preview, public-hero, pdf-letterhead }
+    source_mime     TEXT NOT NULL,
+    source_width    INTEGER,
+    source_height   INTEGER,
+    byte_size       INTEGER NOT NULL,
+    original_filename TEXT,
+    uploaded_by     UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at      TIMESTAMPTZ                     -- soft-delete; orphan-GC sweeps S3 keys after 7 days
+);
+
+ALTER TABLE org_branding_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org_branding_assets FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON org_branding_assets
+    USING (org_id = app_current_organization_id());
+
+CREATE INDEX idx_branding_org_type ON org_branding_assets (org_id, asset_type) WHERE deleted_at IS NULL;
+GRANT SELECT, INSERT, UPDATE, DELETE ON org_branding_assets TO givernance_app;
+
+-- Tenant-level pointer to the active org logo (FK, nullable, replaces atomically)
+ALTER TABLE tenants
+    ADD COLUMN logo_asset_id UUID REFERENCES org_branding_assets(id) ON DELETE SET NULL;
+```
+
+The variant set is intentionally permissive at the SQL layer (`JSONB`) and pinned in TypeScript via `BrandingVariantKey` in `@givernance/shared`. Adding a variant is a code change, not a schema change — see [ADR-024 § "Variant evolution strategy"](./adrs/adr-024-image-processing-pipeline.md). Phase 2 adds `campaigns.hero_asset_id UUID REFERENCES org_branding_assets(id) ON DELETE SET NULL` in a separate migration; not shipped in MVP.
+
 #### `campaigns`
 ```sql
 CREATE TABLE campaigns (

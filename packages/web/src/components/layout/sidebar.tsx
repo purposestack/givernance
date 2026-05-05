@@ -13,12 +13,14 @@ import {
   UserCog,
   Users,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { ComponentType, SVGProps } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
+import { InitialLetterAvatar } from "@/components/branding/initial-letter-avatar";
 import { Logo } from "@/components/shared/logo";
 import {
   DropdownMenu,
@@ -29,6 +31,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth";
+import type { OrgLogo } from "@/models/branding";
+import { BrandingService } from "@/services/BrandingService";
 
 /** Tailwind `md` breakpoint in pixels. */
 const MD_BREAKPOINT = 768;
@@ -118,6 +122,28 @@ export function Sidebar({
   const initials = user
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
     : "?";
+
+  // Org logo (Epic #286) — fetched client-side once the AuthProvider has
+  // hydrated `user`. Re-runs when `orgId` changes (org-switch flow) so the
+  // sidebar swaps to the new tenant's logo without a hard refresh.
+  // Super-admins (no orgId) skip the fetch.
+  const [orgLogo, setOrgLogo] = useState<OrgLogo | null>(null);
+  useEffect(() => {
+    if (!user?.orgId) return;
+    let active = true;
+    (async () => {
+      try {
+        const logo = await BrandingService.getOrgLogo();
+        if (!active) return;
+        setOrgLogo(logo && logo.status === "ready" ? logo : null);
+      } catch {
+        // Silently fall back to the initial-letter avatar.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [user?.orgId]);
 
   // Close sidebar on Escape key (mobile)
   useEffect(() => {
@@ -222,6 +248,38 @@ export function Sidebar({
             </section>
           )}
         </nav>
+
+        {/* Org branding card (Epic #286) — sits above the workspace switcher
+            so the operator's identity reads top-to-bottom: app brand → org
+            brand → user. Hidden for super-admins (no `orgId`); they see the
+            Givernance brand only. */}
+        {user?.orgId && user?.orgName ? (
+          <div className="px-6 pb-3">
+            <div className="flex items-center gap-3 rounded-xl bg-surface-container-low p-3">
+              {orgLogo?.variants?.sidebar ? (
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-container">
+                  <Image
+                    src={orgLogo.variants.sidebar}
+                    alt={user.orgName}
+                    fill
+                    sizes="64px"
+                    className="object-contain"
+                  />
+                </div>
+              ) : (
+                <InitialLetterAvatar
+                  orgName={user.orgName}
+                  tenantId={user.orgId}
+                  size="lg"
+                  ariaLabel={user.orgName}
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-on-surface">{user.orgName}</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Footer — workspace switcher with org settings and user actions */}
         <div className="p-6">

@@ -107,6 +107,14 @@ export interface CampaignLetterRecipient {
 
 export interface CampaignLetterData {
   organisationName: string;
+  /**
+   * Optional org-logo bitmap (Epic #286 — `pdf-letterhead` variant from
+   * the branding pipeline, 360×360 PNG @ 300 DPI). When present,
+   * rendered top-left at the same Y as the address block (60mm) so the
+   * cover panel reads as a balanced two-column layout. When null the
+   * layout is unchanged from pre-#286. **Lockstep** with the api copy.
+   */
+  logoBuffer?: Buffer | null;
   organisationMission: string | null;
   campaignName: string;
   campaignDescription: string | null;
@@ -174,6 +182,20 @@ export async function createCampaignLetterPdfStream(
     doc.text(data.organisationMission.trim(), {
       align: "center",
       width: CONTENT_WIDTH,
+    });
+  }
+
+  // ── Org logo (Epic #286) — lockstep with api/postal-pdf.ts ─────────
+  // Rendered top-left at the same Y as the address block (60mm) so the
+  // cover panel reads as a balanced two-column layout. The constant
+  // `60 * MM_TO_PT` intentionally mirrors `ADDRESS_BLOCK_Y` exactly.
+  if (data.logoBuffer) {
+    const LOGO_X = PAGE_MARGIN; // ≈ 50pt
+    const LOGO_Y = 60 * MM_TO_PT; // ≈ 170pt — mirrors ADDRESS_BLOCK_Y
+    const LOGO_SIZE_MM = 30;
+    const LOGO_SIZE_PT = LOGO_SIZE_MM * MM_TO_PT;
+    doc.image(data.logoBuffer, LOGO_X, LOGO_Y, {
+      fit: [LOGO_SIZE_PT, LOGO_SIZE_PT],
     });
   }
 

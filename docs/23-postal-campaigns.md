@@ -210,9 +210,13 @@ once in `packages/worker/src/services/campaign-pdf.ts` (bulk-export
 path). Both copies MUST stay byte-equivalent in their rendered output:
 the operator validates a campaign by clicking **Aperçu** and trusts that
 the print shop will receive the same letter. The duplication is
-documented at the top of each file with a "lockstep duplicate" banner;
-a future refactor can collapse it into a `packages/print` package once
-a second renderer (receipts, statements) needs the same shape.
+documented at the top of each file with a "lockstep duplicate" banner.
+The boundary policy — keep the duplicate now, extract into a new
+`@givernance/pdf` package on the third PDF surface (receipts will be
+the second; annual giving statements the third) — is captured in
+[ADR-025](./adrs/adr-025-pdf-rendering-code-boundary.md). The
+extraction target cannot be `@givernance/shared` because PDFKit is
+Node-only and ADR-013 forbids Node-only deps in shared.
 
 Per-campaign locale override is **out of MVP scope** — see § 9.
 

@@ -24,3 +24,6 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-020: BullMQ Dead-Letter Strategy — `failed` Set + Structured Alerting for Phase 1](./adrs/adr-020-bullmq-dead-letter-strategy-failed-set-structured-alerting-for-phase-1.md)
 - [ADR-021: User Lifecycle — Soft-delete in App, Hard-delete in Keycloak, Anonymisation for GDPR](./adrs/adr-021-user-lifecycle-soft-delete-in-app-hard-delete-in-keycloak-anonymisation-for-gdpr.md)
 - [ADR-022: Platform Admins Disjoint from Tenant Users — `platform_admins` Table over `PLATFORM_TENANT_ID` Sentinel](./adrs/adr-022-platform-admins-disjoint-from-tenant-users.md)
+- [ADR-023: Object Storage Bucket Topology — One Bucket per Visibility Class, Per-Tenant Key Prefix](./adrs/adr-023-object-storage-bucket-topology.md)
+- [ADR-024: Image Processing Pipeline — `sharp` + Async BullMQ Worker + Content-Addressed Pre-Generated Variants](./adrs/adr-024-image-processing-pipeline.md)
+- [ADR-025: PDF Rendering Code Boundary — Lockstep Duplicate vs. Extracted `@givernance/pdf` Package](./adrs/adr-025-pdf-rendering-code-boundary.md)

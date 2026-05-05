@@ -1,6 +1,6 @@
 /** BullMQ Worker entry point — registers all job processors */
 
-import { QUEUE_NAMES, TENANT_LIFECYCLE_JOBS } from "@givernance/shared/jobs";
+import { BRANDING_EVENT_TYPES, QUEUE_NAMES, TENANT_LIFECYCLE_JOBS } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
@@ -8,9 +8,13 @@ import { env } from "./env.js";
 import { jobLogger, logger } from "./lib/logger.js";
 import { resolvePayloadLocale } from "./lib/payload-locale.js";
 import { extractTraceId } from "./lib/trace-context.js";
+import { processBrandingActivateLogo } from "./processors/branding-activate-logo.js";
+import { processBrandingGcAsset } from "./processors/branding-gc-asset.js";
+import { processBrandingAsset } from "./processors/branding-process-asset.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
+import { processKeycloakSyncOrgLogo } from "./processors/keycloak-sync-org-logo.js";
 import { processPlatformAdminInviteEmail } from "./processors/platform-admin-invite-email.js";
 import { processGeneratePostalExport } from "./processors/postal-export.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
@@ -42,6 +46,8 @@ const emailsQueue = new Queue(QUEUE_NAMES.EMAILS, { connection: queueConnection 
 const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
   connection: queueConnection,
 });
+const brandingQueue = new Queue(QUEUE_NAMES.BRANDING, { connection: queueConnection });
+const keycloakSyncQueue = new Queue(QUEUE_NAMES.KEYCLOAK_SYNC, { connection: queueConnection });
 
 /**
  * Register the nightly provisional-admin expire job.
@@ -61,6 +67,65 @@ async function scheduleRepeatableJobs() {
       removeOnFail: { count: 50 },
     },
   );
+}
+
+/**
+ * Route the four branding-related outbox events to their queues.
+ * Returns `true` when the event was handled (the caller short-circuits)
+ * and `false` when the type doesn't match — keeps `processDomainEvent`
+ * under Biome's cognitive complexity ceiling.
+ */
+async function routeBrandingEvent(args: {
+  type: string;
+  payload: Record<string, unknown>;
+  tenantId: string;
+  traceparent?: string;
+  log: ReturnType<typeof jobLogger>;
+}): Promise<boolean> {
+  const { type, payload, tenantId, traceparent, log } = args;
+  if (type === BRANDING_EVENT_TYPES.PROCESS_ASSET) {
+    const assetId = payload.assetId as string;
+    await brandingQueue.add(
+      BRANDING_EVENT_TYPES.PROCESS_ASSET,
+      { assetId, orgId: tenantId, traceparent },
+      { jobId: `branding-process-${assetId}` },
+    );
+    log.info({ assetId }, "Enqueued branding asset pipeline");
+    return true;
+  }
+  if (type === BRANDING_EVENT_TYPES.ACTIVATE_LOGO) {
+    const assetId = payload.assetId as string;
+    await brandingQueue.add(
+      BRANDING_EVENT_TYPES.ACTIVATE_LOGO,
+      { assetId, orgId: tenantId, traceparent },
+      { jobId: `branding-activate-${assetId}` },
+    );
+    log.info({ assetId }, "Enqueued branding activate logo");
+    return true;
+  }
+  if (type === BRANDING_EVENT_TYPES.GC_ASSET) {
+    const assetId = payload.assetId as string;
+    const prefix = payload.prefix as string;
+    await brandingQueue.add(
+      BRANDING_EVENT_TYPES.GC_ASSET,
+      { assetId, orgId: tenantId, prefix, traceparent },
+      { jobId: `branding-gc-${assetId}` },
+    );
+    log.info({ assetId, prefix }, "Enqueued branding asset GC");
+    return true;
+  }
+  if (type === BRANDING_EVENT_TYPES.KEYCLOAK_SYNC_ORG_LOGO) {
+    await keycloakSyncQueue.add(
+      BRANDING_EVENT_TYPES.KEYCLOAK_SYNC_ORG_LOGO,
+      { orgId: tenantId, traceparent },
+      // Per-tenant jobId so a flurry of activations + gc on the same
+      // tenant collapses to a single sync (last-write-wins).
+      { jobId: `kc-sync-org-logo-${tenantId}` },
+    );
+    log.info({ tenantId }, "Enqueued KC org logo sync");
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -213,6 +278,13 @@ async function processDomainEvent(job: Job): Promise<void> {
     return;
   }
 
+  // ── Org branding (Epic #286) ───────────────────────────────────────
+  // Routed through a helper so the parent function's cognitive
+  // complexity stays under the Biome cap.
+  if (await routeBrandingEvent({ type, payload, tenantId, traceparent, log })) {
+    return;
+  }
+
   // Issue #254 — platform-admin invitation. Distinct from `team_invite`
   // because the accept URL points at `/admin/platform-admins/accept`
   // (super-admin onboarding), not `/invite/accept`.
@@ -290,6 +362,58 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
+  // ── Branding queue (Epic #286) ──────────────────────────────────────
+  // The branding queue carries three job names — process / activate / gc.
+  // We route by `job.name` rather than splitting into three queues so
+  // BullMQ's per-tenant jobId ordering (last-write-wins for the same
+  // logical asset) stays trivial. Concurrency 1: each pipeline pegs
+  // libvips and uploads four objects sequentially — adding workers
+  // (pods) is the right scaling axis.
+  const brandingWorker = new Worker(
+    QUEUE_NAMES.BRANDING,
+    async (job: Job) => {
+      // biome-ignore lint/suspicious/noExplicitAny: BullMQ Job is heterogeneously typed at runtime
+      const j = job as Job<any>;
+      if (j.name === BRANDING_EVENT_TYPES.PROCESS_ASSET) {
+        return processBrandingAsset(j);
+      }
+      if (j.name === BRANDING_EVENT_TYPES.ACTIVATE_LOGO) {
+        return processBrandingActivateLogo(j);
+      }
+      if (j.name === BRANDING_EVENT_TYPES.GC_ASSET) {
+        return processBrandingGcAsset(j);
+      }
+      logger.warn({ jobName: j.name }, "Unknown branding job — skipping");
+      return null;
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 1,
+      ...defaultJobOpts,
+    },
+  );
+
+  const keycloakSyncWorker = new Worker(
+    QUEUE_NAMES.KEYCLOAK_SYNC,
+    async (job: Job) => {
+      // biome-ignore lint/suspicious/noExplicitAny: BullMQ Job is heterogeneously typed at runtime
+      const j = job as Job<any>;
+      if (j.name === BRANDING_EVENT_TYPES.KEYCLOAK_SYNC_ORG_LOGO) {
+        return processKeycloakSyncOrgLogo(j);
+      }
+      logger.warn({ jobName: j.name }, "Unknown keycloak-sync job — skipping");
+      return null;
+    },
+    {
+      connection: createRedisConnection(),
+      // Concurrency 2: KC admin calls are network-bound; we don't want
+      // a slow KC making logo syncs block forever, but we also don't
+      // want 10 concurrent attribute writes contesting the same org.
+      concurrency: 2,
+      ...defaultJobOpts,
+    },
+  );
+
   const workers = [
     receiptsWorker,
     emailsWorker,
@@ -299,6 +423,8 @@ function startWorkers() {
     eventsWorker,
     webhooksWorker,
     tenantLifecycleWorker,
+    brandingWorker,
+    keycloakSyncWorker,
   ];
 
   for (const w of workers) {

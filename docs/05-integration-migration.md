@@ -190,6 +190,35 @@ Realm: givernance-prod
 
 `org_id` and `role` are custom claims mapped from Keycloak user attributes set during user provisioning.
 
+### 5.1 Keycloak Organization attribute sync (reusable pattern)
+
+> Established by Epic #286 (org-logo upload). See [`docs/24-branding-assets.md`](./24-branding-assets.md) § 4.4 for the logo-specific application.
+
+Some tenant-level state needs to surface in **Keycloak Organization attributes** so the Keycloak UI (login screen, account console) can render it for unauthenticated users — without requiring those surfaces to call back into the application API. The canonical example is `tenants.logo_asset_id`: the operator uploads a logo, and seconds later anonymous donors hitting the Keycloak login screen for that tenant must see the new logo.
+
+The reusable shape, applied to any tenant attribute → Keycloak Organization attribute sync:
+
+```
+APP DB                        OUTBOX RELAY                  WORKER (BullMQ)              KEYCLOAK ADMIN API
+──────                        ────────────                  ──────────────               ──────────────────
+UPDATE tenants SET ...   →    domain event              →   GET  /organizations/{id}  →  (current attrs)
+INSERT outbox_events           (e.g. keycloak.sync_*)       merge target attribute
+                                                            PUT  /organizations/{id}     (200 OK)
+                                                            audit_logs entry
+```
+
+Properties of this pattern:
+
+- **Async by default.** Keycloak being down does NOT break the app-DB write. The outbox event re-fires until success; BullMQ retry policy handles 5xx / network failures.
+- **Idempotent.** GET-then-PUT preserves every other attribute (`theme_primary_color`, organisation name, IdP bindings) by merging only the target field. Reissuing the same outbox event is safe.
+- **Eventual consistency, sub-second drift.** In practice the relay processes pending events in well under 1s; a donor logging in during that window briefly sees the OLD attribute. This is accepted as benign for non-transactional surfaces (logos, theme colours, display names). It would NOT be acceptable for security-relevant attributes (which is why we don't put any in Organization attributes — see the CLAUDE.md "🛑 No secrets in Keycloak Organization attributes" rule).
+- **Audit trail.** Every successful sync writes an `audit_logs` entry with `action='keycloak.org_attribute.synced'`, the attribute name, and the new value (truncated for non-trivially-sized payloads).
+- **Same admin client.** Reuses `packages/api/src/lib/keycloak-admin.ts` with its existing exponential-backoff retry, circuit breaker, and rate-limit handling (see § 5 above).
+
+The sync is **not in the API request handler**. Synchronous KC PATCH would couple the app-DB write SLO to the Keycloak Admin API SLO and rate-limit budget, and would mean a Keycloak outage breaks every settings save. The outbox-relay path was chosen explicitly to decouple the two.
+
+The Epic #286 implementation populates the `logo_url` attribute that `infra/keycloak/themes/givernance/login/template.ftl` already references — closing the loop that has been aspirational since Epic #110. Future tenant attributes (display name updates that need to flow into KC Organization name, custom theme tokens, locale defaults) follow the same pattern.
+
 ---
 
 ## 6. Storage integration (S3-compatible)
