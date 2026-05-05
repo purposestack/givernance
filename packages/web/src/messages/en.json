@@ -1707,6 +1707,12 @@
         "mode": {
           "personalized": "Personalized",
           "door_drop": "Door drop"
+        },
+        "status": {
+          "pending": "Pending",
+          "processing": "Processing",
+          "completed": "Completed",
+          "failed": "Failed"
         }
       },
       "members": {
