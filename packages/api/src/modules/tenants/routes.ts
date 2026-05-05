@@ -35,11 +35,12 @@ const TenantLocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Lite
 
 /**
  * Free-form mission statement of the organisation (Epic #274 follow-up).
- * Soft-cap at 2000 chars so the postal-letter renderer doesn't blow past
- * its letterhead band on a pathologically long input. Nullable so the
- * operator can clear the field after setting it.
+ * Hard-cap at 1000 chars (matches DB CHECK from migration 0040) so the
+ * postal-letter renderer doesn't blow past its letterhead band, and so
+ * a stray ETL import can't leak a multi-megabyte free-form blob past the
+ * validator. Nullable so the operator can clear the field after setting it.
  */
-const TenantMissionSchema = Type.Union([Type.Null(), Type.String({ maxLength: 2000 })]);
+const TenantMissionSchema = Type.Union([Type.Null(), Type.String({ maxLength: 1000 })]);
 
 const UpdateTenantBody = Type.Object(
   {

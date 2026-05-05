@@ -15,6 +15,19 @@
  *   5. Marks the row `completed` with `zip_s3_path` populated, or `failed`
  *      with the captured error message.
  *
+ * Idempotency (audit follow-up — Kamal pod crash mid-export):
+ *   - QR codes are inserted with the `export_id` of this job and a partial
+ *     unique index on `(export_id, COALESCE(constituent_id, sentinel))`.
+ *     On retry we SELECT the previously-minted rows and reuse their tokens
+ *     instead of generating new ones, so a crash partway through doesn't
+ *     leave behind stranded QR codes that no printed letter references.
+ *   - The S3 ZIP key is deterministic (`{org}/campaigns/{cid}/exports/{eid}.zip`),
+ *     so a retry overwrites the previous (incomplete) upload.
+ *   - The progress_count update is idempotent — last-write-wins on the
+ *     same row, never decremented.
+ *   - The terminal `completed` flip is gated on the row not already being
+ *     `completed` so a double-finish doesn't clobber `completed_at`.
+ *
  * Failure modes:
  *   - A single-PDF render error fails the whole job (we don't ship a
  *     half-bundled archive). BullMQ retries the job up to 3× on transient
@@ -37,7 +50,7 @@ import {
 } from "@givernance/shared/schema";
 import archiver from "archiver";
 import type { Job } from "bullmq";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { env } from "../env.js";
 import { withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
@@ -106,7 +119,30 @@ export async function processGeneratePostalExport(
     traceId: extractTraceId(traceparent),
   });
 
-  log.info({ exportId, campaignId, mode }, "Postal export job start");
+  log.info(
+    { exportId, campaignId, mode, attempt: job.attemptsMade ?? 0 },
+    "Postal export job start",
+  );
+
+  // ── 0. Short-circuit on already-completed exports. ───────────────
+  // BullMQ may re-queue a job whose previous run flipped the row to
+  // `completed` but failed to ack (rare — Redis crash between worker
+  // commit and BullMQ status write). Re-running would re-mint nothing
+  // (idempotent guards downstream) but would still upload a redundant
+  // ZIP and emit a misleading "completed" log. Cheaper to early-exit.
+  const [existing] = await withWorkerContext(orgId, async (tx) =>
+    tx
+      .select({
+        status: campaignPostalExports.status,
+        progressCount: campaignPostalExports.progressCount,
+      })
+      .from(campaignPostalExports)
+      .where(and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, orgId))),
+  );
+  if (existing?.status === "completed") {
+    log.info({ exportId }, "Postal export already completed — skipping retry");
+    return { uploaded: existing.progressCount };
+  }
 
   // ── 1. Flip status to `processing`. ──────────────────────────────
   await withWorkerContext(orgId, async (tx) => {
@@ -194,10 +230,47 @@ export async function processGeneratePostalExport(
     },
   );
 
+  // ── 2b. Reuse QR codes from a prior crashed attempt. ─────────────
+  // On retry, `campaign_qr_codes` may already hold rows that the previous
+  // run inserted before crashing. We keyed those rows by `(export_id,
+  // constituent_id)` (partial unique index — see migration 0040) so we
+  // can pull them up here and reuse their tokens — guaranteeing one QR
+  // per recipient regardless of retry count.
+  const existingQrRows = await withWorkerContext(orgId, async (tx) =>
+    tx
+      .select({
+        constituentId: campaignQrCodes.constituentId,
+        code: campaignQrCodes.code,
+      })
+      .from(campaignQrCodes)
+      .where(and(eq(campaignQrCodes.orgId, orgId), eq(campaignQrCodes.exportId, exportId))),
+  );
+
+  // Build a lookup: constituentId -> existing token. The door-drop case
+  // (constituent_id IS NULL) is keyed under the symbolic `__door_drop__`
+  // entry — there's at most one such row per export, enforced by the
+  // partial unique index in migration 0040.
+  const DOOR_DROP_KEY = "__door_drop__" as const;
+  const existingTokenByRecipient = new Map<string, string>();
+  for (const row of existingQrRows) {
+    existingTokenByRecipient.set(row.constituentId ?? DOOR_DROP_KEY, row.code);
+  }
+
+  if (existingQrRows.length > 0) {
+    log.info(
+      { exportId, reusedCount: existingQrRows.length, attempt: job.attemptsMade ?? 0 },
+      "Reusing QR codes from a previous attempt — idempotent retry",
+    );
+  }
+
   // Pre-compute the work list so the ZIP order matches the DB order; the
-  // QR tokens are minted now and inserted with their PDFs in step 3.
+  // QR tokens are minted now and inserted with their PDFs in step 3. On
+  // retry, prefer the previously-minted token over a freshly generated
+  // one so the ZIP we ship matches the DB rows already on disk.
   type WorkItem = {
     qrToken: string;
+    /** True when the token was loaded from a prior attempt and must NOT be re-inserted. */
+    qrAlreadyPersisted: boolean;
     constituentId: string | null;
     fileName: string;
     recipient: {
@@ -212,31 +285,45 @@ export async function processGeneratePostalExport(
     } | null;
   };
 
+  function tokenFor(recipientKey: string): { token: string; alreadyPersisted: boolean } {
+    const reuse = existingTokenByRecipient.get(recipientKey);
+    if (reuse) return { token: reuse, alreadyPersisted: true };
+    return { token: generateQrToken(), alreadyPersisted: false };
+  }
+
   const workItems: WorkItem[] =
     mode === "personalized"
-      ? recipients.map((r) => ({
-          qrToken: generateQrToken(),
-          constituentId: r.id,
-          fileName: `${sanitiseFilename(`${r.lastName}-${r.firstName}`)}.pdf`,
-          recipient: {
-            firstName: r.firstName,
-            lastName: r.lastName,
-            email: r.email,
-            addressLine1: r.addressLine1,
-            addressLine2: r.addressLine2,
-            postalCode: r.postalCode,
-            city: r.city,
-            countryCode: r.countryCode,
-          },
-        }))
-      : [
-          {
-            qrToken: generateQrToken(),
-            constituentId: null,
-            fileName: "door-drop.pdf",
-            recipient: null,
-          },
-        ];
+      ? recipients.map((r) => {
+          const { token, alreadyPersisted } = tokenFor(r.id);
+          return {
+            qrToken: token,
+            qrAlreadyPersisted: alreadyPersisted,
+            constituentId: r.id,
+            fileName: `${sanitiseFilename(`${r.lastName}-${r.firstName}`)}.pdf`,
+            recipient: {
+              firstName: r.firstName,
+              lastName: r.lastName,
+              email: r.email,
+              addressLine1: r.addressLine1,
+              addressLine2: r.addressLine2,
+              postalCode: r.postalCode,
+              city: r.city,
+              countryCode: r.countryCode,
+            },
+          };
+        })
+      : (() => {
+          const { token, alreadyPersisted } = tokenFor(DOOR_DROP_KEY);
+          return [
+            {
+              qrToken: token,
+              qrAlreadyPersisted: alreadyPersisted,
+              constituentId: null,
+              fileName: "door-drop.pdf",
+              recipient: null,
+            },
+          ];
+        })();
 
   if (workItems.length === 0) {
     // Defensive: API rejects this case, but if a stale job queued before
@@ -262,15 +349,21 @@ export async function processGeneratePostalExport(
   try {
     for (const item of workItems) {
       // Mint the QR row first so a crash mid-loop leaves a stable audit
-      // (the printed PDF and the DB token agree).
-      await withWorkerContext(orgId, async (tx) => {
-        await tx.insert(campaignQrCodes).values({
-          orgId,
-          campaignId,
-          constituentId: item.constituentId,
-          code: item.qrToken,
+      // (the printed PDF and the DB token agree). Skip the insert on
+      // retry when the row was already persisted by a prior attempt —
+      // the partial unique index would also reject the duplicate, but
+      // the explicit branch is cheaper and keeps the log-line clean.
+      if (!item.qrAlreadyPersisted) {
+        await withWorkerContext(orgId, async (tx) => {
+          await tx.insert(campaignQrCodes).values({
+            orgId,
+            campaignId,
+            constituentId: item.constituentId,
+            code: item.qrToken,
+            exportId,
+          });
         });
-      });
+      }
 
       const buffer = await renderPdfBuffer({
         organisationName: tenant.name,
@@ -300,6 +393,10 @@ export async function processGeneratePostalExport(
     await archive.finalize();
     const zipS3Path = await uploadPromise;
 
+    // Idempotent terminal flip: only set `completed_at` when we're
+    // actually moving to `completed`. If a concurrent retry already
+    // finished (rare — partial-failure race), keep the original
+    // `completed_at` so audit trails stay stable.
     await withWorkerContext(orgId, async (tx) => {
       await tx
         .update(campaignPostalExports)
@@ -310,7 +407,13 @@ export async function processGeneratePostalExport(
           completedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, orgId)));
+        .where(
+          and(
+            eq(campaignPostalExports.id, exportId),
+            eq(campaignPostalExports.orgId, orgId),
+            sql`${campaignPostalExports.status} <> 'completed'`,
+          ),
+        );
     });
 
     log.info({ exportId, uploaded, zipS3Path }, "Postal export completed");

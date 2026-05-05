@@ -205,6 +205,7 @@ erDiagram
         uuid org_id FK
         uuid campaign_id FK
         uuid constituent_id FK "nullable for door_drop"
+        uuid export_id FK "nullable; backlink for retry-idempotent reuse (mig 0040)"
         string code "120-bit opaque token"
         timestamp scanned_at "first scan stamp"
     }
@@ -310,6 +311,8 @@ flowchart LR
 | 5 | **`systemDb` (BYPASSRLS) on `/v1/public/qr/:code`** | The endpoint is unauthenticated — no `app.current_organization_id` to set for RLS. The 120-bit opaque token IS the security boundary; rate-limiting (60/min) bounds brute force |
 | 6 | **`/p/:id` as the canonical donor URL** (not `/c/:id`) | Matches the existing public donation page route. A permanent 308 redirect at `/c/[id]` keeps already-printed legacy letters working |
 | 7 | **`PostalCampaignSection` wrapper** | Two sibling client components (`CampaignMembersCard`, `PostalExportPanel`) share live state (`memberCount`) without lifting it to the server-rendered parent |
+| 8 | **Worker is idempotent under retry** (mig 0040) | A Kamal pod crash mid-export used to leave stranded QR rows + a bricked ZIP. We now backlink each minted code to its `export_id` and SELECT existing rows on retry — the same tokens that were printed end up in the ZIP regardless of how many BullMQ attempts the job took |
+| 9 | **QR-attributed donations emit an asymmetric audit log** | Mirrors the `WEBHOOK:charge.refunded` pattern: when the Stripe webhook reconciles a postal-scanned gift, we write `audit_logs` with `user_id`/`actor_id = NULL` and the `qr_code_id` in `new_values` so a forensic reader can join print → scan → donate without trusting Stripe metadata in isolation |
 
 ## 4. Readiness gates (don't print useless letters)
 
@@ -348,6 +351,18 @@ flowchart TD
     D -.->|Disabled button + tooltip| Start
     E -.->|Disabled button + tooltip| Start
 ```
+
+### 3.bis Worker idempotency contract (audit follow-up)
+
+A postal export ZIP is not a green-field generation: a printed letter that hits the post box can't be unprinted, and a worker crash mid-export must not poison the next attempt with mismatched QR tokens. Concretely:
+
+- **`campaign_qr_codes.export_id`** (migration 0040) backlinks every minted code to the `campaign_postal_exports` row that produced it. On retry the worker `SELECT`s these rows for `(org_id, export_id)` and reuses their tokens instead of generating new ones.
+- **Partial unique index** `campaign_qr_codes_export_recipient_uniq` on `(export_id, COALESCE(constituent_id, sentinel))` makes the DB the safety net behind the application-level dedup: even a concurrent retry cannot insert a duplicate QR row for the same (export, recipient) pair.
+- **Deterministic S3 key** (`{org}/campaigns/{cid}/exports/{eid}.zip`) lets a retry overwrite the previous (incomplete) upload — multipart uploads are idempotent on completion.
+- **Short-circuit on `status='completed'`** at the top of the processor: if BullMQ re-queues an already-finished job (rare — Redis crash between worker commit and queue ack), we early-exit without re-uploading the ZIP or emitting a redundant log line.
+- **`completed_at` is preserved** by gating the terminal flip on `status <> 'completed'`, so the audit trail records the *first* successful run, not the most-recent retry.
+
+The contract is exercised by `packages/worker/src/tests/integration/postal-export.test.ts` — see the `idempotency under retry` describe block.
 
 ## 5. QR reconciliation flow
 
@@ -393,6 +408,7 @@ The Stripe webhook (`processStripeWebhook`) reads the metadata when the payment 
 
 - Inserts the `donations` row with `campaign_id` AND `qr_code_id` populated
 - If `qr_code_constituent_id` is present, links the donation to the original mail recipient (even if the donor entered a different email — the QR token is the trustworthy attribution)
+- Writes a system-initiated `audit_logs` row with `action='WEBHOOK:donation.qr_attributed'`, `user_id=NULL`, `actor_id=NULL` and the resolved `qr_code_id` in `new_values`. Mirrors the `WEBHOOK:charge.refunded` pattern: when no operator clicked anything, the audit trail records *system → DB* with enough context (QR id, campaign id, payment intent id) for a forensic reader to reconstruct the print → scan → donate chain without trusting raw Stripe metadata
 
 The QR-tracking widget on the campaign admin page (`qr-stats-service.ts`) aggregates:
 
@@ -460,5 +476,8 @@ These were considered and **deliberately deferred** — they would have either t
 - `docs/03-data-model.md` — Core ERD (campaigns, constituents, donations) the postal tables extend
 - `docs/06-security-compliance.md` — RLS posture, audit columns convention
 - `docs/12-user-journeys.md` — Personas behind the operator-facing screens (esp. "Stéphane — fundraising lead")
-- Migration `0037_campaign_constituents_exports.sql` — Schema delta for this epic
+- Migration `0037_postal_campaigns_mvp.sql` — Schema delta for this epic
+- Migration `0038_org_mission_campaign_description.sql` — Mission + campaign description columns
+- Migration `0039_constituent_postal_address.sql` — Window-envelope address fields
+- Migration `0040_postal_export_idempotency.sql` — Retry-idempotent QR codes (`export_id` backlink + partial unique index) and `tenants.mission` 1000-char DB cap
 - Mockups: `docs/design/index.html` → "Postal mailing" section

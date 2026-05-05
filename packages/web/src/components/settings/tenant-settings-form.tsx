@@ -220,7 +220,7 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
               value={mission}
               onChange={(event) => setMission(event.target.value)}
               disabled={loading || saving}
-              maxLength={2000}
+              maxLength={1000}
               rows={4}
               placeholder={t("fields.missionPlaceholder")}
             />

@@ -136,9 +136,11 @@ export const tenants = pgTable(
      * Mission statement of the organisation (Epic #274 follow-up).
      * Used as flavour text on generated postal letters and as a reusable
      * description elsewhere in the app (public donation page footer, AI
-     * assistant context). Free-form, soft-capped at 2000 chars in the
-     * validator layer; NULL until the operator fills the org-settings
-     * form.
+     * assistant context). Free-form, hard-capped at 1000 chars by a DB
+     * CHECK constraint (see migration 0040) so a future code path that
+     * bypasses the validator can't blow past the letterhead band; the
+     * validator mirrors that cap for early UX feedback. NULL until the
+     * operator fills the org-settings form.
      */
     mission: text("mission"),
     plan: varchar("plan", { length: 50 }).notNull().default("starter"),
@@ -962,12 +964,25 @@ export const campaignQrCodes = pgTable(
      * leaking tenant existence via collision errors.
      */
     code: varchar("code", { length: 32 }).notNull(),
+    /**
+     * Backlink to the `campaign_postal_exports` row that minted this token
+     * (Epic #274 audit follow-up — migration 0040). Lets the worker detect
+     * on retry that QR codes have already been generated for this export
+     * and reuse them instead of duplicating tokens on every BullMQ retry.
+     *
+     * NULL for QR codes minted outside the postal-export pipeline (legacy
+     * manual flow, future ad-hoc generators); the partial unique index
+     * `campaign_qr_codes_export_recipient_uniq` only enforces uniqueness
+     * when this column is set.
+     */
+    exportId: uuid("export_id"),
     scannedAt: timestamp("scanned_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("campaign_qr_codes_org_id_idx").on(table.orgId),
     index("campaign_qr_codes_campaign_id_idx").on(table.campaignId),
+    index("campaign_qr_codes_export_id_idx").on(table.exportId),
     unique("campaign_qr_codes_org_code_uniq").on(table.orgId, table.code),
   ],
 );

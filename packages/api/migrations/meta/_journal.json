@@ -281,6 +281,13 @@
       "when": 1777930000000,
       "tag": "0039_constituent_postal_address",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1777940000000,
+      "tag": "0040_postal_export_idempotency",
+      "breakpoints": true
     }
   ]
 }
