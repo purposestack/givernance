@@ -426,7 +426,14 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
       // authenticated user via `requireOrgAdmin`, and we only read the row's
       // identity fields, never any secret material.
       const [tenant] = await systemDb
-        .select({ name: tenants.name, mission: tenants.mission })
+        .select({
+          name: tenants.name,
+          mission: tenants.mission,
+          // Tenant default locale drives the PDF static copy. Until
+          // campaigns carry their own locale, we render the preview in
+          // the org's preferred language (Epic #274 follow-up).
+          defaultLocale: tenants.defaultLocale,
+        })
         .from(tenants)
         .where(eq(tenants.id, orgId))
         .limit(1);
@@ -440,6 +447,7 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         organisationMission: tenant?.mission ?? null,
         campaignName: campaign.name,
         campaignDescription: campaign.description ?? null,
+        locale: tenant?.defaultLocale ?? null,
         qrPayload: previewUrl,
         recipient:
           mode === "door_drop"
