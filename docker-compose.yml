@@ -117,7 +117,18 @@ services:
         mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
         mc mb --ignore-existing "local/$$S3_RECEIPTS_BUCKET"
         mc mb --ignore-existing "local/$$S3_CAMPAIGNS_BUCKET"
-        echo "MinIO buckets ready: $$S3_RECEIPTS_BUCKET, $$S3_CAMPAIGNS_BUCKET"
+        # GC orphan multipart parts after 1 day. The postal-export worker
+        # streams a ZIP into S3 via @aws-sdk/lib-storage's multipart Upload;
+        # if the source stream is destroyed mid-upload (worker crash, S3
+        # transient error), `Upload.done()` rejects but the parts already
+        # uploaded persist as orphans on the bucket and are billed forever
+        # until garbage-collected. The same lifecycle rule MUST be set on
+        # the prod Scaleway campaigns bucket — see docs/23-postal-campaigns.md
+        # § 3 "Architecture (key design decisions)".
+        # `|| true` keeps idempotency: re-applying an existing rule errors.
+        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_CAMPAIGNS_BUCKET" || true
+        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_RECEIPTS_BUCKET" || true
+        echo "MinIO buckets ready (with abort-incomplete-multipart lifecycle): $$S3_RECEIPTS_BUCKET, $$S3_CAMPAIGNS_BUCKET"
     restart: "no"
 
   mailpit:

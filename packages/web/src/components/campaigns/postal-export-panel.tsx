@@ -418,19 +418,14 @@ function ExportRow({ job, campaignId }: { job: PostalExport; campaignId: string 
 }
 
 function StatusBadge({ status }: { status: PostalExport["status"] }) {
+  const t = useTranslations("campaigns.postal.history.status");
   const variants: Record<PostalExport["status"], "neutral" | "info" | "success" | "error"> = {
     pending: "neutral",
     processing: "info",
     completed: "success",
     failed: "error",
   };
-  const labels: Record<PostalExport["status"], string> = {
-    pending: "Pending",
-    processing: "Processing",
-    completed: "Completed",
-    failed: "Failed",
-  };
-  return <Badge variant={variants[status]}>{labels[status]}</Badge>;
+  return <Badge variant={variants[status]}>{t(status)}</Badge>;
 }
 
 /**

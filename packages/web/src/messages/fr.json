@@ -1707,6 +1707,12 @@
         "mode": {
           "personalized": "Personnalisé",
           "door_drop": "Boîte aux lettres"
+        },
+        "status": {
+          "pending": "En attente",
+          "processing": "En cours",
+          "completed": "Terminé",
+          "failed": "Échec"
         }
       },
       "members": {

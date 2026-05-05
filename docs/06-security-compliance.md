@@ -12,6 +12,15 @@
 - All API error responses use **RFC 9457** (`application/problem+json`) with strict `schema.response` on all routes to prevent PII leakage
 - Structured logging via **Pino** with built-in PII redaction (defense in depth)
 
+### Encryption at rest — per-store coverage
+
+| Store | Provider | At-rest encryption |
+|---|---|---|
+| Postgres (`givernance`, `givernance_keycloak`) | Scaleway Managed PostgreSQL EU (SaaS) / self-hosted PG 16 | AES-256, Scaleway-managed KMS (SaaS); LUKS at the volume layer (self-hosted) |
+| Redis (BullMQ + caches) | Scaleway Managed Redis EU (SaaS) / self-hosted Redis 7 | AES-256 by Scaleway default ([Scaleway docs](https://www.scaleway.com/en/docs/managed-databases-for-redis/concepts/#data-encryption)); volume-level encryption (self-hosted). **Outbox/job payloads carrying transient PII (e.g. bulk-email recipient snapshots, postal-export QR seed lists) inherit this protection.** |
+| Object Storage (`receipts`, `campaigns` buckets) | Scaleway Object Storage EU (SaaS) / MinIO (self-hosted) | SSE-S3 AES-256, configured at upload time via `ServerSideEncryption: "AES256"` (`packages/worker/src/lib/s3.ts`). MinIO requires a `MINIO_KMS_SECRET_KEY` to honour the SSE flag — set in `docker-compose.yml`. |
+| Keycloak realm export / DB | Scaleway Managed PostgreSQL EU | AES-256 (same as application DB) |
+
 ## Database role model (3-role pattern)
 
 | Role | Attributes | Connection | Used by |
