@@ -65,6 +65,19 @@ Per [ADR-017](../15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-
 
 The app role that the API uses at runtime (`givernance_app`, NOBYPASSRLS) is provisioned by the Drizzle migrations inside the `givernance` database — see §6 of [`docs/02-reference-architecture.md`](../02-reference-architecture.md) for the 3-role RLS pattern.
 
+#### Migration journal note — dual `0023_*` entries
+
+The `packages/api/migrations/meta/_journal.json` contains two entries at sequential index positions 22 and 23 with different tags:
+
+| idx | tag | Notes |
+|-----|-----|-------|
+| 22 | `0023_onboarding_runtime` | Tenant onboarding runtime (ADR-016) |
+| 23 | `0023_multi_currency_schema` | Multi-currency schema (issue #230) |
+
+The two SQL files share the `0023_` prefix because they were authored in separate branches and both followed the previous `0022_invitation_purpose` migration. Drizzle Kit tracks migrations by the **journal entry hash / tag**, not the numeric prefix, so the application runner is unaffected. Both files are applied in index order at `pnpm db:migrate`.
+
+**Do not renumber or rename either file on `main`**: Drizzle would treat the rename as a new migration and attempt to re-apply it against an already-migrated database, causing an error. If you need to understand the application order, sort by `_journal.json` `.idx`, not by filename.
+
 ### Recommended Local Tooling (macOS Apple Silicon)
 
 | Tool | Purpose | Download |

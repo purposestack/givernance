@@ -22,6 +22,9 @@ erDiagram
   pledges ||--o{ pledge_installments : "schedules"
   donations ||--o{ soft_credits : "credits"
 
+  %% MULTI-CURRENCY
+  exchange_rates }o--o{ donations : "rate snapshot (ADR-023)"
+
   %% CAMPAIGNS
   orgs ||--o{ campaigns : "runs"
   campaigns ||--o{ campaigns : "parent-child"

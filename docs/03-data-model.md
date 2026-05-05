@@ -1,6 +1,6 @@
 # 03 — Data Model
 
-> Last updated: 2026-04-14
+> Last updated: 2026-05-05 (P2: exchange_rates table, multi-currency pivot columns, allocation modes — ADR-023/issue #230)
 
 ---
 
@@ -338,6 +338,9 @@ CREATE TABLE funds (
 ```
 
 #### `donations`
+
+> **Multi-currency note** (ADR-023, migration 0037): All KPI aggregates (dashboard "Total raised", campaign totals, reports) use `amount_base_cents` — the donor amount pre-converted to the tenant's pivot base currency. `amount_cents` is for donor-facing display only. Never sum `amount_cents` across tenants or across currencies.
+
 ```sql
 CREATE TABLE donations (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
@@ -345,58 +348,88 @@ CREATE TABLE donations (
     constituent_id  UUID NOT NULL REFERENCES constituents(id),
     household_id    UUID REFERENCES households(id),
     campaign_id     UUID REFERENCES campaigns(id),
-    -- Amount
-    amount          NUMERIC(14,2) NOT NULL CHECK (amount >= 0),
-    currency        CHAR(3) NOT NULL DEFAULT 'EUR',
-    type            TEXT NOT NULL CHECK (type IN ('cash','in_kind','stock','matched')),
-    -- Dates
-    received_date   DATE NOT NULL,
-    posted_date     DATE,
+    -- Amount (donor currency)
+    amount_cents        INTEGER NOT NULL,             -- donor amount in donor currency (cents)
+    currency            VARCHAR(3) NOT NULL DEFAULT 'EUR', -- ISO 4217 donor currency
+    -- Multi-currency pivot (ADR-023)
+    exchange_rate       NUMERIC(18,8) NOT NULL,       -- rate applied at donation time (> 0, NOT NULL since 0037)
+    amount_base_cents   INTEGER NOT NULL,             -- pre-converted to tenant base currency — use for all aggregates
+    exchange_rate_at    DATE NOT NULL DEFAULT CURRENT_DATE, -- snapshot: calendar date of the rate (migration 0037)
+    base_currency_at_donation VARCHAR(3) NOT NULL,    -- snapshot: tenant's base currency at time of conversion (migration 0037)
+    exchange_rate_source VARCHAR(32) NOT NULL DEFAULT 'unknown', -- traceability: 'api'|'local_fallback'|'default_fallback'|… (migration 0037)
     -- Payment
     payment_method  TEXT,                        -- card, bank_transfer, sepa_dd, cash, cheque, paypal
     payment_ref     TEXT,                        -- payment gateway transaction ID
     payment_gateway TEXT,                        -- stripe, mollie, manual
-    sepa_mandate_ref TEXT,
     -- Status
     status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','cleared','refunded','failed')),
-    is_anonymous    BOOLEAN NOT NULL DEFAULT false,
-    is_gift_aided   BOOLEAN NOT NULL DEFAULT false,
-    gift_aid_claimed_at DATE,
-    -- Receipt
-    receipt_id      UUID REFERENCES receipts(id),
-    receipt_sent_at TIMESTAMPTZ,
+    -- Audit / receipt
+    fiscal_year     INTEGER,
+    receipt_number  TEXT,
+    receipt_amount  NUMERIC(12,2),
     -- Lifecycle
-    pledge_id       UUID REFERENCES pledges(id), -- set if this payment satisfies a pledge installment
-    in_kind_description TEXT,
-    in_kind_value   NUMERIC(14,2),
-    notes           TEXT,
-    source_code     TEXT,
-    custom_fields   JSONB NOT NULL DEFAULT '{}',
-    -- Batch
-    gl_batch_id     UUID REFERENCES gl_batches(id),
-    -- Audit
+    donated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_by      UUID REFERENCES users(id),
     deleted_at      TIMESTAMPTZ
 );
 
-CREATE INDEX donation_constituent_idx ON donations (org_id, constituent_id, received_date DESC);
-CREATE INDEX donation_campaign_idx ON donations (org_id, campaign_id) WHERE campaign_id IS NOT NULL;
-CREATE INDEX donation_status_idx ON donations (org_id, status, received_date);
+CREATE INDEX donations_org_id_idx          ON donations (org_id);
+CREATE INDEX donations_constituent_id_idx  ON donations (constituent_id);
+CREATE INDEX donations_donated_at_idx      ON donations (donated_at);
+CREATE INDEX donations_campaign_id_idx     ON donations (campaign_id) WHERE campaign_id IS NOT NULL;
+UNIQUE INDEX donations_org_payment_uniq    ON donations (org_id, payment_method, payment_ref);
 ```
 
 #### `donation_allocations` (split across funds)
+
+> **Multi-currency note** (ADR-023, migration 0038): `amount_cents` is nullable since 0038. Each allocation row uses exactly one of `amount_cents` (mode A — fixed amount) or `percentage_bp` (mode B — basis points). The DB CHECK `donation_allocations_amount_or_bp` enforces the XOR. The `check_allocation_sum` trigger verifies mode A rows sum to the donation total, and mode B rows sum to 10000 bp.
+
 ```sql
 CREATE TABLE donation_allocations (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id          UUID NOT NULL,
-    donation_id     UUID NOT NULL REFERENCES donations(id),
+    donation_id     UUID NOT NULL REFERENCES donations(id) ON DELETE CASCADE,
     fund_id         UUID NOT NULL REFERENCES funds(id),
-    amount          NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+    -- Mode A: fixed amount (nullable since migration 0038)
+    amount_cents    INTEGER,                     -- allocation in donor currency (nullable — see XOR below)
+    amount_base_cents INTEGER,                   -- pre-converted to tenant base currency (nullable, backfill progressive)
+    -- Mode B: percentage allocation (migration 0038)
+    percentage_bp   INTEGER CHECK (percentage_bp BETWEEN 1 AND 10000), -- basis points (nullable — see XOR below)
+    -- XOR constraint: exactly one of (amount_cents, percentage_bp) must be non-null
+    CONSTRAINT donation_allocations_amount_or_bp CHECK (
+        (amount_cents IS NOT NULL AND percentage_bp IS NULL) OR
+        (amount_cents IS NULL AND percentage_bp IS NOT NULL)
+    ),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- Invariant: SUM(allocations.amount) = donation.amount (enforced by API)
+-- Invariant enforced by trigger `check_allocation_sum`:
+--   Mode A: SUM(amount_cents) = donation.amount_cents
+--   Mode B: SUM(percentage_bp) = 10000
+```
+
+#### `exchange_rates` (historical currency conversion rates)
+
+> Populated daily by the BullMQ nightly CRON job at 02:00 UTC and on-demand by `ExchangeRateService.getRate()`. Source: exchangerate-api.com. See ADR-023 for the full fallback cascade and Redis cache design.
+
+```sql
+CREATE TABLE exchange_rates (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    currency    VARCHAR(3) NOT NULL,     -- ISO 4217 source currency (e.g. 'GBP')
+    base_currency VARCHAR(3) NOT NULL,   -- ISO 4217 target / pivot currency (e.g. 'EUR')
+    date        DATE NOT NULL,           -- calendar date of the rate
+    rate        NUMERIC(18,8) NOT NULL CHECK (rate > 0),
+    source      VARCHAR(32) NOT NULL DEFAULT 'unknown', -- 'api' | 'manual' | 'unknown'
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (currency, base_currency, date)
+);
+
+-- Composite lookup index for the ExchangeRateService query
+-- (currency, base_currency) scans; ORDER BY date DESC for local_fallback
+CREATE INDEX exchange_rates_lookup_idx ON exchange_rates (currency, base_currency, date DESC);
+CREATE INDEX exchange_rates_currency_idx      ON exchange_rates (currency);
+CREATE INDEX exchange_rates_base_currency_idx ON exchange_rates (base_currency);
 ```
 
 #### `pledges`
