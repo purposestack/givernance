@@ -96,28 +96,36 @@ const PAGE_WIDTH = 595.28; // A4 width in points
 const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2;
 const QR_SIZE = 140;
 
-// ── Window-envelope address-block geometry (norme NF Z-10-011) ────────
+// ── A4-folded-in-half geometry for C5 window envelope ─────────────────
 //
-// Standard French DL window envelope (110×220mm) has its window at
-// roughly 20mm from left, 45mm from top, 90×35mm. After a Z-fold of an
-// A4 sheet (3 panels of 99mm each), the *top* third of the page lands
-// face-up inside the envelope window. So the recipient block on the A4
-// page must sit at the same offset as the envelope window.
+// The letter is printed on a single A4 sheet (210×297mm), then folded
+// once horizontally at the midline (y = 148.5mm). The folded letter
+// (A5-landscape, 210×148.5mm) slips into a standard French C5 window
+// envelope (162×229mm) with the **top half** of the original sheet
+// becoming the visible cover.
 //
-// 1mm = 2.834645 PDF points. We give the address block a 90×35mm box
-// at (20mm, 50mm) from the top-left, leaving ~5mm of safe-zone padding
-// on each side so a slight envelope misalignment doesn't clip the text.
+// Layout split:
+//   • Top half (0..148.5mm)    — letterhead + mission + recipient block
+//                                (this is what the donor sees through
+//                                 the C5 window before opening the env)
+//   • Bottom half (148.5..297mm) — campaign title + description + body
+//                                + QR panel (visible after unfolding)
+//
+// Address block lives in the top half, biased toward the right and
+// vertically centered around the C5 window position. 1mm = 2.834645pt.
+// Geometry: fold line at A4 midpoint (148.5mm); block lives in the top
+// half (cover) at right-of-center, vertically centered around the C5
+// window position; appeal content starts at 158mm (just below the fold).
 const MM_TO_PT = 2.834645;
-const ADDRESS_BLOCK_X = 20 * MM_TO_PT; // ≈ 57pt
-const ADDRESS_BLOCK_Y = 50 * MM_TO_PT; // ≈ 142pt — distance from page top
-const ADDRESS_BLOCK_WIDTH = 90 * MM_TO_PT; // ≈ 255pt
-const ADDRESS_BLOCK_HEIGHT = 35 * MM_TO_PT; // ≈ 99pt
-/** Where the body content starts when the address block was rendered. */
-const CONTENT_TOP_AFTER_ADDRESS = ADDRESS_BLOCK_Y + ADDRESS_BLOCK_HEIGHT + 20;
+const ADDRESS_BLOCK_X = 110 * MM_TO_PT; // ≈ 312pt
+const ADDRESS_BLOCK_Y = 60 * MM_TO_PT; // ≈ 170pt
+const ADDRESS_BLOCK_WIDTH = 80 * MM_TO_PT; // ≈ 227pt
+/** Y-coordinate where the bottom-half (appeal content) starts. */
+const BOTTOM_HALF_TOP = 158 * MM_TO_PT; // ≈ 448pt — small gap below fold
 
 /**
  * Truthy when the recipient has the minimum address fields needed to
- * fit a French DL window envelope. We deliberately don't insist on
+ * fit a French C5 window envelope. We deliberately don't insist on
  * `addressLine2` (rare) or `countryCode` (defaults to FR for domestic
  * mail) — but `addressLine1`, `postalCode`, and `city` are required.
  */
@@ -135,10 +143,10 @@ export interface PostalLetterRecipient {
   /**
    * Optional postal address (Epic #274 follow-up). When all of
    * `addressLine1`, `postalCode`, and `city` are present, the renderer
-   * positions a recipient block in the standard French DL window
-   * (norme NF Z-10-011) so the letter fits in a window envelope after
-   * a Z-fold. When any required line is missing the block is skipped
-   * and the letterhead claims the top of the page as before.
+   * positions a recipient block in the **C5 window** zone (top half,
+   * right-of-center) so the letter fits in a C5 window envelope after
+   * a single half-fold. When any required line is missing the block
+   * is skipped and the cover panel still carries the org letterhead.
    */
   addressLine1: string | null;
   addressLine2: string | null;
@@ -214,10 +222,35 @@ async function buildPostalLetterDoc(
     },
   });
 
-  // ── Recipient block (window envelope, optional) ───────────────────────
-  // When the recipient has a usable address, we draw the recipient name
-  // + address at the standard French DL window position. The letterhead
-  // then starts BELOW the window so it never overlaps the envelope cut.
+  // ── TOP HALF — COVER (visible through C5 window after fold) ──────────
+  //
+  // Three elements live above the fold line (y < 148.5mm):
+  //   1. Org name centered at the top — the visual identity, biggest hit.
+  //   2. Mission italic centered just below — answers "what does this org do".
+  //   3. Recipient address block at right-of-center, middle of top half —
+  //      aligns with the C5 window so the donor sees their own name
+  //      through the envelope cut.
+  // Org+mission are vertically above the address block (different y bands)
+  // so the centered text never overlaps the right-aligned address column.
+
+  // Letterhead — org name
+  doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(22);
+  doc.text(input.organisationName, PAGE_MARGIN, 25 * MM_TO_PT, {
+    align: "center",
+    width: CONTENT_WIDTH,
+  });
+
+  // Mission — under org name
+  if (input.organisationMission && input.organisationMission.trim().length > 0) {
+    doc.moveDown(0.3);
+    doc.font("Helvetica-Oblique").fontSize(10).fillColor("#475569");
+    doc.text(input.organisationMission.trim(), {
+      align: "center",
+      width: CONTENT_WIDTH,
+    });
+  }
+
+  // Recipient address block — middle-right of top half (C5 window zone)
   const renderAddressBlock = hasWindowEnvelopeAddress(input.recipient);
   if (renderAddressBlock && input.recipient) {
     doc.save().fillColor("#0f172a").font("Helvetica").fontSize(11);
@@ -237,42 +270,37 @@ async function buildPostalLetterDoc(
       align: "left",
     });
     doc.restore();
-    // Park the cursor below the address window so the rest of the
-    // content doesn't try to paint into the envelope cut.
-    doc.x = PAGE_MARGIN;
-    doc.y = CONTENT_TOP_AFTER_ADDRESS;
   }
 
-  // ── Letterhead ────────────────────────────────────────────────────────
-  doc.fillColor("#0f172a");
-  doc.font("Helvetica-Bold").fontSize(22);
-  doc.text(input.organisationName, { align: "center" });
-  if (input.organisationMission && input.organisationMission.trim().length > 0) {
-    doc.moveDown(0.3);
-    doc.font("Helvetica-Oblique").fontSize(10).fillColor("#475569");
-    doc.text(input.organisationMission.trim(), { align: "center" });
-  }
+  // ── BOTTOM HALF — APPEAL (visible after unfolding) ────────────────────
+  //
+  // Park the cursor at the start of the bottom panel, then flow content
+  // top-down: campaign title, description (operator's words, NEW location
+  // — was previously buried in the body), salutation, thanks, call-to-scan,
+  // QR. PDFKit will auto-paginate if a particularly long description
+  // pushes the QR panel below the page margin.
+  doc.x = PAGE_MARGIN;
+  doc.y = BOTTOM_HALF_TOP;
 
-  // Thin rule
-  doc.moveDown(0.8);
-  const ruleY = doc.y;
-  doc
-    .strokeColor("#e2e8f0")
-    .lineWidth(0.6)
-    .moveTo(PAGE_MARGIN, ruleY)
-    .lineTo(PAGE_MARGIN + CONTENT_WIDTH, ruleY)
-    .stroke();
-  doc.moveDown(1.4);
-
-  // ── Campaign title ────────────────────────────────────────────────────
+  // Campaign title
   doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(16);
   doc.text(input.campaignName, { align: "left" });
-  doc.moveDown(1.2);
+  doc.moveDown(0.6);
+
+  // Campaign description — directly under the title, the operator's
+  // actual copy. Skipped silently when the field is empty; in that case
+  // the generic thanks-fallback further down carries the prose load.
+  const hasDescription = Boolean(input.campaignDescription?.trim());
+  if (hasDescription && input.campaignDescription) {
+    doc.fillColor("#0f172a").font("Helvetica").fontSize(11);
+    doc.text(input.campaignDescription.trim(), { align: "justify", lineGap: 2 });
+    doc.moveDown(1.0);
+  }
 
   // ── Locale-driven static copy ─────────────────────────────────────────
   const copy = copyForLocale(input.locale);
 
-  // ── Salutation ────────────────────────────────────────────────────────
+  // Salutation
   doc.fillColor("#0f172a").font("Helvetica").fontSize(12);
   if (input.recipient) {
     doc.text(copy.greetingNamed(input.recipient.firstName, input.recipient.lastName));
@@ -281,19 +309,11 @@ async function buildPostalLetterDoc(
   }
   doc.moveDown(0.8);
 
-  // ── Body ──────────────────────────────────────────────────────────────
-  // Two paths:
-  //  • Operator filled `campaign.description` → use **their words**, full
-  //    stop. We only add a brief warm transition before the call-to-scan,
-  //    not a generic thanks wall, because that would read as filler
-  //    bolted onto the operator's actual copy.
-  //  • Operator did NOT fill the description → fall back to a generic
-  //    paragraph so the letter still feels like a real letter, not a
-  //    bare "scan this code" instruction.
-  const hasDescription = Boolean(input.campaignDescription?.trim());
-  if (hasDescription && input.campaignDescription) {
-    doc.text(input.campaignDescription.trim(), { align: "justify", lineGap: 2 });
-    doc.moveDown(0.8);
+  // Thanks paragraph
+  //  • Description was already shown above → short transition only.
+  //  • No description → full generic fallback so the letter still feels
+  //    like a real letter, not a bare "scan this code" instruction.
+  if (hasDescription) {
     doc.text(
       input.recipient ? copy.thanksWithDescriptionNamed : copy.thanksWithDescriptionDoorDrop,
       { align: "justify", lineGap: 2 },
@@ -305,6 +325,8 @@ async function buildPostalLetterDoc(
     });
   }
   doc.moveDown(0.8);
+
+  // Call to scan
   doc.text(copy.callToScan, {
     align: "justify",
     lineGap: 2,
