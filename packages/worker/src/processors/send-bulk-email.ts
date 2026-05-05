@@ -2,10 +2,16 @@
  * Bulk-email processor (Epic #274).
  *
  * Inputs: a `segmentFilter` carrying the rendered subject + body and the
- * pre-resolved recipient list snapshot (so the dispatch is deterministic
- * even if constituents are mutated between request and send). The list
- * comes from the API service, not from a fresh DB query — keeps Redis the
- * source of truth for "who got this email" once the job is in flight.
+ * **constituent id list** captured by the API at request time. The
+ * processor re-resolves email + name from the database under the worker's
+ * RLS context — PII never touches the outbox JSONB nor Redis (GDPR
+ * Art. 5(1)(e) storage minimisation; see `bulk-email-service.ts` for the
+ * full rationale).
+ *
+ * If a constituent has been soft-deleted between request and send, they
+ * are silently dropped (right-to-erasure honoured at send time, not at
+ * request time). If their email has been removed they are reported as
+ * `failed` in the job summary.
  *
  * Each recipient is sent in series via the configured `EmailSender`
  * (Mailpit in dev, Resend in prod). Per-recipient failures are logged
@@ -14,21 +20,17 @@
  */
 
 import type { SendBulkEmailJob } from "@givernance/shared/jobs";
+import { constituents } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { withWorkerContext } from "../lib/db.js";
 import { defaultEmailSender } from "../lib/email.js";
 import { jobLogger } from "../lib/logger.js";
-
-interface BulkEmailRecipient {
-  constituentId: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-}
 
 interface BulkEmailSegmentFilter {
   subject?: string;
   body?: string;
-  recipients?: BulkEmailRecipient[];
+  constituentIds?: string[];
   requestedBy?: string;
 }
 
@@ -81,10 +83,40 @@ export async function processSendBulkEmail(job: Job<SendBulkEmailJob["data"]>) {
 
   const subject = segment.subject ?? "Message from your nonprofit";
   const body = segment.body ?? "";
-  const recipients = segment.recipients ?? [];
+  const constituentIds = segment.constituentIds ?? [];
+
+  if (constituentIds.length === 0) {
+    log.warn({ orgId: data.orgId }, "Bulk email job had no constituent ids, no-op");
+    return { sent: 0, failed: 0 };
+  }
+
+  // Re-fetch contact details under the worker's RLS context. Soft-deleted
+  // constituents (deletedAt IS NOT NULL) are excluded so a right-to-erasure
+  // request that lands between API enqueue and worker dispatch is honoured.
+  const recipients = await withWorkerContext(data.orgId, async (tx) => {
+    return tx
+      .select({
+        id: constituents.id,
+        email: constituents.email,
+        firstName: constituents.firstName,
+        lastName: constituents.lastName,
+      })
+      .from(constituents)
+      .where(
+        and(
+          inArray(constituents.id, constituentIds),
+          eq(constituents.orgId, data.orgId),
+          isNull(constituents.deletedAt),
+          isNotNull(constituents.email),
+        ),
+      );
+  });
 
   if (recipients.length === 0) {
-    log.warn({ orgId: data.orgId }, "Bulk email job had no recipients, no-op");
+    log.warn(
+      { orgId: data.orgId, requestedCount: constituentIds.length },
+      "Bulk email job had no deliverable recipients after re-fetch (all soft-deleted or email cleared)",
+    );
     return { sent: 0, failed: 0 };
   }
 
@@ -109,7 +141,7 @@ export async function processSendBulkEmail(job: Job<SendBulkEmailJob["data"]>) {
       log.error(
         {
           err: err instanceof Error ? err.message : String(err),
-          constituentId: recipient.constituentId,
+          constituentId: recipient.id,
         },
         "Bulk email send failed for recipient",
       );

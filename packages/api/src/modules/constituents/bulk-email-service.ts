@@ -23,7 +23,7 @@
  */
 
 import { constituents, outboxEvents } from "@givernance/shared/schema";
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
 export class BulkEmailValidationError extends Error {
@@ -63,16 +63,17 @@ export async function dispatchBulkEmail(
   }
 
   return withTenantContext(orgId, async (tx) => {
-    // Fetch the contact info for the requested ids in one round-trip. We
-    // intentionally only read what we need (id + email + name) — keeps the
-    // outbox payload tight, since the worker re-resolves email at send time
-    // anyway and we don't want stale PII propagating through Redis.
+    // Verify the requested ids belong to this org and are deliverable
+    // (have an email). Read only the boolean we need — explicitly avoid
+    // pulling email/firstName/lastName into the outbox payload so PII
+    // is **not** persisted in `outbox_events.payload` (JSONB) nor pushed
+    // through Redis as the BullMQ job payload (GDPR Art. 5(1)(e) storage
+    // minimisation). The worker re-fetches contact details at send time
+    // under its own RLS context.
     const rows = await tx
       .select({
         id: constituents.id,
-        email: constituents.email,
-        firstName: constituents.firstName,
-        lastName: constituents.lastName,
+        hasEmail: sql<boolean>`(${constituents.email} IS NOT NULL AND ${constituents.email} <> '')`,
       })
       .from(constituents)
       .where(
@@ -89,10 +90,10 @@ export async function dispatchBulkEmail(
       );
     }
 
-    const withEmail = rows.filter((r) => r.email !== null && r.email.trim() !== "");
-    const skippedNoEmail = rows.length - withEmail.length;
+    const deliverableIds = rows.filter((r) => r.hasEmail).map((r) => r.id);
+    const skippedNoEmail = rows.length - deliverableIds.length;
 
-    if (withEmail.length === 0) {
+    if (deliverableIds.length === 0) {
       return { queued: 0, skippedNoEmail };
     }
 
@@ -103,17 +104,14 @@ export async function dispatchBulkEmail(
         requestedBy: userId,
         subject: input.subject,
         body: input.body,
-        recipients: withEmail.map((r) => ({
-          constituentId: r.id,
-          email: r.email,
-          firstName: r.firstName,
-          lastName: r.lastName,
-        })),
+        // Ship only the id list — the worker re-resolves email + name at
+        // send time. Keeps PII out of the outbox table and out of Redis.
+        constituentIds: deliverableIds,
       },
     });
 
     return {
-      queued: withEmail.length,
+      queued: deliverableIds.length,
       skippedNoEmail,
     };
   });

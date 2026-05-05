@@ -19,8 +19,12 @@ export interface CampaignQrStats {
   /** Number of distinct codes that have been scanned at least once. */
   scannedCodes: number;
   /**
-   * Number of cleared donations (in the tenant's base currency) reconciled
-   * through one of those QR codes (donations.qr_code_id IS NOT NULL).
+   * Number of **cleared** donations reconciled through one of those QR codes
+   * (donations.qr_code_id IS NOT NULL AND status = 'cleared'). Refunded
+   * donations are excluded from the count — they are no longer "attributed
+   * conversions" once the donor's money has been returned. The amount
+   * field below stays net-of-refunds so the headline number matches the
+   * dashboard, but the count tracks live attribution.
    */
   qrAttributedDonations: number;
   /** Total cleared base-cents reconciled via QR codes, net of refunds. */
@@ -49,7 +53,7 @@ export async function getCampaignQrStats(
 
     const [donationStats] = await tx
       .select({
-        donationCount: sql<number>`count(*) FILTER (WHERE ${donations.status} IN ('cleared', 'refunded'))::int`,
+        donationCount: sql<number>`count(*) FILTER (WHERE ${donations.status} = 'cleared')::int`,
         amountCents: sql<number>`COALESCE(SUM(CASE
           WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
           WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}

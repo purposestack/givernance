@@ -247,11 +247,28 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
     if (lastDonationTo) {
       conditions.push(lte(donationAggregate.lastDonationAt, lastDonationTo));
     }
+    // Lifetime-amount filters: COALESCE the aggregate to 0 so constituents
+    // with NO donation history (no row in `donation_agg` → NULL after the
+    // LEFT JOIN) are still evaluated correctly. Without this, `gte(NULL, 0)`
+    // evaluates to NULL in SQL (falsy in WHERE), so a filter of
+    // `minLifetimeAmountCents=0` would silently exclude every zero-donor —
+    // exactly the population an operator filtering "give me everyone with
+    // ≥0 €" expects to see.
     if (minLifetimeAmountCents !== undefined) {
-      conditions.push(gte(donationAggregate.lifetimeAmountCents, minLifetimeAmountCents));
+      conditions.push(
+        gte(
+          sql<number>`COALESCE(${donationAggregate.lifetimeAmountCents}, 0)`,
+          minLifetimeAmountCents,
+        ),
+      );
     }
     if (maxLifetimeAmountCents !== undefined) {
-      conditions.push(lte(donationAggregate.lifetimeAmountCents, maxLifetimeAmountCents));
+      conditions.push(
+        lte(
+          sql<number>`COALESCE(${donationAggregate.lifetimeAmountCents}, 0)`,
+          maxLifetimeAmountCents,
+        ),
+      );
     }
 
     const where = and(...conditions);

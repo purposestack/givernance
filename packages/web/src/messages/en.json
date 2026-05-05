@@ -2021,7 +2021,7 @@
       "phone": "Phone",
       "phonePlaceholder": "+33 1 23 45 67 89",
       "addressLine1": "Street address",
-      "addressLine1Placeholder": "12 rue de la République",
+      "addressLine1Placeholder": "12 Main Street",
       "addressLine2": "Address line 2 (optional)",
       "addressLine2Placeholder": "Apt 4B",
       "postalCode": "Postal code",

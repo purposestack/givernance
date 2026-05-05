@@ -7,7 +7,7 @@ import {
   donations,
   tenants,
 } from "@givernance/shared/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, systemDb, withTenantContext } from "../../lib/db.js";
 import { redis } from "../../lib/redis.js";
 import { isUuid } from "../../lib/schemas.js";
@@ -67,10 +67,22 @@ export async function resolveCampaignQrCode(code: string) {
   if (!row) return null;
 
   if (!row.scannedAt) {
+    // Atomic guard against concurrent first-scans: two scans landing
+    // between the SELECT above and this UPDATE would each see
+    // `scannedAt IS NULL` and both would write `scannedAt = now()`,
+    // overwriting the genuine first-contact timestamp. The DB-level
+    // `scanned_at IS NULL` filter makes the UPDATE a no-op for the
+    // loser of the race, preserving "first scan wins" semantics.
     await systemDb
       .update(campaignQrCodes)
       .set({ scannedAt: sql`now()` })
-      .where(and(eq(campaignQrCodes.code, code), eq(campaignQrCodes.orgId, row.orgId)));
+      .where(
+        and(
+          eq(campaignQrCodes.code, code),
+          eq(campaignQrCodes.orgId, row.orgId),
+          isNull(campaignQrCodes.scannedAt),
+        ),
+      );
   }
 
   return {

@@ -36,9 +36,20 @@ import { db } from "../../lib/db.js";
 // Mock S3 *before* importing the processor so the multipart upload doesn't
 // reach for MinIO. Returning the deterministic key the processor would
 // have generated keeps the assertion against `zip_s3_path` honest.
+//
+// IMPORTANT: drain the stream the processor pipes into us. Without
+// `stream.resume()` the PassThrough buffers up to its `highWaterMark`
+// (default 16 KiB) and then back-pressures `archiver.append`, hanging
+// the test non-deterministically once test PDFs grow past that threshold.
 const uploadCampaignZipMock = vi.fn(
-  async (orgId: string, campaignId: string, exportId: string) =>
-    `${orgId}/campaigns/${campaignId}/exports/${exportId}.zip`,
+  async (orgId: string, campaignId: string, exportId: string, stream: NodeJS.ReadableStream) => {
+    stream.resume();
+    await new Promise<void>((resolve, reject) => {
+      stream.once("end", () => resolve());
+      stream.once("error", reject);
+    });
+    return `${orgId}/campaigns/${campaignId}/exports/${exportId}.zip`;
+  },
 );
 vi.mock("../../lib/s3.js", () => ({
   uploadCampaignZip: uploadCampaignZipMock,

@@ -349,12 +349,34 @@ export async function processGeneratePostalExport(
     throw new Error("Postal export has zero recipients");
   }
 
+  // Re-snapshot total_count to the live work-item count. The API stamps
+  // a request-time snapshot, but a constituent added/removed between the
+  // API call and the worker run would otherwise produce a UI bar like
+  // "10/9 done" (progressCount > totalCount). Using the worker's own
+  // count keeps the denominator authoritative for the actual run.
+  await withWorkerContext(orgId, async (tx) => {
+    await tx
+      .update(campaignPostalExports)
+      .set({ totalCount: workItems.length, updatedAt: new Date() })
+      .where(and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, orgId)));
+  });
+
   // ── 3. Stream archive to S3 and append PDFs concurrently with upload. ──
   // We use a PassThrough so `archiver`'s output starts uploading to S3
   // immediately; `archiver.finalize()` triggers the multipart completion.
   const passthrough = new PassThrough();
   const archive = archiver("zip", { zlib: { level: 6 } });
   archive.on("warning", (err) => log.warn({ err: err.message }, "archiver warning"));
+  // `archiver` emits 'error' on internal failures (invalid entry, zlib
+  // stream errors, etc.). Without an 'error' listener Node's
+  // EventEmitter would re-throw, crashing the worker process. The
+  // surrounding try/catch only catches Promise rejections — EventEmitter
+  // errors are not awaitable. Forward the error to the upload stream so
+  // the multipart upload aborts cleanly and the catch block below runs.
+  archive.on("error", (err) => {
+    log.error({ err: err.message }, "archiver error");
+    passthrough.destroy(err);
+  });
   archive.pipe(passthrough);
 
   const uploadPromise = uploadCampaignZip(orgId, campaignId, exportId, passthrough);
@@ -397,11 +419,17 @@ export async function processGeneratePostalExport(
       uploaded += 1;
 
       // Tick progress after each PDF lands in the archive — the polling
-      // UI sees real-time movement.
+      // UI sees real-time movement. Use `GREATEST(progress_count, $1)`
+      // so a retry that re-mints fewer rows than a previous attempt
+      // doesn't make the UI bar jump backwards (e.g. previous run got
+      // to 5/10, retry starts at 1 — without GREATEST the bar regresses).
       await withWorkerContext(orgId, async (tx) => {
         await tx
           .update(campaignPostalExports)
-          .set({ progressCount: uploaded, updatedAt: new Date() })
+          .set({
+            progressCount: sql`GREATEST(${campaignPostalExports.progressCount}, ${uploaded})`,
+            updatedAt: new Date(),
+          })
           .where(
             and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, orgId)),
           );
