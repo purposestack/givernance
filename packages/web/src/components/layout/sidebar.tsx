@@ -257,6 +257,10 @@ export function Sidebar({
                     fill
                     sizes="64px"
                     className="object-contain"
+                    // Variants are content-addressed + already at the consumed
+                    // size; optimizer is overhead. Also bails out for the dev
+                    // MinIO host (private-IP block) — see ADR-024.
+                    unoptimized
                   />
                 </div>
               ) : (
