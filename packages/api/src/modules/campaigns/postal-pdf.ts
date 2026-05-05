@@ -203,17 +203,32 @@ async function buildPostalLetterDoc(
   doc.moveDown(0.8);
 
   // ── Body ──────────────────────────────────────────────────────────────
-  if (input.campaignDescription && input.campaignDescription.trim().length > 0) {
+  // Two paths:
+  //  • Operator filled `campaign.description` → use **their words**, full
+  //    stop. We only add a brief warm transition before the call-to-scan,
+  //    not a generic "Thank you for your continued support" wall, because
+  //    that would read as filler bolted onto the operator's actual copy.
+  //  • Operator did NOT fill the description → fall back to a generic
+  //    paragraph so the letter still feels like a real letter, not a
+  //    bare "scan this code" instruction.
+  const hasDescription = Boolean(input.campaignDescription?.trim());
+  if (hasDescription && input.campaignDescription) {
     doc.text(input.campaignDescription.trim(), { align: "justify", lineGap: 2 });
     doc.moveDown(0.8);
+    doc.text(
+      input.recipient
+        ? "Thank you for your continued support — every contribution, big or small, makes a tangible difference."
+        : "Every contribution, big or small, makes a tangible difference.",
+      { align: "justify", lineGap: 2 },
+    );
+  } else {
+    doc.text(
+      input.recipient
+        ? "Thank you for your continued support. Your generosity is what makes this campaign possible — every contribution, big or small, makes a tangible difference."
+        : "Your support could make a real difference for this campaign. Every contribution, big or small, helps us go further.",
+      { align: "justify", lineGap: 2 },
+    );
   }
-
-  doc.text(
-    input.recipient
-      ? "Thank you for your continued support. Your generosity is what makes this campaign possible — every contribution, big or small, makes a tangible difference."
-      : "Your support could make a real difference for this campaign. Every contribution, big or small, helps us go further.",
-    { align: "justify", lineGap: 2 },
-  );
   doc.moveDown(0.8);
   doc.text("To learn more or contribute, scan the QR code below:", {
     align: "justify",

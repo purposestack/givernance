@@ -146,18 +146,25 @@ export async function createCampaignLetterPdfStream(
   }
   doc.moveDown(0.8);
 
-  // ── Body ──────────────────────────────────────────────────────────────
-  if (data.campaignDescription && data.campaignDescription.trim().length > 0) {
+  // ── Body (lockstep with packages/api/src/modules/campaigns/postal-pdf.ts) ──
+  const hasDescription = Boolean(data.campaignDescription?.trim());
+  if (hasDescription && data.campaignDescription) {
     doc.text(data.campaignDescription.trim(), { align: "justify", lineGap: 2 });
     doc.moveDown(0.8);
+    doc.text(
+      data.recipient
+        ? "Thank you for your continued support — every contribution, big or small, makes a tangible difference."
+        : "Every contribution, big or small, makes a tangible difference.",
+      { align: "justify", lineGap: 2 },
+    );
+  } else {
+    doc.text(
+      data.recipient
+        ? "Thank you for your continued support. Your generosity is what makes this campaign possible — every contribution, big or small, makes a tangible difference."
+        : "Your support could make a real difference for this campaign. Every contribution, big or small, helps us go further.",
+      { align: "justify", lineGap: 2 },
+    );
   }
-
-  doc.text(
-    data.recipient
-      ? "Thank you for your continued support. Your generosity is what makes this campaign possible — every contribution, big or small, makes a tangible difference."
-      : "Your support could make a real difference for this campaign. Every contribution, big or small, helps us go further.",
-    { align: "justify", lineGap: 2 },
-  );
   doc.moveDown(0.8);
   doc.text("To learn more or contribute, scan the QR code below:", {
     align: "justify",
