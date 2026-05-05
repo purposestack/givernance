@@ -19,7 +19,7 @@ You are the feature flag specialist for Givernance. You own the full feature fla
 |---|---|---|
 | API | Fastify 5, Node.js 22 LTS | Middleware guard + service-layer check |
 | Frontend | Next.js 15 (React, TypeScript) | React context + SSR-safe hook |
-| Flag storage | **PostgreSQL 16** (`feature_flags` + `tenant_flag_overrides` tables) | Source of truth |
+| Flag storage | **PostgreSQL 17** (`feature_flags` + `tenant_flag_overrides` tables) | Source of truth |
 | Flag cache | **Redis 7** (Scaleway Managed Redis EU) | TTL 60s, loaded on startup, refreshed on change |
 | ORM | Drizzle ORM (`@givernance/shared`) | All table definitions live here |
 | Auth | Keycloak 24 — JWT with `tenantId`, `plan`, `roles` claims | Used in flag evaluation context |

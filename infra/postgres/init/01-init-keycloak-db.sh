@@ -55,11 +55,13 @@ EOSQL
 
 # Phase 2 — harden the auto-created `public` schema inside the new DB.
 #
-# Postgres 16 creates a `public` schema on every new database and grants
-# CREATE/USAGE to the PUBLIC pseudo-role by default. Revoking at the DATABASE
-# level above does NOT remove those schema-level grants, so any future role
-# added to the cluster would inherit CREATE on Keycloak's `public`. Lock it
-# down to `keycloak` only.
+# Postgres 17 creates a `public` schema on every new database. PG 15 already
+# revoked the default CREATE-on-public grant from PUBLIC (only USAGE remains
+# implicit), so this step is mostly defensive on PG 15+ — but the explicit
+# REVOKE + GRANT keeps the posture audit-visible and survives a future
+# downgrade to a pre-PG-15 cluster (e.g., a restored backup from an old
+# environment). It also covers the case where a future role added to the
+# cluster could inherit CREATE on Keycloak's `public` via PUBLIC.
 psql -v ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
   --dbname "$KEYCLOAK_DB_NAME" \

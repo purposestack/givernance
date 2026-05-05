@@ -37,7 +37,7 @@ The log management strategy must support investigation of:
        │                   │
        ▼                   ▼
 ┌──────────────────────────────────────────────────────────────┐
-│    PostgreSQL 16 (instrumentation-pg + audit_log table)       │
+│    PostgreSQL 17 (instrumentation-pg + audit_log table)       │
 └──────────────────────────────────────────────────────────────┘
 ```
 

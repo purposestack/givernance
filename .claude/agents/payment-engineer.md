@@ -22,7 +22,7 @@ You are the payment systems specialist for Givernance. You own the full payment 
 | Payment (primary) | **Stripe Connect** | Card, SEPA DD, recurring, platform payouts |
 | Payment (co-primary FR/BE/NL) | **Mollie** | Card, SEPA DD, iDEAL — NPO-friendly EU provider, simplified NPO verification |
 | Job queue | BullMQ 5 (Redis) | Recurring installment processing, webhook retry |
-| Database | PostgreSQL 16 + Drizzle ORM | Donations, pledges, mandates, receipts |
+| Database | PostgreSQL 17 + Drizzle ORM | Donations, pledges, mandates, receipts |
 | Storage | Scaleway Object Storage EU | PDF receipts, Gift Aid claim files |
 | Email | Resend / Brevo | Donation acknowledgements, payment failure alerts |
 

@@ -61,3 +61,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Compliance-anchored dependencies (postgres, redis) are NOT ignored
+    # here on purpose: Dependabot still opens major-bump PRs so the CVE
+    # feed and upstream-release visibility stay intact. The
+    # `compliance-versions-gate` CI job (driven by
+    # `infra/compliance-versions.yml`) fails the build on any pin that
+    # exceeds the declared provider ceiling, so out-of-policy bumps
+    # can't merge accidentally. Pattern documented in ADR-023.

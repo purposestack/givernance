@@ -1,0 +1,40 @@
+# Compliance ceilings for dependencies whose major version is constrained
+# by a managed-service provider's adoption schedule. Bump entries here ONLY
+# after the named provider publishes support for the new major; the
+# `compliance-versions-gate` CI job (scripts/check-compliance-versions.sh)
+# fails the build on any pinned image that exceeds the ceiling here.
+#
+# Why a manifest instead of `ignore` rules in dependabot.yml:
+#   - One source of truth with rationale + revisit criteria, not scattered
+#     YAML comments per ecosystem.
+#   - CI gate catches manual edits, rebases, and any future bump source —
+#     not just Dependabot PRs.
+#   - Dependabot still opens major-bump PRs so CVE visibility is preserved;
+#     the gate just blocks the merge.
+#
+# See ADR-023 for the cutover decision and the Scaleway-anchored versioning
+# policy this manifest implements.
+
+dependencies:
+  postgres:
+    max_major: 17
+    provider: Scaleway Managed PostgreSQL EU
+    # When this is satisfied, bump `max_major` and merge any pending
+    # Dependabot PRs that previously failed the gate.
+    revisit_criteria: |
+      Scaleway publishes PG 18 GA support on
+      https://www.scaleway.com/en/docs/managed-databases-for-postgresql-and-mysql/reference-content/pg-version-updates/
+    pinned_in:
+      - docker-compose.yml
+      - config/deploy-staging.yml
+      - .github/workflows/ci.yml
+
+  redis:
+    max_major: 7
+    provider: Scaleway Managed Redis EU
+    revisit_criteria: |
+      Scaleway publishes Redis 8 GA support in their Managed Redis docs
+      (Redis 8 GA upstream was 2025-05; Scaleway adoption pending).
+    pinned_in:
+      - docker-compose.yml
+      - config/deploy-staging.yml

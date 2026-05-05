@@ -1,0 +1,350 @@
+name: Migrate Staging Postgres
+
+# Manual-dispatch-only Postgres major-version migration for the staging
+# Kamal accessory. See ADR-023 for the policy and `scripts/migrate-staging-postgres.sh`
+# for the dump → rotate → boot → restore mechanics.
+#
+# Job split:
+#   - `migrate` runs the script (pre / cut / verify) under `contents: read`,
+#     so the SSH key + Kamal secrets bag is never in scope of a job that
+#     can write to the repo. Uploads the pre-migration dump + state.env as
+#     an artifact before any destructive step.
+#   - `open-pr` runs only on `migrate` success with `contents: write` +
+#     `pull-requests: write`. It does a fresh checkout of `main`, applies
+#     the postgres image bump in `config/deploy-staging.yml`, downloads
+#     the artifact for the SRC_VERSION value, and opens a follow-up PR
+#     for human review. Has no SSH key, no Kamal secrets.
+#
+# A reviewer merges that PR; the next routine deploy fires `kamal setup`,
+# which is idempotent against the already-running accessory at the matching
+# image. If the reviewer never merges, dev/CI run PG <target> while staging
+# config still says PG <src> — the staging accessory itself is at PG
+# <target> on the VPS, so app behaviour is correct, but `kamal accessory
+# details` would show the config drift.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: "Target Postgres major (must not exceed the postgres ceiling in infra/compliance-versions.yml)"
+        type: string
+        default: "17"
+      confirm:
+        description: 'Type MIGRATE-PG-STAGING to confirm. This rotates the live staging Postgres datadir.'
+        type: string
+        required: true
+
+# No concurrent migrations, ever. Two parallel runs against the same VPS
+# would stomp each other's rotated datadir / dump / accessory boot.
+# `cancel-in-progress: false` keeps the in-flight run safe even if a
+# second dispatch lands.
+concurrency:
+  group: migrate-staging-postgres
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Migrate (dump + rotate + boot + restore + verify)
+    runs-on: ubuntu-latest
+
+    # Reuse the `staging` GitHub Environment so VPS_IP / SSH_PRIVATE_KEY /
+    # accessory passwords resolve from the same secret bag the routine
+    # deploy-staging workflow uses. Adding a separate `migrate-staging`
+    # environment would just duplicate the bag — but if at some point
+    # required-reviewer protection should differ between routine deploys
+    # and migrations, that's the place to introduce the split.
+    environment: staging
+
+    permissions:
+      contents: read
+
+    env:
+      # config/deploy-staging.yml's ERB template reads STAGING_VPS_IP
+      # from the runner env — same convention as deploy-staging.yml.
+      STAGING_VPS_IP: ${{ secrets.VPS_IP }}
+
+    outputs:
+      src_version: ${{ steps.read-state.outputs.src_version }}
+      target_version: ${{ steps.read-state.outputs.target_version }}
+
+    steps:
+      - name: Verify confirmation token
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "MIGRATE-PG-STAGING" ]; then
+            echo "::error ::confirmation token mismatch — refusing to run. Type MIGRATE-PG-STAGING in the dispatch dialog."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+
+      - name: Validate target against compliance manifest
+        env:
+          TARGET: ${{ github.event.inputs.target_version }}
+        run: |
+          if ! [[ "$TARGET" =~ ^[0-9]+$ ]]; then
+            echo "::error ::target_version must be an integer; got '$TARGET'"
+            exit 1
+          fi
+          CEILING=$(yq -r '.dependencies.postgres.max_major' infra/compliance-versions.yml)
+          if [ "$TARGET" -gt "$CEILING" ]; then
+            echo "::error ::target $TARGET exceeds postgres ceiling $CEILING (infra/compliance-versions.yml)."
+            echo "::error ::Bump the manifest first, after Scaleway publishes support for PG $TARGET (see ADR-023). Then re-dispatch."
+            exit 1
+          fi
+          echo "Target PG $TARGET is at or below ceiling $CEILING — proceeding."
+
+      # Standard kamal-on-runner setup, mirrored from deploy-staging.yml so
+      # the SSH agent / kamal CLI / accessory secrets are wired the same way.
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Set up Ruby (for Kamal)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Configure SSH Auth Sock
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Setup Kamal Secrets
+        uses: ./.github/actions/setup-kamal-secrets
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          KEYCLOAK_ADMIN_CLIENT_SECRET: ${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
+          IMPERSONATION_JWT_SECRET: ${{ secrets.IMPERSONATION_JWT_SECRET }}
+
+      # Phase 1 — dump current PG state. Writes both a copy on the VPS
+      # (/root/migrate-pg<src>-to-<tgt>-<ts>.sql, kept for in-place restore)
+      # and a copy on the runner (.migrate-staging-postgres/, uploaded as
+      # an artifact in the next step BEFORE any destructive operation).
+      - name: PRE — Dump current Postgres state
+        run: ./scripts/migrate-staging-postgres.sh pre "${{ github.event.inputs.target_version }}"
+
+      # `if: always()` so even if a later step fails the dump is still
+      # uploaded — operator needs it for a manual rollback / replay.
+      # `if-no-files-found: warn` rather than `error` so a `pre`-phase
+      # failure before any .sql exists doesn't double-fail the workflow
+      # on top of the real error; the real error is what the operator
+      # needs to see first.
+      - name: Upload pre-migration dump as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-pg-pre-migrate-dump-${{ github.run_id }}
+          path: |
+            .migrate-staging-postgres/*.sql
+            .migrate-staging-postgres/state.env
+          retention-days: 30
+          if-no-files-found: warn
+
+      # Phase 2 — yq-edit accessories.postgres.image to the target on the
+      # runner. NOT committed; the `open-pr` job re-applies the edit on a
+      # fresh checkout. Keeping this transient on the runner means the
+      # rollback recipe ("checkout main, kamal accessory boot") doesn't
+      # collide with a dirty workspace.
+      - name: Bump postgres image to target in deploy-staging.yml (runner-local)
+        env:
+          TARGET: ${{ github.event.inputs.target_version }}
+        run: |
+          yq -i ".accessories.postgres.image = \"postgres:${TARGET}\"" config/deploy-staging.yml
+          echo "Edited accessories.postgres.image:"
+          grep -nE '^[[:space:]]*image:[[:space:]]*postgres:' config/deploy-staging.yml
+
+      # Phase 3 — destructive. Stops the running container, rotates the
+      # PG <src> datadir aside, boots the new accessory image, restores.
+      # Detects partial-failure mid-cut state on retry.
+      - name: CUT — Stop, rotate datadir, boot new image, restore dump
+        run: ./scripts/migrate-staging-postgres.sh cut "${{ github.event.inputs.target_version }}"
+
+      # Phase 4 — smoke tests. Hits the live api.staging + auth.staging
+      # endpoints in addition to in-container row counts and RLS-policy /
+      # extension / Liquibase-changelog regression checks captured in `pre`.
+      - name: VERIFY — Smoke-test new instance
+        run: ./scripts/migrate-staging-postgres.sh verify "${{ github.event.inputs.target_version }}"
+
+      - name: Read SRC/TARGET from state.env (for downstream job)
+        id: read-state
+        if: success()
+        run: |
+          # shellcheck disable=SC1091
+          source .migrate-staging-postgres/state.env
+          {
+            echo "src_version=${SRC_VERSION}"
+            echo "target_version=${TARGET_VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Summarise migration outcome
+        if: always()
+        env:
+          TARGET: ${{ github.event.inputs.target_version }}
+        run: |
+          {
+            echo "## Staging Postgres migration → PG ${TARGET}"
+            echo ""
+            if [ -f .migrate-staging-postgres/state.env ]; then
+              echo "### State"
+              echo '```'
+              cat .migrate-staging-postgres/state.env
+              echo '```'
+            else
+              echo "_(no state file — \`pre\` phase did not complete)_"
+            fi
+            echo ""
+            echo "### Rollback"
+            echo "If the new instance is unhealthy, the prior datadir is rotated aside on the VPS (see \`ROTATED=\` above)."
+            echo "Manual rollback steps:"
+            echo '```'
+            echo "# 1. From your local machine (NOT the runner workspace), check out main with the original config:"
+            echo "git fetch origin main && git checkout origin/main"
+            echo ""
+            echo "# 2. Stop + remove the new container, swap rotated datadir back:"
+            echo "ssh givernance-staging \"docker stop givernance-postgres && docker rm givernance-postgres\""
+            echo "ssh givernance-staging \"mv \$ROTATED \$BIND_PATH\""
+            echo ""
+            echo "# 3. Boot the OLD accessory image (config/deploy-staging.yml at main has the unedited image):"
+            echo "bundle exec kamal accessory boot postgres -c config/deploy-staging.yml"
+            echo '```'
+            echo ""
+            echo "Delete the rotated datadir after ~7 days of stable operation."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  open-pr:
+    name: Open follow-up PR (config bump)
+    runs-on: ubuntu-latest
+    needs: migrate
+    if: needs.migrate.result == 'success'
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout main (fresh)
+        uses: actions/checkout@v6
+        with:
+          # Need the full default-branch ref so `gh pr create` can compute
+          # the diff base; default fetch-depth is 1.
+          fetch-depth: 0
+          ref: main
+
+      - name: Download migrate artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: staging-pg-pre-migrate-dump-${{ github.run_id }}
+          path: .migrate-staging-postgres
+          # Should always succeed because the migrate job uploaded it on
+          # success; if missing, the open-pr job is meaningless anyway.
+          if-no-files-found: error
+
+      - name: Apply postgres image bump on a fresh branch
+        env:
+          TARGET: ${{ needs.migrate.outputs.target_version }}
+          SRC: ${{ needs.migrate.outputs.src_version }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/staging-pg${TARGET}-accessory-bump-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          yq -i ".accessories.postgres.image = \"postgres:${TARGET}\"" config/deploy-staging.yml
+
+          # Refuse a no-op PR: if main is already at the target image, the
+          # follow-up bump is redundant (e.g. the cutover PR forgot to leave
+          # staging on the old major; or this workflow is re-running after
+          # someone hand-merged a bump). Surface the situation cleanly.
+          if git diff --quiet -- config/deploy-staging.yml; then
+            echo "::warning ::config/deploy-staging.yml already at postgres:${TARGET} on main; no follow-up PR needed."
+            exit 0
+          fi
+
+          git add config/deploy-staging.yml
+
+          # Commit + PR body via heredoc files so YAML / shell quoting on
+          # multi-line strings doesn't break the workflow YAML.
+          COMMIT_MSG="$(mktemp)"
+          cat > "$COMMIT_MSG" <<EOF
+          chore(staging): bump postgres accessory to PG ${TARGET} (post-migration)
+
+          The migrate-staging-postgres workflow successfully migrated the
+          live staging Postgres datadir from PG ${SRC} to PG ${TARGET}
+          (run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}).
+          This commit aligns config/deploy-staging.yml with the new running
+          image so the next routine deploy doesn't try to roll back to the
+          old major.
+
+          See ADR-023 for the cutover policy.
+
+          [skip ci]
+          EOF
+          git commit -F "$COMMIT_MSG"
+          git push origin "$BRANCH"
+
+          PR_BODY="$(mktemp)"
+          cat > "$PR_BODY" <<EOF
+          Aligns \`config/deploy-staging.yml\` with the live staging Postgres major after a successful migration via \`migrate-staging-postgres.yml\` (run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}).
+
+          ## What changed
+          - \`config/deploy-staging.yml\`: \`accessories.postgres.image\` bumped from \`postgres:${SRC}\` to \`postgres:${TARGET}\`.
+
+          ## Why this is a separate PR (not the cutover PR)
+          Per [ADR-023](docs/15-infra-adr.md#adr-023), the cutover PR landed dev/CI on PG ${TARGET} and the manifest+gate, but left staging on PG ${SRC} so that PR's auto-deploy didn't try to boot PG ${TARGET} against the existing PG ${SRC} datadir. The migrate-staging-postgres workflow has now done the dump → rotate → boot → restore on the VPS, and this PR aligns the checked-in config with reality.
+
+          ## Manual acceptance checklist (before merge)
+
+          **Reality vs. config**
+          - [ ] \`bundle exec kamal accessory details postgres -c config/deploy-staging.yml\` reports \`postgres:${TARGET}\`
+          - [ ] On the VPS: \`docker inspect givernance-postgres --format '{{ .Config.Image }}'\` returns \`postgres:${TARGET}\` (or \`postgres:${TARGET}-alpine\`)
+
+          **Live behaviour**
+          - [ ] \`https://api.staging.givernance.org/healthz\` returns 200
+          - [ ] \`https://auth.staging.givernance.org/realms/givernance/.well-known/openid-configuration\` returns 200
+          - [ ] Sign in to \`https://staging.givernance.org\` as the seeded NPO admin and confirm RLS is intact (donations / audit-log views render expected rows)
+          - [ ] Create a test donation on staging; verify the receipt PDF + audit-log entry land
+
+          **Operational hygiene**
+          - [ ] The rotated PG ${SRC} datadir is still on the VPS as rollback insurance — pull \`ROTATED=\` from the workflow run summary and confirm \`ssh givernance-staging "test -d <ROTATED>"\` returns 0
+          - [ ] The pre-migration dump artifact (\`staging-pg-pre-migrate-dump-${GITHUB_RUN_ID}\`) was downloaded once and verified non-empty before merge — the rollback insurance is theoretical otherwise
+          - [ ] An issue is filed (or commented on the cutover PR) reminding the operator to delete the rotated PG ${SRC} datadir on the VPS after ~7 days
+
+          **Policy hygiene**
+          - [ ] \`infra/compliance-versions.yml\` still has \`postgres.max_major: ${TARGET}\` (or higher) — i.e. this bump doesn't push past the gate
+
+          🤖 Opened automatically by \`migrate-staging-postgres.yml\`.
+          EOF
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore(staging): bump postgres accessory to PG ${TARGET} (post-migration)" \
+            --body-file "$PR_BODY"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up branch on failure
+        if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # If the push succeeded but `gh pr create` failed, an orphan branch
+          # would persist. Best-effort delete; ignore errors (branch may not
+          # exist yet, or main may have been the only push target).
+          BRANCH="chore/staging-pg${TARGET:-?}-accessory-bump-${GITHUB_RUN_ID}"
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}" 2>/dev/null || true

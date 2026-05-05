@@ -20,7 +20,7 @@ You are the API contract designer for Givernance. You own the shape, semantics, 
 | Schema language | TypeBox (`@sinclair/typebox`) — generates both TypeScript types and JSON Schema |
 | Runtime validation | Zod — used in `@givernance/shared/validators/` for cross-package validation |
 | Auth | JWT Bearer — validated by Keycloak 24 JWKS; `request.user` carries `{ sub, orgId, roles }` |
-| Multi-tenancy | PostgreSQL 16 RLS — every request sets `app.current_org_id` and `app.current_user_id` |
+| Multi-tenancy | PostgreSQL 17 RLS — every request sets `app.current_org_id` and `app.current_user_id` |
 | Pagination | Cursor-based only (`?cursor=<opaque base64>&limit=50`) |
 | Error format | RFC 9457 Problem Details (`application/problem+json`) |
 | Audit | Every write endpoint triggers an `audit_log` entry (DB trigger or service layer) |

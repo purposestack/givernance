@@ -138,7 +138,7 @@ See [docs/02-reference-architecture.md](docs/02-reference-architecture.md) for t
 
 Key decisions:
 - **Backend:** TypeScript modular monolith (Fastify)
-- **Database:** PostgreSQL 16 with Row-Level Security for multi-tenancy
+- **Database:** PostgreSQL 17 with Row-Level Security for multi-tenancy
 - **ORM:** Drizzle ORM
 - **Auth:** Keycloak (OIDC)
 - **Messaging:** NATS + transactional outbox

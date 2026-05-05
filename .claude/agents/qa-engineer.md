@@ -18,7 +18,7 @@ You are the QA engineer for Givernance Phase 1 MVP. You write integration tests 
 |---|---|
 | Test runner | Vitest (preferred) or Node.js built-in `node:test` |
 | HTTP testing | `fastify.inject()` — in-process, no network |
-| Database | PostgreSQL 16 test instance — real DB, no ORM mocks |
+| Database | PostgreSQL 17 test instance — real DB, no ORM mocks |
 | Job queue | BullMQ 5 with real Redis (test container) or `ioredis-mock` for unit tests |
 | Fixtures | Seed functions in `packages/api/src/test/fixtures/` |
 | Auth | Fake JWT tokens signed with test key — Keycloak not required in tests |

@@ -22,7 +22,7 @@ You are the data architect for the Givernance NPO platform. You own the PostgreS
 - No Go ORM (GORM, sqlx, etc.) — runtime is TypeScript / Node.js 22
 
 ### Database
-- **PostgreSQL 16** is the primary datastore
+- **PostgreSQL 17** is the primary datastore
 - **Multi-tenancy via RLS**: every tenant row carries `org_id uuid NOT NULL`, policies enforce isolation
 - **UUID v7** for all primary keys (sortable, index-friendly)
 - **TIMESTAMPTZ** everywhere (UTC storage, display timezone per org)
