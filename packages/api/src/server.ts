@@ -2,6 +2,7 @@
 
 import { Writable } from "node:stream";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
@@ -14,6 +15,7 @@ import { PROBLEM_JSON, problemDetail } from "./lib/schemas.js";
 import { impersonationRoutes } from "./modules/admin/impersonation-routes.js";
 import { platformAdminsRoutes } from "./modules/admin/platform-admins-routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
+import { brandingRoutes } from "./modules/branding/routes.js";
 import { postalCampaignRoutes } from "./modules/campaigns/postal-routes.js";
 import { campaignRoutes } from "./modules/campaigns/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
@@ -111,6 +113,25 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
     redis,
   });
 
+  // Multipart for branding logo uploads (Epic #286). Caps:
+  //   - fileSize 5 MB — matches the per-format raster cap; SVG hits its
+  //     own 1 MB ceiling at the handler layer.
+  //   - files 1 — defense against an upload that bundles two files in
+  //     one request and bypasses the per-file size cap.
+  // The `attachFieldsToBody` default of false leaves the handler in
+  // control via `request.file()` — what we want for streaming.
+  await app.register(multipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024,
+      files: 1,
+      // Defense-in-depth against the multipart bypass (issue spec §I):
+      // cap the total request body so an attacker can't route a giant
+      // payload through `field` parts that escape the per-file cap.
+      fieldSize: 1024 * 1024,
+      fields: 4,
+    },
+  });
+
   await app.register(swagger, {
     openapi: {
       info: {
@@ -164,6 +185,7 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(userRoutes, { prefix: "/v1" });
   await app.register(invitationRoutes, { prefix: "/v1" });
   await app.register(auditRoutes, { prefix: "/v1" });
+  await app.register(brandingRoutes, { prefix: "/v1" });
   await app.register(donationRoutes, { prefix: "/v1" });
   await app.register(fundRoutes, { prefix: "/v1" });
   await app.register(pledgeRoutes, { prefix: "/v1" });

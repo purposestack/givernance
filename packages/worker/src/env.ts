@@ -43,8 +43,28 @@ const EnvSchema = Type.Object({
   S3_RECEIPTS_BUCKET: Type.String({ minLength: 1, default: "receipts" }),
   /** S3 bucket for campaign documents */
   S3_CAMPAIGNS_BUCKET: Type.String({ minLength: 1, default: "campaigns" }),
+  /**
+   * S3 bucket for org branding assets (Epic #286). Public-read at the
+   * bucket level — see api/src/env.ts comment for full rationale.
+   */
+  S3_BRANDING_BUCKET: Type.String({ minLength: 1, default: "branding" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
+  /**
+   * Base URL the Keycloak sync worker uses when emitting
+   * `logo_url` into the KC organization attributes. Defaults to
+   * `${S3_ENDPOINT}/${S3_BRANDING_BUCKET}` for local dev. Production
+   * overrides with the public CDN (HTTPS-only — the KC login
+   * template's M1 guard rejects non-HTTPS URLs).
+   */
+  KEYCLOAK_LOGO_PUBLIC_URL_BASE: Type.Optional(Type.String({ minLength: 1 })),
+  /** Keycloak Admin API base URL — used by the KC sync worker job. */
+  KEYCLOAK_URL: Type.Optional(Type.String({ minLength: 1 })),
+  KEYCLOAK_INTERNAL_URL: Type.Optional(Type.String({ minLength: 1 })),
+  KEYCLOAK_ADMIN_URL: Type.Optional(Type.String({ minLength: 1 })),
+  KEYCLOAK_REALM: Type.String({ minLength: 1, default: "givernance" }),
+  KEYCLOAK_ADMIN_CLIENT_ID: Type.String({ minLength: 1, default: "givernance-admin" }),
+  KEYCLOAK_ADMIN_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   /** Log level */
   LOG_LEVEL: LogLevel,
   /** Stripe secret key (sk_test_... or sk_live_...) */

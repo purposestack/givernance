@@ -38,6 +38,12 @@ erDiagram
   users ||--o{ campaign_constituents : "added_by"
   users ||--o{ campaign_postal_exports : "requested_by"
 
+  %% BRANDING ASSETS (Epic #286) — see docs/24-branding-assets.md
+  orgs ||--o{ org_branding_assets : "owns (org_id FK)"
+  orgs ||--o| org_branding_assets : "logo_asset_id (tenants FK, nullable)"
+  users ||--o{ org_branding_assets : "uploaded_by"
+  %% Phase 2: campaigns ||--o| org_branding_assets : "hero_asset_id (deferred, separate migration)"
+
   %% GRANTS
   constituents ||--o{ grants : "funds (as funder org)"
   grants ||--o{ grant_tranches : "disburses"

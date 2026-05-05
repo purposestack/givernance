@@ -63,6 +63,7 @@ const kcSetUserAttributes = vi.fn<KeycloakAdminClient["setUserAttributes"]>(asyn
 const fakeKeycloakAdmin: KeycloakAdminClient = {
   createOrganization: kcCreateOrganization,
   getOrganization: vi.fn(async () => null),
+  updateOrganization: vi.fn(async () => {}),
   getOrganizationByAlias: kcGetOrganizationByAlias,
   deleteOrganization: vi.fn(async () => {}),
   addOrgDomain: vi.fn(async () => {}),

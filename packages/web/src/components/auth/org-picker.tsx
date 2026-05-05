@@ -1,10 +1,11 @@
 "use client";
 
-import { Building2, ChevronRight, Clock, ShieldCheck, TriangleAlert } from "lucide-react";
+import { ChevronRight, Clock, ShieldCheck, TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 
+import { InitialLetterAvatar } from "@/components/branding/initial-letter-avatar";
 import { Form, FormField, FormItem, FormMessage } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
@@ -122,9 +123,17 @@ export function OrgPickerClient({ memberships, defaultOrgId }: Props) {
                         onChange={() => field.onChange(membership.orgId)}
                         className="sr-only"
                       />
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-container-low text-text">
-                        <Building2 size={18} aria-hidden="true" />
-                      </div>
+                      {/* Epic #286 — deterministic initial-letter avatar
+                          replaces the generic Building2 icon. The
+                          OrgMembership shape doesn't yet carry a logo URL;
+                          when the backend extends it (issue #286 stretch),
+                          render `<Image>` with the `preview` variant before
+                          falling back to this avatar. */}
+                      <InitialLetterAvatar
+                        orgName={membership.name}
+                        tenantId={membership.orgId}
+                        size="md"
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium text-text">{membership.name}</span>

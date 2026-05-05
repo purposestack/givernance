@@ -67,6 +67,7 @@ function makeKcStub(overrides: Partial<KeycloakAdminClient> = {}): KeycloakAdmin
       attributes,
     }),
     getOrganization: async () => null,
+    updateOrganization: async () => {},
     deleteOrganization: async () => {},
     addOrgDomain: async () => {},
     attachUserToOrg: async () => {},

@@ -54,6 +54,8 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 19-impersonation.md         — Impersonation strategy: token design, session lifecycle, double-attribution, GDPR
 │   ├── 20-payment-strategy.md      — Payment systems: Stripe/Mollie/Mangopay comparison, ADR-010, PCI DSS, GDPR
 │   ├── 23-postal-campaigns.md      — Postal campaigns + QR reconciliation (Epic #274): user flow, domain, readiness gates, attribution
+│   ├── 24-branding-assets.md       — Organisation branding (Epic #286): logo upload, sharp variants, bucket topology, Keycloak sync, PDF embedding
+│   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary)
 │   ├── vision/
 │   │   └── conversational-mode.md — Future conversational AI mode (2026-2028)
 │   ├── security/                  — Security audits & RBAC matrices (non-numbered, dated; e.g. rbac-audit-2026-04-27.md)
@@ -63,7 +65,8 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── container.mmd     — C4 container diagram
 │   ├── core-erd.mmd      — Entity-relationship diagram
 │   ├── migration-flow.mmd — Salesforce migration flow
-│   └── postal-campaign-flow.mmd — End-to-end postal mailing + QR reconciliation (companion to docs/23)
+│   ├── postal-campaign-flow.mmd — End-to-end postal mailing + QR reconciliation (companion to docs/23)
+│   └── branding-upload-flow.mmd — Logo upload → process → activate → donor render (companion to docs/24)
 └── .claude/agents/        — 12 specialized Claude agents
 ```
 
@@ -170,6 +173,17 @@ Current topology:
 - `givernance_keycloak` — Keycloak's internal tables, owner `keycloak` (provisioned by `infra/postgres/init/01-init-keycloak-db.sh`)
 
 When proposing a new service or Compose change that needs Postgres storage (e.g., adding Mailpit with a durable store, a second IdP, a workflow engine, an analytics sidecar), **do not reuse `givernance` or `givernance_keycloak`** — add a new logical DB + role in `infra/postgres/init/`, document it in the "Databases" table of `docs/infra/README.md`, and reference ADR-017. Co-locating is rejected in PR review. Rationale, rejected alternatives, and revisit criteria are in [`docs/15-infra-adr.md` → ADR-017](docs/15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db).
+
+### 🛑 One Bucket per Visibility Class (ADR-023)
+
+**Never co-locate object-storage assets of different visibility classes in the same bucket.** Every asset class first picks a visibility (public, private), and the bucket is determined by that visibility — never by the asset type. Per-tenant isolation lives in the **key prefix** (`{org_id}/…`), not in object-level ACLs.
+
+Current topology:
+- `receipts` — **private** (signed URLs only). Donor receipt PDFs.
+- `campaigns` — **private** (signed URLs only). Postal-export ZIPs (Epic #274).
+- `branding` — **public-read** at the bucket level, no per-object ACL. Org logos and their derived variants (Epic #286).
+
+When proposing a new asset class (campaign hero in Phase 2, favicon, OG share image, document attachments, member profile photos, etc.), **first ask: is this donor-public or org-private?** Public-read goes to `branding` (or a new public-read bucket if a different lifecycle is needed); private goes to `receipts`/`campaigns` (or a new private bucket). **Never mix the two in one bucket** — object-level ACLs in a primarily-private bucket are the foot-gun GDPR audits flag and break CDN edge caching for the public-read keys. Co-mingling is rejected in PR review. Rationale, rejected alternatives, and revisit criteria are in [`docs/15-infra-adr.md` → ADR-023](docs/adrs/adr-023-object-storage-bucket-topology.md).
 
 ### 🛑 Closing multiple issues in one PR
 

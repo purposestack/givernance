@@ -14,6 +14,9 @@
     "footer": {
       "platform": "Givernance NPO Platform",
       "tagline": "Powered by purpose"
+    },
+    "brandingFallback": {
+      "altText": "{orgName} logo placeholder"
     }
   },
   "auth": {
@@ -338,6 +341,11 @@
     "provisionalAdmin": {
       "body": "You are the provisional administrator of this workspace until {date}. Any other verified member can dispute.",
       "learnMore": "Learn more",
+      "dismiss": "Dismiss"
+    },
+    "addLogoBanner": {
+      "body": "Add your organisation's logo so donors recognise you on every page and PDF.",
+      "cta": "Add a logo",
       "dismiss": "Dismiss"
     },
     "orgSwitcher": {
@@ -845,6 +853,28 @@
       "organization": "Organisation",
       "members": "Members",
       "funds": "Funds"
+    },
+    "branding": {
+      "title": "Organisation logo",
+      "description": "Upload a logo to brand your sidebar, public donation pages, and donor receipts. We generate every variant from a single upload.",
+      "dropzonePrimary": "Drop your logo here",
+      "dropzoneSecondary": "PNG, JPEG, WebP up to 5 MB · SVG up to 1 MB",
+      "selectFile": "Select a file",
+      "replace": "Replace logo",
+      "remove": "Remove",
+      "uploading": "Uploading…",
+      "pendingProcessing": "Processing variants — this usually takes a few seconds.",
+      "readyBadge": "Logo live across the workspace",
+      "success": "Logo updated.",
+      "previewAlt": "{orgName} logo",
+      "coachingCopy": "Square logos work best — at least 400×400 px, transparent PNG or SVG preferred.",
+      "readonlyHint": "Only organisation administrators can change the logo.",
+      "errors": {
+        "tooLarge": "File is too large. Use under 5 MB for raster images, 1 MB for SVG.",
+        "invalidFormat": "Unsupported format. Use PNG, JPEG, WebP or SVG.",
+        "svgInvalid": "This SVG couldn't be processed — make sure it has no embedded scripts or external references.",
+        "uploadFailed": "Upload failed. Please try again."
+      }
     },
     "members": {
       "title": "Members",

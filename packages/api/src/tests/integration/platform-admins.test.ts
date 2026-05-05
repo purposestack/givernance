@@ -58,6 +58,7 @@ const kcDeleteUser = vi.fn<KeycloakAdminClient["deleteUser"]>(async () => {});
 const fakeKeycloakAdmin: KeycloakAdminClient = {
   createOrganization: vi.fn(),
   getOrganization: vi.fn(async () => null),
+  updateOrganization: vi.fn(async () => {}),
   getOrganizationByAlias: kcGetOrganizationByAlias,
   deleteOrganization: vi.fn(async () => {}),
   addOrgDomain: vi.fn(async () => {}),

@@ -89,6 +89,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         provisionalAdmin={provisionalAdmin}
         membershipCount={membershipCount}
         isSuperAdmin={auth.roles.includes("super_admin")}
+        orgId={auth.orgId}
+        canManageBranding={auth.roles.includes("org_admin")}
       >
         {children}
       </AppShell>

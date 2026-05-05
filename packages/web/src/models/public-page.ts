@@ -41,6 +41,25 @@ export interface PublishedCampaignPublicPage {
    */
   organisationName?: string;
   organisationMission?: string | null;
+  /**
+   * Stable id for the campaign's tenant — used to seed the deterministic
+   * fallback-avatar colour (Epic #286). Optional: when omitted, the
+   * fallback hashes off the organisation name instead.
+   */
+  organisationId?: string;
+  /**
+   * Pre-resolved `public-hero` logo variant URL for the campaign's tenant
+   * (Epic #286). The frontend renders this with `next/image` `unoptimized`
+   * so donor traffic doesn't pay for proxying — the variant is already
+   * sized and content-addressed (`Cache-Control: immutable`). Null when
+   * the tenant hasn't uploaded a logo; the hero falls back to the
+   * deterministic initial-letter avatar.
+   *
+   * NOTE for backend: this field is consumed by `app/(public)/p/[id]/page.tsx`.
+   * Source from the tenant's `OrgLogo.variants["public-hero"]` when
+   * `OrgLogo.status === "ready"`; otherwise return `null`.
+   */
+  organisationLogoUrl?: string | null;
 }
 
 export interface PublishedCampaignPublicPageResponse {
