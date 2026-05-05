@@ -145,6 +145,14 @@ async function loadPublicPage(campaignId: string) {
         // post-redirect retrieves without round-tripping to the donate
         // endpoint first. `acct_…` ids are public per Stripe docs (issue #197).
         stripeAccountId: tenants.stripeAccountId,
+        // Org identity for the public hero (Epic #274 follow-up). Without
+        // these the page reads as "generic donation form on the internet"
+        // — donors need to recognise the organisation they're giving to.
+        // Both fields are already public-by-design on the operator side
+        // (org name appears on every printed letter; mission is a
+        // donor-facing pitch line). No PII risk.
+        organisationName: tenants.name,
+        organisationMission: tenants.mission,
       })
       .from(campaignPublicPages)
       .innerJoin(campaigns, eq(campaigns.id, campaignPublicPages.campaignId))

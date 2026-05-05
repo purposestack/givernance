@@ -93,8 +93,17 @@ export default async function PublicCampaignPage({
                   color: onPrimary,
                 }}
               >
+                {/*
+                 * Eyebrow line shows the operator's organisation name when
+                 * available — turns the page from "generic donation form"
+                 * into "I am giving to <Org X>" (Epic #274 follow-up). The
+                 * UPPERCASE + tracking convention keeps the org subordinate
+                 * to the campaign title (which stays the visual hero) so
+                 * donors still parse what they're funding first, who's
+                 * raising it second.
+                 */}
                 <p className="text-xs font-medium uppercase tracking-[0.18em] opacity-80">
-                  {t("eyebrow")}
+                  {page.organisationName ?? t("eyebrow")}
                 </p>
                 <h1 className="mt-4 max-w-3xl font-heading text-4xl leading-tight sm:text-5xl">
                   {page.title}
@@ -102,6 +111,17 @@ export default async function PublicCampaignPage({
                 <p className="mt-4 max-w-2xl text-base leading-7 opacity-90 sm:text-lg">
                   {page.description || t("descriptionFallback")}
                 </p>
+                {/*
+                 * Mission line — only rendered when the org has filled it.
+                 * Sits under the description as a subtle attribution so
+                 * donors see what the organisation actually does, not just
+                 * its name. Italic to distinguish from the campaign copy.
+                 */}
+                {page.organisationMission ? (
+                  <p className="mt-3 max-w-2xl text-sm italic leading-6 opacity-80">
+                    {page.organisationMission}
+                  </p>
+                ) : null}
               </div>
 
               {showProgress ? (

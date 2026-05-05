@@ -1,6 +1,7 @@
 /** Job processor — generate campaign document PDFs with QR codes */
 
 import { randomBytes } from "node:crypto";
+import type { Locale } from "@givernance/shared/i18n";
 import type { GenerateCampaignDocumentsJob } from "@givernance/shared/jobs";
 import {
   campaignDocuments,
@@ -76,6 +77,8 @@ interface PdfContext {
   organisationMission: string | null;
   campaignName: string;
   campaignDescription: string | null;
+  /** Static-copy locale, drawn from `tenants.default_locale`. */
+  locale: Locale | null;
 }
 
 /** Generate a single nominative document for one constituent within a campaign */
@@ -110,6 +113,7 @@ async function generateConstituentDocument(
     organisationMission: ctx.organisationMission,
     campaignName: ctx.campaignName,
     campaignDescription: ctx.campaignDescription,
+    locale: ctx.locale,
     qrPayload: code,
     qrReference: code,
     recipient: {
@@ -178,7 +182,11 @@ export async function processGenerateCampaignDocuments(
     // Tenant identity drives the letterhead. Same RLS-safe read as
     // `postal-export.ts` — the app role can read its own tenant row.
     const [tenantRow] = await tx
-      .select({ name: tenants.name, mission: tenants.mission })
+      .select({
+        name: tenants.name,
+        mission: tenants.mission,
+        defaultLocale: tenants.defaultLocale,
+      })
       .from(tenants)
       .where(eq(tenants.id, orgId));
     const ctx: PdfContext = {
@@ -186,6 +194,7 @@ export async function processGenerateCampaignDocuments(
       organisationMission: tenantRow?.mission ?? null,
       campaignName: campaign.name,
       campaignDescription: campaign.description ?? null,
+      locale: tenantRow?.defaultLocale ?? null,
     };
 
     if (campaign.type === "door_drop") {
@@ -203,6 +212,7 @@ export async function processGenerateCampaignDocuments(
         organisationMission: ctx.organisationMission,
         campaignName: ctx.campaignName,
         campaignDescription: ctx.campaignDescription,
+        locale: ctx.locale,
         qrPayload: code,
         qrReference: code,
         recipient: null,

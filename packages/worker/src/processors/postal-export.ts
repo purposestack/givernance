@@ -38,6 +38,7 @@
 
 import { randomBytes } from "node:crypto";
 import { PassThrough } from "node:stream";
+import type { Locale } from "@givernance/shared/i18n";
 import type { GeneratePostalExportJob } from "@givernance/shared/jobs";
 import {
   campaignConstituents,
@@ -74,6 +75,8 @@ async function renderPdfBuffer(args: {
   organisationMission: string | null;
   campaignName: string;
   campaignDescription: string | null;
+  /** Static-copy locale (`tenants.default_locale`). Defaults to `fr` in the renderer. */
+  locale: Locale | null;
   qrCode: string;
   qrReference: string;
   recipient: {
@@ -92,6 +95,7 @@ async function renderPdfBuffer(args: {
     organisationMission: args.organisationMission,
     campaignName: args.campaignName,
     campaignDescription: args.campaignDescription,
+    locale: args.locale,
     qrPayload: args.qrCode,
     qrReference: args.qrReference,
     recipient: args.recipient,
@@ -180,7 +184,14 @@ export async function processGeneratePostalExport(
       // the contextual paragraph. RLS lets the app role read its own
       // tenant row by `id = app_current_organization_id()`.
       const [tenantRow] = await tx
-        .select({ name: tenants.name, mission: tenants.mission })
+        .select({
+          name: tenants.name,
+          mission: tenants.mission,
+          // Tenant default locale drives the static letter copy (Epic
+          // #274 follow-up). Until campaigns carry their own locale, we
+          // render every letter in the org's preferred language.
+          defaultLocale: tenants.defaultLocale,
+        })
         .from(tenants)
         .where(eq(tenants.id, orgId));
 
@@ -219,7 +230,13 @@ export async function processGeneratePostalExport(
 
       return {
         campaign: campaignRow,
-        tenant: tenantRow ?? { name: "Your organisation", mission: null },
+        tenant:
+          tenantRow ??
+          ({
+            name: "Your organisation",
+            mission: null,
+            defaultLocale: "fr" as Locale,
+          } satisfies { name: string; mission: string | null; defaultLocale: Locale }),
         recipients: recipientRows,
         // The public donation page lives under `/p/:id` (see
         // `packages/web/src/app/(public)/p/[id]/page.tsx`). An earlier draft
@@ -370,6 +387,7 @@ export async function processGeneratePostalExport(
         organisationMission: tenant.mission,
         campaignName: campaign.name,
         campaignDescription: campaign.description,
+        locale: tenant.defaultLocale,
         qrCode: `${publicPageUrl}?qr=${encodeURIComponent(item.qrToken)}`,
         qrReference: item.qrToken,
         recipient: item.recipient,

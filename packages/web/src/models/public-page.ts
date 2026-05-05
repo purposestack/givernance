@@ -34,6 +34,13 @@ export interface PublishedCampaignPublicPage {
   raisedCents: number;
   /** Distinct donor count, cleared donations only (issue #200). */
   donorCount: number;
+  /**
+   * Org identity for the donor-facing hero (Epic #274 follow-up). Drives
+   * the "you're giving to {orgName}" line that turns the public page from
+   * a generic donation form into a recognisable charity ask.
+   */
+  organisationName?: string;
+  organisationMission?: string | null;
 }
 
 export interface PublishedCampaignPublicPageResponse {

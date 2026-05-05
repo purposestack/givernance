@@ -19,6 +19,7 @@
  * package once we have a second renderer (receipts, statements).
  */
 
+import type { Locale } from "@givernance/shared/i18n";
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 
@@ -26,6 +27,54 @@ const PAGE_MARGIN = 50;
 const PAGE_WIDTH = 595.28;
 const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2;
 const QR_SIZE = 140;
+
+// Locale-driven static copy — lockstep duplicate of the same table in
+// `packages/api/src/modules/campaigns/postal-pdf.ts`. See that file for
+// the full rationale and per-key documentation.
+interface LetterCopy {
+  greetingNamed: (firstName: string, lastName: string) => string;
+  greetingDoorDrop: string;
+  thanksWithDescriptionNamed: string;
+  thanksWithDescriptionDoorDrop: string;
+  thanksFallbackNamed: string;
+  thanksFallbackDoorDrop: string;
+  callToScan: string;
+  referenceLabel: (token: string) => string;
+}
+
+const LETTER_COPY: Record<Locale, LetterCopy> = {
+  fr: {
+    greetingNamed: (firstName, lastName) => `Cher·e ${firstName} ${lastName},`,
+    greetingDoorDrop: "Chère donatrice, cher donateur,",
+    thanksWithDescriptionNamed:
+      "Merci pour votre soutien — chaque contribution, petite ou grande, fait une différence concrète.",
+    thanksWithDescriptionDoorDrop:
+      "Chaque contribution, petite ou grande, fait une différence concrète.",
+    thanksFallbackNamed:
+      "Merci pour votre soutien continu. Votre générosité est ce qui rend cette campagne possible — chaque contribution, petite ou grande, fait une différence concrète.",
+    thanksFallbackDoorDrop:
+      "Votre soutien peut faire une vraie différence pour cette campagne. Chaque contribution, petite ou grande, nous aide à aller plus loin.",
+    callToScan: "Pour en savoir plus ou contribuer, scannez le QR code ci-dessous :",
+    referenceLabel: (token) => `Référence · ${token}`,
+  },
+  en: {
+    greetingNamed: (firstName, lastName) => `Dear ${firstName} ${lastName},`,
+    greetingDoorDrop: "Dear Supporter,",
+    thanksWithDescriptionNamed:
+      "Thank you for your continued support — every contribution, big or small, makes a tangible difference.",
+    thanksWithDescriptionDoorDrop: "Every contribution, big or small, makes a tangible difference.",
+    thanksFallbackNamed:
+      "Thank you for your continued support. Your generosity is what makes this campaign possible — every contribution, big or small, makes a tangible difference.",
+    thanksFallbackDoorDrop:
+      "Your support could make a real difference for this campaign. Every contribution, big or small, helps us go further.",
+    callToScan: "To learn more or contribute, scan the QR code below:",
+    referenceLabel: (token) => `Reference · ${token}`,
+  },
+};
+
+function copyForLocale(locale: Locale | null | undefined): LetterCopy {
+  return LETTER_COPY[locale ?? "fr"] ?? LETTER_COPY.fr;
+}
 
 // See `packages/api/src/modules/campaigns/postal-pdf.ts` for the full
 // rationale behind the window-envelope geometry. Both files MUST stay
@@ -56,6 +105,12 @@ export interface CampaignLetterData {
   qrPayload: string;
   qrReference: string;
   recipient: CampaignLetterRecipient | null;
+  /**
+   * Tenant default locale (`tenants.default_locale`). Drives the static
+   * copy of the letter (salutation, body, call-to-scan). Defaults to
+   * `fr` when null/undefined — the MVP's primary market.
+   */
+  locale?: Locale | null;
 }
 
 function hasWindowEnvelopeAddress(recipient: CampaignLetterRecipient | null): boolean {
@@ -137,12 +192,15 @@ export async function createCampaignLetterPdfStream(
   doc.text(data.campaignName, { align: "left" });
   doc.moveDown(1.2);
 
+  // ── Locale-driven static copy ─────────────────────────────────────────
+  const copy = copyForLocale(data.locale);
+
   // ── Salutation ────────────────────────────────────────────────────────
   doc.fillColor("#0f172a").font("Helvetica").fontSize(12);
   if (data.recipient) {
-    doc.text(`Dear ${data.recipient.firstName} ${data.recipient.lastName},`);
+    doc.text(copy.greetingNamed(data.recipient.firstName, data.recipient.lastName));
   } else {
-    doc.text("Dear Supporter,");
+    doc.text(copy.greetingDoorDrop);
   }
   doc.moveDown(0.8);
 
@@ -152,21 +210,17 @@ export async function createCampaignLetterPdfStream(
     doc.text(data.campaignDescription.trim(), { align: "justify", lineGap: 2 });
     doc.moveDown(0.8);
     doc.text(
-      data.recipient
-        ? "Thank you for your continued support — every contribution, big or small, makes a tangible difference."
-        : "Every contribution, big or small, makes a tangible difference.",
+      data.recipient ? copy.thanksWithDescriptionNamed : copy.thanksWithDescriptionDoorDrop,
       { align: "justify", lineGap: 2 },
     );
   } else {
-    doc.text(
-      data.recipient
-        ? "Thank you for your continued support. Your generosity is what makes this campaign possible — every contribution, big or small, makes a tangible difference."
-        : "Your support could make a real difference for this campaign. Every contribution, big or small, helps us go further.",
-      { align: "justify", lineGap: 2 },
-    );
+    doc.text(data.recipient ? copy.thanksFallbackNamed : copy.thanksFallbackDoorDrop, {
+      align: "justify",
+      lineGap: 2,
+    });
   }
   doc.moveDown(0.8);
-  doc.text("To learn more or contribute, scan the QR code below:", {
+  doc.text(copy.callToScan, {
     align: "justify",
     lineGap: 2,
   });
@@ -202,7 +256,7 @@ export async function createCampaignLetterPdfStream(
     .fillColor("#64748b")
     .font("Helvetica")
     .fontSize(8)
-    .text(`Reference · ${data.qrReference}`, {
+    .text(copy.referenceLabel(data.qrReference), {
       align: "center",
       width: CONTENT_WIDTH,
     });

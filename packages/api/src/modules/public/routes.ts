@@ -61,6 +61,16 @@ const PublicPageResponse = Type.Object({
    * not an audit number.
    */
   donorCount: Type.Integer(),
+  /**
+   * Org identity for the donor-facing hero (Epic #274 follow-up). Public
+   * by design — the org name is already on every printed postal letter
+   * and the mission is the donor-facing pitch line.
+   * `Type.Optional` so legacy clients that don't request these fields
+   * keep round-tripping cleanly through fast-json-stringify (same
+   * defensive posture as `tenants.mission` on the admin response).
+   */
+  organisationName: Type.Optional(Type.String()),
+  organisationMission: Type.Optional(Type.Union([Type.Null(), Type.String()])),
 });
 
 const DonateBody = Type.Object({
