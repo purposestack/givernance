@@ -47,6 +47,12 @@ interface InitialLetterAvatarProps {
  * load-bearing — changing it would re-shuffle every existing org's
  * colour mapping. `Givernance Brand Green` first so brand-new tenants
  * (lowest hash variance) tend to land on the marquee colour.
+ *
+ * Every entry references a design token defined in `app/globals.css`
+ * (PR #287 review, major 6 — ADR-012 forbids raw hex in components).
+ * The hex fallback inside each `var(--color-*, …)` is preserved so
+ * the avatar still renders sanely on the public donation page where
+ * the brand-colour overrides scope the cascade tightly.
  */
 const PALETTE: Array<{ bg: string; ring: string }> = [
   // 1. Brand green (Material You primary fixed) — `#096447` AA ratio 6.6
@@ -56,15 +62,15 @@ const PALETTE: Array<{ bg: string; ring: string }> = [
   // 3. Sky
   { bg: "var(--color-sky, #2e79a6)", ring: "var(--color-sky-light, #e0f2fe)" },
   // 4. Amber (using a darker shade so AA holds against white text)
-  { bg: "#a16207", ring: "var(--color-amber-light, #fef3c7)" },
+  { bg: "var(--color-amber-strong, #a16207)", ring: "var(--color-amber-light, #fef3c7)" },
   // 5. Plum
-  { bg: "#7c3aed", ring: "#ede9fe" },
+  { bg: "var(--color-plum, #7c3aed)", ring: "var(--color-plum-light, #ede9fe)" },
   // 6. Teal
-  { bg: "#0f766e", ring: "#ccfbf1" },
+  { bg: "var(--color-teal, #0f766e)", ring: "var(--color-teal-light, #ccfbf1)" },
   // 7. Rose
-  { bg: "#be185d", ring: "#fce7f3" },
+  { bg: "var(--color-rose, #be185d)", ring: "var(--color-rose-light, #fce7f3)" },
   // 8. Slate
-  { bg: "#475569", ring: "#e2e8f0" },
+  { bg: "var(--color-slate, #475569)", ring: "var(--color-slate-light, #e2e8f0)" },
 ];
 
 /** Tailwind size + typography mapping per `size` prop. */

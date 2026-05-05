@@ -18,7 +18,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { ComponentType, SVGProps } from "react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { InitialLetterAvatar } from "@/components/branding/initial-letter-avatar";
 import { Logo } from "@/components/shared/logo";
@@ -32,7 +32,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth";
 import type { OrgLogo } from "@/models/branding";
-import { BrandingService } from "@/services/BrandingService";
 
 /** Tailwind `md` breakpoint in pixels. */
 const MD_BREAKPOINT = 768;
@@ -85,6 +84,14 @@ interface SidebarProps {
    * callers that haven't threaded the prop yet.
    */
   isSuperAdmin?: boolean;
+  /**
+   * Server-resolved org logo (Epic #286 / PR #287 review, major 4).
+   * Replaces the per-mount client-side fetch — both eliminates the
+   * initial-letter flash and stops 1 GET per navigation. `null` =
+   * no logo configured (or super-admin with no orgId); the sidebar
+   * falls back to the initial-letter avatar.
+   */
+  orgLogo?: OrgLogo | null;
 }
 
 /**
@@ -96,6 +103,7 @@ export function Sidebar({
   onClose,
   membershipCount,
   isSuperAdmin: isSuperAdminProp,
+  orgLogo = null,
 }: SidebarProps) {
   const pathname = usePathname();
   const { user, hasRole, hasAppRole, logout } = useAuth();
@@ -123,27 +131,12 @@ export function Sidebar({
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
     : "?";
 
-  // Org logo (Epic #286) — fetched client-side once the AuthProvider has
-  // hydrated `user`. Re-runs when `orgId` changes (org-switch flow) so the
-  // sidebar swaps to the new tenant's logo without a hard refresh.
-  // Super-admins (no orgId) skip the fetch.
-  const [orgLogo, setOrgLogo] = useState<OrgLogo | null>(null);
-  useEffect(() => {
-    if (!user?.orgId) return;
-    let active = true;
-    (async () => {
-      try {
-        const logo = await BrandingService.getOrgLogo();
-        if (!active) return;
-        setOrgLogo(logo && logo.status === "ready" ? logo : null);
-      } catch {
-        // Silently fall back to the initial-letter avatar.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [user?.orgId]);
+  // Org logo (Epic #286) — server-resolved by `(app)/layout.tsx` and threaded
+  // down via `orgLogo` prop. Removes the per-nav refetch + initial-letter
+  // flash from the previous client-side useEffect (PR #287 review, major 4).
+  // We still gate on `status === "ready"` so a freshly-uploaded asset that's
+  // mid-pipeline (status=pending) doesn't try to render an undefined variant.
+  const readyLogo = orgLogo && orgLogo.status === "ready" ? orgLogo : null;
 
   // Close sidebar on Escape key (mobile)
   useEffect(() => {
@@ -256,10 +249,10 @@ export function Sidebar({
         {user?.orgId && user?.orgName ? (
           <div className="px-6 pb-3">
             <div className="flex items-center gap-3 rounded-xl bg-surface-container-low p-3">
-              {orgLogo?.variants?.sidebar ? (
+              {readyLogo?.variants?.sidebar?.url ? (
                 <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-container">
                   <Image
-                    src={orgLogo.variants.sidebar}
+                    src={readyLogo.variants.sidebar.url}
                     alt={user.orgName}
                     fill
                     sizes="64px"

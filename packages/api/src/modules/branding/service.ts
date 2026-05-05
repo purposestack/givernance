@@ -4,9 +4,12 @@
  * Owns the DB writes for the org-logo upload flow. Three operations:
  *
  *   - `createPendingAsset` — INSERT a new `org_branding_assets` row in
- *     `status='pending'` plus the matching outbox events for the
- *     pipeline + activation worker jobs. Single transaction so the
- *     job dispatch and the row are atomic.
+ *     `status='pending'` plus the `branding.process_asset` outbox event
+ *     in a single transaction so the job dispatch and the row are atomic.
+ *     The downstream `branding.activate_logo` event is emitted by the
+ *     worker pipeline itself, AFTER the row commits to `status='ready'`,
+ *     so activation ordering is causal at the DB level (PR #287 review,
+ *     blocker 3).
  *   - `getActiveLogoAsset` — read-only fetch of the currently active
  *     logo asset (or null if none configured).
  *   - `softDeleteLogoAsset` — clears `tenants.logo_asset_id`,
@@ -57,26 +60,22 @@ export async function createPendingAsset(input: {
       .returning();
     if (!row) throw new Error("Failed to insert org_branding_assets row");
 
-    // Outbox: pipeline event + activation event. The activation event
-    // is enqueued now (not after the pipeline finishes) because BullMQ
-    // ordering on a single queue is FIFO; the activation processor
-    // gates itself on `status='ready'` so it'll re-queue with backoff
-    // if it lands before the pipeline completes. Cleaner than wiring a
-    // second hop through the relay.
-    await tx.insert(outboxEvents).values([
-      {
-        tenantId: input.orgId,
-        type: BRANDING_EVENT_TYPES.PROCESS_ASSET,
-        payload: { assetId: row.id, orgId: input.orgId },
-        metadata: input.traceparent ? { traceparent: input.traceparent } : null,
-      },
-      {
-        tenantId: input.orgId,
-        type: BRANDING_EVENT_TYPES.ACTIVATE_LOGO,
-        payload: { assetId: row.id, orgId: input.orgId },
-        metadata: input.traceparent ? { traceparent: input.traceparent } : null,
-      },
-    ]);
+    // Outbox: enqueue ONLY the pipeline event. The activation event
+    // (`branding.activate_logo`) is emitted at the END of
+    // `processBrandingAsset` AFTER the row is flipped to `status='ready'`
+    // — that makes the ordering causal at the database level, so the
+    // activation processor never sees a not-ready row. The previous
+    // implementation enqueued both events here and relied on the
+    // activate processor to re-queue itself if it landed first, but
+    // BullMQ treats a `{ activated: false }` return as success (no
+    // retry), so an out-of-order delivery silently stranded the
+    // tenant pointer at NULL. See PR #287 review (blocker 3).
+    await tx.insert(outboxEvents).values({
+      tenantId: input.orgId,
+      type: BRANDING_EVENT_TYPES.PROCESS_ASSET,
+      payload: { assetId: row.id, orgId: input.orgId },
+      metadata: input.traceparent ? { traceparent: input.traceparent } : null,
+    });
 
     return row;
   });

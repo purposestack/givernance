@@ -24,7 +24,16 @@
  * RLS: `tenant_isolation` policy keyed on `org_id` (see migration 0042).
  */
 
-import { index, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 
 // ─── Enums (string unions — declared in migration 0042 as Postgres enums) ──
 
@@ -93,8 +102,13 @@ export const orgBrandingAssets = pgTable(
     originalKey: varchar("original_key", { length: 500 }).notNull(),
     /** MIME type of the original upload, validated by magic-byte at the API. */
     originalContentType: varchar("original_content_type", { length: 64 }).notNull(),
-    /** Original byte size — used by audit + plan-gating reads. */
-    originalBytes: jsonb("original_bytes").$type<number>(),
+    /**
+     * Original byte size — used by audit + plan-gating reads. INTEGER so
+     * future SQL aggregates (`SUM(original_bytes)` per-tenant cap,
+     * histogram buckets) work without `::int` casts. Migration 0043
+     * converted this from JSONB; see PR #287 review (major 7).
+     */
+    originalBytes: integer("original_bytes"),
     /**
      * Worker-derived variants. Keyed by `BrandingVariantKey`. NULL until
      * the worker flips status to `ready`. JSONB (not a child table)
@@ -102,9 +116,13 @@ export const orgBrandingAssets = pgTable(
      * isolation, and changes only when the pipeline schema bumps.
      */
     variants: jsonb("variants").$type<BrandingAssetVariants | null>(),
-    /** Source (raster) dimensions captured during validation. */
-    sourceWidth: jsonb("source_width").$type<number | null>(),
-    sourceHeight: jsonb("source_height").$type<number | null>(),
+    /**
+     * Source (raster) dimensions captured during validation. INTEGER —
+     * see `originalBytes` rationale; migration 0043 converted from
+     * JSONB.
+     */
+    sourceWidth: integer("source_width"),
+    sourceHeight: integer("source_height"),
     /** On `status='failed'`, captured error message for the admin UI. */
     error: text("error"),
     /** User who uploaded — soft-link via varchar so KC erasure doesn't break audit. */

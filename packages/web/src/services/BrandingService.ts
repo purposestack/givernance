@@ -28,7 +28,7 @@ export const BrandingService = {
       // matches every other Givernance endpoint, but the spec excerpt in the
       // issue body shows the bare object, so we hedge.
       const raw = await client.get<unknown>(PATH);
-      return unwrap(raw);
+      return unwrap<OrgLogo>(raw);
     } catch (err) {
       if (err instanceof ApiProblem && err.status === 404) return null;
       throw err;
@@ -39,6 +39,10 @@ export const BrandingService = {
    * Upload a new logo. Browser sets the multipart boundary itself once
    * `client.request` notices a `FormData` body and drops the JSON
    * Content-Type — see `lib/api/client.ts`.
+   *
+   * Returns the freshly-created asset row — `status="pending"` until the
+   * worker derives the variants. Type matches the canonical
+   * `BrandingAssetResponseSchema` in `@givernance/shared/contracts/branding`.
    */
   async uploadOrgLogo(
     file: File,
@@ -47,11 +51,11 @@ export const BrandingService = {
     const fd = new FormData();
     fd.append("file", file);
     const raw = await client.post<unknown>(PATH, fd);
-    const unwrapped = unwrap(raw);
+    const unwrapped = unwrap<OrgLogoPending>(raw);
     if (!unwrapped) {
       throw new Error("Logo upload returned an empty response");
     }
-    return unwrapped as OrgLogoPending;
+    return unwrapped;
   },
 
   async deleteOrgLogo(client: ApiClient = createClientApiClient()): Promise<void> {

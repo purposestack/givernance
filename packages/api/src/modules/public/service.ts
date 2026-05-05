@@ -1,15 +1,18 @@
 /** Public donations service — unauthenticated campaign page lookups and Stripe intent creation */
 
 import {
+  type BrandingAssetVariants,
   campaignPublicPages,
   campaignQrCodes,
   campaigns,
   donations,
+  orgBrandingAssets,
   tenants,
 } from "@givernance/shared/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, systemDb, withTenantContext } from "../../lib/db.js";
 import { redis } from "../../lib/redis.js";
+import { brandingPublicUrl } from "../../lib/s3.js";
 import { isUuid } from "../../lib/schemas.js";
 import { getStripe } from "../payments/service.js";
 
@@ -163,15 +166,41 @@ async function loadPublicPage(campaignId: string) {
         // Both fields are already public-by-design on the operator side
         // (org name appears on every printed letter; mission is a
         // donor-facing pitch line). No PII risk.
+        organisationId: tenants.id,
         organisationName: tenants.name,
         organisationMission: tenants.mission,
+        // Active org-logo (Epic #286). LEFT JOIN — the donor page renders
+        // an initial-letter avatar fallback (seeded by `organisationId`)
+        // when the tenant hasn't uploaded a logo, so a missing row is the
+        // expected hot path, not an error. Filter on `status='ready'` +
+        // `deleted_at IS NULL` so a soft-deleted or in-flight asset never
+        // leaks a half-built variant set onto a donor-facing surface.
+        logoVariants: orgBrandingAssets.variants,
       })
       .from(campaignPublicPages)
       .innerJoin(campaigns, eq(campaigns.id, campaignPublicPages.campaignId))
       .innerJoin(tenants, eq(tenants.id, campaigns.orgId))
+      .leftJoin(
+        orgBrandingAssets,
+        and(
+          eq(orgBrandingAssets.id, tenants.logoAssetId),
+          eq(orgBrandingAssets.status, "ready"),
+          isNull(orgBrandingAssets.deletedAt),
+        ),
+      )
       .where(eq(campaignPublicPages.campaignId, campaignId));
 
     if (!page) return null;
+
+    // Project the `public-hero` variant URL for the donor page. Falls
+    // back to `null` when no logo is configured (or the variant is
+    // missing from a corrupted row) — the frontend renders the
+    // initial-letter avatar fallback in that case. Drizzle types
+    // `variants` as `BrandingAssetVariants | null` from the schema's
+    // `$type<…>()` annotation, so no runtime cast is needed.
+    const variants: BrandingAssetVariants | null = page.logoVariants;
+    const heroVariantKey = variants?.["public-hero"]?.key;
+    const organisationLogoUrl = heroVariantKey ? brandingPublicUrl(heroVariantKey) : null;
 
     // Aggregate raised total and donor count for the public hero (issue #200).
     // Cleared donations only — pending/refunded/failed don't count toward the
@@ -187,10 +216,15 @@ async function loadPublicPage(campaignId: string) {
       .from(donations)
       .where(and(eq(donations.campaignId, campaignId), eq(donations.status, "cleared")));
 
+    // Strip the internal `logoVariants` from the returned shape — the
+    // public response only ships the resolved URL, never the raw S3
+    // variant manifest.
+    const { logoVariants: _logoVariants, ...rest } = page;
     return {
-      ...page,
+      ...rest,
       raisedCents: stats?.raisedCents ?? 0,
       donorCount: stats?.donorCount ?? 0,
+      organisationLogoUrl,
     };
   });
 }

@@ -26,7 +26,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { Type } from "@sinclair/typebox";
+import {
+  BrandingAssetResponseSchema,
+  BrandingDeleteResultSchema,
+  BrandingGetResponseSchema,
+} from "@givernance/shared/contracts/branding";
+import type { OrgBrandingAsset } from "@givernance/shared/schema";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { fileTypeFromBuffer } from "file-type";
 import { requireOrgAdmin } from "../../lib/guards.js";
@@ -36,7 +41,6 @@ import {
   ErrorResponses,
   ProblemDetailSchema,
   problemDetail,
-  UuidSchema,
 } from "../../lib/schemas.js";
 import { SvgSanitiserError, sanitiseSvg } from "../../lib/svg-sanitiser.js";
 import { createPendingAsset, getLatestLogoAsset, softDeleteActiveLogo } from "./service.js";
@@ -50,58 +54,35 @@ const MAX_DIMENSION = 4096; // 4096×4096 — reject billion-pixel images
 const ACCEPTED_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
+// Wire schemas live in `@givernance/shared/contracts/branding` so the web
+// bundle can import the canonical `Static<>` derivation (PR #287 review,
+// blocker 2). Local aliases below keep the route definitions readable.
 
-const BrandingVariantSchema = Type.Object({
-  key: Type.String(),
-  url: Type.String(),
-  contentType: Type.String(),
-  width: Type.Integer(),
-  height: Type.Integer(),
-});
-
-const BrandingAssetResponseSchema = Type.Object({
-  id: UuidSchema,
-  status: Type.Union([Type.Literal("pending"), Type.Literal("ready"), Type.Literal("failed")]),
-  assetType: Type.String(),
-  originalUrl: Type.String(),
-  originalContentType: Type.String(),
-  variants: Type.Union([
-    Type.Null(),
-    Type.Object({
-      sidebar: Type.Optional(BrandingVariantSchema),
-      preview: Type.Optional(BrandingVariantSchema),
-      "public-hero": Type.Optional(BrandingVariantSchema),
-      "pdf-letterhead": Type.Optional(BrandingVariantSchema),
-    }),
-  ]),
-  error: Type.Union([Type.Null(), Type.String()]),
-  createdAt: Type.String(),
-  updatedAt: Type.String(),
-});
-
-const GetBrandingResponseSchema = Type.Object({
-  data: Type.Union([Type.Null(), BrandingAssetResponseSchema]),
-});
-
-const DeleteResultSchema = Type.Object({
-  deleted: Type.Boolean(),
-});
+const GetBrandingResponseSchema = BrandingGetResponseSchema;
+const DeleteResultSchema = BrandingDeleteResultSchema;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-interface AssetRowMin {
-  id: string;
-  status: "pending" | "ready" | "failed";
-  assetType: string;
-  originalKey: string;
-  originalContentType: string;
-  variants: import("@givernance/shared/schema").BrandingAssetVariants | null;
-  error: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
+/**
+ * Subset of `OrgBrandingAsset` consumed by `serialiseAsset`. Sourced from
+ * the canonical Drizzle row type via `Pick<>` so any schema change (a
+ * new column, a renamed status enum) propagates here at compile time
+ * instead of drifting silently. PR #287 review (minor 9).
+ */
+type SerialisableAsset = Pick<
+  OrgBrandingAsset,
+  | "id"
+  | "status"
+  | "assetType"
+  | "originalKey"
+  | "originalContentType"
+  | "variants"
+  | "error"
+  | "createdAt"
+  | "updatedAt"
+>;
 
-function serialiseAsset(row: AssetRowMin) {
+function serialiseAsset(row: SerialisableAsset) {
   const variants = row.variants
     ? Object.fromEntries(
         Object.entries(row.variants).map(([key, val]) =>
