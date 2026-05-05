@@ -77,14 +77,14 @@ function copyForLocale(locale: Locale | null | undefined): LetterCopy {
 }
 
 // See `packages/api/src/modules/campaigns/postal-pdf.ts` for the full
-// rationale behind the window-envelope geometry. Both files MUST stay
-// byte-equivalent in their rendering output.
+// rationale behind the A4-folded-in-half / C5-window-envelope geometry.
+// Both files MUST stay byte-equivalent in their rendering output.
 const MM_TO_PT = 2.834645;
-const ADDRESS_BLOCK_X = 20 * MM_TO_PT;
-const ADDRESS_BLOCK_Y = 50 * MM_TO_PT;
-const ADDRESS_BLOCK_WIDTH = 90 * MM_TO_PT;
-const ADDRESS_BLOCK_HEIGHT = 35 * MM_TO_PT;
-const CONTENT_TOP_AFTER_ADDRESS = ADDRESS_BLOCK_Y + ADDRESS_BLOCK_HEIGHT + 20;
+const ADDRESS_BLOCK_X = 110 * MM_TO_PT;
+const ADDRESS_BLOCK_Y = 60 * MM_TO_PT;
+const ADDRESS_BLOCK_WIDTH = 80 * MM_TO_PT;
+/** Y-coordinate where the bottom-half (appeal content) starts. */
+const BOTTOM_HALF_TOP = 158 * MM_TO_PT;
 
 export interface CampaignLetterRecipient {
   firstName: string;
@@ -146,7 +146,30 @@ export async function createCampaignLetterPdfStream(
     },
   });
 
-  // ── Recipient block (window envelope, optional) ───────────────────────
+  // ── TOP HALF — COVER (visible through C5 window after fold) ──────────
+  // Lockstep with `packages/api/src/modules/campaigns/postal-pdf.ts` —
+  // see that file for the full layout rationale (org letterhead + mission
+  // at top, recipient block right-of-center middle of the top half so it
+  // aligns with the C5 envelope window).
+
+  // Letterhead — org name
+  doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(22);
+  doc.text(data.organisationName, PAGE_MARGIN, 25 * MM_TO_PT, {
+    align: "center",
+    width: CONTENT_WIDTH,
+  });
+
+  // Mission — under org name
+  if (data.organisationMission && data.organisationMission.trim().length > 0) {
+    doc.moveDown(0.3);
+    doc.font("Helvetica-Oblique").fontSize(10).fillColor("#475569");
+    doc.text(data.organisationMission.trim(), {
+      align: "center",
+      width: CONTENT_WIDTH,
+    });
+  }
+
+  // Recipient address block — middle-right of top half (C5 window zone)
   const renderAddressBlock = hasWindowEnvelopeAddress(data.recipient);
   if (renderAddressBlock && data.recipient) {
     doc.save().fillColor("#0f172a").font("Helvetica").fontSize(11);
@@ -163,39 +186,29 @@ export async function createCampaignLetterPdfStream(
       align: "left",
     });
     doc.restore();
-    doc.x = PAGE_MARGIN;
-    doc.y = CONTENT_TOP_AFTER_ADDRESS;
   }
 
-  // ── Letterhead ────────────────────────────────────────────────────────
-  doc.fillColor("#0f172a");
-  doc.font("Helvetica-Bold").fontSize(22);
-  doc.text(data.organisationName, { align: "center" });
-  if (data.organisationMission && data.organisationMission.trim().length > 0) {
-    doc.moveDown(0.3);
-    doc.font("Helvetica-Oblique").fontSize(10).fillColor("#475569");
-    doc.text(data.organisationMission.trim(), { align: "center" });
-  }
+  // ── BOTTOM HALF — APPEAL (visible after unfolding) ────────────────────
+  doc.x = PAGE_MARGIN;
+  doc.y = BOTTOM_HALF_TOP;
 
-  doc.moveDown(0.8);
-  const ruleY = doc.y;
-  doc
-    .strokeColor("#e2e8f0")
-    .lineWidth(0.6)
-    .moveTo(PAGE_MARGIN, ruleY)
-    .lineTo(PAGE_MARGIN + CONTENT_WIDTH, ruleY)
-    .stroke();
-  doc.moveDown(1.4);
-
-  // ── Campaign title ────────────────────────────────────────────────────
+  // Campaign title
   doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(16);
   doc.text(data.campaignName, { align: "left" });
-  doc.moveDown(1.2);
+  doc.moveDown(0.6);
+
+  // Campaign description — directly under the title (lockstep with api)
+  const hasDescription = Boolean(data.campaignDescription?.trim());
+  if (hasDescription && data.campaignDescription) {
+    doc.fillColor("#0f172a").font("Helvetica").fontSize(11);
+    doc.text(data.campaignDescription.trim(), { align: "justify", lineGap: 2 });
+    doc.moveDown(1.0);
+  }
 
   // ── Locale-driven static copy ─────────────────────────────────────────
   const copy = copyForLocale(data.locale);
 
-  // ── Salutation ────────────────────────────────────────────────────────
+  // Salutation
   doc.fillColor("#0f172a").font("Helvetica").fontSize(12);
   if (data.recipient) {
     doc.text(copy.greetingNamed(data.recipient.firstName, data.recipient.lastName));
@@ -204,11 +217,8 @@ export async function createCampaignLetterPdfStream(
   }
   doc.moveDown(0.8);
 
-  // ── Body (lockstep with packages/api/src/modules/campaigns/postal-pdf.ts) ──
-  const hasDescription = Boolean(data.campaignDescription?.trim());
-  if (hasDescription && data.campaignDescription) {
-    doc.text(data.campaignDescription.trim(), { align: "justify", lineGap: 2 });
-    doc.moveDown(0.8);
+  // Thanks paragraph (transition if description present, fallback otherwise)
+  if (hasDescription) {
     doc.text(
       data.recipient ? copy.thanksWithDescriptionNamed : copy.thanksWithDescriptionDoorDrop,
       { align: "justify", lineGap: 2 },
@@ -220,6 +230,8 @@ export async function createCampaignLetterPdfStream(
     });
   }
   doc.moveDown(0.8);
+
+  // Call to scan
   doc.text(copy.callToScan, {
     align: "justify",
     lineGap: 2,

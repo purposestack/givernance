@@ -91,14 +91,60 @@ sequenceDiagram
     API->>DB: Update QR attribution stats
 ```
 
-## 1.ter Window-envelope ready (postal address)
+## 1.ter Page format and window envelope (A4 → C5)
 
-Personalised postal letters are designed to be folded once (Z-fold) and
-slipped straight into a **standard French DL window envelope** (110×220mm,
-norme NF Z-10-011) without any further hand-printing of the address on
-the envelope. The renderer positions the recipient block at the
-canonical 20×50mm offset, sized 90×35mm, so it lands cleanly inside the
-envelope's transparent window after folding.
+Postal letters are printed on a **single A4 sheet (210×297mm), folded once
+horizontally at the midline** (y=148.5mm), then slipped into a **standard
+French C5 window envelope (162×229mm)** with no further hand-printing of
+the address on the envelope itself. The folded letter (A5-landscape,
+210×148.5mm) fits cleanly along the long axis of the C5.
+
+The page layout is split into two zones along the fold:
+
+```
+┌───────────── A4 portrait (210×297mm) ─────────────┐
+│                                                   │
+│             [ ORGANISATION NAME — bold ]          │
+│             [ Mission summary — italic ]          │
+│                                                   │
+│                                                   │
+│                          ┌─────────────────────┐  │
+│                          │ Recipient name      │  │   <-- C5 window
+│                          │ Street              │  │       zone
+│                          │ Postal code · City  │  │
+│                          └─────────────────────┘  │
+│                                                   │
+│ - - - - - - - - - - FOLD LINE (148.5mm) - - - - - │
+│                                                   │
+│ Campaign title                                    │
+│ Campaign description (operator's words)           │
+│                                                   │
+│ Bonjour Jean Dupont,                              │
+│ [thanks transition]                               │
+│ [call to scan]                                    │
+│                                                   │
+│           ┌─────────────────────┐                 │
+│           │     [ QR code ]     │                 │
+│           └─────────────────────┘                 │
+│           https://app/p/<id>?qr=<token>           │
+│           Référence · ABC123…                     │
+│                                                   │
+└───────────────────────────────────────────────────┘
+```
+
+**Top half (cover, visible through C5 window):**
+
+| Element | Position | Notes |
+|---|---|---|
+| Org name | Centered, y=25mm | Bold 22pt — primary visual identity |
+| Mission | Centered, italic, under name | 10pt grey — collapses when `tenants.mission` is empty |
+| Recipient address block | x=110mm, y=60mm, 80×35mm | Right-of-center, middle of top half — aligns with the C5 window cut |
+
+**Bottom half (appeal, visible after unfolding):**
+
+Campaign title → campaign description → salutation → thanks transition → call to scan → QR panel. Content flows top-down from y=158mm; PDFKit auto-paginates to a 2nd A4 sheet if a particularly long description pushes the QR below the bottom margin (an explicit length advisory will land in the operator UI in a follow-up).
+
+### Recipient address block fields
 
 | Constituent field | DB column | Required for window block | Where it prints |
 |---|---|---|---|
@@ -109,11 +155,10 @@ envelope's transparent window after folding.
 | Country code | `country_code` | No (defaults to `FR`) | Line 5, only printed when ≠ `FR` |
 
 If any of the three required fields (`address_line1`, `postal_code`,
-`city`) is NULL, the renderer **skips the block entirely** and the
-letterhead claims the top of the page as before. This keeps the
-postal-export pipeline forward-compatible with existing constituents who
-have no address yet — the operator gets a usable letter, just not one
-ready for a window envelope.
+`city`) is NULL, the renderer **skips the block entirely** — the cover
+panel still carries the org letterhead, but the operator must hand-write
+the address on the envelope. This keeps the postal-export pipeline
+forward-compatible with existing constituents who have no address yet.
 
 For door-drop campaigns there's no recipient at all (the letter is
 geographically distributed by hand), so the address block is never
@@ -133,8 +178,8 @@ reads:
 
 | Field | DB column | UI surface | Used in the letter as |
 |---|---|---|---|
-| **Organisation mission** | `tenants.mission` (TEXT, nullable, soft-cap 2000 chars) | `Settings → Organisation` (org_admin only) | Italic subtitle directly under the letterhead — answers "what does this org do" |
-| **Campaign description** | `campaigns.description` (TEXT, nullable, soft-cap 2000 chars) | Campaign create/edit form | Justified paragraph between the salutation and the donate-call — answers "what is this specific campaign about" |
+| **Organisation mission** | `tenants.mission` (TEXT, nullable, soft-cap 2000 chars) | `Settings → Organisation` (org_admin only) | Italic subtitle directly under the letterhead, on the cover (top half) — answers "what does this org do" |
+| **Campaign description** | `campaigns.description` (TEXT, nullable, soft-cap 2000 chars) | Campaign create/edit form | Justified paragraph **directly under the campaign title** (bottom half) — operator's own words about this specific campaign, the prose load of the appeal |
 
 Both are NULL until the operator fills them. The renderer degrades
 gracefully: an empty mission collapses the italic subtitle, and a missing
