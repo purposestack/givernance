@@ -216,6 +216,11 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
                 fill
                 sizes="96px"
                 className="object-contain"
+                // Variants are content-addressed + already at the consumed size,
+                // so the optimizer adds latency without value. It also bails out
+                // entirely when the bucket resolves to a private IP (dev MinIO),
+                // breaking local dev — see ADR-024.
+                unoptimized
               />
             </div>
           ) : (
