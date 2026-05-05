@@ -486,4 +486,137 @@ describe("processStripeWebhook", () => {
     );
     expect(matchingPayloads.length).toBeLessThanOrEqual(1);
   });
+
+  // ─── Epic #274 audit follow-up: QR-attributed donations carry an audit log ──
+
+  it("emits an asymmetric audit_log when payment_intent.succeeded carries a QR id", async () => {
+    // Seed: a campaign + QR code that the payment intent's metadata
+    // points at. The processor re-resolves the QR id under RLS and
+    // (only when it matches) writes an audit row mirroring the
+    // `charge.refunded` system-initiated pattern.
+    const campaignId = "00000000-0000-0000-0000-0000000000c3";
+    const qrCodeId = "00000000-0000-0000-0000-0000000000c4";
+    await db.execute(
+      sql`INSERT INTO campaigns (id, org_id, name, type, status)
+          VALUES (${campaignId}, ${ORG_ID}, 'QR Audit Campaign', 'nominative_postal', 'active')
+          ON CONFLICT (id) DO NOTHING`,
+    );
+    await db.execute(
+      sql`INSERT INTO campaign_qr_codes (id, org_id, campaign_id, code)
+          VALUES (${qrCodeId}, ${ORG_ID}, ${campaignId}, 'qr_token_audit_test')
+          ON CONFLICT (id) DO NOTHING`,
+    );
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000eb",
+      stripeEventId: "evt_test_qr_audit",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+      livemode: false,
+    });
+
+    const paymentRef = "pi_test_qr_audit";
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000eb",
+      stripeEventId: "evt_test_qr_audit",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: paymentRef,
+        amount: 2500,
+        currency: "eur",
+        metadata: {
+          campaign_id: campaignId,
+          qr_code_id: qrCodeId,
+          constituent_email: "qr-audit-donor@example.org",
+        },
+      },
+    });
+
+    await processStripeWebhook(job);
+
+    // The donation now exists and references the QR code.
+    const [donation] = await db
+      .select({ id: donations.id, qrCodeId: donations.qrCodeId })
+      .from(donations)
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, paymentRef)));
+    expect(donation?.qrCodeId).toBe(qrCodeId);
+
+    // Audit log row mirrors the asymmetric pattern from charge.refunded —
+    // user_id and actor_id are NULL (system-initiated webhook), and the
+    // QR id is recorded so a forensic reader can join to campaign_qr_codes.
+    const auditRows = await db.execute(
+      sql`SELECT user_id, actor_id, action, resource_type, resource_id, old_values, new_values
+          FROM audit_logs
+          WHERE org_id = ${ORG_ID}
+            AND action = 'WEBHOOK:donation.qr_attributed'
+            AND resource_id = ${donation?.id}`,
+    );
+    const auditRow = (auditRows as unknown as { rows: Record<string, unknown>[] }).rows[0];
+    expect(auditRow).toBeDefined();
+    expect(auditRow?.user_id).toBeNull();
+    expect(auditRow?.actor_id).toBeNull();
+    expect(auditRow?.resource_type).toBe("donations");
+    expect(auditRow?.old_values).toBeNull();
+    expect(auditRow?.new_values).toMatchObject({
+      qrCodeId,
+      campaignId,
+      paymentIntentId: paymentRef,
+      source: "stripe_webhook",
+    });
+
+    // Cleanup: audit_logs is intentionally immutable (`prevent_audit_log_mutation`
+    // trigger), so we leave the row in place — the unique campaign / QR
+    // ids ensure it doesn't collide with the rest of this file's
+    // fixtures. Donations and constituents are wiped by the file-level
+    // afterAll. The campaign + QR row deletes cascade through the FK.
+    await db.execute(sql`DELETE FROM campaigns WHERE id = ${campaignId}`);
+  });
+
+  it("does NOT emit a QR audit_log for vanilla (non-postal) donations", async () => {
+    // No qr_code_id in metadata -> resolvedQrCodeId stays null -> no
+    // audit row. We verify that explicitly so a future regression that
+    // unconditionally writes the audit row would dilute the signal of
+    // postal-attributed gifts among the ambient donation flow.
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000ec",
+      stripeEventId: "evt_test_no_qr_audit",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+      livemode: false,
+    });
+
+    const paymentRef = "pi_test_no_qr_audit";
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000ec",
+      stripeEventId: "evt_test_no_qr_audit",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: paymentRef,
+        amount: 1500,
+        currency: "eur",
+        metadata: { constituent_email: "no-qr-donor@example.org" },
+      },
+    });
+
+    await processStripeWebhook(job);
+
+    const [donation] = await db
+      .select({ id: donations.id })
+      .from(donations)
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, paymentRef)));
+    expect(donation?.id).toBeDefined();
+
+    const auditRows = await db.execute(
+      sql`SELECT 1 FROM audit_logs
+          WHERE org_id = ${ORG_ID}
+            AND action = 'WEBHOOK:donation.qr_attributed'
+            AND resource_id = ${donation?.id}`,
+    );
+    expect((auditRows as unknown as { rows: unknown[] }).rows).toHaveLength(0);
+  });
 });

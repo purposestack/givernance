@@ -302,6 +302,38 @@ async function handlePaymentIntentSucceeded(
       },
     });
 
+    // Audit trail for QR-attributed donations (Epic #274 audit follow-up).
+    // Mirrors the asymmetric pattern used by `charge.refunded` below: when
+    // a donation is reconciled by a webhook (no operator clicked anything),
+    // `userId` / `actorId` are NULL so a forensic reader knows the state
+    // change came from the system. The QR id lives in `new_values` so a
+    // reviewer can join back to `campaign_qr_codes` and reconstruct the
+    // print → scan → donate chain without trusting Stripe metadata alone.
+    //
+    // Only emitted when we actually resolved a QR id under RLS — a vanilla
+    // (non-postal) Stripe donation has no QR provenance worth auditing,
+    // and we don't want to dilute the audit log with one row per gift.
+    if (resolvedQrCodeId) {
+      await tx.insert(auditLogs).values({
+        orgId,
+        userId: null,
+        actorId: null,
+        action: "WEBHOOK:donation.qr_attributed",
+        resourceType: "donations",
+        resourceId: donationId,
+        oldValues: null,
+        newValues: {
+          status: "cleared",
+          amountCents,
+          currency,
+          qrCodeId: resolvedQrCodeId,
+          campaignId: campaignId || null,
+          paymentIntentId,
+          source: "stripe_webhook",
+        },
+      });
+    }
+
     log.info(
       {
         amountBaseCents: convertedAmount.amountBaseCents,
@@ -311,6 +343,7 @@ async function handlePaymentIntentSucceeded(
         donationId,
         exchangeRate: convertedAmount.exchangeRate,
         amountCents,
+        qrCodeId: resolvedQrCodeId,
       },
       "Donation created from Stripe payment_intent.succeeded",
     );
