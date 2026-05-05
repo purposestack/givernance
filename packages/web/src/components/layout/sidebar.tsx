@@ -242,39 +242,35 @@ export function Sidebar({
           )}
         </nav>
 
-        {/* Org branding card (Epic #286) — sits above the workspace switcher
-            so the operator's identity reads top-to-bottom: app brand → org
-            brand → user. Hidden for super-admins (no `orgId`); they see the
-            Givernance brand only. */}
+        {/* Org branding (Epic #286) — sits above the workspace switcher.
+            Logo only, centred, no surrounding chrome — the org name lives
+            one row below in the workspace-switcher button so we don't
+            duplicate it here (the sidebar slot is too narrow for both
+            side-by-side anyway). Hidden for super-admins (no `orgId`). */}
         {user?.orgId && user?.orgName ? (
-          <div className="px-6 pb-3">
-            <div className="flex items-center gap-3 rounded-xl bg-surface-container-low p-3">
-              {readyLogo?.variants?.sidebar?.url ? (
-                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-container">
-                  <Image
-                    src={readyLogo.variants.sidebar.url}
-                    alt={user.orgName}
-                    fill
-                    sizes="64px"
-                    className="object-contain"
-                    // Variants are content-addressed + already at the consumed
-                    // size; optimizer is overhead. Also bails out for the dev
-                    // MinIO host (private-IP block) — see ADR-024.
-                    unoptimized
-                  />
-                </div>
-              ) : (
-                <InitialLetterAvatar
-                  orgName={user.orgName}
-                  tenantId={user.orgId}
-                  size="lg"
-                  ariaLabel={user.orgName}
+          <div className="flex justify-center px-6 pb-3">
+            {readyLogo?.variants?.sidebar?.url ? (
+              <div className="relative h-16 w-16">
+                <Image
+                  src={readyLogo.variants.sidebar.url}
+                  alt={user.orgName}
+                  fill
+                  sizes="64px"
+                  className="object-contain"
+                  // Variants are content-addressed + already at the consumed
+                  // size; optimizer is overhead. Also bails out for the dev
+                  // MinIO host (private-IP block) — see ADR-024.
+                  unoptimized
                 />
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-on-surface">{user.orgName}</div>
               </div>
-            </div>
+            ) : (
+              <InitialLetterAvatar
+                orgName={user.orgName}
+                tenantId={user.orgId}
+                size="lg"
+                ariaLabel={user.orgName}
+              />
+            )}
           </div>
         ) : null}
 

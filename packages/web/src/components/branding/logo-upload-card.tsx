@@ -43,6 +43,16 @@ interface LogoUploadCardProps {
    * for non-admins avoids showing them an upload affordance they can't act on.
    */
   canManageBranding: boolean;
+  /**
+   * Visual variant.
+   * - `"card"` (default) — standalone hero card with `bg-surface-container-lowest`,
+   *   shadow and padding. For the dashboard banner CTA target.
+   * - `"embedded"` — drops the outer card chrome so the component can nest
+   *   inside another card (e.g. inside the Organisation settings card,
+   *   alongside currency / locale / mission). Heading is downgraded to a
+   *   sub-section to avoid duplicate h2s.
+   */
+  variant?: "card" | "embedded";
 }
 
 type CardState =
@@ -53,7 +63,12 @@ type CardState =
   | { kind: "processing"; pendingId: string }
   | { kind: "error"; message: string };
 
-export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUploadCardProps) {
+export function LogoUploadCard({
+  orgName,
+  tenantId,
+  canManageBranding,
+  variant = "card",
+}: LogoUploadCardProps) {
   const t = useTranslations("settings.branding");
   const inputId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -203,8 +218,12 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
   const currentLogo = state.kind === "ready" ? state.logo : null;
   const isBusy = state.kind === "uploading" || state.kind === "processing";
 
+  const Wrapper = variant === "embedded" ? "div" : "section";
+  const wrapperClass =
+    variant === "embedded" ? "" : "rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6";
+
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+    <Wrapper className={wrapperClass}>
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         {/* Preview / fallback */}
         <div className="flex shrink-0 items-center justify-center">
@@ -236,7 +255,13 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
         {/* Header + controls */}
         <div className="min-w-0 flex-1 space-y-4">
           <div>
-            <h2 className="font-heading text-2xl leading-tight text-on-surface">{t("title")}</h2>
+            {variant === "embedded" ? (
+              <h3 className="font-heading text-lg font-medium leading-tight text-on-surface">
+                {t("title")}
+              </h3>
+            ) : (
+              <h2 className="font-heading text-2xl leading-tight text-on-surface">{t("title")}</h2>
+            )}
             <p className="mt-2 max-w-2xl text-sm leading-6 text-on-surface-variant">
               {t("description")}
             </p>
@@ -357,7 +382,7 @@ export function LogoUploadCard({ orgName, tenantId, canManageBranding }: LogoUpl
           )}
         </div>
       </div>
-    </section>
+    </Wrapper>
   );
 }
 
