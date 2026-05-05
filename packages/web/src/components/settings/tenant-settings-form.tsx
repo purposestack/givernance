@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { LogoUploadCard } from "@/components/branding/logo-upload-card";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -33,9 +34,27 @@ function resolveApiErrorMessage(error: unknown, fallback: string): string {
 interface TenantSettingsFormProps {
   orgId?: string;
   canManageTenant: boolean;
+  /**
+   * Org name used as the seed for the initial-letter fallback when no
+   * logo has been uploaded yet. Resolved server-side in the page so the
+   * fallback paints with the right glyph on first frame.
+   */
+  orgName?: string;
+  /**
+   * Org-admin gate for the embedded logo upload subsection. Same role
+   * as `canManageTenant` today; kept as a separate prop so a future
+   * fine-grained `branding_admin` role doesn't bleed back into the
+   * currency / locale form.
+   */
+  canManageBranding?: boolean;
 }
 
-export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFormProps) {
+export function TenantSettingsForm({
+  orgId,
+  canManageTenant,
+  orgName,
+  canManageBranding,
+}: TenantSettingsFormProps) {
   const t = useTranslations("settings.tenant");
   const router = useRouter();
   const tenantOrgId = orgId;
@@ -144,6 +163,21 @@ export function TenantSettingsForm({ orgId, canManageTenant }: TenantSettingsFor
         <h2 className="font-heading text-2xl leading-tight text-on-surface">{t("title")}</h2>
         <p className="mt-2 text-sm leading-6 text-on-surface-variant">{t("description")}</p>
       </div>
+
+      {/* Visual identity (Epic #286) — sits at the top of the Organisation
+          card alongside currency / locale / mission, rather than floating
+          as a separate hero. Anchors `/settings#branding` from the
+          dashboard "Add your logo" banner. */}
+      {tenantOrgId ? (
+        <div id="branding" className="mt-6 border-b border-outline-variant pb-6">
+          <LogoUploadCard
+            orgName={orgName ?? tenantName}
+            tenantId={tenantOrgId}
+            canManageBranding={canManageBranding ?? canManageTenant}
+            variant="embedded"
+          />
+        </div>
+      ) : null}
 
       {canManageTenant && tenantOrgId ? (
         <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
