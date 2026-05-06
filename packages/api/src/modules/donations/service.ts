@@ -27,6 +27,14 @@ import {
 import { db, withTenantContext } from "../../lib/db.js";
 import { ExchangeRateService } from "../finance/exchange-rate-service.js";
 
+/** Thrown when an allocation specifies both amountCents and percentageBp, or neither */
+export class AllocationInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AllocationInputError";
+  }
+}
+
 /** Thrown when allocation amounts don't sum to the donation total */
 export class AllocationSumMismatchError extends Error {
   constructor(
@@ -206,22 +214,57 @@ export interface DonationUpdateInput {
   allocations?: { fundId: string; amountCents?: number; percentageBp?: number }[];
 }
 
-function resolveAllocationAmount(
-  alloc: { fundId: string; amountCents?: number; percentageBp?: number },
+type AllocationInput = { fundId: string; amountCents?: number; percentageBp?: number };
+type ResolvedAllocation = { fundId: string; amountCents: number; percentageBp: number | null };
+
+function resolveAllocations(
+  allocations: AllocationInput[],
   donationAmountCents: number,
-): { fundId: string; amountCents: number; percentageBp: number | null } {
-  if (alloc.percentageBp !== undefined) {
-    return {
-      fundId: alloc.fundId,
-      amountCents: Math.round((donationAmountCents * alloc.percentageBp) / 10000),
-      percentageBp: alloc.percentageBp,
-    };
+): ResolvedAllocation[] {
+  // Validate: each allocation must carry exactly one of amountCents or percentageBp
+  for (const alloc of allocations) {
+    const hasCents = alloc.amountCents !== undefined;
+    const hasBp = alloc.percentageBp !== undefined;
+    if (hasCents && hasBp) {
+      throw new AllocationInputError(
+        `Fund ${alloc.fundId}: cannot specify both amountCents and percentageBp`,
+      );
+    }
+    if (!hasCents && !hasBp) {
+      throw new AllocationInputError(
+        `Fund ${alloc.fundId}: must specify either amountCents or percentageBp`,
+      );
+    }
   }
-  return {
-    fundId: alloc.fundId,
-    amountCents: alloc.amountCents ?? 0,
-    percentageBp: null,
-  };
+
+  // Compute floors for %-based allocations; pass fixed-amount ones through unchanged
+  const interim = allocations.map((alloc, index) => {
+    if (alloc.percentageBp !== undefined) {
+      const exact = (donationAmountCents * alloc.percentageBp) / 10000;
+      const floor = Math.floor(exact);
+      return { index, fundId: alloc.fundId, amountCents: floor, percentageBp: alloc.percentageBp, remainder: exact - floor };
+    }
+    return { index, fundId: alloc.fundId, amountCents: alloc.amountCents!, percentageBp: null as null, remainder: 0 };
+  });
+
+  // Largest-remainder method: give the rounding residual to %-allocations with the
+  // highest fractional parts so that Σ amountCents == donationAmountCents.
+  const fixedTotal = interim.filter((r) => r.percentageBp === null).reduce((s, r) => s + r.amountCents, 0);
+  const percentFloorTotal = interim.filter((r) => r.percentageBp !== null).reduce((s, r) => s + r.amountCents, 0);
+  const residual = donationAmountCents - fixedTotal - percentFloorTotal;
+
+  if (residual > 0) {
+    const byRemainder = interim
+      .filter((r) => r.percentageBp !== null)
+      .sort((a, b) => b.remainder - a.remainder);
+    for (let i = 0; i < residual && i < byRemainder.length; i++) {
+      const item = byRemainder[i];
+      const target = item !== undefined ? interim[item.index] : undefined;
+      if (target !== undefined) target.amountCents += 1;
+    }
+  }
+
+  return interim.map(({ fundId, amountCents, percentageBp }) => ({ fundId, amountCents, percentageBp }));
 }
 
 function normalizeNullableString(value: string | null | undefined) {
@@ -275,7 +318,7 @@ async function replaceDonationAllocations(
     return;
   }
 
-  const resolved = allocations.map((a) => resolveAllocationAmount(a, donationAmountCents));
+  const resolved = resolveAllocations(allocations, donationAmountCents);
 
   await tx.insert(donationAllocations).values(
     resolved.map((allocation) => ({
@@ -495,7 +538,7 @@ export async function getReceiptByDonation(orgId: string, donationId: string) {
  *  Returns null if the constituent does not exist within the tenant context. */
 export async function createDonation(orgId: string, userId: string, input: DonationInput) {
   if (input.allocations && input.allocations.length > 0) {
-    const resolved = input.allocations.map((a) => resolveAllocationAmount(a, input.amountCents));
+    const resolved = resolveAllocations(input.allocations, input.amountCents);
     const allocSum = resolved.reduce((sum, a) => sum + a.amountCents, 0);
     if (allocSum !== input.amountCents) {
       throw new AllocationSumMismatchError(allocSum, input.amountCents);
@@ -552,7 +595,7 @@ export async function createDonation(orgId: string, userId: string, input: Donat
     const donationId = donation!.id;
 
     if (input.allocations && input.allocations.length > 0) {
-      const resolved = input.allocations.map((a) => resolveAllocationAmount(a, input.amountCents));
+      const resolved = resolveAllocations(input.allocations, input.amountCents);
       await tx.insert(donationAllocations).values(
         resolved.map((a) => ({
           orgId,
@@ -583,7 +626,7 @@ export async function createDonation(orgId: string, userId: string, input: Donat
 /** Update a donation and fully replace its allocations. */
 export async function updateDonation(orgId: string, id: string, input: DonationUpdateInput) {
   if (input.allocations && input.allocations.length > 0) {
-    const resolved = input.allocations.map((a) => resolveAllocationAmount(a, input.amountCents));
+    const resolved = resolveAllocations(input.allocations, input.amountCents);
     const allocSum = resolved.reduce((sum, a) => sum + a.amountCents, 0);
     if (allocSum !== input.amountCents) {
       throw new AllocationSumMismatchError(allocSum, input.amountCents);
