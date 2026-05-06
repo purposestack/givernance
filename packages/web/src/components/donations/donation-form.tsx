@@ -225,6 +225,17 @@ export function DonationForm(props: DonationFormProps) {
     return () => subscription.unsubscribe();
   }, [campaignOptions, form]);
 
+  // When the form is pre-filled from a URL param (initialCampaignId), the watch
+  // subscription above never fires because no change event is emitted for a default
+  // value. Apply the campaign's defaultCurrency once campaigns have loaded.
+  const initialCampaignIdForCurrency = mode === "create" ? props.initialCampaignId : undefined;
+  useEffect(() => {
+    if (!initialCampaignIdForCurrency || campaignsLoading) return;
+    const campaign = campaignOptions.find((c) => c.id === initialCampaignIdForCurrency);
+    if (!campaign?.defaultCurrency) return;
+    form.setValue("currency", campaign.defaultCurrency, { shouldDirty: false });
+  }, [campaignsLoading, campaignOptions, initialCampaignIdForCurrency, form]);
+
   const watchedCampaignId = form.watch("campaignId");
   const watchedCurrency = form.watch("currency");
 
@@ -493,7 +504,7 @@ export function DonationForm(props: DonationFormProps) {
                   </SelectContent>
                 </Select>
                 {campaignsLoading ? (
-                  <p className="text-xs text-on-surface-variant">Chargement des campagnes...</p>
+                  <p className="text-xs text-on-surface-variant">{t("fields.campaignLoading")}</p>
                 ) : null}
                 <FormMessage />
               </FormItem>

@@ -1642,6 +1642,7 @@
         "constituentPlaceholder": "Search for a donor…",
         "constituentEmpty": "No constituents match your search.",
         "constituentLoading": "Loading…",
+        "campaignLoading": "Loading campaigns…",
         "amount": "Amount",
         "amountPlaceholder": "0.00",
         "currency": "Currency",

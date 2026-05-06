@@ -1642,6 +1642,7 @@
         "constituentPlaceholder": "Rechercher un donateur…",
         "constituentEmpty": "Aucun constituant ne correspond à votre recherche.",
         "constituentLoading": "Chargement…",
+        "campaignLoading": "Chargement des campagnes…",
         "amount": "Montant",
         "amountPlaceholder": "0,00",
         "currency": "Devise",
