@@ -80,7 +80,7 @@ jobs:
       - name: Test
         run: pnpm test
 
-  # Compliance ceiling gate (ADR-023): rejects any pinned image whose major
+  # Compliance ceiling gate (ADR-026): rejects any pinned image whose major
   # version exceeds the per-dependency ceiling declared in
   # `infra/compliance-versions.yml`. Anchors Postgres + Redis to Scaleway
   # Managed-service support so dev / CI / staging / future SaaS prod stay

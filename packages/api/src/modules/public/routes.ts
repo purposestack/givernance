@@ -71,6 +71,20 @@ const PublicPageResponse = Type.Object({
    */
   organisationName: Type.Optional(Type.String()),
   organisationMission: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+  /**
+   * Tenant id (Epic #286). The donor page uses this to seed the
+   * deterministic colour of the initial-letter fallback rendered when
+   * no logo is configured — keeping the avatar visually stable across
+   * sessions for the same org.
+   */
+  organisationId: Type.String({ format: "uuid" }),
+  /**
+   * Public-hero variant URL of the active org logo (Epic #286), or
+   * `null` when the tenant hasn't uploaded one. Composed via
+   * `brandingPublicUrl()` in `loadPublicPage` so dev (MinIO) and prod
+   * (CDN) emit the same shape — the frontend just `<Image src=…>`s it.
+   */
+  organisationLogoUrl: Type.Union([Type.Null(), Type.String({ format: "uri" })]),
 });
 
 const DonateBody = Type.Object({

@@ -1,7 +1,9 @@
 import { Globe2, Users } from "lucide-react";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { InitialLetterAvatar } from "@/components/branding/initial-letter-avatar";
 import { PublicDonationForm } from "@/components/campaigns/public-donation-form";
 import { Badge } from "@/components/ui/badge";
 import { ApiProblem } from "@/lib/api";
@@ -93,6 +95,40 @@ export default async function PublicCampaignPage({
                   color: onPrimary,
                 }}
               >
+                {/*
+                 * Org logo (Epic #286) — top-left, NOT centered. The
+                 * `public-hero` variant is content-addressed in object
+                 * storage and served `Cache-Control: immutable`, so we
+                 * skip the Next image optimiser (`unoptimized`) — donor
+                 * traffic mustn't pay for proxying an already-sized asset.
+                 * Falls back to the initial-letter avatar when the tenant
+                 * hasn't uploaded a logo yet, keeping the hero balanced
+                 * even on greenfield campaigns.
+                 */}
+                {page.organisationName ? (
+                  <div className="mb-6 flex">
+                    {page.organisationLogoUrl ? (
+                      <div className="relative h-14 w-14 overflow-hidden rounded-xl bg-white/10 backdrop-blur-sm">
+                        <Image
+                          src={page.organisationLogoUrl}
+                          alt={page.organisationName}
+                          fill
+                          sizes="56px"
+                          unoptimized
+                          className="object-contain"
+                          priority
+                        />
+                      </div>
+                    ) : (
+                      <InitialLetterAvatar
+                        orgName={page.organisationName}
+                        tenantId={page.organisationId}
+                        size="lg"
+                        ariaLabel={page.organisationName}
+                      />
+                    )}
+                  </div>
+                ) : null}
                 {/*
                  * Eyebrow line shows the operator's organisation name when
                  * available — turns the page from "generic donation form"

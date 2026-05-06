@@ -83,6 +83,61 @@ export interface ProcessStripeWebhookJob {
   };
 }
 
+// ─── Org branding (Epic #286) ────────────────────────────────────────────────
+
+/**
+ * Outbox event types emitted by the branding upload flow. These are
+ * the `outbox_events.type` strings the API writes; the relay enqueues
+ * matching BullMQ jobs for the worker processors below.
+ */
+export const BRANDING_EVENT_TYPES = {
+  /** Run the variant pipeline against a freshly-uploaded asset row. */
+  PROCESS_ASSET: "branding.process_asset",
+  /** Flip `tenants.logo_asset_id` once the asset is `status='ready'`. */
+  ACTIVATE_LOGO: "branding.activate_logo",
+  /** GC S3 prefix + clear KC org attribute for a soft-deleted asset. */
+  GC_ASSET: "branding.gc_asset",
+  /** Sync `tenants.logo_asset_id` → KC org `logo_url` attribute. */
+  KEYCLOAK_SYNC_ORG_LOGO: "keycloak.sync_org_logo",
+} as const;
+
+/** Process a freshly-uploaded branding asset (derive variants, flip status). */
+export interface BrandingProcessAssetJob {
+  name: "branding.process_asset";
+  data: {
+    assetId: string;
+    orgId: string;
+  };
+}
+
+/** Activate a `ready` asset by pointing `tenants.logo_asset_id` at it. */
+export interface BrandingActivateLogoJob {
+  name: "branding.activate_logo";
+  data: {
+    assetId: string;
+    orgId: string;
+  };
+}
+
+/** Garbage-collect a soft-deleted asset (S3 prefix + KC attribute clear). */
+export interface BrandingGcAssetJob {
+  name: "branding.gc_asset";
+  data: {
+    assetId: string;
+    orgId: string;
+    /** S3 prefix to delete (`{org}/logo/{asset}/`). */
+    prefix: string;
+  };
+}
+
+/** Sync the active logo URL (or empty) into the KC organization attributes. */
+export interface KeycloakSyncOrgLogoJob {
+  name: "keycloak.sync_org_logo";
+  data: {
+    orgId: string;
+  };
+}
+
 /** Union of all job types */
 export type JobDefinition =
   | GenerateReceiptJob
@@ -91,7 +146,11 @@ export type JobDefinition =
   | GdprErasureJob
   | GenerateCampaignDocumentsJob
   | GeneratePostalExportJob
-  | ProcessStripeWebhookJob;
+  | ProcessStripeWebhookJob
+  | BrandingProcessAssetJob
+  | BrandingActivateLogoJob
+  | BrandingGcAssetJob
+  | KeycloakSyncOrgLogoJob;
 
 /** Queue names */
 export const QUEUE_NAMES = {
@@ -111,6 +170,15 @@ export const QUEUE_NAMES = {
   EVENTS: "givernance_events",
   WEBHOOKS: "webhooks",
   TENANT_LIFECYCLE: "tenant_lifecycle",
+  /**
+   * Branding asset processing — one queue for the variant pipeline +
+   * activation + GC. Concurrency-1 per worker process: each job holds
+   * a sharp pipeline open against libvips and uploads four variants
+   * via separate S3 calls. Scale by adding pods, not concurrency.
+   */
+  BRANDING: "branding",
+  /** Keycloak org-attribute syncs (logo_url, theme_primary_color, …). */
+  KEYCLOAK_SYNC: "keycloak_sync",
 } as const;
 
 /** Repeatable job names inside TENANT_LIFECYCLE queue. */

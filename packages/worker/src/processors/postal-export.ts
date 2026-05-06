@@ -57,6 +57,7 @@ import { withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
 import { uploadCampaignZip } from "../lib/s3.js";
 import { extractTraceId } from "../lib/trace-context.js";
+import { getActivePdfLetterhead } from "../services/branding-logo-cache.js";
 import { createCampaignLetterPdfStream } from "../services/campaign-pdf.js";
 
 /**
@@ -77,6 +78,12 @@ async function renderPdfBuffer(args: {
   campaignDescription: string | null;
   /** Static-copy locale (`tenants.default_locale`). Defaults to `fr` in the renderer. */
   locale: Locale | null;
+  /**
+   * Active org logo bitmap (Epic #286). Null when the tenant has no
+   * logo configured — the renderer skips the embed and the layout is
+   * unchanged.
+   */
+  logoBuffer: Buffer | null;
   qrCode: string;
   qrReference: string;
   recipient: {
@@ -93,6 +100,7 @@ async function renderPdfBuffer(args: {
   const stream = await createCampaignLetterPdfStream({
     organisationName: args.organisationName,
     organisationMission: args.organisationMission,
+    logoBuffer: args.logoBuffer,
     campaignName: args.campaignName,
     campaignDescription: args.campaignDescription,
     locale: args.locale,
@@ -349,6 +357,16 @@ export async function processGeneratePostalExport(
     throw new Error("Postal export has zero recipients");
   }
 
+  // ── Resolve the active logo once at the top of the run ─────────────
+  // Epic #286 — every PDF in this export embeds the same logo, so we
+  // fetch the `pdf-letterhead` variant exactly once and pass it down.
+  // Cache hits are in-process; misses incur one S3 round-trip per
+  // worker process per logo-asset-id.
+  const logoBuffer = await getActivePdfLetterhead(orgId);
+  if (logoBuffer) {
+    log.info({ exportId, logoBytes: logoBuffer.byteLength }, "Embedding org logo in postal PDFs");
+  }
+
   // Re-snapshot total_count to the live work-item count. The API stamps
   // a request-time snapshot, but a constituent added/removed between the
   // API call and the worker run would otherwise produce a UI bar like
@@ -407,6 +425,7 @@ export async function processGeneratePostalExport(
       const buffer = await renderPdfBuffer({
         organisationName: tenant.name,
         organisationMission: tenant.mission,
+        logoBuffer,
         campaignName: campaign.name,
         campaignDescription: campaign.description,
         locale: tenant.defaultLocale,

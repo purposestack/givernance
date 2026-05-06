@@ -13,12 +13,14 @@ import {
   UserCog,
   Users,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { ComponentType, SVGProps } from "react";
 import { useEffect } from "react";
 
+import { InitialLetterAvatar } from "@/components/branding/initial-letter-avatar";
 import { Logo } from "@/components/shared/logo";
 import {
   DropdownMenu,
@@ -29,6 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth";
+import type { OrgLogo } from "@/models/branding";
 
 /** Tailwind `md` breakpoint in pixels. */
 const MD_BREAKPOINT = 768;
@@ -81,6 +84,14 @@ interface SidebarProps {
    * callers that haven't threaded the prop yet.
    */
   isSuperAdmin?: boolean;
+  /**
+   * Server-resolved org logo (Epic #286 / PR #287 review, major 4).
+   * Replaces the per-mount client-side fetch — both eliminates the
+   * initial-letter flash and stops 1 GET per navigation. `null` =
+   * no logo configured (or super-admin with no orgId); the sidebar
+   * falls back to the initial-letter avatar.
+   */
+  orgLogo?: OrgLogo | null;
 }
 
 /**
@@ -92,6 +103,7 @@ export function Sidebar({
   onClose,
   membershipCount,
   isSuperAdmin: isSuperAdminProp,
+  orgLogo = null,
 }: SidebarProps) {
   const pathname = usePathname();
   const { user, hasRole, hasAppRole, logout } = useAuth();
@@ -118,6 +130,13 @@ export function Sidebar({
   const initials = user
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
     : "?";
+
+  // Org logo (Epic #286) — server-resolved by `(app)/layout.tsx` and threaded
+  // down via `orgLogo` prop. Removes the per-nav refetch + initial-letter
+  // flash from the previous client-side useEffect (PR #287 review, major 4).
+  // We still gate on `status === "ready"` so a freshly-uploaded asset that's
+  // mid-pipeline (status=pending) doesn't try to render an undefined variant.
+  const readyLogo = orgLogo && orgLogo.status === "ready" ? orgLogo : null;
 
   // Close sidebar on Escape key (mobile)
   useEffect(() => {
@@ -222,6 +241,39 @@ export function Sidebar({
             </section>
           )}
         </nav>
+
+        {/* Org branding (Epic #286) — sits above the workspace switcher.
+            Logo only, centred, no surrounding chrome — the org name lives
+            one row below in the workspace-switcher button so we don't
+            duplicate it here (the sidebar slot is too narrow for both
+            side-by-side anyway). Hidden for super-admins (no `orgId`). */}
+        {user?.orgId && user?.orgName ? (
+          <div className="flex justify-center px-6 pb-3">
+            {readyLogo?.variants?.sidebar?.url ? (
+              <div className="relative h-32 w-32">
+                <Image
+                  src={readyLogo.variants.sidebar.url}
+                  alt={user.orgName}
+                  fill
+                  sizes="128px"
+                  className="object-contain"
+                  // 128×128 = the native pixel size of the `sidebar` variant
+                  // produced by the worker pipeline, so the optimizer has
+                  // nothing to add. Also bails out for the dev MinIO host
+                  // (private-IP block) — see ADR-024.
+                  unoptimized
+                />
+              </div>
+            ) : (
+              <InitialLetterAvatar
+                orgName={user.orgName}
+                tenantId={user.orgId}
+                size="2xl"
+                ariaLabel={user.orgName}
+              />
+            )}
+          </div>
+        ) : null}
 
         {/* Footer — workspace switcher with org settings and user actions */}
         <div className="p-6">

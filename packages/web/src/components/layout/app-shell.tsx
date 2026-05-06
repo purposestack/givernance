@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { AddLogoBanner } from "@/components/branding/add-logo-banner";
 import type { ImpersonationInfo } from "@/lib/auth";
+import type { OrgLogo } from "@/models/branding";
 
 import { ImpersonationBanner } from "./impersonation-banner";
 import { ProvisionalAdminBanner, type ProvisionalAdminInfo } from "./provisional-admin-banner";
@@ -25,6 +27,22 @@ interface AppShellProps {
    * FE-1 (PR #135 review).
    */
   isSuperAdmin?: boolean;
+  /**
+   * Active tenant id — used to scope the "Add your logo" banner's per-org
+   * dismissal key (Epic #286). Optional: when missing (super-admin), the
+   * banner skips its render path.
+   */
+  orgId?: string;
+  /** Whether the current user can act on the "Add your logo" CTA (Epic #286). */
+  canManageBranding?: boolean;
+  /**
+   * Server-resolved org logo (Epic #286 / PR #287 review, major 4).
+   * Threaded down to `Sidebar` and `AddLogoBanner` so they don't each
+   * re-fetch `/v1/branding/org-logo` on every navigation. `null` means
+   * "no logo configured" (or super-admin path) — both consumers fall
+   * back to their initial-letter / banner-shown affordance.
+   */
+  orgLogo?: OrgLogo | null;
 }
 
 /**
@@ -48,6 +66,9 @@ export function AppShell({
   provisionalAdmin,
   membershipCount,
   isSuperAdmin,
+  orgId,
+  canManageBranding = false,
+  orgLogo = null,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
@@ -78,11 +99,13 @@ export function AppShell({
         onClose={handleSidebarClose}
         membershipCount={membershipCount}
         isSuperAdmin={isSuperAdmin}
+        orgLogo={orgLogo}
       />
 
       <div className="flex min-h-screen flex-1 flex-col md:ml-[var(--sidebar-width)]">
         <ImpersonationBanner impersonation={impersonation} userName={impersonationUserName} />
         <ProvisionalAdminBanner info={provisionalAdmin} />
+        <AddLogoBanner orgId={orgId} canManageBranding={canManageBranding} orgLogo={orgLogo} />
         <Topbar
           onMenuToggle={handleMenuToggle}
           sidebarOpen={sidebarOpen}

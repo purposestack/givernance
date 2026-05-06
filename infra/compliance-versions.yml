@@ -12,7 +12,7 @@
 #   - Dependabot still opens major-bump PRs so CVE visibility is preserved;
 #     the gate just blocks the merge.
 #
-# See ADR-023 for the cutover decision and the Scaleway-anchored versioning
+# See ADR-026 for the cutover decision and the Scaleway-anchored versioning
 # policy this manifest implements.
 
 dependencies:

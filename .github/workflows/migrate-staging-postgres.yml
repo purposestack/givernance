@@ -1,7 +1,7 @@
 name: Migrate Staging Postgres
 
 # Manual-dispatch-only Postgres major-version migration for the staging
-# Kamal accessory. See ADR-023 for the policy and `scripts/migrate-staging-postgres.sh`
+# Kamal accessory. See ADR-026 for the policy and `scripts/migrate-staging-postgres.sh`
 # for the dump → rotate → boot → restore mechanics.
 #
 # Job split:
@@ -90,7 +90,7 @@ jobs:
           CEILING=$(yq -r '.dependencies.postgres.max_major' infra/compliance-versions.yml)
           if [ "$TARGET" -gt "$CEILING" ]; then
             echo "::error ::target $TARGET exceeds postgres ceiling $CEILING (infra/compliance-versions.yml)."
-            echo "::error ::Bump the manifest first, after Scaleway publishes support for PG $TARGET (see ADR-023). Then re-dispatch."
+            echo "::error ::Bump the manifest first, after Scaleway publishes support for PG $TARGET (see ADR-026). Then re-dispatch."
             exit 1
           fi
           echo "Target PG $TARGET is at or below ceiling $CEILING — proceeding."
@@ -290,7 +290,7 @@ jobs:
           image so the next routine deploy doesn't try to roll back to the
           old major.
 
-          See ADR-023 for the cutover policy.
+          See ADR-026 for the cutover policy.
 
           [skip ci]
           EOF
@@ -305,7 +305,7 @@ jobs:
           - \`config/deploy-staging.yml\`: \`accessories.postgres.image\` bumped from \`postgres:${SRC}\` to \`postgres:${TARGET}\`.
 
           ## Why this is a separate PR (not the cutover PR)
-          Per [ADR-023](docs/15-infra-adr.md#adr-023), the cutover PR landed dev/CI on PG ${TARGET} and the manifest+gate, but left staging on PG ${SRC} so that PR's auto-deploy didn't try to boot PG ${TARGET} against the existing PG ${SRC} datadir. The migrate-staging-postgres workflow has now done the dump → rotate → boot → restore on the VPS, and this PR aligns the checked-in config with reality.
+          Per [ADR-026](docs/adrs/adr-026-postgres-17-cutover-and-scaleway-anchored-versioning.md), the cutover PR landed dev/CI on PG ${TARGET} and the manifest+gate, but left staging on PG ${SRC} so that PR's auto-deploy didn't try to boot PG ${TARGET} against the existing PG ${SRC} datadir. The migrate-staging-postgres workflow has now done the dump → rotate → boot → restore on the VPS, and this PR aligns the checked-in config with reality.
 
           ## Manual acceptance checklist (before merge)
 

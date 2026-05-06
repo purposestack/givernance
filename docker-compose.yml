@@ -110,6 +110,9 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-givernance_dev}
       S3_RECEIPTS_BUCKET: ${S3_RECEIPTS_BUCKET:-receipts}
       S3_CAMPAIGNS_BUCKET: ${S3_CAMPAIGNS_BUCKET:-campaigns}
+      # Org-branding bucket (Epic #286) — public-read for donor-facing
+      # surfaces (Keycloak login template, donation page hero).
+      S3_BRANDING_BUCKET: ${S3_BRANDING_BUCKET:-branding}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -117,6 +120,7 @@ services:
         mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
         mc mb --ignore-existing "local/$$S3_RECEIPTS_BUCKET"
         mc mb --ignore-existing "local/$$S3_CAMPAIGNS_BUCKET"
+        mc mb --ignore-existing "local/$$S3_BRANDING_BUCKET"
         # GC orphan multipart parts after 1 day. The postal-export worker
         # streams a ZIP into S3 via @aws-sdk/lib-storage's multipart Upload;
         # if the source stream is destroyed mid-upload (worker crash, S3
@@ -128,7 +132,15 @@ services:
         # `|| true` keeps idempotency: re-applying an existing rule errors.
         mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_CAMPAIGNS_BUCKET" || true
         mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_RECEIPTS_BUCKET" || true
-        echo "MinIO buckets ready (with abort-incomplete-multipart lifecycle): $$S3_RECEIPTS_BUCKET, $$S3_CAMPAIGNS_BUCKET"
+        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_BRANDING_BUCKET" || true
+        # Branding bucket is public-read at the bucket level — donor-facing
+        # surfaces (Keycloak login template, donation page) hit object
+        # URLs directly with `Cache-Control: public, max-age=31536000,
+        # immutable`. Content-addressed keys make stale-CDN-edge cross-
+        # contamination impossible. This MUST be matched in prod via the
+        # Scaleway Object Storage bucket policy.
+        mc anonymous set download "local/$$S3_BRANDING_BUCKET" || true
+        echo "MinIO buckets ready (with abort-incomplete-multipart lifecycle): $$S3_RECEIPTS_BUCKET, $$S3_CAMPAIGNS_BUCKET, $$S3_BRANDING_BUCKET"
     restart: "no"
 
   mailpit:

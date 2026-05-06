@@ -131,6 +131,24 @@
   --color-sky-border: #bae6fd;
   --color-sky-text: #0369a1;
 
+  /* ── Initial-letter avatar palette (Epic #286 / PR #287 review, major 6) ──
+     Slack-style hash-coloured avatars need 8 deterministic background slots
+     with white text passing WCAG-AA. The four below were inlined as raw hex
+     inside `initial-letter-avatar.tsx` and have been promoted to the token
+     layer so ADR-012's "no raw hex in components" rule holds. */
+  --color-plum: #7c3aed;
+  --color-plum-light: #ede9fe;
+  --color-teal: #0f766e;
+  --color-teal-light: #ccfbf1;
+  --color-rose: #be185d;
+  --color-rose-light: #fce7f3;
+  --color-slate: #475569;
+  --color-slate-light: #e2e8f0;
+  /* Amber-strong: the avatar slot needs a darker shade than `--color-amber`
+     (`#864700` → `--color-tertiary`) for AA against white. Distinct token
+     so a future palette tweak only re-tunes the avatar. */
+  --color-amber-strong: #a16207;
+
   /* ── Navy ── */
   --color-navy: var(--color-inverse-surface);
   --color-navy-light: #302f2e;

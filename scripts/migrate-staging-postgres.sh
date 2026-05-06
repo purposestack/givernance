@@ -39,7 +39,7 @@
 #     (NOT committed — the workflow opens a follow-up PR with the bump
 #     after verify succeeds)
 #
-# Pattern + rationale: ADR-023.
+# Pattern + rationale: ADR-026.
 
 set -euo pipefail
 

@@ -67,4 +67,4 @@ updates:
     # `compliance-versions-gate` CI job (driven by
     # `infra/compliance-versions.yml`) fails the build on any pin that
     # exceeds the declared provider ceiling, so out-of-policy bumps
-    # can't merge accidentally. Pattern documented in ADR-023.
+    # can't merge accidentally. Pattern documented in ADR-026.

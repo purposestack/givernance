@@ -163,6 +163,14 @@ export interface PostalLetterRenderInput {
   /** Operator-side organisation name — used as the letter's letterhead. */
   organisationName: string;
   /**
+   * Optional org-logo bitmap (Epic #286 — the `pdf-letterhead` variant
+   * out of the branding pipeline, 360×360 PNG @ 300 DPI). When present,
+   * rendered top-left at the same Y-coordinate as the address block
+   * (60mm) so the cover panel looks balanced through the C5 window
+   * envelope. When null/undefined the layout is unchanged from pre-#286.
+   */
+  logoBuffer?: Buffer | null;
+  /**
    * Free-form mission statement. Rendered in italic just under the
    * letterhead so the donor immediately sees "what does this org do".
    * Skipped when null/empty (operator hasn't filled the field yet).
@@ -269,6 +277,23 @@ async function buildPostalLetterDoc(
     doc.text(input.organisationMission.trim(), {
       align: "center",
       width: CONTENT_WIDTH,
+    });
+  }
+
+  // ── Org logo (Epic #286) ────────────────────────────────────────────
+  // Rendered top-left at the same Y as the address block (60mm) so the
+  // cover panel reads as a balanced two-column layout through the C5
+  // window: logo left, recipient right. The constant `60 * MM_TO_PT`
+  // intentionally mirrors `ADDRESS_BLOCK_Y` exactly. PDFKit's
+  // `doc.image` accepts PNG/JPEG only — the worker pipeline emits the
+  // `pdf-letterhead` variant as PNG to satisfy that.
+  if (input.logoBuffer) {
+    const LOGO_X = PAGE_MARGIN; // ≈ 50pt
+    const LOGO_Y = 60 * MM_TO_PT; // ≈ 170pt — mirrors ADDRESS_BLOCK_Y
+    const LOGO_SIZE_MM = 30;
+    const LOGO_SIZE_PT = LOGO_SIZE_MM * MM_TO_PT;
+    doc.image(input.logoBuffer, LOGO_X, LOGO_Y, {
+      fit: [LOGO_SIZE_PT, LOGO_SIZE_PT],
     });
   }
 

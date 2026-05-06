@@ -27,6 +27,13 @@
       <#assign gvPrimary = rawColor>
     </#if>
   </#if>
+  <#-- The `logo_url` Organization attribute is populated by the worker job
+       `packages/worker/src/processors/keycloak-sync-org-logo.ts` (Epic #286).
+       Source of truth: app-DB `tenants.logo_asset_id` → `org_branding_assets`
+       → `s3_key_variants['public-hero']` URL. The sync is async via the
+       outbox-relay (see `docs/24-branding-assets.md` § 4.4 and
+       `docs/05-integration-migration.md` § 5.1). Sub-second drift on the
+       relay is accepted as benign for a non-transactional surface. -->
   <#if (organization.attributes['logo_url']![])?has_content>
     <#assign gvOrgLogoUrl = organization.attributes['logo_url']?first>
   </#if>
@@ -70,7 +77,13 @@
     <div class="gv-auth-header">
       <#-- M1: Only render the logo when the URL starts with https:// to prevent
            loading from arbitrary origins. Add referrerpolicy + crossorigin to
-           avoid leaking the Keycloak auth URL to the logo's origin server. -->
+           avoid leaking the Keycloak auth URL to the logo's origin server.
+           DEV NOTE: in local dev the branding bucket is served from
+           `http://localhost:9000/branding/...` — the HTTPS guard fails
+           closed and the org logo simply doesn't render on the dev
+           Keycloak login screen. This is intentional; production uses
+           Scaleway Object Storage over HTTPS so the guard passes. -->
+
       <#if gvOrgLogoUrl?has_content && gvOrgLogoUrl?starts_with("https://")>
         <img src="${gvOrgLogoUrl}" alt="${gvOrgName}" class="gv-org-logo"
              referrerpolicy="no-referrer" crossorigin="anonymous">

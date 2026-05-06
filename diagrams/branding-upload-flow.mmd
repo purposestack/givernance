@@ -1,0 +1,60 @@
+%%{init: {'theme':'default'}}%%
+%% End-to-end org-branding logo upload, processing, activation, and donor render (Epic #286).
+%% Companion to `docs/24-branding-assets.md`.
+sequenceDiagram
+    autonumber
+    actor Op as Operator (org_admin)
+    participant Web as Next.js (web)
+    participant API as Fastify (api)
+    participant DB as Postgres
+    participant Outbox as Outbox relay
+    participant Worker as BullMQ worker
+    participant S3 as Object storage<br/>(branding bucket)
+    participant KC as Keycloak
+    actor Donor
+
+    rect rgb(245, 248, 250)
+      Note over Op,Worker: 1. Upload — validate + store original + insert row
+      Op->>Web: Drop logo onto upload zone (Settings → Organisation)
+      Web->>API: POST /v1/branding/org-logo (multipart)
+      API->>API: Magic-byte check (file-type)<br/>size cap (5MB raster / 1MB SVG)<br/>dimension cap (4096×4096)<br/>EXIF strip · SVG sanitiser
+      API->>S3: PUT {org_id}/logo/{logo_id}/original.{ext}
+      API->>DB: INSERT org_branding_assets (status=pending)
+      API->>DB: INSERT outbox_events ('branding.process_asset')
+      API-->>Web: 201 Created + asset row
+      Web->>Web: Poll GET /v1/branding/org-logo every 250ms
+    end
+
+    rect rgb(255, 248, 230)
+      Note over Outbox,S3: 2. Process — sharp pipeline derives 4 variants
+      Outbox->>Worker: Enqueue branding.process_asset
+      Worker->>S3: GET {org_id}/logo/{logo_id}/original.{ext}
+      Worker->>Worker: sharp → sidebar (128 WebP)
+      Worker->>Worker: sharp → preview (240 WebP)
+      Worker->>Worker: sharp → public-hero (800 WebP, contain)
+      Worker->>Worker: sharp → pdf-letterhead (360 PNG @ 300DPI)
+      Worker->>S3: PUT {org_id}/logo/{logo_id}/{variant}.{ext} (×4)
+      Worker->>DB: UPDATE status=ready, s3_key_variants=jsonb
+      Worker->>DB: INSERT outbox_events ('branding.activate_logo')
+      Web-->>Op: Status=ready → variants render in preview cards
+    end
+
+    rect rgb(240, 255, 244)
+      Note over Outbox,KC: 3. Activate — point tenant + sync Keycloak
+      Outbox->>Worker: Enqueue branding.activate_logo
+      Worker->>DB: UPDATE tenants SET logo_asset_id=<new id>
+      Worker->>DB: INSERT outbox_events ('keycloak.sync_org_logo')
+      Outbox->>Worker: Enqueue keycloak.sync_org_logo
+      Worker->>KC: GET /organizations/{kc_org_id}<br/>(GET-then-PUT merge)
+      Worker->>KC: PUT /organizations/{kc_org_id}<br/>{ attributes.logo_url: [public-hero URL] }
+      Worker->>DB: audit_logs ('branding.org_logo.synced')
+    end
+
+    rect rgb(232, 240, 254)
+      Note over Donor,S3: 4. Donor render — anonymous, edge-cached
+      Donor->>Web: Visit /p/{campaignId} (donation page)
+      Web->>S3: <img src=public-hero variant URL>
+      S3-->>Donor: image bytes<br/>(Cache-Control: immutable, 1y)
+      Donor->>KC: Login flow (if applicable)
+      KC-->>Donor: Login page renders org logo<br/>via organization.attributes.logo_url
+    end

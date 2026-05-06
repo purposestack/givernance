@@ -1,4 +1,4 @@
-## ADR-023: Postgres 17 Cutover and Scaleway-Anchored Versioning Policy
+## ADR-026: Postgres 17 Cutover and Scaleway-Anchored Versioning Policy
 
 **Status**: Accepted (issue tracking PR `chore/postgres-17-cutover`)
 **Related**: ADR-009 (Scaleway as primary SaaS provider), ADR-017 (one logical DB per tool — CVE coverage), ADR-003 (Drizzle ORM)

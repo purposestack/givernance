@@ -11,7 +11,8 @@
     "./jobs": "./src/jobs/index.ts",
     "./validators": "./src/validators/index.ts",
     "./constants": "./src/constants/index.ts",
-    "./i18n": "./src/i18n/locales.ts"
+    "./i18n": "./src/i18n/locales.ts",
+    "./contracts/branding": "./src/contracts/branding.ts"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm",

@@ -8,7 +8,7 @@
 # `::error` annotations so CI surfaces the offending file:line directly
 # in the PR Files-changed view.
 #
-# Pattern + rationale: ADR-023.
+# Pattern + rationale: ADR-026.
 
 set -euo pipefail
 
@@ -56,7 +56,7 @@ for dep in $deps; do
       version=$(echo "$match" | sed -E "s|^[[:space:]]*[0-9]+:[[:space:]]*image:[[:space:]]*['\"]?${dep}:([0-9]+).*|\1|")
 
       if [ "$version" -gt "$ceiling" ]; then
-        echo "::error file=$file,line=$lineno::$dep:$version exceeds compliance ceiling $ceiling (provider: $provider). Bump infra/compliance-versions.yml first, after the provider publishes support. See ADR-023."
+        echo "::error file=$file,line=$lineno::$dep:$version exceeds compliance ceiling $ceiling (provider: $provider). Bump infra/compliance-versions.yml first, after the provider publishes support. See ADR-026."
         violations=$((violations + 1))
       fi
       checked=$((checked + 1))

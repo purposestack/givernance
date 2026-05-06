@@ -188,7 +188,7 @@ Annual Giving 2026 (parent, goal €250,000)
 - `GET /v1/campaigns/:id/public-page` — public, unauthenticated endpoint
 - Embeddable as iframe or standalone page
 - Stripe Connect form (NPO's own account — Givernance never touches funds)
-- Inherits NPO branding (logo, colours) from org settings
+- Inherits NPO branding (logo, colours) from org settings — **implemented** via `tenants.logo_asset_id` and the `public-hero` variant served from the `branding` bucket; see [`docs/24-branding-assets.md`](./24-branding-assets.md). The Keycloak login screen renders the same logo via the synchronised `logo_url` Organization attribute.
 
 ROI calculation: `(raised_total - expected_cost) / expected_cost * 100`
 

@@ -36,6 +36,7 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
+import { getActivePdfLetterhead } from "../branding/logo-cache.js";
 import {
   addCampaignMembers,
   CampaignMembershipError,
@@ -449,9 +450,14 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
       // QR resolves to the same screen the donor would see in production.
       const previewUrl = `${env.APP_URL}/p/${id}?preview=1`;
 
+      // Active org logo (Epic #286). Cached in-process per `logo_asset_id`
+      // so a second preview within the TTL window doesn't re-hit S3.
+      const logoBuffer = await getActivePdfLetterhead(orgId);
+
       const buffer = await renderPostalLetterToBuffer({
         organisationName: tenant?.name ?? "Your organisation",
         organisationMission: tenant?.mission ?? null,
+        logoBuffer,
         campaignName: campaign.name,
         campaignDescription: campaign.description ?? null,
         locale: tenant?.defaultLocale ?? null,
