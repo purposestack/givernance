@@ -191,7 +191,7 @@ export interface DonationInput {
   paymentRef?: string;
   donatedAt?: string;
   fiscalYear?: number;
-  allocations?: { fundId: string; amountCents: number }[];
+  allocations?: { fundId: string; amountCents?: number; percentageBp?: number }[];
 }
 
 export interface DonationUpdateInput {
@@ -203,7 +203,25 @@ export interface DonationUpdateInput {
   paymentRef?: string | null;
   donatedAt?: string;
   fiscalYear?: number | null;
-  allocations?: { fundId: string; amountCents: number }[];
+  allocations?: { fundId: string; amountCents?: number; percentageBp?: number }[];
+}
+
+function resolveAllocationAmount(
+  alloc: { fundId: string; amountCents?: number; percentageBp?: number },
+  donationAmountCents: number,
+): { fundId: string; amountCents: number; percentageBp: number | null } {
+  if (alloc.percentageBp !== undefined) {
+    return {
+      fundId: alloc.fundId,
+      amountCents: Math.round((donationAmountCents * alloc.percentageBp) / 10000),
+      percentageBp: alloc.percentageBp,
+    };
+  }
+  return {
+    fundId: alloc.fundId,
+    amountCents: alloc.amountCents ?? 0,
+    percentageBp: null,
+  };
 }
 
 function normalizeNullableString(value: string | null | undefined) {
@@ -244,7 +262,8 @@ async function replaceDonationAllocations(
   tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
   orgId: string,
   donationId: string,
-  allocations: { fundId: string; amountCents: number }[] | undefined,
+  allocations: { fundId: string; amountCents?: number; percentageBp?: number }[] | undefined,
+  donationAmountCents: number,
 ) {
   await tx
     .delete(donationAllocations)
@@ -256,12 +275,15 @@ async function replaceDonationAllocations(
     return;
   }
 
+  const resolved = allocations.map((a) => resolveAllocationAmount(a, donationAmountCents));
+
   await tx.insert(donationAllocations).values(
-    allocations.map((allocation) => ({
+    resolved.map((allocation) => ({
       orgId,
       donationId,
       fundId: allocation.fundId,
       amountCents: allocation.amountCents,
+      percentageBp: allocation.percentageBp,
     })),
   );
 }
@@ -473,7 +495,8 @@ export async function getReceiptByDonation(orgId: string, donationId: string) {
  *  Returns null if the constituent does not exist within the tenant context. */
 export async function createDonation(orgId: string, userId: string, input: DonationInput) {
   if (input.allocations && input.allocations.length > 0) {
-    const allocSum = input.allocations.reduce((sum, a) => sum + a.amountCents, 0);
+    const resolved = input.allocations.map((a) => resolveAllocationAmount(a, input.amountCents));
+    const allocSum = resolved.reduce((sum, a) => sum + a.amountCents, 0);
     if (allocSum !== input.amountCents) {
       throw new AllocationSumMismatchError(allocSum, input.amountCents);
     }
@@ -529,12 +552,14 @@ export async function createDonation(orgId: string, userId: string, input: Donat
     const donationId = donation!.id;
 
     if (input.allocations && input.allocations.length > 0) {
+      const resolved = input.allocations.map((a) => resolveAllocationAmount(a, input.amountCents));
       await tx.insert(donationAllocations).values(
-        input.allocations.map((a) => ({
+        resolved.map((a) => ({
           orgId,
           donationId,
           fundId: a.fundId,
           amountCents: a.amountCents,
+          percentageBp: a.percentageBp,
         })),
       );
     }
@@ -558,7 +583,8 @@ export async function createDonation(orgId: string, userId: string, input: Donat
 /** Update a donation and fully replace its allocations. */
 export async function updateDonation(orgId: string, id: string, input: DonationUpdateInput) {
   if (input.allocations && input.allocations.length > 0) {
-    const allocSum = input.allocations.reduce((sum, a) => sum + a.amountCents, 0);
+    const resolved = input.allocations.map((a) => resolveAllocationAmount(a, input.amountCents));
+    const allocSum = resolved.reduce((sum, a) => sum + a.amountCents, 0);
     if (allocSum !== input.amountCents) {
       throw new AllocationSumMismatchError(allocSum, input.amountCents);
     }
@@ -610,7 +636,7 @@ export async function updateDonation(orgId: string, id: string, input: DonationU
       .where(and(eq(donations.id, id), eq(donations.orgId, orgId)))
       .returning();
 
-    await replaceDonationAllocations(tx, orgId, id, input.allocations);
+    await replaceDonationAllocations(tx, orgId, id, input.allocations, input.amountCents);
 
     return updated ?? null;
   });

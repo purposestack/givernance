@@ -78,6 +78,8 @@ const PAYMENT_METHODS = ["wire", "cheque", "card", "sepa", "cash", "other"] as c
 interface AllocationFormValue {
   fundId: string;
   amountCents: number | null;
+  percentageBp: number | null;
+  mode: "amount" | "percentage";
 }
 
 interface DonationFormValues {
@@ -93,6 +95,20 @@ interface DonationFormValues {
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function getCurrencySymbol(currency: string): string {
+  const symbols: Record<string, string> = {
+    EUR: "€",
+    GBP: "£",
+    CHF: "₣",
+    SEK: "kr",
+    NOK: "kr",
+    DKK: "kr",
+    PLN: "zł",
+    CZK: "Kč",
+  };
+  return symbols[currency] ?? currency;
 }
 
 const DEFAULT_VALUES: DefaultValues<DonationFormValues> = {
@@ -504,81 +520,144 @@ export function DonationForm(props: DonationFormProps) {
 
             {allocationFields.length > 0 ? (
               <ul className="space-y-3">
-                {allocationFields.map((fieldItem, index) => (
-                  <li
-                    key={fieldItem.id}
-                    className="grid gap-3 md:grid-cols-[minmax(0,1fr)_200px_auto]"
-                  >
-                    <FormField
-                      control={form.control}
-                      name={`allocations.${index}.fundId`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t("fields.allocationFund")}</FormLabel>
-                          <Select
-                            value={field.value || "__none__"}
-                            onValueChange={(value) =>
-                              field.onChange(value === "__none__" ? "" : value)
-                            }
-                          >
-                            <SelectTrigger
-                              aria-invalid={Boolean(
-                                form.formState.errors.allocations?.[index]?.fundId,
-                              )}
+                {allocationFields.map((fieldItem, index) => {
+                  const allocationMode = form.watch(`allocations.${index}.mode`);
+                  return (
+                    <li
+                      key={fieldItem.id}
+                      className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_200px_auto]"
+                    >
+                      <FormField
+                        control={form.control}
+                        name={`allocations.${index}.fundId`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t("fields.allocationFund")}</FormLabel>
+                            <Select
+                              value={field.value || "__none__"}
+                              onValueChange={(value) =>
+                                field.onChange(value === "__none__" ? "" : value)
+                              }
                             >
-                              <span className={cn("truncate", !field.value && "text-text-muted")}>
-                                {resolveFundLabel(
-                                  field.value,
-                                  fundOptions,
-                                  t("fields.allocationFundPlaceholder"),
+                              <SelectTrigger
+                                aria-invalid={Boolean(
+                                  form.formState.errors.allocations?.[index]?.fundId,
                                 )}
-                              </span>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__none__">
-                                {t("fields.allocationFundPlaceholder")}
-                              </SelectItem>
-                              {fundOptions.map((fund) => (
-                                <SelectItem key={fund.id} value={fund.id}>
-                                  {fund.name}
+                              >
+                                <span className={cn("truncate", !field.value && "text-text-muted")}>
+                                  {resolveFundLabel(
+                                    field.value,
+                                    fundOptions,
+                                    t("fields.allocationFundPlaceholder"),
+                                  )}
+                                </span>
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">
+                                  {t("fields.allocationFundPlaceholder")}
                                 </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
+                                {fundOptions.map((fund) => (
+                                  <SelectItem key={fund.id} value={fund.id}>
+                                    {fund.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="flex items-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={
+                            allocationMode === "amount"
+                              ? t("fields.allocationModeToggleToPercent")
+                              : t("fields.allocationModeToggleToAmount")
+                          }
+                          onClick={() => {
+                            const current = form.getValues(`allocations.${index}.mode`);
+                            form.setValue(
+                              `allocations.${index}.mode`,
+                              current === "amount" ? "percentage" : "amount",
+                            );
+                            form.setValue(`allocations.${index}.amountCents`, null);
+                            form.setValue(`allocations.${index}.percentageBp`, null);
+                          }}
+                        >
+                          {allocationMode === "amount" ? "%" : getCurrencySymbol(watchedCurrency)}
+                        </Button>
+                      </div>
+                      {allocationMode === "amount" ? (
+                        <FormField
+                          control={form.control}
+                          name={`allocations.${index}.amountCents`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t("fields.allocationAmount")}</FormLabel>
+                              <FormControl>
+                                <AmountInput
+                                  value={field.value}
+                                  onChange={(nextValue) => field.onChange(nextValue)}
+                                  placeholder={t("fields.amountPlaceholder")}
+                                  currencySymbol={getCurrencySymbol(watchedCurrency)}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      ) : (
+                        <FormField
+                          control={form.control}
+                          name={`allocations.${index}.percentageBp`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t("fields.allocationPercentage")}</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    min="0.01"
+                                    max="100"
+                                    step="0.01"
+                                    value={
+                                      field.value !== null ? (field.value / 100).toFixed(2) : ""
+                                    }
+                                    onChange={(e) => {
+                                      const pct = parseFloat(e.target.value);
+                                      field.onChange(
+                                        Number.isFinite(pct) ? Math.round(pct * 100) : null,
+                                      );
+                                    }}
+                                    className="pr-8 font-mono tabular-nums"
+                                  />
+                                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant">
+                                    %
+                                  </span>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`allocations.${index}.amountCents`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t("fields.allocationAmount")}</FormLabel>
-                          <FormControl>
-                            <AmountInput
-                              value={field.value}
-                              onChange={(nextValue) => field.onChange(nextValue)}
-                              placeholder={t("fields.amountPlaceholder")}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeAllocation(index)}
-                        aria-label={t("fields.allocationRemove")}
-                      >
-                        <Trash2 size={16} aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
+                      <div className="flex items-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeAllocation(index)}
+                          aria-label={t("fields.allocationRemove")}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
 
@@ -586,7 +665,14 @@ export function DonationForm(props: DonationFormProps) {
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => appendAllocation({ fundId: "", amountCents: null })}
+              onClick={() =>
+                appendAllocation({
+                  fundId: "",
+                  amountCents: null,
+                  percentageBp: null,
+                  mode: "amount",
+                })
+              }
             >
               <Plus size={16} aria-hidden="true" />
               {t("fields.allocationAdd")}
@@ -771,8 +857,14 @@ function parseDateString(val: string): string | undefined {
 function toApiPayload(values: DonationFormValues): DonationCreateInput {
   const donatedAt = parseDateString(values.donatedAt);
   const allocations = (values.allocations || [])
-    .map((a) => ({ fundId: a.fundId.trim(), amountCents: a.amountCents ?? 0 }))
-    .filter((a) => a.fundId !== "" && a.amountCents > 0);
+    .filter((a) => a.fundId !== "")
+    .map((a): DonationAllocationInput => {
+      if (a.mode === "percentage" && a.percentageBp !== null) {
+        return { fundId: a.fundId.trim(), percentageBp: a.percentageBp };
+      }
+      return { fundId: a.fundId.trim(), amountCents: a.amountCents ?? 0 };
+    })
+    .filter((a) => (a.amountCents !== undefined ? a.amountCents > 0 : (a.percentageBp ?? 0) > 0));
 
   return {
     constituentId: values.constituentId,
@@ -789,8 +881,14 @@ function toApiPayload(values: DonationFormValues): DonationCreateInput {
 function toUpdateApiPayload(values: DonationFormValues): DonationUpdateInput {
   const donatedAt = parseDateString(values.donatedAt);
   const allocations = (values.allocations || [])
-    .map((a) => ({ fundId: a.fundId.trim(), amountCents: a.amountCents ?? 0 }))
-    .filter((a) => a.fundId !== "" && a.amountCents > 0);
+    .filter((a) => a.fundId !== "")
+    .map((a): DonationAllocationInput => {
+      if (a.mode === "percentage" && a.percentageBp !== null) {
+        return { fundId: a.fundId.trim(), percentageBp: a.percentageBp };
+      }
+      return { fundId: a.fundId.trim(), amountCents: a.amountCents ?? 0 };
+    })
+    .filter((a) => (a.amountCents !== undefined ? a.amountCents > 0 : (a.percentageBp ?? 0) > 0));
 
   return {
     constituentId: values.constituentId,
@@ -824,6 +922,8 @@ function buildDefaultValues(props: DonationFormProps): DefaultValues<DonationFor
     allocations: props.donation.allocations.map((allocation) => ({
       fundId: allocation.fundId,
       amountCents: allocation.amountCents,
+      percentageBp: null,
+      mode: "amount" as const,
     })),
   };
 }
@@ -901,12 +1001,18 @@ function normalizeAllocations(allocations: AllocationFormValue[]): DonationAlloc
   return allocations
     .filter((allocation) => {
       const fundId = allocation.fundId.trim();
-      return fundId !== "" && allocation.amountCents !== null && allocation.amountCents > 0;
+      if (fundId === "") return false;
+      if (allocation.mode === "percentage") {
+        return allocation.percentageBp !== null && allocation.percentageBp > 0;
+      }
+      return allocation.amountCents !== null && allocation.amountCents > 0;
     })
-    .map((allocation) => ({
-      fundId: allocation.fundId.trim(),
-      amountCents: allocation.amountCents as number,
-    }));
+    .map((allocation): DonationAllocationInput => {
+      if (allocation.mode === "percentage" && allocation.percentageBp !== null) {
+        return { fundId: allocation.fundId.trim(), percentageBp: allocation.percentageBp };
+      }
+      return { fundId: allocation.fundId.trim(), amountCents: allocation.amountCents as number };
+    });
 }
 
 interface AllocationValidationMessages {
@@ -921,7 +1027,7 @@ export interface AllocationValidationIssue {
   rootMessage: string;
   fieldErrors: Array<{
     index: number;
-    field: "fundId" | "amountCents";
+    field: "fundId" | "amountCents" | "percentageBp";
     message: string;
   }>;
 }
@@ -973,62 +1079,116 @@ function handleApiError(
   form.setError("root", { type: "server", message: messages.generic });
 }
 
+type InspectState = {
+  fieldErrors: AllocationValidationIssue["fieldErrors"];
+  completeSum: number;
+  completeBpSum: number;
+  hasPercentageMode: boolean;
+  hasAmountMode: boolean;
+  rootMessage: string | null;
+  seenFundIds: Set<string>;
+};
+
+function recordAllocationFieldErrors(
+  allocation: AllocationFormValue,
+  index: number,
+  hasFund: boolean,
+  hasValue: boolean,
+  messages: AllocationValidationMessages,
+  state: InspectState,
+): void {
+  if (!hasFund) {
+    state.rootMessage = messages.incomplete;
+    state.fieldErrors.push({ index, field: "fundId", message: messages.fundRequired });
+  }
+  if (!hasValue) {
+    state.rootMessage = messages.incomplete;
+    const valueField = allocation.mode === "percentage" ? "percentageBp" : "amountCents";
+    state.fieldErrors.push({ index, field: valueField, message: messages.amountRequired });
+  }
+}
+
+function inspectSingleAllocation(
+  allocation: AllocationFormValue,
+  index: number,
+  dirtyAllocation: Partial<Record<keyof AllocationFormValue, boolean>> | undefined,
+  messages: AllocationValidationMessages,
+  state: InspectState,
+): void {
+  const fundId = allocation.fundId.trim();
+  const isPercentage = allocation.mode === "percentage";
+  const amount = allocation.amountCents;
+  const bp = allocation.percentageBp;
+  const hasFund = fundId !== "";
+  const hasValue = isPercentage ? bp !== null && bp > 0 : amount !== null && amount > 0;
+  const hasAnyValue =
+    hasFund ||
+    amount !== null ||
+    bp !== null ||
+    dirtyAllocation?.fundId === true ||
+    dirtyAllocation?.amountCents === true ||
+    dirtyAllocation?.percentageBp === true;
+
+  if (!hasAnyValue) return;
+
+  recordAllocationFieldErrors(allocation, index, hasFund, hasValue, messages, state);
+
+  if (!hasFund || !hasValue) return;
+
+  if (state.seenFundIds.has(fundId)) {
+    state.rootMessage = messages.duplicateFund;
+    state.fieldErrors.push({ index, field: "fundId", message: messages.duplicateFund });
+    return;
+  }
+
+  state.seenFundIds.add(fundId);
+  if (isPercentage) {
+    state.hasPercentageMode = true;
+    state.completeBpSum += bp ?? 0;
+  } else {
+    state.hasAmountMode = true;
+    state.completeSum += amount ?? 0;
+  }
+}
+
 export function inspectAllocationEntries(
   values: Pick<DonationFormValues, "allocations" | "amountCents">,
   messages: AllocationValidationMessages,
   dirtyAllocations?: Array<Partial<Record<keyof AllocationFormValue, boolean>> | undefined>,
 ): AllocationValidationIssue | null {
   const allocations = values.allocations ?? [];
-  const fieldErrors: AllocationValidationIssue["fieldErrors"] = [];
-  let completeSum = 0;
-  let rootMessage: string | null = null;
-  const seenFundIds = new Set<string>();
+  const state: InspectState = {
+    fieldErrors: [],
+    completeSum: 0,
+    completeBpSum: 0,
+    hasPercentageMode: false,
+    hasAmountMode: false,
+    rootMessage: null,
+    seenFundIds: new Set<string>(),
+  };
 
-  allocations.forEach((allocation, index) => {
-    const fundId = allocation.fundId.trim();
-    const amount = allocation.amountCents;
-    const hasFund = fundId !== "";
-    const hasAmount = amount !== null && amount > 0;
-    const dirtyAllocation = dirtyAllocations?.[index];
-    const hasAnyValue =
-      hasFund ||
-      amount !== null ||
-      dirtyAllocation?.fundId === true ||
-      dirtyAllocation?.amountCents === true;
-
-    if (!hasAnyValue) {
-      return;
-    }
-
-    if (!hasFund) {
-      rootMessage = messages.incomplete;
-      fieldErrors.push({ index, field: "fundId", message: messages.fundRequired });
-    }
-
-    if (!hasAmount) {
-      rootMessage = messages.incomplete;
-      fieldErrors.push({ index, field: "amountCents", message: messages.amountRequired });
-    }
-
-    if (!hasFund || !hasAmount) {
-      return;
-    }
-
-    if (seenFundIds.has(fundId)) {
-      rootMessage = messages.duplicateFund;
-      fieldErrors.push({ index, field: "fundId", message: messages.duplicateFund });
-      return;
-    }
-
-    seenFundIds.add(fundId);
-    completeSum += amount;
-  });
-
-  if (rootMessage) {
-    return { rootMessage, fieldErrors };
+  for (let index = 0; index < allocations.length; index++) {
+    const allocation = allocations[index];
+    if (!allocation) continue;
+    inspectSingleAllocation(allocation, index, dirtyAllocations?.[index], messages, state);
   }
 
-  if (completeSum > 0 && completeSum !== (values.amountCents ?? 0)) {
+  if (state.rootMessage) {
+    return { rootMessage: state.rootMessage, fieldErrors: state.fieldErrors };
+  }
+
+  // In percentage-only mode, validate that total ≤ 100% (10000 bp).
+  // The server enforces the exact sum after resolving amounts.
+  if (state.hasPercentageMode && !state.hasAmountMode && state.completeBpSum > 10000) {
+    return { rootMessage: messages.sumMismatch, fieldErrors: [] };
+  }
+
+  // In amount-only mode, validate exact sum match as before.
+  if (
+    !state.hasPercentageMode &&
+    state.completeSum > 0 &&
+    state.completeSum !== (values.amountCents ?? 0)
+  ) {
     return { rootMessage: messages.sumMismatch, fieldErrors: [] };
   }
 

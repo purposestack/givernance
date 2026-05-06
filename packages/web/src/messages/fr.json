@@ -1657,6 +1657,9 @@
         "allocationFund": "Fonds",
         "allocationFundPlaceholder": "Sélectionnez un fonds",
         "allocationAmount": "Montant",
+        "allocationPercentage": "Pourcentage",
+        "allocationModeToggleToPercent": "Passer en pourcentage",
+        "allocationModeToggleToAmount": "Passer en montant",
         "allocationRemove": "Supprimer la ligne",
         "allocationAdd": "Ajouter une ligne",
         "allocationsHint": "Les répartitions doivent totaliser le montant du don. Laissez vide pour un don non-alloué."

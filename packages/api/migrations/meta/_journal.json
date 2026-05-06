@@ -393,6 +393,13 @@
       "when": 1746543600000,
       "tag": "0055_donation_rate_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1746547200000,
+      "tag": "0045_allocation_percentage",
+      "breakpoints": true
     }
   ]
 }

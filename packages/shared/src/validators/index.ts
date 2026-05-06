@@ -164,7 +164,8 @@ export const ConstituentUpdateSchema = Type.Object({
 /** Schema for a fund allocation within a donation */
 export const DonationAllocationSchema = Type.Object({
   fundId: Type.String({ format: "uuid" }),
-  amountCents: Type.Integer({ exclusiveMinimum: 0 }),
+  amountCents: Type.Optional(Type.Integer({ exclusiveMinimum: 0 })),
+  percentageBp: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000 })),
 });
 
 export const MULTI_CURRENCY_VALUES = [

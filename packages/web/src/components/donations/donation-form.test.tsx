@@ -174,7 +174,9 @@ describe("DonationForm", () => {
     const issue = inspectAllocationEntries(
       {
         amountCents: 2500,
-        allocations: [{ fundId: "", amountCents: 1000 }],
+        allocations: [
+          { fundId: "", amountCents: 1000, percentageBp: null, mode: "amount" as const },
+        ],
       },
       {
         incomplete: "Complete each allocation row before saving.",

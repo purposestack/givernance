@@ -1657,6 +1657,9 @@
         "allocationFund": "Fund",
         "allocationFundPlaceholder": "Select a fund",
         "allocationAmount": "Amount",
+        "allocationPercentage": "Percentage",
+        "allocationModeToggleToPercent": "Switch to percentage",
+        "allocationModeToggleToAmount": "Switch to amount",
         "allocationRemove": "Remove allocation",
         "allocationAdd": "Add allocation",
         "allocationsHint": "Allocations must sum to the total amount. Leave empty for unallocated."

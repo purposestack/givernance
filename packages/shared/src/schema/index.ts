@@ -884,6 +884,7 @@ export const donationAllocations = pgTable(
       .notNull()
       .references(() => funds.id, { onDelete: "restrict" }),
     amountCents: integer("amount_cents").notNull(),
+    percentageBp: integer("percentage_bp"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -75,7 +75,8 @@ export interface DonationAllocation {
 
 export interface DonationAllocationInput {
   fundId: string;
-  amountCents: number;
+  amountCents?: number;
+  percentageBp?: number;
 }
 
 export interface DonationDetail extends Donation {
