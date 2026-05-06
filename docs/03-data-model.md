@@ -489,7 +489,7 @@ CREATE INDEX exchange_rates_base_currency_idx ON exchange_rates (base_currency);
 CREATE INDEX exchange_rates_date_idx          ON exchange_rates (date);
 ```
 
-`tenants.base_currency` (VARCHAR 3, default `'EUR'`, added migration 0023) is the **pivot currency** for all aggregations — dashboard KPIs, campaign ROI, and reports all use `donations.amount_base_cents` which is pre-computed at donation time using this table. See [ADR-018](./15-infra-adr.md) for the full rate lookup cascade and rejected alternatives.
+`tenants.base_currency` (VARCHAR 3, default `'EUR'`, added migration 0023) is the **pivot currency** for all aggregations — dashboard KPIs, campaign ROI, and reports all use `donations.amount_base_cents` which is pre-computed at donation time using this table. See [ADR-026](./adrs/adr-026-multi-currency-donation-strategy.md) for the full rate lookup cascade and rejected alternatives.
 
 ---
 

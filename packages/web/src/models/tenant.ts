@@ -1,6 +1,7 @@
 import type { Locale } from "@givernance/shared/i18n";
+import { MULTI_CURRENCY_VALUES } from "@givernance/shared/validators";
 
-export type TenantCurrency = "EUR" | "GBP" | "CHF" | "SEK" | "NOK" | "DKK" | "PLN" | "CZK";
+export type TenantCurrency = (typeof MULTI_CURRENCY_VALUES)[number];
 
 export interface Tenant {
   id: string;

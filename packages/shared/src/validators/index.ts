@@ -187,19 +187,7 @@ export const MultiCurrencySchema = Type.Union(
 export const DonationCreateSchema = Type.Object({
   constituentId: Type.String({ format: "uuid" }),
   amountCents: Type.Integer({ exclusiveMinimum: 0 }),
-  currency: Type.Union(
-    [
-      Type.Literal("EUR"),
-      Type.Literal("GBP"),
-      Type.Literal("CHF"),
-      Type.Literal("SEK"),
-      Type.Literal("NOK"),
-      Type.Literal("DKK"),
-      Type.Literal("PLN"),
-      Type.Literal("CZK"),
-    ],
-    { default: "EUR" },
-  ),
+  currency: MultiCurrencySchema,
   campaignId: Type.Optional(Type.String({ format: "uuid" })),
   paymentMethod: Type.Optional(Type.String({ maxLength: 50 })),
   paymentRef: Type.Optional(Type.String({ maxLength: 255 })),

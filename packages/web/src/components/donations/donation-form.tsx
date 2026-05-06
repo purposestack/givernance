@@ -16,7 +16,7 @@ import { typeboxResolver } from "@hookform/resolvers/typebox";
 import { Check, ChevronsUpDown, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type DefaultValues,
   type Resolver,
@@ -228,11 +228,15 @@ export function DonationForm(props: DonationFormProps) {
   // When the form is pre-filled from a URL param (initialCampaignId), the watch
   // subscription above never fires because no change event is emitted for a default
   // value. Apply the campaign's defaultCurrency once campaigns have loaded.
+  // Guard with a ref so remounts don't re-apply a currency the user may have changed.
   const initialCampaignIdForCurrency = mode === "create" ? props.initialCampaignId : undefined;
+  const currencyAppliedRef = useRef(false);
   useEffect(() => {
     if (!initialCampaignIdForCurrency || campaignsLoading) return;
+    if (currencyAppliedRef.current) return;
     const campaign = campaignOptions.find((c) => c.id === initialCampaignIdForCurrency);
     if (!campaign?.defaultCurrency) return;
+    currencyAppliedRef.current = true;
     form.setValue("currency", campaign.defaultCurrency, { shouldDirty: false });
   }, [campaignsLoading, campaignOptions, initialCampaignIdForCurrency, form]);
 
@@ -347,6 +351,7 @@ export function DonationForm(props: DonationFormProps) {
                       if (constituent?.id) form.clearErrors("constituentId");
                     }}
                     invalid={Boolean(form.formState.errors.constituentId)}
+                    disabled={mode === "create" && Boolean(props.initialConstituentId)}
                   />
                 </FormControl>
                 <FormMessage />
@@ -490,6 +495,7 @@ export function DonationForm(props: DonationFormProps) {
                 <Select
                   value={field.value || "__none__"}
                   onValueChange={(value) => field.onChange(value === "__none__" ? "" : value)}
+                  disabled={mode === "create" && Boolean(props.initialCampaignId)}
                 >
                   <SelectTrigger aria-invalid={Boolean(form.formState.errors.campaignId)}>
                     <SelectValue placeholder={t("fields.campaignIdPlaceholder")} />
@@ -714,9 +720,10 @@ interface ConstituentPickerProps {
   selected: Constituent | null;
   onSelect: (constituent: Constituent | null) => void;
   invalid: boolean;
+  disabled?: boolean;
 }
 
-function ConstituentPicker({ value, selected, onSelect, invalid }: ConstituentPickerProps) {
+function ConstituentPicker({ value, selected, onSelect, invalid, disabled }: ConstituentPickerProps) {
   const t = useTranslations("donations.form");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -751,12 +758,13 @@ function ConstituentPicker({ value, selected, onSelect, invalid }: ConstituentPi
   const triggerLabel = selected ? fullName(selected) : t("fields.constituentPlaceholder");
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
           aria-invalid={invalid}
           aria-expanded={open}
+          disabled={disabled}
           className={cn(
             "flex w-full items-center justify-between gap-2",
             "h-[var(--input-height)] px-3",
@@ -766,6 +774,7 @@ function ConstituentPicker({ value, selected, onSelect, invalid }: ConstituentPi
             "transition-[border-color,box-shadow] duration-normal ease-out",
             "focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring",
             "aria-invalid:border-error aria-invalid:focus-visible:shadow-ring-error",
+            disabled && "opacity-50 cursor-not-allowed",
             !selected && "text-text-muted",
           )}
         >

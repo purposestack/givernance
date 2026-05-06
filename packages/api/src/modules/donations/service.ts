@@ -253,6 +253,10 @@ function resolveAllocations(
   const percentFloorTotal = interim.filter((r) => r.percentageBp !== null).reduce((s, r) => s + r.amountCents, 0);
   const residual = donationAmountCents - fixedTotal - percentFloorTotal;
 
+  if (residual < 0) {
+    throw new AllocationSumMismatchError(fixedTotal + percentFloorTotal, donationAmountCents);
+  }
+
   if (residual > 0) {
     const byRemainder = interim
       .filter((r) => r.percentageBp !== null)
@@ -319,6 +323,10 @@ async function replaceDonationAllocations(
   }
 
   const resolved = resolveAllocations(allocations, donationAmountCents);
+  const allocSum = resolved.reduce((sum, a) => sum + a.amountCents, 0);
+  if (allocSum !== donationAmountCents) {
+    throw new AllocationSumMismatchError(allocSum, donationAmountCents);
+  }
 
   await tx.insert(donationAllocations).values(
     resolved.map((allocation) => ({
@@ -506,6 +514,7 @@ export async function getDonation(orgId: string, id: string) {
         id: donationAllocations.id,
         fundId: donationAllocations.fundId,
         amountCents: donationAllocations.amountCents,
+        percentageBp: donationAllocations.percentageBp,
         fundName: funds.name,
       })
       .from(donationAllocations)
@@ -537,14 +546,6 @@ export async function getReceiptByDonation(orgId: string, donationId: string) {
 /** Create a donation with optional allocations, emitting DonationCreated event transactionally.
  *  Returns null if the constituent does not exist within the tenant context. */
 export async function createDonation(orgId: string, userId: string, input: DonationInput) {
-  if (input.allocations && input.allocations.length > 0) {
-    const resolved = resolveAllocations(input.allocations, input.amountCents);
-    const allocSum = resolved.reduce((sum, a) => sum + a.amountCents, 0);
-    if (allocSum !== input.amountCents) {
-      throw new AllocationSumMismatchError(allocSum, input.amountCents);
-    }
-  }
-
   return withTenantContext(orgId, async (tx) => {
     // Verify constituent belongs to this tenant (FK check alone doesn't enforce RLS)
     const [constituent, tenant] = await Promise.all([
@@ -562,6 +563,17 @@ export async function createDonation(orgId: string, userId: string, input: Donat
     // without being rejected, binding a donation to another tenant's records.
     await assertCampaignBelongsToOrg(tx, orgId, input.campaignId);
     await assertFundsBelongToOrg(tx, orgId, input.allocations);
+
+    // Resolve allocations after ownership check to avoid leaking allocation
+    // structure info to callers who do not own the referenced funds.
+    let resolvedAllocations: ResolvedAllocation[] | null = null;
+    if (input.allocations && input.allocations.length > 0) {
+      resolvedAllocations = resolveAllocations(input.allocations, input.amountCents);
+      const allocSum = resolvedAllocations.reduce((sum, a) => sum + a.amountCents, 0);
+      if (allocSum !== input.amountCents) {
+        throw new AllocationSumMismatchError(allocSum, input.amountCents);
+      }
+    }
     const currency = (input.currency ?? "EUR").toUpperCase();
     const baseCurrency = (tenant[0]?.baseCurrency ?? "EUR").toUpperCase();
     const exchangeRateService = new ExchangeRateService({ dbClient: tx });
@@ -594,10 +606,9 @@ export async function createDonation(orgId: string, userId: string, input: Donat
     // biome-ignore lint/style/noNonNullAssertion: insert().returning() always returns a row
     const donationId = donation!.id;
 
-    if (input.allocations && input.allocations.length > 0) {
-      const resolved = resolveAllocations(input.allocations, input.amountCents);
+    if (resolvedAllocations) {
       await tx.insert(donationAllocations).values(
-        resolved.map((a) => ({
+        resolvedAllocations.map((a) => ({
           orgId,
           donationId,
           fundId: a.fundId,
@@ -625,14 +636,6 @@ export async function createDonation(orgId: string, userId: string, input: Donat
 
 /** Update a donation and fully replace its allocations. */
 export async function updateDonation(orgId: string, id: string, input: DonationUpdateInput) {
-  if (input.allocations && input.allocations.length > 0) {
-    const resolved = resolveAllocations(input.allocations, input.amountCents);
-    const allocSum = resolved.reduce((sum, a) => sum + a.amountCents, 0);
-    if (allocSum !== input.amountCents) {
-      throw new AllocationSumMismatchError(allocSum, input.amountCents);
-    }
-  }
-
   return withTenantContext(orgId, async (tx) => {
     const { existing, constituent, tenant } = await loadDonationUpdateContext(
       tx,

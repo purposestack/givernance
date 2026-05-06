@@ -1,4 +1,4 @@
--- 0044 — Allocation percentage snapshot (issue #230).
+-- 0045 — Allocation percentage snapshot (issue #230).
 --
 -- Adds an optional percentage_bp column (basis points, 1-10000 where
 -- 10000 = 100%) to donation_allocations. NULL = allocation was entered in
