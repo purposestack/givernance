@@ -1,6 +1,6 @@
 # 03 — Data Model
 
-> Last updated: 2026-04-14
+> Last updated: 2026-05-06
 
 ---
 
@@ -352,6 +352,12 @@ CREATE TABLE donations (
     amount          NUMERIC(14,2) NOT NULL CHECK (amount >= 0),
     currency        CHAR(3) NOT NULL DEFAULT 'EUR',
     type            TEXT NOT NULL CHECK (type IN ('cash','in_kind','stock','matched')),
+    -- Multi-currency (migration 0023 / ADR-027)
+    exchange_rate              NUMERIC(18,8),      -- rate applied; nullable for legacy rows
+    exchange_rate_at           DATE,               -- date the rate was fetched (= donation date); nullable for legacy
+    base_currency_at_donation  VARCHAR(3),         -- tenant base currency at time of donation; immunises history against future tenant currency changes; nullable for legacy
+    exchange_rate_source       VARCHAR(32),        -- same_currency | local_exact | api_cache | api | local_fallback | default_fallback | unknown
+    amount_base_cents          INTEGER NOT NULL,   -- donation amount pre-converted to tenant's base currency
     -- Dates
     received_date   DATE NOT NULL,
     posted_date     DATE,
@@ -389,6 +395,8 @@ CREATE INDEX donation_campaign_idx ON donations (org_id, campaign_id) WHERE camp
 CREATE INDEX donation_status_idx ON donations (org_id, status, received_date);
 ```
 
+Multi-currency columns (`exchange_rate`, `exchange_rate_at`, `base_currency_at_donation`, `exchange_rate_source`, `amount_base_cents`) were added in migration 0023. `exchange_rate`, `exchange_rate_at`, `base_currency_at_donation`, and `exchange_rate_source` are **nullable for legacy rows** (donations created before multi-currency was enabled). `amount_base_cents` is `NOT NULL` — legacy rows were backfilled with `amount_cents` at migration time. See [ADR-027](./adrs/adr-027-multi-currency-donation-strategy.md) for the full rate lookup cascade and rejected alternatives.
+
 #### `donation_allocations` (split across funds)
 ```sql
 CREATE TABLE donation_allocations (
@@ -397,6 +405,9 @@ CREATE TABLE donation_allocations (
     donation_id     UUID NOT NULL REFERENCES donations(id),
     fund_id         UUID NOT NULL REFERENCES funds(id),
     amount          NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+    -- Planned: percentage_bp SMALLINT CHECK (percentage_bp BETWEEN 1 AND 10000)
+    -- (migration 0045, companion PR) — basis points (100 bp = 1%) for percentage-based allocations.
+    -- Allows operators to define allocations as "60% to Fund A, 40% to Fund B" rather than fixed amounts.
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- Invariant: SUM(allocations.amount) = donation.amount (enforced by API)
@@ -455,6 +466,30 @@ CREATE TABLE soft_credits (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
+
+#### `exchange_rates` (multi-currency cache — migration 0023 / ADR-027)
+
+Daily cache of currency conversion rates fetched from exchangerate-api.com. One row per `(currency, base_currency, date)` triplet. The `ExchangeRateService` (`packages/shared/src/finance/exchange-rate-service.ts`) writes rows here on first live fetch and reads them on subsequent lookups for the same day. The table is **not tenant-scoped** — rates are global facts, not tenant data.
+
+```sql
+CREATE TABLE exchange_rates (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    currency        VARCHAR(3)     NOT NULL,   -- source currency, e.g. 'GBP'
+    base_currency   VARCHAR(3)     NOT NULL,   -- target (tenant base) currency, e.g. 'EUR'
+    rate            NUMERIC(18,8)  NOT NULL,   -- units of base_currency per 1 unit of currency
+    date            DATE           NOT NULL,   -- snapshot date (always = today at fetch time)
+    created_at      TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    CONSTRAINT exchange_rates_currency_base_date_uniq
+        UNIQUE (currency, base_currency, date)
+);
+
+CREATE INDEX exchange_rates_currency_idx      ON exchange_rates (currency);
+CREATE INDEX exchange_rates_base_currency_idx ON exchange_rates (base_currency);
+CREATE INDEX exchange_rates_date_idx          ON exchange_rates (date);
+```
+
+`tenants.base_currency` (VARCHAR 3, default `'EUR'`, added migration 0023) is the **pivot currency** for all aggregations — dashboard KPIs, campaign ROI, and reports all use `donations.amount_base_cents` which is pre-computed at donation time using this table. See [ADR-018](./15-infra-adr.md) for the full rate lookup cascade and rejected alternatives.
 
 ---
 
