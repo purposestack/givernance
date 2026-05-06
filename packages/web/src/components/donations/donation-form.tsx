@@ -97,20 +97,6 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function getCurrencySymbol(currency: string): string {
-  const symbols: Record<string, string> = {
-    EUR: "€",
-    GBP: "£",
-    CHF: "₣",
-    SEK: "kr",
-    NOK: "kr",
-    DKK: "kr",
-    PLN: "zł",
-    CZK: "Kč",
-  };
-  return symbols[currency] ?? currency;
-}
-
 const DEFAULT_VALUES: DefaultValues<DonationFormValues> = {
   constituentId: "",
   amountCents: null,
