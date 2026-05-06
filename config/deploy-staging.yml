@@ -93,6 +93,25 @@ env:
     # issued an `acr=2` token, which is the intended behavior; we'd
     # rather fail closed on staging than silently weaken the gate.
     IMPERSONATION_REQUIRE_ACR_2: "true"
+    # Quick fix for issue #296 — Fastify (API) was returning 431
+    # `HPE_HEADER_OVERFLOW` on every authenticated call (`/v1/users/me`,
+    # `/v1/admin/impersonation/tenants`, `PATCH /v1/campaigns/...`) for
+    # platform-admin sessions. Root cause: `packages/web/src/proxy.ts`
+    # injects `Authorization: Bearer <jwt>` AND re-sets the `cookie`
+    # header on every request, which marks both as "overridden" and
+    # makes Next.js 16 serialise them into `x-middleware-override-headers`
+    # + `x-middleware-request-{authorization,cookie}` internal headers
+    # that leak into the rewrite to `${API_URL}`. Combined with the three
+    # Keycloak-token cookies already in flight (jwt + id_token +
+    # refresh_token = ~4.4 KB), the request reaching Fastify approached
+    # ~14 KB and tipped over Node's default `--max-http-header-size`
+    # of 16 KB on a slightly verbose UA. Bumping to 32 KB buys headroom
+    # while we land the proper fix (drop redundant Authorization in the
+    # middleware + move id_token/refresh_token out of cookies into Redis).
+    # Applied at the root `env: clear:` level so every Node service
+    # (web, api, worker, relay) gets the same setting — simpler than
+    # per-service overrides and harmless for the queue workers.
+    NODE_OPTIONS: "--max-http-header-size=32768"
   secret:
     - POSTGRES_PASSWORD
     - REDIS_PASSWORD
