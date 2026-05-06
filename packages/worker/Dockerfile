@@ -1,5 +1,5 @@
 # Stage 1: Install dependencies
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 RUN corepack enable
 # `sharp` (Epic #286 image pipeline) needs libvips headers available at
 # install time so its prebuilt binary can be linked against the running
@@ -12,7 +12,7 @@ COPY packages/shared/package.json packages/shared/
 RUN pnpm install --frozen-lockfile --prod=false
 
 # Stage 2: Build
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 RUN corepack enable
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -22,7 +22,7 @@ COPY . .
 RUN pnpm --filter @givernance/shared build && pnpm --filter @givernance/worker build
 
 # Stage 3: Production
-FROM node:22-alpine AS production
+FROM node:25-alpine AS production
 RUN corepack enable
 # Runtime libvips for `sharp` (Epic #286). `vips` (without `-dev`) is the
 # minimal runtime; the headers are only required at build time.
