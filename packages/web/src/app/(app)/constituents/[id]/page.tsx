@@ -1,4 +1,4 @@
-import { Download, FileText, GitMerge, Mail, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { Download, FileText, Gift, GitMerge, Mail, Pencil, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -136,6 +136,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
           merge: t("actions.merge"),
           exportGdpr: t("actions.exportGdpr"),
           delete: t("actions.delete"),
+          newDonation: t("actions.newDonation"),
         }}
       />
       <AiSuggestionCard
@@ -237,6 +238,7 @@ interface ProfileLabels {
   merge: string;
   exportGdpr: string;
   delete: string;
+  newDonation: string;
 }
 
 function ProfileCard({
@@ -362,6 +364,14 @@ function ProfileActions({
           <Link href={`/constituents/${constituentId}/edit`}>
             <Pencil size={16} aria-hidden="true" />
             {labels.edit}
+          </Link>
+        </Button>
+      ) : null}
+      {canWrite ? (
+        <Button asChild variant="secondary" size="sm">
+          <Link href={`/donations/new?constituentId=${constituentId}`}>
+            <Gift size={16} aria-hidden="true" />
+            {labels.newDonation}
           </Link>
         </Button>
       ) : null}

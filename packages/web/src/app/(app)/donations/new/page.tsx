@@ -4,10 +4,18 @@ import { DonationForm } from "@/components/donations/donation-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { requirePermission } from "@/lib/auth/guards";
 
-export default async function NewDonationPage() {
+export default async function NewDonationPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await requirePermission("write");
   const t = await getTranslations("donations.form");
   const tDonations = await getTranslations("donations");
+  const sp = await searchParams;
+
+  const initialConstituentId = typeof sp.constituentId === "string" ? sp.constituentId : undefined;
+  const initialCampaignId = typeof sp.campaignId === "string" ? sp.campaignId : undefined;
 
   return (
     <>
@@ -20,7 +28,11 @@ export default async function NewDonationPage() {
           { label: t("breadcrumbNew") },
         ]}
       />
-      <DonationForm mode="create" />
+      <DonationForm
+        mode="create"
+        initialConstituentId={initialConstituentId}
+        initialCampaignId={initialCampaignId}
+      />
     </>
   );
 }

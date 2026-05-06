@@ -2281,6 +2281,7 @@
         "back": "Back to campaigns",
         "edit": "Edit",
         "publicPage": "Public page",
+        "newDonation": "New donation",
         "activate": "Activate",
         "activating": "Activating…",
         "backToDraft": "Back to draft",
@@ -2477,7 +2478,8 @@
       "edit": "Edit",
       "merge": "Merge",
       "exportGdpr": "GDPR export",
-      "delete": "Delete"
+      "delete": "Delete",
+      "newDonation": "New donation"
     },
     "tabs": {
       "overview": "Overview",

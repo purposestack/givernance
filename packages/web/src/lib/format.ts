@@ -63,3 +63,17 @@ export function formatPercent(value: number, locale: string, decimals = 0): stri
     maximumFractionDigits: decimals,
   }).format(value / 100);
 }
+
+/**
+ * Return the currency symbol for a given ISO 4217 currency code.
+ * Uses Intl.NumberFormat to derive the symbol so it stays in sync with
+ * the browser locale without hard-coding a mapping table.
+ */
+export function getCurrencySymbol(currency: string): string {
+  const parts = new Intl.NumberFormat("en", {
+    style: "currency",
+    currency,
+    currencyDisplay: "narrowSymbol",
+  }).formatToParts(0);
+  return parts.find((p) => p.type === "currency")?.value ?? currency;
+}

@@ -271,6 +271,14 @@ export default async function CampaignDetailPage({
                 </Link>
               </Button>
             ) : null}
+            {canWrite ? (
+              <Button asChild variant="secondary" size="sm">
+                <Link href={`/donations/new?campaignId=${campaign.id}`}>
+                  <Gift size={16} aria-hidden="true" />
+                  {t("actions.newDonation")}
+                </Link>
+              </Button>
+            ) : null}
             {auth.roles.includes("org_admin") ? (
               <Button asChild variant="secondary" size="sm">
                 <Link href={`/campaigns/${campaign.id}/public-page`}>

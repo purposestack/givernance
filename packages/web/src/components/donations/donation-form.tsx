@@ -56,6 +56,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { getCurrencySymbol } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Campaign } from "@/models/campaign";
 import { type Constituent, fullName } from "@/models/constituent";
@@ -105,7 +106,12 @@ const DEFAULT_VALUES: DefaultValues<DonationFormValues> = {
   allocations: [],
 };
 
-type CreateMode = { mode: "create"; donation?: undefined };
+type CreateMode = {
+  mode: "create";
+  donation?: undefined;
+  initialConstituentId?: string;
+  initialCampaignId?: string;
+};
 type EditMode = { mode: "edit"; donation: DonationDetail };
 
 export type DonationFormProps = CreateMode | EditMode;
@@ -218,6 +224,7 @@ export function DonationForm(props: DonationFormProps) {
   }, [campaignOptions, form]);
 
   const watchedCampaignId = form.watch("campaignId");
+  const watchedCurrency = form.watch("currency");
 
   useEffect(() => {
     let active = true;
@@ -356,6 +363,7 @@ export function DonationForm(props: DonationFormProps) {
                         }
                       }}
                       placeholder={t("fields.amountPlaceholder")}
+                      currencySymbol={getCurrencySymbol(watchedCurrency)}
                     />
                   </FormControl>
                   <FormMessage />
@@ -798,7 +806,11 @@ function toUpdateApiPayload(values: DonationFormValues): DonationUpdateInput {
 
 function buildDefaultValues(props: DonationFormProps): DefaultValues<DonationFormValues> {
   if (props.mode === "create") {
-    return DEFAULT_VALUES;
+    return {
+      ...DEFAULT_VALUES,
+      constituentId: props.initialConstituentId ?? "",
+      campaignId: props.initialCampaignId ?? "",
+    };
   }
 
   return {
