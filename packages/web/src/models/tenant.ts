@@ -1,6 +1,6 @@
 import type { Locale } from "@givernance/shared/i18n";
 
-export type TenantCurrency = "EUR" | "GBP" | "CHF";
+export type TenantCurrency = "EUR" | "GBP" | "CHF" | "SEK" | "NOK" | "DKK" | "PLN" | "CZK";
 
 export interface Tenant {
   id: string;

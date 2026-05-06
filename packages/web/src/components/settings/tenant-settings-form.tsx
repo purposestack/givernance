@@ -1,6 +1,7 @@
 "use client";
 
 import { LOCALE_NATIVE_NAMES, type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import { MULTI_CURRENCY_VALUES } from "@givernance/shared/validators";
 import { Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -22,7 +23,7 @@ import { createClientApiClient } from "@/lib/api/client-browser";
 import type { TenantCurrency } from "@/models/tenant";
 import { TenantService } from "@/services/TenantService";
 
-const TENANT_CURRENCIES: TenantCurrency[] = ["EUR", "GBP", "CHF"];
+const TENANT_CURRENCIES = MULTI_CURRENCY_VALUES;
 
 function resolveApiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiProblem) {

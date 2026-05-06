@@ -167,7 +167,16 @@ export const DonationAllocationSchema = Type.Object({
   amountCents: Type.Integer({ exclusiveMinimum: 0 }),
 });
 
-export const MULTI_CURRENCY_VALUES = ["EUR", "GBP", "CHF"] as const;
+export const MULTI_CURRENCY_VALUES = [
+  "EUR",
+  "GBP",
+  "CHF",
+  "SEK",
+  "NOK",
+  "DKK",
+  "PLN",
+  "CZK",
+] as const;
 export const MultiCurrencySchema = Type.Union(
   MULTI_CURRENCY_VALUES.map((currency) => Type.Literal(currency)),
   { default: "EUR" },
