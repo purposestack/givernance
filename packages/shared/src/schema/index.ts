@@ -772,6 +772,12 @@ export const donations = pgTable(
     amountCents: integer("amount_cents").notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("EUR"),
     exchangeRate: numeric("exchange_rate", { precision: 18, scale: 8 }),
+    /** ISO date of the rate used (today at donation time). Null for legacy rows. */
+    exchangeRateAt: date("exchange_rate_at"),
+    /** Tenant base currency captured at donation time. Null for legacy rows. */
+    baseCurrencyAtDonation: varchar("base_currency_at_donation", { length: 3 }),
+    /** How the rate was obtained. One of: same_currency, local_exact, api_cache, api, local_fallback, default_fallback, unknown. */
+    exchangeRateSource: varchar("exchange_rate_source", { length: 32 }),
     amountBaseCents: integer("amount_base_cents").notNull(),
     campaignId: uuid("campaign_id").references((): AnyPgColumn => campaigns.id, {
       onDelete: "set null",

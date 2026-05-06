@@ -303,8 +303,8 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
 
   if (dateFrom) conditions.push(gte(donations.donatedAt, new Date(dateFrom)));
   if (dateTo) conditions.push(lte(donations.donatedAt, new Date(dateTo)));
-  if (amountMin !== undefined) conditions.push(gte(donations.amountCents, amountMin));
-  if (amountMax !== undefined) conditions.push(lte(donations.amountCents, amountMax));
+  if (amountMin !== undefined) conditions.push(gte(donations.amountBaseCents, amountMin));
+  if (amountMax !== undefined) conditions.push(lte(donations.amountBaseCents, amountMax));
   if (constituentId) conditions.push(eq(donations.constituentId, constituentId));
   if (campaignId) conditions.push(eq(donations.campaignId, campaignId));
   if (receiptStatus) {
@@ -513,6 +513,9 @@ export async function createDonation(orgId: string, userId: string, input: Donat
         amountCents: input.amountCents,
         currency,
         exchangeRate: convertedAmount.exchangeRate.toFixed(8),
+        exchangeRateAt: new Date().toISOString().slice(0, 10),
+        baseCurrencyAtDonation: baseCurrency,
+        exchangeRateSource: convertedAmount.source,
         amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: input.campaignId,
         paymentMethod: input.paymentMethod,
@@ -593,6 +596,9 @@ export async function updateDonation(orgId: string, id: string, input: DonationU
         amountCents: input.amountCents,
         currency,
         exchangeRate: convertedAmount.exchangeRate.toFixed(8),
+        exchangeRateAt: new Date().toISOString().slice(0, 10),
+        baseCurrencyAtDonation: baseCurrency,
+        exchangeRateSource: convertedAmount.source,
         amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: input.campaignId ?? null,
         paymentMethod: normalizeNullableString(input.paymentMethod) ?? null,
