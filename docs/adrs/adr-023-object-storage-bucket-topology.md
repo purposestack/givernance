@@ -1,7 +1,7 @@
 ## ADR-023: Object Storage Bucket Topology — One Bucket per Visibility Class, Per-Tenant Key Prefix
 
-**Status**: Accepted (Epic #286, 2026-05-05)
-**Related**: ADR-013 (frontend type boundary, no Node-only deps in shared), ADR-017 (one logical DB per tool — applied analogously to buckets), `docs/24-branding-assets.md`, `docs/06-security-compliance.md`
+**Status**: Accepted (Epic #286, 2026-05-05) · **Amended 2026-05-07** to add the `bank-statements` private bucket — see ADR-028.
+**Related**: ADR-013 (frontend type boundary, no Node-only deps in shared), ADR-017 (one logical DB per tool — applied analogously to buckets), ADR-028 (camt.053 ingestion — `bank-statements` bucket), `docs/24-branding-assets.md`, `docs/25-swiss-qr-bill.md`, `docs/06-security-compliance.md`
 
 ### Context
 
@@ -26,13 +26,14 @@ Beyond the safety dimension, mixing donor-public assets with private signed-URL 
 
 Each visibility class gets its **own bucket**, with **per-tenant key prefixes** as the in-bucket isolation mechanism.
 
-The current topology after Epic #286:
+The current topology after Epic #286 and the Epic #318 amendment:
 
 | Bucket | Visibility | ACL model | Owners | Lifecycle |
 |---|---|---|---|---|
-| `receipts` | **Private** | Bucket-private, signed URLs only | Worker writes, API serves via presign | 7-year retention (fiscal) |
+| `receipts` | **Private** | Bucket-private, signed URLs only | Worker writes, API serves via presign | 7-year retention (EU fiscal) |
 | `campaigns` | **Private** | Bucket-private, signed URLs only | Worker streams ZIPs, API serves via presign | `AbortIncompleteMultipartUpload` 1d |
 | `branding` | **Public-read** | Bucket-level public-read; **no per-object ACL** | Worker writes processed variants, anonymous reads via direct URL | Nightly orphan-GC sweep + tenant-offboarding prefix-delete |
+| `bank-statements` | **Private** | Bucket-private, signed URLs only | API stores raw camt.053 uploads, worker reads for reconciliation | **10-year retention** (Swiss CO Art. 958f) — see ADR-028 |
 
 Inside `branding`, every key is prefixed by `org_id`:
 
@@ -51,6 +52,29 @@ aws s3api delete-objects --bucket branding \
   --delete "$(aws s3api list-objects-v2 --bucket branding --prefix '{org_id}/' \
     --query '{Objects: Contents[].{Key: Key}}')"
 ```
+
+Inside `bank-statements`, every key is also prefixed by `org_id`:
+
+```
+{org_id}/camt053/{yyyy}/{mm}/{filename}.xml
+```
+
+### Why `bank-statements` cannot reuse `receipts` (Epic #318 amendment)
+
+Both buckets share the **same visibility class** (private, signed URLs only, no per-object ACL). The intuition is therefore "same visibility class → same bucket". The intuition is wrong here, because the **lifecycle policy differs**:
+
+| Bucket | Retention | Source of the rule |
+|---|---|---|
+| `receipts` | **7 years** | EU fiscal (member-state averages — France `Code de commerce` L123-22, similar elsewhere) |
+| `bank-statements` | **10 years** | Swiss Code of Obligations Art. 958f (10 years from end of business year, electronic archival permitted) |
+
+S3 lifecycle policies apply at the **bucket level** — there is no per-prefix retention without spinning up object-level tagging plus tag-based lifecycle rules, which is the exact dual-mode complexity this ADR rejects in its rationale section. Co-locating Swiss bank statements in `receipts` would force one of three bad shapes:
+
+1. Apply a 10-year retention to `receipts` — over-retains every donor receipt PDF for 3 extra years (proportionality issue under GDPR Art. 5(1)(e)).
+2. Apply a 7-year retention to both — under-retains Swiss bank statements (statutory non-compliance).
+3. Per-key tag-based lifecycle — re-introduces dual-mode complexity at the per-object layer.
+
+Distinct **lifecycle policy** is therefore a sufficient condition to fork a new bucket, even when the visibility class matches. This refines the ADR's "one bucket per visibility class" framing: the operational invariant is **"one bucket per (visibility class × lifecycle policy)"** — visibility is the load-bearing dimension, lifecycle is a forking dimension.
 
 ### Rationale
 

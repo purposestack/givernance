@@ -542,7 +542,7 @@ Distinct from the legacy segment-based `SendBulkEmailJob` (which targets a saved
 
 These were considered and **deliberately deferred** — they would have either tripled the implementation surface or required regional regulatory review:
 
-- **QR-Facture Suisse** — Switzerland's native bank-encoding QR standard. Different layout, mandatory IBAN encoding, separate validation rules (issue #274 explicitly out of scope).
+- ~~QR-Facture Suisse~~ — **moved to MVP**, see [`docs/25-swiss-qr-bill.md`](./25-swiss-qr-bill.md) (Epic #318). Re-classified on 2026-05-07: Swiss postal fundraising is impossible without QR-bill since the orange ESR / red ES bulletins were discontinued on 2022-09-30.
 - **Image upload per campaign** — letterhead branding, embedded photos. The MVP letter is text + QR only; the print shop adds the org's letterhead during printing.
 - **Country-of-impact tagging** — a per-campaign attribute deferred to a later epic.
 - **More locales beyond FR/EN** — the renderer is locale-aware (driven by `tenants.default_locale`, see § 1.bis), and FR + EN ship in MVP. DE/IT/ES are deferred until a customer requests them; adding one is a copy-table extension, not a structural change.

@@ -194,6 +194,12 @@ ROI calculation: `(raised_total - expected_cost) / expected_cost * 100`
 
 **Campaign ROI dashboard**: Cost tracking per campaign (printing, postage, digital ads) vs. raised total. Breakdown by channel. Essential for door-drop campaigns where cost-per-acquisition is the key metric.
 
+**Swiss QR-bill (BVR) generation** — every nominative-postal letter to a Swiss campaign is paired with a Swiss QR-bill (QR-facture / Schweizer QR-Rechnung) on a separate A4 sheet. Per-letter QRR or SCOR reference. Donor pays via e-banking. See [`docs/25-swiss-qr-bill.md`](./25-swiss-qr-bill.md). MVP-1.
+
+**camt.053 statement import + reconciliation** — operator uploads the bank's daily ISO 20022 statement; worker matches QRR/SCOR back to the campaign + recipient, creates the donation row (auto-creating the constituent if unknown), surfaces unmatched credits in a manual queue. MVP-1.
+
+**Bank Accounts settings** — multi-account org-scoped CRUD. A campaign optionally links to one bank account; presence enables Swiss QR-bill mode. MVP-1.
+
 ---
 
 ### 2.5 Grant Pipeline

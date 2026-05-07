@@ -55,7 +55,8 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 20-payment-strategy.md      — Payment systems: Stripe/Mollie/Mangopay comparison, ADR-010, PCI DSS, GDPR
 │   ├── 23-postal-campaigns.md      — Postal campaigns + QR reconciliation (Epic #274): user flow, domain, readiness gates, attribution
 │   ├── 24-branding-assets.md       — Organisation branding (Epic #286): logo upload, sharp variants, bucket topology, Keycloak sync, PDF embedding
-│   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary)
+│   ├── 25-swiss-qr-bill.md         — Swiss QR-bill (BVR) generation + camt.053 reconciliation (Epic #318): bank accounts, per-letter QRR/SCOR, ISO 20022 ingestion
+│   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary, ADR-027 Swiss QR-bill, ADR-028 camt.053 ingestion)
 │   ├── runbooks/                   — Operator-driven one-shot ops (e.g. migrate-staging-keycloak-db.md for issue #283; launch-prod.md for the production-environment launch — issue #344); each file is plan + live journal + post-mortem
 │   ├── dev/
 │   │   └── staging-secrets-setup.md — Reference for fork developers + the prod-launch runbook: every GH-Environment secret the deploy needs, how to generate it, how to rotate it (#343)
@@ -69,7 +70,9 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── core-erd.mmd      — Entity-relationship diagram
 │   ├── migration-flow.mmd — Salesforce migration flow
 │   ├── postal-campaign-flow.mmd — End-to-end postal mailing + QR reconciliation (companion to docs/23)
-│   └── branding-upload-flow.mmd — Logo upload → process → activate → donor render (companion to docs/24)
+│   ├── branding-upload-flow.mmd — Logo upload → process → activate → donor render (companion to docs/24)
+│   ├── swiss-qr-bill-flow.mmd — Swiss QR-bill issuance: operator → donor → bank (companion to docs/25)
+│   └── camt053-reconciliation-flow.mmd — camt.053 import + match algorithm (companion to docs/25)
 └── .claude/agents/        — 12 specialized Claude agents
 ```
 
@@ -135,7 +138,7 @@ Key ADRs for frontend work:
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
 - Terminology: **NPO** (nonprofit organization), not "NGO"
 - GDPR in English docs, RGPD in French docs
-- All docs are in `docs/`, numbered 01-23 for architecture specs (next free slot: `24-`)
+- All docs are in `docs/`, numbered 01-25 for architecture specs (next free slot: `26-`)
 
 ### 🛑 Documentation discipline (CRITICAL FOR ALL DOMAIN WORK)
 
@@ -185,6 +188,7 @@ Current topology:
 - `receipts` — **private** (signed URLs only). Donor receipt PDFs.
 - `campaigns` — **private** (signed URLs only). Postal-export ZIPs (Epic #274).
 - `branding` — **public-read** at the bucket level, no per-object ACL. Org logos and their derived variants (Epic #286).
+- `bank-statements` — **private** (signed URLs only). camt.053 ISO 20022 statements + rejected uploads (Epic #318). 10-year lifecycle (Swiss CO Art. 958f); versioning + MFA-delete enabled; SSE-S3 at rest; explicit public-access deny.
 
 When proposing a new asset class (campaign hero in Phase 2, favicon, OG share image, document attachments, member profile photos, etc.), **first ask: is this donor-public or org-private?** Public-read goes to `branding` (or a new public-read bucket if a different lifecycle is needed); private goes to `receipts`/`campaigns` (or a new private bucket). **Never mix the two in one bucket** — object-level ACLs in a primarily-private bucket are the foot-gun GDPR audits flag and break CDN edge caching for the public-read keys. Co-mingling is rejected in PR review. Rationale, rejected alternatives, and revisit criteria are in [`docs/15-infra-adr.md` → ADR-023](docs/adrs/adr-023-object-storage-bucket-topology.md).
 

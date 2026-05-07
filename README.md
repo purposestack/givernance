@@ -114,6 +114,7 @@ See [docs/vision/conversational-mode.md](docs/vision/conversational-mode.md) for
 ### Payments
 - [docs/payments-overview.md](docs/payments-overview.md) — Money flow primer: how fees are collected, why each NPO connects rather than pasting keys
 - [docs/20-payment-strategy.md](docs/20-payment-strategy.md) — Strategy, ADR-010, provider comparison, GDPR/PCI
+- [docs/25-swiss-qr-bill.md](docs/25-swiss-qr-bill.md) — Swiss QR-bill (BVR) generation + camt.053 reconciliation: collect postal donations from Swiss donors via bank transfer (no Stripe needed for that rail)
 
 ### Local development
 - [docs/dev/stripe-local-setup.md](docs/dev/stripe-local-setup.md) — Stripe Connect end-to-end setup (test mode, no real money)

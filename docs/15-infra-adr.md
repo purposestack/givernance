@@ -28,3 +28,5 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-024: Image Processing Pipeline — `sharp` + Async BullMQ Worker + Content-Addressed Pre-Generated Variants](./adrs/adr-024-image-processing-pipeline.md)
 - [ADR-025: PDF Rendering Code Boundary — Lockstep Duplicate vs. Extracted `@givernance/pdf` Package](./adrs/adr-025-pdf-rendering-code-boundary.md)
 - [ADR-026: Postgres 17 Cutover and Scaleway-Anchored Versioning Policy](./adrs/adr-026-postgres-17-cutover-and-scaleway-anchored-versioning.md)
+- [ADR-027: Swiss QR-bill Generation — `swissqrbill` v4 + Per-Letter QRR/SCOR + Separate-Sheet A4 Layout](./adrs/adr-027-swiss-qr-bill.md)
+- [ADR-028: camt.053 Ingestion — Manual Upload + XSD Validation + Idempotent Per-Entry Reconciliation](./adrs/adr-028-camt053-ingestion.md)

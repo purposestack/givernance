@@ -1,0 +1,90 @@
+%%{init: {'theme':'default'}}%%
+%% End-to-end Swiss QR-bill mailing + bank-rail payment flow (Epic #318).
+%% Companion to `docs/25-swiss-qr-bill.md` §1.
+sequenceDiagram
+    autonumber
+    actor Op as Operator (org_admin)
+    participant Web as Next.js (web)
+    participant API as Fastify (api)
+    participant DB as Postgres
+    participant Worker as BullMQ worker
+    participant S3 as Object storage
+    actor Donor
+    participant Bank as Donor & NPO banks
+    actor Acc as Accountant
+
+    rect rgb(245, 248, 250)
+      Note over Op,Web: A. Configure bank account (one-time)
+      Op->>Web: Settings → Bank Accounts → New
+      Web->>API: POST /v1/bank-accounts { iban, holder, bic?, qrIban? }
+      API->>API: Validate IBAN + IID range (QR-IBAN: 30000-31999)
+      API->>DB: INSERT bank_accounts (org-scoped, RLS)
+      API->>DB: INSERT outbox_events ('bank_account.created')
+    end
+
+    rect rgb(245, 248, 250)
+      Note over Op,Web: B. Link a bank account to a campaign (optional)
+      Op->>Web: Edit campaign → pick a bank account from dropdown
+      Web->>API: PATCH /v1/campaigns/:id { bankAccountId }
+      API->>API: Verify bank_account belongs to org (404 if cross-tenant per ADR-019)
+      API->>DB: UPDATE campaigns SET bank_account_id, qr_reference_mode
+      Note over API,DB: bankAccountId NULL = no QR-bill (standard letter)<br/>bankAccountId set = QR-bill PDF generated alongside
+    end
+
+    rect rgb(255, 248, 230)
+      Note over Op,Worker: C. Generate the print archive
+      Op->>Web: Click "Generate ZIP" (mode=personalized)
+      Web->>API: POST /v1/campaigns/:id/postal-exports
+      API->>DB: Validate readiness gates (incl. Swiss-specific)
+      API->>DB: INSERT campaign_postal_exports (status=pending)
+      API->>DB: INSERT outbox_events ('campaign.postal_export_requested')
+      Worker->>DB: UPDATE status=processing
+      loop Per recipient
+        Worker->>Worker: Mint QRR (27 digits, mod-10) or SCOR (RF...)
+        Worker->>DB: INSERT campaign_qr_codes (existing)<br/>+ INSERT swiss_qr_references (new)
+        Worker->>Worker: Render appeal letter PDF<br/>+ render Swiss QR-bill PDF (separate sheet)
+        Worker->>S3: Append BOTH PDFs to streaming archive
+        Worker->>DB: UPDATE progress_count++
+      end
+      Worker->>S3: Finalise ZIP (multipart upload)
+    end
+
+    rect rgb(240, 255, 244)
+      Note over Op,Donor: D. Print → distribute → donor pays
+      Op->>Op: Download ZIP, send to print partner
+      Op->>Donor: Postal letter + QR-bill delivered
+      Donor->>Bank: Scan QR in e-banking app, confirm
+      Bank->>Bank: Credit NPO bank account
+      Bank-->>Op: Daily camt.053 in e-banking portal
+    end
+
+    rect rgb(232, 240, 254)
+      Note over Op,Acc: E. Manual upload + reconcile
+      Op->>Web: Settings → Bank Accounts → Upload statement
+      Web->>API: POST /v1/bank-accounts/:id/statements (multipart, .xml)
+      API->>S3: Store raw camt.053 (private bank-statements bucket, 10-yr retention)
+      API->>DB: INSERT camt_statements (status=pending)
+      API->>DB: INSERT outbox_events ('camt053.uploaded')
+      API-->>Web: 202 + statementId
+      Worker->>Worker: XSD-validate camt.053
+      Worker->>Worker: Dedupe on (org_id, GrpHdr.MsgId)
+      loop Per Ntry CRDT/BOOK
+        Worker->>Worker: Extract structured ref (QRR or SCOR)
+        Worker->>DB: Lookup swiss_qr_references.reference = $1
+        alt Match found
+          Worker->>DB: Find-or-create constituent (shared resolver)
+          Worker->>DB: INSERT donations (campaign, constituent,<br/>swiss_qr_reference_id, payment_source='camt053')
+          Worker->>DB: INSERT outbox_events ('donation.created')
+        else No match
+          Worker->>DB: INSERT camt_unreconciled_entries (statementId, raw, parsed)
+        end
+      end
+      Worker->>DB: UPDATE camt_statements SET status=processed
+    end
+
+    rect rgb(252, 232, 232)
+      Note over Op,Acc: F. Manual review (unreconciled queue)
+      Acc->>Web: Settings → Bank Accounts → Unreconciled queue
+      Acc->>Web: Either link to campaign+constituent manually, or write off
+      Web->>API: POST /v1/camt-unreconciled/:id/resolve
+    end

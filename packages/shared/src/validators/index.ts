@@ -14,6 +14,26 @@ export {
   ImpersonationStartResponseSchema,
 } from "./impersonation";
 
+// ─── Swiss QR-bill (Epic #318) ──────────────────────────────────────────────
+
+export {
+  classifyIban,
+  getIbanCountry,
+  isQrIban,
+  isValidIban,
+  isValidQrr,
+  isValidScor,
+} from "./iban";
+
+export {
+  type SwissQrBillCurrency,
+  type SwissQrBillPayloadInput,
+  type SwissQrBillReferenceType,
+  type SwissQrBillValidationError,
+  type SwissQrBillValidationResult,
+  validateSwissQrBillPayload,
+} from "./swiss-qr-bill";
+
 /**
  * Tenant slug: 2–50 chars, lowercase alnum + single internal dashes, no leading/
  * trailing dash. The regex requires ≥2 characters (minLength is also set on the
@@ -175,6 +195,17 @@ export const DonationCreateSchema = Type.Object({
   allocations: Type.Optional(Type.Array(DonationAllocationSchema)),
 });
 
+/**
+ * Swiss QR-bill campaign reference-mode TypeBox literal (Epic #318).
+ * Mirrors the `campaign_qr_reference_mode` Postgres enum declared in
+ * `schema/swiss-qr-bill.ts` — the value array there is the single
+ * source of truth, and AJV reuses this schema for body validation.
+ */
+const CampaignQrReferenceModeSchema = Type.Union(
+  [Type.Literal("auto"), Type.Literal("qrr"), Type.Literal("scor")],
+  { default: "auto" },
+);
+
 /** Schema for creating a new campaign */
 export const CampaignCreateSchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
@@ -197,6 +228,14 @@ export const CampaignCreateSchema = Type.Object({
   // into "set it to zero" (cf. PR #204 review).
   operationalCostCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
   goalAmountCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
+  /**
+   * Optional Swiss QR-bill bank-account link (Epic #318). NULL = no
+   * QR-bill (standard letter only); set = Swiss QR-bill mode on. The
+   * server enforces same-tenant ownership of the FK target before
+   * persisting (404 cross-tenant per ADR-019).
+   */
+  bankAccountId: Type.Optional(Type.Union([Type.Null(), Type.String({ format: "uuid" })])),
+  qrReferenceMode: Type.Optional(CampaignQrReferenceModeSchema),
 });
 
 /** Schema for updating a campaign (all fields optional) */

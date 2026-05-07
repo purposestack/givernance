@@ -35,8 +35,11 @@ PARTY (constituents, households, organisations)
   └── IMPACT (indicators, readings)
   └── COMMS (email_sends, receipts, consent_log)
   └── FINANCE (funds, gl_batches, gl_export_lines)
+  └── BANKING / SWISS QR-BILL (bank_accounts, swiss_qr_references, camt_statements, camt_credit_entries, camt_unreconciled_entries)
   └── PLATFORM (orgs, users, roles, audit_log, outbox_events, receipt_sequences)
 ```
+
+> See [`docs/25-swiss-qr-bill.md`](./25-swiss-qr-bill.md) for the full Swiss QR-bill / camt.053 schema (Epic #318); the master ERD `diagrams/core-erd.mmd` is the source of truth for table relationships.
 
 ---
 
@@ -520,6 +523,22 @@ CREATE TABLE campaigns (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
+
+> Swiss QR-bill extension columns (`bank_account_id`, `qr_reference_mode`) are added in Epic #318 — see [`docs/25-swiss-qr-bill.md`](./25-swiss-qr-bill.md) §2.
+
+---
+
+### 3.4.bis Banking / Swiss QR-bill tables (Epic #318)
+
+Five new tables back the Swiss QR-bill (BVR) generation and camt.053 reconciliation rail. Full schema in [`docs/25-swiss-qr-bill.md`](./25-swiss-qr-bill.md) §2; ERD in `diagrams/core-erd.mmd`.
+
+- **`bank_accounts`** — org-scoped CRUD for bank account coordinates that back QR-bill issuance (IBAN, holder, bank, currency).
+- **`swiss_qr_references`** — per-letter Swiss QRR/SCOR reference minted for the QR-bill PDF; sibling to `campaign_qr_codes` (which keeps the opaque-token scan-tracking on the appeal letter).
+- **`camt_statements`** — uploaded camt.053 file metadata (msg_id, status, match counts).
+- **`camt_credit_entries`** — one row per camt `Ntry` we observed; carries the QRR/SCOR extracted, donor name+IBAN, idempotency key.
+- **`camt_unreconciled_entries`** — sibling 1:1 with `camt_credit_entries` for entries that couldn't be matched (operator queue).
+
+Extensions to existing tables: `campaigns` gains `bank_account_id` (nullable; presence enables Swiss QR-bill mode) and `qr_reference_mode`; `donations` gains `swiss_qr_reference_id`, `camt_credit_entry_id`, `payment_source`.
 
 ---
 
