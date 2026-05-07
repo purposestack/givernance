@@ -342,9 +342,22 @@ case "$PHASE" in
     echo "Remote dump size: ${REMOTE_BYTES} bytes"
 
     echo "Pulling dump back to runner → ${LOCAL_DUMP}"
-    bundle exec kamal server exec -c "$KAMAL_CONFIG" "cat ${REMOTE_DUMP}" \
-      | sed -E '1s/^App Host:[[:space:]]*[0-9.]+[[:space:]]*//' \
-      > "${LOCAL_DUMP}"
+    # Use scp (not `kamal server exec "cat ..."`) so the local file is
+    # raw bytes, not contaminated with kamal's status output. Kamal
+    # interleaves "Running '...' on <host>..." / "Finished '...' on
+    # <host>" lines in its stdout — the previous version stripped only
+    # the leading "App Host:" prefix and let the rest through, which
+    # produced an invalid SQL file (psql halted on "syntax error at
+    # or near 'Running'"). The SSH agent + STAGING_VPS_IP are already
+    # set up by the workflow's setup-kamal-secrets / ssh-agent steps.
+    if [ -z "${STAGING_VPS_IP:-}" ]; then
+      echo "STAGING_VPS_IP env var not set — workflow must export it" >&2
+      exit 1
+    fi
+    scp -o StrictHostKeyChecking=accept-new \
+        -o UserKnownHostsFile=/dev/null \
+        -o LogLevel=ERROR \
+        "root@${STAGING_VPS_IP}:${REMOTE_DUMP}" "${LOCAL_DUMP}"
 
     LOCAL_BYTES=$(wc -c < "${LOCAL_DUMP}" | tr -d '[:space:]')
     if [ -z "$LOCAL_BYTES" ] || [ "$LOCAL_BYTES" -lt 1000 ]; then
