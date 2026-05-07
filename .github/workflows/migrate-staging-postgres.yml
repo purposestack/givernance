@@ -79,6 +79,13 @@ jobs:
       # config/deploy-staging.yml's ERB template reads STAGING_VPS_IP
       # from the runner env — same convention as deploy-staging.yml.
       STAGING_VPS_IP: ${{ secrets.VPS_IP }}
+      # `setup-kamal-secrets` composite action runs with `set -u` and
+      # writes `GITHUB_TOKEN=${GITHUB_TOKEN}` into `.kamal/secrets` so
+      # Kamal can pull the ghcr.io-hosted Keycloak image. Without this
+      # job-env, the composite action fails with `GITHUB_TOKEN: unbound
+      # variable` before any migration phase runs. Same pattern as
+      # `deploy-staging.yml`.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     outputs:
       src_version: ${{ steps.read-state.outputs.src_version }}
