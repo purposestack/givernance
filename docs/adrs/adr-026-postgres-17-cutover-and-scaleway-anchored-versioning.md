@@ -60,6 +60,23 @@ still at PG 16 — the same skew the cutover was meant to remove. The
 follow-up PR is therefore not optional; the migration workflow's job
 summary surfaces the PR URL on success so it doesn't get lost.
 
+### Rehearsal-then-live workflow (default safety net)
+
+The `migrate-staging-postgres` workflow takes a `mode` input with two
+choices, defaulting to **rehearsal** so the safe choice is the default:
+
+| Mode | What runs | Staging impact |
+|---|---|---|
+| `rehearsal` *(default)* | `pre` on the live VPS (dump only) → ephemeral `postgres:<target>-alpine` container in the runner → bootstrap-role filter → restore → assertion that source-side RLS / extension / Keycloak-changelog counts captured in `pre` round-trip cleanly | None on staging beyond the dump itself. Staging keeps running. |
+| `live` | Full `pre → cut → verify` on the VPS, then the `open-pr` job opens the follow-up config bump PR. | ~1–3 minute window where staging Postgres is unavailable during the `cut` phase. |
+
+The intended flow is:
+
+1. **First dispatch: `mode=rehearsal`.** Validates the dump → filter → restore mechanics on the actual staging data, in the same runner that will do the real run, without touching the live VPS Postgres beyond reading it. If anything is wrong with the script, the bootstrap-role filter, the encoding handling, or the source data shape, this run surfaces it. Cheap to repeat.
+2. **Once rehearsal is green**, dispatch the same workflow with `mode=live` and the same `target_version`. The `migrate` job runs the full cut, the `open-pr` job opens the config-alignment PR.
+
+If the migration script or workflow ever changes, the next first-time use should re-rehearse before going live. Treat rehearsal mode as the integration test for the script itself.
+
 ### Pre-flight belt-and-suspenders (recommended on first run)
 
 The migration script and workflow are well-tested in isolation but the
