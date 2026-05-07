@@ -311,6 +311,7 @@ jobs:
         env:
           TARGET: ${{ needs.migrate.outputs.target_version }}
           SRC: ${{ needs.migrate.outputs.src_version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           BRANCH="chore/staging-pg${TARGET}-accessory-bump-${GITHUB_RUN_ID}"
@@ -389,8 +390,6 @@ jobs:
             --head "$BRANCH" \
             --title "chore(staging): bump postgres accessory to PG ${TARGET} (post-migration)" \
             --body-file "$PR_BODY"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Clean up branch on failure
         if: failure() || cancelled()
