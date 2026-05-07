@@ -244,7 +244,16 @@ wait_for_pg_ready() {
 
 case "$PHASE" in
   pre)
-    SRC_VERSION=$(vps_exec "docker exec ${CONTAINER_NAME} psql -U ${PG_USER} -tAc \"SELECT (current_setting('server_version_num')::int / 10000)\"" \
+    # Connect to the `postgres` bootstrap DB (always exists on every
+    # cluster) to read `server_version_num` — that GUC is cluster-wide,
+    # so any DB works. We can't use `${APP_DB}` here either: a fresh
+    # cluster after the cut hasn't created it yet (only the bootstrap
+    # `postgres` DB exists until the dump's `CREATE DATABASE` runs).
+    # Without the explicit `-d`, psql defaults to a DB named after the
+    # user (`givernance`), which doesn't exist on staging — `${APP_DB}`
+    # is `givernance_staging`. That mismatch is why the previous
+    # rehearsal failed with `FATAL: database "givernance" does not exist`.
+    SRC_VERSION=$(vps_exec "docker exec ${CONTAINER_NAME} psql -U ${PG_USER} -d postgres -tAc \"SELECT (current_setting('server_version_num')::int / 10000)\"" \
       | clean_kamal_output)
     if [ -z "$SRC_VERSION" ]; then
       echo "could not detect source PG major from ${CONTAINER_NAME}" >&2
