@@ -43,6 +43,13 @@
 
 set -euo pipefail
 
+# Trace every command to stderr. The first end-to-end CI run of this
+# script (PR #280 cutover) failed with no captured output, even though
+# `set -e` should propagate any error to the runner. Tracing makes the
+# failing line visible regardless of whether the failing command itself
+# prints. Remove this line once CI has had a clean run.
+set -x
+
 PHASE="${1:-}"
 TARGET_VERSION="${2:-}"
 
