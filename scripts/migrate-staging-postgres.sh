@@ -96,19 +96,34 @@ fi
 
 mkdir -p "$WORKDIR"
 
-# Run a command on the VPS host shell. Kamal pipes stdout faithfully, which
-# lets us capture the output of `docker inspect` / `cat <file>` etc.
+# Run a command on the VPS host shell. Kamal pipes stdout to us, but it
+# colorises everything (ANSI escape codes around per-host headers and
+# command output) — `clean_kamal_output` below strips those so callers
+# can compare the result as a clean scalar.
 vps_exec() {
   bundle exec kamal server exec -c "$KAMAL_CONFIG" "$1"
 }
 
-# Strip kamal's status-line prefix ("App Host: <ip>") and trailing whitespace
-# so callers can use the result as a clean scalar. NOTE: this strips ALL
-# whitespace via tr — only safe for values that don't contain legitimate
-# internal whitespace (versions, byte counts, container names, single-token
-# paths).
+# Strip ANSI escape codes, kamal's "App Host: <ip>" header line, and
+# trailing whitespace so callers can use the result as a clean scalar.
+#
+# Kamal wraps each line with CSI codes (e.g. `\e[33m...\e[0m` for yellow
+# warnings, `\e[34m  App Host: 185.186.76.104\e[0m` for the per-host
+# header). Our previous version only stripped whitespace, so when
+# `awk 'NF { line=$0 }'` picked "the last non-empty line", that line was
+# often a bare `\e[0m` reset code — yielding a non-numeric scalar that
+# tripped the next `[ -gt ]` comparison silently under `set -e`.
+#
+# Strip ANSI escapes FIRST, then awk picks the actual last data line,
+# then tr removes residual whitespace. NOTE: still only safe for values
+# that don't contain legitimate internal whitespace (versions, byte
+# counts, container names, single-token paths).
 clean_kamal_output() {
-  awk 'NF { line=$0 } END { sub(/^App Host:[[:space:]]*[0-9.]+[[:space:]]*/, "", line); print line }' \
+  # ANSI CSI sequences: \e[ <params> <final byte 0x40-0x7E>. The common
+  # ones we hit are SGR (color) endings in [mGKHJ]; the broader range
+  # below is defensive against future kamal output additions.
+  sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g' \
+    | awk 'NF { line=$0 } END { sub(/^[[:space:]]*App Host:[[:space:]]*[0-9.]+[[:space:]]*/, "", line); print line }' \
     | tr -d '[:space:]'
 }
 
