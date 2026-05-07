@@ -244,7 +244,7 @@ function resolveAllocations(
       const floor = Math.floor(exact);
       return { index, fundId: alloc.fundId, amountCents: floor, percentageBp: alloc.percentageBp, remainder: exact - floor };
     }
-    return { index, fundId: alloc.fundId, amountCents: alloc.amountCents!, percentageBp: null as null, remainder: 0 };
+    return { index, fundId: alloc.fundId, amountCents: alloc.amountCents ?? 0, percentageBp: null as null, remainder: 0 };
   });
 
   // Largest-remainder method: give the rounding residual to %-allocations with the
