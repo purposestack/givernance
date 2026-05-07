@@ -309,6 +309,13 @@
       "when": 1777970000000,
       "tag": "0043_org_branding_int_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1777980000000,
+      "tag": "0044_swiss_qr_bill_foundation",
+      "breakpoints": true
     }
   ]
 }

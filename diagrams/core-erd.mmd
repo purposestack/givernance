@@ -44,6 +44,67 @@ erDiagram
   users ||--o{ org_branding_assets : "uploaded_by"
   %% Phase 2: campaigns ||--o| org_branding_assets : "hero_asset_id (deferred, separate migration)"
 
+  %% SWISS QR-BILL + camt.053 RECONCILIATION (Epic #318) — see docs/25-swiss-qr-bill.md
+  orgs ||--o{ bank_accounts : "owns"
+  bank_accounts ||--o{ campaigns : "backs QR-bill issuance (campaigns.bank_account_id, nullable)"
+  bank_accounts ||--o{ camt_statements : "credited to"
+  campaigns ||--o{ swiss_qr_references : "mints per recipient"
+  constituents ||--o{ swiss_qr_references : "addressed to (nullable)"
+  campaign_postal_exports ||--o{ swiss_qr_references : "produced by"
+  campaign_qr_codes ||--o| swiss_qr_references : "1:1 sibling per personalised letter"
+  swiss_qr_references ||--o| donations : "reconciled credit (donations.swiss_qr_reference_id)"
+  camt_statements ||--o{ camt_credit_entries : "contains"
+  camt_credit_entries ||--o| donations : "settles (donations.camt_credit_entry_id)"
+  camt_credit_entries ||--o| camt_unreconciled_entries : "if unmatched"
+  users ||--o{ camt_statements : "uploaded_by"
+  users ||--o{ camt_unreconciled_entries : "resolved_by"
+
+  bank_accounts {
+    uuid id PK
+    uuid org_id FK
+    string holder_name
+    string iban "21 chars, mod-97 valid"
+    enum iban_kind "iban | qr_iban (computed from IID)"
+    enum currency "CHF | EUR"
+    timestamp deleted_at "soft delete; preserved for audit"
+  }
+  swiss_qr_references {
+    uuid id PK
+    uuid org_id FK
+    uuid campaign_id FK
+    uuid constituent_id FK "nullable for door_drop (V2)"
+    uuid export_id FK "backlink for retry idempotency"
+    uuid bank_account_id FK
+    enum reference_type "qrr | scor"
+    string reference "27 digits (QRR) or RF... (SCOR)"
+  }
+  camt_statements {
+    uuid id PK
+    uuid org_id FK
+    uuid bank_account_id FK
+    string s3_path "private bank-statements bucket, 10-yr retention"
+    string msg_id "GrpHdr.MsgId, dedupe key"
+    enum status "pending | processing | processed | failed"
+    uuid uploaded_by FK
+  }
+  camt_credit_entries {
+    uuid id PK
+    uuid org_id FK
+    uuid statement_id FK
+    string acct_svcr_ref "Ntry.AcctSvcrRef, idempotency"
+    int amount_cents
+    string structured_ref "QRR/SCOR extracted"
+    uuid donation_id FK "set when reconciled"
+  }
+  camt_unreconciled_entries {
+    uuid id PK
+    uuid org_id FK
+    uuid credit_entry_id FK
+    text reason "no_match | partial_match | invalid_ref | foreign_iban | orphan_reversal"
+    enum status "pending | resolved | written_off"
+    uuid resolved_by FK
+  }
+
   %% GRANTS
   constituents ||--o{ grants : "funds (as funder org)"
   grants ||--o{ grant_tranches : "disburses"

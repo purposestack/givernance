@@ -24,6 +24,7 @@ The payment strategy must answer:
 | Requirement | Priority |
 |---|---|
 | Online card payments (one-off donations) | P0 — Phase 1 |
+| Bank transfer (Swiss QR-bill / camt.053) | P0 — Phase 1 |
 | SEPA Direct Debit (recurring mandates) | P1 — Phase 2 |
 | Recurring / subscription billing | P0 — Phase 1 |
 | Refunds and credit notes | P0 — Phase 1 |
@@ -166,6 +167,21 @@ This means Givernance **never touches donor funds** — clean separation, no e-m
 | Gift Aid | ✅ | ✅ | ❌ | ❌ |
 | SDK quality | ✅ | ✅ | ⚠️ | ❌ |
 | Phase 1 readiness | ✅ | ✅ | ❌ | ❌ |
+
+### 3.6 Bank-transfer rail (Swiss QR-bill / camt.053)
+
+| Attribute | Detail |
+|---|---|
+| Provider | None — Givernance issues QR-bills directly per IG QR-bill v2.4 (SIX) and ingests camt.053 statements; the donor's bank moves the money on rails outside our control |
+| Fees | None on Givernance side; donor's bank may charge a small per-transfer fee (typical for Swiss e-banking: free-to-low) |
+| Settlement | T+0 to T+1 (intra-CH); the NPO sees the credit in the next day's camt.053 |
+| GDPR DPA | N/A — no third-party processor; raw camt.053 is stored in Givernance's own EU object storage with 10-year retention |
+| Multi-tenant | Yes — bank accounts org-scoped, campaigns optionally link |
+| Coverage | Switzerland + Liechtenstein only; cross-border SEPA payments via SCOR + IBAN are accepted but the slip targets CHF first |
+| ADRs | [ADR-027](../adrs/adr-027-swiss-qr-bill.md), [ADR-028](../adrs/adr-028-camt053-ingestion.md) |
+| Related | Full spec in [`docs/25-swiss-qr-bill.md`](./25-swiss-qr-bill.md) |
+
+This rail complements Stripe Connect: a Swiss NPO can accept QR-bill bank transfers AND Stripe card payments on the same campaign. The cohort that scans the appeal QR but doesn't pay via Stripe is precisely the cohort the QR-bill captures (donors who prefer their own bank app).
 
 ## 4. ADR-010 — Payment Provider Selection
 

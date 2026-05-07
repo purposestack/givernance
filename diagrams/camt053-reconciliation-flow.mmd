@@ -1,0 +1,83 @@
+%%{init: {'theme':'default'}}%%
+%% camt.053 import + reconciliation algorithm (Epic #318).
+%% Companion to `docs/25-swiss-qr-bill.md` §5.1.
+sequenceDiagram
+    autonumber
+    actor Op as Operator
+    participant Web as Next.js
+    participant API as Fastify
+    participant S3 as bank-statements bucket
+    participant DB as Postgres
+    participant Q as camt queue
+    participant WI as camt-import.ts
+    participant WR as camt-reconcile.ts
+    participant CR as constituent-resolver
+
+    rect rgb(245, 248, 250)
+      Note over Op,API: 1. Upload pass
+      Op->>Web: Upload camt.053 (.xml ≤ 50 MB)
+      Web->>API: POST /v1/bank-accounts/:id/statements
+      API->>API: Validate Content-Type, size, .xml
+      API->>S3: PUT {org_id}/camt053/{yyyy}/{mm}/{filename}
+      API->>DB: INSERT camt_statements (status=pending)
+      API->>DB: INSERT outbox_events ('camt053.uploaded')
+      API-->>Web: 202 + statementId
+    end
+
+    rect rgb(255, 248, 230)
+      Note over WI,DB: 2. Import pass — XSD validate, parse, persist credit entries
+      DB->>Q: outbox relay enqueues
+      Q->>WI: dequeue
+      WI->>S3: GET XML
+      WI->>WI: XSD-validate (libxmljs2 + camt.053.001.08.xsd)
+      alt malformed
+        WI->>DB: UPDATE status=failed, error
+      else valid
+        WI->>DB: SELECT camt_statements WHERE (org_id, msg_id)=$1<br/>(file-level idempotency)
+        alt re-import
+          WI->>WI: short-circuit (no double-import)
+        else first import
+          WI->>WI: Verify Acct.Id.IBAN ∈ tenant bank_accounts<br/>(reject foreign-IBAN files outright)
+          loop Per Ntry where CdtDbtInd=CRDT and Sts=BOOK
+            WI->>WI: idempotency_key = (org_id, msg_id, AcctSvcrRef, EndToEndId?)
+            WI->>DB: INSERT camt_credit_entries (matched OR not)
+          end
+          WI->>Q: enqueue camt-reconcile job per statement
+        end
+      end
+    end
+
+    rect rgb(232, 240, 254)
+      Note over WR,CR: 3. Reconciliation pass — match references, create donations
+      Q->>WR: dequeue
+      WR->>DB: SELECT camt_credit_entries WHERE statement_id=$1<br/>AND donation_id IS NULL
+      loop Per credit entry
+        WR->>WR: Extract structured ref + validate format
+        alt QRR mod-10 or SCOR mod-97 invalid
+          WR->>DB: INSERT camt_unreconciled_entries (reason=invalid_ref)
+        else valid format
+          WR->>DB: SELECT swiss_qr_references<br/>WHERE reference=$1 AND bank_account_id=$2
+          alt match
+            WR->>CR: resolve constituent (donor name+IBAN,<br/>fallback to ref.constituent_id)
+            CR->>DB: find-or-create constituent (shared with Stripe path)
+            WR->>DB: INSERT donations (campaign, constituent,<br/>swiss_qr_reference_id, payment_source='camt053',<br/>payment_ref=AcctSvcrRef)
+            WR->>DB: UPDATE camt_credit_entries SET donation_id=$1
+            WR->>DB: INSERT outbox_events ('donation.created')
+          else no match
+            WR->>DB: INSERT camt_unreconciled_entries (reason=no_match)
+          end
+        end
+      end
+      WR->>DB: UPDATE camt_statements SET status=processed,<br/>matched_credits, unmatched_credits, processed_at
+      WR->>DB: INSERT outbox_events ('camt053.processed')
+    end
+
+    rect rgb(252, 232, 232)
+      Note over WR,DB: 4. Reversal handling (Ntry.RvslInd=true)
+      WR->>DB: SELECT donation WHERE swiss_qr_reference_id=$1<br/>AND parent_id IS NULL
+      alt original donation found
+        WR->>DB: INSERT donation reversal<br/>+ link via donations.parent_id<br/>+ emit donation.refunded
+      else orphan reversal
+        WR->>DB: INSERT camt_unreconciled_entries<br/>(reason=orphan_reversal)
+      end
+    end

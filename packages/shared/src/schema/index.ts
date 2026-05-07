@@ -586,6 +586,63 @@ export {
   orgBrandingAssets,
 } from "./branding";
 
+// ─── Swiss QR-bill foundation (Epic #318) ────────────────────────────────────
+//
+// The cross-table FKs `campaigns.bank_account_id`, `donations.swiss_qr_reference_id`,
+// and `donations.camt_credit_entry_id` need the swiss-qr-bill table values at
+// table-definition time below. ES modules resolve this circular import via
+// lazy `references((): AnyPgColumn => ...)` callbacks — the table definitions
+// in `swiss-qr-bill.ts` themselves only use lazy refs back into this file.
+import {
+  bankAccounts,
+  campaignQrReferenceModeEnum,
+  camtCreditEntries,
+  donationPaymentSourceEnum,
+  swissQrReferences,
+} from "./swiss-qr-bill";
+
+export {
+  BANK_ACCOUNT_CURRENCY_VALUES,
+  BANK_ACCOUNT_IBAN_KIND_VALUES,
+  type BankAccount,
+  type BankAccountCurrency,
+  type BankAccountIbanKind,
+  bankAccountCurrencyEnum,
+  bankAccountIbanKindEnum,
+  bankAccounts,
+  CAMPAIGN_QR_REFERENCE_MODE_VALUES,
+  CAMT_STATEMENT_STATUS_VALUES,
+  CAMT_UNRECONCILED_REASON_VALUES,
+  CAMT_UNRECONCILED_STATUS_VALUES,
+  type CampaignQrReferenceMode,
+  type CamtCreditEntry,
+  type CamtStatement,
+  type CamtStatementStatus,
+  type CamtUnreconciledEntry,
+  type CamtUnreconciledReason,
+  type CamtUnreconciledStatus,
+  campaignQrReferenceModeEnum,
+  camtCreditEntries,
+  camtStatementStatusEnum,
+  camtStatements,
+  camtUnreconciledEntries,
+  camtUnreconciledReasonEnum,
+  camtUnreconciledStatusEnum,
+  DONATION_PAYMENT_SOURCE_VALUES,
+  type DonationPaymentSource,
+  donationPaymentSourceEnum,
+  type NewBankAccount,
+  type NewCamtCreditEntry,
+  type NewCamtStatement,
+  type NewCamtUnreconciledEntry,
+  type NewSwissQrReference,
+  SWISS_QR_REFERENCE_TYPE_VALUES,
+  type SwissQrReference,
+  type SwissQrReferenceType,
+  swissQrReferences,
+  swissQrReferenceTypeEnum,
+} from "./swiss-qr-bill";
+
 // ─── Impersonation sessions (issue #24) ──────────────────────────────────────
 import {
   IMPERSONATION_END_REASON_VALUES as _IMPERSONATION_END_REASON_VALUES,
@@ -696,6 +753,33 @@ export const donations = pgTable(
     qrCodeId: uuid("qr_code_id").references((): AnyPgColumn => campaignQrCodes.id, {
       onDelete: "set null",
     }),
+    /**
+     * Optional FK to the Swiss QR-bill reference that produced this gift
+     * (Epic #318). Set by the camt.053 reconciler when a credit entry's
+     * structured reference matches a row in `swiss_qr_references`. NULL
+     * for Stripe-rail donations and manual entries.
+     */
+    swissQrReferenceId: uuid("swiss_qr_reference_id").references(
+      (): AnyPgColumn => swissQrReferences.id,
+      { onDelete: "set null" },
+    ),
+    /**
+     * Optional FK to the camt.053 credit entry this donation settles
+     * (Epic #318). 1:1 with the receiving rail — useful for "show me the
+     * raw bank line behind this donation" audits. NULL for non-camt rails.
+     */
+    camtCreditEntryId: uuid("camt_credit_entry_id").references(
+      (): AnyPgColumn => camtCreditEntries.id,
+      { onDelete: "set null" },
+    ),
+    /**
+     * Origin rail discriminator (Epic #318). `stripe` (default, back-compat
+     * with every existing row), `camt053` (Swiss bank-transfer rail), or
+     * `manual` (operator-entered). Distinct from `paymentMethod` which is
+     * a free-form string; this is the structured signal the reporting and
+     * reconciliation surfaces filter on.
+     */
+    paymentSource: donationPaymentSourceEnum("payment_source").notNull().default("stripe"),
     status: donationStatusEnum("status").notNull().default("cleared"),
     platformFeeCents: integer("platform_fee_cents").notNull().default(0),
     paymentMethod: varchar("payment_method", { length: 50 }),
@@ -900,6 +984,27 @@ export const campaigns = pgTable(
     parentId: uuid("parent_id").references((): AnyPgColumn => campaigns.id, {
       onDelete: "set null",
     }),
+    /**
+     * Optional FK to the Swiss bank account that backs QR-bill issuance
+     * for this campaign (Epic #318). The presence of a value IS the
+     * "Swiss QR-bill mode on" switch — there is no separate boolean
+     * toggle (an `enabled=true && bankAccountId=NULL` state has no
+     * operator meaning). ON DELETE SET NULL: soft-deleting the bank
+     * account in `Settings → Bank Accounts` degrades the campaign back
+     * to standard mode rather than refusing the delete.
+     */
+    bankAccountId: uuid("bank_account_id").references((): AnyPgColumn => bankAccounts.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Per-campaign override for the QR reference type (Epic #318).
+     * `auto` (default) derives from `bank_accounts.iban_kind` — QRR for
+     * QR-IBANs, SCOR for regular IBANs. Operators rarely need to
+     * override; the field exists for the few cases where the bank
+     * supports both and the org wants a specific format. Ignored when
+     * `bankAccountId IS NULL`.
+     */
+    qrReferenceMode: campaignQrReferenceModeEnum("qr_reference_mode").notNull().default("auto"),
     operationalCostCents: bigint("operational_cost_cents", { mode: "number" }),
     platformFeesCents: bigint("platform_fees_cents", { mode: "number" }).notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

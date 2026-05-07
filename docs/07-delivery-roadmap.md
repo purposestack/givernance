@@ -45,8 +45,11 @@ The core transaction and the primary fundraising channel. Postal campaigns repre
 - **QR code generation**: unique QR per constituent+campaign, stored in `campaign_documents` table (issue #36)
 - **PDF letter generation**: personalized letters per constituent (name, address, donation history), batch PDF generation for print-ready output
 - **Door-drop support**: generic letter variant for geographic zone targeting (QR linked to campaign only, no constituent); new constituent created on first donation receipt
+- **Swiss QR-bill (BVR) generation** (Epic [#318](https://github.com/purposestack/givernance/issues/318)): per-letter QRR/SCOR reference, separate A4 sheet rendered alongside the appeal letter for `.ch` campaigns. See [`docs/25-swiss-qr-bill.md`](./25-swiss-qr-bill.md) and [ADR-027](./adrs/adr-027-swiss-qr-bill.md).
+- **Bank Accounts settings** (Epic [#318](https://github.com/purposestack/givernance/issues/318)): org-scoped CRUD (IBAN / QR-IBAN, holder, bank); a campaign optionally links to one bank account, presence enables Swiss QR-bill mode.
+- **camt.053 import + reconciliation** (Epic [#318](https://github.com/purposestack/givernance/issues/318)): operator uploads daily ISO 20022 statement; worker matches QRR/SCOR back to campaign + recipient and creates the donation row; unmatched credits surface in a manual queue. See [ADR-028](./adrs/adr-028-camt053-ingestion.md).
 
-**Done when**: A donation can be recorded, triggers a BullMQ job, generates a PDF receipt stored in R2/MinIO, and the constituent's donation history is updated. A campaign can generate batch PDFs with individual QR codes for all selected constituents. A door-drop campaign can target a zone and generate generic letters.
+**Done when**: A donation can be recorded, triggers a BullMQ job, generates a PDF receipt stored in R2/MinIO, and the constituent's donation history is updated. A campaign can generate batch PDFs with individual QR codes for all selected constituents. A door-drop campaign can target a zone and generate generic letters. A Swiss campaign linked to a bank account generates per-letter QR-bill PDFs and reconciles incoming camt.053 credits to donations.
 
 ### Sprint 3 (Weeks 4–6): Campaigns + Donor Lifecycle + Online Donations
 Grouping mechanism, reporting foundation, and the second fundraising channel (~20% of donations).
@@ -89,6 +92,7 @@ GDPR and finance integration to close the MVP.
 - PDF receipt generated end-to-end (donation → BullMQ job → PDF → stored → URL returned)
 - LYBUNT report returns correct results on seeded test data
 - Postal campaign workflow end-to-end: create campaign → select constituents → generate QR+PDF batch → monitor incoming donations with auto-matching
+- Swiss QR-bill workflow end-to-end (Epic [#318](https://github.com/purposestack/givernance/issues/318)): bank account registered → campaign linked → ZIP includes per-letter QR-bill PDFs → camt.053 uploaded → QRR/SCOR-matched credits become reconciled donations; unmatched credits visible in operator queue
 - Online donation workflow end-to-end: Stripe Connect onboarded → public page active → donation received → webhook creates record → campaign total updated
 - Campaign ROI dashboard shows cost vs. revenue for at least one postal and one digital campaign
 - One pilot NPO onboarded and using it for real donations

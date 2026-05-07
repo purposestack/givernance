@@ -83,6 +83,18 @@ Operational impact:
 - **Beneficiaries / external constituents** live only in `givernance` (they are not Keycloak users); their SAR flow is unchanged.
 - **Retention:** Keycloak event-log retention (`events-expiration`, `admin-events-expiration`) is configured inside the realm and must match the app-side retention policy — otherwise one DB ages out PII before the other.
 
+### Bank account + camt.053 PII handling
+
+Bank account holder data (`bank_accounts`) and donor IBAN+name carried in `camt_credit_entries` are personal data under GDPR Art. 4 + Swiss FADP. Posture:
+
+- **Storage**: raw camt.053 files land in the **private `bank-statements` bucket** (ADR-023 amendment), keyed `{org_id}/camt053/{yyyy}/{mm}/{msg_id}.xml`. Signed URLs only; no CDN; encrypted at rest.
+- **Retention**: Swiss CO Art. 958f mandates **10 years** for bank statements (electronic OK). Apply 10-year lifecycle on the bucket.
+- **Erasure exception (Art. 17)**: camt-derived donation rows AND the underlying statement are protected by legal-hold (financial record). On constituent erasure, `swiss_qr_references.constituent_id` is set NULL (preserves campaign rollup) but `camt_credit_entries.debtor_name` / `.debtor_iban` are kept.
+- **Foreign-IBAN safety**: a camt.053 referencing an IBAN not registered in the tenant's `bank_accounts` is rejected file-level — prevents accidental import of a third-party's statement.
+- **Slip PII**: Ultimate Debtor field on the QR-bill is **blank by default** (donor types own name in their app); per-campaign override requires explicit operator confirmation. Mirrors the opaque-token QR posture on the appeal letter.
+
+See [`docs/25-swiss-qr-bill.md`](./25-swiss-qr-bill.md) §7, [ADR-027](./adrs/adr-027-swiss-qr-bill.md), [ADR-028](./adrs/adr-028-camt053-ingestion.md).
+
 ## Access model
 - Roles: super_admin, org_admin, fundraising_manager, program_manager, volunteer_coordinator, data_entry, finance_viewer, volunteer, beneficiary, report_only
 - Privileged operations require step-up auth + reason field

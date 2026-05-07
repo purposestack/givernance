@@ -16,7 +16,8 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
