@@ -33,7 +33,7 @@
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.5",
     "fastify-plugin": "^5.0.1",
-    "file-type": "^19.6.0",
+    "file-type": "^22.0.1",
     "ioredis": "^5.4.2",
     "jose": "^6.2.3",
     "jsdom": "^29.1.1",
