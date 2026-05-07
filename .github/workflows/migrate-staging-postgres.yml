@@ -51,12 +51,19 @@ on:
         type: string
         required: true
 
-# No concurrent migrations, ever. Two parallel runs against the same VPS
-# would stomp each other's rotated datadir / dump / accessory boot.
-# `cancel-in-progress: false` keeps the in-flight run safe even if a
-# second dispatch lands.
+# Share the `deploy-staging` concurrency group with `deploy-staging.yml`
+# and `staging-accessory-reboot.yml`. All three workflows acquire the same
+# Kamal lock on the VPS at some point — a routine deploy mid-`kamal deploy`
+# colliding with `kamal accessory boot postgres` from this workflow's `cut`
+# phase would cause lock contention and unpredictable retries. Serialising
+# at the GitHub-Actions level removes that race.
+#
+# `cancel-in-progress: false` keeps an in-flight migration safe from being
+# cancelled by a routine push to main, and vice versa — every workflow in
+# this group can take many minutes and aborting mid-flight would leave
+# staging in a half-state.
 concurrency:
-  group: migrate-staging-postgres
+  group: deploy-staging
   cancel-in-progress: false
 
 jobs:
