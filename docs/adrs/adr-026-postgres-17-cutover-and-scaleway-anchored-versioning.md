@@ -60,6 +60,55 @@ still at PG 16 — the same skew the cutover was meant to remove. The
 follow-up PR is therefore not optional; the migration workflow's job
 summary surfaces the PR URL on success so it doesn't get lost.
 
+### Pre-flight belt-and-suspenders (recommended on first run)
+
+The migration script and workflow are well-tested in isolation but the
+end-to-end flow against the live VPS is exercised for the first time on
+the PG 16 → PG 17 cutover. The blast radius is contained (rotated
+datadir means rollback is one `mv`), but a 5-minute manual snapshot
+before dispatch gives a second, independent rollback path that doesn't
+depend on the workflow's own dump:
+
+```bash
+ssh givernance-staging
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+
+# 1. Filesystem snapshot of the postgres bind directory
+BIND=$(docker inspect givernance-postgres \
+  --format '{{ range .Mounts }}{{ if eq .Destination "/var/lib/postgresql/data" }}{{ .Source }}{{ end }}{{ end }}')
+tar czf "/root/preflight-pg-bind-${TS}.tar.gz" -C "$(dirname "$BIND")" "$(basename "$BIND")"
+
+# 2. Independent pg_dumpall (separate file from what the workflow produces)
+docker exec givernance-postgres pg_dumpall -U givernance \
+  > "/root/preflight-pg-dumpall-${TS}.sql"
+
+ls -lh /root/preflight-pg-*-${TS}.*
+```
+
+Keep both files for ~7 days alongside the workflow's rotated datadir.
+Delete after stable operation is confirmed. Worth doing on the PG 16 → PG
+17 run; less critical on the eventual PG 17 → PG 18 run since the script
+will have a successful production-like exercise behind it.
+
+### This cutover is also the rehearsal for the next one
+
+Givernance staging today is self-hosted Postgres-in-container (Kamal
+accessory), not Scaleway Managed PostgreSQL. SaaS prod (future) will be
+on Scaleway Managed and will use Scaleway's console-driven major-version
+upgrade flow, not this script. So `migrate-staging-postgres.sh` and
+`migrate-staging-postgres.yml` are **staging-only tooling**.
+
+That means the PG 17 cutover documented here serves a second purpose
+beyond the immediate version bump: it is operator rehearsal for the
+eventual PG 17 → PG 18 cutover, which will happen once Scaleway adopts
+PG 18 (and will reuse the same script + workflow + manifest pattern).
+The PG 16 → PG 17 run is the one where every operational detail gets
+exercised — bind path detection, bootstrap-role filter, kamal accessory
+boot against a rotated dir, dump-pull encoding, smoke endpoints under
+real DNS+TLS — for the first time end-to-end. Treat it accordingly:
+schedule a low-traffic window, run the pre-flight snapshot above, and
+plan to be available for the follow-up PR review.
+
 ### Migration mechanics — how PG 16 → PG 17 was rolled out
 
 `pg_upgrade` (in-place binary catalog upgrade) was rejected in favour of `pg_dumpall` / `psql` (logical dump/restore) for staging. Reasons:
