@@ -287,8 +287,14 @@ case "$PHASE" in
     # all read via the bootstrap superuser, which bypasses RLS — that's
     # intentional, we want the actual catalog state, not a tenant view.
     echo "Capturing source-side encoding / locale / policy / extension state"
-    SRC_LC_COLLATE=$(vps_exec "docker exec ${CONTAINER_NAME} psql -U ${PG_USER} -d ${APP_DB} -tAc 'SHOW lc_collate'" | clean_kamal_output)
-    SRC_LC_CTYPE=$(vps_exec "docker exec ${CONTAINER_NAME} psql -U ${PG_USER} -d ${APP_DB} -tAc 'SHOW lc_ctype'" | clean_kamal_output)
+    # `lc_collate` and `lc_ctype` are NOT runtime GUCs — they're per-database
+    # properties set at CREATE DATABASE time and stored in pg_database. PG 16
+    # returns `ERROR: unrecognized configuration parameter "lc_collate"` for
+    # `SHOW lc_collate`. Query pg_database directly. `server_encoding` IS a
+    # GUC (read-only, derived from the connected DB's encoding), so SHOW
+    # works for it — kept for consistency with PG documentation.
+    SRC_LC_COLLATE=$(vps_exec "docker exec ${CONTAINER_NAME} psql -U ${PG_USER} -d ${APP_DB} -tAc \"SELECT datcollate FROM pg_database WHERE datname = current_database()\"" | clean_kamal_output)
+    SRC_LC_CTYPE=$(vps_exec "docker exec ${CONTAINER_NAME} psql -U ${PG_USER} -d ${APP_DB} -tAc \"SELECT datctype FROM pg_database WHERE datname = current_database()\"" | clean_kamal_output)
     SRC_ENCODING=$(vps_exec "docker exec ${CONTAINER_NAME} psql -U ${PG_USER} -d ${APP_DB} -tAc 'SHOW server_encoding'" | clean_kamal_output)
     SRC_POLICY_COUNT=$(vps_exec "docker exec ${CONTAINER_NAME} psql -U ${PG_USER} -d ${APP_DB} -tAc \"SELECT count(*) FROM pg_policies WHERE schemaname='public'\"" | clean_kamal_output)
     SRC_EXTENSION_COUNT=$(vps_exec "docker exec ${CONTAINER_NAME} psql -U ${PG_USER} -d ${APP_DB} -tAc \"SELECT count(*) FROM pg_extension WHERE extname IN ('pg_trgm')\"" | clean_kamal_output)
