@@ -27,3 +27,4 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-023: Object Storage Bucket Topology — One Bucket per Visibility Class, Per-Tenant Key Prefix](./adrs/adr-023-object-storage-bucket-topology.md)
 - [ADR-024: Image Processing Pipeline — `sharp` + Async BullMQ Worker + Content-Addressed Pre-Generated Variants](./adrs/adr-024-image-processing-pipeline.md)
 - [ADR-025: PDF Rendering Code Boundary — Lockstep Duplicate vs. Extracted `@givernance/pdf` Package](./adrs/adr-025-pdf-rendering-code-boundary.md)
+- [ADR-026: Postgres 17 Cutover and Scaleway-Anchored Versioning Policy](./adrs/adr-026-postgres-17-cutover-and-scaleway-anchored-versioning.md)

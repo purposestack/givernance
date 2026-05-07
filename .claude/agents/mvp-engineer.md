@@ -21,7 +21,7 @@ You are the full-stack implementation engineer for Givernance Phase 1 MVP. You w
 | Schema | TypeBox (Fastify/OpenAPI) + Zod (shared runtime validation) |
 | ORM | Drizzle ORM — `@givernance/shared` owns all table definitions |
 | Background jobs | BullMQ 5 (Redis) |
-| Database | PostgreSQL 16, multi-tenant via RLS |
+| Database | PostgreSQL 17, multi-tenant via RLS |
 | Auth | Keycloak 24 — JWT Bearer tokens validated in Fastify preHandler hooks |
 | Storage | Scaleway Object Storage EU (SaaS) / MinIO (self-hosted) — S3-compatible |
 | Email | Resend (primary), Brevo (bulk) |

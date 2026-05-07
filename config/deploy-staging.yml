@@ -182,6 +182,13 @@ builder:
 # Use accessories for external services
 accessories:
   postgres:
+    # Pinned to PG 16 until `migrate-staging-postgres` workflow has run
+    # against the live VPS (it dumps the PG 16 datadir, rotates it aside,
+    # and restores into PG 17). Bumping this in advance would make the
+    # auto-deploy on this PR's merge boot a PG 17 container against a
+    # PG 16 datadir → "FATAL: incompatible". The migrate workflow opens
+    # a follow-up PR to bump this line once the cutover succeeds. See
+    # ADR-026.
     image: postgres:16
     host: <%= ENV["STAGING_VPS_IP"] %>
     port: 5432

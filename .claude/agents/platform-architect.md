@@ -33,7 +33,7 @@ You are the principal platform architect for Givernance. You own the system arch
 ### Data tier
 | Layer | Choice | Rationale |
 |---|---|---|
-| Primary DB | **PostgreSQL 16** | RLS, JSONB, ltree, mature, self-hostable |
+| Primary DB | **PostgreSQL 17** | RLS, JSONB, ltree, mature, self-hostable |
 | DB pooling | **PgBouncer** (transaction mode) | Required for connection-pooling in serverless/multi-instance deployments |
 | Cache / job broker | **Redis 7** | Session store, rate limiting, BullMQ job queues (SaaS: Scaleway Managed Redis EU · Self-hosted: Redis 7 / Valkey) |
 | Search | **PostgreSQL FTS + pg_trgm** | Sufficient for <1M constituents; Meilisearch add-on for larger |

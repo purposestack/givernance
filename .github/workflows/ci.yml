@@ -16,7 +16,7 @@ jobs:
     # never reuse `givernance_test`. See docs/15-infra-adr.md § ADR-017.
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: givernance
           POSTGRES_PASSWORD: givernance_dev
@@ -79,3 +79,18 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  # Compliance ceiling gate (ADR-026): rejects any pinned image whose major
+  # version exceeds the per-dependency ceiling declared in
+  # `infra/compliance-versions.yml`. Anchors Postgres + Redis to Scaleway
+  # Managed-service support so dev / CI / staging / future SaaS prod stay
+  # aligned. Runs in parallel with `check` — no Postgres/Redis service
+  # needed, so it's fast (~2s) and gives clear `::error file=...` annotations
+  # on the offending line in the PR Files-changed view when a Dependabot
+  # major bump (or manual edit) overshoots the ceiling.
+  compliance-versions-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate pinned image majors against compliance manifest
+        run: ./scripts/check-compliance-versions.sh

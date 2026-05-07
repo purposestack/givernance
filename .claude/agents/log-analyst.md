@@ -21,7 +21,7 @@ You are the observability and log management specialist for Givernance. You own 
 | Logger | **Pino 10.x** | JSON structured logs, worker-thread transport, redact API |
 | Background jobs | **BullMQ 5** | Job lifecycle events (active, completed, failed, stalled) |
 | ORM | **Drizzle ORM** | Custom `LogWriter` interface for query logging |
-| Database | **PostgreSQL 16** | `audit_logs` table for structured security events |
+| Database | **PostgreSQL 17** | `audit_logs` table for structured security events |
 | Tracing | **OpenTelemetry SDK** | Auto-instrumentation for Fastify, pg, ioredis |
 | Log transport | **pino-opentelemetry-transport** | Bridge Pino → OTel Collector → Scaleway Cockpit (SaaS) · self-hosted Loki (self-hosted) |
 | Aggregation | **Grafana Loki** via **Scaleway Cockpit** (SaaS) · self-hosted Loki (self-hosted NPO) | Label-indexed log storage, LogQL queries |

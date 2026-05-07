@@ -49,7 +49,7 @@ open docs/design/index.html
 | API | TypeScript (Node.js 22 LTS), Fastify 5, modular monolith |
 | Worker | TypeScript, BullMQ 5 (Redis-backed) |
 | Web | Next.js 16 (React, TypeScript) |
-| Database | PostgreSQL 16 + Drizzle ORM |
+| Database | PostgreSQL 17 + Drizzle ORM |
 | Job Queue | BullMQ 5 (Redis) — NATS JetStream deferred to Phase 4+ |
 | Auth | Keycloak (OIDC) |
 | Infra | Docker, pnpm workspaces monorepo |

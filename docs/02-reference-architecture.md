@@ -97,7 +97,7 @@ See: /diagrams/container.mmd
 
 ### 3.2 Infrastructure containers
 
-#### `postgresql` (PostgreSQL 16)
+#### `postgresql` (PostgreSQL 17)
 - Primary datastore
 - Row-level security enabled on all tenant tables
 - WAL archiving to S3 (continuous backup)
@@ -108,7 +108,7 @@ See: /diagrams/container.mmd
   - `givernance_keycloak` — Keycloak's internal schema, owner `keycloak`; provisioned on first `docker compose up -d` by [`infra/postgres/init/01-init-keycloak-db.sh`](../infra/postgres/init/01-init-keycloak-db.sh). Nothing else writes here.
 
   No third-party service may share `givernance`. Future tools that need Postgres storage get their own logical DB + role; this rule is enforced in code review and by the specialized agents.
-- **Self-hosted deployments**: PostgreSQL 16 + PgBouncer (Docker Compose)
+- **Self-hosted deployments**: PostgreSQL 17 + PgBouncer (Docker Compose)
 - **SaaS managed deployment**: [Scaleway Managed PostgreSQL](https://www.scaleway.com/en/database/) EU region — includes connection pooling, read replicas, WAL backup, full extension support. Provision `givernance` and `givernance_keycloak` as two logical databases on the same instance for Phase 1–3; split to a dedicated Postgres instance for Keycloak only if its SLA or compliance needs diverge from the app's (see ADR-017 "Revisit criteria"). See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
 
 #### `pgbouncer` (PgBouncer 1.22)
@@ -428,7 +428,7 @@ services:
   web:         givernance/web:latest
   relay:       givernance/relay:latest   # outbox event relay
   worker:      givernance/worker:latest
-  postgres:    postgres:16-alpine
+  postgres:    postgres:17-alpine
   pgbouncer:   pgbouncer/pgbouncer:latest
   redis:       redis:7-alpine
   keycloak:    keycloak/keycloak:26

@@ -46,7 +46,7 @@ This is safe in dev because **all state is reproducible from fixtures and migrat
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| PostgreSQL 16 | `localhost:5432` | Shared instance hosting the `givernance` and `givernance_keycloak` databases — see [Databases](#databases) |
+| PostgreSQL 17 | `localhost:5432` | Shared instance hosting the `givernance` and `givernance_keycloak` databases — see [Databases](#databases) |
 | Redis 7 | `localhost:6379` | Cache, rate limiting |
 | Keycloak 26 | `http://localhost:8080` | OIDC/SAML identity provider with Organizations enabled (ADR-016 / issue #114). Admin: `admin`/`admin` |
 | MinIO | `http://localhost:9000` (API), `http://localhost:9001` (Console) | S3-compatible object storage (user: `givernance`/`givernance_dev`) |
@@ -55,7 +55,7 @@ This is safe in dev because **all state is reproducible from fixtures and migrat
 
 ### Databases
 
-Per [ADR-017](../15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db), the local Postgres 16 instance hosts **one logical database per tool**. Adding a new tool that needs Postgres storage is an explicit decision: it gets its own database and its own owner role — never a shared one.
+Per [ADR-017](../15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db), the local Postgres 17 instance hosts **one logical database per tool**. Adding a new tool that needs Postgres storage is an explicit decision: it gets its own database and its own owner role — never a shared one.
 
 | Database | Owner role | Used by | Initialised by |
 |---|---|---|---|
@@ -169,7 +169,7 @@ See [ADR-009](../15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud
 
 | Component | Scaleway Product | Local Equivalent |
 |-----------|-----------------|------------------|
-| Database | Managed PostgreSQL EU (PAR/AMS) | PostgreSQL 16 (Docker) |
+| Database | Managed PostgreSQL EU (PAR/AMS) | PostgreSQL 17 (Docker) |
 | Cache / Rate Limiting | Managed Redis EU | Redis 7 (Docker) |
 | Object Storage | Scaleway Object Storage (S3-compatible) | MinIO (Docker) |
 | Auth | Keycloak on Scaleway VM | Keycloak (Docker) |
@@ -199,7 +199,7 @@ See [ADR-009](../15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud
 For NPOs that need on-premises infrastructure, the same Docker Compose file serves as the deployment baseline:
 
 ```
-PostgreSQL 16 + PgBouncer
+PostgreSQL 17 + PgBouncer
 Redis 7
 MinIO (S3-compatible storage)
 Keycloak 26 (OIDC/SAML with Organizations)
