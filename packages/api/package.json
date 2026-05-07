@@ -17,9 +17,9 @@
     "db:seed:funds": "tsx --env-file=../../.env scripts/seed-funds.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1041.0",
-    "@aws-sdk/lib-storage": "^3.1041.0",
-    "@aws-sdk/s3-request-presigner": "^3.1041.0",
+    "@aws-sdk/client-s3": "^3.1044.0",
+    "@aws-sdk/lib-storage": "^3.1044.0",
+    "@aws-sdk/s3-request-presigner": "^3.1044.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^9.0.3",
@@ -28,7 +28,7 @@
     "@fastify/swagger-ui": "^5.2.6",
     "@givernance/shared": "workspace:*",
     "@sinclair/typebox": "^0.34.12",
-    "bullmq": "^5.76.5",
+    "bullmq": "^5.76.6",
     "dompurify": "^3.2.4",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.5",
@@ -37,14 +37,14 @@
     "ioredis": "^5.4.2",
     "jose": "^6.2.3",
     "jsdom": "^26.0.0",
-    "lru-cache": "^11.0.2",
+    "lru-cache": "^11.3.6",
     "nats.ws": "^1.29.2",
     "pdfkit": "^0.18.0",
     "pg": "^8.13.1",
     "pino": "10.3.1",
     "qrcode": "^1.5.4",
-    "sharp": "^0.33.5",
-    "stripe": "^22.1.0"
+    "sharp": "^0.34.5",
+    "stripe": "^22.1.1"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
