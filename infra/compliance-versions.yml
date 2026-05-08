@@ -28,6 +28,14 @@ dependencies:
       - docker-compose.yml
       - config/deploy-staging.yml
       - .github/workflows/ci.yml
+      # docs/02 carries an illustrative `docker-compose.yml skeleton`
+      # snippet that quotes the same image tags. The gate's current
+      # regex only matches `^image:` keys (not the prose-snippet
+      # `<service>: <image>` form), so adding the file here is a no-op
+      # today — but it encodes intent: when the gate is extended to
+      # walk prose snippets (see ADR-026 known-caveats), `docs/02` is
+      # already on the watchlist. Same rationale for redis below.
+      - docs/02-reference-architecture.md
 
   redis:
     max_major: 8
@@ -45,3 +53,5 @@ dependencies:
       - docker-compose.yml
       - config/deploy-staging.yml
       - .github/workflows/ci.yml
+      - docs/02-reference-architecture.md  # prose snippet — see postgres above
+
