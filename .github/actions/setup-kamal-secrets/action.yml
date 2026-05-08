@@ -50,6 +50,22 @@ runs:
         # ASCII chars (HS256 doesn't care about charset). Production must
         # override; rotate by setting the GH secret and redeploying.
         IMPERSONATION_JWT="${IMPERSONATION_JWT_SECRET:-staging_impersonation_jwt_secret_32}"
+        # Keycloak's dedicated DB role password (ADR-017). Wired into:
+        #   - the postgres accessory's init script on first cluster init
+        #     (provisions the `keycloak` role + `givernance_keycloak` DB —
+        #     `infra/postgres/init/01-init-keycloak-db.sh`).
+        #   - the keycloak accessory after issue #283's blue-green cutover
+        #     (`docs/runbooks/migrate-staging-keycloak-db.md`), when
+        #     `KC_DB_USERNAME` flips from `givernance` (bootstrap superuser
+        #     used by the legacy co-located KC) to `keycloak` (least-priv
+        #     role owning only the KC DB).
+        # Until that cutover lands, this value is unused at runtime — the
+        # live keycloak accessory still authenticates via POSTGRES_PASSWORD
+        # through KC_DB_PASSWORD below. Staging fallback non-load-bearing;
+        # production must override via `gh secret set KEYCLOAK_DB_PASSWORD
+        # --env staging` (matched to the value the operator generates +
+        # records during the runbook).
+        KEYCLOAK_DB_PASS="${KEYCLOAK_DB_PASSWORD:-staging_keycloak_db_123}"
         # MinIO server-side AES256 encryption key. Format
         # `<key-name>:<base64-32-byte-secret>`; generate with
         # `openssl rand -base64 32`. The base64 portion MUST decode to
@@ -83,4 +99,5 @@ runs:
         STRIPE_SECRET_KEY=$STRIPE_SECRET
         STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SEC
         IMPERSONATION_JWT_SECRET=$IMPERSONATION_JWT
+        KEYCLOAK_DB_PASSWORD=$KEYCLOAK_DB_PASS
         EOF
