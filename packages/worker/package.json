@@ -20,7 +20,7 @@
     "dompurify": "^3.2.4",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.4.2",
-    "jsdom": "^26.0.0",
+    "jsdom": "^29.1.1",
     "lru-cache": "^11.3.6",
     "nodemailer": "^8.0.7",
     "pdfkit": "^0.18.0",
