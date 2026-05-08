@@ -209,11 +209,17 @@ PG 18 buys nothing concrete (no PG-18-specific feature we use) and costs a guara
   cutover PR merges and the operator never dispatches the migrate
   workflow, dev/CI will run on PG 17 while staging stays on PG 16
   indefinitely. The compliance gate accepts that mid-state
-  (`16 ≤ ceiling 17`), so CI is silent. Today this is operator
-  discipline only — a scheduled workflow that SSHes to the VPS, reads
-  `docker inspect givernance-postgres --format '{{.Config.Image}}'`,
-  and opens an issue if the running major lags the dev/CI pin would
-  close the gap. Tracked as a follow-up.
+  (`16 ≤ ceiling 17`), so CI is silent. **Closed by
+  [`.github/workflows/check-staging-version-skew.yml`](../../.github/workflows/check-staging-version-skew.yml)**
+  (issue #281): a daily 09:00 UTC scheduled workflow SSHes to the VPS,
+  reads `docker inspect givernance-<dep> --format '{{.Config.Image}}'`
+  for every dep in `infra/compliance-versions.yml`, compares the
+  running major to the manifest's first `pinned_in` file, and
+  opens / rewrites / closes an `infra/version-skew`-labelled issue.
+  Self-resolves once the migrate workflow + follow-up PR land — no
+  manual close needed. Auto-dispatching the migrate workflow itself
+  remains out of scope (requires a confirmation token + reviewer
+  policy and is not a robot decision).
 
 - **Compliance gate scope is the manifest's `pinned_in:` list.** A
   future Dockerfile that adds `FROM postgres:18` outside any file
