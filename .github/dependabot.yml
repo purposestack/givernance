@@ -5,11 +5,26 @@ version: 2
 # `applies-to: version-updates` key on every group confines grouping to the
 # routine update flow and excludes Dependabot security updates. See:
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot-yml-file#groups
+#
+# `cooldown` blocks force every routine bump to soak in the wild before
+# Dependabot opens a PR — 14 days for majors (where breaking-change
+# blast-radius lives, e.g. archiver 7→8 going pure-ESM and breaking the
+# postal-export worker on the same day the version was tagged on npm),
+# 7 days for minor/patch (long enough to surface most regressions without
+# starving CVE coverage). Cooldown is per-ecosystem block — Dependabot's
+# parser does not honour YAML anchors, so the block is repeated by hand.
+# Cooldown applies to *version* updates only; Dependabot security updates
+# (CVE-driven) bypass cooldown entirely and ship same-day, which is the
+# whole point of the split.
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     open-pull-requests-limit: 10
     groups:
       minor-and-patch:
@@ -22,6 +37,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     groups:
       actions:
         applies-to: version-updates
@@ -50,6 +69,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     ignore:
       - dependency-name: node
         update-types:
@@ -59,11 +82,19 @@ updates:
     directory: /infra/keycloak
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
 
   - package-ecosystem: docker
     directory: /packages/api
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     ignore:
       - dependency-name: node
         update-types:
@@ -73,6 +104,10 @@ updates:
     directory: /packages/worker
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     ignore:
       - dependency-name: node
         update-types:
@@ -90,6 +125,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     # Compliance-anchored dependencies (postgres, redis) are NOT ignored
     # here on purpose: Dependabot still opens major-bump PRs so the CVE
     # feed and upstream-release visibility stay intact. The
