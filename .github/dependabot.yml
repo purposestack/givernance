@@ -29,10 +29,31 @@ updates:
           - minor
           - patch
 
+  # The three Dockerfiles below (`/Dockerfile`, `/packages/api/Dockerfile`,
+  # `/packages/worker/Dockerfile`) all `FROM node:22-alpine`. CLAUDE.md
+  # and docs/02-reference-architecture.md pin the runtime to "Node.js 22
+  # LTS"; CI (`.github/workflows/ci.yml`) pins `node-version: "22"` to
+  # match. Node has no entry in `infra/compliance-versions.yml` (that
+  # gate is Scaleway-anchored: postgres + redis only), so a Node major
+  # bump would otherwise sail through CI uncaught — Dockerfile shipping
+  # Node 26 while CI tests on 22, regressions in native deps (`sharp`,
+  # libvips, BullMQ) invisible until staging.
+  #
+  # Ignore Node major bumps until either (a) Node 26 reaches LTS
+  # (October 2026) or (b) a coordinated 22 → 24 LTS cutover lands the
+  # bump across Dockerfiles + CI + `engines` + docs in a single PR.
+  # Minor/patch updates still flow normally so CVE coverage on the
+  # node:22 line stays intact. Pattern: same intent as the
+  # compliance-versions gate, encoded here because Node isn't a
+  # provider-managed dependency and doesn't fit the manifest's shape.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: docker
     directory: /infra/keycloak
@@ -43,11 +64,19 @@ updates:
     directory: /packages/api
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: docker
     directory: /packages/worker
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
 
   # Scans `image:` pins inside Compose files. Covers the local-dev stack
   # (`docker-compose.yml`: postgres, redis, keycloak, minio, mc, mailpit,
