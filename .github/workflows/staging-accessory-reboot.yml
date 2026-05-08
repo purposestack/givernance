@@ -94,6 +94,7 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
           IMPERSONATION_JWT_SECRET: ${{ secrets.IMPERSONATION_JWT_SECRET }}
+          KEYCLOAK_DB_PASSWORD: ${{ secrets.KEYCLOAK_DB_PASSWORD }}
 
       # Same reboot procedure used by deploy-staging.yml when accessory
       # config (kamal yml subtree) changed. Single source of truth in
