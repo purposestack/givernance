@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "@types/archiver": "^6.0.2",
-    "@types/jsdom": "^21.1.7",
+    "@types/jsdom": "^28.0.1",
     "@types/nodemailer": "^8.0.0",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.20.0",
