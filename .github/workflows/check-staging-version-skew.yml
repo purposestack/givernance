@@ -1,0 +1,469 @@
+name: Check Staging Version Skew
+
+# Daily skew-detector for Scaleway-anchored dependencies (postgres, redis,
+# and anything else added to `infra/compliance-versions.yml`). Closes the
+# gap documented in ADR-026 § "Known caveats and follow-ups": when the
+# cutover PR merges and the operator forgets to dispatch the migration
+# workflow, dev/CI runs on the new major while staging stays on the old
+# one indefinitely. The compliance gate accepts that mid-state
+# (`src ≤ ceiling`), so CI is silent — operator discipline only.
+#
+# What this workflow does (~30s/day):
+#   1. Reads each manifest entry's first `pinned_in` file (= the dev pin)
+#      and extracts the major from `image: <dep>:<MAJOR>...` matches —
+#      same regex shape `scripts/check-compliance-versions.sh` uses.
+#   2. SSHes to the staging VPS (root@$STAGING_VPS_IP, key from the
+#      `staging` GH Environment) and runs `docker inspect
+#      givernance-<dep> --format '{{json .}}'` (Image + State.Status).
+#   3. If any major diverges:
+#       - opens a `infra/version-skew`-labelled issue tagged with the
+#         bot-managed marker comment, or
+#       - rewrites the body of the existing bot-managed open issue so
+#         the latest drift snapshot is on top — silent re-state, no
+#         comment spam during steady drift. Issues with the same label
+#         that lack the marker (= human-filed) are NEVER touched.
+#   4. If no drift and a stale bot-managed `infra/version-skew` issue
+#      is open: closes it with a resolution comment so the signal
+#      self-resolves.
+#
+# Out of scope (per the issue body of #281):
+#   - Auto-dispatching the migrate workflow. That requires confirmation
+#     token + reviewer policy and is not a robot decision.
+
+on:
+  schedule:
+    # Daily at 09:00 UTC. GH-Actions schedules are best-effort and may
+    # be delayed under high load — fine for a daily skew check.
+    - cron: '0 9 * * *'
+  push:
+    # Tighten the actionable window: a push to main that changes the
+    # manifest or the staging accessory pins is exactly the moment when
+    # the dev↔staging gap can open up. Catch it within minutes instead
+    # of waiting for the next 09:00 UTC tick.
+    branches: [main]
+    paths:
+      - 'infra/compliance-versions.yml'
+      - 'config/deploy-staging.yml'
+      - 'docker-compose.yml'
+      - '.github/workflows/check-staging-version-skew.yml'
+  workflow_dispatch: {}
+
+# Share the `deploy-staging` group with `deploy-staging.yml`,
+# `staging-accessory-reboot.yml`, and `migrate-staging-postgres.yml`. A
+# `kamal accessory boot postgres` from the migrate workflow briefly
+# stops the container; if our `docker inspect` lands in that ~30s window,
+# we'd misread the state as "container missing" and emit a misleading
+# error. Joining the same lock serialises us *behind* any in-flight
+# deploy/reboot/cut. `cancel-in-progress: false` keeps any half-written
+# issue body edit safe — the next run picks up fresh state.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+# Marker we embed in the issue body so subsequent runs only edit/close
+# issues this workflow itself opened. A human filing an
+# `infra/version-skew`-labelled issue manually is left alone.
+env:
+  BOT_MARKER: '<!-- managed-by: check-staging-version-skew.yml -->'
+
+jobs:
+  check:
+    name: Detect skew between dev/CI pins and the running staging accessories
+    runs-on: ubuntu-latest
+
+    # Inherit the same `staging` GH Environment that deploy-staging.yml
+    # and migrate-staging-postgres.yml use, so VPS_IP / SSH_PRIVATE_KEY
+    # resolve from the same secret bag without duplication.
+    environment: staging
+
+    permissions:
+      contents: read
+      issues: write
+
+    env:
+      STAGING_VPS_IP: ${{ secrets.VPS_IP }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate environment secrets
+        run: |
+          set -euo pipefail
+          if [ -z "${STAGING_VPS_IP:-}" ]; then
+            echo "::error ::VPS_IP secret missing on the 'staging' GH Environment — refusing to run with an empty target host."
+            exit 1
+          fi
+
+      - name: Configure SSH Auth Sock
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # Pre-trust the VPS's host key on this fresh runner so direct ssh
+      # below doesn't prompt or fail with StrictHostKeyChecking=yes (the
+      # default on ubuntu-latest's openssh). Same TOFU model the rest of
+      # the workflows use; pinning the host key is a repo-wide hardening
+      # follow-up.
+      - name: Trust staging VPS host key
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          # `-T 10` caps the per-key probe; with `-H` and the default
+          # ed25519/rsa key types this should finish in <1s on a healthy
+          # VPS. We keep stderr so a broken key handshake produces an
+          # actionable diagnostic instead of a silent zero-byte append.
+          if ! ssh-keyscan -T 10 -H "$STAGING_VPS_IP" >> ~/.ssh/known_hosts 2> .keyscan.err; then
+            echo "::error ::ssh-keyscan failed for $STAGING_VPS_IP — check VPS_IP secret + outbound 22/tcp"
+            cat .keyscan.err >&2
+            exit 1
+          fi
+          if [ ! -s ~/.ssh/known_hosts ]; then
+            echo "::error ::ssh-keyscan produced an empty known_hosts — VPS unreachable or banner-only"
+            cat .keyscan.err >&2
+            exit 1
+          fi
+
+      # Read the manifest, validate every dev-pin path, ssh to the VPS
+      # for the running image of each dep, compare majors. Per-dep
+      # failures (one container down, one parse failure) are isolated:
+      # other deps continue, and the failed dep is reported as `unknown`
+      # in the drift table so a real skew elsewhere isn't masked by an
+      # unrelated SSH blip. The whole step exits non-zero only when zero
+      # deps could be inspected — at that point SSH itself is broken
+      # and the operator needs to know.
+      - name: Detect skew
+        id: detect
+        run: |
+          set -euo pipefail
+
+          MANIFEST="infra/compliance-versions.yml"
+          if [ ! -f "$MANIFEST" ]; then
+            echo "::error ::compliance manifest not found: $MANIFEST"
+            exit 1
+          fi
+
+          # Build the dep list as a newline-delimited string so the
+          # for-loop iterates in a stable order and an empty manifest
+          # produces a measurable count of zero (not silent green).
+          deps=$(yq -r '.dependencies | keys[]' "$MANIFEST")
+          dep_count=$(printf '%s\n' "$deps" | grep -cve '^$' || true)
+          if [ "$dep_count" -eq 0 ]; then
+            echo "::error ::manifest declares zero dependencies — refusing to report 'no skew' against an empty rule set. Restore at least one dependency in $MANIFEST or delete the workflow."
+            exit 1
+          fi
+
+          # `pin_file` is interpolated into `grep` and into the issue
+          # body. A malicious manifest could otherwise point it at
+          # `/etc/passwd`, `~/.ssh/id_rsa`, etc. Constrain to a tracked
+          # relative path under the repo root.
+          validate_pin_file() {
+            local f="$1"
+            # Reject absolute paths, parent traversal, and any byte
+            # outside a safe charset. Also enforce that the path is
+            # tracked by git — an untracked file inside the workspace
+            # could only have been created by an earlier malicious step
+            # in this same workflow, but the membership check is cheap.
+            if ! [[ "$f" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+              return 1
+            fi
+            case "$f" in
+              /*|*..*) return 1 ;;
+            esac
+            git ls-files --error-unmatch -- "$f" >/dev/null 2>&1 || return 1
+          }
+
+          drift_count=0
+          inspected_count=0
+          drift_md=""
+          drift_titles=""
+          unknown_titles=""
+
+          for dep in $deps; do
+            # Constrain `dep` to a sane charset before it lands in
+            # `givernance-<dep>` (a docker arg) or in the regex below.
+            if ! [[ "$dep" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+              echo "::error ::manifest dep name '${dep}' contains unexpected characters — refusing to interpolate."
+              exit 1
+            fi
+            container="givernance-${dep}"
+            pin_file=$(yq -r ".dependencies.\"$dep\".pinned_in[0]" "$MANIFEST")
+
+            if [ -z "$pin_file" ] || [ "$pin_file" = "null" ]; then
+              echo "::error ::manifest entry $dep has no pinned_in[0]"
+              exit 1
+            fi
+            if ! validate_pin_file "$pin_file"; then
+              echo "::error ::manifest references invalid pin_file for $dep: '$pin_file' (must be a tracked relative path matching [A-Za-z0-9._/-])"
+              exit 1
+            fi
+
+            # Same regex shape as scripts/check-compliance-versions.sh —
+            # tolerates quoted (`'`/`"`) and bare scalar forms. First
+            # match in the dev pin file wins.
+            pin_match=$(grep -nE "^[[:space:]]*image:[[:space:]]*['\"]?${dep}:[0-9]+" "$pin_file" | head -n 1 || true)
+            if [ -z "$pin_match" ]; then
+              echo "::error ::could not extract dev pin for ${dep} in ${pin_file} (no matching image: line)"
+              exit 1
+            fi
+            pin_lineno=$(echo "$pin_match" | cut -d: -f1)
+            pin_major=$(echo "$pin_match" | sed -E "s|^[[:space:]]*[0-9]+:[[:space:]]*image:[[:space:]]*['\"]?${dep}:([0-9]+).*|\1|")
+            if ! [[ "$pin_major" =~ ^[0-9]+$ ]]; then
+              echo "::error ::could not parse dev pin major from match '${pin_match}' (dep=${dep})"
+              exit 1
+            fi
+
+            # Per-dep error isolation starts here. A single failure ssh
+            # call no longer aborts the whole workflow.
+            #
+            # Fetch Image + State.Status in one round-trip so a
+            # paused/restarting container doesn't masquerade as the
+            # last-booted image. Output format (one line):
+            #     <image>|<status>
+            inspect_fmt='{{.Config.Image}}|{{.State.Status}}'
+            if ! inspect_out=$(ssh -o BatchMode=yes -o ConnectTimeout=15 \
+                root@"$STAGING_VPS_IP" \
+                "docker inspect ${container} --format '${inspect_fmt}'" 2>&1); then
+              echo "::warning ::could not docker-inspect ${container} on staging VPS: ${inspect_out}. Continuing with other deps."
+              drift_md="${drift_md}| \`${dep}\` | \`${pin_major}\` | _unreachable_ — see workflow logs | \`${pin_file}:${pin_lineno}\` |"$'\n'
+              if [ -z "$unknown_titles" ]; then unknown_titles="${dep}"; else unknown_titles="${unknown_titles}, ${dep}"; fi
+              continue
+            fi
+
+            running_image=${inspect_out%%|*}
+            running_status=${inspect_out#*|}
+
+            # Constrain SSH-sourced strings before interpolating them
+            # anywhere downstream. Defends $GITHUB_OUTPUT and the issue
+            # body against a compromised VPS injecting newlines or the
+            # heredoc sentinel.
+            if ! [[ "$running_image" =~ ^[A-Za-z0-9._/:@-]+$ ]]; then
+              echo "::warning ::running image for ${container} contains unexpected bytes (${running_image}); marking unknown."
+              drift_md="${drift_md}| \`${dep}\` | \`${pin_major}\` | _malformed_ — see workflow logs | \`${pin_file}:${pin_lineno}\` |"$'\n'
+              if [ -z "$unknown_titles" ]; then unknown_titles="${dep}"; else unknown_titles="${unknown_titles}, ${dep}"; fi
+              continue
+            fi
+            if ! [[ "$running_status" =~ ^[a-z]+$ ]]; then
+              echo "::warning ::running status for ${container} contains unexpected bytes (${running_status}); marking unknown."
+              drift_md="${drift_md}| \`${dep}\` | \`${pin_major}\` | _malformed_ — see workflow logs | \`${pin_file}:${pin_lineno}\` |"$'\n'
+              if [ -z "$unknown_titles" ]; then unknown_titles="${dep}"; else unknown_titles="${unknown_titles}, ${dep}"; fi
+              continue
+            fi
+
+            inspected_count=$((inspected_count + 1))
+
+            # Strip any leading registry prefix (`docker.io/library/`)
+            # docker may inject on older daemons before extracting the
+            # major. Final form we parse: `<dep>:<MAJOR>[-<flavour>]`.
+            running_image_stripped=$(echo "$running_image" | sed -E 's|^([^/]+/)*||')
+            running_major=$(echo "$running_image_stripped" | sed -nE "s|^${dep}:([0-9]+).*|\1|p")
+            if ! [[ "$running_major" =~ ^[0-9]+$ ]]; then
+              echo "::warning ::could not parse major from running image '${running_image}' (dep=${dep}); marking unknown."
+              drift_md="${drift_md}| \`${dep}\` | \`${pin_major}\` | \`${running_image}\` (unparseable) | \`${pin_file}:${pin_lineno}\` |"$'\n'
+              if [ -z "$unknown_titles" ]; then unknown_titles="${dep}"; else unknown_titles="${unknown_titles}, ${dep}"; fi
+              continue
+            fi
+
+            echo "${dep}: dev/CI=${pin_major} (${pin_file}:${pin_lineno}) | staging=${running_major} (${running_image}, status=${running_status})"
+
+            # Container not in the `running` state is itself an
+            # actionable signal even if the image major matches —
+            # surface it as drift so the operator gets a notification.
+            if [ "$pin_major" != "$running_major" ] || [ "$running_status" != "running" ]; then
+              drift_count=$((drift_count + 1))
+              drift_md="${drift_md}| \`${dep}\` | \`${pin_major}\` | \`${running_image}\` (major: ${running_major}, status: ${running_status}) | \`${pin_file}:${pin_lineno}\` |"$'\n'
+              if [ -z "$drift_titles" ]; then
+                drift_titles="${dep}"
+              else
+                drift_titles="${drift_titles}, ${dep}"
+              fi
+            fi
+          done
+
+          if [ "$inspected_count" -eq 0 ]; then
+            echo "::error ::could not inspect ANY dep on the staging VPS — SSH or docker is broken. Refusing to claim 'no skew' under those conditions."
+            exit 1
+          fi
+
+          {
+            echo "drift_count=${drift_count}"
+            echo "drift_titles=${drift_titles}"
+            echo "unknown_titles=${unknown_titles}"
+            echo "inspected_count=${inspected_count}"
+            # Multi-line outputs require a delimiter that can't appear in
+            # the value. Every cell of `drift_md` is built from values
+            # we've already validated against strict charsets above
+            # (`dep`, `pin_major`, `running_image`, `running_status`,
+            # `pin_file`, `pin_lineno`), so the sentinel below cannot
+            # appear in the rendered string.
+            echo "drift_md<<GH_OUTPUT_EOF_4f3b1c8d"
+            printf '%s' "${drift_md}"
+            echo "GH_OUTPUT_EOF_4f3b1c8d"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Summarise outcome
+        if: always()
+        env:
+          DRIFT_COUNT: ${{ steps.detect.outputs.drift_count }}
+          DRIFT_TITLES: ${{ steps.detect.outputs.drift_titles }}
+          UNKNOWN_TITLES: ${{ steps.detect.outputs.unknown_titles }}
+          INSPECTED_COUNT: ${{ steps.detect.outputs.inspected_count }}
+        run: |
+          {
+            echo "## Staging version skew check"
+            echo ""
+            if [ -z "${INSPECTED_COUNT:-}" ]; then
+              echo "❌ Detection step failed before producing a result. See the failed step above."
+            elif [ "${DRIFT_COUNT:-?}" = "0" ] && [ -z "${UNKNOWN_TITLES:-}" ]; then
+              echo "✅ No skew — staging matches the dev/CI pin for every dep in \`infra/compliance-versions.yml\` (${INSPECTED_COUNT} inspected)."
+            else
+              if [ "${DRIFT_COUNT:-0}" != "0" ]; then
+                echo "⚠️ Drift detected for: **${DRIFT_TITLES}**"
+              fi
+              if [ -n "${UNKNOWN_TITLES:-}" ]; then
+                echo ""
+                echo "❓ Could not determine state for: **${UNKNOWN_TITLES}** (treated as drift in the issue body so it's not silently skipped)."
+              fi
+              echo ""
+              echo "Issue with label \`infra/version-skew\` opened or updated. See the next step's logs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Idempotent — `--force` updates the label if it already exists,
+      # creates it otherwise. We do this even when no drift is detected
+      # so a future first-time skew run doesn't fail on a missing label.
+      - name: Ensure infra/version-skew label exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create infra/version-skew \
+            --color B60205 \
+            --description "Staging accessory's running major has drifted from the dev/CI pin (auto-managed by check-staging-version-skew.yml)" \
+            --force
+
+      # Drift detected: open a new issue, or rewrite the body of every
+      # bot-managed open issue (matched on the BOT_MARKER hidden HTML
+      # comment) so the latest snapshot is on top. Silent re-state — no
+      # daily comment spam while drift persists. Issues with the label
+      # but without the marker (= a human filed one) are left alone, so
+      # we never accidentally rewrite or close a manually-filed report.
+      - name: Open or update skew issue
+        if: steps.detect.outputs.drift_count != '0' || steps.detect.outputs.unknown_titles != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRIFT_MD: ${{ steps.detect.outputs.drift_md }}
+          DRIFT_COUNT: ${{ steps.detect.outputs.drift_count }}
+          DRIFT_TITLES: ${{ steps.detect.outputs.drift_titles }}
+          UNKNOWN_TITLES: ${{ steps.detect.outputs.unknown_titles }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          BODY_FILE=$(mktemp)
+          NOW_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          # Heredoc keeps every embedded backtick / quote / regex byte
+          # as-is. Only ${NOW_UTC}, ${RUN_URL}, ${DRIFT_MD},
+          # ${BOT_MARKER} are expanded — anything else that needs literal
+          # $ is escaped with \$.
+          cat > "$BODY_FILE" <<EOF
+          ${BOT_MARKER}
+
+          ## Staging version skew detected
+
+          The live staging accessory's running major has diverged from the dev/CI pin (the manifest's first \`pinned_in\` file) for one or more Scaleway-anchored dependencies, or one of them is in an unexpected container state.
+
+          **Last checked:** ${NOW_UTC} ([workflow run](${RUN_URL}))
+
+          | Dependency | Dev/CI pin (major) | Staging container | Source of dev pin |
+          |---|---|---|---|
+          ${DRIFT_MD}
+          ### Reproduction
+
+          \`\`\`bash
+          # Running major + status on staging (per dep, replace <dep>):
+          ssh root@\$STAGING_VPS_IP "docker inspect givernance-<dep> --format '{{.Config.Image}}|{{.State.Status}}'"
+
+          # Dev/CI pin (read manifest, then grep its first pinned_in file):
+          yq -r '.dependencies."<dep>".pinned_in[0]' infra/compliance-versions.yml
+          grep -nE '^[[:space:]]*image:[[:space:]]*<dep>:[0-9]+' <pinned_in[0]>
+          \`\`\`
+
+          ### Resolution
+
+          - **postgres skew** → dispatch [\`migrate-staging-postgres.yml\`](../../actions/workflows/migrate-staging-postgres.yml) in \`rehearsal\` mode first, then \`live\`. On \`live\` success the workflow opens a follow-up PR aligning \`config/deploy-staging.yml\`.
+          - **redis skew** → see [ADR-026 § Redis 8 cutover](../blob/main/docs/adrs/adr-026-postgres-17-cutover-and-scaleway-anchored-versioning.md) for the manual procedure (no automated workflow yet — \`staging-accessory-reboot.yml\` after the bind-mounted datadir wipe + relay pause).
+          - **container not running** → check the accessory's logs (\`ssh root@\$STAGING_VPS_IP "docker logs <container> --tail 200"\`); a crash-loop here means image drift might already be the symptom of a half-completed cut.
+
+          ### Self-resolution
+
+          This issue is **auto-managed**: the next scheduled run of \`check-staging-version-skew.yml\` rewrites this body if drift state changes, and closes the issue when the running majors match the dev/CI pin again. No need to close it manually after running the migration.
+
+          🤖 Opened/updated by \`.github/workflows/check-staging-version-skew.yml\` (closes the gap tracked in ADR-026 known-caveats; original ask: #281).
+          EOF
+
+          # Find every open issue with the label that ALSO carries the
+          # bot marker. Human-filed issues with the same label have no
+          # marker and are left untouched.
+          mapfile -t bot_issues < <(
+            gh issue list --label infra/version-skew --state open --limit 100 --json number,body \
+              --jq ".[] | select(.body | contains(\"$BOT_MARKER\")) | .number"
+          )
+
+          if [ "${#bot_issues[@]}" -eq 0 ]; then
+            # Title aggregates drifted + unknown deps so the inbox-line
+            # captures the full picture without the operator opening it.
+            title_subject="${DRIFT_TITLES:-}"
+            if [ -n "${UNKNOWN_TITLES:-}" ]; then
+              if [ -n "$title_subject" ]; then
+                title_subject="${title_subject}; unknown: ${UNKNOWN_TITLES}"
+              else
+                title_subject="unknown: ${UNKNOWN_TITLES}"
+              fi
+            fi
+            title="Staging version skew detected (${title_subject})"
+            url=$(gh issue create \
+              --label infra/version-skew \
+              --title "$title" \
+              --body-file "$BODY_FILE")
+            echo "Opened new bot-managed skew issue: ${url}"
+          else
+            # Edit every bot-managed open issue (defensive against a
+            # duplicate the bot accidentally opened in a prior run; any
+            # human-filed dup with the label is excluded by the marker).
+            # Always re-apply the label as belt-and-braces in case a
+            # human stripped it during triage.
+            for n in "${bot_issues[@]}"; do
+              gh issue edit "$n" --body-file "$BODY_FILE" --add-label infra/version-skew
+              echo "Updated existing bot-managed skew issue: #${n}"
+            done
+          fi
+
+      # No drift AND no unknown: if the workflow had previously opened a
+      # bot-managed skew issue, close it with a resolution comment so
+      # the signal self-resolves without operator intervention.
+      # Idempotent — silently no-ops if no bot-managed open issue
+      # exists. Human-filed issues with the same label are NEVER closed.
+      - name: Close stale skew issue if drift is resolved
+        if: steps.detect.outputs.drift_count == '0' && steps.detect.outputs.unknown_titles == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INSPECTED_COUNT: ${{ steps.detect.outputs.inspected_count }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mapfile -t bot_issues < <(
+            gh issue list --label infra/version-skew --state open --limit 100 --json number,title,body \
+              --jq ".[] | select(.body | contains(\"$BOT_MARKER\")) | \"\(.number)|\(.title)\""
+          )
+          if [ "${#bot_issues[@]}" -eq 0 ]; then
+            echo "No bot-managed open infra/version-skew issue — nothing to close."
+            exit 0
+          fi
+          NOW_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          for entry in "${bot_issues[@]}"; do
+            n=${entry%%|*}
+            t=${entry#*|}
+            gh issue close "$n" \
+              --comment "Skew resolved as of ${NOW_UTC} — staging matches the dev/CI pin for every dep in \`infra/compliance-versions.yml\` (${INSPECTED_COUNT} inspected). Was tracking: \`${t}\`. Closed automatically by [\`check-staging-version-skew.yml\`](${RUN_URL})."
+            echo "Closed stale bot-managed skew issue: #${n}"
+          done
