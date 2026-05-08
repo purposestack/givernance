@@ -118,12 +118,12 @@ See: /diagrams/container.mmd
 - `SET LOCAL` for tenant context on every transaction
 - *SaaS deployment*: Neon.tech includes built-in connection pooling (pgBouncer-compatible) — no separate container needed.
 
-#### `redis` (Redis 7 / Valkey)
+#### `redis` (Redis 8 / Valkey)
 - Job queue backend (BullMQ) — **primary event routing mechanism for Phase 0-3**
 - Rate limiting counters
 - Session cache (short-lived, separate DB index)
 - Feature flags cache
-- **Self-hosted deployments**: Redis 7 / Valkey (Docker Compose)
+- **Self-hosted deployments**: Redis 8 / Valkey (Docker Compose)
 - **SaaS managed deployment**: [Scaleway Managed Redis](https://www.scaleway.com/en/managed-databases-for-redis/) EU region — managed, GDPR-compliant, single vendor DPA. See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
 
 #### `keycloak` (Keycloak 26)
@@ -430,7 +430,7 @@ services:
   worker:      givernance/worker:latest
   postgres:    postgres:17-alpine
   pgbouncer:   pgbouncer/pgbouncer:latest
-  redis:       redis:7-alpine
+  redis:       redis:8-alpine
   keycloak:    keycloak/keycloak:26
   minio:       minio/minio:latest
   caddy:       caddy:2-alpine      # TLS termination + reverse proxy
@@ -466,7 +466,7 @@ Deployment: Kamal on Scaleway EU VMs. TLS via Caddy. All services under single S
 | Component | Self-hosted NPO | Managed SaaS (Phase 0-3) | Managed SaaS (Phase 4+) |
 |---|---|---|---|
 | PostgreSQL | Self-hosted 16 + PgBouncer | Scaleway Managed PostgreSQL EU | Scaleway Managed PostgreSQL EU |
-| Redis / Cache | Self-hosted Redis 7 | Scaleway Managed Redis EU | Scaleway Managed Redis EU |
+| Redis / Cache | Self-hosted Redis 8 | Scaleway Managed Redis EU | Scaleway Managed Redis EU |
 | Object Storage | MinIO | Scaleway Object Storage EU | Scaleway Object Storage EU |
 | Event bus | BullMQ via outbox (Redis) | BullMQ via outbox (Redis) | NATS JetStream + BullMQ |
 | Auth | Self-hosted Keycloak 26 | Self-hosted Keycloak 26 (Scaleway VM) | Self-hosted Keycloak 26 (Scaleway VM) |

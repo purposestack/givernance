@@ -30,11 +30,18 @@ dependencies:
       - .github/workflows/ci.yml
 
   redis:
-    max_major: 7
+    max_major: 8
     provider: Scaleway Managed Redis EU
+    # Scaleway adopted Redis 8.4 in February 2026 and deprecated 7.2.11;
+    # the `max_major` was bumped 7 → 8 in the same PR that cut over dev /
+    # CI / staging to `redis:8`. Next revisit: when Scaleway publishes
+    # Redis 9 GA support — at which point this manifest entry bumps,
+    # the four `pinned_in:` files bump in lockstep, and ADR-026 gets a
+    # third "cutover" subsection. Until then, Dependabot major-bump PRs
+    # past Redis 8 are closed by the gate.
     revisit_criteria: |
-      Scaleway publishes Redis 8 GA support in their Managed Redis docs
-      (Redis 8 GA upstream was 2025-05; Scaleway adoption pending).
+      Scaleway publishes Redis 9 GA support in their Managed Redis docs.
     pinned_in:
       - docker-compose.yml
       - config/deploy-staging.yml
+      - .github/workflows/ci.yml

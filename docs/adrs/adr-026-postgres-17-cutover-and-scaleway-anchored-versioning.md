@@ -226,6 +226,28 @@ PG 18 buys nothing concrete (no PG-18-specific feature we use) and costs a guara
 ### Revisit criteria
 
 - **Bump the PG ceiling** when Scaleway publishes PG 18 GA support on [their version-updates page](https://www.scaleway.com/en/docs/managed-databases-for-postgresql-and-mysql/reference-content/pg-version-updates/).
-- **Bump the Redis ceiling** when Scaleway publishes Redis 8 GA support in their Managed Redis docs.
+- **Bump the Redis ceiling** when Scaleway publishes Redis 9 GA support in their Managed Redis docs. (Redis 8 has been adopted — see "Redis 8 cutover" below.)
 - **Migrate to Renovate** if the volume of manifest-rejected Dependabot PRs becomes routinely disruptive (heuristic: more than one rejected PR per dependency per quarter).
 - **Re-evaluate the dump/restore vs `pg_upgrade` choice** when staging holds non-trivial data (post-SaaS launch with prod-like volume), or when Scaleway introduces a major that requires `--data-checksums=on` to upgrade in place.
+
+### Redis 8 cutover (second application of the same policy)
+
+In **February 2026**, Scaleway Managed Database for Redis adopted **Redis 8.4** and deprecated 7.2.11, satisfying the `revisit_criteria` for Redis above. Dependabot's Redis 8 PR (#264) had previously been closed against the Redis-7 ceiling. Once Scaleway moved, the manifest's `redis.max_major` was bumped from 7 to 8 and the four Redis-anchored pins moved together:
+
+| File | Before | After |
+|---|---|---|
+| `docker-compose.yml` | `redis:7-alpine` | `redis:8-alpine` |
+| `config/deploy-staging.yml` | `redis:7` | `redis:8` |
+| `.github/workflows/ci.yml` | `redis:7-alpine` | `redis:8-alpine` |
+| `infra/compliance-versions.yml` | `redis.max_major: 7` | `redis.max_major: 8` (and `pinned_in:` extended to include `.github/workflows/ci.yml`, which had been missing) |
+
+**Why no migration script / no two-stage rollout** — unlike the PG 16 → PG 17 cutover, Redis on Givernance only ever holds **transient state** (BullMQ job queues, session cache, rate-limit counters, feature-flag cache). No durable application data is in Redis. Rather than build a `migrate-staging-redis.yml` analogue, the cutover wipes the Redis volume on both local dev (`docker compose down -v`) and the Kamal staging accessory. Operator side-effects communicated to the small staging audience before the deploy:
+
+- ~1–2 minutes of Redis unavailability during the accessory swap (Kamal stops the old container, removes the volume, boots `redis:8`).
+- Sessions invalidated → forced re-login on next request.
+- All in-flight BullMQ jobs lost. At the time of the cutover, staging held no business-critical jobs in flight; receipt-generation jobs that drop are re-issuable from their parent donations.
+- Cold cache for ~minutes after restart; first requests take the full DB hit.
+
+This shortcut is **not available once SaaS prod is live** — that future major bump (Redis 8 → 9 or beyond) will need either Scaleway's console-driven managed upgrade (preferred) or a session-preserving cutover plan. The "no migration" decision recorded here applies to pre-prod state only.
+
+**Confirms the manifest pattern.** Redis 8 is the second time the policy fires (PG 16 → 17 was the first). The mechanics held up: Dependabot's bump PR was closed by the gate, the `revisit_criteria` was the actionable trigger ("Scaleway publishes Redis 8 GA support"), and the cutover was four file edits + a manifest bump. No additional ADR was written because no decision changed — only the ceiling. If a future bump introduces a new pattern (e.g., a managed-Redis upgrade flow once SaaS prod is live), that PR gets its own ADR; routine ceiling bumps are a subsection here.

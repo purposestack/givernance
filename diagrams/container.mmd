@@ -19,7 +19,7 @@ flowchart TB
     PG["PostgreSQL 16 — instance\n(SaaS: Scaleway Managed PG EU · Self-hosted: Postgres 16)\ndb: givernance (app, Drizzle)\ndb: givernance_keycloak (IdP) — ADR-017"]
     PgBouncer["PgBouncer 1.22\n(self-hosted only — managed PG includes pooling)"]
     PGReplica["PostgreSQL 16\n(read replica — reporting)"]
-    Redis["Redis / Upstash\n(job queue + cache + rate limit\nSaaS: Upstash EU · Self-hosted: Redis 7)"]
+    Redis["Redis / Upstash\n(job queue + cache + rate limit\nSaaS: Upstash EU · Self-hosted: Redis 8)"]
     Storage["Cloudflare R2 / MinIO\n(SaaS: R2 · Self-hosted: MinIO)"]
   end
 
