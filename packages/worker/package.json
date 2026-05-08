@@ -15,7 +15,7 @@
     "@aws-sdk/lib-storage": "^3.1044.0",
     "@givernance/shared": "workspace:*",
     "@sinclair/typebox": "^0.34.12",
-    "archiver": "^7.0.1",
+    "archiver": "^8.0.0",
     "bullmq": "^5.76.6",
     "dompurify": "^3.2.4",
     "drizzle-orm": "^0.45.2",
