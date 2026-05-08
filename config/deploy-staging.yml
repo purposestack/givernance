@@ -199,7 +199,7 @@ accessories:
     directories:
       - data/postgres:/var/lib/postgresql/data
   redis:
-    image: redis:7
+    image: redis:8
     host: <%= ENV["STAGING_VPS_IP"] %>
     port: 6379
     directories:

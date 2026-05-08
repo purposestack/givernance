@@ -16,7 +16,7 @@ Before writing Phase 1 code, verify:
 - TypeScript monorepo scaffolding (pnpm workspaces, tsconfig, Drizzle schema baseline)
 - CI/CD + infra baseline
 - **Infra (SaaS)**: Scaleway Managed PostgreSQL EU, Scaleway Managed Redis EU, Scaleway Object Storage EU — all under single Scaleway GDPR DPA (~67€/month). Observability via Scaleway Cockpit (Grafana + Loki + Mimir + Tempo, free for Scaleway-native data). See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
-- **Infra (self-hosted)**: Docker Compose (Postgres 17, Redis 7, MinIO, Keycloak, Caddy)
+- **Infra (self-hosted)**: Docker Compose (Postgres 17, Redis 8, MinIO, Keycloak, Caddy)
 - **Event bus**: BullMQ + Redis via transactional outbox — NATS deferred to Phase 4 (see ADR-005)
 
 ## Phase 1 (8 weeks): Fundraising Core — Donor Management MVP

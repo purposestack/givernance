@@ -21,7 +21,7 @@ You are the impersonation and delegated-access specialist for Givernance. You ow
 | Auth | Keycloak 24 (OIDC) | Super_admin token + Keycloak token exchange (RFC 8693) |
 | Frontend | Next.js 15 (React) | Impersonation banner, session context |
 | Database | PostgreSQL 17 + Drizzle ORM | RLS `SET LOCAL` with impersonation context |
-| Cache | Redis 7 (Scaleway Managed Redis EU for SaaS · Redis 7/Valkey for self-hosted) | Short-lived impersonation session store (TTL-bound) |
+| Cache | Redis 8 (Scaleway Managed Redis EU for SaaS · Redis 8/Valkey for self-hosted) | Short-lived impersonation session store (TTL-bound) |
 | Audit | `audit_logs` table (`packages/shared`) | Double-attribution on every write |
 | Job queue | BullMQ 5 | Jobs enqueued during impersonation carry both actor IDs |
 

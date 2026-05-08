@@ -11,7 +11,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 | Web | Next.js 16 (React, TypeScript) |
 | Database | PostgreSQL 17 + Drizzle ORM (SaaS: Scaleway Managed PostgreSQL EU · Self-hosted: Postgres 17 + PgBouncer) |
 | Job Queue / Events | BullMQ 5 + Redis (Phase 0-3) — NATS JetStream added Phase 4+ |
-| Cache / Rate-limit | Redis (SaaS: Scaleway Managed Redis EU · Self-hosted: Redis 7) |
+| Cache / Rate-limit | Redis (SaaS: Scaleway Managed Redis EU · Self-hosted: Redis 8) |
 | Storage | Scaleway Object Storage EU (SaaS) · MinIO (Self-hosted) |
 | Auth | Keycloak 26 (OIDC / SAML — all deployments, self-hosted on Scaleway VMs for SaaS). Organizations feature enabled (ADR-016 / issue #114); each Givernance tenant maps 1:1 to a Keycloak Organization. |
 | Observability | Scaleway Cockpit (Grafana + Loki + Mimir + Tempo) — SaaS managed |

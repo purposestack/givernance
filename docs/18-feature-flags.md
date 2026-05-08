@@ -78,7 +78,7 @@ Every API request evaluates flags. PostgreSQL round-trips on every request are n
 - Invalidated immediately on override change (via BullMQ job or direct `DEL`)
 
 **SaaS deployment**: Scaleway Managed Redis EU (single GDPR DPA, no cluster to operate).
-**Self-hosted NPO deployment**: Redis 7 / Valkey via Docker Compose.
+**Self-hosted NPO deployment**: Redis 8 / Valkey via Docker Compose.
 
 ### 3.3 Evaluation: `@givernance/shared/flags`
 
