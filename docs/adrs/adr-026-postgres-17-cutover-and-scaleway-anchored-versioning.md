@@ -241,12 +241,24 @@ In **February 2026**, Scaleway Managed Database for Redis adopted **Redis 8.4** 
 | `.github/workflows/ci.yml` | `redis:7-alpine` | `redis:8-alpine` |
 | `infra/compliance-versions.yml` | `redis.max_major: 7` | `redis.max_major: 8` (and `pinned_in:` extended to include `.github/workflows/ci.yml`, which had been missing) |
 
-**Why no migration script / no two-stage rollout** — unlike the PG 16 → PG 17 cutover, Redis on Givernance only ever holds **transient state** (BullMQ job queues, session cache, rate-limit counters, feature-flag cache). No durable application data is in Redis. Rather than build a `migrate-staging-redis.yml` analogue, the cutover wipes the Redis volume on both local dev (`docker compose down -v`) and the Kamal staging accessory. Operator side-effects communicated to the small staging audience before the deploy:
+**Why no migration script / no two-stage rollout** — unlike the PG 16 → PG 17 cutover, Redis on Givernance only ever holds **transient state** (BullMQ job queues, session cache, rate-limit counters, feature-flag cache). No durable application data is in Redis. Rather than build a `migrate-staging-redis.yml` analogue, the cutover wipes the Redis datadir on both local dev and the Kamal staging accessory.
 
-- ~1–2 minutes of Redis unavailability during the accessory swap (Kamal stops the old container, removes the volume, boots `redis:8`).
-- Sessions invalidated → forced re-login on next request.
-- All in-flight BullMQ jobs lost. At the time of the cutover, staging held no business-critical jobs in flight; receipt-generation jobs that drop are re-issuable from their parent donations.
-- Cold cache for ~minutes after restart; first requests take the full DB hit.
+**The wipe is explicit, not a side-effect of restarting the container.** The staging accessory uses a host bind mount (`config/deploy-staging.yml`: `directories: data/redis:/data`) which survives `docker stop && docker rm`. Redis 8 is forward-compatible with Redis 7's RDB format, so a naive accessory reboot would silently re-load every key from the existing on-disk dump — sessions and queue state would persist, and the documented "forced re-login" / "in-flight jobs lost" side-effects would not actually occur. The real wipe requires `rm -rf data/redis/*` on the host **before** booting the new image. Local dev is the same shape: `docker compose down -v` (the `-v` is non-negotiable; without it the named volume `redisdata` survives).
+
+**Operator procedure (staging cutover)** — must be run in this order to avoid silent event loss:
+
+1. **Pause the relay deployment** so it stops draining the outbox into the (about-to-disappear) BullMQ queue. The relay marks rows `completed` immediately after `eventsQueue.add()` (`packages/relay/src/index.ts:90-97`), so any row that's been enqueued but not yet processed by a worker is invisible in the database — it lives only in Redis. A wipe without this pause loses those events silently.
+2. **Drain the events queue to zero.** Either wait for active workers to finish (`bullmq` UI / `redis-cli LLEN bull:events:wait`) or scale workers up briefly. Keep the relay paused throughout.
+3. **Stop the redis accessory:** `kamal accessory stop redis -d staging`.
+4. **Wipe the host datadir:** `ssh givernance-staging 'rm -rf /var/lib/kamal/givernance/data/redis/*'` (or the equivalent path printed by `docker inspect`).
+5. **Boot redis:8:** dispatch `staging-accessory-reboot.yml` with `accessory=redis`. The deploy-staging workflow's per-accessory subtree-diff loop currently only watches `minio` and `keycloak` (`.github/workflows/deploy-staging.yml:127`), so a `config/deploy-staging.yml` redis-image bump does **not** trigger a redis reboot on the next app deploy. The accessory-reboot workflow is the explicit knob. (Generalising the diff loop is a follow-up — issue forthcoming.)
+6. **Resume the relay deployment** and confirm new outbox events flow through.
+
+**Communicated side-effects** to the small staging audience before the deploy:
+
+- ~1–2 minutes of Redis unavailability during steps 3–5 (API responds with degraded cache; rate-limit counters reset; sessions invalidated → forced re-login on next request).
+- Cold cache for ~minutes after step 5; first requests take the full DB hit.
+- Any in-flight BullMQ jobs the worker hadn't picked up before step 1 are lost. At the time of the cutover, staging held no business-critical jobs in flight; receipt-generation jobs that drop are re-issuable from their parent donations.
 
 This shortcut is **not available once SaaS prod is live** — that future major bump (Redis 8 → 9 or beyond) will need either Scaleway's console-driven managed upgrade (preferred) or a session-preserving cutover plan. The "no migration" decision recorded here applies to pre-prod state only.
 
