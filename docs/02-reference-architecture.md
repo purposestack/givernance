@@ -465,7 +465,7 @@ Deployment: Kamal on Scaleway EU VMs. TLS via Caddy. All services under single S
 
 | Component | Self-hosted NPO | Managed SaaS (Phase 0-3) | Managed SaaS (Phase 4+) |
 |---|---|---|---|
-| PostgreSQL | Self-hosted 16 + PgBouncer | Scaleway Managed PostgreSQL EU | Scaleway Managed PostgreSQL EU |
+| PostgreSQL | Self-hosted 17 + PgBouncer | Scaleway Managed PostgreSQL EU | Scaleway Managed PostgreSQL EU |
 | Redis / Cache | Self-hosted Redis 8 | Scaleway Managed Redis EU | Scaleway Managed Redis EU |
 | Object Storage | MinIO | Scaleway Object Storage EU | Scaleway Object Storage EU |
 | Event bus | BullMQ via outbox (Redis) | BullMQ via outbox (Redis) | NATS JetStream + BullMQ |
