@@ -36,7 +36,7 @@
 ### Pre-flight checklist
 
 **Repo + tooling**
-- [ ] PR #_____ (this PR — landed `infra/postgres/init/01-init-keycloak-db.sh` into the postgres accessory's `files:` and added `KEYCLOAK_DB_PASSWORD` to `setup-kamal-secrets` + the three workflows that consume it) is **merged into `main`** and the resulting `deploy-staging` run is green.
+- [ ] PR [#334](https://github.com/purposestack/givernance/pull/334) (this PR — landed `infra/postgres/init/01-init-keycloak-db.sh` into the postgres accessory's `files:` and added `KEYCLOAK_DB_PASSWORD` to `setup-kamal-secrets` + the three workflows that consume it) is **merged into `main`** and the resulting `deploy-staging` run is green.
 - [ ] Local tooling installed and on PATH:
   ```bash
   bundle exec kamal version    # ≥ 2.x
@@ -47,15 +47,9 @@
   ```
 
 **Secrets**
-- [ ] Generate `KEYCLOAK_DB_PASSWORD`. **Use base64 only** (no single quotes / `$` / backticks; later steps interpolate it through nested ssh + docker exec layers):
-  ```bash
-  openssl rand -base64 24
-  ```
-- [ ] Save to the `staging` GitHub Environment **before any `deploy-staging` run** (otherwise the composite action's non-load-bearing fallback `staging_keycloak_db_123` lands in `.kamal/secrets` and the next accessory reboot bakes it into KC):
-  ```bash
-  gh secret set KEYCLOAK_DB_PASSWORD --env staging --repo purposestack/givernance
-  ```
-- [ ] Save to 1Password (`Givernance · Staging` vault → new item `Keycloak DB role`). You cannot read it back from GitHub; Steps 1, 2, and 7 each need it.
+- [x] **Done 2026-05-09 during PR #334 setup** — Generated `KEYCLOAK_DB_PASSWORD` via `openssl rand -base64 24`. (Constraint: base64 charset only — no single quotes / `$` / backticks; later steps interpolate it through nested ssh + docker exec layers.)
+- [x] **Done 2026-05-09 during PR #334 setup** — Saved to the `staging` GitHub Environment (Settings → Environments → staging → Environment secrets) via `gh secret set KEYCLOAK_DB_PASSWORD --env staging --repo purposestack/givernance`. Confirmed visible in `gh secret list --env staging`. This locks in the value for every CI run from PR-merge onward; the composite-action fallback `staging_keycloak_db_123` is no longer reachable on staging.
+- [x] **Done 2026-05-09 during PR #334 setup** — Saved to the team external secret manager. You cannot read it back from GitHub; Steps 1, 2, and 7 each need it.
 - [ ] Locate `STAGING_POSTGRES_PASSWORD`. The bootstrap-superuser password lives in 1Password (`Givernance · Staging` vault → `Postgres bootstrap`). If it's not there, extract from a running runner via the GH `staging` env (`gh secret list --env staging` confirms `POSTGRES_PASSWORD` exists; the value can also be inspected on the live container at `ssh givernance-staging "docker inspect givernance-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^POSTGRES_PASSWORD='"` from the operator's session — handle as PII).
 - [ ] Export both into your shell — and **keep this terminal session alive through Step 11**, or rely on the state file Step 3 writes:
   ```bash
