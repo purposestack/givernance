@@ -216,57 +216,81 @@ function applyRefreshedSession(
   });
 }
 
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  let jwt = request.cookies.get(JWT_COOKIE_NAME)?.value;
-  const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)?.value;
-  let refreshedSession: RefreshedSession | null = null;
-  let cookieHeader = request.headers.get("cookie") ?? undefined;
-
-  // Refresh the access token when:
-  //  (a) JWT is present and within `SESSION_REFRESH_GRACE_S` of expiry
-  //      (the original auto-refresh path), OR
-  //  (b) JWT is MISSING but a refresh_token cookie is still alive.
-  //
-  // Case (b) covers the post-impersonation-end flow: the API's
-  // `applyClearImpersonationCookie` only clears `givernance_jwt`, leaving
-  // the operator's KC `givernance_refresh_token` (which the impersonation
-  // start never touched) intact. Without (b), the next request after
-  // end-session lands on the proxy with no JWT, falls through to the
-  // protected-route guard below, and bounces the operator to `/login`.
-  // `/login` is the static form page — it does NOT auto-trigger the OIDC
-  // dance — so the operator sees the sign-in form despite their KC SSO
-  // session still being alive at the IdP. Refreshing here mints fresh
-  // operator KC tokens from the still-valid refresh_token, restoring the
-  // pre-impersonation session in one round-trip.
-  //
-  // The same path also restores any browser tab that lost only its
-  // access-token cookie (e.g. after a server-side `cookies.delete()` that
-  // didn't propagate everywhere). Explicit logout via /api/auth/logout
-  // clears the refresh_token too, so we won't auto-relog a user who chose
-  // to sign out.
+/**
+ * Refresh the access token when:
+ *  (a) JWT is present and within `SESSION_REFRESH_GRACE_S` of expiry
+ *      (the original auto-refresh path), OR
+ *  (b) JWT is MISSING but a refresh_token cookie is still alive.
+ *
+ * Case (b) covers the post-impersonation-end flow: the API's
+ * `applyClearImpersonationCookie` only clears `givernance_jwt`, leaving
+ * the operator's KC `givernance_refresh_token` intact. Without (b), the
+ * next request after end-session lands on the proxy with no JWT, falls
+ * through to the protected-route guard, and bounces the operator to
+ * `/login` — but `/login` is the static form page, NOT the OIDC dance,
+ * so the operator sees the sign-in form despite their KC SSO session
+ * still being alive at the IdP. Refreshing here mints fresh operator
+ * KC tokens from the still-valid refresh_token, restoring the
+ * pre-impersonation session in one round-trip.
+ *
+ * Pulled out of `proxy` to keep that function under the
+ * cognitive-complexity threshold; behaviour identical.
+ */
+async function applyMaybeRefreshSession(
+  request: NextRequest,
+  jwt: string | undefined,
+  refreshToken: string | undefined,
+  cookieHeader: string | undefined,
+): Promise<{
+  jwt: string | undefined;
+  cookieHeader: string | undefined;
+  refreshedSession: RefreshedSession | null;
+}> {
   const jwtExpired = !jwt;
-  if (refreshToken && (jwtExpired || shouldRefreshToken(jwt))) {
-    refreshedSession = await refreshSession(refreshToken);
-    if (refreshedSession) {
-      jwt = refreshedSession.accessToken;
-      cookieHeader = upsertCookieHeader(request, {
+  if (!refreshToken || !(jwtExpired || shouldRefreshToken(jwt))) {
+    return { jwt, cookieHeader, refreshedSession: null };
+  }
+  const refreshedSession = await refreshSession(refreshToken);
+  if (refreshedSession) {
+    return {
+      jwt: refreshedSession.accessToken,
+      cookieHeader: upsertCookieHeader(request, {
         [JWT_COOKIE_NAME]: refreshedSession.accessToken,
         ...(refreshedSession.idToken ? { [ID_TOKEN_COOKIE_NAME]: refreshedSession.idToken } : {}),
         ...(refreshedSession.refreshToken
           ? { [REFRESH_TOKEN_COOKIE_NAME]: refreshedSession.refreshToken }
           : {}),
-      });
-    } else if (jwtExpired || (decodeJwtExp(jwt ?? "") ?? 0) <= Math.floor(Date.now() / 1000)) {
-      jwt = undefined;
-      cookieHeader = upsertCookieHeader(request, {
+      }),
+      refreshedSession,
+    };
+  }
+  if (jwtExpired || (decodeJwtExp(jwt ?? "") ?? 0) <= Math.floor(Date.now() / 1000)) {
+    return {
+      jwt: undefined,
+      cookieHeader: upsertCookieHeader(request, {
         [JWT_COOKIE_NAME]: undefined,
         [ID_TOKEN_COOKIE_NAME]: undefined,
         [REFRESH_TOKEN_COOKIE_NAME]: undefined,
         [CSRF_COOKIE_NAME]: undefined,
-      });
-    }
+      }),
+      refreshedSession: null,
+    };
   }
+  return { jwt, cookieHeader, refreshedSession: null };
+}
+
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const initialJwt = request.cookies.get(JWT_COOKIE_NAME)?.value;
+  const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)?.value;
+  const initialCookieHeader = request.headers.get("cookie") ?? undefined;
+
+  const { jwt, cookieHeader, refreshedSession } = await applyMaybeRefreshSession(
+    request,
+    initialJwt,
+    refreshToken,
+    initialCookieHeader,
+  );
 
   // Allow public routes — but redirect logged-in users away from /login and /signup
   if (isPublic(pathname)) {
