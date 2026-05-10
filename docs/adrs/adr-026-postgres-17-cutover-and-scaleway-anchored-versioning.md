@@ -221,13 +221,17 @@ PG 18 buys nothing concrete (no PG-18-specific feature we use) and costs a guara
   remains out of scope (requires a confirmation token + reviewer
   policy and is not a robot decision).
 
-- **Compliance gate scope is the manifest's `pinned_in:` list.** A
-  future Dockerfile that adds `FROM postgres:18` outside any file
-  declared in `infra/compliance-versions.yml` would slip past the gate.
-  No `FROM postgres:` directive exists in the repo today; this is a
-  forward-looking concern. Either extend the gate to walk all
-  `Dockerfile*` files or treat the `pinned_in:` list as a default-deny
-  pattern. Follow-up.
+- **Compliance gate scope is the manifest's `pinned_in:` list.**
+  **Closed by issue #284.** The gate now runs a second pass that walks
+  every tracked file (`git ls-files`) and flags any `image: <dep>:` or
+  `FROM <dep>:` reference whose containing file is not declared in
+  `pinned_in:` for that dep — default-deny. A stray Dockerfile or
+  compose override that adds `FROM postgres:18` (or `image: postgres:18`)
+  fails CI with a `::error file=…,line=…` annotation pointing at the
+  offending line, regardless of whether anyone remembered to update the
+  manifest. Adding the file to `pinned_in:` then re-runs the existing
+  ceiling check on it — Dockerfile pins get the same major-version
+  enforcement as compose pins.
 
 ### Revisit criteria
 
