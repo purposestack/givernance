@@ -45,6 +45,97 @@ function asCharge(payload: Record<string, unknown>): Stripe.Charge {
   return payload as unknown as Stripe.Charge;
 }
 
+/**
+ * Epic #274 — re-verify the QR id under RLS before trusting it. Returns
+ * null when the metadata referenced a token that has since been deleted
+ * (rare but defensible — admin closes campaign + cascades QR rows mid-
+ * payment), or when metadata was tampered to point at a different
+ * tenant's QR row (RLS makes this query empty). The constituent fallback
+ * is the metadata value, kept for back-compat with legacy bound rows.
+ *
+ * Pulled out of `handlePaymentIntentSucceeded` to keep that function
+ * under the cognitive-complexity threshold; behaviour-preserving.
+ */
+async function resolveQrLink(
+  tx: Parameters<Parameters<typeof withWorkerContext>[1]>[0],
+  orgId: string,
+  metadata: { qrCodeId: string | null; qrCodeConstituentId: string | null },
+): Promise<{ resolvedQrCodeId: string | null; qrLinkedConstituentId: string | null }> {
+  if (!metadata.qrCodeId) {
+    return { resolvedQrCodeId: null, qrLinkedConstituentId: null };
+  }
+  const [qr] = await tx
+    .select({
+      id: campaignQrCodes.id,
+      constituentId: campaignQrCodes.constituentId,
+    })
+    .from(campaignQrCodes)
+    .where(and(eq(campaignQrCodes.id, metadata.qrCodeId), eq(campaignQrCodes.orgId, orgId)));
+  if (!qr) {
+    return { resolvedQrCodeId: null, qrLinkedConstituentId: null };
+  }
+  return {
+    resolvedQrCodeId: qr.id,
+    qrLinkedConstituentId: qr.constituentId ?? metadata.qrCodeConstituentId,
+  };
+}
+
+/**
+ * Find or create the donor constituent. Walks three resolution strategies
+ * in order: (1) QR-linked id (postal letter recipient — protects per-
+ * recipient analytics from "Jean Dupont's wife paid online" producing a
+ * brand-new row), (2) email match (drops the donor on their existing
+ * record), (3) anonymous create (no email, no QR). Pulled out of
+ * `handlePaymentIntentSucceeded` to keep that function under the
+ * cognitive-complexity threshold.
+ */
+async function findOrCreateConstituent(
+  tx: Parameters<Parameters<typeof withWorkerContext>[1]>[0],
+  orgId: string,
+  args: {
+    qrLinkedConstituentId: string | null;
+    email: string | null;
+    firstName: string;
+    lastName: string;
+    log: ReturnType<typeof jobLogger>;
+  },
+): Promise<string> {
+  const { qrLinkedConstituentId, email, firstName, lastName, log } = args;
+
+  if (qrLinkedConstituentId) {
+    const [linked] = await tx
+      .select({ id: constituents.id })
+      .from(constituents)
+      .where(and(eq(constituents.id, qrLinkedConstituentId), eq(constituents.orgId, orgId)));
+    if (linked) return linked.id;
+    // The linked constituent was deleted between print and scan — fall through.
+  }
+
+  if (email) {
+    const [existing] = await tx
+      .select({ id: constituents.id })
+      .from(constituents)
+      .where(sql`${constituents.orgId} = ${orgId} AND ${constituents.email} = ${email}`);
+    if (existing) return existing.id;
+
+    const [created] = await tx
+      .insert(constituents)
+      .values({ orgId, firstName, lastName, email, type: "donor" })
+      .returning({ id: constituents.id });
+    if (!created) throw new Error("findOrCreateConstituent: insert returned no row");
+    log.info({ constituentId: created.id }, "Created new constituent from Stripe");
+    return created.id;
+  }
+
+  // No email AND no QR — anonymous constituent.
+  const [created] = await tx
+    .insert(constituents)
+    .values({ orgId, firstName, lastName, type: "donor" })
+    .returning({ id: constituents.id });
+  if (!created) throw new Error("findOrCreateConstituent: insert returned no row");
+  return created.id;
+}
+
 /** Look up the tenant associated with a Stripe connected account ID */
 async function findTenantByStripeAccount(stripeAccountId: string) {
   const [tenant] = await db
@@ -155,91 +246,17 @@ async function handlePaymentIntentSucceeded(
       baseCurrency,
     );
 
-    // Epic #274 — re-verify the QR id under RLS before trusting it. Returns
-    // null when the metadata referenced a token that has since been deleted
-    // (rare but defensible — admin closes campaign + cascades QR rows mid-
-    // payment), or when metadata was tampered to point at a different
-    // tenant's QR row (RLS makes this query empty).
-    let resolvedQrCodeId: string | null = null;
-    let qrLinkedConstituentId: string | null = null;
-    if (qrCodeIdFromMetadata) {
-      const [qr] = await tx
-        .select({
-          id: campaignQrCodes.id,
-          constituentId: campaignQrCodes.constituentId,
-        })
-        .from(campaignQrCodes)
-        .where(and(eq(campaignQrCodes.id, qrCodeIdFromMetadata), eq(campaignQrCodes.orgId, orgId)));
-      if (qr) {
-        resolvedQrCodeId = qr.id;
-        qrLinkedConstituentId = qr.constituentId ?? qrCodeConstituentIdFromMetadata;
-      }
-    }
-
-    // Find or create constituent
-    let constituentId: string;
-
-    if (qrLinkedConstituentId) {
-      // Personalized QR scan — the donation belongs to the constituent the
-      // letter was printed for, not whoever filled in the donor form. This
-      // protects the per-recipient analytics from "Jean Dupont's wife paid
-      // online" producing a brand-new constituent row.
-      const [linked] = await tx
-        .select({ id: constituents.id })
-        .from(constituents)
-        .where(and(eq(constituents.id, qrLinkedConstituentId), eq(constituents.orgId, orgId)));
-      if (linked) {
-        constituentId = linked.id;
-      } else {
-        // The linked constituent was deleted between print and scan — fall
-        // through to the email-based resolution below.
-        constituentId = "";
-      }
-    } else {
-      constituentId = "";
-    }
-
-    if (!constituentId) {
-      if (constituentEmail) {
-        const [existing] = await tx
-          .select({ id: constituents.id })
-          .from(constituents)
-          .where(
-            sql`${constituents.orgId} = ${orgId} AND ${constituents.email} = ${constituentEmail}`,
-          );
-
-        if (existing) {
-          constituentId = existing.id;
-        } else {
-          const [created] = await tx
-            .insert(constituents)
-            .values({
-              orgId,
-              firstName: constituentFirstName,
-              lastName: constituentLastName,
-              email: constituentEmail,
-              type: "donor",
-            })
-            .returning({ id: constituents.id });
-          // biome-ignore lint/style/noNonNullAssertion: insert returning always returns
-          constituentId = created!.id;
-          log.info({ constituentId }, "Created new constituent from Stripe");
-        }
-      } else {
-        // No email provided AND not bound via QR — create anonymous constituent
-        const [created] = await tx
-          .insert(constituents)
-          .values({
-            orgId,
-            firstName: constituentFirstName,
-            lastName: constituentLastName,
-            type: "donor",
-          })
-          .returning({ id: constituents.id });
-        // biome-ignore lint/style/noNonNullAssertion: insert returning always returns
-        constituentId = created!.id;
-      }
-    }
+    const { resolvedQrCodeId, qrLinkedConstituentId } = await resolveQrLink(tx, orgId, {
+      qrCodeId: qrCodeIdFromMetadata,
+      qrCodeConstituentId: qrCodeConstituentIdFromMetadata,
+    });
+    const constituentId = await findOrCreateConstituent(tx, orgId, {
+      qrLinkedConstituentId,
+      email: constituentEmail ?? null,
+      firstName: constituentFirstName,
+      lastName: constituentLastName,
+      log,
+    });
 
     // Create the donation record — ON CONFLICT guards against BullMQ retry duplicates
     const [donation] = await tx
