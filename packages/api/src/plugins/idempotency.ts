@@ -122,6 +122,75 @@ function buildKey(orgId: string, routeKey: string, clientKey: string): string {
   return `idem:${orgId}:${routeKey}:${clientKey}`;
 }
 
+/**
+ * Replay a cached response when the idempotency cache hits. Returns the
+ * `FastifyReply` (caller must `return` it) on a successful replay, or
+ * `null` when the cache entry was malformed and dropped (caller falls
+ * through to running the handler fresh). Pulled out of the preHandler
+ * to keep that hook under the cognitive-complexity threshold.
+ */
+async function replayCachedResponse(
+  cached: string,
+  cacheKey: string,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  redis: Redis,
+): Promise<FastifyReply | null> {
+  try {
+    const { status, body, headers } = JSON.parse(cached) as CachedResponse;
+    reply.header("idempotency-replayed", "true");
+    if (headers) {
+      for (const [name, value] of Object.entries(headers)) {
+        reply.header(name, value);
+      }
+    }
+    request.idempotencyCacheKey = null;
+    return reply.status(status).send(body);
+  } catch (err) {
+    request.log.warn(
+      { err, cacheKey },
+      "idempotency cache entry malformed; dropping and re-running handler",
+    );
+    await redis.del(cacheKey);
+    return null;
+  }
+}
+
+/**
+ * Issue #181 — replay-time RBAC denial. Lifts the same `rbacDenial`
+ * discriminator the standalone guards emit (PR #185 review PJD-5) so
+ * SOC dashboards filtering on `rbacDenial.guard` see this path too.
+ * Pulled out of the preHandler to keep the hook under the cognitive-
+ * complexity threshold; behaviour-preserving (same status, same body
+ * shape, same log tag).
+ */
+function rejectIdempotencyByRoleGuard(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  minRole: "write" | "admin",
+): FastifyReply {
+  const guardName = minRole === "admin" ? "requireOrgAdmin" : ("requireWrite" as const);
+  const requiredRoles = minRole === "admin" ? ["org_admin"] : ["user", "org_admin"];
+  request.rbacDenial = {
+    guard: guardName,
+    requiredRoles,
+    actualRole: request.auth?.role ?? null,
+  };
+  request.log.warn(
+    { rbacDenial: request.rbacDenial, idempotency: { replay: true } },
+    "rbac denial",
+  );
+  return reply
+    .status(403)
+    .send(
+      problemDetail(
+        403,
+        "Forbidden",
+        minRole === "admin" ? "org_admin role required" : "Write access required",
+      ),
+    );
+}
+
 async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
   const redis = opts.redis ?? sharedRedis;
 
@@ -142,32 +211,7 @@ async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
     // guard would have rejected. Failing fast here also avoids leaking the
     // existence of a cache entry under a guessed `Idempotency-Key`.
     if (idemConfig.minRole && !roleSatisfies(request.auth?.role, idemConfig.minRole)) {
-      // Lift the same discriminator the standalone guards emit (issue #182,
-      // refined in PR #185 review PJD-5) so SOC dashboards filtering on
-      // `rbacDenial.guard` see this path too. The replay-time denial is a
-      // role rejection (the JWT is valid but insufficient), so it
-      // correctly belongs on `rbacDenial`, not `authDenial`.
-      const guardName =
-        idemConfig.minRole === "admin" ? "requireOrgAdmin" : ("requireWrite" as const);
-      const requiredRoles = idemConfig.minRole === "admin" ? ["org_admin"] : ["user", "org_admin"];
-      request.rbacDenial = {
-        guard: guardName,
-        requiredRoles,
-        actualRole: request.auth?.role ?? null,
-      };
-      request.log.warn(
-        { rbacDenial: request.rbacDenial, idempotency: { replay: true } },
-        "rbac denial",
-      );
-      return reply
-        .status(403)
-        .send(
-          problemDetail(
-            403,
-            "Forbidden",
-            idemConfig.minRole === "admin" ? "org_admin role required" : "Write access required",
-          ),
-        );
+      return rejectIdempotencyByRoleGuard(request, reply, idemConfig.minRole);
     }
 
     const cacheKey = buildKey(orgId, idemConfig.routeKey, clientKey);
@@ -208,25 +252,8 @@ async function idempotency(app: FastifyInstance, opts: { redis?: Redis } = {}) {
         );
     }
 
-    try {
-      const { status, body, headers } = JSON.parse(cached) as CachedResponse;
-      reply.header("idempotency-replayed", "true");
-      if (headers) {
-        for (const [name, value] of Object.entries(headers)) {
-          reply.header(name, value);
-        }
-      }
-      // Skip the rest of the handler — the cached body IS the response.
-      request.idempotencyCacheKey = null;
-      return reply.status(status).send(body);
-    } catch (err) {
-      // Malformed cache entry — delete it, let the handler run fresh.
-      request.log.warn(
-        { err, cacheKey },
-        "idempotency cache entry malformed; dropping and re-running handler",
-      );
-      await redis.del(cacheKey);
-    }
+    const replayed = await replayCachedResponse(cached, cacheKey, request, reply, redis);
+    if (replayed) return replayed;
   });
 
   app.addHook("onSend", async (request: FastifyRequest, reply: FastifyReply, payload) => {
