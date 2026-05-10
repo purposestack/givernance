@@ -144,11 +144,24 @@ export interface ConstituentInput {
   tags?: string[];
 }
 
-/** List constituents for an organization with pagination, search, and filtering */
-export async function listConstituents(orgId: string, query: ListConstituentsQuery) {
+/**
+ * Builds the WHERE conditions for `listConstituents` from the query params
+ * (search / tags / type / campaignId / lastDonationFrom-To /
+ * minLifetime-Max / includeDeleted). Pulled out of `listConstituents` to
+ * keep that function under the cognitive-complexity threshold (extract-only,
+ * behavior unchanged). The caller wraps the returned array in `and(...)`.
+ *
+ * Aggregate columns are passed in directly (instead of the whole subquery)
+ * so the helper isn't coupled to drizzle's internal subquery shape.
+ */
+function buildListConstituentsWhere(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  query: ListConstituentsQuery,
+  lastDonationAtColumn: SQL.Aliased<string | null>,
+  lifetimeAmountCentsColumn: SQL.Aliased<number | null>,
+): SQL[] {
   const {
-    page,
-    perPage,
     search,
     tags,
     type,
@@ -159,6 +172,86 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
     minLifetimeAmountCents,
     maxLifetimeAmountCents,
   } = query;
+  const conditions: SQL[] = [eq(constituents.orgId, orgId)];
+
+  if (!includeDeleted) {
+    conditions.push(isNull(constituents.deletedAt));
+  }
+
+  if (search) {
+    const pattern = `%${search}%`;
+    const searchCondition = or(
+      ilike(constituents.firstName, pattern),
+      ilike(constituents.lastName, pattern),
+      ilike(constituents.email, pattern),
+    );
+    if (searchCondition) {
+      conditions.push(searchCondition);
+    }
+  }
+
+  if (type) {
+    conditions.push(eq(constituents.type, type));
+  }
+
+  if (tags && tags.length > 0) {
+    // Drizzle's `arrayOverlaps` compiles to `col && ARRAY[...]::text[]` with
+    // every tag bound as a proper parameter — no SQL interpolation of
+    // user-supplied strings. Replaces the old `sql.raw` + manual `''` escape
+    // (issue #56 Security #7).
+    conditions.push(arrayOverlaps(constituents.tags, tags));
+  }
+
+  // Epic #274 — campaign membership filter via EXISTS subquery against
+  // campaign_constituents. Avoids a join that would multiply rows when a
+  // constituent is in multiple campaigns.
+  if (campaignId) {
+    conditions.push(
+      exists(
+        tx
+          .select({ one: sql`1` })
+          .from(campaignConstituents)
+          .where(
+            and(
+              eq(campaignConstituents.constituentId, constituents.id),
+              eq(campaignConstituents.campaignId, campaignId),
+              eq(campaignConstituents.orgId, orgId),
+            ),
+          ),
+      ),
+    );
+  }
+
+  if (lastDonationFrom) {
+    conditions.push(gte(lastDonationAtColumn, lastDonationFrom));
+  }
+  if (lastDonationTo) {
+    conditions.push(lte(lastDonationAtColumn, lastDonationTo));
+  }
+  // Lifetime-amount filters: COALESCE the aggregate to 0 so constituents
+  // with NO donation history (no row in `donation_agg` → NULL after the
+  // LEFT JOIN) are still evaluated correctly. Without this, `gte(NULL, 0)`
+  // evaluates to NULL in SQL (falsy in WHERE), so a filter of
+  // `minLifetimeAmountCents=0` would silently exclude every zero-donor —
+  // exactly the population an operator filtering "give me everyone with
+  // ≥0 €" expects to see.
+  if (minLifetimeAmountCents !== undefined) {
+    conditions.push(
+      gte(sql<number>`COALESCE(${lifetimeAmountCentsColumn}, 0)`, minLifetimeAmountCents),
+    );
+  }
+  if (maxLifetimeAmountCents !== undefined) {
+    conditions.push(
+      lte(sql<number>`COALESCE(${lifetimeAmountCentsColumn}, 0)`, maxLifetimeAmountCents),
+    );
+  }
+
+  return conditions;
+}
+
+/** List constituents for an organization with pagination, search, and filtering */
+export async function listConstituents(orgId: string, query: ListConstituentsQuery) {
+  const { page, perPage } = query;
   const offset = (page - 1) * perPage;
 
   return withTenantContext(orgId, async (tx) => {
@@ -189,88 +282,15 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
       .groupBy(donations.constituentId)
       .as("donation_agg");
 
-    const conditions = [eq(constituents.orgId, orgId)];
-
-    if (!includeDeleted) {
-      conditions.push(isNull(constituents.deletedAt));
-    }
-
-    if (search) {
-      const pattern = `%${search}%`;
-      const searchCondition = or(
-        ilike(constituents.firstName, pattern),
-        ilike(constituents.lastName, pattern),
-        ilike(constituents.email, pattern),
-      );
-      if (searchCondition) {
-        conditions.push(searchCondition);
-      }
-    }
-
-    if (type) {
-      conditions.push(eq(constituents.type, type));
-    }
-
-    if (tags && tags.length > 0) {
-      // Drizzle's `arrayOverlaps` compiles to `col && ARRAY[...]::text[]` with
-      // every tag bound as a proper parameter — no SQL interpolation of
-      // user-supplied strings. Replaces the old `sql.raw` + manual `''` escape
-      // (issue #56 Security #7), which worked in practice but was a
-      // correctness footgun one typo away from SQL injection.
-      conditions.push(arrayOverlaps(constituents.tags, tags));
-    }
-
-    // Epic #274 — campaign membership filter via EXISTS subquery against
-    // campaign_constituents. Avoids a join that would multiply rows when a
-    // constituent is in multiple campaigns.
-    if (campaignId) {
-      conditions.push(
-        exists(
-          tx
-            .select({ one: sql`1` })
-            .from(campaignConstituents)
-            .where(
-              and(
-                eq(campaignConstituents.constituentId, constituents.id),
-                eq(campaignConstituents.campaignId, campaignId),
-                eq(campaignConstituents.orgId, orgId),
-              ),
-            ),
-        ),
-      );
-    }
-
-    if (lastDonationFrom) {
-      conditions.push(gte(donationAggregate.lastDonationAt, lastDonationFrom));
-    }
-    if (lastDonationTo) {
-      conditions.push(lte(donationAggregate.lastDonationAt, lastDonationTo));
-    }
-    // Lifetime-amount filters: COALESCE the aggregate to 0 so constituents
-    // with NO donation history (no row in `donation_agg` → NULL after the
-    // LEFT JOIN) are still evaluated correctly. Without this, `gte(NULL, 0)`
-    // evaluates to NULL in SQL (falsy in WHERE), so a filter of
-    // `minLifetimeAmountCents=0` would silently exclude every zero-donor —
-    // exactly the population an operator filtering "give me everyone with
-    // ≥0 €" expects to see.
-    if (minLifetimeAmountCents !== undefined) {
-      conditions.push(
-        gte(
-          sql<number>`COALESCE(${donationAggregate.lifetimeAmountCents}, 0)`,
-          minLifetimeAmountCents,
-        ),
-      );
-    }
-    if (maxLifetimeAmountCents !== undefined) {
-      conditions.push(
-        lte(
-          sql<number>`COALESCE(${donationAggregate.lifetimeAmountCents}, 0)`,
-          maxLifetimeAmountCents,
-        ),
-      );
-    }
-
-    const where = and(...conditions);
+    const where = and(
+      ...buildListConstituentsWhere(
+        tx,
+        orgId,
+        query,
+        donationAggregate.lastDonationAt,
+        donationAggregate.lifetimeAmountCents,
+      ),
+    );
     const sort = normalizeConstituentSort(query.sort);
     const order = normalizeConstituentOrder(query.order);
 
