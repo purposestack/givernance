@@ -56,6 +56,48 @@ interface StashedPayload {
 type Mode = "delegation" | "impersonation";
 
 /**
+ * Translates the non-step-up error responses to localised copy.
+ *  - 401 + step_up_required=false → lockout (5-fail counter tipped)
+ *  - 401 (other) → step-up failed (KC didn't upgrade acr; user bailed during enrolment)
+ *  - else → API's RFC 9457 detail/title fallback
+ * The step_up_required=true branch is handled inline in `executeStart`
+ * (it triggers a redirect, not a setError). Pulled out to keep
+ * `executeStart` under the cognitive-complexity threshold.
+ */
+function resolveImpersonationErrorCopy(
+  res: Response,
+  body: StepUpRequiredResponse,
+  t: ReturnType<typeof useTranslations>,
+): string {
+  if (res.status === 401 && body.step_up_required === false) return t("errorLockout");
+  if (res.status === 401) return t("errorStepUpFailed");
+  return body.detail ?? body.title ?? `Request failed: ${res.status}`;
+}
+
+/**
+ * Stash the in-flight impersonation form payload to sessionStorage so
+ * the post-MFA mount-effect can pick it up and resubmit without making
+ * the operator re-fill (target, mode, reason). 5-min TTL matches the
+ * API's auth_time freshness window. Pulled out of `executeStart` to
+ * keep that function under the cognitive-complexity threshold; failures
+ * (privacy mode, quota exceeded) silently fall back to the legacy
+ * "operator refills the form" behaviour — annoying but not broken.
+ */
+function stashImpersonationPayload(
+  payload: Pick<StashedPayload, "target" | "mode" | "reason">,
+): void {
+  try {
+    const stash: StashedPayload = {
+      ...payload,
+      expiresAt: Date.now() + STASH_TTL_MS,
+    };
+    sessionStorage.setItem(STASH_KEY, JSON.stringify(stash));
+  } catch {
+    // sessionStorage may be unavailable. Fall through.
+  }
+}
+
+/**
  * Client form to start a support session (issue #24).
  *
  * Three pickers replace the bare UUID paste:
@@ -127,33 +169,15 @@ export function StartImpersonationForm() {
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as StepUpRequiredResponse;
 
-        // Step-up MFA required (issue #250). Send the operator through
-        // /api/auth/login with `acr_values=2` so Keycloak fires the
-        // Conditional-LoA sub-flow (OTP prompt). The login route persists
-        // `return_to` in a cookie; the callback will land them back on
-        // this page after the fresh acr=2 token is set, and the
-        // mount-effect below auto-resubmits the stashed payload.
-        // Suppressed when `step_up_required` is false (lockout case — the
-        // operator is locked out, redirecting to re-auth would just loop).
+        // Step-up MFA required (issue #250). Stash the payload + redirect
+        // through /api/auth/login with `acr_values=2`. The mount-effect
+        // below auto-hydrates from the stash on the post-MFA bounce-back.
         if (res.status === 401 && body.step_up_required) {
-          // Stash the payload so the post-MFA mount-effect can pick it up
-          // and resubmit without making the operator re-fill (target,
-          // mode, reason). 5-min TTL matches the API's auth_time
-          // freshness window — past that, a resubmit would 401 again
-          // and we'd be back in this branch anyway.
-          try {
-            const stash: StashedPayload = {
-              target: submittedTarget,
-              mode: submittedMode,
-              reason: submittedReason,
-              expiresAt: Date.now() + STASH_TTL_MS,
-            };
-            sessionStorage.setItem(STASH_KEY, JSON.stringify(stash));
-          } catch {
-            // sessionStorage may be unavailable (privacy mode, quota).
-            // Fall back to the legacy "operator refills the form"
-            // behaviour — annoying but not broken.
-          }
+          stashImpersonationPayload({
+            target: submittedTarget,
+            mode: submittedMode,
+            reason: submittedReason,
+          });
           willNavigate = true;
           setError(t("stepUpRedirecting"));
           window.location.assign(
@@ -162,27 +186,7 @@ export function StartImpersonationForm() {
           return;
         }
 
-        // Translated error copy for the step-up 401 lockout path
-        // (review I-7) — the API's RFC 9457 `detail` field is English-
-        // only since the API isn't locale-aware. The redirect branch
-        // above already handles `step_up_required: true`, so this 401
-        // branch is reached only when the 5-fail counter tipped.
-        if (res.status === 401 && body.step_up_required === false) {
-          setError(t("errorLockout"));
-          return;
-        }
-
-        // Anything else under a 401 (e.g., the auto-resubmit path lands
-        // here when KC didn't actually upgrade the acr — say the user
-        // bailed during enrolment and went Back). Use the localised
-        // step-up-failed copy so the operator gets an actionable hint
-        // instead of the API's English-only `detail`. Multi-agent
-        // review UX-2 (PR #251).
-        if (res.status === 401) {
-          setError(t("errorStepUpFailed"));
-          return;
-        }
-        setError(body.detail ?? body.title ?? `Request failed: ${res.status}`);
+        setError(resolveImpersonationErrorCopy(res, body, t));
         return;
       }
 
