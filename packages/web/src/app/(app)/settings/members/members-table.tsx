@@ -51,6 +51,46 @@ import { MemberService } from "@/services/MemberService";
 
 const ROLE_VALUES: readonly MemberRole[] = ["user", "org_admin", "viewer"];
 
+/**
+ * Build the sparse PATCH /v1/users/:id body — only the fields that
+ * actually changed vs `target` (and respecting the self-edit role lock).
+ * Pulled out of the EditMember dialog's onSubmit to keep that callback
+ * under the cognitive-complexity threshold.
+ */
+function buildMemberUpdatePatch(
+  proposed: { firstName: string; lastName: string; role: MemberRole },
+  target: { firstName: string; lastName: string; role: MemberRole },
+  isSelf: boolean,
+): { firstName?: string; lastName?: string; role?: MemberRole } {
+  const patch: { firstName?: string; lastName?: string; role?: MemberRole } = {};
+  if (proposed.firstName !== target.firstName) patch.firstName = proposed.firstName;
+  if (proposed.lastName !== target.lastName) patch.lastName = proposed.lastName;
+  if (!isSelf && proposed.role !== target.role) patch.role = proposed.role;
+  return patch;
+}
+
+/**
+ * Map an `ApiProblem` from the member-update endpoint to the right
+ * localised inline error. Server emits `errorCode` (Stripe/GitHub
+ * convention — see review A2) as an RFC 9457 extension member on the
+ * 422 path so we render targeted messages rather than string-match
+ * the human-readable `detail`.
+ */
+function resolveMemberUpdateError(
+  err: unknown,
+  t: ReturnType<typeof useTranslations<"settings.members">>,
+): string {
+  const code =
+    err instanceof ApiProblem && typeof err.extensions.errorCode === "string"
+      ? err.extensions.errorCode
+      : undefined;
+  if (code === "cannot_self_demote") return t("editDialog.errors.selfDemote");
+  if (code === "cannot_demote_last_admin") return t("editDialog.errors.lastAdmin");
+  if (code === "missing_keycloak_link") return t("editDialog.errors.missingKeycloakLink");
+  if (err instanceof ApiProblem && err.detail) return err.detail;
+  return t("editDialog.errors.generic");
+}
+
 interface MembersTableProps {
   members: Member[];
   pagination: DataTablePagination;
@@ -337,19 +377,15 @@ function EditMemberDialog({ target, isSelf, onClose, onSaved }: EditMemberDialog
   const onSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      const trimmedFirst = firstName.trim();
-      const trimmedLast = lastName.trim();
-
-      const patch: { firstName?: string; lastName?: string; role?: MemberRole } = {};
-      if (trimmedFirst !== target.firstName) patch.firstName = trimmedFirst;
-      if (trimmedLast !== target.lastName) patch.lastName = trimmedLast;
-      if (!isSelf && role !== target.role) patch.role = role;
+      const patch = buildMemberUpdatePatch(
+        { firstName: firstName.trim(), lastName: lastName.trim(), role },
+        target,
+        isSelf,
+      );
 
       if (Object.keys(patch).length === 0) {
         // Idempotent no-op — desired state matches current state, so close
-        // the dialog silently. No toast, no error: a re-submit with the
-        // same values is a request to reach a state we're already in,
-        // which is success by definition.
+        // the dialog silently. No toast, no error.
         onClose();
         return;
       }
@@ -362,42 +398,12 @@ function EditMemberDialog({ target, isSelf, onClose, onSaved }: EditMemberDialog
         onSaved();
       } catch (err) {
         if (!(err instanceof ApiProblem)) console.error("members.update failed", err);
-        // Server emits `errorCode` (Stripe/GitHub convention — see review
-        // A2) as an RFC 9457 extension member on the 422 path so we can
-        // render a targeted message rather than string-match the
-        // human-readable `detail`.
-        const code =
-          err instanceof ApiProblem && typeof err.extensions.errorCode === "string"
-            ? err.extensions.errorCode
-            : undefined;
-        if (code === "cannot_self_demote") {
-          setError(t("editDialog.errors.selfDemote"));
-        } else if (code === "cannot_demote_last_admin") {
-          setError(t("editDialog.errors.lastAdmin"));
-        } else if (code === "missing_keycloak_link") {
-          setError(t("editDialog.errors.missingKeycloakLink"));
-        } else if (err instanceof ApiProblem && err.detail) {
-          setError(err.detail);
-        } else {
-          setError(t("editDialog.errors.generic"));
-        }
+        setError(resolveMemberUpdateError(err, t));
       } finally {
         setSubmitting(false);
       }
     },
-    [
-      firstName,
-      isSelf,
-      lastName,
-      onClose,
-      onSaved,
-      role,
-      t,
-      target.firstName,
-      target.id,
-      target.lastName,
-      target.role,
-    ],
+    [firstName, isSelf, lastName, onClose, onSaved, role, t, target],
   );
 
   return (
