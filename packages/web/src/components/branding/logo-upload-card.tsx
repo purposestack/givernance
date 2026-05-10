@@ -112,31 +112,27 @@ export function LogoUploadCard({
     const tick = async () => {
       if (cancelled) return;
       attempts += 1;
+      // A network blip during the poll is indistinguishable from "still
+      // pending" — both fall through to the timeout/schedule branch below.
+      // Collapsing into a single decision flow keeps the catch path and the
+      // success path symmetric, which removes the duplicated timeout check.
+      let logo: OrgLogo | null = null;
       try {
-        const logo = await BrandingService.getOrgLogo();
-        if (cancelled) return;
-        if (logo && logo.status === "ready") {
-          setState({ kind: "ready", logo });
-          toast.success(t("success"));
-          return;
-        }
-        if (logo && logo.status === "failed") {
-          setState({ kind: "error", message: t("errors.uploadFailed") });
-          return;
-        }
-        if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
-          setState({ kind: "error", message: t("errors.uploadFailed") });
-          return;
-        }
-        timer = setTimeout(tick, pollDelayMs(attempts));
+        logo = await BrandingService.getOrgLogo();
       } catch {
-        if (cancelled) return;
-        if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
-          setState({ kind: "error", message: t("errors.uploadFailed") });
-          return;
-        }
-        timer = setTimeout(tick, pollDelayMs(attempts));
+        // Intentionally swallowed — handled by the unified flow below.
       }
+      if (cancelled) return;
+      if (logo?.status === "ready") {
+        setState({ kind: "ready", logo });
+        toast.success(t("success"));
+        return;
+      }
+      if (logo?.status === "failed" || Date.now() - startedAt > POLL_TIMEOUT_MS) {
+        setState({ kind: "error", message: t("errors.uploadFailed") });
+        return;
+      }
+      timer = setTimeout(tick, pollDelayMs(attempts));
     };
 
     timer = setTimeout(tick, pollDelayMs(0));
@@ -320,45 +316,7 @@ export function LogoUploadCard({
 
               <p className="text-xs text-on-surface-variant">{t("coachingCopy")}</p>
 
-              {/* Status row */}
-              {state.kind === "uploading" ? (
-                <div
-                  className="flex items-center gap-2 text-sm text-on-surface-variant"
-                  role="status"
-                >
-                  <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-                  <span>{t("uploading")}</span>
-                </div>
-              ) : null}
-              {state.kind === "processing" ? (
-                <div
-                  className="flex items-center gap-2 text-sm text-on-surface-variant"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-                  <span>{t("pendingProcessing")}</span>
-                </div>
-              ) : null}
-              {state.kind === "ready" ? (
-                <div
-                  className="inline-flex items-center gap-2 rounded-full bg-green-light px-3 py-1 text-xs text-green-text"
-                  role="status"
-                >
-                  <CheckCircle2 size={14} aria-hidden="true" />
-                  <span>{t("readyBadge")}</span>
-                </div>
-              ) : null}
-              {state.kind === "error" ? (
-                <div
-                  className="flex items-start gap-2 rounded-lg border border-error-border bg-error-container p-3 text-sm text-on-error-container"
-                  role="alert"
-                  aria-live="polite"
-                >
-                  <TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-                  <span className="flex-1">{state.message}</span>
-                </div>
-              ) : null}
+              <LogoStatusRow state={state} />
 
               {currentLogo ? (
                 <div className="flex flex-wrap gap-3 pt-2">
@@ -384,6 +342,59 @@ export function LogoUploadCard({
       </div>
     </Wrapper>
   );
+}
+
+/**
+ * Renders the inline status row beneath the dropzone. Pulled out of
+ * `LogoUploadCard` so the parent stays under the cognitive-complexity
+ * threshold; behaviour-preserving — same DOM, same aria roles.
+ */
+function LogoStatusRow({ state }: { state: CardState }) {
+  const t = useTranslations("settings.branding");
+  if (state.kind === "uploading") {
+    return (
+      <div className="flex items-center gap-2 text-sm text-on-surface-variant" role="status">
+        <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+        <span>{t("uploading")}</span>
+      </div>
+    );
+  }
+  if (state.kind === "processing") {
+    return (
+      <div
+        className="flex items-center gap-2 text-sm text-on-surface-variant"
+        role="status"
+        aria-live="polite"
+      >
+        <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+        <span>{t("pendingProcessing")}</span>
+      </div>
+    );
+  }
+  if (state.kind === "ready") {
+    return (
+      <div
+        className="inline-flex items-center gap-2 rounded-full bg-green-light px-3 py-1 text-xs text-green-text"
+        role="status"
+      >
+        <CheckCircle2 size={14} aria-hidden="true" />
+        <span>{t("readyBadge")}</span>
+      </div>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <div
+        className="flex items-start gap-2 rounded-lg border border-error-border bg-error-container p-3 text-sm text-on-error-container"
+        role="alert"
+        aria-live="polite"
+      >
+        <TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <span className="flex-1">{state.message}</span>
+      </div>
+    );
+  }
+  return null;
 }
 
 interface UploadErrorMessages {
