@@ -89,7 +89,7 @@ runs:
         MINIO_KMS_SECRET_KEY=$MINIO_KMS
         KEYCLOAK_ADMIN_PASSWORD=$KC_PASS
         SESSION_SECRET=$SESSION_SEC
-        KC_DB_PASSWORD=$PG_PASS
+        KC_DB_PASSWORD=$KEYCLOAK_DB_PASS
         DATABASE_URL=postgres://givernance:$PG_PASS@givernance-postgres:5432/givernance_staging
         DATABASE_URL_APP=postgres://givernance:$PG_PASS@givernance-postgres:5432/givernance_staging
         REDIS_URL=redis://:$REDIS_PASS@givernance-redis:6379
