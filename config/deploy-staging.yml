@@ -235,24 +235,24 @@ accessories:
     env:
       secret:
         - REDIS_PASSWORD
+    files:
+      # Boot wrapper that invokes `redis-server --requirepass "$REDIS_PASSWORD"`
+      # from INSIDE the container, where REDIS_PASSWORD is in env. We can't
+      # put that string directly in `cmd:` below because kamal serialises a
+      # string-form cmd in a way that shell-expands `$REDIS_PASSWORD` on the
+      # GH Actions runner first (where the var is NOT set), turning it into
+      # `--requirepass ""`. Array-form cmd would dodge that, but kamal
+      # rejects it for accessories (`should be a string` ConfigurationError).
+      # See `infra/redis/start.sh` and the issue-#283 follow-up PR for the
+      # full debug trace.
+      - infra/redis/start.sh:/usr/local/bin/start-redis.sh
     # Enforce authentication. Redis 8's default startup has `requirepass`
     # empty, so AUTH commands are accepted-then-ignored ("Client sent AUTH,
-    # but no password is set on the 'default' user"). Setting requirepass
-    # here makes every connection require the password from the bag, which
-    # `setup-kamal-secrets` already wires into REDIS_URL for every app.
-    #
-    # Array form (NOT a string scalar) is load-bearing: kamal serialises a
-    # string-form `cmd:` such that `$REDIS_PASSWORD` gets shell-expanded on
-    # the GH Actions runner — where REDIS_PASSWORD is NOT exported (only
-    # POSTGRES_PASSWORD lands in runner env via `setup-kamal-secrets`) — so
-    # the literal `$REDIS_PASSWORD` resolves to empty BEFORE reaching docker
-    # and Redis ends up booting with `--requirepass ""` (== no auth).
-    # Passing an array delegates to docker's exec form, the inner `sh -c`
-    # then runs INSIDE the container where REDIS_PASSWORD IS in env.
-    cmd:
-      - sh
-      - -c
-      - exec redis-server --requirepass "$REDIS_PASSWORD"
+    # but no password is set on the 'default' user"). The wrapper script
+    # mounted above sets `--requirepass` from `$REDIS_PASSWORD` (sourced from
+    # `.kamal/secrets` via the `env.secret` block) and `exec`s redis-server
+    # so it ends up as PID 1.
+    cmd: sh /usr/local/bin/start-redis.sh
     directories:
       - data/redis:/data
   minio:
