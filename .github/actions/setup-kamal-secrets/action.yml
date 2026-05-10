@@ -81,6 +81,19 @@ runs:
           exit 1
         fi
 
+        # URL-encode passwords before interpolating them into URIs (issue #335).
+        # `pg-connection-string` (used by drizzle-kit AND `pg.Pool`) and
+        # `ioredis` parse the URI strictly: any `/`, `?`, `#`, `@`, `:`, `+`,
+        # `=`, `[`, `]` in the password segment splits the URL at the wrong
+        # boundary. Discovered the hard way during the issue #283 staging
+        # cutover when `openssl rand -base64 24` produced a `/`-containing
+        # POSTGRES_PASSWORD and drizzle-kit migrate exit 1'd silently with
+        # `applying migrations…` (the underlying `TypeError: Invalid URL`
+        # got swallowed). `jq -sRr @uri` is RFC 3986 percent-encoding;
+        # available on every GH Actions runner via the standard image.
+        PG_PASS_ENC=$(printf '%s' "$PG_PASS" | jq -sRr @uri)
+        REDIS_PASS_ENC=$(printf '%s' "$REDIS_PASS" | jq -sRr @uri)
+
         cat <<EOF > .kamal/secrets
         GITHUB_TOKEN=${GITHUB_TOKEN}
         POSTGRES_PASSWORD=$PG_PASS
@@ -90,9 +103,9 @@ runs:
         KEYCLOAK_ADMIN_PASSWORD=$KC_PASS
         SESSION_SECRET=$SESSION_SEC
         KC_DB_PASSWORD=$KEYCLOAK_DB_PASS
-        DATABASE_URL=postgres://givernance:$PG_PASS@givernance-postgres:5432/givernance_staging
-        DATABASE_URL_APP=postgres://givernance:$PG_PASS@givernance-postgres:5432/givernance_staging
-        REDIS_URL=redis://:$REDIS_PASS@givernance-redis:6379
+        DATABASE_URL=postgres://givernance:$PG_PASS_ENC@givernance-postgres:5432/givernance_staging
+        DATABASE_URL_APP=postgres://givernance:$PG_PASS_ENC@givernance-postgres:5432/givernance_staging
+        REDIS_URL=redis://:$REDIS_PASS_ENC@givernance-redis:6379
         S3_SECRET_ACCESS_KEY=$MINIO_PASS
         KEYCLOAK_ADMIN_CLIENT_SECRET=$KC_CLIENT_SECRET
         RESEND_API_KEY=$RESEND_KEY
