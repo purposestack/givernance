@@ -116,7 +116,6 @@ function HeaderCell<TData>({ header, padding }: HeaderCellProps<TData>) {
   );
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: DataTable hosts the (paginated | unpaginated) × (rows | empty) matrix inline. Splitting into branches hides the row-summary / pagination dispatch.
 export function DataTable<TData>({
   onRowClick,
   columns,
