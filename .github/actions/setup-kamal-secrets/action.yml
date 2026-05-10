@@ -21,17 +21,27 @@ runs:
         set -euo pipefail
         mkdir -p .kamal
 
-        # Apply non-load-bearing fallbacks for staging-only credentials so
-        # a fresh fork or accidentally-deleted secret doesn't block the
-        # deploy. These match the values the local docker-compose stack
-        # uses; production must override every one of them via a real
-        # secret.
-        PG_PASS="${POSTGRES_PASSWORD:-staging_postgres_123}"
-        REDIS_PASS="${REDIS_PASSWORD:-staging_redis_123}"
-        MINIO_PASS="${MINIO_ROOT_PASSWORD:-staging_minio_123}"
-        KC_PASS="${KEYCLOAK_ADMIN_PASSWORD:-staging_keycloak_123}"
-        KC_CLIENT_SECRET="${KEYCLOAK_ADMIN_CLIENT_SECRET:-staging_keycloak_client_secret_123}"
-        SESSION_SEC="${SESSION_SECRET:-staging_session_secret_123}"
+        # Every secret below is required — `:?` aborts the step with a
+        # clear error if the matching GH-Environment secret is unset
+        # (issue #343). The previous `:-staging_X_123` fallbacks were a
+        # foot-gun: they were committed in plaintext, framed as "non-
+        # load-bearing", and turned out to be load-bearing on the
+        # 2026-05-10 hygiene audit (#340). Now a missing secret fails
+        # at deploy time with a clear pointer instead of silently
+        # rebooting onto a known-public default.
+        #
+        # Adding a new caller (e.g. a future production environment, see
+        # `docs/runbooks/launch-prod.md`)? Every name listed here must
+        # exist in that environment's secret bag, generated via
+        # `openssl rand -hex 24` (URL-safe by construction; #335 fix
+        # makes other charsets work too but hex stays the recommendation).
+        # Fork-developer setup steps live in `docs/dev/staging-secrets-setup.md`.
+        PG_PASS="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
+        REDIS_PASS="${REDIS_PASSWORD:?REDIS_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
+        MINIO_PASS="${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
+        KC_PASS="${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
+        KC_CLIENT_SECRET="${KEYCLOAK_ADMIN_CLIENT_SECRET:?KEYCLOAK_ADMIN_CLIENT_SECRET is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
+        SESSION_SEC="${SESSION_SECRET:?SESSION_SECRET is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
         # Resend API key — required because deploy-staging.yml sets
         # EMAIL_PROVIDER=resend; missing key crashes the worker on first
         # send. No fallback: an unset secret here is a deploy bug.
@@ -46,10 +56,8 @@ runs:
         # check in packages/api/src/env.ts requires this be present and
         # ≥32 chars — without it the api container exits 1 on boot, which
         # was the regression from 1e49f8e that took staging down on every
-        # push to main. Staging fallback is non-load-bearing, exactly 32
-        # ASCII chars (HS256 doesn't care about charset). Production must
-        # override; rotate by setting the GH secret and redeploying.
-        IMPERSONATION_JWT="${IMPERSONATION_JWT_SECRET:-staging_impersonation_jwt_secret_32}"
+        # push to main.
+        IMPERSONATION_JWT="${IMPERSONATION_JWT_SECRET:?IMPERSONATION_JWT_SECRET is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
         # Keycloak's dedicated DB role password (ADR-017). Wired into:
         #   - the postgres accessory's init script on first cluster init
         #     (provisions the `keycloak` role + `givernance_keycloak` DB —
@@ -59,20 +67,16 @@ runs:
         #     `KC_DB_USERNAME` flips from `givernance` (bootstrap superuser
         #     used by the legacy co-located KC) to `keycloak` (least-priv
         #     role owning only the KC DB).
-        # Until that cutover lands, this value is unused at runtime — the
-        # live keycloak accessory still authenticates via POSTGRES_PASSWORD
-        # through KC_DB_PASSWORD below. Staging fallback non-load-bearing;
-        # production must override via `gh secret set KEYCLOAK_DB_PASSWORD
-        # --env staging` (matched to the value the operator generates +
-        # records during the runbook).
-        KEYCLOAK_DB_PASS="${KEYCLOAK_DB_PASSWORD:-staging_keycloak_db_123}"
+        # After PR #336 cutover (2026-05-10), staging keycloak runs as
+        # the dedicated `keycloak` role with this password.
+        KEYCLOAK_DB_PASS="${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
         # MinIO server-side AES256 encryption key. Format
         # `<key-name>:<base64-32-byte-secret>`; generate with
-        # `openssl rand -base64 32`. The base64 portion MUST decode to
-        # *exactly* 32 bytes — the validation step below enforces this so
-        # a future maintainer who edits the fallback can't silently
-        # reproduce the 2026-04-29 outage (issue #211).
-        MINIO_KMS="${MINIO_KMS_SECRET_KEY:-staging-kms:p3wiREaVf4VXPFYGTbdyrk5kVzqCrd9jEpw1EgEl/Qg=}"
+        # `openssl rand -base64 32` and prefix with `<keyname>:`. The
+        # base64 portion MUST decode to exactly 32 bytes — the validation
+        # step below enforces this; the 2026-04-29 outage (#211) was
+        # caused by a wrong-length value masquerading as valid.
+        MINIO_KMS="${MINIO_KMS_SECRET_KEY:?MINIO_KMS_SECRET_KEY is required — set it in Settings → Environments → staging → Secrets. Format: <key-name>:<base64-32-byte-secret>. See docs/dev/staging-secrets-setup.md.}"
 
         KMS_BASE64="${MINIO_KMS#*:}"
         KMS_LEN=$(printf '%s' "$KMS_BASE64" | base64 -d 2>/dev/null | wc -c | tr -d ' ')
