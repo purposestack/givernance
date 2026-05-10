@@ -87,19 +87,29 @@ jobs:
 
       # Per-accessory subtree diff of `config/deploy-staging.yml`. The
       # file-level `kamal_config` filter above tells us "the file was
-      # edited"; this step tells us "the `accessories.minio` subtree
-      # changed" or "the `accessories.keycloak` subtree changed", so we
-      # only reboot the accessories whose config actually moved instead
-      # of every accessory whenever the file is touched (e.g., a
-      # top-level `env.clear` edit).
+      # edited"; this step tells us, for each `accessories.<name>`
+      # subtree, whether *that* subtree moved — so we only reboot the
+      # accessories whose config actually changed instead of every
+      # accessory whenever the file is touched (e.g., a top-level
+      # `env.clear` edit).
+      #
+      # The list of accessories is derived from
+      # `yq '.accessories | keys'` so adding a new accessory in
+      # `config/deploy-staging.yml` automatically gets per-subtree
+      # diffing here — no edit to this workflow required (issue #322).
       #
       # Outputs:
-      #   minio_changed       — `accessories.minio` subtree differs vs BEFORE_SHA
-      #   keycloak_changed    — `accessories.keycloak` subtree differs vs BEFORE_SHA
-      #   run_keycloak        — combined gate for the Keycloak chain
-      #                         (file-paths OR subtree OR workflow_dispatch)
-      #   run_minio_reboot    — combined gate for the MinIO accessory reboot
-      #                         (subtree OR workflow_dispatch)
+      #   <acc>_changed         — `accessories.<acc>` subtree differs vs BEFORE_SHA
+      #                           (one output per accessory key)
+      #   run_keycloak          — combined gate for the Keycloak chain
+      #                           (file-paths OR subtree OR workflow_dispatch)
+      #   accessories_to_reboot — space-separated list of non-keycloak
+      #                           accessories needing a reboot. Keycloak is
+      #                           omitted because it has its own dedicated
+      #                           reboot step (it gates the realm-import
+      #                           chain and must run before the realm-ready
+      #                           wait); the Keycloak reboot keys off
+      #                           `run_keycloak` instead.
       #
       # Conservative on edge cases: workflow_dispatch (no diff base) and
       # missing-parent (force push, first push to a new branch) both
@@ -115,55 +125,81 @@ jobs:
           KEYCLOAK_FILES_CHANGED: ${{ steps.changes.outputs.keycloak }}
         run: |
           set -euo pipefail
-          minio_changed=false
-          keycloak_changed=false
+
+          ACCESSORIES=$(yq -r '.accessories | keys | .[]' config/deploy-staging.yml)
+          if [ -z "$ACCESSORIES" ]; then
+            echo "::error::No accessories found under .accessories in config/deploy-staging.yml" >&2
+            exit 1
+          fi
+          echo "Detected accessories: $(echo "$ACCESSORIES" | tr '\n' ' ')"
+
+          declare -A ACC_CHANGED
+          for acc in $ACCESSORIES; do
+            ACC_CHANGED[$acc]=false
+          done
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            minio_changed=true
-            keycloak_changed=true
+            for acc in $ACCESSORIES; do
+              ACC_CHANGED[$acc]=true
+            done
           elif [ "$KAMAL_CONFIG_CHANGED" = "true" ]; then
             OLD=$(mktemp)
             if git show "${BEFORE_SHA}:config/deploy-staging.yml" > "$OLD" 2>/dev/null; then
-              for acc in minio keycloak; do
+              for acc in $ACCESSORIES; do
                 OLD_HASH=$(yq ".accessories.${acc}" "$OLD" 2>/dev/null | sha256sum | cut -d' ' -f1)
                 NEW_HASH=$(yq ".accessories.${acc}" config/deploy-staging.yml 2>/dev/null | sha256sum | cut -d' ' -f1)
                 if [ "$OLD_HASH" != "$NEW_HASH" ]; then
-                  eval "${acc}_changed=true"
+                  ACC_CHANGED[$acc]=true
                   echo "accessories.${acc} subtree changed"
                 fi
               done
               rm -f "$OLD"
             else
               # Force push, first-push to branch, or BEFORE_SHA gone — be conservative.
-              minio_changed=true
-              keycloak_changed=true
+              for acc in $ACCESSORIES; do
+                ACC_CHANGED[$acc]=true
+              done
               echo "BEFORE_SHA=${BEFORE_SHA} unavailable — assuming all accessory subtrees changed"
             fi
           fi
 
+          # Keycloak chain gate: paths-filter on infra/keycloak/** OR the
+          # accessory subtree changed OR a manual dispatch.
+          keycloak_changed=${ACC_CHANGED[keycloak]:-false}
           run_keycloak=false
           if [ "$KEYCLOAK_FILES_CHANGED" = "true" ] || [ "$keycloak_changed" = "true" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             run_keycloak=true
           fi
 
-          run_minio_reboot=false
-          if [ "$minio_changed" = "true" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            run_minio_reboot=true
-          fi
+          # Build the reboot list for non-keycloak accessories. Keycloak
+          # has its own gated reboot step (must run before realm-ready
+          # wait + realm sync) so we exclude it here to avoid a double
+          # reboot on the same deploy.
+          accessories_to_reboot=""
+          for acc in $ACCESSORIES; do
+            if [ "$acc" = "keycloak" ]; then
+              continue
+            fi
+            if [ "${ACC_CHANGED[$acc]}" = "true" ]; then
+              accessories_to_reboot="${accessories_to_reboot}${accessories_to_reboot:+ }${acc}"
+            fi
+          done
 
           {
-            echo "minio_changed=${minio_changed}"
-            echo "keycloak_changed=${keycloak_changed}"
+            for acc in $ACCESSORIES; do
+              echo "${acc}_changed=${ACC_CHANGED[$acc]}"
+            done
             echo "run_keycloak=${run_keycloak}"
-            echo "run_minio_reboot=${run_minio_reboot}"
+            echo "accessories_to_reboot=${accessories_to_reboot}"
           } >> "$GITHUB_OUTPUT"
 
           echo "::group::Computed deploy gates"
           echo "  keycloak files changed (paths-filter):    ${KEYCLOAK_FILES_CHANGED}"
-          echo "  accessories.keycloak subtree changed:     ${keycloak_changed}"
-          echo "  accessories.minio subtree changed:        ${minio_changed}"
+          for acc in $ACCESSORIES; do
+            printf '  accessories.%-9s subtree changed:    %s\n' "$acc" "${ACC_CHANGED[$acc]}"
+          done
           echo "  → run_keycloak (chain):                   ${run_keycloak}"
-          echo "  → run_minio_reboot:                       ${run_minio_reboot}"
+          echo "  → accessories_to_reboot:                  '${accessories_to_reboot}'"
           echo "::endgroup::"
 
       # `bundler-cache: true` reads `Gemfile.lock` at the repo root and
@@ -284,19 +320,47 @@ jobs:
       # `kamal setup` only re-creates accessories that aren't already
       # running, so accessory-config changes (port mappings, image bumps,
       # env edits) on an existing instance are silent no-ops. Reboot
-      # MinIO when `config/deploy-staging.yml` changed so those edits
-      # actually take effect on the running container — issue #214
-      # dropped the public `port: 9000` mapping and that change would
-      # have only landed on a fresh VPS otherwise. A typical no-config
-      # push skips this ~30-60s reboot. Out-of-band secret rotations
-      # (MINIO_KMS_SECRET_KEY etc) use staging-accessory-reboot.yml —
-      # they don't need this gate because no file changed to trigger
-      # paths-filter.
-      - name: Reboot MinIO to apply accessory config changes
-        if: steps.gates.outputs.run_minio_reboot == 'true'
-        uses: ./.github/actions/reboot-kamal-accessory
-        with:
-          accessory: minio
+      # every non-keycloak accessory whose `accessories.<name>` subtree
+      # actually moved in `config/deploy-staging.yml`, so those edits
+      # land on the running container without anyone having to remember
+      # to dispatch staging-accessory-reboot.yml — issue #214 dropped
+      # the public `port: 9000` mapping for minio and would have only
+      # landed on a fresh VPS otherwise; PR #321 hit the same trap with
+      # the redis 7→8 image bump (issue #322).
+      #
+      # The accessory list is derived from the `Detect per-accessory…`
+      # step above, so adding a new accessory in the kamal config is
+      # auto-covered. Keycloak is handled by its own dedicated reboot
+      # step (it gates the realm-import chain — must run before the
+      # realm-ready wait); skipping it here avoids a double-reboot.
+      #
+      # A typical no-config push leaves `accessories_to_reboot` empty
+      # and the step is skipped; a single-accessory edit pays one
+      # ~30-60s reboot. Out-of-band secret rotations (MINIO_KMS_SECRET_KEY
+      # etc) still use staging-accessory-reboot.yml — no file changed
+      # so paths-filter doesn't fire here.
+      #
+      # Inlines the reboot procedure (vs. the composite action used by
+      # staging-accessory-reboot.yml) because GH Actions can't call a
+      # `uses:` step inside a shell loop. The two paths must stay in
+      # sync — match `bundle exec kamal accessory reboot` and the
+      # `docker logs givernance-<name>` log dump on failure.
+      - name: Reboot accessories with config changes
+        if: steps.gates.outputs.accessories_to_reboot != ''
+        env:
+          ACCESSORIES_TO_REBOOT: ${{ steps.gates.outputs.accessories_to_reboot }}
+        run: |
+          set -euo pipefail
+          for acc in $ACCESSORIES_TO_REBOOT; do
+            echo "::group::Reboot accessory: $acc"
+            if ! bundle exec kamal accessory reboot "$acc" -c config/deploy-staging.yml; then
+              echo "::error::kamal accessory reboot $acc failed; dumping last 100 log lines"
+              bundle exec kamal server exec -c config/deploy-staging.yml \
+                "docker logs givernance-${acc} --tail 100" || true
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
 
       - name: Wait for Keycloak realm to be ready
         if: steps.gates.outputs.run_keycloak == 'true'
