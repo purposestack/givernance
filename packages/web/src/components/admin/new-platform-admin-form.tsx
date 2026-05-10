@@ -25,6 +25,44 @@ interface FormValues {
   email: string;
 }
 
+type EmailErrorKey =
+  | "errors.emailTakenByTenant"
+  | "errors.emailTakenByKeycloak"
+  | "errors.emailTakenByAdmin";
+
+/**
+ * Maps a 409 `ApiProblem.detail` to the right localised email-field error.
+ * Pulled out of `onSubmit` to keep that function under the cognitive-
+ * complexity threshold; behaviour-preserving (same regex order, same
+ * fallback).
+ */
+function emailConflictErrorKey(detail: string): EmailErrorKey {
+  if (/tenant member/i.test(detail)) return "errors.emailTakenByTenant";
+  if (/Keycloak user with this email/i.test(detail)) return "errors.emailTakenByKeycloak";
+  return "errors.emailTakenByAdmin";
+}
+
+/**
+ * Surface a `PlatformAdminService.create` error on the form: 409 → field-
+ * level email error, 502 → keycloak-misconfig toast, else generic toast.
+ */
+function handleCreatePlatformAdminError(
+  err: unknown,
+  form: ReturnType<typeof useForm<FormValues>>,
+  t: ReturnType<typeof useTranslations<"admin.platformAdmins.new">>,
+): void {
+  if (err instanceof ApiProblem && err.status === 409) {
+    const key = emailConflictErrorKey(err.detail ?? "");
+    form.setError("email", { type: "server", message: t(key) });
+    return;
+  }
+  if (err instanceof ApiProblem && err.status === 502) {
+    toast.error(t("errors.keycloakMisconfig"));
+    return;
+  }
+  toast.error(t("errors.generic"));
+}
+
 /**
  * Invite-a-platform-admin form (issue #254). Behind the `(admin)/layout.tsx`
  * super_admin gate. The submit:
@@ -58,29 +96,7 @@ export function NewPlatformAdminForm() {
       router.push("/admin/platform-admins");
       router.refresh();
     } catch (err) {
-      if (err instanceof ApiProblem) {
-        const detail = err.detail ?? "";
-        if (err.status === 409) {
-          if (/tenant member/i.test(detail)) {
-            form.setError("email", { type: "server", message: t("errors.emailTakenByTenant") });
-            return;
-          }
-          if (/Keycloak user with this email/i.test(detail)) {
-            form.setError("email", {
-              type: "server",
-              message: t("errors.emailTakenByKeycloak"),
-            });
-            return;
-          }
-          form.setError("email", { type: "server", message: t("errors.emailTakenByAdmin") });
-          return;
-        }
-        if (err.status === 502) {
-          toast.error(t("errors.keycloakMisconfig"));
-          return;
-        }
-      }
-      toast.error(t("errors.generic"));
+      handleCreatePlatformAdminError(err, form, t);
     }
   }
 
