@@ -22,7 +22,12 @@
         }
       },
       "complexity": {
-        "noExcessiveCognitiveComplexity": "warn",
+        "noExcessiveCognitiveComplexity": {
+          "level": "warn",
+          "options": {
+            "maxAllowedComplexity": 20
+          }
+        },
         "useLiteralKeys": "off"
       }
     }

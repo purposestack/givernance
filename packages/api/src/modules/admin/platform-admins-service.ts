@@ -581,30 +581,7 @@ export interface AcceptInput {
  * Compensating delete on KC failure mirrors the previous create path.
  */
 export async function acceptPlatformAdminInvitation(input: AcceptInput): Promise<PlatformAdminRow> {
-  // Validate the invitation first — atomic with the eventual
-  // accepted_at write further below to prevent double-accept.
-  const [invite] = await systemDb
-    .select({
-      id: invitations.id,
-      email: invitations.email,
-      acceptedAt: invitations.acceptedAt,
-      expiresAt: invitations.expiresAt,
-    })
-    .from(invitations)
-    .where(
-      and(eq(invitations.token, input.token), eq(invitations.purpose, "platform_admin_invite")),
-    )
-    .limit(1);
-  if (!invite) {
-    throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation not found.");
-  }
-  if (invite.acceptedAt) {
-    throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation has already been accepted.");
-  }
-  if (invite.expiresAt.getTime() <= Date.now()) {
-    throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation has expired.");
-  }
-
+  const invite = await loadAcceptableInvitation(input.token);
   const platformOrgId = await getPlatformOrgId();
 
   const [role, org] = await Promise.all([getCachedSuperAdminRole(), getCachedPlatformOrg()]);
@@ -937,6 +914,40 @@ export async function softDeletePlatformAdmin(input: SoftDeleteInput): Promise<v
 }
 
 // ─── Internals ───────────────────────────────────────────────────────────────
+
+/**
+ * SELECT + validate a platform-admin invitation by token. Throws the
+ * three flavors of 404 (not-found / already-accepted / expired) the
+ * accept endpoint surfaces. Extracted from `acceptPlatformAdminInvitation`
+ * to keep that function under the cognitive-complexity threshold —
+ * behavior unchanged from the inline version, only the call site moved.
+ */
+async function loadAcceptableInvitation(token: string): Promise<{
+  id: string;
+  email: string;
+  expiresAt: Date;
+}> {
+  const [invite] = await systemDb
+    .select({
+      id: invitations.id,
+      email: invitations.email,
+      acceptedAt: invitations.acceptedAt,
+      expiresAt: invitations.expiresAt,
+    })
+    .from(invitations)
+    .where(and(eq(invitations.token, token), eq(invitations.purpose, "platform_admin_invite")))
+    .limit(1);
+  if (!invite) {
+    throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation not found.");
+  }
+  if (invite.acceptedAt) {
+    throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation has already been accepted.");
+  }
+  if (invite.expiresAt.getTime() <= Date.now()) {
+    throw new PlatformAdminServiceError(404, "NOT_FOUND", "Invitation has expired.");
+  }
+  return { id: invite.id, email: invite.email, expiresAt: invite.expiresAt };
+}
 
 /**
  * Loads a platform admin row that's guaranteed to be active AND linked to a
