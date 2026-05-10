@@ -43,6 +43,64 @@ function sanitizeError(error: string): string {
 }
 
 /**
+ * Reads + validates the `return_to` OIDC cookie. Returns the safe path
+ * or null; logs a defence-in-depth warning if the cookie was set but
+ * didn't pass the same-origin / allowlist check the login route writes
+ * against. Pulled out of `GET` to keep the callback handler under the
+ * cognitive-complexity threshold.
+ */
+function readValidatedReturnTo(jar: Awaited<ReturnType<typeof cookies>>): string | null {
+  const rawReturnToCookie = jar.get(OIDC_RETURN_TO_COOKIE)?.value ?? null;
+  const returnTo = safeReturnToPath(rawReturnToCookie);
+  if (rawReturnToCookie && !returnTo) {
+    logAuthEvent("warn", "auth.return_to.rejected", {
+      raw: rawReturnToCookie.slice(0, 256),
+      reason: "cookie_not_same_origin_path",
+    });
+  }
+  return returnTo;
+}
+
+/**
+ * Cleans up OIDC flow cookies and returns a redirect to `/login`,
+ * optionally tagging an `error` query param. Pulled out of `GET` to
+ * collapse the half-dozen `cleanup() + new URL + searchParams.set +
+ * NextResponse.redirect` repetitions into one call site each.
+ */
+function loginRedirectAfterCleanup(
+  jar: Awaited<ReturnType<typeof cookies>>,
+  errorCode?: string,
+): NextResponse {
+  jar.delete(OIDC_STATE_COOKIE);
+  jar.delete(OIDC_VERIFIER_COOKIE);
+  jar.delete(OIDC_NONCE_COOKIE);
+  jar.delete(OIDC_RETURN_TO_COOKIE);
+  const loginUrl = new URL("/login", APP_URL);
+  if (errorCode) loginUrl.searchParams.set("error", errorCode);
+  return NextResponse.redirect(loginUrl.toString());
+}
+
+/**
+ * Picks the post-callback landing URL. Three branches:
+ *   - `returnTo` set (issue #250 step-up MFA): drop the operator back
+ *     where they were before the redirect.
+ *   - `super_admin` realm role: super-admins have no tenant membership
+ *     (ADR-022) and `/select-organization` would 302 them to
+ *     `/login?error=no_tenants` — send them to the back-office tenant
+ *     list instead.
+ *   - Otherwise: every newly-authenticated tenant user routes through
+ *     `/select-organization` (FE-2), which 302s onward to `/dashboard`
+ *     for solo-tenant users.
+ * Pulled out of `GET` to keep the callback handler under the
+ * cognitive-complexity threshold (extract-only, behavior unchanged).
+ */
+function selectPostLoginRedirect(returnTo: string | null, isSuperAdmin: boolean): string {
+  if (returnTo) return new URL(returnTo, APP_URL).toString();
+  if (isSuperAdmin) return new URL("/admin/tenants", APP_URL).toString();
+  return new URL("/select-organization", APP_URL).toString();
+}
+
+/**
  * GET /api/auth/callback
  *
  * Keycloak redirects here after the user authenticates.
@@ -61,61 +119,32 @@ export async function GET(request: NextRequest) {
 
   const jar = await cookies();
 
-  // Post-callback redirect target (issue #250 step-up). Pulled before
-  // cleanup runs; re-validated via the same allow-list as the login
-  // route writes against — a stale or tampered cookie falls back to the
-  // default landing page rather than becoming an open-redirect oracle.
-  const rawReturnToCookie = jar.get(OIDC_RETURN_TO_COOKIE)?.value ?? null;
-  const returnTo = safeReturnToPath(rawReturnToCookie);
-  if (rawReturnToCookie && !returnTo) {
-    // Defence-in-depth log: the login route already validates inbound
-    // `return_to`, but a tampered cookie or a cross-deploy session that
-    // crossed an APP_URL change would surface here. Same shape as the
-    // login-route rejection so SOC dashboards can correlate.
-    logAuthEvent("warn", "auth.return_to.rejected", {
-      raw: rawReturnToCookie.slice(0, 256),
-      reason: "cookie_not_same_origin_path",
-    });
-  }
-
-  // Clean up OIDC flow cookies regardless of outcome
-  const cleanup = () => {
-    jar.delete(OIDC_STATE_COOKIE);
-    jar.delete(OIDC_VERIFIER_COOKIE);
-    jar.delete(OIDC_NONCE_COOKIE);
-    jar.delete(OIDC_RETURN_TO_COOKIE);
-  };
+  // Post-callback redirect target (issue #250 step-up). Re-validated via
+  // the same allow-list as the login route writes against — a stale or
+  // tampered cookie falls back to the default landing page rather than
+  // becoming an open-redirect oracle.
+  const returnTo = readValidatedReturnTo(jar);
 
   // Keycloak returned an error — map to safe error code, never reflect raw text
   if (error) {
-    cleanup();
-    const loginUrl = new URL("/login", APP_URL);
-    loginUrl.searchParams.set("error", sanitizeError(error));
-    return NextResponse.redirect(loginUrl.toString());
+    return loginRedirectAfterCleanup(jar, sanitizeError(error));
   }
 
   // Validate state parameter — prevents CSRF login attacks
   const storedState = jar.get(OIDC_STATE_COOKIE)?.value;
   if (!state || !storedState || state !== storedState) {
-    cleanup();
-    const loginUrl = new URL("/login", APP_URL);
-    loginUrl.searchParams.set("error", "invalid_state");
-    return NextResponse.redirect(loginUrl.toString());
+    return loginRedirectAfterCleanup(jar, "invalid_state");
   }
 
   // No authorization code — something went wrong
   if (!code) {
-    cleanup();
-    return NextResponse.redirect(new URL("/login", APP_URL).toString());
+    return loginRedirectAfterCleanup(jar);
   }
 
   // Retrieve PKCE code_verifier for token exchange
   const codeVerifier = jar.get(OIDC_VERIFIER_COOKIE)?.value;
   if (!codeVerifier) {
-    cleanup();
-    const loginUrl = new URL("/login", APP_URL);
-    loginUrl.searchParams.set("error", "missing_verifier");
-    return NextResponse.redirect(loginUrl.toString());
+    return loginRedirectAfterCleanup(jar, "missing_verifier");
   }
 
   try {
@@ -139,10 +168,7 @@ export async function GET(request: NextRequest) {
         status: tokenRes.status,
         upstream: text.slice(0, 256),
       });
-      cleanup();
-      const loginUrl = new URL("/login", APP_URL);
-      loginUrl.searchParams.set("error", "token_exchange_failed");
-      return NextResponse.redirect(loginUrl.toString());
+      return loginRedirectAfterCleanup(jar, "token_exchange_failed");
     }
 
     const tokens = (await tokenRes.json()) as {
@@ -160,21 +186,22 @@ export async function GET(request: NextRequest) {
       logAuthEvent("error", "auth.callback.access_token_invalid", {
         message: error instanceof Error ? error.message : String(error).slice(0, 256),
       });
-      cleanup();
-      const loginUrl = new URL("/login", APP_URL);
       const errorCode =
         error instanceof Error && error.message.includes("`org_id`")
           ? "missing_org_id"
           : "callback_failed";
-      loginUrl.searchParams.set("error", errorCode);
-      return NextResponse.redirect(loginUrl.toString());
+      return loginRedirectAfterCleanup(jar, errorCode);
     }
     const isSuperAdmin = decoded.realm_access?.roles?.includes("super_admin") ?? false;
 
     const sessionMaxAge = resolveSessionMaxAge(tokens);
 
-    // Clean up OIDC flow cookies and store the verified Keycloak access token directly.
-    cleanup();
+    // Inline cleanup of OIDC flow cookies (the success path can't reuse
+    // `loginRedirectAfterCleanup` because it doesn't redirect to /login).
+    jar.delete(OIDC_STATE_COOKIE);
+    jar.delete(OIDC_VERIFIER_COOKIE);
+    jar.delete(OIDC_NONCE_COOKIE);
+    jar.delete(OIDC_RETURN_TO_COOKIE);
     jar.set(JWT_COOKIE_NAME, tokens.access_token, jwtCookieOptions(sessionMaxAge));
     jar.set(getCsrfCookieName(), crypto.randomUUID(), buildCsrfCookieOptions(sessionMaxAge));
     if (tokens.id_token) {
@@ -184,40 +211,11 @@ export async function GET(request: NextRequest) {
       jar.set(REFRESH_TOKEN_COOKIE_NAME, tokens.refresh_token, jwtCookieOptions(sessionMaxAge));
     }
 
-    // Step-up MFA flow (issue #250): if the operator was redirected here
-    // mid-task (e.g. from POST /v1/admin/impersonation 401), drop them
-    // back where they were instead of routing through the org picker.
-    // Falls through to the default landing page when no return_to is set.
-    if (returnTo) {
-      return NextResponse.redirect(new URL(returnTo, APP_URL).toString());
-    }
-
-    // Super-admin landing (PR #251 user feedback). Super-admins live in
-    // `platform_admins`, have no tenant memberships (ADR-022), and would
-    // otherwise hit `/select-organization` → `/login?error=no_tenants`
-    // because the picker treats zero memberships as "broken account".
-    // Send them straight to the back-office tenant list — that's the
-    // canonical operator landing page. The (admin) layout already gates
-    // on `super_admin` realm role, so this redirect is safe even if the
-    // role is ever stripped (the layout would 404 / bounce).
-    if (isSuperAdmin) {
-      return NextResponse.redirect(new URL("/admin/tenants", APP_URL).toString());
-    }
-
-    // FE-2: send every newly-authenticated tenant user through
-    // `/select-organization`. That page server-renders the membership
-    // fetch and will 302 to `/dashboard` immediately if the user belongs
-    // to <=1 tenant — so solo-tenant users pay one extra redirect (cheap)
-    // and multi-tenant users get the picker without the callback blocking
-    // on a sequential fetch.
-    return NextResponse.redirect(new URL("/select-organization", APP_URL).toString());
+    return NextResponse.redirect(selectPostLoginRedirect(returnTo, isSuperAdmin));
   } catch (err) {
     logAuthEvent("error", "auth.callback.unexpected_failure", {
       message: err instanceof Error ? err.message : String(err).slice(0, 256),
     });
-    cleanup();
-    const loginUrl = new URL("/login", APP_URL);
-    loginUrl.searchParams.set("error", "callback_failed");
-    return NextResponse.redirect(loginUrl.toString());
+    return loginRedirectAfterCleanup(jar, "callback_failed");
   }
 }
