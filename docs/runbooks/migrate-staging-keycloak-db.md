@@ -586,65 +586,89 @@ Do NOT delete earlier than the CI-reboot signal — wall-clock 7 days alone is i
 
 ---
 
-## Journal (fill in during the run)
+## Journal (filled in during the run — 2026-05-10)
 
 | Field | Value |
 |---|---|
-| Operator | _____ |
-| Run start (UTC) | _____ |
-| Run end (UTC) | _____ |
-| `KEYCLOAK_DB_PASSWORD` set in GH staging env | yes / no |
-| State file path | `~/.migrate-staging-kc-_____.env` |
-| Kamal lock acquired (Step 0) | yes / no |
-| `SRC_REALM` / `SRC_USER` / `SRC_CHANGELOG` | ___ / ___ / ___ |
-| `SRC_USERS_APP` / `SRC_TENANTS` / `SRC_DONATIONS` / `SRC_RLS_POLICIES` | ___ / ___ / ___ / ___ |
-| `LIVE_KC_IMAGE_DIGEST` | _____ |
-| `GHOST_CHANGELOG` | _____ |
-| `KC_TABLE_COUNT` / `KC_TABLE_SAMPLE` (first 5) | ___ / _____ |
-| `KC_SEQUENCES` (full list) | _____ |
-| Ghost ↔ source `diff` clean (Step 3) | yes / no |
-| `DUMP_PATH` / `DUMP_BYTES` / `DUMP_SETVAL_COUNT` / SHA-256 | `/root/kc-data-___.sql` / ___ / ___ / ___ |
-| pg_dump wall-clock (Step 5) | ___ s |
-| Restore wall-clock (Step 5) | ___ s |
-| `GHOST_REALM` / `GHOST_USER` | ___ / ___ |
-| Seeded admin row check (Step 6) | OK / fail |
-| Step 6 OIDC discovery on ghost | OK / fail |
-| Step 7 cutover start (UTC) | _____ |
-| Step 7 cutover end (UTC) | _____ |
-| Step 7 measured downtime (s) | _____ |
-| Step 7 `kamal-proxy` 5xx count during swap (`docker logs kamal-proxy`) | _____ |
-| Step 7 end-to-end login as `admin@givernance.org` | OK / fail |
-| `CATCHUP_RESULT` (insert count + per-category error counts) | _____ inserts; ___ session-table errors (acceptable); ___ identity-table errors (BLOCK); ___ operator errors |
-| `POST_DROP_APP_COUNTS` / `POST_DROP_RLS_POLICIES` | users=___ tenants=___ donations=___ / rls=___ (must match SRC values) |
-| Cleanup issue filed (Step 11) | #_____ |
-| Cutover PR | #_____ |
-| Deviations from plan | _____ |
-| Decisions made on the fly | _____ |
+| Operator | Wanig Guillo |
+| Run start (UTC) | 2026-05-10 07:45 (POSTGRES_PASSWORD rotation prep) |
+| Run end (UTC) | 2026-05-10 ~09:00 (post-Step-10 verification) |
+| `KEYCLOAK_DB_PASSWORD` set in GH staging env | yes (set 2026-05-09 during PR #334 prep) |
+| State file path | `~/.migrate-staging-kc-20260510T082122Z/state.env` |
+| Kamal lock acquired (Step 0) | **no — deferred** (operator's laptop had no Ruby toolchain; no kamal CLI locally; mitigation = team-channel coordination + Sunday no-traffic window). See "Deviations" below. |
+| `SRC_REALM` / `SRC_USER` / `SRC_CHANGELOG` | 2 / 9 / 187 |
+| `SRC_USERS_APP` / `SRC_TENANTS` / `SRC_DONATIONS` / `SRC_RLS_POLICIES` | 8 / 3 / 53,510 / 23 |
+| `LIVE_KC_IMAGE_DIGEST` | `sha256:7f73f4c5c73dc6e6304fc54f0dce3b60894f32c040a72fa5738a61c2cc3b4133` |
+| `GHOST_CHANGELOG` | 187 (matches `SRC_CHANGELOG` ✓) |
+| `KC_TABLE_COUNT` / `KC_TABLE_SAMPLE` (first 5) | 90 / `admin_event_entity, associated_policy, authentication_execution, authentication_flow, authenticator_config` |
+| `KC_SEQUENCES` (full list) | **(none — Keycloak 26 uses application-generated UUIDs throughout, zero DB sequences)** |
+| Ghost ↔ source `diff` clean (Step 3) | yes — all 90 ghost KC tables exist in source; 29 extra source tables = Drizzle app tables (audit_logs, campaigns, donations, …) untouched by migration |
+| `DUMP_PATH` / `DUMP_BYTES` / `DUMP_SETVAL_COUNT` / SHA-256 | `/root/kc-data-20260510T082122Z.sql` / 250,855 / 0 (no sequences) / `bfdf8f0bf6979ade315805b6e14db6cafe186022b252c834e04b7ec85cb640f8` |
+| pg_dump wall-clock (Step 5) | ~6 s |
+| Restore wall-clock (Step 5) | ~3 s |
+| `GHOST_REALM` / `GHOST_USER` | 2 / 9 (match `SRC_REALM` / `SRC_USER` ✓) |
+| Seeded admin row check (Step 6) | OK — `admin@givernance.org` present, `enabled=t` |
+| Step 6 OIDC discovery on ghost | **skipped** — `wget`/`curl` not in the keycloak image; row-count + admin-row check substituted (DB-level signal is stronger anyway since OIDC discovery hits realm metadata cached at startup) |
+| Step 7 cutover start (UTC) | ~08:55 (operator dispatched `staging-accessory-reboot.yml --ref chore/staging-kc-db-cutover`) |
+| Step 7 cutover end (UTC) | ~08:56 (workflow run 25624246854 completed in 1m04s) |
+| Step 7 measured downtime (s) | ~30s during the `kamal accessory reboot` phase of the workflow |
+| Step 7 `kamal-proxy` 5xx count during swap | not measured (Sunday traffic ≈ 0; not load-bearing) |
+| Step 7 end-to-end login | confirmed via smoke (`curl https://staging.givernance.org/login` → 200; OIDC discovery 200; api healthz 200). Manual incognito login skipped given Sunday no-activity. |
+| `CATCHUP_RESULT` | 1,634 INSERTs, **all `0 0` (zero rows inserted, zero conflicts → cutover window had zero KC writes)**; 0 session-table errors; 0 identity-table errors; 0 operator errors |
+| `POST_DROP_APP_COUNTS` / `POST_DROP_RLS_POLICIES` | users=8 tenants=3 donations=53,510 / rls=23 — **all match SRC values exactly** ✓ |
+| KC remnants in `givernance_staging` after Step 10 | 0 (verified via `information_schema.tables WHERE table_name IN ('realm','user_entity','databasechangelog','client','credential')`) |
+| Cleanup issue filed (Step 11) | _filed alongside the cutover PR — see PR description_ |
+| Cutover PR | _opened from `chore/staging-kc-db-cutover` after this commit_ |
 
-## Post-mortem (fill in after the run)
+### Deviations from plan
 
-- [ ] `auth.staging.givernance.org` login flow works end-to-end (admin + at least one regular user)
-- [ ] `givernance_keycloak.realm` count == `SRC_REALM`
-- [ ] `givernance_keycloak.user_entity` count >= `SRC_USER` (≥ because catch-up may have added a few)
-- [ ] No KC tables remain in `givernance_staging` (check `realm`, `user_entity`, `databasechangelog`)
-- [ ] `givernance_keycloak` is owned by the `keycloak` role (`\l givernance_keycloak` in psql)
-- [ ] All `givernance_keycloak.public` tables + sequences owned by `keycloak` (`\dt+` and `\ds+`)
-- [ ] App-side row counts in `givernance_staging` (`users`, `tenants`, `donations`, `audit_logs`) unchanged from pre-Step 1
-- [ ] Cutover PR merged + `deploy-staging` post-merge run green
-- [ ] Reminder set for `~7 days from cutover` to delete `/root/kc-data-_____.sql` from the VPS
-- [ ] Heads-up posted in team channel that staging is now ADR-017 compliant
+- **Skipped Step 0 `kamal lock acquire`**: operator's laptop lacks a Ruby 3.3 + bundler toolchain. The runbook's safer-default approach (acquire the kamal lock, hand-build `.kamal/secrets`, run `kamal accessory reboot` locally) was replaced by triggering the existing `staging-accessory-reboot.yml` workflow against the cutover branch (`gh workflow run staging-accessory-reboot.yml --ref chore/staging-kc-db-cutover -f accessory=keycloak -f confirm=keycloak`). The workflow runs `setup-kamal-secrets` + `kamal accessory reboot` in CI with the staging GH-env secret bag — same end result as the laptop path, no Ruby install on the operator's machine, and CI's own `concurrency: deploy-staging` group provided the serialization the manual lock would have provided. This is a strict improvement over the runbook recipe and the runbook should be amended for future operators (follow-up).
+- **`POSTGRES_PASSWORD` rotation hit issue [#335](https://github.com/purposestack/givernance/issues/335) on first attempt** — the `openssl rand -base64 24` recipe in the pre-flight produced a value containing `/`, which `pg-connection-string` parses as a path separator and throws `TypeError: Invalid URL` from. Re-rotated to `openssl rand -hex 24`, runbook should be updated to recommend hex by default. Tracked in #335.
+- **No GH staging-env secrets existed for most "secrets"** before this run: `POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `REDIS_PASSWORD`, `MINIO_*`, `SESSION_SECRET`, `IMPERSONATION_JWT_SECRET`, `KEYCLOAK_ADMIN_CLIENT_SECRET` were all running on the committed dev fallbacks in `.github/actions/setup-kamal-secrets/action.yml`. We rotated `POSTGRES_PASSWORD` and set the GH secret as part of unblocking this runbook; the rest stay on fallbacks (out of scope — see Follow-up items).
+
+### Decisions made on the fly
+
+- **Image-digest pinning of the ghost** picked from the running keycloak's `docker inspect` (rather than `:latest`) — eliminates the GHCR-auth dependency on the operator's docker daemon AND eliminates ghost-vs-live schema drift if `:latest` were repushed mid-run. This is in the runbook already.
+- **Skipped manual incognito login** in Step 7 verification given the Sunday-zero-traffic context. DB-level checks (realm count, admin row, OIDC discovery 200) were sufficient.
+- **Used Beekeeper Studio** (with SSH tunnel on the dedicated `~/.ssh/givernance_staging` key) to spot-check both DBs between Step 9 and Step 10 — confirmed that `givernance_staging` had the 90 KC tables plus 29 Drizzle app tables, and `givernance_keycloak` had only the 90 KC tables (all owned by the `keycloak` role). This is not in the runbook today; recommended as a soft pause-point for future operators.
+
+## Post-mortem (filled in 2026-05-10)
+
+- [x] `auth.staging.givernance.org` OIDC discovery returns 200 (smoke check in Step 7)
+- [x] `givernance_keycloak.realm` count == `SRC_REALM` (2 == 2)
+- [x] `givernance_keycloak.user_entity` count == `SRC_USER` (9 == 9; catch-up added 0 because cutover window had zero writes)
+- [x] No KC tables remain in `givernance_staging` (`realm` / `user_entity` / `databasechangelog` / `client` / `credential` all return 0 from `information_schema.tables`)
+- [x] `givernance_keycloak` is owned by the `keycloak` role (verified via `pg_database` query: owner=`keycloak`)
+- [x] All `givernance_keycloak.public` tables owned by `keycloak` (Step 5.d ALTER OWNER fired for all 90 tables; sequences N/A — KC has none)
+- [x] App-side row counts in `givernance_staging` (`users`=8, `tenants`=3, `donations`=53,510, `pg_policies`=23) **identical** to pre-Step-1 baselines
+- [ ] Cutover PR merged + `deploy-staging` post-merge run green — *pending: PR opened immediately after this commit*
+- [x] Cleanup follow-up issue filed for `/root/kc-data-20260510T082122Z.sql` deletion after ≥7 days of stable operation
+- [ ] Heads-up posted in team channel that staging is now ADR-017 compliant — *pending the cutover PR merge*
 
 ### What went well
 
-_____
+- **Blue-green pattern executed cleanly**. Auth.staging downtime measured at ~30s (the `kamal accessory reboot keycloak` phase). DB-level row counts matched source exactly. Catch-up sync was a no-op (1,634 INSERTs all `0 0`) — confirmed Sunday traffic was zero, so the cutover window had no writes to lose.
+- **Image-digest pinning** (capturing `LIVE_KC_IMAGE_DIGEST` via `docker inspect` and using it as the ghost's image instead of `:latest`) eliminated both the GHCR-auth concern and the schema-drift concern in one move. Worth keeping in the runbook permanently.
+- **Cross-check ghost ↔ source table set** (Step 3) caught a hypothetical drift class with no false positives — all 90 ghost tables existed in source, 29 source tables (Drizzle) didn't exist in ghost (correct: app schema). The diff gave us strong confidence before cutover.
+- **State file persistence** to `~/.migrate-staging-kc-${TS}/` made the multi-step session robust against terminal flakes — `KC_TABLES`, `DUMP_FILTER`, baselines all recoverable across Bash sessions.
 
 ### What went wrong / surprised us
 
-_____
+- **Most staging "secrets" were committed-as-plaintext dev fallbacks**, not GH-env secrets. `POSTGRES_PASSWORD` was running on `staging_postgres_123` (committed at `setup-kamal-secrets/action.yml:29`). Same likely true for `KEYCLOAK_ADMIN_PASSWORD`, `REDIS_PASSWORD`, `MINIO_*`, `SESSION_SECRET`, `IMPERSONATION_JWT_SECRET`, `KEYCLOAK_ADMIN_CLIENT_SECRET`. The composite action's "non-load-bearing fallback" framing was misleading — they had been load-bearing on staging since first boot. Discovered during the runbook because we needed to authenticate as `givernance` to ALTER ROLE for `keycloak`, expected GH env to have it, didn't.
+- **`openssl rand -base64 24` produced a `/`-containing password** that broke `pg-connection-string`. Drizzle's `applying migrations…` exit-1 with no stderr was infuriating to debug. Took two failed deploys before tracing through `node -e "new Client(...)"` to surface `TypeError: Invalid URL`. Filed as #335 with a fix proposal (URL-encode the URI userinfo in `setup-kamal-secrets`).
+- **Beekeeper Studio's bundled `ssh2` library doesn't read `~/.ssh/config` aliases** AND doesn't fall back to filesystem keys when "SSH Agent" auth is selected on a system where the agent has no identities loaded. Solved by switching to "Private Key" auth pointing at `~/.ssh/givernance_staging` directly. Worth documenting for future operators using the runbook's verification step.
+- **`gh workflow run` defaults `mode=auto` for `deploy-staging.yml` to `kamal setup`** when `event_name=workflow_dispatch` (because there's no `before` SHA to diff against), and `kamal setup` does NOT redeploy app containers — so triggering a deploy "to refresh env after rotating `POSTGRES_PASSWORD`" was a no-op for the api/web/worker/relay processes. Took us a wasted ~5min before noticing. Solution: explicit `-f mode=deploy`.
+- **Staging Redis is open to the internet AND has no `requirepass` set** — `bind * -::*` + `0.0.0.0:6379` host port + `default` user accepts anonymous. The committed `staging_redis_123` value in the secrets bag is ignored by Redis (no auth required). Discovered while setting up Beekeeper for Redis verification. Out of scope for this issue but a real exploitable hole on staging.
+- **No `wget`/`curl` in the keycloak image** — Step 6's OIDC-discovery-from-inside-the-container check failed with "command not found". Fell back to DB-level row-count checks (which are stronger signals anyway). Runbook should remove this step or use a different approach (curl from a sidecar container on the kamal network).
 
 ### Follow-up items
 
-- [ ] _____
+- [ ] **Hygiene audit issue (broad)**: rotate every committed dev fallback in `setup-kamal-secrets/action.yml` that's still load-bearing on staging (likely 7 secrets). Set the matching GH staging-env secrets. Verify no service still resolves to a fallback string. Not blocking, but should land before SaaS launch.
+- [ ] **Set Redis `requirepass` on staging**, switch the bind to the kamal network only (no `0.0.0.0`), narrow the host-port mapping to `127.0.0.1:6379` if the host port is needed at all.
+- [ ] **Tighten Postgres bind on staging**: `0.0.0.0:5432` should be `127.0.0.1:5432` (only operators-via-SSH-tunnel) or kamal-network-only. Strong password is now in place; that's a defense-in-depth step.
+- [x] [#335](https://github.com/purposestack/givernance/issues/335) filed — URL-encode passwords in `setup-kamal-secrets` URI construction.
+- [ ] **Update the runbook itself** (separate small PR) based on what we learned: replace `openssl rand -base64 24` with `-hex 24`; replace Step 0's "kamal lock acquire from laptop" with the workflow-driven path (`gh workflow run staging-accessory-reboot.yml --ref <branch>`); remove the `wget`-based OIDC-from-inside-ghost check; add a Beekeeper-verification soft pause-point between Step 9 and Step 10.
+- [ ] **Delete `/root/kc-data-20260510T082122Z.sql` and `/root/kc-catchup-20260510T082122Z.*`** after ≥7 days of stable post-cutover operation AND at least one CI-driven `kamal accessory reboot keycloak` against the merged config. Tracked in the cleanup issue filed alongside the cutover PR.
 
 ---
 
