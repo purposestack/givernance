@@ -189,7 +189,19 @@ accessories:
     # the running PG 17 accessory.
     image: postgres:17
     host: <%= ENV["STAGING_VPS_IP"] %>
-    port: 5432
+    # No `port:` publishing — Postgres is reachable only on the internal `kamal`
+    # Docker network at `givernance-postgres:5432`. Closes the public 0.0.0.0:5432
+    # exposure that was a defense-in-depth gap even after rotating
+    # POSTGRES_PASSWORD off its committed dev fallback (a 192-bit password
+    # makes brute-force infeasible, but the principle is "least exposure
+    # consistent with the operator workflow"). App services
+    # (api/web/worker/relay) keep reaching Postgres via the kamal network with
+    # no change. Operator access patterns post-tightening:
+    #   - `ssh givernance-staging "docker exec -i givernance-postgres psql ..."` — quickest for inline queries
+    #   - SSH tunnel to the kamal-network container IP for Beekeeper / pgAdmin:
+    #       ssh -L 5433:$(ssh givernance-staging "docker inspect givernance-postgres --format '{{(index .NetworkSettings.Networks \"kamal\").IPAddress}}'"):5432 givernance-staging
+    #     then connect Beekeeper to localhost:5433 (no SSH-tunnel-in-Beekeeper config needed)
+    # Same pattern as the redis hardening (#338).
     env:
       clear:
         POSTGRES_USER: givernance
