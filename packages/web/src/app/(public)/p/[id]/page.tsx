@@ -33,6 +33,25 @@ function extractQrCode(value: string | string[] | undefined): string | undefined
   return raw && QR_TOKEN_PATTERN.test(raw) ? raw : undefined;
 }
 
+/**
+ * Issue #200 progress-display helper. Decides whether to show the progress
+ * bar (goal + donations both present) vs. the static metric tiles, and
+ * computes the progress percentage clamped to 100. Pulled out of
+ * `PublicCampaignPage` to keep that function under the cognitive-complexity
+ * threshold; pure-by-construction (no I/O, deterministic on inputs).
+ */
+function computeProgressDisplay(
+  goalAmountCents: number | null,
+  raisedCents: number,
+): { hasGoal: boolean; showProgress: boolean; goalCents: number; progressPercent: number } {
+  const hasGoal = goalAmountCents !== null && goalAmountCents > 0;
+  const showProgress = hasGoal && raisedCents > 0;
+  const goalCents = goalAmountCents ?? 0;
+  const progressPercent =
+    hasGoal && goalCents > 0 ? Math.min(100, Math.round((raisedCents / goalCents) * 100)) : 0;
+  return { hasGoal, showProgress, goalCents, progressPercent };
+}
+
 export default async function PublicCampaignPage({
   params,
   searchParams,
@@ -64,17 +83,10 @@ export default async function PublicCampaignPage({
     const page = await CampaignPublicPageService.getPublishedCampaignPublicPage(client, id);
     const colorPrimary = page.colorPrimary ?? DEFAULT_THEME_COLOR;
     const onPrimary = getReadableTextColor(colorPrimary);
-    const hasGoal = page.goalAmountCents !== null && page.goalAmountCents > 0;
-    // Issue #200: render the mockup's progress bar + donor count when we have
-    // a goal AND there's been at least one donation. Falling back to the
-    // metric tiles if either signal is missing keeps fresh campaigns from
-    // showing an empty bar.
-    const showProgress = hasGoal && page.raisedCents > 0;
-    const goalCents = page.goalAmountCents ?? 0;
-    const progressPercent =
-      hasGoal && goalCents > 0
-        ? Math.min(100, Math.round((page.raisedCents / goalCents) * 100))
-        : 0;
+    const { hasGoal, showProgress, goalCents, progressPercent } = computeProgressDisplay(
+      page.goalAmountCents,
+      page.raisedCents,
+    );
 
     return (
       <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(9,100,71,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
@@ -106,28 +118,11 @@ export default async function PublicCampaignPage({
                  * even on greenfield campaigns.
                  */}
                 {page.organisationName ? (
-                  <div className="mb-6 flex">
-                    {page.organisationLogoUrl ? (
-                      <div className="relative h-14 w-14 overflow-hidden rounded-xl bg-white/10 backdrop-blur-sm">
-                        <Image
-                          src={page.organisationLogoUrl}
-                          alt={page.organisationName}
-                          fill
-                          sizes="56px"
-                          unoptimized
-                          className="object-contain"
-                          priority
-                        />
-                      </div>
-                    ) : (
-                      <InitialLetterAvatar
-                        orgName={page.organisationName}
-                        tenantId={page.organisationId}
-                        size="lg"
-                        ariaLabel={page.organisationName}
-                      />
-                    )}
-                  </div>
+                  <OrgLogoBlock
+                    organisationName={page.organisationName}
+                    organisationId={page.organisationId}
+                    organisationLogoUrl={page.organisationLogoUrl}
+                  />
                 ) : null}
                 {/*
                  * Eyebrow line shows the operator's organisation name when
@@ -213,6 +208,47 @@ function Metric({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="mt-2 text-base font-semibold text-on-surface sm:text-lg">{value}</p>
+    </div>
+  );
+}
+
+/**
+ * Org logo block — shows the uploaded logo (Epic #286) or a fallback
+ * initial-letter avatar. Pulled out of `PublicCampaignPage` so the
+ * parent stays under the cognitive-complexity threshold; behaviour
+ * unchanged from the inline JSX.
+ */
+function OrgLogoBlock({
+  organisationName,
+  organisationId,
+  organisationLogoUrl,
+}: {
+  organisationName: string;
+  organisationId: string | undefined;
+  organisationLogoUrl: string | null | undefined;
+}) {
+  return (
+    <div className="mb-6 flex">
+      {organisationLogoUrl ? (
+        <div className="relative h-14 w-14 overflow-hidden rounded-xl bg-white/10 backdrop-blur-sm">
+          <Image
+            src={organisationLogoUrl}
+            alt={organisationName}
+            fill
+            sizes="56px"
+            unoptimized
+            className="object-contain"
+            priority
+          />
+        </div>
+      ) : (
+        <InitialLetterAvatar
+          orgName={organisationName}
+          tenantId={organisationId}
+          size="lg"
+          ariaLabel={organisationName}
+        />
+      )}
     </div>
   );
 }
