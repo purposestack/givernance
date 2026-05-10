@@ -94,8 +94,12 @@ jobs:
             exit 1
           fi
 
+      # Pinned to a commit SHA — this action receives `SSH_PRIVATE_KEY`,
+      # so a third-party action gets a SHA pin instead of a moving tag.
+      # SHA below is `webfactory/ssh-agent@v0.10.0` at 2026-05-10; bump
+      # intentionally when upgrading.
       - name: Configure SSH Auth Sock
-        uses: webfactory/ssh-agent@v0.10.0
+        uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
