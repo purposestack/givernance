@@ -224,7 +224,25 @@ accessories:
   redis:
     image: redis:8
     host: <%= ENV["STAGING_VPS_IP"] %>
-    port: 6379
+    # No `port:` publishing — Redis is reachable only on the internal `kamal`
+    # Docker network at `givernance-redis:6379`. Closes the public 0.0.0.0:6379
+    # exposure that combined with an empty `requirepass` let any internet-side
+    # actor read/write BullMQ queues + session cache. App services
+    # (api/web/worker/relay) keep reaching Redis via the kamal network with
+    # no change. Operator access via `docker exec givernance-redis redis-cli`
+    # over SSH, or a sidecar container on the kamal network — RedisInsight /
+    # Beekeeper need either of those paths now (no host port to tunnel to).
+    env:
+      secret:
+        - REDIS_PASSWORD
+    # Enforce authentication. Redis 8's default startup has `requirepass`
+    # empty, so AUTH commands are accepted-then-ignored ("Client sent AUTH,
+    # but no password is set on the 'default' user"). Setting requirepass
+    # here makes every connection require the password from the bag, which
+    # `setup-kamal-secrets` already wires into REDIS_URL for every app.
+    # `$REDIS_PASSWORD` is expanded by docker's implicit `/bin/sh -c` since
+    # `cmd:` is a string scalar.
+    cmd: redis-server --requirepass "$REDIS_PASSWORD"
     directories:
       - data/redis:/data
   minio:
