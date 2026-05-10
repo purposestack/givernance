@@ -80,7 +80,6 @@ beforeAll(async () => {
         set: { updatedAt: new Date() },
       })
       .returning();
-    // biome-ignore lint/style/noNonNullAssertion: onConflictDoUpdate always returns
     orgBFundId = fund!.id;
   });
 
@@ -408,7 +407,6 @@ describe("GDPR erasure leaves donations + receipts intact (QA #16)", () => {
           fiscalYear: 2026,
         })
         .returning();
-      // biome-ignore lint/style/noNonNullAssertion: returning always returns
       donationId = don!.id;
       await tx.insert(receipts).values({
         orgId: ORG_A,
@@ -435,14 +433,12 @@ describe("GDPR erasure leaves donations + receipts intact (QA #16)", () => {
       const donationRows = await tx
         .select({ id: donations.id })
         .from(donations)
-        // biome-ignore lint/style/noNonNullAssertion: donationId is assigned above
         .where(eq(donations.id, donationId!));
       expect(donationRows.length).toBe(1);
 
       const receiptRows = await tx
         .select({ id: receipts.id })
         .from(receipts)
-        // biome-ignore lint/style/noNonNullAssertion: donationId is assigned above
         .where(eq(receipts.donationId, donationId!));
       expect(receiptRows.length).toBe(1);
     });
@@ -570,7 +566,6 @@ describe("GET /v1/donations/:id/receipt exposes expiresAt (API minor)", () => {
           fiscalYear: 2026,
         })
         .returning();
-      // biome-ignore lint/style/noNonNullAssertion: returning always returns
       donationId = don!.id;
       await tx.insert(receipts).values({
         orgId: ORG_A,
@@ -584,17 +579,13 @@ describe("GET /v1/donations/:id/receipt exposes expiresAt (API minor)", () => {
 
     const res = await app.inject({
       method: "GET",
-      // biome-ignore lint/style/noNonNullAssertion: donationId is assigned above
       url: `/v1/donations/${donationId!}/receipt`,
       headers: authHeader(tokenA),
     });
 
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: { downloadPath: string; expiresAt: string } }>();
-    expect(body.data.downloadPath).toBe(
-      // biome-ignore lint/style/noNonNullAssertion: donationId is assigned above
-      `/v1/donations/${donationId!}/receipt/download`,
-    );
+    expect(body.data.downloadPath).toBe(`/v1/donations/${donationId!}/receipt/download`);
     expect(body.data.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     // Must be in the future. We don't lock the exact value because the
     // post-#214 semantics are a coarse "consider re-fetching after"

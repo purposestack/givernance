@@ -42,7 +42,6 @@ beforeAll(async () => {
       type: "donor",
     })
     .returning();
-  // biome-ignore lint/style/noNonNullAssertion: insert returning always returns
   constituentId = c!.id;
 
   // Create a donation
@@ -60,7 +59,6 @@ beforeAll(async () => {
       fiscalYear: 2026,
     })
     .returning();
-  // biome-ignore lint/style/noNonNullAssertion: insert returning always returns
   donationId = d!.id;
 });
 

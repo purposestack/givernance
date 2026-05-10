@@ -166,7 +166,17 @@ export function PlatformAdminDetailActions({ admin, operatorKeycloakId }: Props)
 
       {/* Edit-name dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent
+          onOpenAutoFocus={(e) => {
+            // Override Radix's default-first-focusable (the close X button)
+            // and focus the first user-editable field. Equivalent to
+            // `autoFocus` on the Input below but doesn't trigger
+            // `lint/a11y/noAutofocus`, which warns against attribute-form
+            // auto-focus that the user hasn't explicitly opted into.
+            e.preventDefault();
+            editForm.setFocus("firstName");
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{t("editDialog.title")}</DialogTitle>
             <DialogDescription>{t("editDialog.description")}</DialogDescription>
@@ -198,8 +208,7 @@ export function PlatformAdminDetailActions({ admin, operatorKeycloakId }: Props)
                     <FormItem>
                       <FormLabel>{tFields("firstName")}</FormLabel>
                       <FormControl>
-                        {/* biome-ignore lint/a11y/noAutofocus: dialog focus convention */}
-                        <Input {...field} autoFocus autoComplete="given-name" />
+                        <Input {...field} autoComplete="given-name" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

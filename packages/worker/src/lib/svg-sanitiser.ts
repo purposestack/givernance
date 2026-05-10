@@ -13,8 +13,7 @@
  * MUST behave identically.
  */
 
-// biome-ignore lint/suspicious/noExplicitAny: dompurify's type exports vary across versions
-import createDOMPurify from "dompurify";
+import createDOMPurify, { type WindowLike } from "dompurify";
 import { JSDOM } from "jsdom";
 
 export class SvgSanitiserError extends Error {
@@ -65,8 +64,12 @@ export function sanitiseSvg(input: Buffer): Buffer {
   let cleaned: string;
   try {
     const window = new JSDOM("").window;
-    // biome-ignore lint/suspicious/noExplicitAny: dompurify's factory expects a Window-like
-    const purify = createDOMPurify(window as any);
+    // JSDOM's `DOMWindow` is structurally compatible with dompurify's
+    // `WindowLike` but TypeScript can't see it as such — `WindowLike` picks
+    // a narrow subset of properties from the global `Window` shape.
+    // Importing the named type from dompurify and routing through `unknown`
+    // satisfies the typechecker without resorting to `any`.
+    const purify = createDOMPurify(window as unknown as WindowLike);
     cleaned = purify.sanitize(text, {
       USE_PROFILES: { svg: true, svgFilters: false },
       RETURN_TRUSTED_TYPE: false,

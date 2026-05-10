@@ -786,7 +786,7 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
           "GET",
           `/roles/${e(name)}`,
         );
-        return role && role.id && role.name ? { id: role.id, name: role.name } : null;
+        return role?.id && role.name ? { id: role.id, name: role.name } : null;
       } catch (err) {
         // 404 = role doesn't exist; surface as null instead of throwing so
         // callers can decide how to handle (typically: build error message).

@@ -147,11 +147,8 @@ beforeAll(async () => {
       url: "/v1/donations",
       headers: authHeader(token),
       payload: {
-        // biome-ignore lint/style/noNonNullAssertion: fixture array
         constituentId: constituentIds[i]!,
-        // biome-ignore lint/style/noNonNullAssertion: fixture array
         campaignId: campaignIds[i]!,
-        // biome-ignore lint/style/noNonNullAssertion: fixture array
         amountCents: amounts[i]!,
         currency: "EUR",
         paymentMethod: "check",
@@ -314,7 +311,7 @@ describe("GET /v1/donations — server-side sort", () => {
         break;
       }
     }
-    const firstNullIdx = names.findIndex((n) => n === null);
+    const firstNullIdx = names.indexOf(null);
     expect(firstNullIdx).toBeGreaterThan(lastNonNullIdx);
   });
 });
@@ -384,7 +381,7 @@ describe("GET /v1/constituents — server-side sort", () => {
         break;
       }
     }
-    const firstNullIdx = emails.findIndex((e) => e === null);
+    const firstNullIdx = emails.indexOf(null);
     if (firstNullIdx !== -1) {
       expect(firstNullIdx).toBeGreaterThan(lastNonNullIdx);
     }

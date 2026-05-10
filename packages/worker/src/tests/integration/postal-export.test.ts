@@ -85,7 +85,6 @@ async function createPostalExport(mode: "personalized" | "door_drop", totalCount
       totalCount,
     })
     .returning();
-  // biome-ignore lint/style/noNonNullAssertion: returning() yields the row
   return row!.id;
 }
 
@@ -106,7 +105,6 @@ beforeAll(async () => {
       description: "Audit-fix smoke campaign",
     })
     .returning();
-  // biome-ignore lint/style/noNonNullAssertion: insert returning yields the row
   campaignId = campaign!.id;
 
   await db.insert(campaignPublicPages).values({
@@ -144,9 +142,7 @@ beforeAll(async () => {
       },
     ])
     .returning();
-  // biome-ignore lint/style/noNonNullAssertion: returning yields the rows
   constituentAId = a!.id;
-  // biome-ignore lint/style/noNonNullAssertion: returning yields the rows
   constituentBId = b!.id;
 
   await db.insert(campaignConstituents).values([
@@ -330,7 +326,6 @@ describe("processGeneratePostalExport — failure handling", () => {
         status: "active",
       })
       .returning();
-    // biome-ignore lint/style/noNonNullAssertion: returning yields the row
     const emptyCampaignId = emptyCampaign!.id;
     await db.insert(campaignPublicPages).values({
       orgId: ORG_ID,
@@ -349,7 +344,6 @@ describe("processGeneratePostalExport — failure handling", () => {
         totalCount: 0,
       })
       .returning();
-    // biome-ignore lint/style/noNonNullAssertion: returning yields the row
     const exportId = row!.id;
 
     await expect(

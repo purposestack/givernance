@@ -145,7 +145,6 @@ export interface ConstituentInput {
 }
 
 /** List constituents for an organization with pagination, search, and filtering */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: filter branches are flat conditional pushes; splitting them into helper functions would obscure the WHERE composition
 export async function listConstituents(orgId: string, query: ListConstituentsQuery) {
   const {
     page,
