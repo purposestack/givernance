@@ -148,18 +148,21 @@ function AcceptContent() {
     });
     void probeInvitation(token).then((result) => {
       if (cancelled) return;
-      if (result.kind === "valid" || result.kind === "rate_limited") {
+      if (result.kind === "valid") {
+        // Hydrate every default the invite carries. `*Dirty` flags gate
+        // the name overwrites so a partially-typed name isn't replaced
+        // by the invitee's pre-filled value mid-edit.
+        setTokenProbe("valid");
+        setInvitationDefaultLocale(result.defaultLocale);
+        setSelectedLocale(result.defaultLocale);
+        if (!firstNameDirty && result.firstName) setFirstName(result.firstName);
+        if (!lastNameDirty && result.lastName) setLastName(result.lastName);
+      } else if (result.kind === "rate_limited") {
         // Treat rate-limited like valid — the user can still attempt the
         // submit; the accept endpoint has its own rate limit and will 410
         // for real if the token is bad. Surfacing "rate-limited" as a
         // terminal error here would cause spurious blocks.
         setTokenProbe("valid");
-        if (result.kind === "valid") {
-          setInvitationDefaultLocale(result.defaultLocale);
-          setSelectedLocale(result.defaultLocale);
-          if (!firstNameDirty && result.firstName) setFirstName(result.firstName);
-          if (!lastNameDirty && result.lastName) setLastName(result.lastName);
-        }
       } else {
         setTokenProbe("invalid");
       }
