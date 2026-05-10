@@ -24,6 +24,209 @@ import { blocklistUser, invalidateActiveUserCache } from "../session/service.js"
 
 const UserLocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)));
 
+// ─── PATCH /v1/users/:id helpers ─────────────────────────────────────────────
+//
+// Pulled out of the route's `withTenantContext` callback to keep that
+// callback under the cognitive-complexity threshold. Each helper is
+// extract-only — same SQL, same guards, same audit semantics as the
+// pre-refactor inline code. Locked by `tests/integration/user-edit.test.ts`
+// (issue #161 e2e suite).
+
+type UpdateUserBodyShape = {
+  firstName?: string;
+  lastName?: string;
+  role?: "org_admin" | "user" | "viewer";
+};
+
+type UpdateUserExisting = {
+  id: string;
+  keycloakId: string | null;
+  firstName: string;
+  lastName: string;
+  role: "org_admin" | "user" | "viewer";
+};
+
+type UpdateUserGuardResult =
+  | { kind: "valid"; existing: UpdateUserExisting }
+  | { kind: "not_found" }
+  | { kind: "missing_keycloak_link" }
+  | { kind: "cannot_self_demote" }
+  | { kind: "cannot_demote_last_admin" };
+
+/**
+ * Load the target user (ADR-021 — soft-deleted rows excluded so the 404
+ * path is the same as cross-tenant or non-existent), then walk the three
+ * role-change guards (missing keycloak link, self-demote, last admin).
+ * Returns `kind: "valid"` with the loaded row when the request can proceed.
+ */
+async function loadAndGuardUserUpdate(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  args: { id: string; orgId: string; body: UpdateUserBodyShape; callerKcId: string },
+): Promise<UpdateUserGuardResult> {
+  const { id, orgId, body, callerKcId } = args;
+  const [existing] = await tx
+    .select({
+      id: users.id,
+      keycloakId: users.keycloakId,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      role: users.role,
+    })
+    .from(users)
+    .where(and(eq(users.id, id), eq(users.orgId, orgId), isNull(users.deletedAt)))
+    .limit(1);
+  if (!existing) return { kind: "not_found" };
+
+  // Review PJD-3 — refuse to compare when `existing.keycloakId` is null.
+  // A null id would make `null === callerKcId` always false and silently
+  // skip the self-demote guard, letting an admin demote themselves through
+  // the legacy-data path. Treat null as "we cannot prove this isn't the
+  // caller", which is fail-closed.
+  if (existing.keycloakId === null && body.role !== undefined) {
+    return { kind: "missing_keycloak_link" };
+  }
+
+  // Self-edit lock — a caller demoting their own row below org_admin would
+  // walk out of their own org. The UI hides the role Select for the
+  // caller's row, but the API gate is the durable enforcement (issue #161).
+  const isSelf = existing.keycloakId === callerKcId;
+  if (
+    isSelf &&
+    body.role !== undefined &&
+    existing.role === "org_admin" &&
+    body.role !== "org_admin"
+  ) {
+    return { kind: "cannot_self_demote" };
+  }
+
+  // Last-admin lock-out (review S1) — refuse to demote the only remaining
+  // org_admin even when the caller is a different admin. Recovery from a
+  // zero-admin tenant requires super_admin intervention.
+  if (body.role !== undefined && existing.role === "org_admin" && body.role !== "org_admin") {
+    const countRows = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users)
+      .where(and(eq(users.orgId, orgId), eq(users.role, "org_admin"), ne(users.id, existing.id)));
+    const remainingAdmins = countRows[0]?.count ?? 0;
+    if (remainingAdmins === 0) {
+      return { kind: "cannot_demote_last_admin" };
+    }
+  }
+
+  return { kind: "valid", existing };
+}
+
+/** Build the SET payload for `UPDATE users` from the (sparse) request body. */
+function buildUserPatch(body: UpdateUserBodyShape): {
+  firstName?: string;
+  lastName?: string;
+  role?: "org_admin" | "user" | "viewer";
+  updatedAt: Date;
+} {
+  const patch: {
+    firstName?: string;
+    lastName?: string;
+    role?: "org_admin" | "user" | "viewer";
+    updatedAt: Date;
+  } = { updatedAt: new Date() };
+  if (body.firstName !== undefined) patch.firstName = body.firstName;
+  if (body.lastName !== undefined) patch.lastName = body.lastName;
+  if (body.role !== undefined) patch.role = body.role;
+  return patch;
+}
+
+/**
+ * Write the `user.profile_updated` audit row IFF the patch actually
+ * changed at least one field (compared against `existing`). Review E5 —
+ * `audit_logs.user_id` semantically means "who DID this" (the JWT subject),
+ * not "what was changed"; the target's UUID belongs in `resource_id`.
+ * `actor_id` follows the RFC 8693 convention from plugins/audit.ts (M2 fix).
+ * `ip_hash` + `user_agent` mirror the auto-row the audit plugin writes for
+ * every mutating request — without them, the more semantic
+ * `user.profile_updated` row would silently lose forensic context.
+ */
+async function writeUserUpdateAuditIfChanged(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  args: {
+    orgId: string;
+    existing: UpdateUserExisting;
+    body: UpdateUserBodyShape;
+    callerKcId: string;
+    actorKcId: string | null;
+    ipHash: string;
+    userAgent: string | undefined;
+  },
+): Promise<void> {
+  const { orgId, existing, body, callerKcId, actorKcId, ipHash, userAgent } = args;
+  const oldValues: Record<string, string> = {};
+  const newValues: Record<string, string> = {};
+  if (body.firstName !== undefined && body.firstName !== existing.firstName) {
+    oldValues.firstName = existing.firstName;
+    newValues.firstName = body.firstName;
+  }
+  if (body.lastName !== undefined && body.lastName !== existing.lastName) {
+    oldValues.lastName = existing.lastName;
+    newValues.lastName = body.lastName;
+  }
+  if (body.role !== undefined && body.role !== existing.role) {
+    oldValues.role = existing.role;
+    newValues.role = body.role;
+  }
+  if (Object.keys(newValues).length === 0) return;
+
+  await tx.insert(auditLogs).values({
+    orgId,
+    userId: callerKcId,
+    actorId: actorKcId,
+    action: "user.profile_updated",
+    resourceType: "user",
+    resourceId: existing.id,
+    oldValues,
+    newValues,
+    ipHash,
+    userAgent,
+  });
+}
+
+/**
+ * Sync a user-profile patch to Keycloak — name → users table (lands on
+ * `given_name` / `family_name` mappers), role → user attributes (matches
+ * invite-accept's `setUserAttributes` contract so the JWT mapper emits the
+ * new `role` claim). Both calls are best-effort: failures don't fail the
+ * request because the DB + audit row already reflect the intent. SRE can
+ * grep `user.profile_updated.kc_sync_failed` /
+ * `user.profile_updated.kc_role_sync_failed`.
+ */
+async function syncUserUpdateToKeycloak(args: {
+  kcId: string | null;
+  userId: string;
+  previousRole: "org_admin" | "user" | "viewer";
+  body: UpdateUserBodyShape;
+  log: { warn: (obj: Record<string, unknown>, msg: string) => void };
+}): Promise<void> {
+  const { kcId, userId, previousRole, body, log } = args;
+  if (!kcId) return;
+  const kcAdmin = keycloakAdmin();
+
+  if (body.firstName !== undefined || body.lastName !== undefined) {
+    try {
+      await kcAdmin.updateUser(kcId, {
+        firstName: body.firstName,
+        lastName: body.lastName,
+      });
+    } catch (err) {
+      log.warn({ err, kcId, userId }, "user.profile_updated.kc_sync_failed");
+    }
+  }
+  if (body.role !== undefined && body.role !== previousRole) {
+    try {
+      await kcAdmin.setUserAttributes(kcId, { role: [body.role] });
+    } catch (err) {
+      log.warn({ err, kcId, userId }, "user.profile_updated.kc_role_sync_failed");
+    }
+  }
+}
+
 /**
  * Body for `PATCH /v1/users/me` (issue #153). The single-field body keeps
  * the contract minimal — there's no other personal preference exposed
@@ -491,7 +694,6 @@ export async function userRoutes(app: FastifyInstance) {
         },
       },
     },
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: combined PATCH walks self-demote guard, DB diff, KC sync (name + role), and audit log — the linear flow keeps the behavioural contract obvious to a reviewer.
     async (request, reply) => {
       const orgId = request.auth?.orgId as string;
       const callerKcId = request.auth?.userId as string;
@@ -519,123 +721,27 @@ export async function userRoutes(app: FastifyInstance) {
       const t = resolveTranslations(request);
 
       const result = await withTenantContext(orgId, async (tx) => {
-        // ADR-021 — soft-deleted users are not editable. The 404 path
-        // is the same as cross-tenant or non-existent (no enumeration).
-        const [existing] = await tx
-          .select({
-            id: users.id,
-            keycloakId: users.keycloakId,
-            firstName: users.firstName,
-            lastName: users.lastName,
-            role: users.role,
-          })
-          .from(users)
-          .where(and(eq(users.id, id), eq(users.orgId, orgId), isNull(users.deletedAt)))
-          .limit(1);
-        if (!existing) return { kind: "not_found" as const };
-
-        // Self-edit lock — a caller demoting their own row below org_admin
-        // would walk out of their own org. The UI hides the role Select
-        // for the caller's row, but the API gate is the durable
-        // enforcement (issue #161 acceptance criteria).
-        //
-        // Review PJD-3 — refuse to compare when `existing.keycloakId` is
-        // null. A null id would make `null === callerKcId` always false
-        // and silently skip the self-demote guard, letting an admin demote
-        // themselves through the legacy-data path. Treat null as "we
-        // cannot prove this isn't the caller", which is fail-closed.
-        if (existing.keycloakId === null && body.role !== undefined) {
-          return { kind: "missing_keycloak_link" as const };
-        }
-        const isSelf = existing.keycloakId === callerKcId;
-        if (
-          isSelf &&
-          body.role !== undefined &&
-          existing.role === "org_admin" &&
-          body.role !== "org_admin"
-        ) {
-          return { kind: "cannot_self_demote" as const };
-        }
-
-        // Last-admin lock-out guard (review S1) — even when the caller is a
-        // DIFFERENT admin, demoting the only remaining `org_admin` (or this
-        // admin if they happen to be the only one and another admin sent
-        // the request) leaves the tenant with zero administrators. Recovery
-        // would require super_admin intervention or DB surgery, so refuse
-        // with a structured 422 the UI can map to a targeted message.
-        if (body.role !== undefined && existing.role === "org_admin" && body.role !== "org_admin") {
-          const countRows = await tx
-            .select({ count: sql<number>`count(*)::int` })
-            .from(users)
-            .where(
-              and(eq(users.orgId, orgId), eq(users.role, "org_admin"), ne(users.id, existing.id)),
-            );
-          const remainingAdmins = countRows[0]?.count ?? 0;
-          if (remainingAdmins === 0) {
-            return { kind: "cannot_demote_last_admin" as const };
-          }
-        }
-
-        const patch: {
-          firstName?: string;
-          lastName?: string;
-          role?: "org_admin" | "user" | "viewer";
-          updatedAt: Date;
-        } = { updatedAt: new Date() };
-        if (body.firstName !== undefined) patch.firstName = body.firstName;
-        if (body.lastName !== undefined) patch.lastName = body.lastName;
-        if (body.role !== undefined) patch.role = body.role;
+        const guard = await loadAndGuardUserUpdate(tx, { id, orgId, body, callerKcId });
+        if (guard.kind !== "valid") return guard;
 
         const [updated] = await tx
           .update(users)
-          .set(patch)
+          .set(buildUserPatch(body))
           .where(and(eq(users.id, id), eq(users.orgId, orgId)))
           .returning();
         if (!updated) return { kind: "not_found" as const };
 
-        // Field-level diff — only fields the caller explicitly set are
-        // recorded so the audit row stays scoped to the actual change.
-        const oldValues: Record<string, string> = {};
-        const newValues: Record<string, string> = {};
-        if (body.firstName !== undefined && body.firstName !== existing.firstName) {
-          oldValues.firstName = existing.firstName;
-          newValues.firstName = body.firstName;
-        }
-        if (body.lastName !== undefined && body.lastName !== existing.lastName) {
-          oldValues.lastName = existing.lastName;
-          newValues.lastName = body.lastName;
-        }
-        if (body.role !== undefined && body.role !== existing.role) {
-          oldValues.role = existing.role;
-          newValues.role = body.role;
-        }
+        await writeUserUpdateAuditIfChanged(tx, {
+          orgId,
+          existing: guard.existing,
+          body,
+          callerKcId,
+          actorKcId,
+          ipHash,
+          userAgent,
+        });
 
-        if (Object.keys(newValues).length > 0) {
-          // Review E5 — `audit_logs.user_id` semantically means "who DID
-          // this" (the JWT subject), not "what was changed". The target's
-          // UUID belongs in `resource_id`. `actor_id` follows the
-          // RFC 8693 convention from plugins/audit.ts (M2 fix): NULL under
-          // normal auth, populated with the impersonating admin's sub
-          // when the JWT carries an `act` claim. `ip_hash` + `user_agent`
-          // mirror the auto-row the audit plugin writes for every
-          // mutating request — without them, the more semantic
-          // `user.profile_updated` row would silently lose forensic
-          // context the auto-row has.
-          await tx.insert(auditLogs).values({
-            orgId,
-            userId: callerKcId,
-            actorId: actorKcId,
-            action: "user.profile_updated",
-            resourceType: "user",
-            resourceId: existing.id,
-            oldValues,
-            newValues,
-            ipHash,
-            userAgent,
-          });
-        }
-
-        return { kind: "ok" as const, existing, updated };
+        return { kind: "ok" as const, existing: guard.existing, updated };
       });
 
       if (result.kind === "not_found") {
@@ -690,45 +796,16 @@ export async function userRoutes(app: FastifyInstance) {
         });
       }
 
-      // Keycloak sync. We do this AFTER the DB transaction commits so a KC
-      // blip can be retried by the caller without the DB and KC drifting
-      // mid-transaction. Both calls are independent and best-effort
-      // relative to each other — a name update succeeding while a role
-      // attribute fails is recoverable on the next PATCH.
-      const kcId = result.existing.keycloakId;
-      if (kcId) {
-        const kcAdmin = keycloakAdmin();
-        // Name → KC users table (lands on `given_name` / `family_name`
-        // mappers so the next refreshed token shows the updated display
-        // name in the topbar).
-        if (body.firstName !== undefined || body.lastName !== undefined) {
-          try {
-            await kcAdmin.updateUser(kcId, {
-              firstName: body.firstName,
-              lastName: body.lastName,
-            });
-          } catch (err) {
-            // Don't fail the request — the DB + audit row already reflect
-            // the intent. SRE can grep `user.profile_updated.kc_sync_failed`.
-            request.log.warn(
-              { err, kcId, userId: result.existing.id },
-              "user.profile_updated.kc_sync_failed",
-            );
-          }
-        }
-        // Role → KC user attributes (matches invite-accept's setUserAttributes
-        // contract so the JWT mapper emits the new `role` claim downstream).
-        if (body.role !== undefined && body.role !== result.existing.role) {
-          try {
-            await kcAdmin.setUserAttributes(kcId, { role: [body.role] });
-          } catch (err) {
-            request.log.warn(
-              { err, kcId, userId: result.existing.id },
-              "user.profile_updated.kc_role_sync_failed",
-            );
-          }
-        }
-      }
+      // Keycloak sync runs AFTER the DB transaction commits — a KC blip
+      // can be retried by the caller without the DB and KC drifting
+      // mid-transaction.
+      await syncUserUpdateToKeycloak({
+        kcId: result.existing.keycloakId,
+        userId: result.existing.id,
+        previousRole: result.existing.role,
+        body,
+        log: request.log,
+      });
 
       return reply.send({ data: result.updated });
     },
