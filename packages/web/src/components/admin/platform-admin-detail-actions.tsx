@@ -46,6 +46,35 @@ interface Props {
 }
 
 /**
+ * Maps a remove-call error to a translation key. Pulled out of
+ * `onRemoveConfirm` so the latter stays under the cognitive-complexity
+ * threshold; the test suite (`platform-admin-detail-actions.test.tsx`)
+ * locks each branch via dedicated `it()` blocks (last-admin, self-removal,
+ * 404, generic) — refactor is behavior-preserving by construction.
+ *
+ * Return type is the literal-string union (not `string`) because next-intl's
+ * `t()` signature accepts only namespace-keyed literals, not arbitrary
+ * strings.
+ */
+type RemoveErrorKey =
+  | "errors.selfRemoval"
+  | "errors.lastAdmin"
+  | "errors.notFound"
+  | "errors.generic";
+
+function removeErrorTranslationKey(err: unknown): RemoveErrorKey {
+  if (err instanceof ApiProblem) {
+    if (err.status === 400) {
+      const detail = err.detail ?? "";
+      if (/own platform-admin row/i.test(detail)) return "errors.selfRemoval";
+      if (/last active/i.test(detail)) return "errors.lastAdmin";
+    }
+    if (err.status === 404) return "errors.notFound";
+  }
+  return "errors.generic";
+}
+
+/**
  * Detail-page actions for a platform admin (issue #254): edit name,
  * re-trigger the password-reset email, soft-delete the admin.
  *
@@ -125,20 +154,7 @@ export function PlatformAdminDetailActions({ admin, operatorKeycloakId }: Props)
       router.push("/admin/platform-admins");
       router.refresh();
     } catch (err) {
-      if (err instanceof ApiProblem && err.status === 400) {
-        const detail = err.detail ?? "";
-        if (/own platform-admin row/i.test(detail)) {
-          toast.error(t("errors.selfRemoval"));
-        } else if (/last active/i.test(detail)) {
-          toast.error(t("errors.lastAdmin"));
-        } else {
-          toast.error(t("errors.generic"));
-        }
-      } else if (err instanceof ApiProblem && err.status === 404) {
-        toast.error(t("errors.notFound"));
-      } else {
-        toast.error(t("errors.generic"));
-      }
+      toast.error(t(removeErrorTranslationKey(err)));
     } finally {
       setPendingRemove(false);
     }
