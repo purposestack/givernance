@@ -338,7 +338,7 @@ jobs:
         run: |
           gh label create infra/version-skew \
             --color B60205 \
-            --description "Staging accessory's running major has drifted from the dev/CI pin (auto-managed by check-staging-version-skew.yml)" \
+            --description "Staging accessory drifted from dev/CI pin (managed by check-staging-version-skew.yml)" \
             --force
 
       # Drift detected: open a new issue, or rewrite the body of every
