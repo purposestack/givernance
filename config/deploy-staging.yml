@@ -240,9 +240,19 @@ accessories:
     # but no password is set on the 'default' user"). Setting requirepass
     # here makes every connection require the password from the bag, which
     # `setup-kamal-secrets` already wires into REDIS_URL for every app.
-    # `$REDIS_PASSWORD` is expanded by docker's implicit `/bin/sh -c` since
-    # `cmd:` is a string scalar.
-    cmd: redis-server --requirepass "$REDIS_PASSWORD"
+    #
+    # Array form (NOT a string scalar) is load-bearing: kamal serialises a
+    # string-form `cmd:` such that `$REDIS_PASSWORD` gets shell-expanded on
+    # the GH Actions runner — where REDIS_PASSWORD is NOT exported (only
+    # POSTGRES_PASSWORD lands in runner env via `setup-kamal-secrets`) — so
+    # the literal `$REDIS_PASSWORD` resolves to empty BEFORE reaching docker
+    # and Redis ends up booting with `--requirepass ""` (== no auth).
+    # Passing an array delegates to docker's exec form, the inner `sh -c`
+    # then runs INSIDE the container where REDIS_PASSWORD IS in env.
+    cmd:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$REDIS_PASSWORD"
     directories:
       - data/redis:/data
   minio:
