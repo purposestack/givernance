@@ -70,7 +70,6 @@ beforeAll(async () => {
         set: { updatedAt: new Date() },
       })
       .returning();
-    // biome-ignore lint/style/noNonNullAssertion: onConflictDoUpdate always returns a row
     fundIdA = fund!.id;
   });
 

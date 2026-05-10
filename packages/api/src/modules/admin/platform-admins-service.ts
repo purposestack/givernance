@@ -269,13 +269,19 @@ export async function listPlatformAdmins(filters: ListFilters): Promise<ListResu
     if (raw.length > 0) {
       const like = `%${raw}%`;
       const lowered = `%${raw.toLowerCase()}%`;
-      conditions.push(
-        or(
-          ilike(platformAdmins.firstName, like),
-          ilike(platformAdmins.lastName, like),
-          sql`lower(${platformAdmins.email}) LIKE ${lowered}`,
-        )!,
+      const searchCondition = or(
+        ilike(platformAdmins.firstName, like),
+        ilike(platformAdmins.lastName, like),
+        sql`lower(${platformAdmins.email}) LIKE ${lowered}`,
       );
+      // `or()` returns `SQL | undefined` in drizzle's type — undefined only
+      // when called with zero conditions, which is statically impossible
+      // here (3 SQL fragments above). The explicit guard satisfies
+      // `lint/style/noNonNullAssertion` without a runtime cost — branch is
+      // dead in practice, just appeases the typechecker.
+      if (searchCondition) {
+        conditions.push(searchCondition);
+      }
     }
   }
 
@@ -744,7 +750,7 @@ export async function updatePlatformAdminName(input: UpdateNameInput): Promise<P
   const existing = await getActiveAdminOrThrow(input.id);
   const platformOrgId = await getPlatformOrgId();
 
-  await keycloakAdmin().updateUser(existing.keycloakId!, {
+  await keycloakAdmin().updateUser(existing.keycloakId, {
     firstName: input.firstName,
     lastName: input.lastName,
   });
@@ -792,7 +798,7 @@ export async function resetPlatformAdminPassword(input: ResetPasswordInput): Pro
   const existing = await getActiveAdminOrThrow(input.id);
   const platformOrgId = await getPlatformOrgId();
 
-  await keycloakAdmin().sendExecuteActionsEmail(existing.keycloakId!, ["UPDATE_PASSWORD"], {
+  await keycloakAdmin().sendExecuteActionsEmail(existing.keycloakId, ["UPDATE_PASSWORD"], {
     lifespanSec: PASSWORD_RESET_LIFESPAN_SEC,
     // No `clientId` / `redirectUri` — see the create flow's comment.
   });
@@ -932,7 +938,16 @@ export async function softDeletePlatformAdmin(input: SoftDeleteInput): Promise<v
 
 // ─── Internals ───────────────────────────────────────────────────────────────
 
-async function getActiveAdminOrThrow(id: string): Promise<PlatformAdminRow> {
+/**
+ * Loads a platform admin row that's guaranteed to be active AND linked to a
+ * Keycloak user. The `isNotNull(keycloakId)` predicate in the WHERE clause
+ * makes the runtime invariant real; the return-type intersection encodes it
+ * for the typechecker so call sites don't need `existing.keycloakId` (which
+ * `lint/style/noNonNullAssertion` rightly flags).
+ */
+async function getActiveAdminOrThrow(
+  id: string,
+): Promise<PlatformAdminRow & { keycloakId: string }> {
   const [row] = await systemDb
     .select()
     .from(platformAdmins)
@@ -951,7 +966,7 @@ async function getActiveAdminOrThrow(id: string): Promise<PlatformAdminRow> {
       "Platform admin not found or already removed.",
     );
   }
-  return row;
+  return row as PlatformAdminRow & { keycloakId: string };
 }
 
 async function compensatingKcDelete(kcUserId: string, reason: string): Promise<void> {

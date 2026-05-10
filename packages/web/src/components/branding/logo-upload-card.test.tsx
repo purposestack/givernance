@@ -5,10 +5,10 @@ import { mockToast, render, screen, userEvent, waitFor } from "@/tests/test-util
 // next/image's runtime expects the Next image-config context which JSDOM
 // can't satisfy. Forward the props onto a plain `<img>` so tests can assert
 // on `alt` / `src` for the "ready" preview path (PR #287 review, minor 13).
+// `<img>` here is correct for the test mock (no Next runtime to delegate to);
+// the `noImgElement` rule is silenced for `**/*.test.{ts,tsx}` via biome.json.
 vi.mock("next/image", () => ({
-  // biome-ignore lint/a11y/useAltText: alt is forwarded from the component under test.
   default: (props: Record<string, unknown>) => (
-    // biome-ignore lint/a11y/useAltText: alt forwarded via spread; default empty to satisfy DOM.
     <img {...(props as Record<string, string>)} alt={(props.alt as string) ?? ""} />
   ),
 }));

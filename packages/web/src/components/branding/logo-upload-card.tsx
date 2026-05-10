@@ -227,7 +227,7 @@ export function LogoUploadCard({
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         {/* Preview / fallback */}
         <div className="flex shrink-0 items-center justify-center">
-          {currentLogo && currentLogo.variants?.preview ? (
+          {currentLogo?.variants?.preview ? (
             <div className="relative h-24 w-24 overflow-hidden rounded-2xl border border-outline-variant bg-surface-container">
               <Image
                 src={currentLogo.variants.preview.url}

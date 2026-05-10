@@ -43,6 +43,19 @@
   },
   "overrides": [
     {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/tests/**/*.ts", "**/tests/**/*.tsx"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noImgElement": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/web/src/**/*.ts", "packages/web/src/**/*.tsx"],
       "linter": {
         "rules": {

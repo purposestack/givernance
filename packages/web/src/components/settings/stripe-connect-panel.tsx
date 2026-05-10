@@ -108,7 +108,7 @@ export function StripeConnectPanel({ canManageTenant }: StripeConnectPanelProps)
             </div>
           ) : null}
 
-          {status && status.accountId && !status.chargesEnabled ? (
+          {status?.accountId && !status.chargesEnabled ? (
             <RequirementsList status={status} />
           ) : null}
 
@@ -165,7 +165,7 @@ function StatusBadge({
 function describeState(
   status: StripeConnectStatus | null,
 ): "notConnected" | "pending" | "connected" {
-  if (!status || !status.accountId) return "notConnected";
+  if (!status?.accountId) return "notConnected";
   if (status.chargesEnabled) return "connected";
   return "pending";
 }

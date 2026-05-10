@@ -748,7 +748,6 @@ describe("Constituents merge", () => {
           amountBaseCents: 5000,
         })
         .returning();
-      // biome-ignore lint/style/noNonNullAssertion: test setup — insert always returns a row
       donationId = don!.id;
     });
   });
@@ -799,7 +798,6 @@ describe("Constituents merge", () => {
     await withTenantContext(ORG_A, async (tx) => {
       const rows = await tx.select().from(donations).where(sql`id = ${donationId}`);
       expect(rows.length).toBe(1);
-      // biome-ignore lint/style/noNonNullAssertion: asserted rows.length === 1 above
       expect(rows[0]!.constituentId).toBe(primaryId);
     });
   });
