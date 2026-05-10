@@ -278,8 +278,8 @@ accessories:
     env:
       clear:
         KC_DB: postgres
-        KC_DB_URL: jdbc:postgresql://givernance-postgres:5432/givernance_staging
-        KC_DB_USERNAME: givernance
+        KC_DB_URL: jdbc:postgresql://givernance-postgres:5432/givernance_keycloak
+        KC_DB_USERNAME: keycloak
         KEYCLOAK_ADMIN: admin
         KC_HOSTNAME: auth.staging.givernance.org
         KC_PROXY_HEADERS: xforwarded
