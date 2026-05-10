@@ -207,6 +207,36 @@ export interface PostalLetterRenderInput {
 }
 
 /**
+ * Render the recipient address block in the C5 envelope window zone.
+ * Country only printed for non-domestic mail; resolves the ISO code into
+ * a human-readable country name (UPU S42 / La Poste cross-border guides
+ * require the country name in full, never an ISO alpha-2). Pulled out of
+ * `buildPostalLetterDoc` to keep that function under the cognitive-
+ * complexity threshold; lockstep with worker/services/campaign-pdf.ts.
+ */
+function renderRecipientAddressBlock(
+  doc: InstanceType<typeof PDFDocument>,
+  recipient: NonNullable<PostalLetterRenderInput["recipient"]>,
+  locale: PostalLetterRenderInput["locale"],
+): void {
+  doc.save().fillColor("#0f172a").font("Helvetica").fontSize(11);
+  const lines: string[] = [`${recipient.firstName} ${recipient.lastName}`];
+  if (recipient.addressLine1) lines.push(recipient.addressLine1);
+  if (recipient.addressLine2) lines.push(recipient.addressLine2);
+  lines.push(`${recipient.postalCode ?? ""} ${recipient.city ?? ""}`.trim());
+  if (recipient.countryCode && recipient.countryCode.trim().toUpperCase() !== "FR") {
+    const countryName = resolveCountryName(recipient.countryCode, locale);
+    if (countryName) lines.push(countryName);
+  }
+  doc.text(lines.join("\n"), ADDRESS_BLOCK_X, ADDRESS_BLOCK_Y, {
+    width: ADDRESS_BLOCK_WIDTH,
+    lineGap: 1,
+    align: "left",
+  });
+  doc.restore();
+}
+
+/**
  * Build the PDFKit document. Returns a `PDFDocument` instance the caller
  * can either pipe to S3 (worker) or sink into a Buffer (preview endpoint).
  * The doc is **not** ended here — the caller decides whether to call
@@ -298,29 +328,8 @@ async function buildPostalLetterDoc(
   }
 
   // Recipient address block — middle-right of top half (C5 window zone)
-  const renderAddressBlock = hasWindowEnvelopeAddress(input.recipient);
-  if (renderAddressBlock && input.recipient) {
-    doc.save().fillColor("#0f172a").font("Helvetica").fontSize(11);
-    const lines: string[] = [`${input.recipient.firstName} ${input.recipient.lastName}`];
-    if (input.recipient.addressLine1) lines.push(input.recipient.addressLine1);
-    if (input.recipient.addressLine2) lines.push(input.recipient.addressLine2);
-    lines.push(`${input.recipient.postalCode ?? ""} ${input.recipient.city ?? ""}`.trim());
-    if (input.recipient.countryCode && input.recipient.countryCode.trim().toUpperCase() !== "FR") {
-      // Country only printed for non-domestic mail — domestic French
-      // post never needs a country line, and adding one wastes a line
-      // of the small address block. Resolve the ISO code into a
-      // human-readable country name in the tenant's locale (UPU S42
-      // and La Poste cross-border guides require the country name in
-      // full — never an ISO alpha-2 code, which sorting offices reject).
-      const countryName = resolveCountryName(input.recipient.countryCode, input.locale);
-      if (countryName) lines.push(countryName);
-    }
-    doc.text(lines.join("\n"), ADDRESS_BLOCK_X, ADDRESS_BLOCK_Y, {
-      width: ADDRESS_BLOCK_WIDTH,
-      lineGap: 1,
-      align: "left",
-    });
-    doc.restore();
+  if (hasWindowEnvelopeAddress(input.recipient) && input.recipient) {
+    renderRecipientAddressBlock(doc, input.recipient, input.locale);
   }
 
   // ── APPEAL CONTENT (flows continuously from just below the address) ──

@@ -137,6 +137,34 @@ function hasWindowEnvelopeAddress(recipient: CampaignLetterRecipient | null): bo
 }
 
 /**
+ * Render the recipient address block in the C5 envelope window zone.
+ * Pulled out of `createCampaignLetterPdfStream` to keep that function
+ * under the cognitive-complexity threshold; behaviour-preserving.
+ */
+function renderRecipientAddressBlock(
+  doc: InstanceType<typeof PDFDocument>,
+  recipient: NonNullable<CampaignLetterData["recipient"]>,
+  locale: CampaignLetterData["locale"],
+): void {
+  doc.save().fillColor("#0f172a").font("Helvetica").fontSize(11);
+  const lines: string[] = [`${recipient.firstName} ${recipient.lastName}`];
+  if (recipient.addressLine1) lines.push(recipient.addressLine1);
+  if (recipient.addressLine2) lines.push(recipient.addressLine2);
+  lines.push(`${recipient.postalCode ?? ""} ${recipient.city ?? ""}`.trim());
+  if (recipient.countryCode && recipient.countryCode.trim().toUpperCase() !== "FR") {
+    // ISO → localised country name (UPU S42 cross-border requirement).
+    const countryName = resolveCountryName(recipient.countryCode, locale);
+    if (countryName) lines.push(countryName);
+  }
+  doc.text(lines.join("\n"), ADDRESS_BLOCK_X, ADDRESS_BLOCK_Y, {
+    width: ADDRESS_BLOCK_WIDTH,
+    lineGap: 1,
+    align: "left",
+  });
+  doc.restore();
+}
+
+/**
  * Build a postal-letter PDFKit stream. Caller pipes it to S3 (or to an
  * `archiver.append`) and is responsible for awaiting the stream's `end`
  * before considering the upload complete.
@@ -200,25 +228,8 @@ export async function createCampaignLetterPdfStream(
   }
 
   // Recipient address block — middle-right of top half (C5 window zone)
-  const renderAddressBlock = hasWindowEnvelopeAddress(data.recipient);
-  if (renderAddressBlock && data.recipient) {
-    doc.save().fillColor("#0f172a").font("Helvetica").fontSize(11);
-    const lines: string[] = [`${data.recipient.firstName} ${data.recipient.lastName}`];
-    if (data.recipient.addressLine1) lines.push(data.recipient.addressLine1);
-    if (data.recipient.addressLine2) lines.push(data.recipient.addressLine2);
-    lines.push(`${data.recipient.postalCode ?? ""} ${data.recipient.city ?? ""}`.trim());
-    if (data.recipient.countryCode && data.recipient.countryCode.trim().toUpperCase() !== "FR") {
-      // ISO → localised country name (UPU S42 cross-border requirement;
-      // see api lockstep duplicate for the full rationale).
-      const countryName = resolveCountryName(data.recipient.countryCode, data.locale);
-      if (countryName) lines.push(countryName);
-    }
-    doc.text(lines.join("\n"), ADDRESS_BLOCK_X, ADDRESS_BLOCK_Y, {
-      width: ADDRESS_BLOCK_WIDTH,
-      lineGap: 1,
-      align: "left",
-    });
-    doc.restore();
+  if (hasWindowEnvelopeAddress(data.recipient) && data.recipient) {
+    renderRecipientAddressBlock(doc, data.recipient, data.locale);
   }
 
   // ── APPEAL CONTENT (flows continuously from just below the address) ──
