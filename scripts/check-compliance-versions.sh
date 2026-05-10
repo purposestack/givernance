@@ -34,31 +34,59 @@ fi
 violations=0
 checked=0
 
-# `yq -r` strips quotes; `keys[]` walks the dependency map keys.
-deps=$(yq -r '.dependencies | keys[]' "$MANIFEST")
-
 # Match either:
 #   `image: <dep>:<MAJOR>...` — YAML key form (compose / GH-Actions services).
 #     Leading whitespace allowed; tolerates quoted scalars (`'`/`"`) which
 #     are valid YAML and which Dependabot can emit.
-#   `FROM <dep>:<MAJOR>...` — Dockerfile directive at column 0.
-# Captures the major into group 2 (group 1 is the matched prefix variant).
+#   `FROM <dep>:<MAJOR>...` — Dockerfile directive.
+#     Case-insensitive (`from` is valid Dockerfile syntax — directives are
+#     not case-sensitive per the Dockerfile reference). Leading whitespace
+#     tolerated (Docker is lenient about indentation). Optional repeated
+#     `--flag=value` between `FROM` and the image name (e.g.
+#     `FROM --platform=linux/amd64 postgres:17`).
+# Captures: group 1 = optional last `--flag=value` on FROM (unused);
+# group 2 = major.
 match_regex_for() {
   local dep="$1"
-  printf '^[[:space:]]*image:[[:space:]]*['\''"]?%s:[0-9]+|^FROM[[:space:]]+%s:[0-9]+' "$dep" "$dep"
+  printf '^[[:space:]]*image:[[:space:]]*['\''"]?%s:[0-9]+|^[[:space:]]*[Ff][Rr][Oo][Mm][[:space:]]+(--[A-Za-z][A-Za-z0-9-]*=[^[:space:]]+[[:space:]]+)*%s:[0-9]+' "$dep" "$dep"
 }
 
-for dep in $deps; do
+# `yq -r` strips quotes; `keys[]` walks the dependency map keys.
+# Read into a bash array via `while read` so a hostile manifest entry
+# containing whitespace or shell glob characters can't word-split or
+# expand against the CWD when iterated. (Avoids `mapfile`, which is
+# bash 4+ only — macOS ships 3.2.)
+deps=()
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  deps+=("$line")
+done < <(yq -r '.dependencies | keys[]' "$MANIFEST")
+
+for dep in "${deps[@]}"; do
+  # Reject dep names that aren't simple identifiers — they would be
+  # interpolated into a regex below, where metacharacters (`|`, `.`, `*`)
+  # would silently change semantics. Today's deps (`postgres`, `redis`)
+  # pass; expand the pattern when a future dep needs it.
+  if ! printf '%s' "$dep" | grep -qE '^[a-z][a-z0-9-]*$'; then
+    echo "::error ::compliance manifest contains a dep name with disallowed characters: $dep (allowed: ^[a-z][a-z0-9-]*\$)"
+    violations=$((violations + 1))
+    continue
+  fi
+
   ceiling=$(yq -r ".dependencies.\"$dep\".max_major" "$MANIFEST")
   provider=$(yq -r ".dependencies.\"$dep\".provider" "$MANIFEST")
-  pinned_files=$(yq -r ".dependencies.\"$dep\".pinned_in[]" "$MANIFEST")
+  pinned_files=()
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    pinned_files+=("$line")
+  done < <(yq -r ".dependencies.\"$dep\".pinned_in[]" "$MANIFEST")
   regex=$(match_regex_for "$dep")
 
   # ── Pass 1: ceiling check on each declared `pinned_in:` file. ─────────────
   # Both `image:` and `FROM` forms are accepted, so a Dockerfile legitimately
   # listed in `pinned_in:` gets the same major-version enforcement as a
   # compose pin.
-  for file in $pinned_files; do
+  for file in "${pinned_files[@]}"; do
     if [ ! -f "$file" ]; then
       # Missing file = silently-disabled enforcement for that dep. Treat
       # as a hard error so a typo in `pinned_in:` or a renamed/moved file
@@ -70,10 +98,15 @@ for dep in $deps; do
 
     while IFS= read -r match; do
       [ -z "$match" ] && continue
-      lineno=$(echo "$match" | cut -d: -f1)
-      # Strip the `<lineno>:` prefix grep adds, then peel off whichever
-      # form matched (image: '"'"'…'"'"' OR FROM …) to leave the major.
-      version=$(echo "$match" | sed -E "s|^[0-9]+:[[:space:]]*image:[[:space:]]*['\"]?${dep}:([0-9]+).*|\1|; s|^[0-9]+:FROM[[:space:]]+${dep}:([0-9]+).*|\1|")
+      lineno=$(printf '%s' "$match" | sed -E 's|^([0-9]+):.*|\1|')
+      # Peel off whichever form matched to leave the major. Two sed
+      # branches because the alternation has different shapes (image:
+      # has no flag-prefix; FROM may have repeated `--flag=value` flags
+      # between the directive and the image).
+      version=$(printf '%s' "$match" | sed -E "
+        s|^[0-9]+:[[:space:]]*image:[[:space:]]*['\"]?${dep}:([0-9]+).*|\1|
+        s|^[0-9]+:[[:space:]]*[Ff][Rr][Oo][Mm][[:space:]]+(--[A-Za-z][A-Za-z0-9-]*=[^[:space:]]+[[:space:]]+)*${dep}:([0-9]+).*|\2|
+      ")
 
       if [ "$version" -gt "$ceiling" ]; then
         echo "::error file=$file,line=$lineno::$dep:$version exceeds compliance ceiling $ceiling (provider: $provider). Bump infra/compliance-versions.yml first, after the provider publishes support. See ADR-026."
@@ -87,18 +120,21 @@ for dep in $deps; do
   # Any `image: <dep>:` or `FROM <dep>:` match in a file NOT declared in
   # `pinned_in:` is a violation. Closes the gap that a stray Dockerfile or
   # an accidentally-added compose override could otherwise drive through
-  # (issue #284). `git ls-files` naturally excludes `.git`, gitignored
-  # paths (node_modules, dist, .next, .turbo, …), and untracked scratch
-  # files — so adding a file to the index makes the gate notice it.
-  while IFS= read -r match; do
-    [ -z "$match" ] && continue
-    file=$(echo "$match" | cut -d: -f1)
-    lineno=$(echo "$match" | cut -d: -f2)
+  # (issue #284). The file list comes from `git ls-files -z` (NUL-separated,
+  # so any legal POSIX filename — including `:` — round-trips intact); the
+  # per-file `grep -nIE` then yields `<lineno>:<content>` where the first
+  # `:` reliably separates lineno from content. `-I` skips binaries so we
+  # don't risk a regex hit against random bytes. Untracked / gitignored
+  # paths (node_modules, dist, .next, .turbo, scratch fixtures) are
+  # excluded — a developer can experiment locally without failing CI;
+  # staging the file makes the gate notice it.
+  while IFS= read -r -d '' file; do
+    [ -f "$file" ] || continue
 
     # Skip files already declared in `pinned_in:` for this dep — Pass 1
     # already enforced the ceiling on them.
     declared=0
-    for pinned_file in $pinned_files; do
+    for pinned_file in "${pinned_files[@]}"; do
       if [ "$file" = "$pinned_file" ]; then
         declared=1
         break
@@ -106,9 +142,13 @@ for dep in $deps; do
     done
     [ "$declared" -eq 1 ] && continue
 
-    echo "::error file=$file,line=$lineno::$dep image reference in undeclared file. Either add '$file' to dependencies.$dep.pinned_in in $MANIFEST (after confirming the version is at or below the $ceiling ceiling), or remove the reference. See ADR-026."
-    violations=$((violations + 1))
-  done < <(git ls-files -z | xargs -0 grep -nHE "$regex" 2>/dev/null || true)
+    while IFS= read -r match; do
+      [ -z "$match" ] && continue
+      lineno=${match%%:*}
+      echo "::error file=$file,line=$lineno::$dep image reference in undeclared file. Either add '$file' to dependencies.$dep.pinned_in in $MANIFEST (after confirming the version is at or below the $ceiling ceiling), or remove the reference. See ADR-026."
+      violations=$((violations + 1))
+    done < <(grep -nIE "$regex" "$file" 2>/dev/null || true)
+  done < <(git ls-files -z)
 done
 
 if [ "$violations" -gt 0 ]; then
@@ -120,4 +160,4 @@ if [ "$violations" -gt 0 ]; then
   exit 1
 fi
 
-echo "Compliance ceilings OK: $checked pin(s) checked across $(echo "$deps" | wc -w | tr -d ' ') dependencies; default-deny scan clean."
+echo "Compliance ceilings OK: $checked pin(s) checked across ${#deps[@]} dependencies; default-deny scan clean."
