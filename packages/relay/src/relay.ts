@@ -33,9 +33,16 @@ export interface RelayLogger {
  * (or `failed` on enqueue error). Returns the count of rows successfully
  * enqueued + marked `completed`.
  *
- * The `FOR UPDATE SKIP LOCKED` clause is what makes this safe to run from
- * multiple relay replicas at once — each replica locks a disjoint subset
- * of pending rows for the duration of the tick.
+ * The `FOR UPDATE SKIP LOCKED` clause lets multiple relay replicas tick
+ * the same table concurrently without blocking on each other. Note that
+ * the SELECT runs in autocommit (via `db.execute`), so the row locks are
+ * released the moment the SELECT returns — they do NOT span the
+ * subsequent UPDATE. What actually guarantees exactly-once *delivery* is
+ * the `jobId: row.id` option on `eventsQueue.add` below: BullMQ rejects
+ * duplicate jobIds at the queue level, so a row picked up by two replicas
+ * in the same tick produces only one job. The SKIP LOCKED clause is a
+ * latency optimisation (replicas don't fight for the same row) on top of
+ * that idempotency guarantee, not a substitute for it.
  */
 export async function relayPendingEvents(
   db: NodePgDatabase,
@@ -74,8 +81,11 @@ export async function relayPendingEvents(
           tracestate: row.metadata?.tracestate,
           // Issue #24 — forward impersonation context to the worker so
           // async audit writes can carry the same double-attribution as
-          // the originating request. Optional on every job; only delegation
-          // mode produces non-null values (pure-impersonation can't write).
+          // the originating request. Optional on every job; both
+          // `delegation` and `impersonation` (pure) modes can produce
+          // non-null values because pure-impersonation has full RBAC
+          // parity with the target and is allowed to write
+          // (docs/19-impersonation.md §6).
           impersonationSessionId: row.metadata?.impersonationSessionId,
           impersonationMode: row.metadata?.impersonationMode,
           impersonatorKeycloakId: row.metadata?.impersonatorKeycloakId,
