@@ -10,10 +10,18 @@
 
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
+import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
-import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
+import {
+  authHeader,
+  ensureTestTenants,
+  ORG_A,
+  ORG_B,
+  seedTenantUser,
+  signToken,
+} from "../helpers/auth.js";
 
 let app: FastifyInstance;
 let campaignId: string;
@@ -438,6 +446,17 @@ describe("QR tracking metrics", () => {
 });
 
 describe("Bulk email dispatch", () => {
+  // The bulk-email POST + resume POST routes are rate-limited at 10/min
+  // each. This file now contains a dozen+ tests that hit them in a
+  // single test-file run; clear the rate-limit keys between tests so a
+  // suite that wouldn't trip the limit in real usage doesn't bleed
+  // 429s across unrelated assertions. Same pattern as
+  // `signup.test.ts` and `team-invitations.test.ts`.
+  beforeEach(async () => {
+    const keys = await redis.keys("*rate-limit*");
+    if (keys.length > 0) await redis.del(...keys);
+  });
+
   it("POST /v1/constituents/bulk-email creates a tracking row + outbox event with only the job id (issue #326)", async () => {
     const token = signToken(app);
     const res = await app.inject({
@@ -559,10 +578,14 @@ describe("Bulk email dispatch", () => {
 });
 
 describe("Bulk email job tracking + resume (issue #326)", () => {
+  beforeEach(async () => {
+    const keys = await redis.keys("*rate-limit*");
+    if (keys.length > 0) await redis.del(...keys);
+  });
+
   it("GET /v1/constituents/bulk-email-jobs lists the newest jobs first", async () => {
     const token = signToken(app);
 
-    // Reset polling rate limits leftover from the previous suite.
     const res = await app.inject({
       method: "GET",
       url: "/v1/constituents/bulk-email-jobs",
@@ -577,12 +600,25 @@ describe("Bulk email job tracking + resume (issue #326)", () => {
         totalRecipients: number;
         deliveredCount: number;
         stalled: boolean;
+        createdAt: string;
       }>;
     }>();
     expect(body.data.length).toBeGreaterThanOrEqual(1);
-    // Stalled flag is a server-derived boolean; on fresh `pending` rows
-    // it's always false.
-    expect(body.data.every((row) => row.stalled === false)).toBe(true);
+    // Every `pending` row in the list must report `stalled === false`
+    // (the flag only flips for `processing` rows whose updated_at has
+    // gone stale). The list mixes pending + processing in this suite —
+    // we check the property surface, not the value of every row.
+    for (const row of body.data) {
+      if (row.status === "pending") {
+        expect(row.stalled).toBe(false);
+      }
+      // Boolean shape regardless of status.
+      expect(typeof row.stalled).toBe("boolean");
+    }
+    // Newest-first ordering.
+    const timestamps = body.data.map((row) => new Date(row.createdAt).getTime());
+    const sorted = [...timestamps].sort((a, b) => b - a);
+    expect(timestamps).toEqual(sorted);
   });
 
   it("GET /v1/constituents/bulk-email-jobs/:id polls a single job", async () => {
@@ -838,6 +874,243 @@ describe("Bulk email job tracking + resume (issue #326)", () => {
           ARRAY[${constituentAId}::uuid],
           ARRAY[]::uuid[],
           1, 5, 0
+        )
+      `),
+    ).rejects.toThrow();
+  });
+
+  // PR #352 review M2: lock the RFC 9457 body shape on at least one error
+  // path. Catches regressions to a plain `{ error: "..." }` body or a
+  // type-stripped problem-detail (per project memory
+  // `feedback_lock_rfc9457_body_in_tests.md`).
+  it("rejection responses follow the full RFC 9457 problem-detail shape", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents/bulk-email-jobs/00000000-0000-0000-0000-000000000bad/resume",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+    const body = res.json<{
+      type: string;
+      title: string;
+      status: number;
+      detail: string;
+    }>();
+    expect(body.type).toMatch(/^https?:\/\//);
+    expect(body.title).toBe("job_not_found");
+    expect(body.status).toBe(404);
+    expect(typeof body.detail).toBe("string");
+    expect(body.detail.length).toBeGreaterThan(0);
+  });
+
+  // PR #352 review H4: every new admin-gated endpoint must reject `viewer`
+  // tokens with 403 — per project memory `feedback_role_test_coverage_both_directions.md`
+  // we cover BOTH directions of the boundary (admin-200 above + viewer-403 here).
+  it("rejects viewer tokens with 403 on every new bulk-email-jobs endpoint", async () => {
+    const viewerToken = signToken(app, {
+      role: "viewer",
+      realm_access: { roles: ["app-viewer"] },
+    });
+    // Seed an active `viewer` user row so the auth plugin's active-row
+    // check resolves before the role gate fires.
+    await seedTenantUser(ORG_A, { role: "viewer" });
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/bulk-email-jobs",
+      headers: authHeader(viewerToken),
+    });
+    expect(list.statusCode).toBe(403);
+
+    const get = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/bulk-email-jobs/00000000-0000-0000-0000-000000000aaa",
+      headers: authHeader(viewerToken),
+    });
+    expect(get.statusCode).toBe(403);
+
+    const resume = await app.inject({
+      method: "POST",
+      url: "/v1/constituents/bulk-email-jobs/00000000-0000-0000-0000-000000000aaa/resume",
+      headers: authHeader(viewerToken),
+    });
+    expect(resume.statusCode).toBe(403);
+
+    // Re-seed the admin row so subsequent tests in this file regain the
+    // org_admin token's active membership.
+    await seedTenantUser(ORG_A);
+  });
+
+  // PR #352 review H3: a tenant A admin must NOT be able to GET or
+  // resume a `bulk_email_jobs` row that belongs to tenant B. RLS makes
+  // this safe in the service path; the test is the regression net for
+  // anything that ever bypasses `withTenantContext`.
+  it("isolates bulk_email_jobs rows across tenants — 404, not 200", async () => {
+    // Seed a tenant B row directly. We use raw SQL because seeding via
+    // the API would also need a tenant B token, which only complicates
+    // the test without exercising the surface we care about.
+    const tenantBRow = await db.execute<{ id: string }>(sql`
+      INSERT INTO bulk_email_jobs (
+        org_id, status, subject, body,
+        constituent_ids, total_recipients
+      ) VALUES (
+        ${ORG_B}::uuid,
+        'completed',
+        'Tenant B private dispatch',
+        'Tenant A must never see this.',
+        ARRAY[]::uuid[],
+        0
+      )
+      RETURNING id
+    `);
+    const tenantBJobId = tenantBRow.rows[0]?.id;
+    if (!tenantBJobId) throw new Error("Failed to seed tenant B row");
+
+    const tenantAToken = signToken(app);
+
+    // GET — RLS hides the row, so the API returns 404 (not 403, which
+    // would leak existence) — same shape as a missing id.
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/v1/constituents/bulk-email-jobs/${tenantBJobId}`,
+      headers: authHeader(tenantAToken),
+    });
+    expect(getRes.statusCode).toBe(404);
+
+    // Resume — same posture: 404 with code `job_not_found`. A 400
+    // `job_still_running` would prove the resume path could see the
+    // tenant B row even though it can't write to it.
+    const resumeRes = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/bulk-email-jobs/${tenantBJobId}/resume`,
+      headers: authHeader(tenantAToken),
+    });
+    expect(resumeRes.statusCode).toBe(404);
+    expect(resumeRes.json<{ title: string }>().title).toBe("job_not_found");
+  });
+
+  // PR #352 review L1 (QA): a deliberately-zero-deliverable dispatch
+  // (every selected constituent has no email) must close the row
+  // `completed` in the same transaction WITHOUT emitting an outbox
+  // event. Exercises the early-return path in `dispatchBulkEmail`.
+  it("zero-deliverable dispatch marks the row completed without an outbox event", async () => {
+    const token = signToken(app);
+
+    // Count outbox rows of this type before — we'll assert no new rows
+    // are added by this dispatch.
+    const before = await db.execute<{ c: number }>(sql`
+      SELECT count(*)::int AS c FROM outbox_events
+      WHERE tenant_id = ${ORG_A}::uuid
+        AND type = 'communication.bulk_email_requested'
+    `);
+    const outboxCountBefore = before.rows[0]?.c ?? 0;
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents/bulk-email",
+      headers: authHeader(token),
+      payload: {
+        constituentIds: [constituentNoEmailId],
+        subject: "Nobody to email",
+        body: "But please track the request anyway.",
+      },
+    });
+    expect(res.statusCode).toBe(202);
+    const { jobId, queued, skippedNoEmail } = res.json<{
+      data: { jobId: string; queued: number; skippedNoEmail: number };
+    }>().data;
+    expect(queued).toBe(0);
+    expect(skippedNoEmail).toBe(1);
+
+    // Row exists and is already `completed` with completed_at set —
+    // the operator sees the dispatch in the panel and can move on.
+    const trackingRows = await db.execute(sql`
+      SELECT status, total_recipients, completed_at
+      FROM bulk_email_jobs
+      WHERE id = ${jobId}::uuid
+    `);
+    const tracking = trackingRows.rows[0] as {
+      status: string;
+      total_recipients: number;
+      completed_at: string | null;
+    };
+    expect(tracking.status).toBe("completed");
+    expect(tracking.total_recipients).toBe(0);
+    expect(tracking.completed_at).not.toBeNull();
+
+    const after = await db.execute<{ c: number }>(sql`
+      SELECT count(*)::int AS c FROM outbox_events
+      WHERE tenant_id = ${ORG_A}::uuid
+        AND type = 'communication.bulk_email_requested'
+    `);
+    expect(after.rows[0]?.c ?? 0).toBe(outboxCountBefore);
+  });
+
+  // PR #352 review H1: the resume path takes `SELECT ... FOR UPDATE`
+  // on the source row, AND migration 0046 enforces a partial unique
+  // index on `(parent_job_id) WHERE status IN ('pending', 'processing')`.
+  // Even if the row lock is somehow bypassed (raw SQL, future direct-
+  // DB tooling), a duplicate INSERT fails at the index layer.
+  it("rejects a second active resume from the same parent (partial unique index)", async () => {
+    // Seed a partial source.
+    const sourceRows = await db.execute<{ id: string }>(sql`
+      INSERT INTO bulk_email_jobs (
+        org_id, status, subject, body,
+        constituent_ids,
+        delivered_constituent_ids,
+        failed_constituent_ids,
+        total_recipients, delivered_count, failed_count
+      ) VALUES (
+        ${ORG_A}::uuid,
+        'partial',
+        'Partial source — double resume',
+        'First resume should win; second should be blocked.',
+        ARRAY[${constituentAId}::uuid, ${constituentBId}::uuid],
+        ARRAY[${constituentAId}::uuid],
+        ARRAY[]::uuid[],
+        2, 1, 0
+      )
+      RETURNING id
+    `);
+    const sourceId = sourceRows.rows[0]?.id;
+    if (!sourceId) throw new Error("Failed to seed source row");
+
+    // First resume row — should succeed and stay in `pending`.
+    const firstResume = await db.execute<{ id: string }>(sql`
+      INSERT INTO bulk_email_jobs (
+        org_id, status, subject, body,
+        constituent_ids, total_recipients,
+        parent_job_id
+      ) VALUES (
+        ${ORG_A}::uuid,
+        'pending',
+        'First resume',
+        'Body.',
+        ARRAY[${constituentBId}::uuid],
+        1,
+        ${sourceId}::uuid
+      )
+      RETURNING id
+    `);
+    expect(firstResume.rows.length).toBe(1);
+
+    // Second resume row pointing at the same parent while the first is
+    // still non-terminal must fail at the index layer.
+    await expect(
+      db.execute(sql`
+        INSERT INTO bulk_email_jobs (
+          org_id, status, subject, body,
+          constituent_ids, total_recipients,
+          parent_job_id
+        ) VALUES (
+          ${ORG_A}::uuid,
+          'pending',
+          'Second resume',
+          'Body.',
+          ARRAY[${constituentBId}::uuid],
+          1,
+          ${sourceId}::uuid
         )
       `),
     ).rejects.toThrow();

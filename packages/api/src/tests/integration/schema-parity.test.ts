@@ -219,6 +219,25 @@ describe("Drizzle ↔ SQL schema parity (issue #261)", () => {
           "users_one_first_admin_per_org",
           { predicate: "first_admin = true", reason: "ADR-021 ownership invariant" },
         ],
+        [
+          // Issue #326 / migration 0046: at most one non-terminal
+          // resume per parent — prevents two concurrent Resume clicks
+          // from each inserting a child row that fans out to the same
+          // remaining recipients (PR #352 review H1). Soft-deleted
+          // resume rows are still a "used" slot semantically: a
+          // tenant must explicitly mark the row terminal (or wait for
+          // the worker to do so) before they can spawn another active
+          // resume, otherwise the soft-delete becomes a backdoor that
+          // lets two concurrent in-flight resumes coexist. Predicate
+          // is therefore status-based, not deleted_at-based.
+          "bulk_email_jobs_one_active_resume_per_parent",
+          {
+            predicate:
+              "(parent_job_id IS NOT NULL) AND (status = ANY (ARRAY['pending'::bulk_email_job_status, 'processing'::bulk_email_job_status]))",
+            reason:
+              "ADR-021 + issue #326 — non-terminal status, not deleted_at, is the right gate for resume uniqueness",
+          },
+        ],
       ]);
 
       const offenders: string[] = [];
