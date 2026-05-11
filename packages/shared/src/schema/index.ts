@@ -1354,9 +1354,18 @@ export const featureFlags = pgTable(
     /** Current value. Single boolean per row — no per-tenant variance in the MVP. */
     enabled: boolean("enabled").notNull().default(false),
     /**
-     * Operator-facing description shown next to the toggle in the
-     * Back Office UI. Explain *what* the flag gates and *why* it's
-     * gated; the changelog goes in `audit_logs`.
+     * Short, friendly title shown as the row heading in the Back Office
+     * UI (e.g. "Bulk emails to constituents"). Plain language, no
+     * dotted-namespace prefix, no engineering jargon — operators are
+     * the audience.
+     */
+    label: varchar("label", { length: 120 }).notNull(),
+    /**
+     * Operator-facing description shown under the label in the
+     * Back Office UI. One or two sentences in plain language, focused
+     * on **what the feature does for the operator**. The engineering
+     * rationale (RFCs, incident IDs, infra prerequisites) belongs in
+     * `FEATURE_FLAG_REGISTRY` code comments, NOT in this column.
      */
     description: text("description").notNull(),
     /**

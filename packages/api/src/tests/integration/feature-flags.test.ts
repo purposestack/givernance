@@ -359,27 +359,39 @@ describe("requireFlag gate on /v1/constituents/bulk-email", () => {
 
 describe("Feature flag CHECK against DB drift between schema + seed", () => {
   it("the seed migration inserted the canonical bulk-email row", async () => {
-    const rows = await db.execute<{ key: string; enabled: boolean; description: string }>(sql`
-      SELECT key, enabled, description
+    const rows = await db.execute<{
+      key: string;
+      enabled: boolean;
+      label: string;
+      description: string;
+    }>(sql`
+      SELECT key, enabled, label, description
       FROM feature_flags
       WHERE key = 'communication.bulk_email'
     `);
     expect(rows.rows.length).toBe(1);
-    expect(rows.rows[0]?.description).toContain("DKIM");
+    const seeded = rows.rows[0]!;
+    // Operator-facing text is plain language — no engineering jargon.
+    // Pin the friendly label as a regression net against someone
+    // pasting RFC references / issue IDs back into the seed.
+    expect(seeded.label).toBe("Bulk emails to constituents");
+    expect(seeded.description.toLowerCase()).not.toContain("dkim");
+    expect(seeded.description.toLowerCase()).not.toContain("issue #");
   });
 
-  // PR #352 review Plat-M3: the code-side `FEATURE_FLAG_REGISTRY` and
-  // the DB-side seed are two halves of the same source-of-truth.
-  // Editing one and forgetting the other leaves the operator UI with
-  // a description that doesn't match a fresh-DB seed. This test
-  // catches the drift in CI.
-  it("FEATURE_FLAG_REGISTRY matches the seeded DB rows (description + key parity)", async () => {
+  // PR #352 review Plat-M3 (extended after the magino UX review):
+  // the code-side `FEATURE_FLAG_REGISTRY` and the DB-side seed are
+  // two halves of the same source-of-truth. Editing one and forgetting
+  // the other leaves the Back Office UI with a label/description that
+  // doesn't match a fresh-DB seed. This test catches the drift in CI.
+  it("FEATURE_FLAG_REGISTRY matches the seeded DB rows (label + description + key parity)", async () => {
     for (const entry of FEATURE_FLAG_REGISTRY) {
       const [dbRow] = await db
-        .select({ description: featureFlags.description })
+        .select({ label: featureFlags.label, description: featureFlags.description })
         .from(featureFlags)
         .where(eq(featureFlags.key, entry.key));
       expect(dbRow, `Missing seed row for ${entry.key}`).toBeDefined();
+      expect(dbRow?.label, `Label drift for ${entry.key}`).toBe(entry.label);
       expect(dbRow?.description, `Description drift for ${entry.key}`).toBe(entry.description);
     }
   });

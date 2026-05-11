@@ -49,17 +49,28 @@ export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLA
  * Registry entries the seed migration uses to provision the
  * `feature_flags` table. The migration is INSERT … ON CONFLICT DO
  * NOTHING so existing values are preserved across redeploys — the
- * default below is the *first-deploy* value, not a runtime override.
+ * defaults below are the *first-deploy* values, not runtime overrides.
+ *
+ * Text-field convention (PR #352 magino review):
+ *   - `label` and `description` are **operator-facing**. Plain
+ *     language, no engineering jargon, no issue numbers, no RFC
+ *     references. These render in the Back Office UI.
+ *   - The engineering rationale (DKIM/SPF/DMARC, incident IDs,
+ *     follow-up issues) lives in the JSDoc above each `FEATURE_FLAG_KEYS`
+ *     entry — invisible to operators, visible to anyone reading the
+ *     code.
  */
 export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
   key: FeatureFlagKey;
   defaultEnabled: boolean;
+  label: string;
   description: string;
 }> = [
   {
     key: FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL,
     defaultEnabled: false,
+    label: "Bulk emails to constituents",
     description:
-      "Operator-triggered bulk email to selected constituents (issue #326). Disabled until the platform's outbound mail domain has DKIM / SPF / DMARC configured — without them every send looks like phishing to recipient MX servers.",
+      "Lets operators send one email to several constituents at once from the Constituents page. Currently off — we'll turn it on once the email-deliverability setup is finished so messages don't land in donors' spam folders.",
   },
 ];

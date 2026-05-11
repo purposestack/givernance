@@ -12,6 +12,9 @@ import type { ApiClient } from "@/lib/api";
 export interface FeatureFlagRow {
   key: string;
   enabled: boolean;
+  /** Short, friendly heading (e.g. "Bulk emails to constituents"). */
+  label: string;
+  /** One or two sentences in plain language explaining what the feature does. */
   description: string;
   updatedBy: string | null;
   createdAt: string;

@@ -37,6 +37,7 @@ const CACHE_TTL_SECONDS = 60;
 export interface FeatureFlagRow {
   key: string;
   enabled: boolean;
+  label: string;
   description: string;
   updatedBy: string | null;
   createdAt: string;
@@ -145,6 +146,7 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
         .select({
           key: featureFlags.key,
           enabled: featureFlags.enabled,
+          label: featureFlags.label,
           description: featureFlags.description,
           updatedBy: featureFlags.updatedBy,
           createdAt: featureFlags.createdAt,
@@ -155,6 +157,7 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
       return rows.map((row) => ({
         key: row.key,
         enabled: row.enabled,
+        label: row.label,
         description: row.description,
         updatedBy: row.updatedBy,
         createdAt:
