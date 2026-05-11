@@ -852,7 +852,8 @@
       "label": "Navigation des paramètres de l'organisation",
       "organization": "Organisation",
       "members": "Membres",
-      "funds": "Fonds"
+      "funds": "Fonds",
+      "bankAccounts": "Comptes bancaires"
     },
     "branding": {
       "title": "Logo de l'organisation",
@@ -1101,6 +1102,114 @@
         "success": {
           "created": "Fonds créé.",
           "updated": "Fonds mis à jour."
+        }
+      }
+    },
+    "bankAccounts": {
+      "settings": "Paramètres",
+      "title": "Comptes bancaires",
+      "subtitleEmpty": "Enregistrez un compte bancaire suisse (IBAN ou QR-IBAN) pour activer la génération de BVR sur vos campagnes postales.",
+      "subtitleWithCount": "{count, plural, one {# compte bancaire} other {# comptes bancaires}} configuré(s)",
+      "readOnly": "Seuls les administrateurs de l'organisation peuvent gérer les comptes bancaires.",
+      "empty": {
+        "title": "Aucun compte bancaire enregistré",
+        "description": "Ajoutez votre premier compte bancaire pour générer des BVR sur vos lettres postales. CHF ou EUR, IBAN classique ou QR-IBAN — Givernance détermine automatiquement le type de référence."
+      },
+      "kind": {
+        "iban": "IBAN classique",
+        "qr_iban": "QR-IBAN"
+      },
+      "table": {
+        "bank": "Banque",
+        "iban": "IBAN",
+        "kind": "Type",
+        "currency": "Devise",
+        "holder": "Titulaire",
+        "actionsLabel": "Actions de ligne",
+        "openActions": "Actions pour {name}"
+      },
+      "actions": {
+        "new": "Ajouter un compte",
+        "edit": "Modifier",
+        "delete": "Archiver",
+        "deleteSuccess": "Compte archivé. Les campagnes liées repassent en mode postal standard.",
+        "deleteError": "Échec de l'archivage. Veuillez réessayer."
+      },
+      "delete": {
+        "title": "Archiver ce compte ?",
+        "description": "{bankName} ({iban}) sera archivé (soft-delete). Les campagnes actuellement liées reviendront au mode postal standard (sans BVR). L'historique d'audit reste intact — les BVR émis et les réconciliations restent accessibles.",
+        "cancel": "Annuler",
+        "confirm": "Archiver",
+        "deleting": "Archivage…"
+      },
+      "form": {
+        "createTitle": "Nouveau compte bancaire",
+        "createSubtitle": "Les coordonnées du titulaire sont imprimées sur chaque BVR. Adresse structurée IG QR-bill v2.4 (rue + numéro + code postal + ville) — les adresses combinées ne sont plus prises en charge.",
+        "breadcrumbNew": "Nouveau",
+        "editTitle": "Modifier le compte bancaire",
+        "editSubtitle": "Les coordonnées du titulaire et la devise sont modifiables. L'IBAN est immuable pour préserver l'intégrité de l'historique financier — archivez et recréez pour le changer.",
+        "breadcrumbEdit": "Modifier",
+        "sections": {
+          "account": {
+            "title": "Coordonnées du compte",
+            "description": "IBAN, nom de la banque et devise. Le type d'IBAN (QR-IBAN vs IBAN classique) est dérivé automatiquement de la plage IID."
+          },
+          "holder": {
+            "title": "Adresse du titulaire",
+            "description": "Imprimée sur le BVR au format structuré (S) prescrit par IG QR-bill v2.4. Restreint à CH ou LI."
+          }
+        },
+        "fields": {
+          "iban": "IBAN",
+          "ibanPlaceholder": "CH93 0076 2011 6238 5295 7",
+          "ibanHintDefault": "CH ou LI uniquement. Les espaces et la casse sont normalisés à l'enregistrement.",
+          "ibanHintQrIban": "Détecté : QR-IBAN — les BVR utiliseront une référence QRR à 27 chiffres (mod-10).",
+          "ibanHintRegular": "Détecté : IBAN classique — les BVR utiliseront une référence SCOR (RF + mod-97).",
+          "ibanImmutable": "L'IBAN est immuable après création (intégrité financière).",
+          "bic": "BIC / SWIFT (optionnel)",
+          "bicPlaceholder": "POFICHBE",
+          "bicHint": "8 ou 11 caractères (ISO 9362). Optionnel — la plupart des e-banking suisses n'en ont pas besoin pour un paiement par QR.",
+          "bankName": "Nom de la banque",
+          "bankNamePlaceholder": "PostFinance, UBS Switzerland AG, Raiffeisen…",
+          "currency": "Devise",
+          "currencyHint": "CHF ou EUR. EUR + QR-IBAN est interdit par IG QR-bill v2.4 — utilisez un IBAN classique avec SCOR pour les dons en EUR.",
+          "currencyEurQrIbanError": "EUR + QR-IBAN est interdit par IG QR-bill v2.4. Passez en CHF ou utilisez un IBAN classique (non QR-IBAN).",
+          "holderName": "Nom du titulaire",
+          "holderNameHint": "Imprimé en haut du BVR. Jusqu'à 70 caractères.",
+          "holderStreet": "Rue",
+          "holderBuildingNumber": "Numéro",
+          "holderBuildingNumberHint": "Optionnel. Jusqu'à 16 caractères (ex. « 12 » ou « 12b »).",
+          "holderPostalCode": "Code postal",
+          "holderTown": "Ville",
+          "holderCountryCode": "Pays",
+          "holderCountryHint": "CH ou LI uniquement — le QR-bill IG s'applique à ces deux juridictions."
+        },
+        "actions": {
+          "cancel": "Annuler",
+          "submitCreate": "Créer le compte",
+          "submitUpdate": "Enregistrer",
+          "submitting": "Enregistrement…"
+        },
+        "errors": {
+          "ibanRequired": "L'IBAN est obligatoire.",
+          "ibanInvalid": "L'IBAN n'a pas passé la validation mod-97 ou de format.",
+          "bicLength": "Le BIC doit faire exactement 8 ou 11 caractères s'il est renseigné (ISO 9362).",
+          "bankNameRequired": "Le nom de la banque est obligatoire.",
+          "bankNameTooLong": "Le nom de la banque doit faire au plus 100 caractères.",
+          "holderNameRequired": "Le nom du titulaire est obligatoire.",
+          "holderNameTooLong": "Le nom du titulaire doit faire au plus 70 caractères (limite IG QR-bill).",
+          "holderStreetRequired": "La rue est obligatoire.",
+          "holderStreetTooLong": "La rue doit faire au plus 70 caractères.",
+          "holderBuildingNumberTooLong": "Le numéro doit faire au plus 16 caractères.",
+          "holderPostalCodeRequired": "Le code postal est obligatoire.",
+          "holderPostalCodeTooLong": "Le code postal doit faire au plus 16 caractères.",
+          "holderTownRequired": "La ville est obligatoire.",
+          "holderTownTooLong": "La ville doit faire au plus 35 caractères (limite IG QR-bill).",
+          "generic": "Une erreur est survenue pendant l'enregistrement. Veuillez réessayer."
+        },
+        "success": {
+          "created": "Compte bancaire créé.",
+          "updated": "Compte bancaire mis à jour."
         }
       }
     },
