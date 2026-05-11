@@ -15,7 +15,14 @@ import {
   SortOrderSchema,
   UuidSchema,
 } from "../../lib/schemas.js";
-import { BulkEmailValidationError, dispatchBulkEmail } from "./bulk-email-service.js";
+import {
+  BulkEmailResumeError,
+  BulkEmailValidationError,
+  dispatchBulkEmail,
+  getBulkEmailJob,
+  listBulkEmailJobs,
+  resumeBulkEmailJob,
+} from "./bulk-email-service.js";
 import {
   CONSTITUENT_SORT_FIELDS,
   createConstituent,
@@ -208,6 +215,30 @@ const MergeResult = Type.Object({ merged: Type.Boolean(), etag: Type.String() })
 
 const MergeHeaders = Type.Object({
   "if-match": Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+});
+
+const BulkEmailJobStatusSchema = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("processing"),
+  Type.Literal("completed"),
+  Type.Literal("partial"),
+  Type.Literal("failed"),
+]);
+
+const BulkEmailJobRowSchema = Type.Object({
+  id: UuidSchema,
+  status: BulkEmailJobStatusSchema,
+  subject: Type.String(),
+  stalled: Type.Boolean(),
+  totalRecipients: Type.Integer(),
+  deliveredCount: Type.Integer(),
+  failedCount: Type.Integer(),
+  requestedBy: Type.Union([Type.Null(), UuidSchema]),
+  parentJobId: Type.Union([Type.Null(), UuidSchema]),
+  error: Type.Union([Type.Null(), Type.String()]),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  completedAt: Type.Union([Type.Null(), Type.String()]),
 });
 
 export async function constituentRoutes(app: FastifyInstance) {
@@ -540,12 +571,16 @@ export async function constituentRoutes(app: FastifyInstance) {
   );
 
   /**
-   * Bulk-send a transactional email to the supplied constituents (Epic #274).
+   * Bulk-send a transactional email to the supplied constituents (Epic #274;
+   * partial-send tracking per issue #326).
    *
-   * The HTTP path inserts an outbox event and returns immediately — the
-   * actual delivery happens asynchronously in the `emails` queue worker.
-   * Skipped recipients (no email on file) are reported back so the UI can
-   * surface "12 queued, 3 skipped" without re-querying.
+   * The HTTP path inserts a `bulk_email_jobs` tracking row + outbox event
+   * and returns immediately — the actual delivery happens asynchronously
+   * in the `emails` queue worker. Response carries `jobId` so the UI can
+   * start polling `GET /constituents/bulk-email-jobs/:id` for live
+   * delivered/total progress. Skipped recipients (no email on file) are
+   * reported back so the UI can surface "12 queued, 3 skipped" without
+   * re-querying.
    *
    * Rate-limited: a single org-admin spamming the bulk-email button is the
    * primary unintentional abuse path.
@@ -565,6 +600,7 @@ export async function constituentRoutes(app: FastifyInstance) {
         response: {
           202: DataResponse(
             Type.Object({
+              jobId: UuidSchema,
               queued: Type.Integer(),
               skippedNoEmail: Type.Integer(),
             }),
@@ -591,10 +627,124 @@ export async function constituentRoutes(app: FastifyInstance) {
           subject: body.subject,
           body: body.body,
         });
+        reply.header("Location", `/v1/constituents/bulk-email-jobs/${result.jobId}`);
         return reply.status(202).send({ data: result });
       } catch (err) {
         if (err instanceof BulkEmailValidationError) {
           return reply.status(400).send(problemDetail(400, "Bad Request", err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  // ─── Bulk-email job tracking + resume (issue #326) ─────────────────────
+
+  /**
+   * List recent bulk-email jobs for the tenant (newest 20). Drives the
+   * "Recent emails" panel in the constituents table.
+   */
+  app.get(
+    "/constituents/bulk-email-jobs",
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        tags: ["Constituents"],
+        response: {
+          200: DataArrayResponseNoPagination(BulkEmailJobRowSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const rows = await listBulkEmailJobs(orgId);
+      return { data: rows };
+    },
+  );
+
+  /**
+   * Get a single bulk-email job. Used for short-interval polling — the
+   * frontend hits this every 2s while a job is in-flight. Rate-limited at
+   * 60/min/admin so a buggy client (multiple tabs, runaway useEffect)
+   * can't hammer the endpoint past the intended polling cadence — same
+   * cadence as the postal-export poll route.
+   */
+  app.get(
+    "/constituents/bulk-email-jobs/:id",
+    {
+      preHandler: requireOrgAdmin,
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["Constituents"],
+        params: IdParams,
+        response: {
+          200: DataResponse(BulkEmailJobRowSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id } = request.params as { id: string };
+      const row = await getBulkEmailJob(orgId, id);
+      if (!row) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Bulk email job not found"));
+      }
+      return { data: row };
+    },
+  );
+
+  /**
+   * Resume a bulk-email job — creates a fresh job targeting the recipients
+   * the source never reached (`constituent_ids \ delivered_constituent_ids`).
+   *
+   * Accepts source jobs in:
+   *   - `partial` / `failed` — natural terminal states.
+   *   - `processing` if stalled (no `updated_at` movement for ≥ 10 min) —
+   *     the Redis-wipe / OOM-kill / accessory-reboot case the issue calls
+   *     out. The error code is the same as the running case so the UI
+   *     surfaces a consistent "try again later" message; the API
+   *     decides eligibility, the UI doesn't.
+   */
+  app.post(
+    "/constituents/bulk-email-jobs/:id/resume",
+    {
+      preHandler: requireOrgAdmin,
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["Constituents"],
+        params: IdParams,
+        response: {
+          202: DataResponse(BulkEmailJobRowSchema),
+          400: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id } = request.params as { id: string };
+      try {
+        const result = await resumeBulkEmailJob(orgId, userId, id);
+        reply.header("Location", `/v1/constituents/bulk-email-jobs/${result.id}`);
+        return reply.status(202).send({ data: result });
+      } catch (err) {
+        if (err instanceof BulkEmailResumeError) {
+          if (err.code === "job_not_found") {
+            return reply.status(404).send(problemDetail(404, err.code, err.message));
+          }
+          return reply.status(400).send(problemDetail(400, err.code, err.message));
         }
         throw err;
       }
