@@ -106,6 +106,8 @@ function mapCampaign(raw: Campaign): Campaign {
     operationalCostCents: raw.operationalCostCents,
     platformFeesCents: raw.platformFeesCents,
     goalAmountCents: raw.goalAmountCents,
+    bankAccountId: raw.bankAccountId,
+    qrReferenceMode: raw.qrReferenceMode,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
@@ -128,6 +130,9 @@ function toRequestBody(input: CampaignCreateInput | CampaignUpdateInput): Record
     body.goalAmountCents = input.goalAmountCents;
   }
   if (input.fundIds !== undefined) body.fundIds = input.fundIds;
+  // Epic #318 — Swiss QR-bill picker. `null` clears, `undefined` leaves alone.
+  if (input.bankAccountId !== undefined) body.bankAccountId = input.bankAccountId;
+  if (input.qrReferenceMode !== undefined) body.qrReferenceMode = input.qrReferenceMode;
 
   return body;
 }

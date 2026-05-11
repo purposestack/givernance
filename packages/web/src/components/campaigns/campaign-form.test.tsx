@@ -1,6 +1,7 @@
 import { CampaignForm } from "@/components/campaigns/campaign-form";
 import { ApiProblem } from "@/lib/api";
 import type { Campaign } from "@/models/campaign";
+import { BankAccountService } from "@/services/BankAccountService";
 import { CampaignService } from "@/services/CampaignService";
 import { FundService } from "@/services/FundService";
 import { mockRouter, mockToast, render, screen, userEvent, waitFor } from "../../tests/test-utils";
@@ -17,6 +18,8 @@ const parentCampaign: Campaign = {
   operationalCostCents: 35000,
   platformFeesCents: 0,
   goalAmountCents: null,
+  bankAccountId: null,
+  qrReferenceMode: "auto",
   createdAt: "2026-04-21T10:00:00.000Z",
   updatedAt: "2026-04-21T10:00:00.000Z",
 };
@@ -42,6 +45,13 @@ describe("CampaignForm", () => {
       pagination: { page: 1, perPage: 100, total: 1, totalPages: 1 },
     });
     vi.spyOn(FundService, "listCampaignFunds").mockResolvedValue([]);
+    // Epic #318 — Swiss QR-bill picker source list. Default to empty so
+    // the existing assertions don't need to account for a populated
+    // dropdown; tests that care set their own mockResolvedValue.
+    vi.spyOn(BankAccountService, "listBankAccounts").mockResolvedValue({
+      data: [],
+      pagination: { page: 1, perPage: 100, total: 0, totalPages: 0 },
+    });
   });
 
   it("submits trimmed values in create mode", async () => {

@@ -209,6 +209,9 @@ export default async function CampaignDetailPage({
           <span className="flex flex-wrap items-center gap-2">
             <StatusBadge status={campaign.status} />
             <Badge variant="info">{tCampaigns(`types.${campaign.type}`)}</Badge>
+            {campaign.bankAccountId !== null ? (
+              <Badge variant="success">{tCampaigns("swissQrBillBadge")}</Badge>
+            ) : null}
           </span>
         }
         breadcrumbs={[

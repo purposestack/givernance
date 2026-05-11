@@ -1670,6 +1670,7 @@
     "breadcrumbRoot": "Tableau de bord",
     "subtitleWithCount": "{count, plural, =0 {Aucune campagne} one {# campagne} other {# campagnes}}",
     "subtitleEmpty": "Aucune campagne pour l'instant.",
+    "swissQrBillBadge": "🇨🇭 BVR suisse",
     "empty": {
       "title": "Aucune campagne à afficher",
       "description": "Créez une campagne pour suivre les communications et les dons.",
@@ -1740,6 +1741,10 @@
         "funds": {
           "title": "Fonds éligibles",
           "description": "Choisissez les affectations de fonds qui peuvent être associées à cette campagne."
+        },
+        "swissQrBill": {
+          "title": "🇨🇭 BVR suisse (Swiss QR-bill)",
+          "description": "Liez un compte bancaire suisse pour générer un BVR sur chaque lettre postale. Le donateur paie depuis son e-banking et la réconciliation camt.053 crée automatiquement le don. Laissez vide pour conserver le mode postal standard (QR vers la page de don publique uniquement)."
         }
       },
       "fields": {
@@ -1765,7 +1770,23 @@
         "fundsHint": "Les fonds sélectionnés seront disponibles lorsque des dons seront associés à cette campagne.",
         "fundsLoading": "Chargement des fonds disponibles…",
         "fundsEmptyTitle": "Aucun fonds configuré",
-        "fundsEmptyDescription": "Créez un fonds depuis les paramètres de l'organisation avant de lier des affectations à cette campagne."
+        "fundsEmptyDescription": "Créez un fonds depuis les paramètres de l'organisation avant de lier des affectations à cette campagne.",
+        "bankAccount": "Compte bancaire lié",
+        "bankAccountPlaceholder": "Aucun — mode postal standard",
+        "bankAccountLoading": "Chargement des comptes bancaires…",
+        "bankAccountNone": "Aucun — mode standard (QR vers la page publique uniquement)",
+        "bankAccountEmptyHint": "Aucun compte bancaire enregistré. Ajoutez-en un depuis Paramètres → Comptes bancaires pour activer le BVR suisse.",
+        "bankAccountActiveHint": "Mode BVR suisse activé. Chaque lettre générée pour cette campagne recevra un BVR sur une feuille A4 séparée (en plus du QR de tracking standard sur la lettre d'appel).",
+        "bankAccountInactiveHint": "Mode postal standard. La lettre imprimée ne contient que le QR Givernance qui redirige vers la page de don publique. Sélectionnez un compte bancaire pour générer aussi un BVR suisse.",
+        "qrReferenceMode": "Type de référence QR",
+        "qrReferenceModeHint": "La plupart des opérateurs laissent sur Auto. Surchargez uniquement quand la banque a émis à la fois un IBAN et un QR-IBAN et que vous voulez forcer un type spécifique.",
+        "qrBillModeReferenceHintQrr": "QR-IBAN détecté → les lettres porteront une référence QRR à 27 chiffres. Auto et QRR sont équivalents ici.",
+        "qrBillModeReferenceHintScor": "IBAN classique détecté → les lettres porteront une référence SCOR (RF…). Auto et SCOR sont équivalents ici.",
+        "qrReferenceModeOption": {
+          "auto": "Auto (recommandé) — dérivé du type d'IBAN",
+          "qrr": "QRR — 27 chiffres numériques (QR-IBAN uniquement)",
+          "scor": "SCOR — RF + 21 alphanumériques (IBAN classique)"
+        }
       },
       "fundTypeHint": {
         "restricted": "Fonds restreint",
@@ -2051,6 +2072,11 @@
     "badge": "Collecte publique",
     "eyebrow": "Soutenez notre action",
     "descriptionFallback": "Votre don aide directement à financer cette campagne et ses prochaines étapes sur le terrain.",
+    "swissQrBillBanner": {
+      "label": "Alternative de paiement par BVR suisse",
+      "title": "Vous pouvez aussi payer par virement bancaire suisse (BVR / QR-bill).",
+      "body": "Si vous avez reçu une lettre postale pour cette campagne, la seconde feuille contient un BVR — scannez-le simplement avec votre application e-banking pour payer. Pas besoin de saisir votre carte. Votre don sera réconcilié automatiquement."
+    },
     "metrics": {
       "goal": "Objectif de collecte",
       "raised": "Déjà collecté",

@@ -18,6 +18,8 @@ export {
 
 export {
   classifyIban,
+  computeQrr,
+  computeScor,
   getIbanCountry,
   isQrIban,
   isValidIban,

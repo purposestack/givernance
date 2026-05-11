@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyIban,
+  computeQrr,
+  computeScor,
   getIbanCountry,
   isQrIban,
   isValidIban,
@@ -186,5 +188,56 @@ describe("isValidScor", () => {
     expect(isValidScor("RF001234567890")).toBe(false);
     expect(isValidScor("RF011234567890")).toBe(false);
     expect(isValidScor("RF991234567890")).toBe(false);
+  });
+});
+
+describe("computeQrr — minting", () => {
+  it("re-produces the canonical Annex B QRR from its body", () => {
+    // The published Annex B example is `21 00000 00003 13947 14300 09017`
+    // — last digit `7` is the recursive mod-10 check.
+    expect(computeQrr("21000000000313947143000901")).toBe("210000000003139471430009017");
+  });
+
+  it("produces a 27-digit QRR that round-trips through isValidQrr", () => {
+    // Random-ish body; idempotency property — `computeQrr` then
+    // `isValidQrr` must agree on any well-formed 26-digit input.
+    const body = "12345678901234567890123456";
+    const minted = computeQrr(body);
+    expect(minted).toHaveLength(27);
+    expect(isValidQrr(minted)).toBe(true);
+  });
+
+  it("zero body produces the all-zeros QRR", () => {
+    expect(computeQrr("00000000000000000000000000")).toBe("000000000000000000000000000");
+  });
+
+  it("rejects a non-26-digit body", () => {
+    expect(() => computeQrr("123")).toThrow(/26 digits/);
+    expect(() => computeQrr("1234567890123456789012345")).toThrow(/26 digits/);
+    expect(() => computeQrr("12345678901234567890123456X")).toThrow(/26 digits/);
+  });
+});
+
+describe("computeScor — minting", () => {
+  it("re-produces the canonical SCOR from its payload", () => {
+    // The ISO 11649 worked example: payload `539007547034` → `RF18539007547034`.
+    expect(computeScor("539007547034")).toBe("RF18539007547034");
+  });
+
+  it("round-trips through isValidScor", () => {
+    const payload = "ABC123XYZ789";
+    const minted = computeScor(payload);
+    expect(isValidScor(minted)).toBe(true);
+    expect(minted.startsWith("RF")).toBe(true);
+  });
+
+  it("uppercases lower-case input letters", () => {
+    expect(computeScor("abc123")).toBe(computeScor("ABC123"));
+  });
+
+  it("rejects a payload outside the 1-21 alphanumeric window", () => {
+    expect(() => computeScor("")).toThrow(/1-21 alphanumeric/);
+    expect(() => computeScor("A".repeat(22))).toThrow(/1-21 alphanumeric/);
+    expect(() => computeScor("ABC*123")).toThrow(/1-21 alphanumeric/);
   });
 });

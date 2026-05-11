@@ -69,6 +69,20 @@ const IdempotencyKeyHeader = Type.Object({
 /** Free-form campaign description (Epic #274 follow-up). Soft-cap matches the validator. */
 const CampaignDescriptionSchema = Type.Union([Type.Null(), Type.String({ maxLength: 2000 })]);
 
+/**
+ * Epic #318 — Swiss QR-bill picker on the campaign form. The optional
+ * `bankAccountId` is a same-tenant FK pointing at `bank_accounts.id`;
+ * setting it flips the campaign into Swiss QR-bill mode (the worker
+ * appends a QR-bill PDF to every postal export). `qrReferenceMode`
+ * lets the operator override the worker's auto-derivation (QRR for
+ * QR-IBANs, SCOR for regular IBANs) on the rare bank that supports both.
+ */
+const CampaignQrReferenceModeSchema = Type.Union([
+  Type.Literal("auto"),
+  Type.Literal("qrr"),
+  Type.Literal("scor"),
+]);
+
 const CampaignCreateBody = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
   description: Type.Optional(CampaignDescriptionSchema),
@@ -78,6 +92,8 @@ const CampaignCreateBody = Type.Object({
   operationalCostCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
   goalAmountCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
   fundIds: Type.Optional(Type.Array(UuidSchema)),
+  bankAccountId: Type.Optional(Type.Union([Type.Null(), UuidSchema])),
+  qrReferenceMode: Type.Optional(CampaignQrReferenceModeSchema),
 });
 
 const CampaignUpdateBody = Type.Object(
@@ -93,6 +109,8 @@ const CampaignUpdateBody = Type.Object(
     operationalCostCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
     goalAmountCents: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 0 })])),
     fundIds: Type.Optional(Type.Array(UuidSchema)),
+    bankAccountId: Type.Optional(Type.Union([Type.Null(), UuidSchema])),
+    qrReferenceMode: Type.Optional(CampaignQrReferenceModeSchema),
   },
   { minProperties: 1 },
 );
@@ -113,6 +131,12 @@ const CampaignResponse = Type.Object({
   operationalCostCents: Type.Union([Type.Integer(), Type.Null()]),
   platformFeesCents: Type.Integer(),
   goalAmountCents: Type.Union([Type.Integer(), Type.Null()]),
+  /**
+   * Epic #318: Swiss QR-bill discriminator. Presence IS the
+   * "Swiss QR-bill mode on" signal — see ADR-027 / docs/25 §3.
+   */
+  bankAccountId: Type.Union([UuidSchema, Type.Null()]),
+  qrReferenceMode: CampaignQrReferenceModeSchema,
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -243,6 +267,8 @@ export async function campaignRoutes(app: FastifyInstance) {
         operationalCostCents?: number | null;
         goalAmountCents?: number | null;
         fundIds?: string[];
+        bankAccountId?: string | null;
+        qrReferenceMode?: "auto" | "qrr" | "scor";
       };
       try {
         const campaign = await createCampaign(orgId, body, userId);
@@ -336,6 +362,8 @@ export async function campaignRoutes(app: FastifyInstance) {
         operationalCostCents?: number | null;
         goalAmountCents?: number | null;
         fundIds?: string[];
+        bankAccountId?: string | null;
+        qrReferenceMode?: "auto" | "qrr" | "scor";
       };
 
       if (body.status !== undefined && request.auth?.role !== "org_admin") {

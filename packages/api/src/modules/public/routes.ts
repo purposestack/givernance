@@ -85,6 +85,12 @@ const PublicPageResponse = Type.Object({
    * (CDN) emit the same shape — the frontend just `<Image src=…>`s it.
    */
   organisationLogoUrl: Type.Union([Type.Null(), Type.String({ format: "uri" })]),
+  /**
+   * Epic #318 — true when the campaign is in Swiss QR-bill mode (a
+   * bank account is linked). Drives the donor-facing banner on the
+   * public page. Boolean only — never the internal bank_account_id.
+   */
+  hasSwissQrBill: Type.Boolean(),
 });
 
 const DonateBody = Type.Object({

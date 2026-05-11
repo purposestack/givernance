@@ -1,6 +1,7 @@
 /** Campaigns service — business logic for postal campaign operations */
 
 import {
+  bankAccounts,
   campaignDocuments,
   campaignFunds,
   campaignPublicPages,
@@ -87,6 +88,20 @@ export interface CreateCampaignInput {
   operationalCostCents?: number | null;
   goalAmountCents?: number | null;
   fundIds?: string[];
+  /**
+   * Optional Swiss QR-bill bank-account link (Epic #318). NULL = no
+   * QR-bill (standard letter only); set = Swiss QR-bill mode on. The
+   * service enforces same-tenant ownership of the FK target before
+   * persisting (404-on-cross-tenant per ADR-019). The bank account must
+   * be active (not soft-deleted) at write time.
+   */
+  bankAccountId?: string | null;
+  /**
+   * Override the reference-type derivation. `auto` (default) lets the
+   * worker pick QRR or SCOR based on `bank_accounts.iban_kind`. Ignored
+   * when `bankAccountId IS NULL`.
+   */
+  qrReferenceMode?: "auto" | "qrr" | "scor";
 }
 
 export interface UpdateCampaignInput {
@@ -99,6 +114,8 @@ export interface UpdateCampaignInput {
   operationalCostCents?: number | null;
   goalAmountCents?: number | null;
   fundIds?: string[];
+  bankAccountId?: string | null;
+  qrReferenceMode?: "auto" | "qrr" | "scor";
 }
 
 export interface ListCampaignsQuery {
@@ -123,6 +140,11 @@ function campaignSelectFields() {
     operationalCostCents: campaigns.operationalCostCents,
     platformFeesCents: campaigns.platformFeesCents,
     goalAmountCents: campaignPublicPages.goalAmountCents,
+    // Epic #318: Swiss QR-bill discriminator. `bankAccountId IS NOT
+    // NULL` IS the "Swiss QR-bill mode on" signal — see ADR-027 and
+    // docs/25 §3 decision #4.
+    bankAccountId: campaigns.bankAccountId,
+    qrReferenceMode: campaigns.qrReferenceMode,
     createdAt: campaigns.createdAt,
     updatedAt: campaigns.updatedAt,
   };
@@ -323,6 +345,11 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput, 
       }
     }
 
+    // Epic #318: Swiss QR-bill bank-account link at create time.
+    if (input.bankAccountId) {
+      await validateBankAccountLink(tx, orgId, input.bankAccountId);
+    }
+
     const [campaign] = await tx
       .insert(campaigns)
       .values({
@@ -333,6 +360,8 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput, 
         defaultCurrency: input.defaultCurrency ?? "EUR",
         parentId: input.parentId ?? null,
         operationalCostCents: input.operationalCostCents ?? null,
+        bankAccountId: input.bankAccountId ?? null,
+        qrReferenceMode: input.qrReferenceMode ?? "auto",
       })
       .returning({ id: campaigns.id });
 
@@ -393,6 +422,43 @@ async function wouldCreateCycle(
   return result.rows.length > 0;
 }
 
+/**
+ * Validate a candidate `bank_account_id` belongs to the same tenant and
+ * is still active (not soft-deleted). Throws `CampaignValidationError`
+ * with the corresponding error code if not — same shape as the readiness
+ * gates so the UI surfaces the right banner.
+ *
+ * Same-org isolation is double-enforced: the lookup runs under
+ * `withTenantContext` (RLS — a cross-tenant id returns no rows), AND we
+ * explicitly check `bankAccounts.orgId = orgId` so a misconfigured
+ * tenant context still 404s instead of silently writing the FK.
+ * (ADR-019.)
+ */
+async function validateBankAccountLink(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  bankAccountId: string,
+): Promise<void> {
+  const [row] = await tx
+    .select({
+      id: bankAccounts.id,
+      deletedAt: bankAccounts.deletedAt,
+    })
+    .from(bankAccounts)
+    .where(and(eq(bankAccounts.id, bankAccountId), eq(bankAccounts.orgId, orgId)));
+
+  if (!row) {
+    throw new CampaignValidationError(
+      "swiss_qr_bill_bank_account_not_found: bank account does not exist in this organisation",
+    );
+  }
+  if (row.deletedAt !== null) {
+    throw new CampaignValidationError(
+      "swiss_qr_bill_bank_account_deleted: bank account was soft-deleted; pick a different account or restore it before linking",
+    );
+  }
+}
+
 async function validateParentUpdate(
   tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
   orgId: string,
@@ -439,6 +505,12 @@ export async function updateCampaign(
       await validateParentUpdate(tx, orgId, id, input.parentId);
     }
 
+    // Epic #318: Swiss QR-bill bank-account link. Validate same-org +
+    // active before persisting. NULL = unlink (degrade to standard mode).
+    if (input.bankAccountId !== undefined && input.bankAccountId !== null) {
+      await validateBankAccountLink(tx, orgId, input.bankAccountId);
+    }
+
     if (input.fundIds !== undefined) {
       await syncCampaignFunds(tx, orgId, id, input.fundIds);
     }
@@ -457,6 +529,10 @@ export async function updateCampaign(
         status: input.status,
         parentId: input.parentId,
         operationalCostCents: input.operationalCostCents,
+        // Epic #318: presence of `bankAccountId` IS the Swiss QR-bill
+        // mode switch. `undefined` = no change; `null` = unlink.
+        bankAccountId: input.bankAccountId,
+        qrReferenceMode: input.qrReferenceMode,
         updatedAt: new Date(),
       })
       .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)))

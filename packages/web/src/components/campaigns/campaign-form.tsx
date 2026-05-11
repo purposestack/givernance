@@ -50,8 +50,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import type { Campaign, CampaignCurrency, CampaignType } from "@/models/campaign";
+import type { BankAccount } from "@/models/bank-account";
+import type {
+  Campaign,
+  CampaignCurrency,
+  CampaignQrReferenceMode,
+  CampaignType,
+} from "@/models/campaign";
 import type { Fund } from "@/models/fund";
+import { BankAccountService } from "@/services/BankAccountService";
 import { CampaignService } from "@/services/CampaignService";
 import { FundService } from "@/services/FundService";
 
@@ -76,6 +83,14 @@ interface CampaignFormValues {
   operationalCostCents: number | null;
   goalAmountCents: number | null;
   fundIds: string[];
+  /**
+   * Epic #318 — Swiss QR-bill picker. Sentinel `__none__` = no bank
+   * account linked (standard postal mode). Any other value is a
+   * `bank_accounts.id` from the operator's Settings → Bank Accounts.
+   */
+  bankAccountId: string;
+  /** `auto` lets the worker derive the type from `bank_accounts.iban_kind`. */
+  qrReferenceMode: CampaignQrReferenceMode;
 }
 
 type CreateMode = { mode: "create"; campaign?: undefined };
@@ -84,7 +99,10 @@ type EditMode = { mode: "edit"; campaign: Campaign };
 export type CampaignFormProps = CreateMode | EditMode;
 
 const EMPTY_PARENT = "__none__";
+/** Same sentinel pattern as `EMPTY_PARENT`; ‘None’ = unlinked / no Swiss QR-bill. */
+const EMPTY_BANK_ACCOUNT = "__none__";
 const CAMPAIGN_OPTION_PAGE_SIZE = 100;
+const QR_REFERENCE_MODES: readonly CampaignQrReferenceMode[] = ["auto", "qrr", "scor"];
 
 export function CampaignForm(props: CampaignFormProps) {
   const { mode } = props;
@@ -102,6 +120,8 @@ export function CampaignForm(props: CampaignFormProps) {
     operationalCostCents: props.campaign?.operationalCostCents ?? null,
     goalAmountCents: props.campaign?.goalAmountCents ?? null,
     fundIds: [],
+    bankAccountId: props.campaign?.bankAccountId ?? EMPTY_BANK_ACCOUNT,
+    qrReferenceMode: props.campaign?.qrReferenceMode ?? "auto",
   };
 
   const form = useForm<CampaignFormValues>({
@@ -112,6 +132,8 @@ export function CampaignForm(props: CampaignFormProps) {
 
   const [parentOptions, setParentOptions] = useState<Campaign[]>([]);
   const [fundOptions, setFundOptions] = useState<Fund[]>([]);
+  /** Epic #318 — Swiss QR-bill picker source list (Settings → Bank Accounts). */
+  const [bankAccountOptions, setBankAccountOptions] = useState<BankAccount[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [fundsLoading, setFundsLoading] = useState(true);
   const [optionsError, setOptionsError] = useState<string | null>(null);
@@ -121,10 +143,8 @@ export function CampaignForm(props: CampaignFormProps) {
 
     async function loadOptions() {
       try {
-        const { campaigns, funds, selectedFundIds } = await loadCampaignFormOptions(
-          mode,
-          props.campaign?.id,
-        );
+        const { campaigns, funds, selectedFundIds, bankAccountsForOrg } =
+          await loadCampaignFormOptions(mode, props.campaign?.id);
         if (!active) return;
         applyCampaignFormOptions({
           campaigns,
@@ -137,6 +157,7 @@ export function CampaignForm(props: CampaignFormProps) {
           setParentOptions,
           setFundOptions,
         });
+        setBankAccountOptions(bankAccountsForOrg);
       } catch {
         if (!active) return;
         resetCampaignFormOptions({
@@ -146,6 +167,7 @@ export function CampaignForm(props: CampaignFormProps) {
           setParentOptions,
           setFundOptions,
         });
+        setBankAccountOptions([]);
       } finally {
         if (active) {
           setOptionsLoading(false);
@@ -402,6 +424,18 @@ export function CampaignForm(props: CampaignFormProps) {
           />
         </FormSection>
 
+        <FormSection
+          title={t("sections.swissQrBill.title")}
+          description={t("sections.swissQrBill.description")}
+        >
+          <SwissQrBillFields
+            form={form}
+            bankAccountOptions={bankAccountOptions}
+            optionsLoading={optionsLoading}
+            t={t}
+          />
+        </FormSection>
+
         <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-h-5 text-sm text-error">{rootError}</div>
           <div className="flex flex-wrap items-center gap-3">
@@ -433,6 +467,12 @@ function toApiPayload(values: CampaignFormValues) {
   // API treats `undefined` vs. `null` differently — undefined leaves
   // the existing value alone, null clears it (cf. CampaignUpdateInput).
   const description = values.description?.trim() ?? "";
+  // Epic #318 — sentinel `__none__` maps to `null` so the API unlinks
+  // the bank account (and the worker drops back to standard mode).
+  const bankAccountId =
+    values.bankAccountId === EMPTY_BANK_ACCOUNT || !values.bankAccountId?.trim()
+      ? null
+      : values.bankAccountId.trim();
   return {
     name: values.name?.trim() ?? "",
     description: description.length > 0 ? description : null,
@@ -442,6 +482,8 @@ function toApiPayload(values: CampaignFormValues) {
     operationalCostCents: values.operationalCostCents,
     goalAmountCents: values.goalAmountCents,
     fundIds: values.fundIds.map((value) => value.trim()).filter((value) => value !== ""),
+    bankAccountId,
+    qrReferenceMode: values.qrReferenceMode,
   };
 }
 
@@ -484,6 +526,18 @@ function buildResolver(): Resolver<CampaignFormValues> {
       cleaned.goalAmountCents = values.goalAmountCents;
     }
     cleaned.fundIds = values.fundIds.map((value) => value.trim()).filter((value) => value !== "");
+    // Epic #318 — Swiss QR-bill fields. Same `__none__` → null mapping
+    // as `toApiPayload` so the TypeBox-side schema sees a valid uuid
+    // or `null` instead of the sentinel string.
+    if (values.bankAccountId !== undefined) {
+      cleaned.bankAccountId =
+        values.bankAccountId === EMPTY_BANK_ACCOUNT || !values.bankAccountId.trim()
+          ? null
+          : values.bankAccountId.trim();
+    }
+    if (values.qrReferenceMode !== undefined) {
+      cleaned.qrReferenceMode = values.qrReferenceMode;
+    }
 
     const result = await innerResolver(
       cleaned,
@@ -659,9 +713,125 @@ function handleApiError(
   form.setError("root", { type: "server", message: messages.generic });
 }
 
+/**
+ * Epic #318 — Swiss QR-bill section on the campaign form. Mirrors the
+ * docs/25 §8.4.bis UX: no toggle, the dropdown's "None" sentinel IS the
+ * off-state, and the `qrReferenceMode` override is hidden until a bank
+ * account is actually selected (no operator should have to pick
+ * `auto/qrr/scor` for a campaign that has no bank account linked).
+ */
+function SwissQrBillFields({
+  form,
+  bankAccountOptions,
+  optionsLoading,
+  t,
+}: {
+  form: UseFormReturn<CampaignFormValues>;
+  bankAccountOptions: BankAccount[];
+  optionsLoading: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const selectedBankAccountId = form.watch("bankAccountId");
+  const swissModeActive =
+    selectedBankAccountId !== EMPTY_BANK_ACCOUNT && selectedBankAccountId !== "";
+  const selectedAccount = swissModeActive
+    ? (bankAccountOptions.find((a) => a.id === selectedBankAccountId) ?? null)
+    : null;
+  const referenceTypeHint = selectedAccount
+    ? selectedAccount.ibanKind === "qr_iban"
+      ? t("fields.qrBillModeReferenceHintQrr")
+      : t("fields.qrBillModeReferenceHintScor")
+    : null;
+
+  return (
+    <div className="flex flex-col gap-5">
+      <FormField
+        control={form.control}
+        name="bankAccountId"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>{t("fields.bankAccount")}</FormLabel>
+            <Select
+              value={field.value || EMPTY_BANK_ACCOUNT}
+              onValueChange={field.onChange}
+              disabled={optionsLoading}
+            >
+              <FormControl>
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      optionsLoading
+                        ? t("fields.bankAccountLoading")
+                        : t("fields.bankAccountPlaceholder")
+                    }
+                  />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value={EMPTY_BANK_ACCOUNT}>{t("fields.bankAccountNone")}</SelectItem>
+                {bankAccountOptions.map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {`${account.bankName} · ${formatIbanForDisplay(account.iban)} · ${account.currency}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FormDescription>
+              {bankAccountOptions.length === 0 && !optionsLoading
+                ? t("fields.bankAccountEmptyHint")
+                : swissModeActive
+                  ? t("fields.bankAccountActiveHint")
+                  : t("fields.bankAccountInactiveHint")}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      {swissModeActive ? (
+        <FormField
+          control={form.control}
+          name="qrReferenceMode"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("fields.qrReferenceMode")}</FormLabel>
+              <Select
+                value={field.value}
+                onValueChange={(value) => field.onChange(value as CampaignQrReferenceMode)}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {QR_REFERENCE_MODES.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {t(`fields.qrReferenceModeOption.${mode}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormDescription>
+                {referenceTypeHint ?? t("fields.qrReferenceModeHint")}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** Insert a space every 4 chars per ISO 13616 presentation guidance. */
+function formatIbanForDisplay(iban: string): string {
+  return iban.replace(/(.{4})/g, "$1 ").trim();
+}
+
 async function loadCampaignFormOptions(mode: CampaignFormProps["mode"], campaignId?: string) {
   const client = createClientApiClient();
-  const [campaignsResult, fundsResult, selectedFunds] = await Promise.all([
+  const [campaignsResult, fundsResult, selectedFunds, bankAccountsResult] = await Promise.all([
     CampaignService.listCampaigns(client, {
       perPage: CAMPAIGN_OPTION_PAGE_SIZE,
     }),
@@ -669,11 +839,15 @@ async function loadCampaignFormOptions(mode: CampaignFormProps["mode"], campaign
     mode === "edit" && campaignId
       ? FundService.listCampaignFunds(client, campaignId)
       : Promise.resolve([]),
+    // Epic #318 — Swiss QR-bill picker source list. Skip soft-deleted
+    // rows by default so the dropdown only surfaces actionable accounts.
+    BankAccountService.listBankAccounts(client, { perPage: CAMPAIGN_OPTION_PAGE_SIZE }),
   ]);
 
   return {
     campaigns: campaignsResult.data,
     funds: fundsResult.data,
     selectedFundIds: selectedFunds.map((fund) => fund.id),
+    bankAccountsForOrg: bankAccountsResult.data,
   };
 }

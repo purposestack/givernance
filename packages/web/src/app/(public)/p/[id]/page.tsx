@@ -179,6 +179,21 @@ export default async function PublicCampaignPage({
               )}
             </section>
 
+            {page.hasSwissQrBill ? (
+              <aside
+                className="mb-4 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900"
+                aria-label={t("swissQrBillBanner.label")}
+              >
+                <span aria-hidden="true" className="text-2xl leading-none">
+                  🇨🇭
+                </span>
+                <div className="text-sm leading-relaxed">
+                  <p className="font-semibold">{t("swissQrBillBanner.title")}</p>
+                  <p>{t("swissQrBillBanner.body")}</p>
+                </div>
+              </aside>
+            ) : null}
+
             <PublicDonationForm
               campaignId={id}
               colorPrimary={colorPrimary}

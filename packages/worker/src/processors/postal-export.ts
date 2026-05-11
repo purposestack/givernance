@@ -59,6 +59,14 @@ import { uploadCampaignZip } from "../lib/s3.js";
 import { extractTraceId } from "../lib/trace-context.js";
 import { getActivePdfLetterhead } from "../services/branding-logo-cache.js";
 import { createCampaignLetterPdfStream } from "../services/campaign-pdf.js";
+import {
+  ensureSwissQrReference,
+  loadBankAccountForRender,
+  qrBillFilenameFor,
+  renderSwissQrBillPdf,
+  resolveReferenceType,
+  type SwissQrBillRenderContext,
+} from "../services/swiss-qr-bill.js";
 
 /**
  * Token generator — same shape as `campaign-documents.ts`'s. Kept local so
@@ -180,6 +188,10 @@ export async function processGeneratePostalExport(
           name: campaigns.name,
           description: campaigns.description,
           type: campaigns.type,
+          // Epic #318 — Swiss QR-bill toggle. NULL = standard rail (no
+          // QR-bill PDF appended); set = Swiss QR-bill mode active.
+          bankAccountId: campaigns.bankAccountId,
+          qrReferenceMode: campaigns.qrReferenceMode,
         })
         .from(campaigns)
         .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
@@ -367,6 +379,39 @@ export async function processGeneratePostalExport(
     log.info({ exportId, logoBytes: logoBuffer.byteLength }, "Embedding org logo in postal PDFs");
   }
 
+  // ── Epic #318 — resolve Swiss QR-bill context once. ─────────────────
+  // Campaigns without a linked `bank_account_id` skip this branch and
+  // keep producing the standard single-PDF-per-letter ZIP (back-compat
+  // is total). When linked, every work item also produces an adjacent
+  // `{recipient}-qr-bill.pdf` carrying a per-recipient (personalised)
+  // or per-export (door-drop) QRR/SCOR reference.
+  let swissQrCtx: SwissQrBillRenderContext | null = null;
+  if (campaign.bankAccountId !== null) {
+    const account = await loadBankAccountForRender(orgId, campaign.bankAccountId);
+    if (!account) {
+      // The readiness gate already rejected this, but a stale postal-
+      // export row pointing at a since-soft-deleted bank account would
+      // crash the render. Bail out cleanly.
+      throw new Error(
+        `Swiss QR-bill mode: linked bank account ${campaign.bankAccountId} is missing or soft-deleted`,
+      );
+    }
+    swissQrCtx = {
+      bankAccount: account,
+      referenceType: resolveReferenceType(campaign.qrReferenceMode, account.ibanKind),
+      campaignName: campaign.name,
+    };
+    log.info(
+      {
+        exportId,
+        bankAccountId: account.id,
+        ibanKind: account.ibanKind,
+        referenceType: swissQrCtx.referenceType,
+      },
+      "Swiss QR-bill mode active — appending qr-bill.pdf per recipient",
+    );
+  }
+
   // Re-snapshot total_count to the live work-item count. The API stamps
   // a request-time snapshot, but a constituent added/removed between the
   // API call and the worker run would otherwise produce a UI bar like
@@ -435,6 +480,24 @@ export async function processGeneratePostalExport(
       });
 
       archive.append(buffer, { name: item.fileName });
+
+      // Epic #318 — when Swiss QR-bill mode is active, append a second
+      // PDF carrying the QR-bill (on a separate A4 sheet, sibling to
+      // the appeal letter). Extracted to keep the main loop under the
+      // cognitive-complexity ceiling.
+      if (swissQrCtx !== null && campaign.bankAccountId !== null) {
+        await appendSwissQrBillPdfToArchive({
+          archive,
+          ctx: swissQrCtx,
+          orgId,
+          campaignId,
+          exportId,
+          bankAccountId: campaign.bankAccountId,
+          constituentId: item.constituentId,
+          letterFilename: item.fileName,
+        });
+      }
+
       uploaded += 1;
 
       // Tick progress after each PDF lands in the archive — the polling
@@ -495,6 +558,41 @@ export async function processGeneratePostalExport(
     log.error({ exportId, err: message }, "Postal export failed");
     throw err;
   }
+}
+
+/**
+ * Epic #318 — mint (or reuse) a Swiss QR-bill reference for this work
+ * item, render the QR-bill PDF, and append it to the streaming ZIP
+ * adjacent to the appeal letter. Extracted from the main loop so
+ * `processGeneratePostalExport` stays under the cognitive-complexity
+ * ceiling. Reference granularity per ADR-027: per-recipient on
+ * personalised, per-export on door-drop.
+ */
+async function appendSwissQrBillPdfToArchive(args: {
+  archive: archiver.Archiver;
+  ctx: SwissQrBillRenderContext;
+  orgId: string;
+  campaignId: string;
+  exportId: string;
+  bankAccountId: string;
+  constituentId: string | null;
+  letterFilename: string;
+}): Promise<void> {
+  const { reference } = await ensureSwissQrReference({
+    orgId: args.orgId,
+    campaignId: args.campaignId,
+    exportId: args.exportId,
+    bankAccountId: args.bankAccountId,
+    constituentId: args.constituentId,
+    referenceType: args.ctx.referenceType,
+    currency: args.ctx.bankAccount.currency,
+  });
+  const qrBillBuffer = await renderSwissQrBillPdf({
+    bankAccount: args.ctx.bankAccount,
+    reference,
+    campaignName: args.ctx.campaignName,
+  });
+  args.archive.append(qrBillBuffer, { name: qrBillFilenameFor(args.letterFilename) });
 }
 
 async function markFailed(orgId: string, exportId: string, error: string) {

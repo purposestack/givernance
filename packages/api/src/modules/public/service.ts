@@ -169,6 +169,11 @@ async function loadPublicPage(campaignId: string) {
         organisationId: tenants.id,
         organisationName: tenants.name,
         organisationMission: tenants.mission,
+        // Epic #318 — boolean discriminator for the donor-facing "you
+        // can also pay via the QR-bill on your printed letter" banner.
+        // We return a boolean (not the bank_account_id) so no internal
+        // identifier leaks onto the public surface.
+        bankAccountId: campaigns.bankAccountId,
         // Active org-logo (Epic #286). LEFT JOIN — the donor page renders
         // an initial-letter avatar fallback (seeded by `organisationId`)
         // when the tenant hasn't uploaded a logo, so a missing row is the
@@ -216,15 +221,17 @@ async function loadPublicPage(campaignId: string) {
       .from(donations)
       .where(and(eq(donations.campaignId, campaignId), eq(donations.status, "cleared")));
 
-    // Strip the internal `logoVariants` from the returned shape — the
-    // public response only ships the resolved URL, never the raw S3
-    // variant manifest.
-    const { logoVariants: _logoVariants, ...rest } = page;
+    // Strip the internal `logoVariants` + raw `bankAccountId` from the
+    // returned shape. The public response only ships the resolved logo
+    // URL (never the raw S3 variant manifest) and a boolean
+    // `hasSwissQrBill` flag (never the internal bank-account id).
+    const { logoVariants: _logoVariants, bankAccountId: _ba, ...rest } = page;
     return {
       ...rest,
       raisedCents: stats?.raisedCents ?? 0,
       donorCount: stats?.donorCount ?? 0,
       organisationLogoUrl,
+      hasSwissQrBill: page.bankAccountId !== null,
     };
   });
 }

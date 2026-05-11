@@ -18,6 +18,7 @@
  */
 
 import {
+  bankAccounts,
   campaignConstituents,
   campaignPostalExports,
   campaignPublicPages,
@@ -26,6 +27,7 @@ import {
   outboxEvents,
   type PostalExportMode,
 } from "@givernance/shared/schema";
+import { classifyIban } from "@givernance/shared/validators";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 import { resolveInternalUserId } from "../../lib/resolve-user.js";
@@ -42,6 +44,14 @@ export type PostalExportErrorCode =
   | "public_page_draft"
   | "personalized_on_door_drop"
   | "no_recipients"
+  // Epic #318: Swiss QR-bill readiness gates — fire only when the
+  // campaign has `bank_account_id IS NOT NULL`. A NULL bank account
+  // keeps the campaign on the standard postal rail (no QR-bill, no
+  // Swiss-specific checks).
+  | "swiss_qr_bill_bank_account_deleted"
+  | "swiss_qr_bill_invalid_iban"
+  | "swiss_qr_bill_currency_mismatch"
+  | "swiss_qr_bill_address_too_long"
   | "insert_failed";
 
 export class PostalExportError extends Error {
@@ -106,6 +116,94 @@ function mapRow(row: {
   };
 }
 
+/**
+ * Epic #318 — Swiss QR-bill readiness gates. Fires only when the
+ * campaign has `bank_account_id IS NOT NULL`. The gates here are the
+ * **server-side mirror** of the form-level checks in
+ * `web/components/settings/bank-account-form.tsx` and of the DB CHECK
+ * constraints from migration 0044 — defense-in-depth so the worker
+ * never sees a payload that would fail at PDF render time.
+ *
+ * `qrReferenceMode='auto'` resolves to `qrr` for QR-IBANs and `scor`
+ * for regular IBANs — see ADR-027. The currency-vs-reference rule
+ * (EUR + QRR illegal under IG QR-bill v2.4 after the euroSIC
+ * discontinuation) fires here AND at the bank-account create-time
+ * service guard.
+ */
+async function assertSwissQrBillReadiness(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  bankAccountId: string,
+  qrReferenceMode: "auto" | "qrr" | "scor",
+): Promise<void> {
+  const [account] = await tx
+    .select({
+      id: bankAccounts.id,
+      deletedAt: bankAccounts.deletedAt,
+      iban: bankAccounts.iban,
+      ibanKind: bankAccounts.ibanKind,
+      currency: bankAccounts.currency,
+      holderName: bankAccounts.holderName,
+      holderStreet: bankAccounts.holderStreet,
+      holderBuildingNumber: bankAccounts.holderBuildingNumber,
+      holderPostalCode: bankAccounts.holderPostalCode,
+      holderTown: bankAccounts.holderTown,
+    })
+    .from(bankAccounts)
+    .where(and(eq(bankAccounts.id, bankAccountId), eq(bankAccounts.orgId, orgId)));
+
+  if (!account || account.deletedAt !== null) {
+    throw new PostalExportError(
+      "Linked bank account was soft-deleted. Pick a different bank account or restore it before generating a postal export.",
+      "swiss_qr_bill_bank_account_deleted",
+    );
+  }
+
+  // Defense-in-depth: the bank_accounts CHECK + service-level validator
+  // enforce CH/LI + mod-97 at write time, so this branch should never
+  // fire on a row created via the API. It catches DB-direct writes that
+  // bypassed those guards.
+  if (classifyIban(account.iban) === "invalid") {
+    throw new PostalExportError(
+      "Linked bank account has an IBAN that failed mod-97 / CH-or-LI validation. Re-create the bank account.",
+      "swiss_qr_bill_invalid_iban",
+    );
+  }
+
+  const effectiveMode =
+    qrReferenceMode === "auto"
+      ? account.ibanKind === "qr_iban"
+        ? "qrr"
+        : "scor"
+      : qrReferenceMode;
+  if (account.currency === "EUR" && effectiveMode === "qrr") {
+    throw new PostalExportError(
+      "EUR + QRR is illegal under IG QR-bill v2.4 (euroSIC discontinuation). Switch the campaign's qrReferenceMode to SCOR or change the bank account currency.",
+      "swiss_qr_bill_currency_mismatch",
+    );
+  }
+
+  // IG QR-bill v2.4 holder-field caps. These match the DB column widths
+  // exactly, so any row that wrote successfully should pass — but a UI
+  // patch path could still in theory truncate before saving; better to
+  // surface the offending field here than at render time.
+  const overruns = [
+    account.holderName.length > 70 && "holder name (>70)",
+    account.holderStreet.length > 70 && "holder street (>70)",
+    account.holderBuildingNumber !== null && account.holderBuildingNumber.length > 16
+      ? "holder building number (>16)"
+      : false,
+    account.holderPostalCode.length > 16 && "holder postal code (>16)",
+    account.holderTown.length > 35 && "holder town (>35)",
+  ].filter(Boolean);
+  if (overruns.length > 0) {
+    throw new PostalExportError(
+      `Holder address exceeds IG QR-bill v2.4 caps: ${overruns.join(", ")}. Edit the bank account before exporting.`,
+      "swiss_qr_bill_address_too_long",
+    );
+  }
+}
+
 /** Count linked constituents for a campaign (used to lock the totalCount at job-start). */
 async function countLinkedConstituents(
   tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
@@ -145,7 +243,13 @@ export async function startPostalExport(
 ): Promise<PostalExportRow | null> {
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
-      .select({ id: campaigns.id, type: campaigns.type, status: campaigns.status })
+      .select({
+        id: campaigns.id,
+        type: campaigns.type,
+        status: campaigns.status,
+        bankAccountId: campaigns.bankAccountId,
+        qrReferenceMode: campaigns.qrReferenceMode,
+      })
       .from(campaigns)
       .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
 
@@ -185,6 +289,11 @@ export async function startPostalExport(
         "Public donation page is still a draft. Publish it before generating a postal export — otherwise donors scanning the printed QR codes won't reach a working donation page.",
         "public_page_draft",
       );
+    }
+
+    // Epic #318 — Swiss QR-bill readiness gates (only when linked).
+    if (campaign.bankAccountId !== null) {
+      await assertSwissQrBillReadiness(tx, orgId, campaign.bankAccountId, campaign.qrReferenceMode);
     }
 
     let totalCount = 0;
