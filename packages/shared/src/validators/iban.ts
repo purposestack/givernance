@@ -23,8 +23,10 @@ function normalise(input: string): string {
 
 /**
  * Compute ISO 7064 mod-97 over an alphanumeric string. Letters map to
- * `A=10, B=11, ..., Z=35`. Implemented in chunks because the resulting
- * decimal expansion easily exceeds Number.MAX_SAFE_INTEGER.
+ * `A=10, B=11, ..., Z=35`. Runs the modulo per character (the *expanded*
+ * decimal of a full IBAN would overflow Number.MAX_SAFE_INTEGER, but
+ * each `remainder * 100 + digit` step stays well within safe-integer
+ * bounds because `remainder < 97` and `digit ≤ 35`).
  */
 function mod97(payload: string): number {
   let remainder = 0;
@@ -138,16 +140,23 @@ export function isValidQrr(input: string): boolean {
   return expected === actual;
 }
 
+/** ISO 11649 reserves check digits 00, 01, and 99 — never emit-or-accept. */
+const SCOR_RESERVED_CHECK_DIGITS = new Set(["00", "01", "99"]);
+
 /**
  * SCOR (ISO 11649 RF Creditor Reference) check. Format:
  *   RF<2 check digits><up to 21 alphanumeric>
  * Total length 5-25 chars. Mod-97 = 1 over `<payload><RF><check>`
- * with letters mapped per ISO 7064.
+ * with letters mapped per ISO 7064. Reserved check digits (00, 01, 99)
+ * are rejected per spec — they happen to validate by math but never
+ * appear on legitimate references; accepting them masks adversarial
+ * inputs.
  */
 export function isValidScor(input: string): boolean {
   const ref = normalise(input);
   if (ref.length < 5 || ref.length > 25) return false;
   if (!/^RF[0-9]{2}[A-Z0-9]+$/.test(ref)) return false;
+  if (SCOR_RESERVED_CHECK_DIGITS.has(ref.slice(2, 4))) return false;
   const rotated = ref.slice(4) + ref.slice(0, 4);
   return mod97(rotated) === 1;
 }

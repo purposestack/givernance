@@ -7,28 +7,40 @@
  * than throwing — readiness gates surface every offending field at
  * once so the operator can fix them in one pass.
  *
- * Field caps mirror IG QR-bill v2.4 string limits (see
- * `bank_accounts` column widths in migration 0044). The library that
+ * Field caps mirror IG QR-bill v2.4 / v2.5 structured-address (S)
+ * string limits (see `bank_accounts` column widths in migration 0044).
+ * Combined address (K) is not supported — v2.5 makes S mandatory from
+ * 2026-09-30 and we ship S-only by construction. The library that
  * renders the slip (`swissqrbill` v4) enforces the same caps; this
  * pre-check fails loud at the readiness-gate boundary so the operator
  * never sees a "render failed" error after clicking Generate ZIP.
  */
 
-import { classifyIban, isValidIban } from "./iban";
+import { classifyIban, getIbanCountry } from "./iban";
 
 export type SwissQrBillReferenceType = "qrr" | "scor";
 export type SwissQrBillCurrency = "CHF" | "EUR";
+
+/** IG QR-bill v2.4 §4.3.6: amount range 0.00 – 999,999,999.99 (in cents). */
+const SWISS_QR_BILL_AMOUNT_MAX_CENTS = 99_999_999_999;
 
 export interface SwissQrBillPayloadInput {
   iban: string;
   currency: SwissQrBillCurrency;
   referenceType: SwissQrBillReferenceType;
+  /** 0 = donor fills the amount in their e-banking app (the standard Swiss UX). Optional; defaults to 0. */
+  amountCents?: number | null;
   holder: {
     name: string;
-    addressLine1: string;
-    addressLine2?: string | null;
+    /** IG `StrtNm` — street name, ≤ 70 chars (S-shape only; K not modelled). */
+    street: string;
+    /** IG `BldgNb` — building / house number, ≤ 16 chars. Optional per spec. */
+    buildingNumber?: string | null;
+    /** IG `PstCd` — postal code, ≤ 16 chars. */
     postalCode: string;
-    city: string;
+    /** IG `TwnNm` — town / city, ≤ 35 chars. */
+    town: string;
+    /** ISO 3166-1 alpha-2; must be CH or LI for an IG QR-bill. */
     countryCode: string;
   };
 }
@@ -39,16 +51,19 @@ export interface SwissQrBillValidationError {
     | "iban"
     | "currency"
     | "referenceType"
+    | "amountCents"
     | "holder.name"
-    | "holder.addressLine1"
-    | "holder.addressLine2"
+    | "holder.street"
+    | "holder.buildingNumber"
     | "holder.postalCode"
-    | "holder.city"
+    | "holder.town"
     | "holder.countryCode";
   code:
     | "iban_invalid"
     | "iban_country_unsupported"
+    | "currency_invalid"
     | "currency_reference_mismatch"
+    | "amount_out_of_range"
     | "address_too_long"
     | "country_code_invalid"
     | "required_field_empty";
@@ -59,38 +74,34 @@ export type SwissQrBillValidationResult =
   | { ok: true }
   | { ok: false; errors: SwissQrBillValidationError[] };
 
-type RequiredHolderField =
-  | "holder.name"
-  | "holder.addressLine1"
-  | "holder.postalCode"
-  | "holder.city";
-type CappedHolderField = RequiredHolderField | "holder.addressLine2";
-
-const HOLDER_CAPS: Record<CappedHolderField, number> = {
+const HOLDER_CAPS = {
   "holder.name": 70,
-  "holder.addressLine1": 70,
-  "holder.addressLine2": 16,
+  "holder.street": 70,
+  "holder.buildingNumber": 16,
   "holder.postalCode": 16,
-  "holder.city": 35,
-};
+  "holder.town": 35,
+} as const;
+
+type CappedHolderField = keyof typeof HOLDER_CAPS;
+type RequiredHolderField = Exclude<CappedHolderField, "holder.buildingNumber">;
 
 const HOLDER_REQUIRED_LABEL: Record<RequiredHolderField, string> = {
   "holder.name": "Holder name",
-  "holder.addressLine1": "Holder address line 1",
+  "holder.street": "Holder street",
   "holder.postalCode": "Holder postal code",
-  "holder.city": "Holder city",
+  "holder.town": "Holder town",
 };
 
 /** Check IBAN validity + country in {CH, LI}. Returns at most one error. */
 function checkIban(iban: string): SwissQrBillValidationError | null {
-  if (classifyIban(iban) === "invalid" || !isValidIban(iban)) {
+  if (classifyIban(iban) === "invalid") {
     return {
       field: "iban",
       code: "iban_invalid",
       message: "IBAN failed mod-97 / format validation.",
     };
   }
-  const country = iban.replace(/\s+/g, "").toUpperCase().slice(0, 2);
+  const country = getIbanCountry(iban);
   if (country !== "CH" && country !== "LI") {
     return {
       field: "iban",
@@ -101,15 +112,34 @@ function checkIban(iban: string): SwissQrBillValidationError | null {
   return null;
 }
 
-/** EUR + QRR is illegal under IG QR-bill v2.4 (euroSIC discontinuation). */
-function checkCurrencyReferenceConsistency(
-  input: SwissQrBillPayloadInput,
-): SwissQrBillValidationError | null {
+/** Currency runtime guard — defends against ingress paths that bypass TS narrowing. */
+function checkCurrency(input: SwissQrBillPayloadInput): SwissQrBillValidationError | null {
+  if (input.currency !== "CHF" && input.currency !== "EUR") {
+    return {
+      field: "currency",
+      code: "currency_invalid",
+      message: `Swiss QR-bill requires CHF or EUR (got ${String(input.currency)}).`,
+    };
+  }
+  // EUR + QRR is illegal under IG QR-bill v2.4 (euroSIC discontinuation 2022-09-30).
   if (input.currency === "EUR" && input.referenceType === "qrr") {
     return {
       field: "currency",
       code: "currency_reference_mismatch",
       message: "EUR + QRR is illegal under IG QR-bill v2.4 — switch the reference type to SCOR.",
+    };
+  }
+  return null;
+}
+
+/** IG QR-bill v2.4 §4.3.6: amount must be 0.00 – 999,999,999.99. */
+function checkAmount(input: SwissQrBillPayloadInput): SwissQrBillValidationError | null {
+  const amount = input.amountCents ?? 0;
+  if (!Number.isInteger(amount) || amount < 0 || amount > SWISS_QR_BILL_AMOUNT_MAX_CENTS) {
+    return {
+      field: "amountCents",
+      code: "amount_out_of_range",
+      message: `Amount must be 0–${SWISS_QR_BILL_AMOUNT_MAX_CENTS} cents (IG QR-bill v2.4 §4.3.6).`,
     };
   }
   return null;
@@ -138,7 +168,7 @@ function checkRequiredAndCap(
 }
 
 function checkOptionalCap(
-  field: "holder.addressLine2",
+  field: "holder.buildingNumber",
   value: string | null | undefined,
 ): SwissQrBillValidationError | null {
   if (value == null) return null;
@@ -147,7 +177,7 @@ function checkOptionalCap(
     return {
       field,
       code: "address_too_long",
-      message: `Holder address line 2 exceeds ${cap} chars (got ${value.length}).`,
+      message: `Holder building number exceeds ${cap} chars (got ${value.length}).`,
     };
   }
   return null;
@@ -170,12 +200,13 @@ export function validateSwissQrBillPayload(
   const { holder } = input;
   const candidates: Array<SwissQrBillValidationError | null> = [
     checkIban(input.iban),
-    checkCurrencyReferenceConsistency(input),
+    checkCurrency(input),
+    checkAmount(input),
     checkRequiredAndCap("holder.name", holder.name),
-    checkRequiredAndCap("holder.addressLine1", holder.addressLine1),
-    checkOptionalCap("holder.addressLine2", holder.addressLine2),
+    checkRequiredAndCap("holder.street", holder.street),
+    checkOptionalCap("holder.buildingNumber", holder.buildingNumber),
     checkRequiredAndCap("holder.postalCode", holder.postalCode),
-    checkRequiredAndCap("holder.city", holder.city),
+    checkRequiredAndCap("holder.town", holder.town),
     checkCountryCode(holder.countryCode),
   ];
   const errors = candidates.filter((e): e is SwissQrBillValidationError => e !== null);

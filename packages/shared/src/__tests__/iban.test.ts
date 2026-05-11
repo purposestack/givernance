@@ -46,6 +46,22 @@ describe("isValidIban", () => {
   it("rejects an IBAN with a malformed country prefix", () => {
     expect(isValidIban("1H9300762011623852957")).toBe(false);
   });
+
+  it("accepts a canonical French IBAN (27 chars)", () => {
+    expect(isValidIban("FR1420041010050500013M02606")).toBe(true);
+  });
+
+  it("accepts a canonical Maltese IBAN (31 chars — IBAN registry upper end)", () => {
+    expect(isValidIban("MT84MALT011000012345MTLCAST001S")).toBe(true);
+  });
+
+  it("accepts a canonical Norwegian IBAN (15 chars — IBAN registry lower end)", () => {
+    expect(isValidIban("NO9386011117947")).toBe(true);
+  });
+
+  it("rejects a synthetic FR placeholder with bad checksum", () => {
+    expect(isValidIban("FR0030000000000000000000")).toBe(false);
+  });
 });
 
 describe("getIbanCountry", () => {
@@ -72,9 +88,10 @@ describe("isQrIban", () => {
     expect(isQrIban("CH9300762011623852957")).toBe(false);
   });
 
-  it("rejects a non-CH/LI IBAN even with a 30000-range IID", () => {
-    // Synthetic French IBAN with 30000 IID — France does not have QR-IBANs.
-    expect(isQrIban("FR0030000000000000000000")).toBe(false);
+  it("rejects a non-CH/LI IBAN regardless of IID range", () => {
+    // Real canonical FR IBAN — country gate must fire before the IID
+    // check even runs (France has no QR-IBAN concept).
+    expect(isQrIban("FR1420041010050500013M02606")).toBe(false);
   });
 
   it("tolerates whitespace", () => {
@@ -160,5 +177,14 @@ describe("isValidScor", () => {
   it("rejects an empty / too-short SCOR", () => {
     expect(isValidScor("")).toBe(false);
     expect(isValidScor("RF18")).toBe(false);
+  });
+
+  it("rejects ISO 11649 reserved check digits (00, 01, 99)", () => {
+    // Per ISO 11649 these check digits are reserved and must never
+    // appear on legitimate references — accepting them is an
+    // adversarial-input footgun.
+    expect(isValidScor("RF001234567890")).toBe(false);
+    expect(isValidScor("RF011234567890")).toBe(false);
+    expect(isValidScor("RF991234567890")).toBe(false);
   });
 });

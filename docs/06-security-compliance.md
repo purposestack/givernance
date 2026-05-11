@@ -87,9 +87,12 @@ Operational impact:
 
 Bank account holder data (`bank_accounts`) and donor IBAN+name carried in `camt_credit_entries` are personal data under GDPR Art. 4 + Swiss FADP. Posture:
 
-- **Storage**: raw camt.053 files land in the **private `bank-statements` bucket** (ADR-023 amendment), keyed `{org_id}/camt053/{yyyy}/{mm}/{msg_id}.xml`. Signed URLs only; no CDN; encrypted at rest.
+- **PII inventory — operator's own bank account**: `holder_name`, `holder_street`, `holder_building_number`, `holder_postal_code`, `holder_town`, `holder_country_code`, `iban`, `bic` (when present). All RLS-scoped per tenant; printed on every issued QR-bill. For sole-trader-style NPOs and small charities, `holder_name` is a named natural person — treat as personal data.
+- **PII inventory — donor data via camt.053**: `camt_credit_entries.debtor_name`, `camt_credit_entries.debtor_iban` (extracted from `Ntry.RltdPties.Dbtr.Nm` / `RltdPties.DbtrAcct.Id.IBAN`). Retained as financial record for 10 years.
+- **Log redaction**: Pino redacts `iban`, `*.iban`, `debtor_iban`, `*.debtor_iban`, `debtorIban`, `*.debtorIban`, plus the existing donor-PII paths (see `packages/shared/src/constants/pino-redact.ts`).
+- **Storage**: raw camt.053 files land in the **private `bank-statements` bucket** (ADR-023 amendment), keyed `{org_id}/camt053/{yyyy}/{mm}/{msg_id}.xml`. Signed URLs only; no CDN; SSE-S3 at rest; versioning + MFA-delete enabled; explicit public-access deny.
 - **Retention**: Swiss CO Art. 958f mandates **10 years** for bank statements (electronic OK). Apply 10-year lifecycle on the bucket.
-- **Erasure exception (Art. 17)**: camt-derived donation rows AND the underlying statement are protected by legal-hold (financial record). On constituent erasure, `swiss_qr_references.constituent_id` is set NULL (preserves campaign rollup) but `camt_credit_entries.debtor_name` / `.debtor_iban` are kept.
+- **Erasure exception (Art. 17)**: camt-derived donation rows AND the underlying statement are protected by legal-hold (financial record). On constituent erasure (`constituents.deleted_at IS NOT NULL`), `swiss_qr_references.constituent_id` is set NULL via the FK's `ON DELETE SET NULL` (preserves campaign rollup); `camt_credit_entries.debtor_name` / `.debtor_iban` are retained. Donor-facing surfaces filter erased rows by joining on `constituents.deleted_at IS NULL` — no separate `gdpr_erased` flag exists; `deleted_at` is the single source of truth.
 - **Foreign-IBAN safety**: a camt.053 referencing an IBAN not registered in the tenant's `bank_accounts` is rejected file-level — prevents accidental import of a third-party's statement.
 - **Slip PII**: Ultimate Debtor field on the QR-bill is **blank by default** (donor types own name in their app); per-campaign override requires explicit operator confirmation. Mirrors the opaque-token QR posture on the appeal letter.
 

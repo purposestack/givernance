@@ -182,16 +182,22 @@ The Receipt + Payment Part dimensions are **fixed by IG QR-bill v2.4** — `swis
 | Field | Source | Cap |
 |---|---|---|
 | Holder name | `bank_accounts.holder_name` | ≤ 70 chars |
-| Holder street | `bank_accounts.holder_address_line1` | ≤ 70 chars |
-| Holder building no. | `bank_accounts.holder_address_line2` (nullable) | ≤ 16 chars |
-| Holder postal code | `bank_accounts.holder_postal_code` | ≤ 16 chars |
-| Holder city | `bank_accounts.holder_city` | ≤ 35 chars |
+| Holder street (IG `StrtNm`) | `bank_accounts.holder_street` | ≤ 70 chars |
+| Holder building no. (IG `BldgNb`) | `bank_accounts.holder_building_number` (nullable) | ≤ 16 chars |
+| Holder postal code (IG `PstCd`) | `bank_accounts.holder_postal_code` | ≤ 16 chars |
+| Holder town (IG `TwnNm`) | `bank_accounts.holder_town` | ≤ 35 chars |
 | Country | `bank_accounts.holder_country_code` (ISO-2) | exactly 2 |
 | IBAN / QR-IBAN | `bank_accounts.iban` | 21 chars, mod-97 |
 | Reference | minted per recipient | 27 (QRR) or RF.. (SCOR) |
 | Currency | `bank_accounts.currency` | CHF or EUR (EUR ≠ QRR) |
 
 If any cap is breached the export **fails before any PDF is rendered** — the readiness gate `swiss_qr_bill_address_too_long` lists the offending row(s) for the operator.
+
+### 1.ter.bis Address-type readiness — S-only by construction
+
+IG QR-bill v2.4 supports two address shapes: **K** (combined — 2 lines × 70 chars) and **S** (structured — `StrtNm` + `BldgNb` + `PstCd` + `TwnNm` + `Ctry`). The 2025 v2.3 update deprecated K and v2.5 makes S mandatory from **2026-09-30** ([Magic Heidi](https://magicheidi.ch/qr-bill-2025-changes-explained), [Projektron](https://www.projektron.de/en/blog/details/qr-invoices-switzerland-2025-4069/)).
+
+Givernance ships **S-only from day one**. The column widths above (`holder_building_number ≤ 16` in particular, which is K-incompatible) make the K shape structurally impossible. No migration is required when the 2026-09-30 cutover happens. K is not modelled, validated, accepted, or rendered.
 
 ## 1.quater Reference type matrix (per bank account)
 
@@ -233,10 +239,10 @@ erDiagram
         uuid id PK
         uuid org_id FK
         string holder_name "≤70 chars (QR-bill addr cap)"
-        string holder_address_line1
-        string holder_address_line2 "nullable"
-        string holder_postal_code
-        string holder_city
+        string holder_street "IG StrtNm"
+        string holder_building_number "IG BldgNb, nullable"
+        string holder_postal_code "IG PstCd"
+        string holder_town "IG TwnNm"
         string holder_country_code "ISO-2; CH default"
         string iban "21 chars, mod-97 valid"
         enum iban_kind "iban | qr_iban (computed from IID)"
@@ -257,7 +263,7 @@ erDiagram
         uuid id PK
         uuid org_id FK
         uuid campaign_id FK
-        uuid constituent_id FK "nullable for door_drop (V2)"
+        uuid constituent_id FK "nullable for door_drop (V2 only — V1 readiness-gate `swiss_qr_bill_door_drop_unsupported` rejects this combination)"
         uuid export_id FK "backlink for retry idempotency"
         uuid bank_account_id FK
         enum reference_type "qrr | scor"
@@ -646,6 +652,7 @@ Per uploaded statement:
 | `GET /v1/camt-statements/:id/download` | `requireOrgAdmin` | Streamed signed URL, 10-yr retention |
 | `GET /v1/camt-unreconciled` | `requireWrite` | Accountant role can resolve |
 | `POST /v1/camt-unreconciled/:id/resolve` | `requireWrite` | Manual link or write-off |
+| `GET /v1/bank-accounts/:id/reconciliation-health` | `requireOrgAdmin` | Stats card on the bank-account detail surface — total credits / matched / unmatched / last statement date. Reads from `camt_statements` aggregates |
 | `PATCH /v1/campaigns/:id` (Swiss QR fields) | `requireOrgAdmin` | Adds `bankAccountId` (nullable) + `qrReferenceMode`. Linking sets the campaign in Swiss QR-bill mode; unlinking degrades it back to standard |
 | `GET /v1/campaigns/:id/qr-stats` | `requireOrgAdmin` | Existing endpoint — returns the merged Stripe-rail + Swiss-rail metrics from §5.3. No new endpoint introduced |
 
@@ -654,10 +661,32 @@ The existing `POST /v1/campaigns/:id/postal-preview` and `POST /v1/campaigns/:id
 ## 7. Privacy & GDPR
 
 - **Donor PII on the slip**: a discarded QR-bill in a recycling bin leaks donor name + full address if `Ultimate Debtor` is pre-filled. **Default = blank Ultimate Debtor** (donor types own name in their app); per-campaign override `prefill_donor_identity = true` requires explicit operator confirmation. Mirrors the existing French opaque-token QR posture.
-- **Camt.053 storage**: raw XML lands in the **new private `bank-statements` bucket** ([ADR-023 amendment](./adrs/adr-023-object-storage-bucket-topology.md)), keyed `{org_id}/camt053/{yyyy}/{mm}/{msg_id}.xml`. Signed URLs only; no CDN; encrypted at rest.
+- **Operator-bank-account PII**: `holder_name` + `holder_street` + `holder_building_number` + `holder_postal_code` + `holder_town` are printed on every slip and constitute personal data for sole-trader-style NPOs and small charities where the holder is a named natural person. RLS-scoped per tenant; never logged (Pino redacts `iban` / `*.iban` paths — see `pino-redact.ts`).
+- **Camt.053 storage**: raw XML lands in the **new private `bank-statements` bucket** ([ADR-023 amendment](./adrs/adr-023-object-storage-bucket-topology.md)), keyed `{org_id}/camt053/{yyyy}/{mm}/{msg_id}.xml`. Signed URLs only; no CDN; SSE-S3 at rest; versioning + MFA-delete enabled; explicit public-access deny.
+- **Rejected-file handling**: foreign-IBAN files and XSD-validation failures are stored under `{org_id}/camt053/rejected/{yyyy}/{mm}/{uuid}.xml` with the same 10-yr lifecycle so the operator can audit *why* an upload was rejected; the rejection reason is recorded in the structured log (`event=camt_upload_rejected`, no PII).
 - **Retention**: Swiss CO Art. 958f mandates **10 years** for bank statements (electronic OK). Apply a 10-yr lifecycle on the `bank-statements` bucket. **Camt-derived donation rows are exempt from GDPR Art. 17 erasure** (legal-hold protected, same as Stripe-derived rows under existing policy in `docs/06`).
-- **Erasure cascade**: on constituent erasure, `swiss_qr_references.constituent_id` is set NULL (preserves campaign-level rollup KPI). The associated `camt_credit_entries.debtor_name` and `.debtor_iban` are kept (financial record) but flagged via the existing `gdpr_erased` mechanism.
+- **Erasure cascade — GDPR Art. 17 vs Swiss CO Art. 958f collision**: this conflict resolves in favour of CO Art. 958f for camt.053-rail data. Concrete mechanics:
+  - On constituent erasure (`constituents.deleted_at IS NOT NULL`), `swiss_qr_references.constituent_id` is set NULL via the FK's `ON DELETE SET NULL` — preserves campaign-level rollup KPIs while clearing the donor pointer.
+  - `camt_credit_entries.debtor_name` and `.debtor_iban` are **retained as-is** for the legally required 10 years. They are PII but legal-hold protected; the data subject is informed at the privacy-notice level (see `docs/06`).
+  - Donor-facing surfaces (annual statement, donor portal) filter out erased rows by joining via `constituents.deleted_at IS NULL`; the underlying camt data stays accessible only to the operator's accountant role and only on direct query against `camt_credit_entries`.
+  - No `gdpr_erased` boolean flag is added — `constituents.deleted_at` is the single source of truth and the audit-log captures the erasure event explicitly (see Audit trail subsection below).
 - **Foreign-IBAN safety**: a camt.053 referencing an IBAN not registered in the tenant's `bank_accounts` is **rejected outright** (file-level), preventing the operator from accidentally importing a third-party's statement.
+
+### 7.bis Audit trail
+
+Every sensitive mutation lands in `audit_logs` (same shape as `docs/19-impersonation.md` §6). Operators reviewing a Swiss QR-bill incident can answer "who, what, when, before/after" without leaving the audit surface.
+
+| Action | `resource_type` | `action` | `old_values` / `new_values` capture |
+|---|---|---|---|
+| Create bank account | `bank_account` | `create` | `{ iban, holderName, currency, ibanKind, bankName }` |
+| Update bank account | `bank_account` | `update` | Field-level diff (excluding `iban` — re-creation only) |
+| Soft-delete bank account | `bank_account` | `soft_delete` | `{ deletedAt }` |
+| Upload camt.053 | `camt_statement` | `upload` | `{ msgId, bankAccountId, s3Path, fileSize }` |
+| Resolve unreconciled | `camt_unreconciled_entry` | `resolve` | `{ resolutionNote, linkedDonationId }` |
+| Write off unreconciled | `camt_unreconciled_entry` | `write_off` | `{ resolutionNote }` |
+| Link campaign ↔ bank account | `campaign` | `update` | `{ bankAccountId: { from, to }, qrReferenceMode }` |
+
+The `actor_id` is the impersonation-aware `effective_actor_id` per `docs/19` §5 — operator-via-support audits double-attribute correctly.
 
 ## 8. Future work (explicitly out of scope for this epic)
 

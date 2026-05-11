@@ -797,6 +797,11 @@ export const donations = pgTable(
     index("donations_donated_at_idx").on(table.donatedAt),
     index("donations_campaign_id_idx").on(table.campaignId),
     index("donations_qr_code_id_idx").on(table.qrCodeId),
+    // FK indexes for the Swiss QR-bill rail (Epic #318). The reconciler
+    // performs `UPDATE donations … WHERE swiss_qr_reference_id = ?` per
+    // matched credit; without these, every reconcile is O(donations).
+    index("donations_swiss_qr_reference_id_idx").on(table.swissQrReferenceId),
+    index("donations_camt_credit_entry_id_idx").on(table.camtCreditEntryId),
     unique("donations_org_payment_uniq").on(table.orgId, table.paymentMethod, table.paymentRef),
   ],
 );
@@ -1013,6 +1018,10 @@ export const campaigns = pgTable(
   (table) => [
     index("campaigns_org_id_idx").on(table.orgId),
     index("campaigns_org_parent_id_idx").on(table.orgId, table.parentId),
+    // FK index — supports the ON DELETE SET NULL cascade when a bank
+    // account is soft-deleted; without it, every soft-delete triggers
+    // a full scan on `campaigns`.
+    index("campaigns_bank_account_id_idx").on(table.bankAccountId),
   ],
 );
 
