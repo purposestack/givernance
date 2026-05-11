@@ -24,10 +24,21 @@ The sections that follow describe the **target** design. The **shipped** subset 
 
 Adding a new flag (Phase 1 MVP):
 1. Append the key to `FEATURE_FLAG_KEYS` in `packages/shared/src/constants/feature-flags.ts` AND to `FEATURE_FLAG_REGISTRY` with its default + description.
-2. Write a migration that `INSERT … ON CONFLICT (key) DO NOTHING` for the key with matching `default_value` + `description`.
+2. Write a migration that `INSERT … ON CONFLICT (key) DO NOTHING` for the key with matching `default_value` + `description`. The integration test in `packages/api/src/tests/integration/feature-flags.test.ts` enforces description parity between `FEATURE_FLAG_REGISTRY` and the seeded DB row — drift fails CI.
 3. Wire `requireFlag(FEATURE_FLAG_KEYS.YOUR_KEY)` on the gated routes.
 4. If the worker has a matching processor, add an `isFlagEnabled(...)` check at job pickup (defence-in-depth).
 5. If the UI surface is conditional, SSR-fetch `/v1/feature-flags` and pass `xEnabled` as a prop into the consumer component.
+
+### Audit + observability notes
+
+- **Audit trail.** Every super-admin flag toggle (`PATCH /v1/admin/feature-flags/:key`) is recorded in `audit_logs` by the existing audit plugin. `org_id` on the row reflects the JWT's `org_id` claim — which Keycloak emits even for super-admin sessions (the verifier rejects tokens without one). For platform-scoped actions like flag toggles, this is whatever tenant the super-admin's session is currently scoped to (delegation: the target tenant; non-delegation: the Keycloak platform org). Routing platform-scoped audits to the `__platform__` sentinel tenant for cleaner SIEM filtering is a separate cross-cutting follow-up — out of scope for this PR.
+- **No outbox event.** Flipping a flag does NOT emit an `outbox_events` row. The worker reads PG directly (no cache) so it observes the new value on the next job pickup; the frontend reads `/v1/feature-flags` on every SSR render. If a future flag needs realtime worker invalidation (cancel in-flight jobs the moment the flag flips), that's the case for adding `feature_flag.toggled` to the outbox.
+- **Public projection caveat.** `GET /v1/feature-flags` returns every registered flag (key + enabled only) to every authenticated caller. That's fine for the current single-flag registry; once experimental / unreleased flags land, consider adding a `public boolean` column and filtering to `public = true` in this endpoint so unreleased feature *names* don't leak via the tenant API.
+- **Cardinality.** The `requireFlag` 404 log line carries `path = routeOptions.url` (the route template, not the raw URL with query/UUIDs) so a misbehaving SPA can't blow up Loki's index. Add a Cockpit Grafana alert on `level=info AND event=flag.route_gated` count over time if you want to detect scanner enumeration.
+
+### Emergency rollback
+
+If the Back Office page is unavailable and a flag needs to come down NOW, see `docs/runbooks/feature-flag-rollback.md` — the canonical procedure is `UPDATE feature_flags SET enabled = false WHERE key = ?;` + `redis-cli DEL flags:global`.
 
 ## 1. Goals
 

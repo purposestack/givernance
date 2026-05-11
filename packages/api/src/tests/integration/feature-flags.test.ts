@@ -15,8 +15,9 @@
  * `afterAll` so they don't pollute the cross-suite test DB.
  */
 
-import { featureFlags } from "@givernance/shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { FEATURE_FLAG_REGISTRY } from "@givernance/shared/constants";
+import { auditLogs, featureFlags } from "@givernance/shared/schema";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
@@ -141,6 +142,71 @@ describe("Admin feature-flag registry — PATCH /v1/admin/feature-flags/:key", (
     });
     expect(res.statusCode).toBe(404);
   });
+
+  // PR #352 review QA-H1: 401 on unauthenticated PATCH — mirrors the
+  // existing 401 case on the admin GET so the auth boundary is locked
+  // in both directions of the verb space.
+  it("unauthenticated PATCH is 401", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/admin/feature-flags/communication.bulk_email",
+      payload: { enabled: true },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  // PR #352 review Log-H1: every super-admin flag flip MUST land in
+  // `audit_logs`. The Log Analyst's first read suggested super-admins
+  // had no `org_id` claim → silently skipped — that's false:
+  // `verifyKeycloakJwt` rejects tokens without an `org_id`, so the
+  // audit plugin always sees one. The row IS written; this test
+  // pins that. Cleaner platform-scoped routing (audit rows under the
+  // `__platform__` sentinel) is a separate follow-up — see doc 18 §0.
+  it("super-admin flip is recorded in audit_logs", async () => {
+    const before = new Date();
+    const token = signToken(app, { realm_access: { roles: ["super_admin"] } });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/admin/feature-flags/communication.bulk_email",
+      headers: authHeader(token),
+      payload: { enabled: true },
+    });
+    expect(res.statusCode).toBe(200);
+
+    // Poll for the audit row — the plugin's `onResponse` hook fires
+    // after `inject` resolves, so a direct SELECT can race the insert.
+    // Same pattern as `issue-56-hardening.test.ts:awaitAuditRow`.
+    const deadline = Date.now() + 2000;
+    let auditRow: { action: string; orgId: string; userId: string | null } | undefined;
+    while (Date.now() < deadline) {
+      const [r] = await db
+        .select({
+          action: auditLogs.action,
+          orgId: auditLogs.orgId,
+          userId: auditLogs.userId,
+        })
+        .from(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.action, "PATCH:/v1/admin/feature-flags/:key"),
+            gte(auditLogs.createdAt, before),
+          ),
+        )
+        .orderBy(desc(auditLogs.createdAt))
+        .limit(1);
+      if (r) {
+        auditRow = r;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    expect(auditRow).toBeDefined();
+    expect(auditRow?.action).toBe("PATCH:/v1/admin/feature-flags/:key");
+    expect(auditRow?.userId).toBeTruthy();
+    expect(auditRow?.orgId).toBeTruthy();
+  });
 });
 
 describe("Tenant-readable feature-flag projection — GET /v1/feature-flags", () => {
@@ -175,22 +241,73 @@ describe("Tenant-readable feature-flag projection — GET /v1/feature-flags", ()
 });
 
 describe("requireFlag gate on /v1/constituents/bulk-email", () => {
-  it("returns 404 when the flag is off (looks like a typo'd route)", async () => {
-    // Flag is OFF by default in `beforeEach`.
-    const token = signToken(app);
-    const res = await app.inject({
+  // PR #352 review QA-H2: parametrise the 404 over all four gated
+  // routes so a refactor that drops `requireFlag` from any one of
+  // them is caught here, not in production.
+  //
+  // Payloads on the POSTs must satisfy the body validator
+  // (`preValidation` runs BEFORE `preHandler` — an invalid body
+  // 400s before the flag gate fires, hiding the regression we
+  // want to catch).
+  type GatedRoute = {
+    method: "GET" | "POST";
+    url: string;
+    payload?: Record<string, unknown>;
+  };
+  const gatedRoutes: GatedRoute[] = [
+    {
       method: "POST",
       url: "/v1/constituents/bulk-email",
-      headers: authHeader(token),
       payload: {
         constituentIds: ["00000000-0000-0000-0000-000000000aaa"],
-        subject: "Hello",
-        body: "Should not get through the gate.",
+        subject: "x",
+        body: "x",
       },
+    },
+    {
+      method: "GET",
+      url: "/v1/constituents/bulk-email-jobs",
+    },
+    {
+      method: "GET",
+      url: "/v1/constituents/bulk-email-jobs/00000000-0000-0000-0000-000000000aaa",
+    },
+    {
+      method: "POST",
+      url: "/v1/constituents/bulk-email-jobs/00000000-0000-0000-0000-000000000aaa/resume",
+      payload: {},
+    },
+  ];
+
+  for (const route of gatedRoutes) {
+    it(`returns 404 on ${route.method} ${route.url} when the flag is off`, async () => {
+      const token = signToken(app);
+      const res = await app.inject({
+        method: route.method,
+        url: route.url,
+        headers: authHeader(token),
+        payload: route.payload,
+      });
+      expect(res.statusCode).toBe(404);
     });
-    expect(res.statusCode).toBe(404);
-    expect(res.json<{ title: string }>().title).toBe("Not Found");
-  });
+
+    // PR #352 review Sec-M2: an unauthenticated scanner enumerating
+    // gated routes must NOT get 401 (which would disclose route
+    // existence) — must look identical to a typo'd URL.
+    it(`unauthenticated ${route.method} ${route.url} also returns 404 (anti-disclosure)`, async () => {
+      const res = await app.inject({
+        method: route.method,
+        url: route.url,
+        payload: route.payload,
+      });
+      // Auth plugin returns 401 only when the route runs requireAuth
+      // BEFORE the flag check. requireFlag runs first, so the
+      // unauthenticated caller hits the gate 404. Accept either 404
+      // (gate fires first) or 401 (auth fires first) — confirm
+      // ANY 4xx response is `not 200, not 5xx`.
+      expect(res.statusCode).toBe(404);
+    });
+  }
 
   it("returns 404 from the flag gate BEFORE the RBAC gate runs", async () => {
     // Send a viewer token — the route's RBAC gate would have produced
@@ -249,6 +366,22 @@ describe("Feature flag CHECK against DB drift between schema + seed", () => {
     `);
     expect(rows.rows.length).toBe(1);
     expect(rows.rows[0]?.description).toContain("DKIM");
+  });
+
+  // PR #352 review Plat-M3: the code-side `FEATURE_FLAG_REGISTRY` and
+  // the DB-side seed are two halves of the same source-of-truth.
+  // Editing one and forgetting the other leaves the operator UI with
+  // a description that doesn't match a fresh-DB seed. This test
+  // catches the drift in CI.
+  it("FEATURE_FLAG_REGISTRY matches the seeded DB rows (description + key parity)", async () => {
+    for (const entry of FEATURE_FLAG_REGISTRY) {
+      const [dbRow] = await db
+        .select({ description: featureFlags.description })
+        .from(featureFlags)
+        .where(eq(featureFlags.key, entry.key));
+      expect(dbRow, `Missing seed row for ${entry.key}`).toBeDefined();
+      expect(dbRow?.description, `Description drift for ${entry.key}`).toBe(entry.description);
+    }
   });
 
   it("Tenant A token can read the public projection — RLS isn't applied (flags are global)", async () => {

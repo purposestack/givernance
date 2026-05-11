@@ -17,11 +17,17 @@
  *     failure — that's how a flagged-off feature accidentally fires).
  */
 
+import type { FeatureFlagKey } from "@givernance/shared/constants";
 import { featureFlags } from "@givernance/shared/schema";
 import { eq } from "drizzle-orm";
 import { db } from "./db.js";
 
-export async function isFlagEnabled(key: string): Promise<boolean> {
+/**
+ * `key` is the typed `FeatureFlagKey` union so a worker processor
+ * cannot accidentally pass a string that doesn't exist in the
+ * registry. (PR #352 Platform review Plat-LOW-8.)
+ */
+export async function isFlagEnabled(key: FeatureFlagKey): Promise<boolean> {
   const [row] = await db
     .select({ enabled: featureFlags.enabled })
     .from(featureFlags)
