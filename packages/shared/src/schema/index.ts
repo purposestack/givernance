@@ -1318,6 +1318,59 @@ export const bulkEmailJobs = pgTable(
   ],
 );
 
+// ─── Feature Flags (doc 18 — global-only MVP) ──────────────────────────────
+
+/**
+ * Platform-wide feature flag registry. **Phase-1 MVP scope: global flags
+ * only** — every tenant sees the same value. Per-tenant overrides
+ * (`tenant_flag_overrides`) and plan-gating are deferred to the
+ * next-iteration spec in `docs/18-feature-flags.md`.
+ *
+ * Why global-only first:
+ *   - The first real consumer (bulk-email, gated until DKIM/SPF lands —
+ *     see PR #352 discussion with @magino) is a platform-wide pause,
+ *     not a per-tenant trial.
+ *   - Schema is forward-compatible: a future `tenant_flag_overrides`
+ *     table joins on `key` without backfilling.
+ *
+ * Reads are cached in Redis with a 60s TTL keyed `flags:global` (single
+ * map covering every flag in the registry). Cache is invalidated on
+ * every write by the admin API. The seed migration inserts the
+ * canonical set; the admin UI only toggles `enabled`, it does NOT
+ * create or delete flags — drift between code and DB is the failure
+ * mode the registry exists to prevent.
+ */
+export const featureFlags = pgTable(
+  "feature_flags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /**
+     * Dotted-namespace key, e.g. `communication.bulk_email`. Lowercase,
+     * dot-separated, no whitespace. The `requireFlag(key)` middleware
+     * looks rows up by this column; the seed migration is the source of
+     * truth for what keys exist.
+     */
+    key: varchar("key", { length: 100 }).notNull().unique(),
+    /** Current value. Single boolean per row — no per-tenant variance in the MVP. */
+    enabled: boolean("enabled").notNull().default(false),
+    /**
+     * Operator-facing description shown next to the toggle in the
+     * Back Office UI. Explain *what* the flag gates and *why* it's
+     * gated; the changelog goes in `audit_logs`.
+     */
+    description: text("description").notNull(),
+    /**
+     * Last super-admin to flip the flag. `SET NULL` on user purge so a
+     * GDPR-erased staff account doesn't FK-block the row. Audit history
+     * lives in `audit_logs` keyed on `feature_flag.toggled`.
+     */
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("feature_flags_key_idx").on(table.key)],
+);
+
 // ─── Public Page Status Enum ───────────────────────────────────────────────
 
 export const publicPageStatusEnum = pgEnum("public_page_status", ["draft", "published"]);

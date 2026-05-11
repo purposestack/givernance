@@ -1,7 +1,9 @@
 /** Constituent routes — full CRUD with search, filtering, and soft-delete */
 
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import {
   DataArrayResponse,
@@ -588,7 +590,11 @@ export async function constituentRoutes(app: FastifyInstance) {
   app.post(
     "/constituents/bulk-email",
     {
-      preHandler: requireOrgAdmin,
+      // Flag-gate FIRST so a disabled feature looks identical to a
+      // typo'd URL (404) — `requireFlag` returns before `requireOrgAdmin`
+      // even runs so an unauthorised scanner can't enumerate which
+      // gated routes need which roles.
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL), requireOrgAdmin],
       config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
       schema: {
         tags: ["Constituents"],
@@ -652,7 +658,7 @@ export async function constituentRoutes(app: FastifyInstance) {
   app.get(
     "/constituents/bulk-email-jobs",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL), requireOrgAdmin],
       // PR #352 review M1: cap polling cadence even on the list path —
       // matches the per-id GET below so a buggy client (multiple tabs,
       // runaway useEffect) can't bypass the cadence limit by hitting
@@ -686,7 +692,7 @@ export async function constituentRoutes(app: FastifyInstance) {
   app.get(
     "/constituents/bulk-email-jobs/:id",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL), requireOrgAdmin],
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       schema: {
         tags: ["Constituents"],
@@ -726,7 +732,7 @@ export async function constituentRoutes(app: FastifyInstance) {
   app.post(
     "/constituents/bulk-email-jobs/:id/resume",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL), requireOrgAdmin],
       config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
       schema: {
         tags: ["Constituents"],

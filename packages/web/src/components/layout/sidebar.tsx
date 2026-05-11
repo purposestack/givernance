@@ -3,6 +3,7 @@
 import {
   Building2,
   ChevronsUpDown,
+  Flag,
   Gift,
   LayoutDashboard,
   LogOut,
@@ -45,7 +46,7 @@ interface NavItem {
 
 interface AdminNavItem {
   href: string;
-  labelKey: "tenants" | "disputes" | "impersonation" | "platformAdmins";
+  labelKey: "tenants" | "disputes" | "impersonation" | "platformAdmins" | "featureFlags";
   icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 }
 
@@ -71,6 +72,7 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin/disputes", labelKey: "disputes", icon: ShieldAlert },
   { href: "/admin/impersonation", labelKey: "impersonation", icon: UserCog },
   { href: "/admin/platform-admins", labelKey: "platformAdmins", icon: ShieldCheck },
+  { href: "/admin/feature-flags", labelKey: "featureFlags", icon: Flag },
 ];
 
 interface SidebarProps {

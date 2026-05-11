@@ -103,6 +103,13 @@ interface ConstituentsTableProps {
    * the row dropdown entirely when no action is available.
    */
   canWrite: boolean;
+  /**
+   * `false` when `communication.bulk_email` feature flag is off (PR #352
+   * follow-up; issue #326). Hides the "Email selection" + "Recent emails"
+   * buttons. The API also 404s the bulk-email routes when the flag is
+   * off — this prop is the UI half of the same gate.
+   */
+  bulkEmailEnabled: boolean;
   /** Server-resolved sort/order — see donations-table.tsx for rationale. */
   sort: ConstituentSortField;
   order: ConstituentSortOrder;
@@ -113,6 +120,7 @@ export function ConstituentsTable({
   pagination,
   canManageAdminActions,
   canWrite,
+  bulkEmailEnabled,
   sort,
   order,
 }: ConstituentsTableProps) {
@@ -446,7 +454,7 @@ export function ConstituentsTable({
           {tFilters("advancedLabel")}
           {hasActiveAdvancedFilters ? <Badge variant="info">•</Badge> : null}
         </Button>
-        {canManageAdminActions ? (
+        {canManageAdminActions && bulkEmailEnabled ? (
           <>
             <Button
               type="button"

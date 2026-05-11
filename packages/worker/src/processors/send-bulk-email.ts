@@ -27,12 +27,14 @@
  * selection.
  */
 
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import type { SendBulkEmailJob } from "@givernance/shared/jobs";
 import { bulkEmailJobs, constituents } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
 import { defaultEmailSender, type EmailSender } from "../lib/email.js";
+import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 function escapeHtml(value: string): string {
@@ -84,6 +86,13 @@ function renderText(body: string, recipientName: string): string {
  */
 export interface ProcessSendBulkEmailDeps {
   emailSender?: EmailSender;
+  /**
+   * Test-seam: production wires `isFlagEnabled` (PG read). Worker
+   * integration tests override this to assert the flag-off short-
+   * circuit without seeding the registry. Returns `true` when omitted
+   * for test setups that don't care about the gate.
+   */
+  isFlagEnabled?: (key: string) => Promise<boolean>;
 }
 
 export async function processSendBulkEmail(
@@ -93,6 +102,24 @@ export async function processSendBulkEmail(
   const data = job.data;
   const log = jobLogger({ tenantId: data.orgId, jobId: job.id });
   const sender = deps.emailSender ?? defaultEmailSender;
+  const evaluateFlag = deps.isFlagEnabled ?? isFlagEnabled;
+
+  // Defence-in-depth flag gate. The API route already checks the flag
+  // (`requireFlag` 404s a disabled feature), but a flipped-off flag
+  // can race a relay tick that already enqueued the job — the worker
+  // is the second wall. Dropping silently here is the correct
+  // posture: the operator's UI already shows the dispatch toast, and
+  // the DB row stays at `pending` until the admin either flips the
+  // flag back on (a retry will then resume), explicitly cancels, or
+  // the row falls out of the 20-row recent list.
+  const featureEnabled = await evaluateFlag(FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL);
+  if (!featureEnabled) {
+    log.warn(
+      { orgId: data.orgId, bulkEmailJobId: data.bulkEmailJobId },
+      "Bulk email feature flag is off — dropping job without sending",
+    );
+    return { sent: 0, failed: 0, skipped: 0 };
+  }
 
   const bulkEmailJobId = data.bulkEmailJobId;
   if (!bulkEmailJobId) {

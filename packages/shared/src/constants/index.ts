@@ -6,6 +6,11 @@
 
 export { resolveCountryName } from "./country-names";
 export {
+  FEATURE_FLAG_KEYS,
+  FEATURE_FLAG_REGISTRY,
+  type FeatureFlagKey,
+} from "./feature-flags";
+export {
   IMPERSONATION_END_REASON_VALUES,
   IMPERSONATION_MODE_VALUES,
   type ImpersonationEndReason,

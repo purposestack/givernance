@@ -1,3 +1,4 @@
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Plus, Users } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
@@ -15,6 +16,7 @@ import type {
   ConstituentType,
 } from "@/models/constituent";
 import { ConstituentService } from "@/services/ConstituentService";
+import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 import { ConstituentsTable } from "./constituents-table";
 
@@ -84,6 +86,20 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
 
   const client = await createServerApiClient();
 
+  // SSR fetch of the global feature flags — used here to hide the
+  // bulk-email surfaces (Email selection button + Recent emails
+  // panel) when the `communication.bulk_email` flag is off. PR #352
+  // / issue #326. A network failure here defaults the flag to OFF
+  // (safest posture — if we can't confirm the feature is on, don't
+  // render it).
+  let bulkEmailEnabled = false;
+  try {
+    const flags = await FeatureFlagsService.listPublic(client);
+    bulkEmailEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL);
+  } catch {
+    bulkEmailEnabled = false;
+  }
+
   let result: ConstituentListResponse;
   try {
     result = await ConstituentService.listConstituents(client, {
@@ -133,6 +149,7 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
           pagination={result.pagination}
           canManageAdminActions={canManageAdminActions}
           canWrite={canWrite}
+          bulkEmailEnabled={bulkEmailEnabled}
           sort={sort}
           order={order}
         />
