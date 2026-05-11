@@ -104,7 +104,16 @@ END $$;
 
 DO $$ BEGIN
   CREATE TYPE camt_unreconciled_reason AS ENUM (
-    'no_match', 'partial_match', 'invalid_ref', 'foreign_iban', 'orphan_reversal'
+    'no_match',
+    'partial_match',
+    'invalid_ref',
+    'foreign_iban',
+    'orphan_reversal',
+    -- Door-drop rail only: QR ref matched a NULL-constituent row but
+    -- the camt.053 entry carried no `RltdPties.Dbtr` info, so the
+    -- reconciler couldn't auto-resolve a constituent. Rare in
+    -- practice (mostly TWINT-rail credits); operator resolves manually.
+    'no_debtor_info'
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
@@ -221,7 +230,7 @@ CREATE TABLE IF NOT EXISTS swiss_qr_references (
   id                UUID                       PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id            UUID                       NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   campaign_id       UUID                       NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-  -- Nullable because door-drop V2 mints one ref per export with no
+  -- Nullable because door-drop mints one ref per export with no
   -- recipient. SET NULL on constituent erasure (GDPR Art. 17) keeps
   -- the campaign-level rollup KPI intact while clearing the donor
   -- pointer.
@@ -294,7 +303,7 @@ ALTER TABLE swiss_qr_references
 
 -- Partial unique with COALESCE for retry-idempotency: one reference
 -- per `(export_id, COALESCE(constituent_id, sentinel))`. The COALESCE
--- collapses NULL constituent_id to a sentinel UUID so door-drop V2
+-- collapses NULL constituent_id to a sentinel UUID so door-drop
 -- (NULL recipient) cannot accumulate duplicates on retry — Postgres
 -- treats NULL as distinct in regular unique indexes, so without the
 -- COALESCE we'd lose idempotency on the door-drop path. Same trick

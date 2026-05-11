@@ -105,18 +105,22 @@ sequenceDiagram
     Web->>API: POST /v1/camt-unreconciled/:id/resolve
 ```
 
-## 1.bis Two QR codes per recipient — preserve scan tracking, add payment
+## 1.bis QR codes per mailing — preserve scan tracking when it makes sense, add payment in either mode
 
-**Critical design choice**: a Swiss QR-bill scan inside the donor's e-banking app **does NOT hit Givernance servers** — the QR encodes a payment instruction (SPC payload, IBAN, reference), not a URL. So if we used **only** the Swiss QR-bill, we would lose the **scan-to-donate funnel** the operator gets today on the French rail (`docs/23` §5: printed → scanned → donated → revenue).
+**Critical design choice**: a Swiss QR-bill scan inside the donor's e-banking app **does NOT hit Givernance servers** — the QR encodes a payment instruction (SPC payload, IBAN, reference), not a URL. So a Swiss-only mailing would lose the **scan-to-donate funnel** the operator gets today on the French rail (`docs/23` §5: printed → scanned → donated → revenue).
 
-The fix: **mint and print both QR codes per recipient**, on the same physical mailing:
+The shape depends on `campaigns.mode`:
+
+### Personalised mailing (1 letter per recipient)
+
+**Mint and print both QR codes per recipient**, on the same physical mailing:
 
 | Surface | Carrier | Encodes | Tracking signal | Table |
 |---|---|---|---|---|
 | **Appeal letter (page 1)** — bottom of the existing A4 layout | Givernance opaque-token QR + printed URL `/p/:cid?qr=<token>` | URL → Givernance resolver | `scanned_at` stamped on first scan (existing mechanism, unchanged) | `campaign_qr_codes` |
-| **QR-bill (page 2, separate A4)** | Swiss IG-compliant QR-bill (Receipt + Payment Part bottom strip) | SPC payload (IBAN, amount, QRR/SCOR) | none (donor's bank app is offline-to-Givernance) | `swiss_qr_references` |
+| **QR-bill (page 2, separate A4)** | Swiss IG-compliant QR-bill (Receipt + Payment Part bottom strip) | SPC payload (IBAN, amount, **per-recipient QRR/SCOR**) | none (donor's bank app is offline-to-Givernance) | `swiss_qr_references` |
 
-The two rows are 1:1-paired in the worker: the same `(campaign_id, constituent_id, export_id)` mints exactly one `campaign_qr_codes` row AND one `swiss_qr_references` row per personalised letter. They live in different tables for the reasons in §2 (different alphabet, different security model, different retention) but they share their lifecycle and their export run.
+The two rows are 1:1-paired in the worker: the same `(campaign_id, constituent_id, export_id)` mints exactly one `campaign_qr_codes` row AND one `swiss_qr_references` row per personalised letter. They live in different tables for the reasons in §2 (different alphabet, different security model, different retention) but share their lifecycle and their export run.
 
 **The operator's funnel becomes a 3-stage pipeline** with both engagement and payment signals:
 
@@ -128,7 +132,27 @@ letters printed   →   letters scanned   →   QR-bills paid
 
 The "scanned but not yet paid" cohort is the highest-value remarketing segment — they showed engagement but didn't complete the bank-transfer step (which has more friction than a one-tap Stripe checkout). The campaign admin page surfaces this cohort directly (see §5.3 tracking widget).
 
-> **Why not just use the Swiss QR-bill page on its own?** Because it would silently degrade the operator's existing reporting. The Swiss flow MUST be a strict superset of the French flow's tracking surface — never a regression.
+### Door-drop mailing (one template, N anonymous copies)
+
+Door-drop letters have no recipient identity at print time — they're distributed into mailboxes. So we mint **one campaign-level QR-bill per export** and print it identically on every copy:
+
+| Surface | Carrier | Encodes | Tracking signal | Table |
+|---|---|---|---|---|
+| **Appeal letter (page 1)** | None (no per-recipient opaque token — there's no recipient to attribute) | — | — | — |
+| **QR-bill (page 2, separate A4)** | Swiss IG-compliant QR-bill | SPC payload (IBAN, amount, **one campaign-level QRR/SCOR per export**) | none direct; per-donor attribution comes from camt.053 debtor data on payment | `swiss_qr_references` row with `constituent_id = NULL` |
+
+The reconciler creates / matches the constituent **from the camt.053 debtor fields** (`RltdPties.Dbtr.Nm` + `DbtrAcct.Id.IBAN`) when the QR-reference resolves to a NULL-constituent row — see §5 reconciliation.
+
+**Door-drop funnel (2 stages, scan stage omitted):**
+
+```
+letters printed     →     QR-bills paid
+(export.print_count)        (camt.053 reconciled to the campaign-level QRR)
+```
+
+The conversion ratio is naturally lower than personalised (no engagement signal in the middle, no per-recipient remarketing), but the cost-per-letter is much lower too — door-drop is a volume play.
+
+> **Why not just use the Swiss QR-bill page on its own for personalised mailings?** Because it would silently degrade the operator's existing 3-stage reporting on the personalised rail. The Swiss flow on personalised MUST be a strict superset of the French flow's tracking surface — never a regression. Door-drop is the natural exception because it had no scan-tracking signal to begin with.
 
 ## 1.ter Page format — Swiss QR-bill on a separate A4 sheet
 
@@ -263,7 +287,7 @@ erDiagram
         uuid id PK
         uuid org_id FK
         uuid campaign_id FK
-        uuid constituent_id FK "nullable for door_drop (V2 only — V1 readiness-gate `swiss_qr_bill_door_drop_unsupported` rejects this combination)"
+        uuid constituent_id FK "NULL for door_drop (1 campaign-level ref per export); set for personalized (1 ref per constituent per export)"
         uuid export_id FK "backlink for retry idempotency"
         uuid bank_account_id FK
         enum reference_type "qrr | scor"
@@ -392,7 +416,7 @@ flowchart LR
 | 1 | **Separate-sheet QR-bill** (one PDF letter + one PDF QR-bill, both in the ZIP) | IG QR-bill Style Guide explicitly allows this layout. Avoids perforation-partnership negotiation; print partner staples or the donor unfolds two sheets. Letter typography stays unchanged. Full rationale in [ADR-027](./adrs/adr-027-swiss-qr-bill.md). |
 | 2 | **Library: `swissqrbill` v4 (schoero, MIT)** | Composes natively on PDFKit (`SwissQRBill.attachTo(doc)`); built-in payload + IBAN/QRR/SCOR validation; TypeScript-first; monthly cadence; covers IG v2.3 + v2.4 ready. Supplement with `boessu/SwissQRBill` algorithms for `validateBeforeMint()` unit tests. |
 | 3 | **Library: `iso20022.js` for camt.053** + **XSD validation pass** via `libxmljs2` against the SIX `camt.053.001.08.xsd` | Most-maintained Node option; SEPA-shaped but generic enough. **Open question**: confirm with a real PostFinance + UBS sample that QRR (`Prtry="QRR"`) extraction works; fall back to `fast-xml-parser` + hand-written mapper if the library only surfaces `Cd="SCOR"`. Decision in [ADR-028](./adrs/adr-028-camt053-ingestion.md). |
-| 4 | **Per-letter QRR/SCOR**, never per-campaign | Per-letter is the only way to disambiguate two letters of the same campaign sent to the same constituent (re-mailings, address corrections). Idempotent via `swiss_qr_references.reference UNIQUE` per `(org_id, bank_account_id)`. |
+| 4 | **Reference granularity depends on campaign mode** | `personalized` → **one QRR/SCOR per recipient per export** (`constituent_id` set) — disambiguates two letters sent to the same constituent on different mailings, enables per-recipient remarketing. `door_drop` → **one campaign-level QRR/SCOR per export** (`constituent_id = NULL`) — donor identity captured post-payment via camt.053 debtor data. Both branches idempotent on retry via the partial unique `(export_id, COALESCE(constituent_id, sentinel))`. |
 | 5 | **camt.053 + camt.054 V1, EBICS V2** | Manual statement upload via UI ships in V1. EBICS automated pull is a separate epic. Most operators check their e-banking weekly anyway. |
 | 6 | **Reconcile by reference only — never by amount** | The QR-bill spec lets the donor override the printed amount (counter payment, e-banking edit). Matching on amount would silently miss every partial-amount donation. Persist the gap as `partial_match` flag for the operator. |
 | 7 | **Idempotency key: `(org_id, GrpHdr.MsgId, Ntry.AcctSvcrRef)`** | Statement re-uploads are dedup'd at file level (MsgId), entry-level dedup'd by AcctSvcrRef. Note: some banks reuse AcctSvcrRef across related entries (ISO 20022 maintenance note) — verify per-bank in QA, add `EndToEndId` as secondary. |
@@ -404,15 +428,16 @@ flowchart LR
 
 ## 4. Readiness gates (Swiss-specific extensions)
 
-**Swiss-specific gates fire only when `campaigns.bank_account_id IS NOT NULL`.** A campaign with no linked bank account behaves like a regular non-Swiss campaign — the existing gates (`campaign_not_active`, `public_page_missing`, `public_page_draft`, `personalized_on_door_drop`, `no_recipients`) are the only checks. When a bank account is linked, the following additional gates run:
+**Swiss-specific gates fire only when `campaigns.bank_account_id IS NOT NULL`.** A campaign with no linked bank account behaves like a regular non-Swiss campaign — the existing gates (`campaign_not_active`, `public_page_missing`, `public_page_draft`, `personalized_on_door_drop`, `no_recipients`) are the only checks. When a bank account is linked, the following additional gates run **in either mode** (`personalized` or `door_drop`):
 
 | Code | Cause | Operator fix |
 |---|---|---|
 | `swiss_qr_bill_invalid_iban` | Linked bank account IBAN fails mod-97 or country ∉ {CH, LI} | Fix the bank account in `Settings → Bank Accounts` |
 | `swiss_qr_bill_currency_mismatch` | `qr_reference_mode = qrr` but `bank_account.currency = EUR` (illegal under IG v2.4) | Switch reference mode to SCOR, change the bank account currency, or unlink the bank account |
-| `swiss_qr_bill_address_too_long` | Tenant or constituent address > 70 chars on any QR-bill field | Fix the offending record before bulk export |
-| `swiss_qr_bill_door_drop_unsupported` | `bank_account_id` linked on a `door_drop` campaign (V1 limitation) | Use mode=personalized, or unlink the bank account; door-drop QR-bill (no recipient) is V2 |
+| `swiss_qr_bill_address_too_long` | Tenant address > IG cap on any QR-bill field | Fix the bank account record before bulk export |
 | `swiss_qr_bill_bank_account_deleted` | Linked bank account was soft-deleted after the link was made | Pick a different bank account, or restore the deleted one |
+
+> **Door-drop is supported.** A `door_drop` campaign linked to a `bank_account` mints **one campaign-level QR-bill per export** (a single QRR/SCOR printed identically on every distributed letter). Donor identity comes from the camt.053 `RltdPties.Dbtr` / `DbtrAcct.Id.IBAN` on payment — the reconciler `find-or-create`s the constituent from debtor data. See §5 reconciliation.
 
 The **Preview** button stays enabled with a never-registered fixture reference so the operator validates the layout before printing.
 
@@ -422,19 +447,18 @@ flowchart TD
     A -->|fail| ZA[Existing readiness banner<br/>see docs/23 §4]
     A -->|pass| B{campaigns.bank_account_id<br/>set?}
     B -->|null| Z[Standard flow:<br/>letter + opaque-token QR only<br/>no QR-bill PDF]
-    B -->|set| C{Mode = personalized?}
-    C -->|door_drop| D[400 swiss_qr_bill_door_drop_unsupported<br/>+ banner: unlink or use personalized]
-    C -->|personalized| BD{bank account<br/>still active?}
+    B -->|set| BD{bank account<br/>still active?}
     BD -->|deleted| BE[400 swiss_qr_bill_bank_account_deleted]
     BD -->|active| G{IBAN valid CH/LI<br/>+ mod-97?}
     G -->|invalid| H[400 swiss_qr_bill_invalid_iban<br/>+ CTA → /settings/bank-accounts/:id]
     G -->|valid| I{currency vs<br/>reference mode?}
     I -->|EUR + QRR| J[400 swiss_qr_bill_currency_mismatch<br/>+ banner: switch to SCOR]
-    I -->|consistent| K{All recipient<br/>addresses ≤70 chars?}
-    K -->|over| L[400 swiss_qr_bill_address_too_long<br/>+ list of offending constituents]
-    K -->|ok| M[Insert export job<br/>→ outbox → worker<br/>letter PDF + QR-bill PDF per recipient]
+    I -->|consistent| K{Holder address<br/>fields within IG caps?}
+    K -->|over| L[400 swiss_qr_bill_address_too_long<br/>+ list of offending fields]
+    K -->|ok| MM{Campaign<br/>mode?}
+    MM -->|personalized| M[Insert export job<br/>→ outbox → worker<br/>letter PDF + QR-bill PDF per recipient<br/>N swiss_qr_references, one per constituent]
+    MM -->|door_drop| MD[Insert export job<br/>→ outbox → worker<br/>1 letter template + 1 QR-bill template<br/>1 swiss_qr_references row, constituent_id=NULL]
     Z --> M2[Insert export job<br/>letter PDF only]
-    D -.->|Disabled button| Start
     BE -.->|Disabled button| Start
     H -.->|Disabled button| Start
     J -.->|Disabled button| Start
@@ -519,7 +543,11 @@ sequenceDiagram
       else valid format
         WR->>DB: SELECT swiss_qr_references<br/>WHERE reference=$1 AND bank_account_id=$2
         alt match
-          WR->>CR: resolve constituent (donor name+IBAN, fallback to ref.constituent_id)
+          alt ref.constituent_id NOT NULL (personalized rail)
+            WR->>CR: resolve constituent (use ref.constituent_id as primary signal,<br/>cross-check with debtor name+IBAN for QA)
+          else ref.constituent_id IS NULL (door-drop rail)
+            WR->>CR: find_or_create_constituent(debtor name + IBAN<br/>from camt.053 RltdPties.Dbtr)
+          end
           CR->>DB: find or auto-create constituent
           WR->>DB: INSERT donations (campaign, constituent, swiss_qr_reference_id, payment_source='camt053')
           WR->>DB: UPDATE camt_credit_entries SET donation_id=$1
@@ -550,6 +578,8 @@ flowchart TD
 
 The existing French postal flow exposes a 4-stage funnel on the campaign admin page (see `docs/23` §5 and `packages/api/src/modules/campaigns/qr-stats-service.ts`): printed → scanned → donated → revenue. **The Swiss flow MUST preserve every stage of this funnel** because we keep minting the Givernance opaque-token QR on the appeal letter (§1.bis); the QR-bill on the separate sheet adds the payment dimension on top.
 
+**Personalised tracking funnel:**
+
 ```mermaid
 flowchart LR
     A[Letters printed<br/>= constituents on mailing list] --> B[Letters scanned<br/>campaign_qr_codes.scanned_at NOT NULL]
@@ -563,24 +593,34 @@ flowchart LR
     A --> H[Unreconciled credits<br/>operator review queue]
 ```
 
+**Door-drop tracking funnel** (no per-letter scan stage — the letters are anonymous; conversion is measured at payment time only):
+
+```mermaid
+flowchart LR
+    A2[Distributed letters<br/>= campaign_postal_exports.printed_count] --> D2[QR-bills paid<br/>distinct constituents created or matched<br/>via camt.053 RltdPties.Dbtr]
+    D2 --> C2[Amount paid via camt.053<br/>SUM donations.amount_cents]
+    A2 --> H2[Unreconciled credits<br/>incl. no_debtor_info reason]
+    D2 --> G2[Partial-match<br/>donor adjusted amount]
+```
+
 #### Metrics surfaced on the campaign admin page
 
-A single combined card per campaign when `bank_account_id IS NOT NULL` — **the existing `qr-tracking-card.tsx` is extended in place**, not duplicated, so `getCampaignQrStats()` returns one merged shape:
+A single combined card per campaign when `bank_account_id IS NOT NULL` — **the existing `qr-tracking-card.tsx` is extended in place**, not duplicated, so `getCampaignQrStats()` returns one merged shape. Some fields are mode-aware (`null` on door-drop because the underlying signal doesn't exist):
 
-| Metric | Definition | Source | Status |
-|---|---|---|---|
-| `totalLetters` | Count of `campaign_qr_codes` for the campaign | `campaign_qr_codes` | existing — unchanged |
-| `scannedLetters` | Count where `scanned_at IS NOT NULL` | `campaign_qr_codes` | existing — unchanged |
-| `qrAttributedDonations` | Stripe-rail donations from QR scan | `donations.qr_code_id` | existing — unchanged |
-| `qrAttributedAmountCents` | Stripe-rail amount from QR scan | `donations` aggregate | existing — unchanged |
-| `totalQrBills` | Count of `swiss_qr_references` (NEW row, ≡ `totalLetters` per design) | `swiss_qr_references` | NEW |
-| `paidQrBills` | Count of `donations` where `swiss_qr_reference_id` is set | join | NEW |
-| `paidQrBillAmountCents` | Sum of camt.053-attributed donations | `donations` aggregate | NEW |
-| `pendingQrBills` | `totalQrBills − paidQrBills` | derived | NEW |
-| `scannedNotPaidCount` | `campaign_qr_codes.scanned_at IS NOT NULL AND swiss_qr_references.id NOT IN (paid set)` — **engagement without payment, the high-value remarketing cohort** | join | NEW |
-| `partialMatchCount` | `donations` linked via swiss_qr where `amount_cents ≠ swiss_qr_references.amount_cents` (only counted when printed amount was non-zero) | join | NEW |
-| `unreconciledCount` | `camt_unreconciled_entries` for bank accounts linked to this campaign, status=pending | aggregate | NEW |
-| `lastStatementImportedAt` | MAX `camt_statements.processed_at` for the campaign's bank account | aggregate | NEW |
+| Metric | Definition | Source | Personalised | Door-drop |
+|---|---|---|---|---|
+| `totalLetters` | Personalised: count of `campaign_qr_codes`. Door-drop: SUM `campaign_postal_exports.printed_count` | mode-dependent | ✓ | ✓ |
+| `scannedLetters` | Count where `scanned_at IS NOT NULL` | `campaign_qr_codes` | ✓ | **null** (no scan tracking on door-drop) |
+| `qrAttributedDonations` | Stripe-rail donations from QR scan | `donations.qr_code_id` | ✓ | **null** |
+| `qrAttributedAmountCents` | Stripe-rail amount from QR scan | `donations` aggregate | ✓ | **null** |
+| `totalQrBills` | Personalised: count of `swiss_qr_references` (≡ `totalLetters`). Door-drop: count of `swiss_qr_references` (= number of exports, one ref per export) | `swiss_qr_references` | ✓ | ✓ |
+| `paidQrBills` | Personalised: count of `donations` where `swiss_qr_reference_id` is set. Door-drop: count of **distinct constituents** resolved from camt.053 for the campaign-level ref | join | ✓ | ✓ |
+| `paidQrBillAmountCents` | Sum of camt.053-attributed donations | `donations` aggregate | ✓ | ✓ |
+| `pendingQrBills` | `totalQrBills − paidQrBills` (personalised). Door-drop: omitted (no pending dimension — donor count is open-ended) | derived | ✓ | **null** |
+| `scannedNotPaidCount` | Engagement-without-payment remarketing cohort | join | ✓ | **null** |
+| `partialMatchCount` | `donations` linked via swiss_qr where `amount_cents ≠ swiss_qr_references.amount_cents` (only counted when printed amount was non-zero) | join | ✓ | ✓ |
+| `unreconciledCount` | `camt_unreconciled_entries` for bank accounts linked to this campaign, status=pending | aggregate | ✓ | ✓ |
+| `lastStatementImportedAt` | MAX `camt_statements.processed_at` for the campaign's bank account | aggregate | ✓ | ✓ |
 
 **Visual layout** when both rails are active (mixed campaign: some donors scan + pay Stripe, others use the Swiss QR-bill + bank transfer):
 
@@ -628,7 +668,15 @@ Per uploaded statement:
         d. Capture: amount, currency, value_date, booking_date, donor name+IBAN
         e. INSERT camt_credit_entries (always, matched or not)
         f. If matched:
-           - find_or_create_constituent(orgId, donor name+IBAN, fallback to swiss_qr_references.constituent_id)
+           - Constituent resolution:
+               if ref.constituent_id IS NOT NULL (personalized rail):
+                 → use it; cross-check debtor name+IBAN as a QA signal
+                   (mismatch → log warning, do not block)
+               else (door-drop rail, ref.constituent_id IS NULL):
+                 → find_or_create_constituent(orgId, debtor name + IBAN
+                   from camt.053 RltdPties.Dbtr / DbtrAcct.Id.IBAN)
+                 → if debtor info is missing/anonymised (rare, mostly TWINT):
+                   mark unreconciled (reason=no_debtor_info) for operator review
            - INSERT donations { campaign_id, constituent_id, swiss_qr_reference_id, payment_source='camt053', payment_ref=AcctSvcrRef }
            - emit outbox 'donation.created' (existing flow downstream: receipt PDF, etc.)
         g. If unmatched (no QR ref / invalid ref / amount diff > tolerance):
@@ -696,7 +744,6 @@ The `actor_id` is the impersonation-aware `effective_actor_id` per `docs/19` §5
 | **camt.054 real-time credit notifications** | Requires per-tenant bank opt-in. Bonus surface; same parser path so straightforward to enable later. |
 | **TWINT, PostFinance Pay** | Phase 3+ via Saferpay (`docs/20` §3.4). Distinct UX (point-of-sale-style) — not part of postal mailing. |
 | **Multi-bank-account per campaign** | Some NPOs split fundraising across two accounts (operations / endowment). V1 = one account per campaign. |
-| **Door-drop QR-bill** (no recipient) | Mass-printed door-drop with a campaign-level QRR works but offers no per-donor reconciliation; defer until field demand emerges. |
 | **Embedded campaign image / letterhead on QR-bill page** | The QR-bill page is text + slip; the appeal letter remains the brand carrier. Image upload epic is separate. |
 | **DE/IT locales** | `swissqrbill` ships all four locales; FR/EN ship in MVP, DE/IT cheap to add when a Romandie/Ticino tenant requests. |
 | **Annual-giving statement integration** | Camt-derived donations flow into the same annual statement pipeline as Stripe; no special handling needed but covered by the receipts epic. |
