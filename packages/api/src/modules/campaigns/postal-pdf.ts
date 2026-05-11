@@ -50,6 +50,14 @@ interface LetterCopy {
   callToScan: string;
   referenceLabel: (token: string) => string;
   previewWatermark: string;
+  /**
+   * Epic #318 PR #4 — Swiss QR-bill rail CTA strings. Two variants
+   * because the BVR strip can land on the SAME page as the appeal
+   * (1-page canonical) or on the NEXT page (auto-fallback on overflow).
+   * Lockstep with `packages/worker/src/services/campaign-pdf.ts`.
+   */
+  payViaQrBillSamePage: string;
+  payViaQrBillNextPage: string;
 }
 
 const LETTER_COPY: Record<Locale, LetterCopy> = {
@@ -67,6 +75,10 @@ const LETTER_COPY: Record<Locale, LetterCopy> = {
     callToScan: "Pour en savoir plus ou contribuer, scannez le QR code ci-dessous :",
     referenceLabel: (token) => `Référence · ${token}`,
     previewWatermark: "APERÇU — données factices, cette lettre n'a pas été enregistrée.",
+    payViaQrBillSamePage:
+      "Pour régler ce don, scannez le BVR ci-dessous depuis votre application d'e-banking. Il contient toutes les informations de paiement nécessaires.",
+    payViaQrBillNextPage:
+      "Pour régler ce don, scannez le BVR sur la page suivante depuis votre application d'e-banking. Il contient toutes les informations de paiement nécessaires.",
   },
   en: {
     greetingNamed: (firstName, lastName) => `Dear ${firstName} ${lastName},`,
@@ -81,6 +93,10 @@ const LETTER_COPY: Record<Locale, LetterCopy> = {
     callToScan: "To learn more or contribute, scan the QR code below:",
     referenceLabel: (token) => `Reference · ${token}`,
     previewWatermark: "PREVIEW — sample data, this letter has not been registered.",
+    payViaQrBillSamePage:
+      "To make your donation, scan the QR-bill below from your e-banking app. It carries all the payment details you need.",
+    payViaQrBillNextPage:
+      "To make your donation, scan the QR-bill on the next page from your e-banking app. It carries all the payment details you need.",
   },
 };
 
@@ -471,4 +487,233 @@ export async function buildPostalLetterStream(
   const doc = await buildPostalLetterDoc(input);
   doc.end();
   return doc;
+}
+
+// ─── Epic #318 PR #4 — Swiss QR-bill preview ───────────────────────────────
+//
+// API-side preview renderer for the Swiss QR-bill 2-page PDF. Lockstep
+// duplicate of `packages/worker/src/services/swiss-qr-bill.ts ::
+// renderSwissQrBillPdf` (which is the production worker path). The two
+// files MUST stay byte-equivalent in their rendering output — the preview
+// the operator sees in the UI MUST match what the worker actually produces
+// in the bulk export, otherwise we ship a "preview lies about the print"
+// bug (the very bug PR #4 was opened to fix).
+//
+// `swissqrbill` v4 is Node-only (it composes onto a PDFKit document); same
+// constraint as PDFKit itself, so this lives in the API rather than in
+// `@givernance/shared`.
+
+import { SwissQRBill } from "swissqrbill/pdf";
+
+/**
+ * Map our internal `tenants.default_locale` (FR/EN today) to the
+ * `swissqrbill` v4 `language` option. Lockstep with the worker copy
+ * in `packages/worker/src/services/swiss-qr-bill.ts`. Default `FR` —
+ * never the swissqrbill `DE` default.
+ */
+function localeToQrBillLanguage(locale: Locale | null | undefined): "DE" | "EN" | "FR" | "IT" {
+  if (locale === "en") return "EN";
+  return "FR";
+}
+
+/**
+ * Bank-account holder data needed by the QR-bill renderer. Mirrors the
+ * worker's `BankAccount` row shape, but local-only here so the API doesn't
+ * have to import Drizzle table types into a PDF module.
+ */
+export interface SwissQrBillPreviewBankAccount {
+  iban: string;
+  holderName: string;
+  holderStreet: string;
+  holderBuildingNumber: string | null;
+  holderPostalCode: string;
+  holderTown: string;
+  holderCountryCode: string;
+  currency: "CHF" | "EUR";
+}
+
+export interface SwissQrBillPreviewInput extends PostalLetterRenderInput {
+  bankAccount: SwissQrBillPreviewBankAccount;
+  /** Reference token the slip will print. Preview uses a never-registered fixture. */
+  reference: string;
+}
+
+/**
+ * Build a Swiss QR-bill PDF in-memory (preview path).
+ *
+ * **1-page canonical (Epic #318 PR #4 follow-up).** Compressed appeal
+ * content above the canonical IG QR-bill 105 mm strip on the SAME page.
+ * Falls back to a 2-page layout automatically when the appeal content
+ * overflows the safe zone (long description, deep mission, etc.) —
+ * mirrors the worker's `renderSwissQrBillPdf` behaviour exactly so the
+ * preview always matches the bulk render (lockstep with
+ * `packages/worker/src/services/swiss-qr-bill.ts`).
+ */
+const APPEAL_MAX_Y_PT = 175 * MM_TO_PT; // ≈ 496pt, ~17 mm above the strip start
+
+// PDF rendering is intrinsically a long linear sequence (letterhead →
+// mission → logo → recipient → title → description → salutation → body
+// → hint → reference → optional addPage → strip). Extracting helpers
+// would just disperse the layout without clarifying it; the function
+// reads top-to-bottom as the printed page does.
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: see comment above
+export async function renderSwissQrBillPreviewToBuffer(
+  input: SwissQrBillPreviewInput,
+): Promise<Buffer> {
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: PAGE_MARGIN,
+    autoFirstPage: false,
+    info: {
+      Title: `${input.organisationName} — ${input.campaignName} — QR-bill preview`,
+      Author: input.organisationName,
+      Subject: input.campaignName,
+    },
+  });
+
+  // ── Page 1: compressed appeal-letter content. ───────────────────────
+  doc.addPage({ size: "A4", margin: PAGE_MARGIN });
+
+  const copy = copyForLocale(input.locale);
+
+  if (input.preview) {
+    doc
+      .save()
+      .fillColor("#b45309")
+      .font("Helvetica-Oblique")
+      .fontSize(8)
+      .text(copy.previewWatermark, PAGE_MARGIN, 8 * MM_TO_PT, {
+        align: "center",
+        width: CONTENT_WIDTH,
+      })
+      .restore();
+  }
+
+  // Letterhead — 18pt (compressed vs the 22pt standard rail).
+  doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(18);
+  doc.text(input.organisationName, PAGE_MARGIN, 20 * MM_TO_PT, {
+    align: "center",
+    width: CONTENT_WIDTH,
+  });
+  if (input.organisationMission && input.organisationMission.trim().length > 0) {
+    doc.moveDown(0.2);
+    doc.font("Helvetica-Oblique").fontSize(9).fillColor("#475569");
+    doc.text(input.organisationMission.trim(), {
+      align: "center",
+      width: CONTENT_WIDTH,
+      lineGap: 0,
+    });
+  }
+
+  // Logo + recipient — C5-window-aligned at y=50mm (vs 60mm standard).
+  const LOGO_AND_ADDRESS_Y = 50 * MM_TO_PT;
+  if (input.logoBuffer) {
+    const LOGO_SIZE_PT = 25 * MM_TO_PT;
+    doc.image(input.logoBuffer, PAGE_MARGIN, LOGO_AND_ADDRESS_Y, {
+      fit: [LOGO_SIZE_PT, LOGO_SIZE_PT],
+    });
+  }
+  if (hasWindowEnvelopeAddress(input.recipient) && input.recipient) {
+    doc.save().fillColor("#0f172a").font("Helvetica").fontSize(10);
+    const lines: string[] = [`${input.recipient.firstName} ${input.recipient.lastName}`];
+    if (input.recipient.addressLine1) lines.push(input.recipient.addressLine1);
+    if (input.recipient.addressLine2) lines.push(input.recipient.addressLine2);
+    lines.push(`${input.recipient.postalCode ?? ""} ${input.recipient.city ?? ""}`.trim());
+    doc.text(lines.join("\n"), ADDRESS_BLOCK_X, LOGO_AND_ADDRESS_Y, {
+      width: ADDRESS_BLOCK_WIDTH,
+      lineGap: 0,
+      align: "left",
+    });
+    doc.restore();
+  }
+
+  // Appeal body — starts at y=85mm (vs 100mm standard); 13pt title, 10pt body.
+  doc.x = PAGE_MARGIN;
+  doc.y = 85 * MM_TO_PT;
+  doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(13);
+  doc.text(input.campaignName, { align: "left" });
+  doc.moveDown(0.4);
+
+  const hasDescription = Boolean(input.campaignDescription?.trim());
+  if (hasDescription && input.campaignDescription) {
+    doc.fillColor("#0f172a").font("Helvetica").fontSize(10);
+    doc.text(input.campaignDescription.trim(), { align: "justify", lineGap: 1 });
+    doc.moveDown(0.6);
+  }
+
+  doc.fillColor("#0f172a").font("Helvetica").fontSize(10);
+  if (input.recipient) {
+    doc.text(copy.greetingNamed(input.recipient.firstName, input.recipient.lastName));
+  } else {
+    doc.text(copy.greetingDoorDrop);
+  }
+  doc.moveDown(0.5);
+
+  if (hasDescription) {
+    doc.text(
+      input.recipient ? copy.thanksWithDescriptionNamed : copy.thanksWithDescriptionDoorDrop,
+      { align: "justify", lineGap: 1 },
+    );
+  } else {
+    doc.text(input.recipient ? copy.thanksFallbackNamed : copy.thanksFallbackDoorDrop, {
+      align: "justify",
+      lineGap: 1,
+    });
+  }
+  doc.moveDown(0.4);
+
+  // Predict whether the BVR strip will fit at y=192mm on this page or
+  // need to overflow onto a 2nd page — same prediction logic + same
+  // wording variants as the worker (lockstep). The hint paragraph is
+  // written WITH the prediction so the donor reads "below" when the
+  // strip is below and "on the next page" when it isn't.
+  const QR_BILL_HINT_HEIGHT_PT = 30 * MM_TO_PT;
+  const goesToNextPage = doc.y + QR_BILL_HINT_HEIGHT_PT > APPEAL_MAX_Y_PT;
+  const hintText = goesToNextPage ? copy.payViaQrBillNextPage : copy.payViaQrBillSamePage;
+
+  // Short pay-via-BVR hint + reference token (no framed panel — the BVR
+  // strip rendered next IS the visual CTA).
+  doc.fillColor("#0f172a").font("Helvetica").fontSize(10);
+  doc.text(hintText, { align: "justify", lineGap: 1 });
+  doc.moveDown(0.3);
+  doc.fillColor("#0f172a").font("Courier").fontSize(10);
+  doc.text(copy.referenceLabel(input.reference), { align: "left" });
+
+  // Honour the prediction. If predicted "next page", addPage so the
+  // donor's reading matches the actual artefact.
+  if (goesToNextPage) {
+    doc.addPage({ size: "A4", margin: 0 });
+  }
+
+  // ── BVR strip: same page when it fits, page 2 on auto-fallback. ─────
+  // `language` drives the printed slip labels (Account, Reference,
+  // Payable by, …). Lockstep with the worker — falls back to `FR`
+  // (the MVP default) rather than swissqrbill v4's `DE` default so a
+  // French appeal never ends up under a German payment strip.
+  const qrBill = new SwissQRBill(
+    {
+      currency: input.bankAccount.currency,
+      reference: input.reference,
+      creditor: {
+        account: input.bankAccount.iban,
+        name: input.bankAccount.holderName,
+        address: input.bankAccount.holderStreet,
+        buildingNumber: input.bankAccount.holderBuildingNumber ?? undefined,
+        zip: input.bankAccount.holderPostalCode,
+        city: input.bankAccount.holderTown,
+        country: input.bankAccount.holderCountryCode,
+      },
+      message: input.campaignName,
+    },
+    { language: localeToQrBillLanguage(input.locale) },
+  );
+  qrBill.attachTo(doc);
+
+  return new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk) => chunks.push(chunk as Buffer));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", (err) => reject(err));
+    doc.end();
+  });
 }

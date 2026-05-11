@@ -89,6 +89,39 @@ Reopen this ADR when:
 - The third PDF surface lands (donor receipts being the second). At that point the lockstep duplicate of the QR-bill renderer joins the postal-letter and receipts duplicates and the cost-benefit flips per ADR-025 — extract `@givernance/pdf` and host all three.
 - Bank-anonymisation patterns on door-drop credits (mostly TWINT today) become widespread enough that the `no_debtor_info` unreconciled queue is operator-toxic. Then evaluate either (a) accepting partial-name-only matching as a soft fallback (config-gated, defaults off) or (b) a thank-you-page upsell where the donor self-attaches their identity to a recent payment via a search-by-amount-and-date flow.
 
+### 2026-05-11 amendment — three export modes + rich QR-bill PDF
+
+Operator feedback on PR #354 (the first end-to-end Swiss QR-bill ship) surfaced two issues this ADR's original "separate A4 sheet" decision didn't anticipate:
+
+1. **The QR-bill PDF top portion was too sparse.** PR #354 rendered ~6 lines of metadata (org name + campaign label + reference + currency hint) above the canonical 105mm strip. When the donor only looks at the QR-bill sheet (poised to pay), that near-empty top half makes the slip feel disconnected from the appeal it's paying for.
+
+2. **A Swiss NPO without Stripe Connect AND no public donation page cannot ship postal mailings under PR #354.** The `public_page_published` readiness gate blocked the export regardless of intent — including for an operator who only wanted to print Swiss QR-bills (a valid Swiss postal-fundraising path; the donor pays the printed BVR, no scan-to-public-page needed).
+
+The amendment introduces **three valid export modes** resolved from the 4-input truth table on `(hasBank, hasPage)`:
+
+| `hasBank` | `hasPage` | Mode | What ships per recipient |
+|---|---|---|---|
+| false | true | **Standard** | 1 PDF: appeal letter with QR → public donation page (today's default) |
+| true | false | **QR-bill only** | 1 single-page PDF: compressed appeal content above the canonical IG QR-bill 105 mm strip (auto-fallback to 2 pages when the appeal overflows the 175 mm safe zone) |
+| true | true | **Hybrid** | 2 sibling PDFs: appeal letter (with scan-QR CTA) + single-page QR-bill (compressed appeal + BVR strip). Same content/wording above the strip in both files |
+| false | false | **Blocked** | 0 PDFs; new `postal_export_not_configured` readiness gate fires |
+
+**Page layout clarification.** ADR-027's original "separate A4 sheet" promise is preserved at the **payment-strip level**: the 105 mm strip (Receipt 62 mm + Payment Part 148 mm) is **always** detachable at y=192 mm of an A4. What changes is the page hosting it:
+
+- In **QR-bill-only mode**: appeal-letter content (compressed) lives in the top 175 mm of the page and the BVR strip occupies the bottom 105 mm of the SAME A4. This is the canonical Swiss QR-bill shape (invoice/letter at top, detachable BVR at bottom — the IG explicitly authorises and recommends it). Auto-fallback to a 2-page PDF when the operator's content overflows the safe zone — measured at render time via `doc.y > 175 mm`.
+- In **Hybrid mode**: the QR-bill sheet is a SIBLING PDF — single-page (same canonical layout as QR-bill-only). The standard appeal letter PDF is the OTHER file in the export ZIP; both PDFs carry the same compressed-appeal content above the strip so the donor reading either sheet in isolation gets the same context.
+
+The earlier "2-page-always" layout (PR #354) put a near-empty top half on page 1 and the strip on page 2 — donors poised to pay opened the strip page and saw zero appeal context. Going 1-page-first fixes that without weakening the IG conformance (the strip stays at y=192 mm on an A4, untouched).
+
+**UX implications** (implemented in `packages/web/src/components/campaigns/postal-export-panel.tsx`):
+
+- Mode is **auto-detected**, not picked by the operator at export time — they already chose the mode upstream by linking (or not) a bank account and by publishing (or not) the public page.
+- The export panel shows a **mode summary card** above the readiness banners ("This export will contain, per recipient: ✓ appeal letter PDF · ✓ Swiss QR-bill PDF — this mode is selected because…") with a single-line explainer that turns the upstream configuration into a clickable change-this link.
+- The **Generate button label is mode-aware**: `"Generate appeal-letter ZIP"` / `"Generate Swiss QR-bill ZIP"` / `"Generate full mailing ZIP"` per mode.
+- The **Preview button always matches Generate**: standard / QR-bill-only return an inline PDF; hybrid returns a ZIP download (two-PDFs-per-recipient artefact preserved). Closes the "preview lies about generation" bug PR #4 was opened to fix.
+
+**Mode resolution lives in `@givernance/shared/postal-export-mode.ts`** (pure function), so the API readiness-gate evaluator, the worker render dispatcher, and the web mode-summary panel speak the exact same vocabulary. Drift across them would silently re-introduce the preview/generation mismatch.
+
 ### References
 
 - [Swiss Implementation Guidelines QR-bill v2.4 — SIX, Feb 2026](https://www.six-group.com/dam/download/banking-services/standardization/qr-bill/ig-qr-bill-v2.4-en.pdf)

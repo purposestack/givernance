@@ -268,7 +268,11 @@ describe("Postal exports", () => {
     expect(res.json<{ title: string }>().title).toBe("campaign_not_active");
   });
 
-  it("POST export with no public page returns 400 public_page_missing", async () => {
+  it("POST export with no public page AND no bank account returns 400 postal_export_not_configured", async () => {
+    // Epic #318 PR #4 — when both rails are off, the export resolver
+    // returns the blocked-mode error code instead of the misleading
+    // `public_page_missing` (which implied the operator must publish a
+    // page when their actual intent might be Swiss QR-bill only).
     const token = signToken(app);
     const noPageId = await createCampaign("Active w/o public page", "door_drop", {
       publishPage: false,
@@ -280,7 +284,7 @@ describe("Postal exports", () => {
       payload: { mode: "door_drop" },
     });
     expect(res.statusCode).toBe(400);
-    expect(res.json<{ title: string }>().title).toBe("public_page_missing");
+    expect(res.json<{ title: string }>().title).toBe("postal_export_not_configured");
   });
 
   it("POST export with a draft public page returns 400 public_page_draft", async () => {

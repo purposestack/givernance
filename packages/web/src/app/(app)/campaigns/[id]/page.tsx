@@ -19,6 +19,7 @@ import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
 import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campaign";
 import type { DonationListResponse } from "@/models/donation";
+import { BankAccountService } from "@/services/BankAccountService";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 import { CampaignService } from "@/services/CampaignService";
 import { DonationService } from "@/services/DonationService";
@@ -114,6 +115,30 @@ async function fetchPostalExportsOrEmpty(
 }
 
 /**
+ * Epic #318 PR #4 — fetch the campaign's linked bank account (only
+ * org_admins can read this surface) so the postal-export panel can
+ * render the Swiss QR-bill mode summary. Returns null when no bank
+ * account is linked or the campaign is in standard mode.
+ */
+async function fetchLinkedBankAccountOrNull(
+  client: Awaited<ReturnType<typeof createServerApiClient>>,
+  bankAccountId: string | null,
+  isAdmin: boolean,
+): Promise<{ bankName: string; ibanLast4: string; currency: "CHF" | "EUR" } | null> {
+  if (!isAdmin || !bankAccountId) return null;
+  try {
+    const account = await BankAccountService.getBankAccount(client, bankAccountId);
+    return {
+      bankName: account.bankName,
+      ibanLast4: account.iban.slice(-4),
+      currency: account.currency,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Best-effort fetch of the campaign's admin public-page record (Epic
  * #274 readiness gate). Returns the page status so the postal export
  * panel can surface "publish before generating" banners. A 404 means
@@ -176,6 +201,7 @@ export default async function CampaignDetailPage({
     postalExports,
     qrStats,
     publicPageStatus,
+    linkedBankAccount,
     t,
     tCampaigns,
     tDonations,
@@ -188,6 +214,7 @@ export default async function CampaignDetailPage({
     fetchPostalExportsOrEmpty(client, id, isAdmin),
     fetchQrStatsOrEmpty(client, id, isAdmin),
     fetchPublicPageStatus(client, id, isAdmin),
+    fetchLinkedBankAccountOrNull(client, campaign.bankAccountId, isAdmin),
     getTranslations("campaigns.detail"),
     getTranslations("campaigns"),
     getTranslations("donations"),
@@ -292,6 +319,7 @@ export default async function CampaignDetailPage({
               campaignType={campaign.type}
               campaignStatus={campaign.status}
               publicPageStatus={publicPageStatus}
+              bankAccount={linkedBankAccount}
               initialMembers={membersResult.data}
               initialMemberTotal={membersResult.total}
               initialExports={postalExports}

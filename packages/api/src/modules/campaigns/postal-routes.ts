@@ -12,14 +12,19 @@
  * Rationale: matches the existing `POST /v1/campaigns/:id/documents` gate.
  */
 
+import { PassThrough } from "node:stream";
+import { resolvePostalExportMode } from "@givernance/shared/postal-export-mode";
 import {
+  bankAccounts,
   CAMPAIGN_TYPE_VALUES,
+  campaignPublicPages,
   POSTAL_EXPORT_MODE_VALUES,
   POSTAL_EXPORT_STATUS_VALUES,
   tenants,
 } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
-import { eq } from "drizzle-orm";
+import archiver from "archiver";
+import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { env } from "../../env.js";
 import { systemDb } from "../../lib/db.js";
@@ -49,7 +54,7 @@ import {
   PostalExportError,
   startPostalExport,
 } from "./postal-export-service.js";
-import { renderPostalLetterToBuffer } from "./postal-pdf.js";
+import { renderPostalLetterToBuffer, renderSwissQrBillPreviewToBuffer } from "./postal-pdf.js";
 import { getCampaignQrStats } from "./qr-stats-service.js";
 import { getCampaign } from "./service.js";
 
@@ -437,24 +442,59 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         .select({
           name: tenants.name,
           mission: tenants.mission,
-          // Tenant default locale drives the PDF static copy. Until
-          // campaigns carry their own locale, we render the preview in
-          // the org's preferred language (Epic #274 follow-up).
           defaultLocale: tenants.defaultLocale,
         })
         .from(tenants)
         .where(eq(tenants.id, orgId))
         .limit(1);
 
-      // Path mirrors the published donation page (`/p/:id`) so the preview
-      // QR resolves to the same screen the donor would see in production.
-      const previewUrl = `${env.APP_URL}/p/${id}?preview=1`;
+      // Epic #318 PR #4 — resolve the preview mode the same way the
+      // worker resolves the generation mode. Preview MUST match what
+      // Generate produces (operator feedback on PR #354).
+      const [publicPage] = await systemDb
+        .select({ status: campaignPublicPages.status })
+        .from(campaignPublicPages)
+        .where(eq(campaignPublicPages.campaignId, id))
+        .limit(1);
+      const runMode = resolvePostalExportMode({
+        hasBank: campaign.bankAccountId !== null,
+        // `hasPage = page row exists` — same semantics as
+        // postal-export-service's mode resolution. Publish gate fires
+        // separately inside the standard/hybrid path.
+        hasPage: !!publicPage,
+      });
+      if (runMode === "blocked") {
+        return reply
+          .status(400)
+          .send(
+            problemDetail(
+              400,
+              "postal_export_not_configured",
+              "This campaign has neither a public donation page nor a linked bank account — there is nothing to preview.",
+            ),
+          );
+      }
 
-      // Active org logo (Epic #286). Cached in-process per `logo_asset_id`
-      // so a second preview within the TTL window doesn't re-hit S3.
+      const previewUrl = `${env.APP_URL}/p/${id}?preview=1`;
       const logoBuffer = await getActivePdfLetterhead(orgId);
 
-      const buffer = await renderPostalLetterToBuffer({
+      // Fixture recipient — door-drop preview = null (anonymous letter);
+      // personalised + QR-bill modes = sample data for the C5 window block.
+      const fixtureRecipient =
+        mode === "door_drop"
+          ? null
+          : {
+              firstName: "Jean",
+              lastName: "Dupont",
+              email: "jean.dupont@example.org",
+              addressLine1: "12 rue de la République",
+              addressLine2: null,
+              postalCode: "75001",
+              city: "Paris",
+              countryCode: "FR",
+            };
+
+      const appealLetterInput = {
         organisationName: tenant?.name ?? "Your organisation",
         organisationMission: tenant?.mission ?? null,
         logoBuffer,
@@ -462,31 +502,101 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         campaignDescription: campaign.description ?? null,
         locale: tenant?.defaultLocale ?? null,
         qrPayload: previewUrl,
-        recipient:
-          mode === "door_drop"
-            ? null
-            : {
-                firstName: "Jean",
-                lastName: "Dupont",
-                email: "jean.dupont@example.org",
-                // Fake address that fits the French DL window envelope so
-                // the operator can verify the in-window block placement
-                // before kicking off a mass export.
-                addressLine1: "12 rue de la République",
-                addressLine2: null,
-                postalCode: "75001",
-                city: "Paris",
-                countryCode: "FR",
-              },
+        recipient: fixtureRecipient,
         qrReference: "PREVIEW-SAMPLE",
         preview: true,
-      });
+      };
 
+      // ─── Standard mode → single inline PDF (today's behaviour). ────
+      if (runMode === "standard") {
+        const buffer = await renderPostalLetterToBuffer(appealLetterInput);
+        reply
+          .header("content-type", "application/pdf")
+          .header("content-disposition", 'inline; filename="postal-preview.pdf"')
+          .header("content-length", String(buffer.byteLength));
+        return reply.send(buffer);
+      }
+
+      // Modes that need the bank account → load it once.
+      const [bankAccount] = await systemDb
+        .select({
+          iban: bankAccounts.iban,
+          holderName: bankAccounts.holderName,
+          holderStreet: bankAccounts.holderStreet,
+          holderBuildingNumber: bankAccounts.holderBuildingNumber,
+          holderPostalCode: bankAccounts.holderPostalCode,
+          holderTown: bankAccounts.holderTown,
+          holderCountryCode: bankAccounts.holderCountryCode,
+          currency: bankAccounts.currency,
+        })
+        .from(bankAccounts)
+        .where(
+          and(
+            // biome-ignore lint/style/noNonNullAssertion: guarded by runMode resolution above
+            eq(bankAccounts.id, campaign.bankAccountId!),
+            eq(bankAccounts.orgId, orgId),
+            isNull(bankAccounts.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (!bankAccount) {
+        return reply
+          .status(400)
+          .send(
+            problemDetail(
+              400,
+              "swiss_qr_bill_bank_account_deleted",
+              "Linked bank account is missing or soft-deleted.",
+            ),
+          );
+      }
+
+      // 27-digit fixture QRR with a valid mod-10 check digit — never
+      // registered in `swiss_qr_references` so a real bank scanning the
+      // preview will reject it (safe). Body = `21000000000000000000000000`
+      // (26 chars), computed check digit = `9` via the canonical
+      // Swiss "Modulo 10 recursive" table (cf.
+      // `packages/shared/src/validators/iban.ts ::computeQrr`).
+      const previewReference = "210000000000000000000000009";
+
+      // ─── QR-bill only mode → single inline 2-page PDF. ─────────────
+      if (runMode === "qr_bill_only") {
+        const buffer = await renderSwissQrBillPreviewToBuffer({
+          ...appealLetterInput,
+          bankAccount,
+          reference: previewReference,
+        });
+        reply
+          .header("content-type", "application/pdf")
+          .header("content-disposition", 'inline; filename="postal-preview-qr-bill.pdf"')
+          .header("content-length", String(buffer.byteLength));
+        return reply.send(buffer);
+      }
+
+      // ─── Hybrid mode → streamed ZIP with two PDFs. ─────────────────
+      // The browser doesn't render ZIPs inline — operator gets a download.
+      // This is honest about what Generate produces (2 sibling PDFs per
+      // recipient) rather than collapsing into a side-by-side single PDF
+      // that would lie about the print artefact.
+      const [letterBuffer, qrBillBuffer] = await Promise.all([
+        renderPostalLetterToBuffer(appealLetterInput),
+        renderSwissQrBillPreviewToBuffer({
+          ...appealLetterInput,
+          bankAccount,
+          reference: previewReference,
+        }),
+      ]);
+      const passthrough = new PassThrough();
+      const archive = archiver("zip", { zlib: { level: 6 } });
+      archive.on("error", (err) => passthrough.destroy(err));
+      archive.pipe(passthrough);
+      archive.append(letterBuffer, { name: "postal-preview-letter.pdf" });
+      archive.append(qrBillBuffer, { name: "postal-preview-qr-bill.pdf" });
+      void archive.finalize();
       reply
-        .header("content-type", "application/pdf")
-        .header("content-disposition", 'inline; filename="postal-preview.pdf"')
-        .header("content-length", String(buffer.byteLength));
-      return reply.send(buffer);
+        .header("content-type", "application/zip")
+        .header("content-disposition", 'attachment; filename="postal-preview.zip"');
+      return reply.send(passthrough);
     },
   );
 

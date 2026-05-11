@@ -1875,10 +1875,36 @@
         }
       },
       "actions": {
-        "generateZip": "Generate ZIP",
+        "generateZip": {
+          "standard": "Generate appeal-letter ZIP",
+          "qr_bill_only": "Generate Swiss QR-bill ZIP",
+          "hybrid": "Generate full mailing ZIP (letter + QR-bill)",
+          "blocked": "Generate ZIP"
+        },
         "starting": "Queueing…",
         "preview": "Preview",
         "previewing": "Loading preview…"
+      },
+      "modeSummary": {
+        "badge": {
+          "standard": "Standard postal",
+          "qr_bill_only": "🇨🇭 Swiss QR-bill",
+          "hybrid": "Standard + 🇨🇭 Swiss QR-bill",
+          "blocked": "Not configured"
+        },
+        "contentsHeading": "This export will contain, per recipient:",
+        "contents": {
+          "appealLetter": "Appeal letter PDF (with QR linking to the public donation page)",
+          "qrBill": "Swiss QR-bill PDF (with the canonical IG QR-bill payment strip)",
+          "nothing": "Nothing — see banner below"
+        },
+        "reason": {
+          "standard": "This mode is selected because your public donation page is published and no bank account is linked.",
+          "qr_bill_only": "This mode is selected because you linked bank account {bank} and your public page is not yet published.",
+          "hybrid": "This mode is selected because you linked bank account {bank} and your public page is published.",
+          "blocked": "Neither a public donation page nor a Swiss bank account is configured — there is nothing to print.",
+          "editLink": "Change on the campaign settings →"
+        }
       },
       "readiness": {
         "campaignNotActive": {
@@ -1894,8 +1920,15 @@
           "body": "Your public donation page is still a draft, so anyone scanning a QR code from the printed letters wouldn't find a working donation page. Publish it before queueing the export."
         },
         "publicPageCta": "Open the public page settings",
+        "notConfigured": {
+          "title": "Postal export not configured",
+          "body": "This campaign has neither a public donation page nor a linked Swiss bank account — there is nothing to print. Pick at least one path below.",
+          "publicPageCta": "Publish a public donation page →",
+          "bankAccountCta": "Link a Swiss bank account →"
+        },
         "activateCampaignFirst": "Activate the campaign before generating an export.",
-        "publishPublicPageFirst": "Publish the public donation page before generating an export."
+        "publishPublicPageFirst": "Publish the public donation page before generating an export.",
+        "notConfiguredTooltip": "Configure a public page or link a bank account before generating an export."
       },
       "toast": {
         "exportQueued": "Export queued — generation will start shortly.",

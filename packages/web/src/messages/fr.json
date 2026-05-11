@@ -1875,10 +1875,36 @@
         }
       },
       "actions": {
-        "generateZip": "Générer le ZIP",
+        "generateZip": {
+          "standard": "Générer le ZIP de lettres",
+          "qr_bill_only": "Générer le ZIP de BVR suisses",
+          "hybrid": "Générer le ZIP complet (lettre + BVR)",
+          "blocked": "Générer le ZIP"
+        },
         "starting": "Mise en file…",
         "preview": "Aperçu",
         "previewing": "Chargement de l'aperçu…"
+      },
+      "modeSummary": {
+        "badge": {
+          "standard": "Postal standard",
+          "qr_bill_only": "🇨🇭 BVR suisse",
+          "hybrid": "Standard + 🇨🇭 BVR suisse",
+          "blocked": "Non configuré"
+        },
+        "contentsHeading": "Cet export contiendra, par destinataire :",
+        "contents": {
+          "appealLetter": "Lettre d'appel PDF (avec QR vers la page de don publique)",
+          "qrBill": "BVR suisse PDF (avec la bande de paiement IG QR-bill canonique)",
+          "nothing": "Rien — voir la bannière ci-dessous"
+        },
+        "reason": {
+          "standard": "Ce mode est sélectionné car votre page de don publique est publiée et aucun compte bancaire n'est lié.",
+          "qr_bill_only": "Ce mode est sélectionné car vous avez lié le compte {bank} et la page publique n'est pas encore publiée.",
+          "hybrid": "Ce mode est sélectionné car vous avez lié le compte {bank} et la page publique est publiée.",
+          "blocked": "Ni page de don publique ni compte bancaire suisse — il n'y a rien à imprimer.",
+          "editLink": "Modifier dans les réglages de la campagne →"
+        }
       },
       "readiness": {
         "campaignNotActive": {
@@ -1894,8 +1920,15 @@
           "body": "Votre page de don publique est encore en brouillon : si quelqu'un scanne un QR code imprimé sur les lettres, il ne trouvera pas de page de don opérationnelle. Publiez-la avant de lancer l'export postal."
         },
         "publicPageCta": "Ouvrir les réglages de la page publique",
+        "notConfigured": {
+          "title": "Export postal non configuré",
+          "body": "Cette campagne n'a ni page de don publique ni compte bancaire suisse lié — il n'y a rien à imprimer. Choisissez au moins une option ci-dessous.",
+          "publicPageCta": "Publier une page de don publique →",
+          "bankAccountCta": "Lier un compte bancaire suisse →"
+        },
         "activateCampaignFirst": "Activez la campagne avant de générer un export.",
-        "publishPublicPageFirst": "Publiez la page de don publique avant de générer un export."
+        "publishPublicPageFirst": "Publiez la page de don publique avant de générer un export.",
+        "notConfiguredTooltip": "Configurez une page publique ou liez un compte bancaire avant de générer un export."
       },
       "toast": {
         "exportQueued": "Export mis en file — la génération va démarrer.",
