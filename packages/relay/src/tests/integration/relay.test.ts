@@ -29,8 +29,8 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import Redis from "ioredis";
 import pg from "pg";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { relayPendingEvents } from "../../relay.js";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { type RelayLogger, relayPendingEvents } from "../../relay.js";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ??
@@ -42,7 +42,13 @@ const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
 // surface jobs we didn't enqueue.
 const RUN_ID = randomUUID();
 
-const silentLogger = { error: () => undefined };
+// `vi.fn()` so tests can assert the failure-path emits a structured log
+// with `eventId` + the short error message — a regression that dropped
+// the `logger.error(...)` call would otherwise be silent under a bare
+// `() => undefined` stub.
+type ErrorFn = RelayLogger["error"];
+type LoggerSpy = RelayLogger & { error: ReturnType<typeof vi.fn<ErrorFn>> };
+const makeLogger = (): LoggerSpy => ({ error: vi.fn<ErrorFn>() });
 
 // `noUncheckedIndexedAccess` makes `rows[0]` always `T | undefined`. Tests
 // assert "at least one row came back" so often that a tiny helper is
@@ -118,8 +124,25 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
     usedTenantIds.length = 0;
   });
 
+  it("empty tick: returns 0 and calls neither queue.add nor logger.error", async () => {
+    const logger = makeLogger();
+    const calls: unknown[][] = [];
+    const observingQueue = {
+      add: async (...args: unknown[]) => {
+        calls.push(args);
+        return undefined;
+      },
+    } as unknown as Queue;
+
+    const processed = await relayPendingEvents(db, observingQueue, logger);
+    expect(processed).toBe(0);
+    expect(calls).toEqual([]);
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
   it("happy path: marks the pending row completed and enqueues a BullMQ job", async () => {
     const tenantId = freshTenantId();
+    const logger = makeLogger();
     const { id } = firstOrThrow(
       await db
         .insert(outboxEvents)
@@ -132,8 +155,9 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
       "outbox insert result",
     );
 
-    const processed = await relayPendingEvents(db, queue, silentLogger);
+    const processed = await relayPendingEvents(db, queue, logger);
     expect(processed).toBe(1);
+    expect(logger.error).not.toHaveBeenCalled();
 
     const row = firstOrThrow(
       await db.select().from(outboxEvents).where(eq(outboxEvents.id, id)),
@@ -154,8 +178,9 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
     });
   });
 
-  it("failure path: marks the row failed with the error captured when enqueue throws", async () => {
+  it("failure path: marks the row failed, captures the error, and logs structured event", async () => {
     const tenantId = freshTenantId();
+    const logger = makeLogger();
     const { id } = firstOrThrow(
       await db
         .insert(outboxEvents)
@@ -179,7 +204,7 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
       },
     } as unknown as Queue;
 
-    const processed = await relayPendingEvents(db, failingQueue, silentLogger);
+    const processed = await relayPendingEvents(db, failingQueue, logger);
     expect(processed).toBe(0);
 
     const row = firstOrThrow(
@@ -189,10 +214,23 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
     expect(row.status).toBe("failed");
     expect(row.error).toBe("redis is down");
     expect(row.processedAt).toBeNull();
+
+    // Lock the log shape so a regression that drops `eventId` from the
+    // structured payload (e.g. someone replacing the object with a plain
+    // string) is caught — pino's redact list keys off `err.*` paths, so
+    // the short-string `err: message` form here is also the safer choice
+    // for never accidentally serialising a stack-trace that embeds a
+    // connection string into the log.
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      { eventId: id, err: "redis is down" },
+      "Failed to relay event",
+    );
   });
 
   it("SKIP LOCKED: a row locked by another transaction is skipped, picked up after release", async () => {
     const tenantId = freshTenantId();
+    const logger = makeLogger();
     const inserted = await db
       .insert(outboxEvents)
       .values(
@@ -209,8 +247,14 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
     // one it would naturally pick up first. Locking that row is the
     // strongest demonstration that SKIP LOCKED actually skips ahead.
     const lockedId = firstOrThrow(inserted, "inserted outbox row").id;
+    const otherIds = inserted.slice(1).map((r) => r.id);
 
     const lockingClient = await pool.connect();
+    // Always ROLLBACK + release in finally so a mid-test assertion failure
+    // can't return an in-transaction connection to the pool (which would
+    // surface as "current transaction is aborted" errors on the next test
+    // that draws this client from the pool). The ROLLBACK is a no-op if
+    // BEGIN never ran.
     try {
       await lockingClient.query("BEGIN");
       const locked = await lockingClient.query(
@@ -222,7 +266,7 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
       // Without SKIP LOCKED, this call would block on the held row's lock
       // (and the test would time out). With SKIP LOCKED, the relay walks
       // past the locked row and processes the remaining 4.
-      const processed = await relayPendingEvents(db, queue, silentLogger);
+      const processed = await relayPendingEvents(db, queue, logger);
       expect(processed).toBe(4);
 
       const lockedRow = firstOrThrow(
@@ -231,13 +275,22 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
       );
       expect(lockedRow.status).toBe("pending");
 
-      await lockingClient.query("ROLLBACK");
+      // Positive BullMQ-side proof: the 4 unlocked rows landed as jobs,
+      // and the locked row did NOT — closes the gap that the
+      // processed-count alone could be satisfied by enqueueing the wrong
+      // 4 rows by accident.
+      expect(await queue.getJob(lockedId)).toBeUndefined();
+      for (const otherId of otherIds) {
+        const job = await queue.getJob(otherId);
+        expect(job, `expected job for unlocked row ${otherId}`).toBeDefined();
+      }
     } finally {
+      await lockingClient.query("ROLLBACK").catch(() => undefined);
       lockingClient.release();
     }
 
     // Lock released — a second tick now picks up the previously-locked row.
-    const processedAfter = await relayPendingEvents(db, queue, silentLogger);
+    const processedAfter = await relayPendingEvents(db, queue, logger);
     expect(processedAfter).toBe(1);
 
     const finalRow = firstOrThrow(
@@ -245,14 +298,25 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
       `outbox_events row ${lockedId}`,
     );
     expect(finalRow.status).toBe("completed");
+    expect(await queue.getJob(lockedId)).toBeDefined();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it("trace + impersonation context: metadata fields land on the BullMQ job", async () => {
+  // Cover BOTH impersonation modes — `docs/19-impersonation.md` §6 makes
+  // clear pure-impersonation is allowed to write (exact RBAC parity with
+  // the target), so its metadata round-trips through the outbox just like
+  // delegation. A regression that dropped pure-impersonation context
+  // before enqueueing would silently break the double-attribution audit
+  // trail that the impersonation epic depends on.
+  it.each([
+    { mode: "delegation" as const, name: "delegation" },
+    { mode: "impersonation" as const, name: "pure-impersonation" },
+  ])("trace + $name context: metadata fields land on the BullMQ job", async ({ mode }) => {
     const tenantId = freshTenantId();
     const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
     const tracestate = "vendor=opaque";
     const impersonationSessionId = randomUUID();
-    const impersonatorKeycloakId = `kc-admin-${randomUUID()}`;
+    const impersonatorKeycloakId = randomUUID();
 
     const { id } = firstOrThrow(
       await db
@@ -265,7 +329,7 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
             traceparent,
             tracestate,
             impersonationSessionId,
-            impersonationMode: "delegation",
+            impersonationMode: mode,
             impersonatorKeycloakId,
           },
         })
@@ -273,7 +337,7 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
       "outbox insert result",
     );
 
-    const processed = await relayPendingEvents(db, queue, silentLogger);
+    const processed = await relayPendingEvents(db, queue, makeLogger());
     expect(processed).toBe(1);
 
     const job = await queue.getJob(id);
@@ -285,8 +349,12 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
       traceparent,
       tracestate,
       impersonationSessionId,
-      impersonationMode: "delegation",
+      impersonationMode: mode,
       impersonatorKeycloakId,
     });
+    // Lock the negative shape: the relay must NOT forward the raw
+    // metadata object onto the job (which would defeat the per-field
+    // contract above and risk leaking unrelated future metadata fields).
+    expect(job?.data).not.toHaveProperty("metadata");
   });
 });
