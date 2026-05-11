@@ -93,6 +93,10 @@ export const CAMT_UNRECONCILED_REASON_VALUES = [
   "invalid_ref",
   "foreign_iban",
   "orphan_reversal",
+  // Door-drop rail only: QR ref matched a NULL-constituent row but the
+  // camt.053 entry had no `RltdPties.Dbtr` info to resolve a constituent
+  // from (rare — mostly TWINT). Operator resolves manually.
+  "no_debtor_info",
 ] as const;
 export type CamtUnreconciledReason = (typeof CAMT_UNRECONCILED_REASON_VALUES)[number];
 
@@ -210,7 +214,7 @@ export type NewBankAccount = typeof bankAccounts.$inferInsert;
  *   - `(org_id, bank_account_id, reference) UNIQUE` — the reference IS
  *     the universal donor handle; cannot collide within a bank account.
  *   - `(export_id, constituent_id) UNIQUE` (partial in migration with
- *     COALESCE for door-drop V2 NULL recipients) — a Kamal retry of the
+ *     COALESCE for door-drop NULL recipients) — a Kamal retry of the
  *     same export reuses the existing row instead of minting twice.
  *
  * `bank_account_id` ON DELETE RESTRICT: a bank account that has ever
@@ -227,7 +231,7 @@ export const swissQrReferences = pgTable(
     campaignId: uuid("campaign_id")
       .notNull()
       .references(() => campaigns.id, { onDelete: "cascade" }),
-    /** Nullable because door-drop V2 mints one ref per export with no recipient. */
+    /** Nullable because door-drop mints one ref per export with no recipient. */
     constituentId: uuid("constituent_id").references(() => constituents.id, {
       onDelete: "set null",
     }),

@@ -5356,7 +5356,8 @@
         "partial_match",
         "invalid_ref",
         "foreign_iban",
-        "orphan_reversal"
+        "orphan_reversal",
+        "no_debtor_info"
       ]
     },
     "public.camt_unreconciled_status": {
