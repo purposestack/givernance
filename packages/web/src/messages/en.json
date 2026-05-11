@@ -852,7 +852,8 @@
       "label": "Organisation settings navigation",
       "organization": "Organisation",
       "members": "Members",
-      "funds": "Funds"
+      "funds": "Funds",
+      "bankAccounts": "Bank accounts"
     },
     "branding": {
       "title": "Organisation logo",
@@ -1101,6 +1102,114 @@
         "success": {
           "created": "Fund created.",
           "updated": "Fund updated."
+        }
+      }
+    },
+    "bankAccounts": {
+      "settings": "Settings",
+      "title": "Bank accounts",
+      "subtitleEmpty": "Register a Swiss bank account (IBAN or QR-IBAN) to enable Swiss QR-bill mode on your postal campaigns.",
+      "subtitleWithCount": "{count, plural, one {# bank account} other {# bank accounts}} configured",
+      "readOnly": "Only organisation admins can manage bank accounts.",
+      "empty": {
+        "title": "No bank accounts yet",
+        "description": "Add your first Swiss operating account to mint Swiss QR-bills on postal mailings. CHF or EUR, regular IBAN or QR-IBAN — Givernance derives the reference type automatically."
+      },
+      "kind": {
+        "iban": "Regular IBAN",
+        "qr_iban": "QR-IBAN"
+      },
+      "table": {
+        "bank": "Bank",
+        "iban": "IBAN",
+        "kind": "Type",
+        "currency": "Currency",
+        "holder": "Holder",
+        "actionsLabel": "Row actions",
+        "openActions": "Open actions for {name}"
+      },
+      "actions": {
+        "new": "Add bank account",
+        "edit": "Edit",
+        "delete": "Soft-delete",
+        "deleteSuccess": "Bank account removed. Linked campaigns degraded to standard mode.",
+        "deleteError": "Failed to remove the bank account. Please try again."
+      },
+      "delete": {
+        "title": "Remove bank account?",
+        "description": "{bankName} ({iban}) will be soft-deleted. Any campaign currently linked to it will fall back to standard postal mode (no QR-bill). The audit history is preserved — past QR-bills and reconciliations remain accessible.",
+        "cancel": "Cancel",
+        "confirm": "Remove",
+        "deleting": "Removing…"
+      },
+      "form": {
+        "createTitle": "New bank account",
+        "createSubtitle": "IBAN holder data prints on every QR-bill. The IG QR-bill v2.4 structured address (street + building number + postal code + town) — combined-address shapes are no longer supported.",
+        "breadcrumbNew": "New",
+        "editTitle": "Edit bank account",
+        "editSubtitle": "Holder data and currency can be updated. The IBAN is immutable to preserve financial-record integrity — soft-delete and re-create to change it.",
+        "breadcrumbEdit": "Edit",
+        "sections": {
+          "account": {
+            "title": "Account details",
+            "description": "IBAN, bank name and currency. The IBAN kind (QR-IBAN vs regular IBAN) is derived automatically from the IID range."
+          },
+          "holder": {
+            "title": "Holder address",
+            "description": "Printed on the QR-bill in the IG structured-address (S) shape. Restricted to CH or LI per IG QR-bill v2.4."
+          }
+        },
+        "fields": {
+          "iban": "IBAN",
+          "ibanPlaceholder": "CH93 0076 2011 6238 5295 7",
+          "ibanHintDefault": "CH or LI only. Whitespace and case are normalised on save.",
+          "ibanHintQrIban": "Detected: QR-IBAN — Swiss QR-bills will use a 27-digit QRR reference (mod-10).",
+          "ibanHintRegular": "Detected: regular IBAN — Swiss QR-bills will use a SCOR reference (RF + mod-97).",
+          "ibanImmutable": "IBAN is immutable after creation (financial-record integrity).",
+          "bic": "BIC / SWIFT (optional)",
+          "bicPlaceholder": "POFICHBE",
+          "bicHint": "8 or 11 characters per ISO 9362. Optional — most Swiss e-banking flows don't require it for QR-bill payments.",
+          "bankName": "Bank name",
+          "bankNamePlaceholder": "PostFinance, UBS Switzerland AG, Raiffeisen…",
+          "currency": "Currency",
+          "currencyHint": "CHF or EUR. EUR + QR-IBAN is illegal under IG QR-bill v2.4 — use a regular IBAN with SCOR for EUR donations.",
+          "currencyEurQrIbanError": "EUR + QR-IBAN is illegal under IG QR-bill v2.4. Switch to CHF or use a regular (non-QR) IBAN.",
+          "holderName": "Holder name",
+          "holderNameHint": "Printed at the top of the QR-bill. Up to 70 characters.",
+          "holderStreet": "Street",
+          "holderBuildingNumber": "Building number",
+          "holderBuildingNumberHint": "Optional. Up to 16 characters (e.g. \"12\" or \"12b\").",
+          "holderPostalCode": "Postal code",
+          "holderTown": "Town / City",
+          "holderCountryCode": "Country",
+          "holderCountryHint": "CH or LI only — IG QR-bill applies to those two jurisdictions."
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "submitCreate": "Create bank account",
+          "submitUpdate": "Save changes",
+          "submitting": "Saving…"
+        },
+        "errors": {
+          "ibanRequired": "IBAN is required.",
+          "ibanInvalid": "IBAN failed mod-97 / format validation.",
+          "bicLength": "BIC must be exactly 8 or 11 characters when present (ISO 9362).",
+          "bankNameRequired": "Bank name is required.",
+          "bankNameTooLong": "Bank name must be at most 100 characters.",
+          "holderNameRequired": "Holder name is required.",
+          "holderNameTooLong": "Holder name must be at most 70 characters (IG QR-bill cap).",
+          "holderStreetRequired": "Street is required.",
+          "holderStreetTooLong": "Street must be at most 70 characters.",
+          "holderBuildingNumberTooLong": "Building number must be at most 16 characters.",
+          "holderPostalCodeRequired": "Postal code is required.",
+          "holderPostalCodeTooLong": "Postal code must be at most 16 characters.",
+          "holderTownRequired": "Town is required.",
+          "holderTownTooLong": "Town must be at most 35 characters (IG QR-bill cap).",
+          "generic": "Something went wrong while saving. Please try again."
+        },
+        "success": {
+          "created": "Bank account created.",
+          "updated": "Bank account updated."
         }
       }
     },

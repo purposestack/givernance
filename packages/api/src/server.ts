@@ -15,6 +15,7 @@ import { PROBLEM_JSON, problemDetail } from "./lib/schemas.js";
 import { impersonationRoutes } from "./modules/admin/impersonation-routes.js";
 import { platformAdminsRoutes } from "./modules/admin/platform-admins-routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
+import { bankAccountRoutes } from "./modules/bank-accounts/routes.js";
 import { brandingRoutes } from "./modules/branding/routes.js";
 import { postalCampaignRoutes } from "./modules/campaigns/postal-routes.js";
 import { campaignRoutes } from "./modules/campaigns/routes.js";
@@ -188,6 +189,7 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(brandingRoutes, { prefix: "/v1" });
   await app.register(donationRoutes, { prefix: "/v1" });
   await app.register(fundRoutes, { prefix: "/v1" });
+  await app.register(bankAccountRoutes, { prefix: "/v1" });
   await app.register(pledgeRoutes, { prefix: "/v1" });
   await app.register(campaignRoutes, { prefix: "/v1" });
   await app.register(postalCampaignRoutes, { prefix: "/v1" });
