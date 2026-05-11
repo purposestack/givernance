@@ -7,19 +7,20 @@
  *   1. SELECT rows with status = 'pending' FOR UPDATE SKIP LOCKED (C5 fix — prevents duplicate delivery)
  *   2. Enqueue each into BullMQ givernance_events queue
  *   3. Mark rows as 'completed' (or 'failed' on error)
+ *
+ * The poll-tick logic itself lives in `./relay.ts` so the integration test
+ * suite (issue #325) can exercise it against a real Postgres + Redis without
+ * starting the polling loop.
  */
 
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
-import { type OutboxMetadata, outboxEvents } from "@givernance/shared/schema";
 import { Queue } from "bullmq";
-import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import Redis from "ioredis";
 import pg from "pg";
 import { env } from "./env.js";
 import { logger } from "./lib/logger.js";
-
-const BATCH_SIZE = 100;
+import { relayPendingEvents } from "./relay.js";
 
 const pool = new pg.Pool({
   connectionString: env.DATABASE_URL,
@@ -35,86 +36,6 @@ const redis = new Redis(env.REDIS_URL, {
 
 const eventsQueue = new Queue(QUEUE_NAMES.EVENTS, { connection: redis });
 
-async function relayPendingEvents(): Promise<number> {
-  // SELECT FOR UPDATE SKIP LOCKED prevents multiple relay instances from racing
-  // on the same rows (C5 fix). Each instance locks different pending rows.
-  // We now also pull `metadata` so W3C trace-context is propagated to the
-  // BullMQ job (issue #56 Platform #4).
-  const pending = await db.execute<{
-    id: string;
-    tenant_id: string;
-    type: string;
-    payload: unknown;
-    metadata: OutboxMetadata | null;
-  }>(
-    sql`SELECT id, tenant_id, type, payload, metadata
-        FROM outbox_events
-        WHERE status = 'pending'
-        ORDER BY created_at ASC
-        LIMIT ${BATCH_SIZE}
-        FOR UPDATE SKIP LOCKED`,
-  );
-
-  let processed = 0;
-
-  for (const row of pending.rows) {
-    try {
-      await eventsQueue.add(
-        row.type,
-        {
-          id: row.id,
-          tenantId: row.tenant_id,
-          type: row.type,
-          payload: row.payload,
-          // Forward the traceparent so the worker's jobLogger can bind
-          // traceId/spanId. Jobs written before this change have null metadata.
-          traceparent: row.metadata?.traceparent,
-          tracestate: row.metadata?.tracestate,
-          // Issue #24 — forward impersonation context to the worker so
-          // async audit writes can carry the same double-attribution as
-          // the originating request. Optional on every job; only delegation
-          // mode produces non-null values (pure-impersonation can't write).
-          impersonationSessionId: row.metadata?.impersonationSessionId,
-          impersonationMode: row.metadata?.impersonationMode,
-          impersonatorKeycloakId: row.metadata?.impersonatorKeycloakId,
-        },
-        {
-          jobId: row.id,
-          attempts: 5,
-          backoff: { type: "exponential", delay: 1000 },
-          removeOnComplete: 1000,
-          removeOnFail: 5000,
-        },
-      );
-
-      await db
-        .update(outboxEvents)
-        .set({
-          status: "completed",
-          processedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(outboxEvents.id, row.id));
-
-      processed++;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error({ eventId: row.id, err: message }, "Failed to relay event");
-
-      await db
-        .update(outboxEvents)
-        .set({
-          status: "failed",
-          error: message,
-          updatedAt: new Date(),
-        })
-        .where(eq(outboxEvents.id, row.id));
-    }
-  }
-
-  return processed;
-}
-
 let running = true;
 
 async function start(): Promise<void> {
@@ -122,7 +43,7 @@ async function start(): Promise<void> {
 
   while (running) {
     try {
-      const count = await relayPendingEvents();
+      const count = await relayPendingEvents(db, eventsQueue, logger);
       if (count > 0) {
         logger.info({ count }, "Relayed events");
       }
