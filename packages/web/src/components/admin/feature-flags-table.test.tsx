@@ -26,7 +26,9 @@ vi.mock("@/lib/api/client-browser", () => ({
 const baseRow = {
   key: "communication.bulk_email",
   enabled: false,
-  description: "Operator-triggered bulk email — disabled until DKIM/SPF is configured.",
+  label: "Bulk emails to constituents",
+  description:
+    "Lets operators send one email to several constituents at once from the Constituents page.",
   updatedBy: null,
   createdAt: "2026-05-10T10:00:00.000Z",
   updatedAt: "2026-05-10T10:00:00.000Z",
@@ -39,15 +41,18 @@ describe("FeatureFlagsTable", () => {
     mockToast.error.mockClear();
   });
 
-  it("renders one row per flag with the key + description + status badge", () => {
+  it("renders the friendly label as the heading, with the dotted key + description as supporting text", () => {
     render(<FeatureFlagsTable rows={[baseRow]} />);
 
+    // The user-visible heading is the friendly `label`, NOT the
+    // dotted `key`. The key still renders as a small subtitle so
+    // engineers can correlate `audit_logs.action = PATCH:/…/:key`.
+    expect(
+      screen.getByRole("heading", { name: /Bulk emails to constituents/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText("communication.bulk_email")).toBeInTheDocument();
-    expect(screen.getByText(/DKIM\/SPF/)).toBeInTheDocument();
+    expect(screen.getByText(/send one email to several constituents/i)).toBeInTheDocument();
     // Default-disabled badge + Enable button (mirror of the toggle state).
-    // Use an exact match — the description literally contains the word
-    // "disabled" too, which would make a loose /Disabled/i match
-    // multi-element.
     expect(screen.getByText("Disabled", { exact: true })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Enable/i })).toBeInTheDocument();
   });

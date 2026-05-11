@@ -86,16 +86,23 @@ export function FeatureFlagsTable({ rows: initialRows }: FeatureFlagsTableProps)
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <code className="rounded bg-surface-container-highest px-2 py-0.5 text-sm font-mono text-on-surface">
-                  {row.key}
-                </code>
+              {/*
+                Heading is the friendly `label` (e.g. "Bulk emails to
+                constituents"), not the dotted `key`. The key still
+                renders below as a small monospaced subtitle so an
+                engineer reading audit_logs can match
+                `PATCH:/v1/admin/feature-flags/:key` back to a row.
+              */}
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-medium text-on-surface">{row.label}</h2>
                 <Badge variant={row.enabled ? "success" : "neutral"} shape="square">
                   {row.enabled ? t("status.enabled") : t("status.disabled")}
                 </Badge>
               </div>
               <p className="text-sm text-on-surface-variant">{row.description}</p>
               <p className="text-xs text-on-surface-variant">
+                <code className="font-mono">{row.key}</code>
+                <span className="mx-1">·</span>
                 {t("lastUpdated", { date: formatDate(row.updatedAt, locale) })}
               </p>
             </div>

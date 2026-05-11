@@ -272,7 +272,14 @@ export function ConstituentsTable({
 
   const columns = useMemo<ColumnDef<ConstituentListRow>[]>(
     () => [
-      ...(canManageAdminActions
+      // The select-row checkboxes only earn their place when there's
+      // actually a multi-select action available. Today that's solely
+      // the bulk-email feature (issue #326) — when the
+      // `communication.bulk_email` flag is off, the column is dead
+      // surface area and confuses operators ("what is this for?").
+      // Gate on `bulkEmailEnabled` alongside the role check so the
+      // column disappears in lockstep with the action buttons above.
+      ...(canManageAdminActions && bulkEmailEnabled
         ? [
             {
               id: "select",
@@ -412,7 +419,16 @@ export function ConstituentsTable({
           ]
         : []),
     ],
-    [canManageAdminActions, canWrite, locale, selectedIds, t, togglePageSelection, tType],
+    [
+      bulkEmailEnabled,
+      canManageAdminActions,
+      canWrite,
+      locale,
+      selectedIds,
+      t,
+      togglePageSelection,
+      tType,
+    ],
   );
 
   return (

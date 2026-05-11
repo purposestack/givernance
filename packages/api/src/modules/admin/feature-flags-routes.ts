@@ -45,6 +45,7 @@ const FlagKeyParams = Type.Object({
 const FlagRowSchema = Type.Object({
   key: Type.String(),
   enabled: Type.Boolean(),
+  label: Type.String(),
   description: Type.String(),
   updatedBy: Type.Union([Type.Null(), Type.String()]),
   createdAt: Type.String(),

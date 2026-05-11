@@ -19,6 +19,7 @@ export interface FlagToggleResult {
   row: {
     key: string;
     enabled: boolean;
+    label: string;
     description: string;
     updatedBy: string | null;
     createdAt: string;
@@ -62,6 +63,7 @@ export async function setFeatureFlag(
       .returning({
         key: featureFlags.key,
         enabled: featureFlags.enabled,
+        label: featureFlags.label,
         description: featureFlags.description,
         updatedBy: featureFlags.updatedBy,
         createdAt: featureFlags.createdAt,
@@ -74,6 +76,7 @@ export async function setFeatureFlag(
       row: {
         key: updated.key,
         enabled: updated.enabled,
+        label: updated.label,
         description: updated.description,
         updatedBy: updated.updatedBy,
         createdAt:

@@ -23,11 +23,22 @@ The sections that follow describe the **target** design. The **shipped** subset 
 | React `<FlagProvider>` + `useFlags()` hook | ❌ deferred | Each consumer page passes the prop down for now |
 
 Adding a new flag (Phase 1 MVP):
-1. Append the key to `FEATURE_FLAG_KEYS` in `packages/shared/src/constants/feature-flags.ts` AND to `FEATURE_FLAG_REGISTRY` with its default + description.
-2. Write a migration that `INSERT … ON CONFLICT (key) DO NOTHING` for the key with matching `default_value` + `description`. The integration test in `packages/api/src/tests/integration/feature-flags.test.ts` enforces description parity between `FEATURE_FLAG_REGISTRY` and the seeded DB row — drift fails CI.
+1. Append the key to `FEATURE_FLAG_KEYS` in `packages/shared/src/constants/feature-flags.ts` AND to `FEATURE_FLAG_REGISTRY` with its default + `label` + `description`.
+2. Write a migration that `INSERT … ON CONFLICT (key) DO NOTHING` for the key with matching `default_value` + `label` + `description`. The integration test in `packages/api/src/tests/integration/feature-flags.test.ts` enforces label + description parity between `FEATURE_FLAG_REGISTRY` and the seeded DB row — drift fails CI.
 3. Wire `requireFlag(FEATURE_FLAG_KEYS.YOUR_KEY)` on the gated routes.
 4. If the worker has a matching processor, add an `isFlagEnabled(...)` check at job pickup (defence-in-depth).
-5. If the UI surface is conditional, SSR-fetch `/v1/feature-flags` and pass `xEnabled` as a prop into the consumer component.
+5. If the UI surface is conditional, SSR-fetch `/v1/feature-flags` and pass `xEnabled` as a prop into the consumer component. Hide every dependent surface (buttons, columns, panels) on the consumer page — not just the action button. A dead selection column is operator-confusing UX.
+
+### Text-field convention (label / description)
+
+The `label` and `description` columns are **operator-facing**. Write them in plain language; the audience is a non-technical Back Office user, not an engineer:
+
+- **`label`** — a short friendly title (e.g. "Bulk emails to constituents"). 1-6 words. Acts as the row heading in the UI. Avoid the dotted-namespace key (`communication.bulk_email`) — the key still renders as a small monospaced subtitle so engineers reading audit logs can correlate, but operators see the label first.
+- **`description`** — one or two sentences explaining **what the feature does for the operator**. No engineering jargon (DKIM, SPF, DMARC, BullMQ, etc.), no RFC references, no incident IDs, no GitHub issue numbers.
+
+Engineering rationale (why a flag is off by default, which incident motivated it, what infra prerequisites are blocking enablement) lives in **code comments above the `FEATURE_FLAG_KEYS` entry**. That keeps the operator UI clean while leaving full context for anyone reading the code.
+
+Why DB-stored text (vs i18n-keyed): the registry is small (<10 keys foreseeable), and storing the strings in the DB lets a new flag ship without touching every locale's `messages/*.json`. Trade-off: operator-facing text is English-only for now. When the registry grows or the Back Office becomes multilingual, the migration path is straightforward — add `messages.feature_flags.<key>.label` / `.description` keys and have the API resolve them via `getTranslations` before returning the row.
 
 ### Audit + observability notes
 
