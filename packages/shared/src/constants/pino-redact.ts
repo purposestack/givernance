@@ -51,7 +51,21 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   "*.accessToken",
 
   // ─── Payment instruments (card + bank) ─────────────────────────────────────
+  // IBAN appears in three contexts: operator-configured bank accounts
+  // (`body.iban`), camt.053 reconciler rows that surface a debtor's IBAN
+  // (`entry.debtorIban` / `*.debtor_iban`), and ad-hoc fields. Pino
+  // wildcards are one-level only so we enumerate the carriers (Epic #318).
   "body.iban",
+  "iban",
+  "*.iban",
+  "debtorIban",
+  "debtor_iban",
+  "*.debtorIban",
+  "*.debtor_iban",
+  "entry.debtorIban",
+  "entry.debtor_iban",
+  "creditEntry.debtorIban",
+  "creditEntry.debtor_iban",
   "body.cardNumber",
   "body.cvv",
   "body.pan",

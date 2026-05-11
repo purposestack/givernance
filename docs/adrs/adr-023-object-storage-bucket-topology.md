@@ -56,8 +56,16 @@ aws s3api delete-objects --bucket branding \
 Inside `bank-statements`, every key is also prefixed by `org_id`:
 
 ```
-{org_id}/camt053/{yyyy}/{mm}/{filename}.xml
+{org_id}/camt053/{yyyy}/{mm}/{filename}.xml            ← accepted uploads
+{org_id}/camt053/rejected/{yyyy}/{mm}/{uuid}.xml       ← foreign-IBAN / XSD-fail
 ```
+
+**Operational properties (`bank-statements`):**
+
+- **Versioning + MFA-delete**: enabled. Bank statements are financial records under legal hold for 10 years; accidental or malicious deletion must require a separately-held credential (the Scaleway equivalent for SSE-S3 + bucket versioning + MFA-delete is `s3api put-bucket-versioning --mfa-delete=Enabled` on the bucket).
+- **Server-side encryption**: SSE-S3 (Scaleway-managed keys) at rest. SSE-C is rejected — would saddle every reader (worker, signed-URL service, occasional forensic operator) with key-management plumbing for marginal benefit when the threat model already trusts Scaleway IAM.
+- **Public-access block**: explicit `BlockPublicAcls: true`, `IgnorePublicAcls: true`, `BlockPublicPolicy: true`, `RestrictPublicBuckets: true`. Defense-in-depth even though no public ACL is ever set — a misconfigured policy mistake cannot accidentally expose statements.
+- **Lifecycle interaction with erasure**: the 10-yr lifecycle is statute-mandated and **NOT short-circuited by GDPR Art. 17 erasure of the linked constituent**. CO Art. 958f overrides Art. 17 for legal-hold records; donor-facing surfaces filter erased rows via `constituents.deleted_at` but the raw bank file persists.
 
 ### Why `bank-statements` cannot reuse `receipts` (Epic #318 amendment)
 

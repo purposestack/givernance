@@ -134,9 +134,11 @@ export const donationPaymentSourceEnum = pgEnum("donation_payment_source", [
  * IBAN registered here, or the worker rejects the file (foreign-IBAN
  * safety, §7).
  *
- * Field caps mirror the QR-bill IG v2.4 string limits exactly so the
- * renderer never has to truncate: holder_name ≤ 70, address_line1 ≤ 70,
- * address_line2 ≤ 16, postal_code ≤ 16, city ≤ 35, country exactly 2.
+ * Field caps mirror the QR-bill IG v2.4 / v2.5 structured-address (S)
+ * string limits exactly so the renderer never has to truncate:
+ * holder_name ≤ 70, street ≤ 70, building_number ≤ 16, postal_code ≤ 16,
+ * town ≤ 35, country exactly 2. Combined address (K) is not modelled —
+ * v2.5 makes S mandatory from 2026-09-30; we ship S-only by construction.
  *
  * Soft-delete (`deleted_at`): once a bank account has issued a single
  * `swiss_qr_references` row, it cannot be hard-deleted (FK with
@@ -153,10 +155,14 @@ export const bankAccounts = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     holderName: varchar("holder_name", { length: 70 }).notNull(),
-    holderAddressLine1: varchar("holder_address_line1", { length: 70 }).notNull(),
-    holderAddressLine2: varchar("holder_address_line2", { length: 16 }),
+    /** IG QR-bill S-address `StrtNm` — street name only, no number. ≤ 70 chars. */
+    holderStreet: varchar("holder_street", { length: 70 }).notNull(),
+    /** IG QR-bill S-address `BldgNb` — building / house number. ≤ 16 chars per the standard. */
+    holderBuildingNumber: varchar("holder_building_number", { length: 16 }),
+    /** IG QR-bill S-address `PstCd` — postal code. ≤ 16 chars. */
     holderPostalCode: varchar("holder_postal_code", { length: 16 }).notNull(),
-    holderCity: varchar("holder_city", { length: 35 }).notNull(),
+    /** IG QR-bill S-address `TwnNm` — town / city. ≤ 35 chars. */
+    holderTown: varchar("holder_town", { length: 35 }).notNull(),
     /** ISO 3166-1 alpha-2 — CHECK in migration restricts to CH or LI (IG QR-bill scope). */
     holderCountryCode: varchar("holder_country_code", { length: 2 }).notNull().default("CH"),
     /**
@@ -244,15 +250,19 @@ export const swissQrReferences = pgTable(
     index("swiss_qr_references_org_idx").on(table.orgId),
     index("swiss_qr_references_campaign_idx").on(table.campaignId),
     index("swiss_qr_references_export_idx").on(table.exportId),
+    // FK index — supports ON DELETE RESTRICT lookups + reconciliation joins.
+    index("swiss_qr_references_bank_account_idx").on(table.bankAccountId),
     unique("swiss_qr_references_org_bank_ref_uniq").on(
       table.orgId,
       table.bankAccountId,
       table.reference,
     ),
-    // Type-side parity for the (export_id, constituent_id) uniqueness —
-    // the migration overrides with a COALESCE-based partial unique so
-    // door-drop V2 (NULL constituent_id) still de-duplicates on retry.
-    unique("swiss_qr_references_export_constituent_uniq").on(table.exportId, table.constituentId),
+    // (export_id, constituent_id) uniqueness lives ONLY in the migration
+    // as a COALESCE-based partial unique index (Drizzle Kit can't model
+    // expression uniques). Door-drop V2 (NULL constituent_id) needs
+    // COALESCE to collapse NULLs to a sentinel so multiple NULL rows
+    // can still de-duplicate on retry. See `0044_*.sql` index
+    // `swiss_qr_references_export_recipient_uniq`.
   ],
 );
 
@@ -355,11 +365,11 @@ export const camtCreditEntries = pgTable(
     index("camt_credit_entries_org_idx").on(table.orgId),
     index("camt_credit_entries_statement_idx").on(table.statementId),
     index("camt_credit_entries_donation_idx").on(table.donationId),
-    unique("camt_credit_entries_org_statement_acctsvcr_uniq").on(
-      table.orgId,
-      table.statementId,
-      table.acctSvcrRef,
-    ),
+    // (org_id, statement_id, acct_svcr_ref, COALESCE(end_to_end_id, ''))
+    // uniqueness lives in the migration as an expression-based unique
+    // index — Drizzle Kit can't model the COALESCE. Some banks reuse
+    // AcctSvcrRef across Ntry rows in one statement; EndToEndId
+    // disambiguates them per ADR-028 §Idempotency.
   ],
 );
 

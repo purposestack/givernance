@@ -222,14 +222,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "holder_address_line1": {
-          "name": "holder_address_line1",
+        "holder_street": {
+          "name": "holder_street",
           "type": "varchar(70)",
           "primaryKey": false,
           "notNull": true
         },
-        "holder_address_line2": {
-          "name": "holder_address_line2",
+        "holder_building_number": {
+          "name": "holder_building_number",
           "type": "varchar(16)",
           "primaryKey": false,
           "notNull": false
@@ -240,8 +240,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "holder_city": {
-          "name": "holder_city",
+        "holder_town": {
+          "name": "holder_town",
           "type": "varchar(35)",
           "primaryKey": false,
           "notNull": true
@@ -1414,6 +1414,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "campaigns_bank_account_id_idx": {
+          "name": "campaigns_bank_account_id_idx",
+          "columns": [
+            {
+              "expression": "bank_account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1650,17 +1665,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "camt_credit_entries_org_statement_acctsvcr_uniq": {
-          "name": "camt_credit_entries_org_statement_acctsvcr_uniq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "org_id",
-            "statement_id",
-            "acct_svcr_ref"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2519,6 +2524,36 @@
           "columns": [
             {
               "expression": "qr_code_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "donations_swiss_qr_reference_id_idx": {
+          "name": "donations_swiss_qr_reference_id_idx",
+          "columns": [
+            {
+              "expression": "swiss_qr_reference_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "donations_camt_credit_entry_id_idx": {
+          "name": "donations_camt_credit_entry_id_idx",
+          "columns": [
+            {
+              "expression": "camt_credit_entry_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4319,6 +4354,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "swiss_qr_references_bank_account_idx": {
+          "name": "swiss_qr_references_bank_account_idx",
+          "columns": [
+            {
+              "expression": "bank_account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -4397,14 +4447,6 @@
             "org_id",
             "bank_account_id",
             "reference"
-          ]
-        },
-        "swiss_qr_references_export_constituent_uniq": {
-          "name": "swiss_qr_references_export_constituent_uniq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "export_id",
-            "constituent_id"
           ]
         }
       },

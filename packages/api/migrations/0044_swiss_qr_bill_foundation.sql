@@ -129,25 +129,29 @@ END $$;
 CREATE TABLE IF NOT EXISTS bank_accounts (
   id                      UUID                       PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id                  UUID                       NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  -- IG QR-bill v2.4 caps: holder_name ≤70, addr1 ≤70, addr2 ≤16,
-  -- postal ≤16, city ≤35, country exactly 2. Enforcing them at the
-  -- column level guarantees the renderer never has to truncate; the
-  -- API also caps inputs but the DB is the last line of defence.
+  -- IG QR-bill v2.4 / v2.5 structured-address (S) caps:
+  -- holder_name ≤70, street ≤70, building_number ≤16, postal_code ≤16,
+  -- town ≤35, country exactly 2. Enforcing them at the column level
+  -- guarantees the renderer never has to truncate; the API also caps
+  -- inputs but the DB is the last line of defence. Combined address
+  -- (K) is not modelled — v2.5 makes S mandatory from 2026-09-30; we
+  -- ship S-only by construction so no migration is needed at cutover.
   holder_name             VARCHAR(70)                NOT NULL,
-  holder_address_line1    VARCHAR(70)                NOT NULL,
-  holder_address_line2    VARCHAR(16),
+  holder_street           VARCHAR(70)                NOT NULL,
+  holder_building_number  VARCHAR(16),
   holder_postal_code      VARCHAR(16)                NOT NULL,
-  holder_city             VARCHAR(35)                NOT NULL,
-  -- ISO 3166-1 alpha-2. Restricted to CH/LI by a CHECK constraint
-  -- below — IG QR-bill applies only to those two jurisdictions.
-  holder_country_code     CHAR(2)                    NOT NULL DEFAULT 'CH',
+  holder_town             VARCHAR(35)                NOT NULL,
+  -- ISO 3166-1 alpha-2. VARCHAR(2) — not CHAR(2): CHAR blank-pads to
+  -- length 2 which trips equality comparisons in COALESCE/joins.
+  -- Restricted to CH/LI by a CHECK constraint below.
+  holder_country_code     VARCHAR(2)                 NOT NULL DEFAULT 'CH',
   -- Stored canonical: no whitespace, uppercase. CH/LI are 21 chars;
   -- VARCHAR(34) covers the global IBAN max for completeness.
   iban                    VARCHAR(34)                NOT NULL,
   iban_kind               bank_account_iban_kind     NOT NULL,
-  -- 8 or 11 chars when present. Nullable because the operator may not
-  -- know the BIC at registration time and the QR-bill payload itself
-  -- doesn't require it.
+  -- 8 or 11 chars when present (ISO 9362). Nullable because the
+  -- operator may not know the BIC at registration time and the
+  -- QR-bill payload itself doesn't require it.
   bic                     VARCHAR(11),
   bank_name               VARCHAR(100)               NOT NULL,
   currency                bank_account_currency      NOT NULL DEFAULT 'CHF',
@@ -167,6 +171,24 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
 DO $$ BEGIN
   ALTER TABLE bank_accounts ADD CONSTRAINT bank_accounts_country_chk
     CHECK (holder_country_code IN ('CH', 'LI'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- BIC (SWIFT code) — ISO 9362 mandates exactly 8 or 11 characters.
+-- NULL allowed (operator may not know it at registration time).
+DO $$ BEGIN
+  ALTER TABLE bank_accounts ADD CONSTRAINT bank_accounts_bic_length_chk
+    CHECK (bic IS NULL OR length(bic) IN (8, 11));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- IBAN must be stored canonical: uppercase alphanumerics only (no
+-- whitespace). The API validator does this normalisation at the
+-- boundary; this CHECK is the last-line-of-defence against a worker
+-- path that bypassed it.
+DO $$ BEGIN
+  ALTER TABLE bank_accounts ADD CONSTRAINT bank_accounts_iban_canonical_chk
+    CHECK (iban ~ '^[A-Z0-9]+$');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -235,6 +257,31 @@ CREATE INDEX IF NOT EXISTS swiss_qr_references_campaign_idx
   ON swiss_qr_references (campaign_id);
 CREATE INDEX IF NOT EXISTS swiss_qr_references_export_idx
   ON swiss_qr_references (export_id);
+-- FK index — supports ON DELETE RESTRICT lookups when soft-deleting
+-- a bank account, and the reconciler's `JOIN bank_accounts` path.
+-- Without it, every soft-delete-or-reconcile triggers a sequential
+-- scan on this table as it grows.
+CREATE INDEX IF NOT EXISTS swiss_qr_references_bank_account_idx
+  ON swiss_qr_references (bank_account_id);
+
+-- Amount cap — IG QR-bill v2.4 §4.3.6: amount range 0.00 – 999,999,999.99
+-- (i.e. ≤ 99,999,999,999 cents). 0 = donor fills the amount in their
+-- e-banking app (the standard Swiss UX for fundraising appeals).
+DO $$ BEGIN
+  ALTER TABLE swiss_qr_references ADD CONSTRAINT swiss_qr_references_amount_chk
+    CHECK (amount_cents BETWEEN 0 AND 99999999999);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Currency restricted to IG QR-bill v2.4 §4.3.6: only CHF and EUR are
+-- valid on a Swiss QR-bill. The `bank_accounts.currency` column uses a
+-- typed enum (`bank_account_currency`); on this table we keep VARCHAR(3)
+-- for ergonomic JOINs with other rails and constrain via CHECK.
+DO $$ BEGIN
+  ALTER TABLE swiss_qr_references ADD CONSTRAINT swiss_qr_references_currency_chk
+    CHECK (currency IN ('CHF', 'EUR'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- The reference IS the universal donor handle (it's what the bank
 -- prints on the slip and echoes back in camt.053). It must be unique
@@ -246,11 +293,15 @@ ALTER TABLE swiss_qr_references
   UNIQUE (org_id, bank_account_id, reference);
 
 -- Partial unique with COALESCE for retry-idempotency: one reference
--- per (export, recipient). The COALESCE collapses NULL constituent_id
--- to a sentinel UUID so door-drop V2 (NULL recipient) cannot
--- accumulate duplicates on retry — Postgres treats NULL as distinct
--- in regular unique indexes. Same trick used for
--- `campaign_qr_codes_export_recipient_uniq` in migration 0040.
+-- per `(export_id, COALESCE(constituent_id, sentinel))`. The COALESCE
+-- collapses NULL constituent_id to a sentinel UUID so door-drop V2
+-- (NULL recipient) cannot accumulate duplicates on retry — Postgres
+-- treats NULL as distinct in regular unique indexes, so without the
+-- COALESCE we'd lose idempotency on the door-drop path. Same trick
+-- used for `campaign_qr_codes_export_recipient_uniq` in migration
+-- 0040. Drizzle Kit cannot model expression-based uniques, so this
+-- index lives in the migration only — see ADR-027 §"Decision" for
+-- the explicit constraint declaration.
 ALTER TABLE swiss_qr_references
   DROP CONSTRAINT IF EXISTS swiss_qr_references_export_constituent_uniq;
 DROP INDEX IF EXISTS swiss_qr_references_export_constituent_uniq;
@@ -308,6 +359,16 @@ CREATE INDEX IF NOT EXISTS camt_statements_bank_account_idx
 CREATE INDEX IF NOT EXISTS camt_statements_status_idx
   ON camt_statements (status);
 
+-- ISO 20022 caps `GrpHdr.MsgId` at 35 chars. The column allows 255 for
+-- forward-compat with vendor extensions but the CHECK locks in the spec
+-- bound — defends against a malicious or malformed upload trying to
+-- consume the unique-index keyspace with attacker-controlled long strings.
+DO $$ BEGIN
+  ALTER TABLE camt_statements ADD CONSTRAINT camt_statements_msg_id_length_chk
+    CHECK (length(msg_id) <= 35);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 ALTER TABLE camt_statements
   DROP CONSTRAINT IF EXISTS camt_statements_org_msg_id_uniq;
 ALTER TABLE camt_statements
@@ -363,11 +424,47 @@ CREATE INDEX IF NOT EXISTS camt_credit_entries_statement_idx
 CREATE INDEX IF NOT EXISTS camt_credit_entries_donation_idx
   ON camt_credit_entries (donation_id);
 
+-- ISO 20022 caps `Ntry.AcctSvcrRef` and `EndToEndId` at 35 chars each.
+-- Columns are VARCHAR(255) for vendor-extension headroom; CHECKs lock
+-- the spec bound so a malformed upload can't bloat the unique-index
+-- keyspace below.
+DO $$ BEGIN
+  ALTER TABLE camt_credit_entries ADD CONSTRAINT camt_credit_entries_acct_svcr_ref_length_chk
+    CHECK (length(acct_svcr_ref) <= 35);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE camt_credit_entries ADD CONSTRAINT camt_credit_entries_end_to_end_id_length_chk
+    CHECK (end_to_end_id IS NULL OR length(end_to_end_id) <= 35);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Debtor IBAN must be stored canonical (uppercase alnum, no whitespace).
+-- The reconciler normalises at the parser boundary; this CHECK is the
+-- last-line-of-defence against drift on a worker direct-INSERT path.
+DO $$ BEGIN
+  ALTER TABLE camt_credit_entries ADD CONSTRAINT camt_credit_entries_debtor_iban_canonical_chk
+    CHECK (debtor_iban IS NULL OR debtor_iban ~ '^[A-Z0-9]+$');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Entry-level idempotency tuple. We include `end_to_end_id` (with
+-- COALESCE for NULLs) because some banks reuse `AcctSvcrRef` across
+-- related Ntry rows that share a statement; the `EndToEndId` then
+-- disambiguates them. ADR-028 §Idempotency: this matches the SIX
+-- recommendation for QR-bill reconciliation. Expression-based unique
+-- = expressed as an index, not a constraint.
 ALTER TABLE camt_credit_entries
   DROP CONSTRAINT IF EXISTS camt_credit_entries_org_statement_acctsvcr_uniq;
-ALTER TABLE camt_credit_entries
-  ADD CONSTRAINT camt_credit_entries_org_statement_acctsvcr_uniq
-  UNIQUE (org_id, statement_id, acct_svcr_ref);
+DROP INDEX IF EXISTS camt_credit_entries_org_statement_acctsvcr_uniq;
+CREATE UNIQUE INDEX IF NOT EXISTS camt_credit_entries_org_statement_entry_uniq
+  ON camt_credit_entries (
+    org_id,
+    statement_id,
+    acct_svcr_ref,
+    COALESCE(end_to_end_id, '')
+  );
 
 ALTER TABLE camt_credit_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE camt_credit_entries FORCE ROW LEVEL SECURITY;
