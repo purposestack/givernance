@@ -11,13 +11,26 @@ export interface GenerateReceiptJob {
   };
 }
 
-/** Send bulk email to a segment of constituents */
+/**
+ * Send bulk email to a tracked job's recipient snapshot (issue #326).
+ *
+ * `bulkEmailJobId` is the FK into `bulk_email_jobs`. The worker reads
+ * subject, body, and constituent_ids from that row at job start —
+ * minimises what flows through Redis (no PII, no large payload) and
+ * lets a resume job consume the freshest `delivered_constituent_ids`
+ * snapshot when it computes "remaining".
+ *
+ * `templateId` and `segmentFilter` are retained as optional fields for
+ * the future template-engine / saved-segment paths (out of scope for
+ * #326; the current MVP path passes only `bulkEmailJobId`).
+ */
 export interface SendBulkEmailJob {
   name: "send-bulk-email";
   data: {
     orgId: string;
-    templateId: string;
-    segmentFilter: Record<string, unknown>;
+    bulkEmailJobId: string;
+    templateId?: string;
+    segmentFilter?: Record<string, unknown>;
     scheduledAt?: string;
   };
 }

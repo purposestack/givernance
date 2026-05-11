@@ -3,6 +3,7 @@
  * All tables include org_id for row-level security and audit columns.
  */
 
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigint,
@@ -1197,6 +1198,123 @@ export const campaignPostalExports = pgTable(
     index("campaign_postal_exports_org_idx").on(table.orgId),
     index("campaign_postal_exports_campaign_idx").on(table.campaignId),
     index("campaign_postal_exports_created_at_idx").on(table.createdAt),
+  ],
+);
+
+// ─── Bulk Email Jobs (issue #326) ──────────────────────────────────────────
+
+/**
+ * Bulk-email job lifecycle. `pending` → `processing` → terminal.
+ *
+ * Terminal states split delivery outcome:
+ *   - `completed` — every requested recipient was delivered.
+ *   - `partial`   — some delivered, some did not (SMTP refused OR worker
+ *                   never reached them because the BullMQ job was dropped
+ *                   by a Redis wipe / OOM / accessory reboot). Surfaces a
+ *                   "Resume / re-send to remaining recipients" action.
+ *   - `failed`    — terminal failure before per-recipient sends could
+ *                   start (DB error, malformed row). Resume still works
+ *                   because `delivered_count = 0` ⇒ remaining = total.
+ */
+export const BULK_EMAIL_JOB_STATUS_VALUES = [
+  "pending",
+  "processing",
+  "completed",
+  "partial",
+  "failed",
+] as const;
+export type BulkEmailJobStatus = (typeof BULK_EMAIL_JOB_STATUS_VALUES)[number];
+
+export const bulkEmailJobStatusEnum = pgEnum("bulk_email_job_status", [
+  ...BULK_EMAIL_JOB_STATUS_VALUES,
+]);
+
+/**
+ * Bulk email job — per-dispatch record carrying the recipient snapshot
+ * and the per-recipient delivery outcome. Replaces "fire-and-forget +
+ * trust the outbox" with a queryable progress + resume surface so a
+ * Redis wipe / OOM / accessory reboot mid-fan-out doesn't silently lose
+ * recipients (issue #326).
+ *
+ * Storage trade-off vs. GDPR Art. 5(1)(e):
+ *   - `constituent_ids` (uuid[]) is the *snapshot* of deliverable ids at
+ *     request time. Stored in the DB so the resume path can compute the
+ *     remaining set without depending on the outbox row (which is
+ *     short-lived: the relay marks it `completed` the moment it enqueues).
+ *   - PII (email, name) is NOT persisted here — the worker re-resolves
+ *     it from `constituents` under RLS at send time, same as before. A
+ *     uuid is a tenant-scoped foreign key, not personal data.
+ *   - On GDPR erasure of a constituent, the worker silently drops them
+ *     at send time (already covered by `processSendBulkEmail`'s
+ *     soft-delete filter); the uuid lingering in the array is a tenant-
+ *     local reference, not directly identifying.
+ */
+export const bulkEmailJobs = pgTable(
+  "bulk_email_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    status: bulkEmailJobStatusEnum("status").notNull().default("pending"),
+    /** Admin-supplied subject. Capped at 200 by the route validator and the DB column width. */
+    subject: varchar("subject", { length: 200 }).notNull(),
+    /**
+     * Admin-supplied plain-text body. Capped at 50 000 by the route
+     * validator; `text` here avoids a tighter DB cap that would surprise
+     * the resume path (a resume carries the original body forward).
+     */
+    body: text("body").notNull(),
+    /**
+     * Requested deliverable recipients — the constituent ids the API
+     * filtered down to "has email on file" at request time. Locked at
+     * insert; the worker iterates this list and writes outcomes into
+     * `delivered_constituent_ids` / `failed_constituent_ids`. Resume
+     * computes `constituent_ids \ delivered_constituent_ids`.
+     */
+    constituentIds: uuid("constituent_ids").array().notNull(),
+    /** Append-only set of recipients the worker successfully sent to. */
+    deliveredConstituentIds: uuid("delivered_constituent_ids")
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    /** Append-only set of recipients the worker tried and SMTP refused. */
+    failedConstituentIds: uuid("failed_constituent_ids")
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    /** = `constituent_ids` length. Denormalised so the polling UI reads O(1). */
+    totalRecipients: integer("total_recipients").notNull(),
+    /** = `delivered_constituent_ids` length. Worker keeps it in step on every send. */
+    deliveredCount: integer("delivered_count").notNull().default(0),
+    /** = `failed_constituent_ids` length. Worker keeps it in step on every send. */
+    failedCount: integer("failed_count").notNull().default(0),
+    /**
+     * JWT subject → internal users.id translation. Same convention as
+     * `campaign_postal_exports.requested_by`: SET NULL on user purge so
+     * GDPR erasure of a staff account doesn't FK-block the audit row.
+     */
+    requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+    /**
+     * Audit chain for resume jobs. Each resume creates a fresh row whose
+     * `parent_job_id` points at the row that left recipients on the
+     * table. NULL on the originating dispatch.
+     */
+    parentJobId: uuid("parent_job_id").references((): AnyPgColumn => bulkEmailJobs.id, {
+      onDelete: "set null",
+    }),
+    /** Terminal failure message. NULL until status flips to `failed`. */
+    error: text("error"),
+    /** Soft-delete (ADR-021 universal). Listing filters `deleted_at IS NULL`. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("bulk_email_jobs_org_idx").on(table.orgId),
+    index("bulk_email_jobs_created_at_idx").on(table.createdAt),
+    index("bulk_email_jobs_parent_idx").on(table.parentJobId),
   ],
 );
 

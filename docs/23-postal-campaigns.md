@@ -509,10 +509,73 @@ Postal campaigns are paired with a **digital follow-up** mechanism so the operat
 |---|---|
 | Constituents list filter bar | New filters: `lastDonationFrom/To`, `totalAmountMinCents/Max`, `campaignId` (matches both `campaign_constituents` linkage AND donation history — union semantics) |
 | Multi-select toolbar | Bulk-email dialog accepts a free-form subject + body, hits `POST /v1/constituents/bulk-email` |
-| Worker job | Sequential send via `defaultEmailSender` (Mailpit local / Resend prod), per-recipient errors logged but never abort the batch |
+| Worker job | Sequential send via `defaultEmailSender` (Mailpit local / Resend prod), per-recipient errors logged into `bulk_email_jobs.failed_constituent_ids` but never abort the batch |
 | Reachability counter | `requested` (total ids) vs. `reachable` (constituents with a non-empty email) — surfaces the "selected 12, only 9 will get the email" warning before sending |
+| "Recent emails" panel | Lists the 20 most-recent `bulk_email_jobs` rows newest first, polls every 3s while any job is non-terminal, shows live `delivered / total` ratio + per-job Resume button |
 
 Distinct from the legacy segment-based `SendBulkEmailJob` (which targets a saved filter), this job carries the **literal id list** captured at request time so the audit trail stays unambiguous.
+
+### 6.bis Partial-send indicator + resume (issue #326)
+
+The original "fan-out happens in the worker, trust the outbox" design had a transparency gap: when the BullMQ job vanished mid-fan-out (Redis wipe, OOM kill, accessory reboot — see [ADR-026 §Redis 8 cutover](15-infra-adr.md#adr-026-postgres-17-cutover--scaleway-anchored-versioning)), the relay had already marked the outbox row `completed`, the bulk-email dispatch toast said "queued", and the operator had **no surface** showing that zero recipients were actually reached. Two problems:
+
+1. **GDPR transparency** (Art. 5(1)(b)) — the tenant operator has a right to know how many recipients actually received the email, not just how many were requested.
+2. **Operational** — there was no re-issuance path. The operator had to manually re-export the selection and re-trigger.
+
+The `bulk_email_jobs` table makes the dispatch a queryable, resumable artefact:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Op as Operator (org_admin)
+    participant Web as Next.js (web)
+    participant API as Fastify (api)
+    participant DB as Postgres
+    participant Worker as BullMQ worker
+    participant SMTP
+
+    Op->>Web: Select N constituents → Bulk email
+    Web->>API: POST /v1/constituents/bulk-email { ids, subject, body }
+    API->>DB: INSERT bulk_email_jobs (constituent_ids snapshot, total=N, status=pending)
+    API->>DB: INSERT outbox_events ('communication.bulk_email_requested', { bulkEmailJobId })
+    API-->>Web: 202 + { jobId, queued, skippedNoEmail }
+    Web->>Web: Open "Recent emails" panel pinned to jobId, poll every 3s
+
+    Note over Worker,DB: Async fan-out
+    DB->>Worker: outbox relay enqueues BullMQ job
+    Worker->>DB: UPDATE status=processing
+    loop Per recipient (skipping already-delivered / already-failed on retry)
+      Worker->>SMTP: send(to, subject, html, text)
+      alt success
+        Worker->>DB: array_append(delivered_constituent_ids), delivered_count+=1
+      else SMTP refused
+        Worker->>DB: array_append(failed_constituent_ids), failed_count+=1
+      end
+    end
+    Worker->>DB: UPDATE status=completed/partial, completed_at=NOW()
+    Web->>API: GET /v1/constituents/bulk-email-jobs/:id (poll)
+    API-->>Web: { status, deliveredCount, failedCount, totalRecipients, stalled }
+
+    Note over Op,Web: Recovery path
+    alt Worker died mid-fan-out (Redis wipe / OOM / accessory reboot)
+      Web->>Web: Row sits at `processing` with delivered=K (K<N)
+      Web->>Web: After updated_at goes > 10min stale, API derives stalled=true
+      Op->>Web: Click "Resume to remaining"
+      Web->>API: POST /v1/constituents/bulk-email-jobs/:id/resume
+      API->>DB: Compute remaining = constituent_ids \ delivered_constituent_ids
+      API->>DB: INSERT bulk_email_jobs { parent_job_id=source, constituent_ids=remaining }
+      API->>DB: INSERT outbox_events ('communication.bulk_email_requested', { bulkEmailJobId=new })
+      API-->>Web: 202 + new row
+    end
+```
+
+**Counters are denormalised next to the id arrays.** The migration carries a `CHECK` constraint that rejects any drift between `delivered_count` and `array_length(delivered_constituent_ids, 1)` (same for `failed_count` and `total_recipients`), so a buggy worker-side UPDATE that touches only one column fails loudly instead of silently misreporting "8 of 10".
+
+**Resume eligibility.** The API gates the resume action: `partial` and `failed` are always accepted; `processing` is accepted only when stalled (`updated_at` > 10 minutes ago). A still-actively-progressing job returns `400 job_still_running` so the operator can't accidentally race the original worker into double-sending. The new row's `constituent_ids` is computed as `source.constituent_ids \ source.delivered_constituent_ids` — previously SMTP-failed recipients **are** retried (operator intent: "make sure everyone who hasn't received it gets it").
+
+**PII posture.** `bulk_email_jobs` stores constituent IDs only (uuids — tenant-local foreign keys, not directly identifying). PII (email, name) is re-resolved from `constituents` at send time under the worker's RLS context, same Art. 5(1)(e) posture as before. On GDPR erasure of a constituent the worker silently drops them at send time; the stale uuid in the snapshot array is a tenant-scoped reference, not personal data.
+
+**Out of scope for this issue.** Exactly-once delivery (the general outbox → BullMQ contract) and persistent SMTP retry queues stay deferred — see issue #326 "Out of scope". The postal-export side keeps its existing "re-run from scratch" recovery path (the ZIP must be a complete bundle for printing, so a partial resume doesn't apply).
 
 ## 7. Permissions matrix
 
@@ -528,7 +591,10 @@ Distinct from the legacy segment-based `SendBulkEmailJob` (which targets a saved
 | `GET /v1/campaigns/:id/qr-stats` | `requireOrgAdmin` | Aggregate KPIs surfaced on the admin dashboard — kept on the same gate as the rest of the postal feature for a coherent permission model |
 | `GET /v1/public/qr/:code` | **Unauthenticated** | Rate-limited 60/min. The opaque token is the security boundary |
 | `POST /v1/public/campaigns/:id/donate` | **Unauthenticated** | Token in body forwarded to Stripe metadata |
-| `POST /v1/constituents/bulk-email` | `requireWrite` | Write-tier — blocked for `viewer` |
+| `POST /v1/constituents/bulk-email` | `requireOrgAdmin` | Org-admin only — same gate as the rest of the postal feature. Creates a `bulk_email_jobs` tracking row + outbox event |
+| `GET /v1/constituents/bulk-email-jobs` | `requireOrgAdmin` | Lists recent 20 jobs (newest first) — drives the "Recent emails" panel |
+| `GET /v1/constituents/bulk-email-jobs/:id` | `requireOrgAdmin` | Polling endpoint, rate-limited 60/min |
+| `POST /v1/constituents/bulk-email-jobs/:id/resume` | `requireOrgAdmin` | Creates a fresh job targeting recipients the source never reached; gated on source status (`partial` / `failed` / stalled `processing`) |
 
 ## 8. Privacy & GDPR
 
@@ -562,4 +628,5 @@ These were considered and **deliberately deferred** — they would have either t
 - Migration `0039_constituent_postal_address.sql` — Window-envelope address fields
 - Migration `0040_postal_export_idempotency.sql` — Retry-idempotent QR codes (`export_id` backlink + partial unique index) and `tenants.mission` 1000-char DB cap
 - Migration `0041_campaign_description_length_cap.sql` — `campaigns.description` 2000-char DB cap (defense-in-depth against ETL/raw-SQL bypassing the form-level validator)
+- Migration `0045_bulk_email_jobs.sql` — `bulk_email_jobs` table for partial-send tracking + resume path (issue #326)
 - Mockups: `docs/design/index.html` → "Postal mailing" section

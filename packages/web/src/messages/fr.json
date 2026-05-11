@@ -1648,6 +1648,32 @@
       "errors": {
         "empty": "Renseignez un objet et un message avant l'envoi.",
         "send": "Impossible d'envoyer. Veuillez réessayer."
+      },
+      "jobs": {
+        "title": "Emails récents",
+        "openLabel": "Emails récents",
+        "empty": "Aucun email groupé envoyé pour l'instant.",
+        "ratio": "{delivered} sur {total} livrés",
+        "subjectFallback": "(sans objet)",
+        "status": {
+          "pending": "En file",
+          "processing": "Envoi en cours…",
+          "completed": "Livrés",
+          "partial": "Partiel",
+          "failed": "Échec",
+          "stalled": "Bloqué"
+        },
+        "failedSuffix": "{count, plural, one {# échec} other {# échecs}}",
+        "resume": "Renvoyer aux destinataires restants",
+        "resuming": "Reprise en cours…",
+        "close": "Fermer",
+        "refresh": "Actualiser",
+        "resumeSuccess": "Reprise en file. Suivi du nouvel envoi…",
+        "resumeErrors": {
+          "still_running": "Le job d'origine est toujours en cours. Attendez qu'il termine ou se bloque.",
+          "nothing_to_resume": "Tous les destinataires ont déjà reçu cet email.",
+          "generic": "Impossible de reprendre cet envoi. Veuillez réessayer."
+        }
       }
     },
     "deleteDialog": {

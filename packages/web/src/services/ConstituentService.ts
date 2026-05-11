@@ -8,6 +8,28 @@ import type {
 } from "@/models/constituent";
 
 /**
+ * Snapshot of a bulk-email job — mirrors the API's `BulkEmailJobRowSchema`.
+ * Issue #326: drives the "Recent emails" panel and the per-job polling
+ * progress indicator on the constituents page.
+ */
+export interface BulkEmailJobView {
+  id: string;
+  status: "pending" | "processing" | "completed" | "partial" | "failed";
+  subject: string;
+  /** True when API has detected the job stalled (worker died mid-fan-out). */
+  stalled: boolean;
+  totalRecipients: number;
+  deliveredCount: number;
+  failedCount: number;
+  requestedBy: string | null;
+  parentJobId: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+/**
  * ConstituentService — ADR-011 Layer 2 (services).
  *
  * Thin adapter over the typed ApiClient that maps HTTP responses to the
@@ -69,8 +91,12 @@ export const ConstituentService = {
 
   /**
    * Bulk-send a transactional email to a selection of constituents (Epic
-   * #274). Returns the queued + skipped counts; the API's 202 response
-   * means the dispatch is now in the outbox, not that mail has been sent.
+   * #274; partial-send tracking per issue #326).
+   *
+   * The API's 202 response means the dispatch is now in the outbox + a
+   * `bulk_email_jobs` row has been created — NOT that mail has been
+   * sent. `jobId` is the tracking id the UI uses to poll for live
+   * delivered/total progress.
    */
   async sendBulkEmail(
     client: ApiClient,
@@ -79,10 +105,41 @@ export const ConstituentService = {
       subject: string;
       body: string;
     },
-  ): Promise<{ queued: number; skippedNoEmail: number }> {
+  ): Promise<{ jobId: string; queued: number; skippedNoEmail: number }> {
     const response = await client.post<{
-      data: { queued: number; skippedNoEmail: number };
+      data: { jobId: string; queued: number; skippedNoEmail: number };
     }>("/v1/constituents/bulk-email", input);
+    return response.data;
+  },
+
+  /** List recent bulk-email jobs (newest 20) — issue #326. */
+  async listBulkEmailJobs(client: ApiClient): Promise<BulkEmailJobView[]> {
+    const response = await client.get<{ data: BulkEmailJobView[] }>(
+      "/v1/constituents/bulk-email-jobs",
+    );
+    return response.data;
+  },
+
+  /** Poll a single bulk-email job for live progress — issue #326. */
+  async getBulkEmailJob(client: ApiClient, id: string): Promise<BulkEmailJobView> {
+    const response = await client.get<{ data: BulkEmailJobView }>(
+      `/v1/constituents/bulk-email-jobs/${encodeURIComponent(id)}`,
+    );
+    return response.data;
+  },
+
+  /**
+   * Resume a bulk-email job — re-targets the recipients the source job
+   * never reached. The API decides eligibility (`partial` / `failed` /
+   * stalled `processing`) and returns the new job; 400 / 404 surface
+   * structured codes the caller can branch on (`job_still_running`,
+   * `nothing_to_resume`, `job_not_found`). Issue #326.
+   */
+  async resumeBulkEmailJob(client: ApiClient, id: string): Promise<BulkEmailJobView> {
+    const response = await client.post<{ data: BulkEmailJobView }>(
+      `/v1/constituents/bulk-email-jobs/${encodeURIComponent(id)}/resume`,
+      {},
+    );
     return response.data;
   },
 

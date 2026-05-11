@@ -1648,6 +1648,32 @@
       "errors": {
         "empty": "Please fill in both subject and message before sending.",
         "send": "Could not queue the bulk email. Please try again."
+      },
+      "jobs": {
+        "title": "Recent emails",
+        "openLabel": "Recent emails",
+        "empty": "No bulk emails sent yet.",
+        "ratio": "{delivered} of {total} delivered",
+        "subjectFallback": "(no subject)",
+        "status": {
+          "pending": "Queued",
+          "processing": "Sending…",
+          "completed": "Delivered",
+          "partial": "Partial",
+          "failed": "Failed",
+          "stalled": "Stalled"
+        },
+        "failedSuffix": "{count, plural, one {# failed} other {# failed}}",
+        "resume": "Resume to remaining",
+        "resuming": "Resuming…",
+        "close": "Close",
+        "refresh": "Refresh",
+        "resumeSuccess": "Resume queued. Tracking new job…",
+        "resumeErrors": {
+          "still_running": "The original job is still delivering. Wait until it finishes or stalls.",
+          "nothing_to_resume": "Everyone has already received this email.",
+          "generic": "Could not resume this email. Please try again."
+        }
       }
     },
     "deleteDialog": {

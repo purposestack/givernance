@@ -217,21 +217,19 @@ async function processDomainEvent(job: Job): Promise<void> {
   }
 
   if (type === "communication.bulk_email_requested") {
+    // Issue #326 — the outbox payload only carries the bulk_email_jobs
+    // row id. The processor reads subject/body/constituent_ids from that
+    // row at job start so:
+    //   - PII (email, name) never lives in Redis — same GDPR Art. 5(1)(e)
+    //     posture as before, just via a smaller payload.
+    //   - A resume job picks up the freshest `delivered_constituent_ids`
+    //     snapshot when computing "remaining", not a stale outbox copy.
+    const bulkEmailJobId = payload.bulkEmailJobId as string;
     await emailsQueue.add(
       "send-bulk-email",
       {
         orgId: tenantId,
-        templateId: "ad-hoc-bulk-email",
-        segmentFilter: {
-          subject: payload.subject,
-          body: payload.body,
-          // Forward only the constituent id list — PII (email, name) is
-          // re-resolved by the processor at send time so it never lives
-          // in Redis. See `bulk-email-service.ts` for the GDPR Art. 5(1)(e)
-          // rationale.
-          constituentIds: payload.constituentIds,
-          requestedBy: payload.requestedBy,
-        },
+        bulkEmailJobId,
         traceparent,
       },
       // Per-payload job id so a transactional retry of the outbox row
@@ -239,7 +237,7 @@ async function processDomainEvent(job: Job): Promise<void> {
       { jobId: `bulk-email-${id}` },
     );
 
-    log.info({ outboxId: id }, "Enqueued bulk email dispatch");
+    log.info({ outboxId: id, bulkEmailJobId }, "Enqueued bulk email dispatch");
     return;
   }
 
@@ -315,7 +313,10 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
-  const emailsWorker = new Worker(QUEUE_NAMES.EMAILS, processSendBulkEmail, {
+  // Wrap the processor in an arrow so BullMQ's second-arg `token: string`
+  // doesn't collide with the processor's optional `deps` parameter used
+  // by the worker test suite (issue #326).
+  const emailsWorker = new Worker(QUEUE_NAMES.EMAILS, (job) => processSendBulkEmail(job), {
     connection: createRedisConnection(),
     concurrency: 2,
     ...defaultJobOpts,

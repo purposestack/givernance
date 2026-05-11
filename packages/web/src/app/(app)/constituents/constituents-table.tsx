@@ -2,9 +2,11 @@
 
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import {
+  History,
   Mail,
   MoreHorizontal,
   Pencil,
+  RefreshCw,
   Search,
   SlidersHorizontal,
   Trash2,
@@ -62,7 +64,7 @@ import {
   fullName,
   initials,
 } from "@/models/constituent";
-import { ConstituentService } from "@/services/ConstituentService";
+import { type BulkEmailJobView, ConstituentService } from "@/services/ConstituentService";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
 
@@ -130,6 +132,12 @@ export function ConstituentsTable({
   // sort/page, a selection is per-tab and not deep-linkable.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
+  const [bulkEmailJobsOpen, setBulkEmailJobsOpen] = useState(false);
+  // After a successful dispatch we keep tracking the new job so the
+  // operator can watch the ratio move from 0/N to N/N — addresses the
+  // issue #326 transparency concern: the original "toast and forget"
+  // UX could not tell a "0 of N delivered, worker died" story.
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
   const initialLastDonationFrom = searchParams.get("lastDonationFrom") ?? "";
@@ -439,16 +447,28 @@ export function ConstituentsTable({
           {hasActiveAdvancedFilters ? <Badge variant="info">•</Badge> : null}
         </Button>
         {canManageAdminActions ? (
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={() => setBulkEmailOpen(true)}
-            disabled={selectedIds.size === 0}
-          >
-            <Mail size={16} aria-hidden="true" />
-            {t("bulkEmail.action", { count: selectedIds.size })}
-          </Button>
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setBulkEmailJobsOpen(true)}
+              aria-label={t("bulkEmail.jobs.openLabel")}
+            >
+              <History size={16} aria-hidden="true" />
+              {t("bulkEmail.jobs.title")}
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => setBulkEmailOpen(true)}
+              disabled={selectedIds.size === 0}
+            >
+              <Mail size={16} aria-hidden="true" />
+              {t("bulkEmail.action", { count: selectedIds.size })}
+            </Button>
+          </>
         ) : null}
       </div>
 
@@ -470,7 +490,24 @@ export function ConstituentsTable({
         open={bulkEmailOpen}
         onOpenChange={setBulkEmailOpen}
         selectedIds={Array.from(selectedIds)}
-        onSent={() => setSelectedIds(new Set())}
+        onSent={(jobId) => {
+          setSelectedIds(new Set());
+          // Auto-open the jobs panel pinned to the new job so the
+          // operator's eye lands on the live progress ratio, not a
+          // disappearing toast.
+          setTrackedJobId(jobId);
+          setBulkEmailJobsOpen(true);
+        }}
+      />
+
+      <BulkEmailJobsDialog
+        open={bulkEmailJobsOpen}
+        onOpenChange={(open) => {
+          setBulkEmailJobsOpen(open);
+          if (!open) setTrackedJobId(null);
+        }}
+        highlightJobId={trackedJobId}
+        onResumed={(newJobId) => setTrackedJobId(newJobId)}
       />
 
       <AdvancedFiltersDialog
@@ -546,7 +583,11 @@ interface BulkEmailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedIds: string[];
-  onSent: () => void;
+  /**
+   * Receives the freshly-created `bulk_email_jobs.id` so the caller can
+   * pin the jobs panel to it and watch live progress (issue #326).
+   */
+  onSent: (jobId: string) => void;
 }
 
 function BulkEmailDialog({ open, onOpenChange, selectedIds, onSent }: BulkEmailDialogProps) {
@@ -576,7 +617,7 @@ function BulkEmailDialog({ open, onOpenChange, selectedIds, onSent }: BulkEmailD
       setSubject("");
       setBody("");
       onOpenChange(false);
-      onSent();
+      onSent(result.jobId);
     } catch (err) {
       const message =
         err instanceof ApiProblem
@@ -632,6 +673,232 @@ function BulkEmailDialog({ open, onOpenChange, selectedIds, onSent }: BulkEmailD
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Recent bulk-email jobs panel + resume action (issue #326).
+ *
+ * Lists the 20 most-recent `bulk_email_jobs` rows newest first. While any
+ * job is non-terminal (pending / processing), the panel polls every 3s so
+ * the ratio moves in real time — same UX as the postal-export progress
+ * bar. The `Resume` button is gated on the server-side eligibility
+ * (`partial` / `failed` / stalled `processing`); the API decides, the UI
+ * doesn't second-guess.
+ *
+ * `highlightJobId` is a soft visual anchor for the row the parent wants
+ * the operator's eye to land on (most commonly the job we just dispatched
+ * or just resumed) — the row is rendered first if present.
+ */
+interface BulkEmailJobsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  highlightJobId: string | null;
+  onResumed: (newJobId: string) => void;
+}
+
+const BULK_EMAIL_POLL_MS = 3000;
+
+function BulkEmailJobsDialog({
+  open,
+  onOpenChange,
+  highlightJobId,
+  onResumed,
+}: BulkEmailJobsDialogProps) {
+  const t = useTranslations("constituents.bulkEmail.jobs");
+  const [jobs, setJobs] = useState<BulkEmailJobView[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [resumingId, setResumingId] = useState<string | null>(null);
+
+  const fetchJobs = useCallback(async () => {
+    try {
+      const rows = await ConstituentService.listBulkEmailJobs(createClientApiClient());
+      setJobs(rows);
+    } catch (err) {
+      // Console-only: a transient list error shouldn't cover the screen
+      // with a toast that re-fires every 3s. The panel falls back to the
+      // last-known list — same shape as the postal-export polling UI.
+      console.error("bulkEmail.jobs.list failed", err);
+    }
+  }, []);
+
+  // Initial fetch on open, plus poll while any job is in-flight.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    void fetchJobs().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, fetchJobs]);
+
+  const anyInFlight = useMemo(
+    () => jobs.some((job) => job.status === "pending" || job.status === "processing"),
+    [jobs],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    if (!anyInFlight) return;
+    const id = setInterval(() => {
+      void fetchJobs();
+    }, BULK_EMAIL_POLL_MS);
+    return () => clearInterval(id);
+  }, [open, anyInFlight, fetchJobs]);
+
+  const orderedJobs = useMemo(() => {
+    if (!highlightJobId) return jobs;
+    const anchor = jobs.find((job) => job.id === highlightJobId);
+    if (!anchor) return jobs;
+    return [anchor, ...jobs.filter((job) => job.id !== highlightJobId)];
+  }, [jobs, highlightJobId]);
+
+  const handleResume = useCallback(
+    async (jobId: string) => {
+      setResumingId(jobId);
+      try {
+        const next = await ConstituentService.resumeBulkEmailJob(createClientApiClient(), jobId);
+        toast.success(t("resumeSuccess"));
+        onResumed(next.id);
+        // Optimistically prepend so the operator sees the new row before
+        // the next poll tick lands.
+        setJobs((prev) => [next, ...prev.filter((row) => row.id !== next.id)]);
+      } catch (err) {
+        // Branch on the structured code the API sets in `title`. Falls
+        // back to a generic toast for transport-level errors.
+        const code = err instanceof ApiProblem ? err.title : "";
+        if (code === "job_still_running") {
+          toast.error(t("resumeErrors.still_running"));
+        } else if (code === "nothing_to_resume") {
+          toast.error(t("resumeErrors.nothing_to_resume"));
+        } else {
+          const message =
+            err instanceof ApiProblem
+              ? (err.detail ?? err.title ?? t("resumeErrors.generic"))
+              : t("resumeErrors.generic");
+          toast.error(message);
+        }
+      } finally {
+        setResumingId(null);
+      }
+    },
+    [onResumed, t],
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t("title")}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void fetchJobs()}
+              disabled={loading}
+              aria-label={t("refresh")}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              {t("refresh")}
+            </Button>
+          </div>
+          {orderedJobs.length === 0 ? (
+            <p className="text-sm text-on-surface-variant">{t("empty")}</p>
+          ) : (
+            <ul className="space-y-2">
+              {orderedJobs.map((job) => (
+                <BulkEmailJobCard
+                  key={job.id}
+                  job={job}
+                  isHighlighted={job.id === highlightJobId}
+                  onResume={() => void handleResume(job.id)}
+                  resuming={resumingId === job.id}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            {t("close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface BulkEmailJobCardProps {
+  job: BulkEmailJobView;
+  isHighlighted: boolean;
+  onResume: () => void;
+  resuming: boolean;
+}
+
+function BulkEmailJobCard({ job, isHighlighted, onResume, resuming }: BulkEmailJobCardProps) {
+  const t = useTranslations("constituents.bulkEmail.jobs");
+
+  // Derived status for the badge. Stalled is a server-set boolean on top
+  // of `processing`; we surface it as its own status label so the
+  // operator immediately understands "this looks stuck".
+  const effectiveStatus = job.stalled ? "stalled" : job.status;
+  const variant: BadgeVariant =
+    effectiveStatus === "completed"
+      ? "success"
+      : effectiveStatus === "partial" || effectiveStatus === "stalled"
+        ? "warning"
+        : effectiveStatus === "failed"
+          ? "error"
+          : "info";
+
+  // Server already gates resume eligibility (issue #326 service); we
+  // mirror the rule for an immediate UI affordance so the button isn't a
+  // mystery 400 click. Pending / actively-processing rows hide the
+  // button; partial / failed / stalled-processing rows expose it.
+  const canResume =
+    job.deliveredCount < job.totalRecipients &&
+    (job.status === "partial" ||
+      job.status === "failed" ||
+      (job.status === "processing" && job.stalled));
+
+  return (
+    <li
+      className={`rounded-md border border-outline-variant p-3 ${
+        isHighlighted ? "ring-2 ring-primary/40" : ""
+      }`}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="font-medium text-on-surface">{job.subject || t("subjectFallback")}</div>
+        <Badge variant={variant} shape="square">
+          {t(`status.${effectiveStatus}`)}
+        </Badge>
+      </div>
+      <div className="mt-1 text-sm text-on-surface-variant">
+        {t("ratio", { delivered: job.deliveredCount, total: job.totalRecipients })}
+        {job.failedCount > 0 ? (
+          <span className="ml-2">· {t("failedSuffix", { count: job.failedCount })}</span>
+        ) : null}
+      </div>
+      {canResume ? (
+        <div className="mt-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onResume}
+            disabled={resuming}
+          >
+            {resuming ? t("resuming") : t("resume")}
+          </Button>
+        </div>
+      ) : null}
+    </li>
   );
 }
 

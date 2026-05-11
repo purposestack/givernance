@@ -438,7 +438,7 @@ describe("QR tracking metrics", () => {
 });
 
 describe("Bulk email dispatch", () => {
-  it("POST /v1/constituents/bulk-email queues an outbox event and reports skipped recipients", async () => {
+  it("POST /v1/constituents/bulk-email creates a tracking row + outbox event with only the job id (issue #326)", async () => {
     const token = signToken(app);
     const res = await app.inject({
       method: "POST",
@@ -451,13 +451,57 @@ describe("Bulk email dispatch", () => {
       },
     });
     expect(res.statusCode).toBe(202);
-    expect(res.json<{ data: { queued: number; skippedNoEmail: number } }>().data).toEqual({
-      queued: 1,
-      skippedNoEmail: 1,
-    });
+    const body = res.json<{
+      data: { jobId: string; queued: number; skippedNoEmail: number };
+    }>().data;
+    expect(body.queued).toBe(1);
+    expect(body.skippedNoEmail).toBe(1);
+    expect(body.jobId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(res.headers.location).toBe(`/v1/constituents/bulk-email-jobs/${body.jobId}`);
 
+    // Tracking row holds the deliverable id snapshot + zero counters.
+    // PII (email, name) stays out of bulk_email_jobs — only uuids.
+    const trackingRows = await db.execute(sql`
+      SELECT
+        status,
+        total_recipients,
+        delivered_count,
+        failed_count,
+        constituent_ids,
+        delivered_constituent_ids,
+        failed_constituent_ids,
+        parent_job_id,
+        subject
+      FROM bulk_email_jobs
+      WHERE id = ${body.jobId}::uuid
+    `);
+    expect(trackingRows.rows.length).toBe(1);
+    const tracking = trackingRows.rows[0] as {
+      status: string;
+      total_recipients: number;
+      delivered_count: number;
+      failed_count: number;
+      constituent_ids: string[];
+      delivered_constituent_ids: string[];
+      failed_constituent_ids: string[];
+      parent_job_id: string | null;
+      subject: string;
+    };
+    expect(tracking.status).toBe("pending");
+    expect(tracking.total_recipients).toBe(1);
+    expect(tracking.delivered_count).toBe(0);
+    expect(tracking.failed_count).toBe(0);
+    expect(tracking.constituent_ids).toEqual([constituentAId]);
+    expect(tracking.delivered_constituent_ids).toEqual([]);
+    expect(tracking.failed_constituent_ids).toEqual([]);
+    expect(tracking.parent_job_id).toBeNull();
+    expect(tracking.subject).toBe("Test bulk email");
+
+    // Outbox payload now carries only the tracking row id — the worker
+    // re-reads subject/body/recipient_ids from the DB. No PII, no
+    // recipient list snapshot in the BullMQ payload.
     const outboxRows = await db.execute(sql`
-      SELECT type, payload FROM outbox_events
+      SELECT payload FROM outbox_events
       WHERE tenant_id = ${ORG_A}::uuid
         AND type = 'communication.bulk_email_requested'
       ORDER BY created_at DESC
@@ -465,15 +509,21 @@ describe("Bulk email dispatch", () => {
     `);
     expect(outboxRows.rows.length).toBe(1);
     const payload = (
-      outboxRows.rows[0] as { payload: { constituentIds?: unknown[]; recipients?: unknown } }
+      outboxRows.rows[0] as {
+        payload: {
+          bulkEmailJobId?: string;
+          constituentIds?: unknown[];
+          recipients?: unknown;
+          subject?: unknown;
+          body?: unknown;
+        };
+      }
     ).payload;
-    // The payload carries only the deliverable constituent id list — PII
-    // (email/name) is re-resolved by the worker at send time, never
-    // persisted to outbox or Redis (GDPR Art. 5(1)(e)).
-    expect(payload.constituentIds).toBeDefined();
-    expect(Array.isArray(payload.constituentIds)).toBe(true);
-    expect((payload.constituentIds as string[]).length).toBe(1);
+    expect(payload.bulkEmailJobId).toBe(body.jobId);
+    expect(payload.constituentIds).toBeUndefined();
     expect(payload.recipients).toBeUndefined();
+    expect(payload.subject).toBeUndefined();
+    expect(payload.body).toBeUndefined();
   });
 
   it("rejects empty bulk-email selection with 400", async () => {
@@ -505,6 +555,292 @@ describe("Bulk email dispatch", () => {
       },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("Bulk email job tracking + resume (issue #326)", () => {
+  it("GET /v1/constituents/bulk-email-jobs lists the newest jobs first", async () => {
+    const token = signToken(app);
+
+    // Reset polling rate limits leftover from the previous suite.
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/bulk-email-jobs",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: Array<{
+        id: string;
+        status: string;
+        subject: string;
+        totalRecipients: number;
+        deliveredCount: number;
+        stalled: boolean;
+      }>;
+    }>();
+    expect(body.data.length).toBeGreaterThanOrEqual(1);
+    // Stalled flag is a server-derived boolean; on fresh `pending` rows
+    // it's always false.
+    expect(body.data.every((row) => row.stalled === false)).toBe(true);
+  });
+
+  it("GET /v1/constituents/bulk-email-jobs/:id polls a single job", async () => {
+    // Create a fresh job to query.
+    const token = signToken(app);
+    const dispatch = await app.inject({
+      method: "POST",
+      url: "/v1/constituents/bulk-email",
+      headers: authHeader(token),
+      payload: {
+        constituentIds: [constituentAId],
+        subject: "Poll me",
+        body: "Polling test.",
+      },
+    });
+    expect(dispatch.statusCode).toBe(202);
+    const { jobId } = dispatch.json<{ data: { jobId: string } }>().data;
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/constituents/bulk-email-jobs/${jobId}`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const view = res.json<{ data: { id: string; status: string; totalRecipients: number } }>().data;
+    expect(view.id).toBe(jobId);
+    expect(view.status).toBe("pending");
+    expect(view.totalRecipients).toBe(1);
+  });
+
+  it("GET /v1/constituents/bulk-email-jobs/:id 404s for unknown ids", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/bulk-email-jobs/00000000-0000-0000-0000-000000000bad",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("POST /v1/constituents/bulk-email-jobs/:id/resume rejects a pending source as still-running (400)", async () => {
+    const token = signToken(app);
+    const dispatch = await app.inject({
+      method: "POST",
+      url: "/v1/constituents/bulk-email",
+      headers: authHeader(token),
+      payload: {
+        constituentIds: [constituentAId],
+        subject: "Pending source",
+        body: "Still running.",
+      },
+    });
+    expect(dispatch.statusCode).toBe(202);
+    const { jobId } = dispatch.json<{ data: { jobId: string } }>().data;
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/bulk-email-jobs/${jobId}/resume`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(400);
+    const problem = res.json<{ title: string; status: number }>();
+    expect(problem.title).toBe("job_still_running");
+    expect(problem.status).toBe(400);
+  });
+
+  it("POST /v1/constituents/bulk-email-jobs/:id/resume creates a new job for the remaining recipients of a partial source", async () => {
+    const token = signToken(app);
+
+    // Stage a partial source row directly: 2 requested, 1 delivered, 0
+    // failed. Simulates the Redis-wipe scenario described in issue #326
+    // — the worker delivered to one recipient and never touched the
+    // other before the BullMQ job vanished.
+    const sourceJob = await db.execute<{ id: string }>(sql`
+      INSERT INTO bulk_email_jobs (
+        org_id, status, subject, body,
+        constituent_ids,
+        delivered_constituent_ids,
+        failed_constituent_ids,
+        total_recipients, delivered_count, failed_count
+      ) VALUES (
+        ${ORG_A}::uuid,
+        'partial',
+        'Partial source',
+        'Body of the partial source job.',
+        ARRAY[${constituentAId}::uuid, ${constituentBId}::uuid],
+        ARRAY[${constituentAId}::uuid],
+        ARRAY[]::uuid[],
+        2, 1, 0
+      )
+      RETURNING id
+    `);
+    const sourceId = sourceJob.rows[0]?.id;
+    expect(sourceId).toBeDefined();
+    if (!sourceId) throw new Error("Failed to seed source row");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/bulk-email-jobs/${sourceId}/resume`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(202);
+    const resumed = res.json<{
+      data: {
+        id: string;
+        status: string;
+        subject: string;
+        totalRecipients: number;
+        deliveredCount: number;
+        parentJobId: string | null;
+      };
+    }>().data;
+    expect(resumed.status).toBe("pending");
+    expect(resumed.subject).toBe("Partial source");
+    expect(resumed.totalRecipients).toBe(1);
+    expect(resumed.deliveredCount).toBe(0);
+    expect(resumed.parentJobId).toBe(sourceId);
+    expect(res.headers.location).toBe(`/v1/constituents/bulk-email-jobs/${resumed.id}`);
+
+    // The new row's constituent_ids must be exactly the recipient that
+    // wasn't delivered in the source.
+    const resumedRows = await db.execute(sql`
+      SELECT constituent_ids
+      FROM bulk_email_jobs
+      WHERE id = ${resumed.id}::uuid
+    `);
+    expect((resumedRows.rows[0] as { constituent_ids: string[] }).constituent_ids).toEqual([
+      constituentBId,
+    ]);
+
+    // A fresh outbox event is queued for the resume — same shape as a
+    // first-time dispatch (only carries the bulkEmailJobId).
+    const outboxRows = await db.execute(sql`
+      SELECT payload FROM outbox_events
+      WHERE tenant_id = ${ORG_A}::uuid
+        AND type = 'communication.bulk_email_requested'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+    const payload = (outboxRows.rows[0] as { payload: { bulkEmailJobId?: string } }).payload;
+    expect(payload.bulkEmailJobId).toBe(resumed.id);
+  });
+
+  it("POST /v1/constituents/bulk-email-jobs/:id/resume 400s when nothing is left to resume", async () => {
+    const token = signToken(app);
+
+    // A `completed` source: delivered_count == total_recipients.
+    const completed = await db.execute<{ id: string }>(sql`
+      INSERT INTO bulk_email_jobs (
+        org_id, status, subject, body,
+        constituent_ids,
+        delivered_constituent_ids,
+        failed_constituent_ids,
+        total_recipients, delivered_count, failed_count
+      ) VALUES (
+        ${ORG_A}::uuid,
+        'completed',
+        'Fully delivered',
+        'Body.',
+        ARRAY[${constituentAId}::uuid],
+        ARRAY[${constituentAId}::uuid],
+        ARRAY[]::uuid[],
+        1, 1, 0
+      )
+      RETURNING id
+    `);
+    const completedId = completed.rows[0]?.id;
+    if (!completedId) throw new Error("Failed to seed completed row");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/bulk-email-jobs/${completedId}/resume`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(400);
+    const problem = res.json<{ title: string }>();
+    expect(problem.title).toBe("nothing_to_resume");
+  });
+
+  it("POST /v1/constituents/bulk-email-jobs/:id/resume 404s for unknown ids (separate code path from validation 400)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents/bulk-email-jobs/00000000-0000-0000-0000-000000000bad/resume",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+    const problem = res.json<{ title: string }>();
+    expect(problem.title).toBe("job_not_found");
+  });
+
+  it("POST /v1/constituents/bulk-email-jobs/:id/resume accepts a stalled processing source (Redis-wipe scenario, issue #326)", async () => {
+    const token = signToken(app);
+
+    // A `processing` row whose `updated_at` is 30 minutes in the past —
+    // server treats this as stalled (the BULK_EMAIL_STALL_MS threshold
+    // is 10 minutes) and lets the resume go through.
+    const stalled = await db.execute<{ id: string }>(sql`
+      INSERT INTO bulk_email_jobs (
+        org_id, status, subject, body,
+        constituent_ids,
+        delivered_constituent_ids,
+        failed_constituent_ids,
+        total_recipients, delivered_count, failed_count,
+        updated_at
+      ) VALUES (
+        ${ORG_A}::uuid,
+        'processing',
+        'Stalled source',
+        'Worker died mid-fan-out.',
+        ARRAY[${constituentAId}::uuid, ${constituentBId}::uuid],
+        ARRAY[]::uuid[],
+        ARRAY[]::uuid[],
+        2, 0, 0,
+        NOW() - INTERVAL '30 minutes'
+      )
+      RETURNING id
+    `);
+    const stalledId = stalled.rows[0]?.id;
+    if (!stalledId) throw new Error("Failed to seed stalled row");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/bulk-email-jobs/${stalledId}/resume`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(202);
+    const resumed = res.json<{
+      data: { totalRecipients: number; parentJobId: string | null };
+    }>().data;
+    // 0 delivered ⇒ resume re-targets the full set.
+    expect(resumed.totalRecipients).toBe(2);
+    expect(resumed.parentJobId).toBe(stalledId);
+  });
+
+  it("counts/array CHECK constraint rejects drifted counter writes (defence-in-depth)", async () => {
+    // Direct SQL: deliver_count says 5 but the array has 1 entry. The
+    // CHECK constraint from migration 0045 must reject the INSERT.
+    await expect(
+      db.execute(sql`
+        INSERT INTO bulk_email_jobs (
+          org_id, status, subject, body,
+          constituent_ids,
+          delivered_constituent_ids,
+          failed_constituent_ids,
+          total_recipients, delivered_count, failed_count
+        ) VALUES (
+          ${ORG_A}::uuid,
+          'partial',
+          'Drifted counters',
+          'Should be rejected by CHECK.',
+          ARRAY[${constituentAId}::uuid],
+          ARRAY[${constituentAId}::uuid],
+          ARRAY[]::uuid[],
+          1, 5, 0
+        )
+      `),
+    ).rejects.toThrow();
   });
 });
 
