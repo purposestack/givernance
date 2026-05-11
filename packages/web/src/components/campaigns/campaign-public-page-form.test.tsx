@@ -35,6 +35,8 @@ describe("CampaignPublicPageForm", () => {
           operationalCostCents: null,
           platformFeesCents: 0,
           goalAmountCents: null,
+          bankAccountId: null,
+          qrReferenceMode: "auto",
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }}

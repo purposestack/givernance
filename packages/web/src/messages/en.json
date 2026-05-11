@@ -1670,6 +1670,7 @@
     "breadcrumbRoot": "Dashboard",
     "subtitleWithCount": "{count, plural, =0 {No campaigns yet} one {# campaign} other {# campaigns}}",
     "subtitleEmpty": "No campaigns yet.",
+    "swissQrBillBadge": "🇨🇭 Swiss QR-bill",
     "empty": {
       "title": "No campaigns to show",
       "description": "Create a campaign to track outreach and donations.",
@@ -1740,6 +1741,10 @@
         "funds": {
           "title": "Eligible funds",
           "description": "Choose which fund designations can be associated with this campaign."
+        },
+        "swissQrBill": {
+          "title": "🇨🇭 Swiss QR-bill (BVR)",
+          "description": "Link a Swiss bank account to issue a QR-bill (BVR) on every postal letter. The donor pays from their e-banking app and the camt.053 reconciliation auto-creates the donation. Leave blank to keep the standard postal mode (QR scan to the public donation page only)."
         }
       },
       "fields": {
@@ -1765,7 +1770,23 @@
         "fundsHint": "Selected funds will be available when gifts are associated with this campaign.",
         "fundsLoading": "Loading available funds…",
         "fundsEmptyTitle": "No funds configured yet",
-        "fundsEmptyDescription": "Create a fund from organisation settings before linking designations to this campaign."
+        "fundsEmptyDescription": "Create a fund from organisation settings before linking designations to this campaign.",
+        "bankAccount": "Linked bank account",
+        "bankAccountPlaceholder": "None — standard postal mode",
+        "bankAccountLoading": "Loading bank accounts…",
+        "bankAccountNone": "None — standard mode (QR to public page only)",
+        "bankAccountEmptyHint": "No bank accounts registered. Add one from Settings → Bank accounts to enable Swiss QR-bill mode.",
+        "bankAccountActiveHint": "Swiss QR-bill mode active. Every letter generated for this campaign will receive a QR-bill on a separate A4 sheet (in addition to the standard scan-tracking QR on the appeal letter).",
+        "bankAccountInactiveHint": "Standard postal mode. The printed letter carries only the Givernance scan-tracking QR linking to the public donation page. Pick a bank account to also issue a Swiss QR-bill.",
+        "qrReferenceMode": "QR reference type",
+        "qrReferenceModeHint": "Most operators leave this on Auto. Override only when the bank issued both an IBAN and a QR-IBAN and you want to pick a specific reference type explicitly.",
+        "qrBillModeReferenceHintQrr": "QR-IBAN detected → letters will carry a 27-digit QRR reference. Auto and QRR are equivalent here.",
+        "qrBillModeReferenceHintScor": "Regular IBAN detected → letters will carry a SCOR (RF…) reference. Auto and SCOR are equivalent here.",
+        "qrReferenceModeOption": {
+          "auto": "Auto (recommended) — derived from the IBAN type",
+          "qrr": "QRR — 27-digit numeric (QR-IBAN only)",
+          "scor": "SCOR — RF + 21 alphanumeric (regular IBAN)"
+        }
       },
       "fundTypeHint": {
         "restricted": "Restricted fund",
@@ -2051,6 +2072,11 @@
     "badge": "Public fundraising",
     "eyebrow": "Support this work",
     "descriptionFallback": "Your donation directly helps fund this campaign and the next steps it unlocks in the field.",
+    "swissQrBillBanner": {
+      "label": "Swiss QR-bill payment alternative",
+      "title": "You can also pay by Swiss bank transfer (BVR / QR-bill).",
+      "body": "If you received a postal letter for this campaign, the second sheet carries a Swiss QR-bill — just scan it with your e-banking app to pay. No card details needed. Your donation will be reconciled automatically."
+    },
     "metrics": {
       "goal": "Fundraising goal",
       "raised": "Raised so far",

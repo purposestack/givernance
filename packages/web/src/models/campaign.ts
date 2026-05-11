@@ -4,6 +4,9 @@ export type CampaignType = "nominative_postal" | "door_drop" | "digital";
 export type CampaignStatus = "draft" | "active" | "closed";
 export type CampaignCurrency = "EUR" | "GBP" | "CHF";
 
+/** Per-campaign override on the QR-bill reference type (Epic #318). */
+export type CampaignQrReferenceMode = "auto" | "qrr" | "scor";
+
 export interface Campaign {
   id: string;
   orgId: string;
@@ -21,6 +24,13 @@ export interface Campaign {
   operationalCostCents: number | null;
   platformFeesCents: number;
   goalAmountCents: number | null;
+  /**
+   * Epic #318 — Swiss QR-bill discriminator. NULL = standard postal
+   * rail (no QR-bill); set = Swiss QR-bill mode active (every export
+   * appends a QR-bill PDF alongside the appeal letter).
+   */
+  bankAccountId: string | null;
+  qrReferenceMode: CampaignQrReferenceMode;
   createdAt: string;
   updatedAt: string;
 }
@@ -81,6 +91,13 @@ export interface CampaignCreateInput {
   operationalCostCents?: number | null;
   goalAmountCents?: number | null;
   fundIds?: string[];
+  /**
+   * Epic #318 — link to a `bank_accounts.id` row in the same org. NULL
+   * unlinks (drops back to standard mode); `undefined` leaves alone.
+   * Server enforces same-tenant + active (not soft-deleted).
+   */
+  bankAccountId?: string | null;
+  qrReferenceMode?: CampaignQrReferenceMode;
 }
 
 export type CampaignUpdateInput = Partial<CampaignCreateInput> & {

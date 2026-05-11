@@ -140,6 +140,38 @@ export function isValidQrr(input: string): boolean {
   return expected === actual;
 }
 
+/**
+ * Compute the QRR check digit for a 26-digit body using the Swiss
+ * "Modulo 10 recursive" algorithm (IG QR-bill Annex B). Returns the
+ * fully-formed 27-digit QRR string. Throws when the body is malformed
+ * (anything other than 26 ASCII digits).
+ *
+ * Mirror of `isValidQrr` — exposing the inverse here lets the worker
+ * mint references without re-implementing the carry table.
+ */
+export function computeQrr(body26: string): string {
+  if (!/^\d{26}$/.test(body26)) {
+    throw new Error(
+      `computeQrr expected exactly 26 digits, got ${body26.length} chars: "${body26.slice(0, 32)}"`,
+    );
+  }
+  let carry = 0;
+  for (let i = 0; i < 26; i++) {
+    const digit = body26.charCodeAt(i) - 48;
+    const row = QRR_CARRY_TABLE[carry];
+    if (row === undefined) {
+      throw new Error("computeQrr: carry table miss (defensive — should not happen)");
+    }
+    const next = row[digit];
+    if (next === undefined) {
+      throw new Error("computeQrr: carry table digit-miss (defensive — should not happen)");
+    }
+    carry = next;
+  }
+  const check = QRR_CHECK_DIGIT_TABLE[carry];
+  return `${body26}${check}`;
+}
+
 /** ISO 11649 reserves check digits 00, 01, and 99 — never emit-or-accept. */
 const SCOR_RESERVED_CHECK_DIGITS = new Set(["00", "01", "99"]);
 
@@ -159,4 +191,39 @@ export function isValidScor(input: string): boolean {
   if (SCOR_RESERVED_CHECK_DIGITS.has(ref.slice(2, 4))) return false;
   const rotated = ref.slice(4) + ref.slice(0, 4);
   return mod97(rotated) === 1;
+}
+
+/**
+ * Compute a fully-formed ISO 11649 SCOR reference (`RF<check><payload>`)
+ * from a 1-21 alphanumeric payload. Throws on a payload that doesn't
+ * match the spec.
+ *
+ * Algorithm (ISO 11649 / ISO 7064 MOD 97-10): compute mod-97 over
+ * `<payload>RF00` (letters substituted per the IBAN convention), the
+ * check digits are `98 - remainder` left-padded to two characters.
+ * Reserved check digits (00, 01, 99) are not produced by this routine —
+ * a payload that yields one of those is rejected so the worker can
+ * pick a different body (in practice unreachable for random payloads,
+ * but caught defensively).
+ */
+export function computeScor(payload: string): string {
+  const body = payload.toUpperCase();
+  if (!/^[A-Z0-9]{1,21}$/.test(body)) {
+    throw new Error(
+      `computeScor expected a 1-21 alphanumeric payload, got ${payload.length} chars: "${payload.slice(0, 32)}"`,
+    );
+  }
+  // mod-97 over "<payload>RF00": letters map A=10..Z=35, RF -> 27 15,
+  // and "00" is the placeholder for the check digits we're solving for.
+  const remainder = mod97(`${body}RF00`);
+  if (Number.isNaN(remainder)) {
+    throw new Error("computeScor: mod-97 produced NaN (defensive — should not happen)");
+  }
+  const check = 98 - remainder;
+  if (SCOR_RESERVED_CHECK_DIGITS.has(check.toString().padStart(2, "0"))) {
+    throw new Error(
+      `computeScor: payload yields a reserved check digit (${check}); caller must pick a different body`,
+    );
+  }
+  return `RF${check.toString().padStart(2, "0")}${body}`;
 }

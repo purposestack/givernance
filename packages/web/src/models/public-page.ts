@@ -60,6 +60,15 @@ export interface PublishedCampaignPublicPage {
    * `OrgLogo.status === "ready"`; otherwise return `null`.
    */
   organisationLogoUrl?: string | null;
+  /**
+   * Epic #318 — true when the campaign is in Swiss QR-bill mode (a
+   * bank account is linked). Drives the public-page banner that tells
+   * the donor "you can also pay via the printed QR-bill from your
+   * postal letter, no need to type your card details". Boolean rather
+   * than the bank-account ID to avoid leaking an internal identifier
+   * over the public surface.
+   */
+  hasSwissQrBill?: boolean;
 }
 
 export interface PublishedCampaignPublicPageResponse {
