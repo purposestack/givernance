@@ -55,9 +55,14 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 20-payment-strategy.md      — Payment systems: Stripe/Mollie/Mangopay comparison, ADR-010, PCI DSS, GDPR
 │   ├── 23-postal-campaigns.md      — Postal campaigns + QR reconciliation (Epic #274): user flow, domain, readiness gates, attribution
 │   ├── 24-branding-assets.md       — Organisation branding (Epic #286): logo upload, sharp variants, bucket topology, Keycloak sync, PDF embedding
+<<<<<<< HEAD
 │   ├── 25-swiss-qr-bill.md         — Swiss QR-bill (BVR) generation + camt.053 reconciliation (Epic #318): bank accounts, per-letter QRR/SCOR, ISO 20022 ingestion
 │   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary, ADR-027 Swiss QR-bill, ADR-028 camt.053 ingestion)
 │   ├── runbooks/                   — Operator-driven one-shot ops (e.g. migrate-staging-keycloak-db.md for issue #283; launch-prod.md for the production-environment launch — issue #344); each file is plan + live journal + post-mortem
+=======
+│   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary)
+│   ├── runbooks/                   — Operator-driven one-shot ops (e.g. migrate-staging-keycloak-db.md for issue #283; launch-prod.md for the production-environment launch — issue #344); each file is plan + live journal + post-mortem. Also: bulk-email-stalled-job.md — recurring SRE triage flow for issue #326's Stalled / Partial bulk-email recovery
+>>>>>>> 7498a31 (fix(communication): PR #352 multi-agent review — race, traces, tests)
 │   ├── dev/
 │   │   └── staging-secrets-setup.md — Reference for fork developers + the prod-launch runbook: every GH-Environment secret the deploy needs, how to generate it, how to rotate it (#343)
 │   ├── vision/

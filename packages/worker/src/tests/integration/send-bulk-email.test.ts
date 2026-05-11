@@ -278,4 +278,81 @@ describe("processSendBulkEmail — issue #326 per-recipient tracking", () => {
     expect(result).toEqual({ sent: 0, failed: 0, skipped: 0 });
     expect(sends).toEqual([]);
   });
+
+  // PR #352 review M3 (QA-5): a constituent soft-deleted between the
+  // request and the worker's send (right-to-erasure honoured at the
+  // very last moment) must be silently dropped — neither delivered nor
+  // failed in the counters — and the final status flips to `partial`
+  // because `delivered_count < total_recipients`.
+  it("silently drops soft-deleted recipients and finalises as partial", async () => {
+    const jobId = await seedJob({ constituentIds: [constituentAId, constituentBId] });
+    // Soft-delete Bob between request and send.
+    await db
+      .update(constituents)
+      .set({ deletedAt: new Date() })
+      .where(eq(constituents.id, constituentBId));
+
+    const { sender, sends } = recordingSender();
+    const result = await processSendBulkEmail(
+      makeMockJob({ orgId: ORG_ID, bulkEmailJobId: jobId }),
+      { emailSender: sender },
+    );
+    expect(result).toEqual({ sent: 1, failed: 0, skipped: 1 });
+    expect(sends.map((s) => s.to)).toEqual(["alice.bulk@example.org"]);
+
+    const [row] = await db
+      .select({
+        status: bulkEmailJobs.status,
+        deliveredCount: bulkEmailJobs.deliveredCount,
+        failedCount: bulkEmailJobs.failedCount,
+        deliveredConstituentIds: bulkEmailJobs.deliveredConstituentIds,
+        failedConstituentIds: bulkEmailJobs.failedConstituentIds,
+      })
+      .from(bulkEmailJobs)
+      .where(eq(bulkEmailJobs.id, jobId));
+    expect(row?.status).toBe("partial");
+    expect(row?.deliveredCount).toBe(1);
+    expect(row?.failedCount).toBe(0);
+    expect(row?.deliveredConstituentIds).toEqual([constituentAId]);
+    // Soft-deleted Bob is NOT in failed_constituent_ids — that's
+    // reserved for SMTP refusals, not GDPR drops.
+    expect(row?.failedConstituentIds).toEqual([]);
+
+    // Restore Bob so subsequent tests in this file are deterministic.
+    await db
+      .update(constituents)
+      .set({ deletedAt: null })
+      .where(eq(constituents.id, constituentBId));
+  });
+
+  // PR #352 review M3 (QA-6): when SMTP refuses every recipient the
+  // terminal status is `partial` (delivered_count == 0), NOT `failed`
+  // (which we reserve for worker-fatal pre-recipient errors). The
+  // operator can still Resume to retry every recipient.
+  it("ends as `partial` (not `failed`) when SMTP refuses every recipient", async () => {
+    const jobId = await seedJob({ constituentIds: [constituentAId, constituentBId] });
+    const { sender, sends } = recordingSender(
+      new Set(["alice.bulk@example.org", "bob.bulk@example.org"]),
+    );
+
+    const result = await processSendBulkEmail(
+      makeMockJob({ orgId: ORG_ID, bulkEmailJobId: jobId }),
+      { emailSender: sender },
+    );
+
+    expect(result).toEqual({ sent: 0, failed: 2, skipped: 0 });
+    expect(sends.length).toBe(2);
+
+    const [row] = await db
+      .select({
+        status: bulkEmailJobs.status,
+        deliveredCount: bulkEmailJobs.deliveredCount,
+        failedCount: bulkEmailJobs.failedCount,
+      })
+      .from(bulkEmailJobs)
+      .where(eq(bulkEmailJobs.id, jobId));
+    expect(row?.status).toBe("partial");
+    expect(row?.deliveredCount).toBe(0);
+    expect(row?.failedCount).toBe(2);
+  });
 });

@@ -36,11 +36,14 @@ import {
   type BulkEmailJobStatus,
   bulkEmailJobs,
   constituents,
+  type OutboxMetadata,
   outboxEvents,
 } from "@givernance/shared/schema";
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { resolveInternalUserId } from "../../lib/resolve-user.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 export class BulkEmailValidationError extends Error {
   constructor(message: string) {
@@ -84,11 +87,20 @@ export async function dispatchBulkEmail(
   orgId: string,
   userId: string,
   input: BulkEmailInput,
+  request?: FastifyRequest,
 ): Promise<BulkEmailResult> {
   const ids = Array.from(new Set(input.constituentIds.filter(Boolean)));
   if (ids.length === 0) {
     throw new BulkEmailValidationError("Provide at least one recipient");
   }
+
+  // W3C trace-context propagation (PR #352 review — Log-1). Threaded
+  // through into the outbox `metadata` column so the relay → BullMQ →
+  // worker pipeline can stitch Loki logs back to the originating
+  // request. `null` when called outside an HTTP request (tests, internal
+  // tooling) — the worker falls back to the outbox row id as the
+  // correlator (worker.ts: `extractTraceId(traceparent) ?? id`).
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   return withTenantContext(orgId, async (tx) => {
     // Verify the requested ids belong to this org and are deliverable
@@ -175,6 +187,7 @@ export async function dispatchBulkEmail(
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
       type: "communication.bulk_email_requested",
+      metadata,
       payload: {
         bulkEmailJobId: job.id,
         requestedBy: userId,
@@ -399,8 +412,19 @@ export async function resumeBulkEmailJob(
   orgId: string,
   userId: string,
   sourceJobId: string,
+  request?: FastifyRequest,
 ): Promise<BulkEmailJobView> {
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
   return withTenantContext(orgId, async (tx) => {
+    // `FOR UPDATE` on the source row keeps the eligibility check + the
+    // child-row INSERT atomic against a concurrent resume call (PR #352
+    // multi-agent review — H1). Two operators double-clicking Resume,
+    // or a retried 502, would otherwise both pass the gate, both INSERT
+    // a child row, and both fan out to the same remaining recipients
+    // (every "remaining" donor gets the email twice).
+    //
+    // The lock is released at tx end. Concurrent readers (the polling
+    // GET endpoint) are unaffected — PG's row lock only blocks writers.
     const [source] = await tx
       .select({
         id: bulkEmailJobs.id,
@@ -420,7 +444,8 @@ export async function resumeBulkEmailJob(
           eq(bulkEmailJobs.orgId, orgId),
           isNull(bulkEmailJobs.deletedAt),
         ),
-      );
+      )
+      .for("update");
 
     if (!source) {
       throw new BulkEmailResumeError("Bulk email job not found", "job_not_found");
@@ -493,6 +518,7 @@ export async function resumeBulkEmailJob(
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
       type: "communication.bulk_email_requested",
+      metadata,
       payload: {
         bulkEmailJobId: resumed.id,
         requestedBy: userId,

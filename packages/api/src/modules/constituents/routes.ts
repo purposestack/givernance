@@ -622,11 +622,16 @@ export async function constituentRoutes(app: FastifyInstance) {
         body: string;
       };
       try {
-        const result = await dispatchBulkEmail(orgId, userId, {
-          constituentIds: body.constituentIds,
-          subject: body.subject,
-          body: body.body,
-        });
+        const result = await dispatchBulkEmail(
+          orgId,
+          userId,
+          {
+            constituentIds: body.constituentIds,
+            subject: body.subject,
+            body: body.body,
+          },
+          request,
+        );
         reply.header("Location", `/v1/constituents/bulk-email-jobs/${result.jobId}`);
         return reply.status(202).send({ data: result });
       } catch (err) {
@@ -648,6 +653,11 @@ export async function constituentRoutes(app: FastifyInstance) {
     "/constituents/bulk-email-jobs",
     {
       preHandler: requireOrgAdmin,
+      // PR #352 review M1: cap polling cadence even on the list path —
+      // matches the per-id GET below so a buggy client (multiple tabs,
+      // runaway useEffect) can't bypass the cadence limit by hitting
+      // the list endpoint instead.
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       schema: {
         tags: ["Constituents"],
         response: {
@@ -736,11 +746,17 @@ export async function constituentRoutes(app: FastifyInstance) {
       }
       const { id } = request.params as { id: string };
       try {
-        const result = await resumeBulkEmailJob(orgId, userId, id);
+        const result = await resumeBulkEmailJob(orgId, userId, id, request);
         reply.header("Location", `/v1/constituents/bulk-email-jobs/${result.id}`);
         return reply.status(202).send({ data: result });
       } catch (err) {
         if (err instanceof BulkEmailResumeError) {
+          // PR #352 review — Log-3: emit a structured warn so the
+          // rejection reason lands in Loki, not only the HTTP body.
+          request.log.warn(
+            { code: err.code, sourceJobId: id, orgId },
+            "bulk email resume rejected",
+          );
           if (err.code === "job_not_found") {
             return reply.status(404).send(problemDetail(404, err.code, err.message));
           }

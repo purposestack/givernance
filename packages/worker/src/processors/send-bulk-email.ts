@@ -327,9 +327,23 @@ async function finaliseJob(
       })
       .where(and(eq(bulkEmailJobs.id, bulkEmailJobId), eq(bulkEmailJobs.orgId, orgId)));
 
-    log.info(
-      { bulkEmailJobId, status, delivered: row.deliveredCount, total: row.totalRecipients },
-      "Bulk email job finalised",
-    );
+    // PR #352 review M4: promote the partial outcome to a `warn` so SREs
+    // can build a Loki alert on `level=warn AND event=bulk_email.partial`
+    // without scraping the structured `status` field out of every info
+    // line. Successful completions stay at `info` — no signal value.
+    const baseFields = {
+      bulkEmailJobId,
+      status,
+      delivered: row.deliveredCount,
+      total: row.totalRecipients,
+    };
+    if (status === "partial") {
+      log.warn(
+        { ...baseFields, event: "bulk_email.partial" },
+        "Bulk email job finalised with partial delivery — operator can Resume",
+      );
+    } else {
+      log.info({ ...baseFields, event: "bulk_email.completed" }, "Bulk email job finalised");
+    }
   });
 }

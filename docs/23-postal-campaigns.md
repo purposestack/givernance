@@ -628,5 +628,11 @@ These were considered and **deliberately deferred** — they would have either t
 - Migration `0039_constituent_postal_address.sql` — Window-envelope address fields
 - Migration `0040_postal_export_idempotency.sql` — Retry-idempotent QR codes (`export_id` backlink + partial unique index) and `tenants.mission` 1000-char DB cap
 - Migration `0041_campaign_description_length_cap.sql` — `campaigns.description` 2000-char DB cap (defense-in-depth against ETL/raw-SQL bypassing the form-level validator)
+<<<<<<< HEAD
 - Migration `0045_bulk_email_jobs.sql` — `bulk_email_jobs` table for partial-send tracking + resume path (issue #326)
+=======
+- Migration `0044_bulk_email_jobs.sql` — `bulk_email_jobs` table for partial-send tracking + resume path (issue #326)
+- Migration `0046_bulk_email_jobs_review_followups.sql` — composite covering index + partial unique on active resumes (PR #352 review fixes)
+- Runbook [`docs/runbooks/bulk-email-stalled-job.md`](runbooks/bulk-email-stalled-job.md) — SRE triage flow for Stalled / Partial bulk-email recovery
+>>>>>>> 7498a31 (fix(communication): PR #352 multi-agent review — race, traces, tests)
 - Mockups: `docs/design/index.html` → "Postal mailing" section
