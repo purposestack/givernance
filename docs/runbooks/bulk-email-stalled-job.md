@@ -91,5 +91,5 @@ in a PR (no env-var override yet — see PR #352 follow-up notes).
 ## Related
 
 - [docs/23 § 6.bis](../23-postal-campaigns.md) — domain doc with sequence diagram + PII posture
-- [`packages/api/migrations/0044_bulk_email_jobs.sql`] — schema + CHECK constraint
+- [`packages/api/migrations/0045_bulk_email_jobs.sql`] — schema + CHECK constraint
 - [`packages/api/migrations/0046_bulk_email_jobs_review_followups.sql`] — composite index + partial unique on active resumes

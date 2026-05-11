@@ -36,8 +36,18 @@ export function requireFlag(flagKey: FeatureFlagKey, service: FlagService = defa
       // Structured log so SRE can see how often a gated route is hit
       // while disabled — useful signal that a feature is in demand
       // OR that an unauthorised scanner is poking around.
+      //
+      // `path` is the route TEMPLATE (e.g. `/v1/constituents/bulk-email-jobs/:id`),
+      // not the raw URL. Templates keep Loki cardinality bounded so a
+      // misbehaving SPA polling `/.../<uuid>/` 100×/sec doesn't blow
+      // up the index. (PR #352 Log review M2.)
       request.log.info(
-        { event: "flag.route_gated", flagKey, path: request.url, method: request.method },
+        {
+          event: "flag.route_gated",
+          flagKey,
+          path: request.routeOptions.url ?? request.url,
+          method: request.method,
+        },
         "Route gated off — feature flag disabled",
       );
       return reply.status(404).send(problemDetail(404, "Not Found", "Route not found"));

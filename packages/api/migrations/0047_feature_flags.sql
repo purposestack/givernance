@@ -38,12 +38,20 @@ CREATE TABLE IF NOT EXISTS feature_flags (
   updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS feature_flags_key_idx
-  ON feature_flags (key);
+-- (No explicit `feature_flags_key_idx` — the `UNIQUE` constraint on
+-- `key` already creates a btree index that satisfies the
+-- `WHERE key = ?` access pattern in `flagService` + `requireFlag`.
+-- PR #352 Platform review Plat-LOW-2a flagged the redundant index.)
 
 -- No RLS — the registry is platform-wide, not tenant-scoped. The
 -- `requireSuperAdmin` guard on the admin routes is the access boundary.
-GRANT SELECT, INSERT, UPDATE ON feature_flags TO givernance_app;
+--
+-- GRANTs intentionally narrow: `INSERT` is reserved for the seed
+-- migration (running as the owner role); the admin PATCH handler
+-- only UPDATEs an existing row, never INSERTs. DELETE is never
+-- granted — flag deletion is a code change + a follow-up migration,
+-- not a runtime operation. (PR #352 Platform review Plat-LOW-2b.)
+GRANT SELECT, UPDATE ON feature_flags TO givernance_app;
 
 -- ─── Seed ───────────────────────────────────────────────────────────────────
 -- Keep the SQL `description` in lockstep with the

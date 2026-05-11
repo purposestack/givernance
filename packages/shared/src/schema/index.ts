@@ -1368,7 +1368,9 @@ export const featureFlags = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("feature_flags_key_idx").on(table.key)],
+  // No explicit key-index — the `UNIQUE` constraint on `key` already
+  // creates one and that's what `flagService` + `requireFlag` look up
+  // by. (PR #352 Platform review Plat-LOW-2a.)
 );
 
 // ─── Public Page Status Enum ───────────────────────────────────────────────
