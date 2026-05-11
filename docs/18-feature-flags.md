@@ -1,8 +1,33 @@
 # 18 — Feature Flag Strategy
 
-> **Status**: Spike / Analysis — Phase 1 implementation target
+> **Status**: Phase 1 MVP shipped (PR #352 — global flags only); spec for tenant-overrides + plan-gating remains as the Phase-2 target
 > **Owner**: Feature Flag Engineer agent (`.claude/agents/feature-flag-engineer.md`)
 > **Related**: `02-reference-architecture.md`, `03-data-model.md`, `04-business-capabilities.md`, `06-security-compliance.md`, `07-delivery-roadmap.md`
+
+## 0. What's actually shipped (Phase 1 MVP, PR #352)
+
+The sections that follow describe the **target** design. The **shipped** subset is intentionally narrow per the @magino discussion on PR #352:
+
+| Surface | Status | Notes |
+|---|---|---|
+| `feature_flags` table | ✅ shipped (migration `0047_feature_flags`) | Global flags only — `enabled` boolean per row. No `scope` / `plan_gate` columns; no `tenant_flag_overrides` table |
+| `FEATURE_FLAG_REGISTRY` const (`packages/shared/src/constants/feature-flags.ts`) | ✅ shipped | Typed `FeatureFlagKey` union; first key is `communication.bulk_email` (default: off) |
+| `flagService.isEnabled(key)` + Redis cache (TTL 60s) | ✅ shipped | `packages/api/src/lib/flags/flag-service.ts`; cache key `flags:global` holds the whole map |
+| `requireFlag(key)` preHandler | ✅ shipped | `packages/api/src/lib/flags/flag-guard.ts` — 404 on disabled, runs BEFORE other preHandlers so a scanner can't enumerate role requirements |
+| Worker-side `isFlagEnabled(key)` | ✅ shipped | `packages/worker/src/lib/flags.ts` — defence-in-depth at job pickup |
+| `GET /v1/admin/feature-flags` + `PATCH /v1/admin/feature-flags/:key` | ✅ shipped | Super-admin only (404 to others) |
+| `GET /v1/feature-flags` (public projection) | ✅ shipped | `requireAuth` only — returns `{key, enabled}` rows; drives tenant-side UI hide-on-disabled |
+| Back Office page `/admin/feature-flags` | ✅ shipped | Toggle UI; optimistic update + rollback on failure |
+| `tenant_flag_overrides` table | ❌ deferred | Section 4.2 below is the target spec |
+| Plan-gating (`plan_gate` column) | ❌ deferred | Section 5 evaluation algorithm is the target |
+| React `<FlagProvider>` + `useFlags()` hook | ❌ deferred | Each consumer page passes the prop down for now |
+
+Adding a new flag (Phase 1 MVP):
+1. Append the key to `FEATURE_FLAG_KEYS` in `packages/shared/src/constants/feature-flags.ts` AND to `FEATURE_FLAG_REGISTRY` with its default + description.
+2. Write a migration that `INSERT … ON CONFLICT (key) DO NOTHING` for the key with matching `default_value` + `description`.
+3. Wire `requireFlag(FEATURE_FLAG_KEYS.YOUR_KEY)` on the gated routes.
+4. If the worker has a matching processor, add an `isFlagEnabled(...)` check at job pickup (defence-in-depth).
+5. If the UI surface is conditional, SSR-fetch `/v1/feature-flags` and pass `xEnabled` as a prop into the consumer component.
 
 ## 1. Goals
 

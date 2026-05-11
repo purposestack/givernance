@@ -8,10 +8,12 @@
  * inserts a `pending` row and emits the outbox event.
  */
 
-import { sql } from "drizzle-orm";
+import { featureFlags } from "@givernance/shared/schema";
+import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
+import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
 import {
@@ -446,6 +448,26 @@ describe("QR tracking metrics", () => {
 });
 
 describe("Bulk email dispatch", () => {
+  // The bulk-email feature is shipped behind the
+  // `communication.bulk_email` feature flag (PR #352 / @magino review).
+  // Seeded `enabled = false` by migration 0047. Force it ON for the
+  // duration of these tests so we exercise the original behaviour;
+  // the dedicated `feature-flags.test.ts` covers the off-path.
+  beforeAll(async () => {
+    await db
+      .update(featureFlags)
+      .set({ enabled: true })
+      .where(eq(featureFlags.key, "communication.bulk_email"));
+    await flagService.invalidate();
+  });
+  afterAll(async () => {
+    await db
+      .update(featureFlags)
+      .set({ enabled: false })
+      .where(eq(featureFlags.key, "communication.bulk_email"));
+    await flagService.invalidate();
+  });
+
   // The bulk-email POST + resume POST routes are rate-limited at 10/min
   // each. This file now contains a dozen+ tests that hit them in a
   // single test-file run; clear the rate-limit keys between tests so a
@@ -578,6 +600,21 @@ describe("Bulk email dispatch", () => {
 });
 
 describe("Bulk email job tracking + resume (issue #326)", () => {
+  beforeAll(async () => {
+    await db
+      .update(featureFlags)
+      .set({ enabled: true })
+      .where(eq(featureFlags.key, "communication.bulk_email"));
+    await flagService.invalidate();
+  });
+  afterAll(async () => {
+    await db
+      .update(featureFlags)
+      .set({ enabled: false })
+      .where(eq(featureFlags.key, "communication.bulk_email"));
+    await flagService.invalidate();
+  });
+
   beforeEach(async () => {
     const keys = await redis.keys("*rate-limit*");
     if (keys.length > 0) await redis.del(...keys);

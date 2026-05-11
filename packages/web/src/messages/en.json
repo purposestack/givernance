@@ -314,7 +314,8 @@
         "tenants": "Tenants",
         "disputes": "Disputes",
         "impersonation": "Support sessions",
-        "platformAdmins": "Platform admins"
+        "platformAdmins": "Platform admins",
+        "featureFlags": "Feature flags"
       }
     },
     "topbar": {
@@ -438,6 +439,27 @@
         "resumeAction": "Resume session",
         "resumeCancel": "Cancel"
       }
+    },
+    "featureFlags": {
+      "title": "Feature flags",
+      "subtitle": "Global on/off switches for platform-wide features. Disabled flags hide the matching surfaces from operators and short-circuit the matching worker jobs.",
+      "fetchFailed": "Could not load the feature flags. Please refresh the page.",
+      "empty": "No feature flags registered.",
+      "status": {
+        "enabled": "Enabled",
+        "disabled": "Disabled"
+      },
+      "actions": {
+        "enable": "Enable",
+        "disable": "Disable",
+        "saving": "Saving…"
+      },
+      "toast": {
+        "enabled": "Enabled {key}",
+        "disabled": "Disabled {key}",
+        "error": "Could not update this flag. Please try again."
+      },
+      "lastUpdated": "Last updated {date}"
     },
     "disputes": {
       "list": {

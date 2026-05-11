@@ -314,7 +314,8 @@
         "tenants": "Tenants",
         "disputes": "Litiges",
         "impersonation": "Sessions de support",
-        "platformAdmins": "Admins plateforme"
+        "platformAdmins": "Admins plateforme",
+        "featureFlags": "Feature flags"
       }
     },
     "topbar": {
@@ -438,6 +439,27 @@
         "resumeAction": "Reprendre la session",
         "resumeCancel": "Annuler"
       }
+    },
+    "featureFlags": {
+      "title": "Feature flags",
+      "subtitle": "Interrupteurs globaux on/off pour les fonctionnalités plateforme. Désactivés, ils masquent les surfaces correspondantes côté opérateurs et coupent court aux jobs du worker.",
+      "fetchFailed": "Impossible de charger les feature flags. Veuillez rafraîchir la page.",
+      "empty": "Aucun feature flag enregistré.",
+      "status": {
+        "enabled": "Activé",
+        "disabled": "Désactivé"
+      },
+      "actions": {
+        "enable": "Activer",
+        "disable": "Désactiver",
+        "saving": "Enregistrement…"
+      },
+      "toast": {
+        "enabled": "{key} activé",
+        "disabled": "{key} désactivé",
+        "error": "Impossible de mettre à jour ce flag. Veuillez réessayer."
+      },
+      "lastUpdated": "Mis à jour {date}"
     },
     "disputes": {
       "list": {

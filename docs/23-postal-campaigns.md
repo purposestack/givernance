@@ -577,6 +577,20 @@ sequenceDiagram
 
 **Out of scope for this issue.** Exactly-once delivery (the general outbox → BullMQ contract) and persistent SMTP retry queues stay deferred — see issue #326 "Out of scope". The postal-export side keeps its existing "re-run from scratch" recovery path (the ZIP must be a complete bundle for printing, so a partial resume doesn't apply).
 
+### 6.ter Feature-flag gate (PR #352, after @magino review)
+
+The whole bulk-email surface is gated behind the global feature flag `communication.bulk_email` (registered in `packages/shared/src/constants/feature-flags.ts`, seeded `enabled = false` by migration `0047_feature_flags`). Until the platform's outbound mail domain has DKIM / SPF / DMARC configured, an operator-triggered "donor follow-up" reads to recipient MX servers as phishing — so the feature stays off in every deploy until a super-admin flips it from the Back Office page at `/admin/feature-flags`.
+
+Enforcement is three-deep:
+
+| Layer | Behaviour when flag is off |
+|---|---|
+| **API** | `requireFlag(...)` runs BEFORE auth/RBAC on every `/v1/constituents/bulk-email*` route → 404 (looks like a typo'd URL, no role-requirement leak) |
+| **Worker** | `processSendBulkEmail` calls `isFlagEnabled` at job pickup. A flipped-off flag between API enqueue and worker dispatch drops the job silently — the tracking row stays `pending`, the operator's UI keeps showing the dispatch in the "Recent emails" panel, and re-enabling + Resume picks up where they left off |
+| **Web** | The constituents page SSR-fetches `/v1/feature-flags` and hides the "Email selection" + "Recent emails" buttons when the flag is off |
+
+See [`docs/18-feature-flags.md § 0`](18-feature-flags.md) for the registry shape, the typed `FeatureFlagKey` union, and how to add a new flag.
+
 ## 7. Permissions matrix
 
 | Endpoint | Guard | Notes |
@@ -628,11 +642,8 @@ These were considered and **deliberately deferred** — they would have either t
 - Migration `0039_constituent_postal_address.sql` — Window-envelope address fields
 - Migration `0040_postal_export_idempotency.sql` — Retry-idempotent QR codes (`export_id` backlink + partial unique index) and `tenants.mission` 1000-char DB cap
 - Migration `0041_campaign_description_length_cap.sql` — `campaigns.description` 2000-char DB cap (defense-in-depth against ETL/raw-SQL bypassing the form-level validator)
-<<<<<<< HEAD
 - Migration `0045_bulk_email_jobs.sql` — `bulk_email_jobs` table for partial-send tracking + resume path (issue #326)
-=======
-- Migration `0044_bulk_email_jobs.sql` — `bulk_email_jobs` table for partial-send tracking + resume path (issue #326)
 - Migration `0046_bulk_email_jobs_review_followups.sql` — composite covering index + partial unique on active resumes (PR #352 review fixes)
+- Migration `0047_feature_flags.sql` — global feature-flag registry + bulk-email gate seeded `enabled = false` (PR #352 @magino follow-up)
 - Runbook [`docs/runbooks/bulk-email-stalled-job.md`](runbooks/bulk-email-stalled-job.md) — SRE triage flow for Stalled / Partial bulk-email recovery
->>>>>>> 7498a31 (fix(communication): PR #352 multi-agent review — race, traces, tests)
 - Mockups: `docs/design/index.html` → "Postal mailing" section

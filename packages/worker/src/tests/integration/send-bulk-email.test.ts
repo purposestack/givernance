@@ -16,7 +16,20 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../lib/db.js";
 import type { EmailSender, SendEmailInput } from "../../lib/email.js";
-import { processSendBulkEmail } from "../../processors/send-bulk-email.js";
+import {
+  type ProcessSendBulkEmailDeps,
+  processSendBulkEmail,
+} from "../../processors/send-bulk-email.js";
+
+/**
+ * Most tests in this file want to exercise the recipient fan-out
+ * logic, not the feature-flag gate (the gate gets its own dedicated
+ * test). Force the flag to `true` so each test can focus on its
+ * scenario without seeding the registry first.
+ */
+const flagOn: Pick<ProcessSendBulkEmailDeps, "isFlagEnabled"> = {
+  isFlagEnabled: async () => true,
+};
 
 // Dedicated tenant id so this file's fixtures never collide with the
 // other worker integration tests (file-level parallelism is off, but
@@ -135,7 +148,7 @@ describe("processSendBulkEmail — issue #326 per-recipient tracking", () => {
 
     const result = await processSendBulkEmail(
       makeMockJob({ orgId: ORG_ID, bulkEmailJobId: jobId }),
-      { emailSender: sender },
+      { emailSender: sender, ...flagOn },
     );
 
     expect(result).toEqual({ sent: 2, failed: 0, skipped: 0 });
@@ -173,7 +186,7 @@ describe("processSendBulkEmail — issue #326 per-recipient tracking", () => {
 
     const result = await processSendBulkEmail(
       makeMockJob({ orgId: ORG_ID, bulkEmailJobId: jobId }),
-      { emailSender: sender },
+      { emailSender: sender, ...flagOn },
     );
 
     expect(result).toEqual({ sent: 2, failed: 1, skipped: 0 });
@@ -210,7 +223,7 @@ describe("processSendBulkEmail — issue #326 per-recipient tracking", () => {
 
     const result = await processSendBulkEmail(
       makeMockJob({ orgId: ORG_ID, bulkEmailJobId: jobId }),
-      { emailSender: sender },
+      { emailSender: sender, ...flagOn },
     );
 
     expect(result).toEqual({ sent: 1, failed: 0, skipped: 0 });
@@ -248,7 +261,7 @@ describe("processSendBulkEmail — issue #326 per-recipient tracking", () => {
 
     const result = await processSendBulkEmail(
       makeMockJob({ orgId: ORG_ID, bulkEmailJobId: jobId }),
-      { emailSender: sender },
+      { emailSender: sender, ...flagOn },
     );
 
     expect(result).toEqual({ sent: 0, failed: 0, skipped: 0 });
@@ -273,7 +286,7 @@ describe("processSendBulkEmail — issue #326 per-recipient tracking", () => {
         orgId: ORG_ID,
         bulkEmailJobId: "00000000-0000-0000-0000-000000000bad",
       }),
-      { emailSender: sender },
+      { emailSender: sender, ...flagOn },
     );
     expect(result).toEqual({ sent: 0, failed: 0, skipped: 0 });
     expect(sends).toEqual([]);
@@ -295,7 +308,7 @@ describe("processSendBulkEmail — issue #326 per-recipient tracking", () => {
     const { sender, sends } = recordingSender();
     const result = await processSendBulkEmail(
       makeMockJob({ orgId: ORG_ID, bulkEmailJobId: jobId }),
-      { emailSender: sender },
+      { emailSender: sender, ...flagOn },
     );
     expect(result).toEqual({ sent: 1, failed: 0, skipped: 1 });
     expect(sends.map((s) => s.to)).toEqual(["alice.bulk@example.org"]);
@@ -325,6 +338,39 @@ describe("processSendBulkEmail — issue #326 per-recipient tracking", () => {
       .where(eq(constituents.id, constituentBId));
   });
 
+  // PR #352 / @magino follow-up: feature-flag gate. If the
+  // `communication.bulk_email` flag is OFF by the time the worker
+  // picks up the job (toggled off in the admin UI between API enqueue
+  // and worker dispatch), the processor must short-circuit without
+  // sending or mutating the tracking row. Defence-in-depth on top of
+  // the route-level `requireFlag` gate.
+  it("drops silently when the bulk-email feature flag is off (defence-in-depth)", async () => {
+    const jobId = await seedJob({ constituentIds: [constituentAId, constituentBId] });
+    const { sender, sends } = recordingSender();
+
+    const result = await processSendBulkEmail(
+      makeMockJob({ orgId: ORG_ID, bulkEmailJobId: jobId }),
+      { emailSender: sender, isFlagEnabled: async () => false },
+    );
+
+    expect(result).toEqual({ sent: 0, failed: 0, skipped: 0 });
+    expect(sends).toEqual([]);
+
+    // The tracking row stays at its pre-job state — no `processing`
+    // transition, no counters incremented. The operator's UI shows
+    // the dispatch in the recent jobs panel; if they later flip the
+    // flag on, a Resume on the (still `pending`) job picks it up.
+    const [row] = await db
+      .select({
+        status: bulkEmailJobs.status,
+        deliveredCount: bulkEmailJobs.deliveredCount,
+      })
+      .from(bulkEmailJobs)
+      .where(eq(bulkEmailJobs.id, jobId));
+    expect(row?.status).toBe("pending");
+    expect(row?.deliveredCount).toBe(0);
+  });
+
   // PR #352 review M3 (QA-6): when SMTP refuses every recipient the
   // terminal status is `partial` (delivered_count == 0), NOT `failed`
   // (which we reserve for worker-fatal pre-recipient errors). The
@@ -337,7 +383,7 @@ describe("processSendBulkEmail — issue #326 per-recipient tracking", () => {
 
     const result = await processSendBulkEmail(
       makeMockJob({ orgId: ORG_ID, bulkEmailJobId: jobId }),
-      { emailSender: sender },
+      { emailSender: sender, ...flagOn },
     );
 
     expect(result).toEqual({ sent: 0, failed: 2, skipped: 0 });
