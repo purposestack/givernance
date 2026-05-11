@@ -30,14 +30,6 @@ CREATE TABLE IF NOT EXISTS feature_flags (
   -- union. UNIQUE because `requireFlag(key)` looks up by this column.
   key          VARCHAR(100) NOT NULL UNIQUE,
   enabled      BOOLEAN      NOT NULL DEFAULT FALSE,
-  -- Short, friendly heading shown in the Back Office UI (e.g. "Bulk
-  -- emails to constituents"). Plain language; the dotted `key` lives
-  -- below as a small subtitle for engineers reading audit logs.
-  label        VARCHAR(120) NOT NULL,
-  -- Operator-facing description (one or two sentences). Plain
-  -- language. Engineering rationale (RFCs, infra prerequisites,
-  -- incident IDs) stays in `FEATURE_FLAG_REGISTRY` code comments,
-  -- NOT here.
   description  TEXT         NOT NULL,
   -- Last super-admin to flip the flag. SET NULL on user purge so a
   -- GDPR-erased staff account doesn't FK-block the row.
@@ -45,6 +37,15 @@ CREATE TABLE IF NOT EXISTS feature_flags (
   created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
+-- The operator-facing `label` column is added later (migration 0049 —
+-- introduced after the magino UX review revealed the row was too
+-- technical for non-engineers). We don't backport the column into
+-- THIS migration because it may already have been applied in dev /
+-- staging — modifying an applied migration is a silent no-op
+-- under `CREATE TABLE IF NOT EXISTS`, leaving the DB in a drifted
+-- state that breaks the route. Migrations are immutable once
+-- applied anywhere.
 
 -- (No explicit `feature_flags_key_idx` — the `UNIQUE` constraint on
 -- `key` already creates a btree index that satisfies the
@@ -62,17 +63,15 @@ CREATE TABLE IF NOT EXISTS feature_flags (
 GRANT SELECT, UPDATE ON feature_flags TO givernance_app;
 
 -- ─── Seed ───────────────────────────────────────────────────────────────────
--- Keep the SQL `label` + `description` in lockstep with the
--- `FEATURE_FLAG_REGISTRY` entry in
--- `packages/shared/src/constants/feature-flags.ts`. The integration
--- test in `feature-flags.test.ts` asserts the parity and fails CI on
--- drift.
+-- Seed the bulk-email row. The `description` here is the initial-
+-- engineering-rationale version; migration 0049 rewrites it to the
+-- operator-friendly text and adds the `label` column. Kept this way
+-- to honour the "migrations are immutable once applied" rule.
 
-INSERT INTO feature_flags (key, enabled, label, description)
+INSERT INTO feature_flags (key, enabled, description)
 VALUES (
   'communication.bulk_email',
   FALSE,
-  'Bulk emails to constituents',
-  'Lets operators send one email to several constituents at once from the Constituents page. Currently off — we''ll turn it on once the email-deliverability setup is finished so messages don''t land in donors'' spam folders.'
+  'Operator-triggered bulk email to selected constituents (issue #326). Disabled until the platform''s outbound mail domain has DKIM / SPF / DMARC configured — without them every send looks like phishing to recipient MX servers.'
 )
 ON CONFLICT (key) DO NOTHING;
