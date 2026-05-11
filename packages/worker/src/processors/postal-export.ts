@@ -41,6 +41,10 @@ import { PassThrough } from "node:stream";
 import type { Locale } from "@givernance/shared/i18n";
 import type { GeneratePostalExportJob } from "@givernance/shared/jobs";
 import {
+  type PostalExportRunMode,
+  resolvePostalExportMode,
+} from "@givernance/shared/postal-export-mode";
+import {
   campaignConstituents,
   campaignPostalExports,
   campaignPublicPages,
@@ -58,7 +62,10 @@ import { jobLogger } from "../lib/logger.js";
 import { uploadCampaignZip } from "../lib/s3.js";
 import { extractTraceId } from "../lib/trace-context.js";
 import { getActivePdfLetterhead } from "../services/branding-logo-cache.js";
-import { createCampaignLetterPdfStream } from "../services/campaign-pdf.js";
+import {
+  type CampaignLetterRecipient,
+  createCampaignLetterPdfStream,
+} from "../services/campaign-pdf.js";
 import {
   ensureSwissQrReference,
   loadBankAccountForRender,
@@ -179,7 +186,7 @@ export async function processGeneratePostalExport(
   });
 
   // ── 2. Load campaign + tenant identity + (optionally) the linked constituents. ────
-  const { campaign, tenant, recipients, publicPageUrl } = await withWorkerContext(
+  const { campaign, tenant, recipients, publicPageStatus, publicPageUrl } = await withWorkerContext(
     orgId,
     async (tx) => {
       const [campaignRow] = await tx
@@ -240,11 +247,13 @@ export async function processGeneratePostalExport(
               )
           : [];
 
-      // Public-page URL drives the QR redirect target. The opaque token is
-      // appended at scan-time so the worker just composes the canonical
-      // `/p/:campaignId` link.
-      const [_publicPage] = await tx
-        .select({ id: campaignPublicPages.id })
+      // Epic #318 PR #4 — load the public-page status so the worker can
+      // re-resolve the export mode at runtime. Inputs (bank_account_id +
+      // public_page.status) haven't changed since the API readiness gate
+      // ran; we re-resolve here to avoid persisting the mode on the
+      // export row (schema-frozen for PR #4).
+      const [publicPage] = await tx
+        .select({ status: campaignPublicPages.status })
         .from(campaignPublicPages)
         .where(eq(campaignPublicPages.campaignId, campaignId));
 
@@ -258,14 +267,33 @@ export async function processGeneratePostalExport(
             defaultLocale: "fr" as Locale,
           } satisfies { name: string; mission: string | null; defaultLocale: Locale }),
         recipients: recipientRows,
+        publicPageStatus: publicPage?.status ?? null,
         // The public donation page lives under `/p/:id` (see
-        // `packages/web/src/app/(public)/p/[id]/page.tsx`). An earlier draft
-        // of this code targeted `/c/:id`, which 404s — the QR codes printed
-        // from such a build dropped donors on a "Page not found" screen.
+        // `packages/web/src/app/(public)/p/[id]/page.tsx`).
         publicPageUrl: `${env.APP_URL}/p/${campaignId}`,
       };
     },
   );
+
+  // Epic #318 PR #4 — resolve the run mode. The 4-input truth table is in
+  // `@givernance/shared/postal-export-mode`; the API readiness gate ran
+  // the same check at job-enqueue time, so we should never hit `blocked`
+  // here, but guarding defensively keeps the worker honest in face of a
+  // race between API enqueue and worker pickup.
+  const runMode: PostalExportRunMode = resolvePostalExportMode({
+    hasBank: campaign.bankAccountId !== null,
+    // `hasPage = page row exists` (any status) — same semantics as
+    // the API resolver. The publish-status gate already fired at API
+    // time, so a non-`published` page here implies a race we treat as
+    // blocked (worker fail-fast).
+    hasPage: publicPageStatus !== null,
+  });
+  if (runMode === "blocked") {
+    throw new Error(
+      `Postal export ${exportId} resolved to mode=blocked at worker time — neither bank account nor published public page available (probable race with operator unconfiguration)`,
+    );
+  }
+  log.info({ exportId, runMode }, "Postal export mode resolved at worker");
 
   // ── 2b. Reuse QR codes from a prior crashed attempt. ─────────────
   // On retry, `campaign_qr_codes` may already hold rows that the previous
@@ -385,32 +413,14 @@ export async function processGeneratePostalExport(
   // is total). When linked, every work item also produces an adjacent
   // `{recipient}-qr-bill.pdf` carrying a per-recipient (personalised)
   // or per-export (door-drop) QRR/SCOR reference.
-  let swissQrCtx: SwissQrBillRenderContext | null = null;
-  if (campaign.bankAccountId !== null) {
-    const account = await loadBankAccountForRender(orgId, campaign.bankAccountId);
-    if (!account) {
-      // The readiness gate already rejected this, but a stale postal-
-      // export row pointing at a since-soft-deleted bank account would
-      // crash the render. Bail out cleanly.
-      throw new Error(
-        `Swiss QR-bill mode: linked bank account ${campaign.bankAccountId} is missing or soft-deleted`,
-      );
-    }
-    swissQrCtx = {
-      bankAccount: account,
-      referenceType: resolveReferenceType(campaign.qrReferenceMode, account.ibanKind),
-      campaignName: campaign.name,
-    };
-    log.info(
-      {
-        exportId,
-        bankAccountId: account.id,
-        ibanKind: account.ibanKind,
-        referenceType: swissQrCtx.referenceType,
-      },
-      "Swiss QR-bill mode active — appending qr-bill.pdf per recipient",
-    );
-  }
+  const swissQrCtx = await loadSwissQrCtxIfActive({
+    orgId,
+    exportId,
+    bankAccountId: campaign.bankAccountId,
+    qrReferenceMode: campaign.qrReferenceMode,
+    campaignName: campaign.name,
+    log,
+  });
 
   // Re-snapshot total_count to the live work-item count. The API stamps
   // a request-time snapshot, but a constituent added/removed between the
@@ -467,36 +477,25 @@ export async function processGeneratePostalExport(
         });
       }
 
-      const buffer = await renderPdfBuffer({
-        organisationName: tenant.name,
-        organisationMission: tenant.mission,
+      // Epic #318 PR #4 — mode-aware PDF emission per work item.
+      //   standard     → 1 PDF: appeal letter with scan-QR (today's default)
+      //   qr_bill_only → 1 PDF: rich appeal + BVR strip page 2 (the SOLE artefact)
+      //   hybrid       → 2 PDFs: appeal letter sibling + rich QR-bill sibling
+      // The dispatcher is extracted to keep this loop under the cognitive-
+      // complexity ceiling.
+      await emitWorkItemPdfs({
+        archive,
+        runMode,
+        item,
+        publicPageUrl,
+        tenant,
+        campaign,
         logoBuffer,
-        campaignName: campaign.name,
-        campaignDescription: campaign.description,
-        locale: tenant.defaultLocale,
-        qrCode: `${publicPageUrl}?qr=${encodeURIComponent(item.qrToken)}`,
-        qrReference: item.qrToken,
-        recipient: item.recipient,
+        swissQrCtx,
+        orgId,
+        campaignId,
+        exportId,
       });
-
-      archive.append(buffer, { name: item.fileName });
-
-      // Epic #318 — when Swiss QR-bill mode is active, append a second
-      // PDF carrying the QR-bill (on a separate A4 sheet, sibling to
-      // the appeal letter). Extracted to keep the main loop under the
-      // cognitive-complexity ceiling.
-      if (swissQrCtx !== null && campaign.bankAccountId !== null) {
-        await appendSwissQrBillPdfToArchive({
-          archive,
-          ctx: swissQrCtx,
-          orgId,
-          campaignId,
-          exportId,
-          bankAccountId: campaign.bankAccountId,
-          constituentId: item.constituentId,
-          letterFilename: item.fileName,
-        });
-      }
 
       uploaded += 1;
 
@@ -561,38 +560,130 @@ export async function processGeneratePostalExport(
 }
 
 /**
- * Epic #318 — mint (or reuse) a Swiss QR-bill reference for this work
- * item, render the QR-bill PDF, and append it to the streaming ZIP
- * adjacent to the appeal letter. Extracted from the main loop so
- * `processGeneratePostalExport` stays under the cognitive-complexity
- * ceiling. Reference granularity per ADR-027: per-recipient on
- * personalised, per-export on door-drop.
+ * Epic #318 — load the Swiss QR-bill render context when the campaign
+ * has a linked bank account, otherwise null. Extracted from
+ * `processGeneratePostalExport` to keep that function under the
+ * cognitive-complexity ceiling.
  */
-async function appendSwissQrBillPdfToArchive(args: {
+async function loadSwissQrCtxIfActive(args: {
+  orgId: string;
+  exportId: string;
+  bankAccountId: string | null;
+  qrReferenceMode: "auto" | "qrr" | "scor";
+  campaignName: string;
+  log: ReturnType<typeof jobLogger>;
+}): Promise<SwissQrBillRenderContext | null> {
+  if (args.bankAccountId === null) return null;
+  const account = await loadBankAccountForRender(args.orgId, args.bankAccountId);
+  if (!account) {
+    // The readiness gate already rejected this, but a stale postal-
+    // export row pointing at a since-soft-deleted bank account would
+    // crash the render. Bail out cleanly.
+    throw new Error(
+      `Swiss QR-bill mode: linked bank account ${args.bankAccountId} is missing or soft-deleted`,
+    );
+  }
+  const referenceType = resolveReferenceType(args.qrReferenceMode, account.ibanKind);
+  args.log.info(
+    {
+      exportId: args.exportId,
+      bankAccountId: account.id,
+      ibanKind: account.ibanKind,
+      referenceType,
+    },
+    "Swiss QR-bill mode active — appending qr-bill.pdf per recipient",
+  );
+  return { bankAccount: account, referenceType, campaignName: args.campaignName };
+}
+
+/**
+ * Epic #318 PR #4 — mode-aware PDF emission for one work item. Dispatches
+ * on the resolved `runMode`:
+ *
+ *   - `standard`     → append 1 PDF: the appeal letter with scan-QR. No
+ *                      QR-bill (no bank account linked). Today's default.
+ *   - `qr_bill_only` → mint a QR-bill reference, render the 2-page bundle
+ *                      (rich page 1 + BVR strip page 2), append as the
+ *                      SOLE artefact for this recipient at `{name}.pdf`.
+ *                      Skip the standalone appeal letter — page 1 of the
+ *                      QR-bill PDF carries the same content.
+ *   - `hybrid`       → append the appeal letter PDF + the rich QR-bill
+ *                      sibling at `{name}-qr-bill.pdf`. Both PDFs carry
+ *                      the appeal content; the appeal letter has the
+ *                      scan-QR CTA, the QR-bill has the BVR strip.
+ *   - `blocked`      → unreachable; guarded earlier.
+ *
+ * Extracted from the main loop to keep `processGeneratePostalExport`
+ * under the biome cognitive-complexity ceiling.
+ */
+async function emitWorkItemPdfs(args: {
   archive: archiver.Archiver;
-  ctx: SwissQrBillRenderContext;
+  runMode: PostalExportRunMode;
+  item: {
+    qrToken: string;
+    constituentId: string | null;
+    fileName: string;
+    recipient: CampaignLetterRecipient | null;
+  };
+  publicPageUrl: string;
+  tenant: { name: string; mission: string | null; defaultLocale: Locale };
+  campaign: { name: string; description: string | null; bankAccountId: string | null };
+  logoBuffer: Buffer | null;
+  swissQrCtx: SwissQrBillRenderContext | null;
   orgId: string;
   campaignId: string;
   exportId: string;
-  bankAccountId: string;
-  constituentId: string | null;
-  letterFilename: string;
 }): Promise<void> {
-  const { reference } = await ensureSwissQrReference({
-    orgId: args.orgId,
-    campaignId: args.campaignId,
-    exportId: args.exportId,
-    bankAccountId: args.bankAccountId,
-    constituentId: args.constituentId,
-    referenceType: args.ctx.referenceType,
-    currency: args.ctx.bankAccount.currency,
-  });
-  const qrBillBuffer = await renderSwissQrBillPdf({
-    bankAccount: args.ctx.bankAccount,
-    reference,
-    campaignName: args.ctx.campaignName,
-  });
-  args.archive.append(qrBillBuffer, { name: qrBillFilenameFor(args.letterFilename) });
+  const { archive, runMode, item, publicPageUrl, tenant, campaign, logoBuffer, swissQrCtx } = args;
+
+  // Standard rail (appeal letter with scan-QR) — emit in `standard` + `hybrid`.
+  if (runMode === "standard" || runMode === "hybrid") {
+    const letterBuffer = await renderPdfBuffer({
+      organisationName: tenant.name,
+      organisationMission: tenant.mission,
+      logoBuffer,
+      campaignName: campaign.name,
+      campaignDescription: campaign.description,
+      locale: tenant.defaultLocale,
+      qrCode: `${publicPageUrl}?qr=${encodeURIComponent(item.qrToken)}`,
+      qrReference: item.qrToken,
+      recipient: item.recipient,
+    });
+    archive.append(letterBuffer, { name: item.fileName });
+  }
+
+  // Swiss QR-bill rail — emit in `qr_bill_only` + `hybrid`.
+  if (
+    (runMode === "qr_bill_only" || runMode === "hybrid") &&
+    swissQrCtx &&
+    campaign.bankAccountId
+  ) {
+    const { reference } = await ensureSwissQrReference({
+      orgId: args.orgId,
+      campaignId: args.campaignId,
+      exportId: args.exportId,
+      bankAccountId: campaign.bankAccountId,
+      constituentId: item.constituentId,
+      referenceType: swissQrCtx.referenceType,
+      currency: swissQrCtx.bankAccount.currency,
+    });
+    const qrBillBuffer = await renderSwissQrBillPdf({
+      bankAccount: swissQrCtx.bankAccount,
+      reference,
+      campaignName: campaign.name,
+      campaignDescription: campaign.description,
+      organisationName: tenant.name,
+      organisationMission: tenant.mission,
+      logoBuffer,
+      locale: tenant.defaultLocale,
+      recipient: item.recipient,
+    });
+    // QR-bill-only: SOLE PDF for this recipient → use the bare filename.
+    // Hybrid: SIBLING PDF → suffix `-qr-bill`.
+    const qrBillFileName =
+      runMode === "qr_bill_only" ? item.fileName : qrBillFilenameFor(item.fileName);
+    archive.append(qrBillBuffer, { name: qrBillFileName });
+  }
 }
 
 async function markFailed(orgId: string, exportId: string, error: string) {

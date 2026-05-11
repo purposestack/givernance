@@ -33,6 +33,14 @@ interface PostalCampaignSectionProps {
    * - `published` — donors can scan postal QR codes and donate
    */
   publicPageStatus: "missing" | "draft" | "published";
+  /**
+   * Epic #318 PR #4 — Swiss QR-bill discriminator passed through to the
+   * postal-export panel so the mode-summary surface can render the
+   * "Swiss QR-bill mode" badge + the right "this mode is selected
+   * because…" explainer. Null when no bank account is linked (standard
+   * mode).
+   */
+  bankAccount: { bankName: string; ibanLast4: string; currency: "CHF" | "EUR" } | null;
   initialMembers: CampaignMember[];
   initialMemberTotal: number;
   initialExports: PostalExport[];
@@ -43,6 +51,7 @@ export function PostalCampaignSection({
   campaignType,
   campaignStatus,
   publicPageStatus,
+  bankAccount,
   initialMembers,
   initialMemberTotal,
   initialExports,
@@ -63,6 +72,7 @@ export function PostalCampaignSection({
         campaignType={campaignType}
         campaignStatus={campaignStatus}
         publicPageStatus={publicPageStatus}
+        bankAccount={bankAccount}
         initialExports={initialExports}
         linkedConstituentCount={memberCount}
       />

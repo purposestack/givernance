@@ -67,6 +67,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.12
         version: 0.34.49
+      archiver:
+        specifier: ^7.0.1
+        version: 7.0.1
       bullmq:
         specifier: ^5.76.6
         version: 5.76.6
@@ -118,7 +121,13 @@ importers:
       stripe:
         specifier: ^22.1.1
         version: 22.1.1(@types/node@25.6.2)
+      swissqrbill:
+        specifier: ^4.3.0
+        version: 4.3.0(pdfkit@0.18.0)(typescript@6.0.3)
     devDependencies:
+      '@types/archiver':
+        specifier: ^6.0.4
+        version: 6.0.4
       '@types/jsdom':
         specifier: ^28.0.1
         version: 28.0.1

@@ -105,6 +105,24 @@ sequenceDiagram
     Web->>API: POST /v1/camt-unreconciled/:id/resolve
 ```
 
+## 1.bis.0 Mode resolution matrix (PR #4)
+
+Two booleans on the campaign drive the postal-export experience:
+
+- `hasBank` — `campaign.bank_account_id IS NOT NULL` (a Swiss bank account is linked)
+- `hasPage` — `campaign_public_pages.status === 'published'` (a donor-facing donation page is published)
+
+| `hasBank` | `hasPage` | Mode | What ships per recipient | Readiness gates that fire |
+|---|---|---|---|---|
+| false | true | **Standard** | 1 PDF: appeal letter with scan-QR → public page | `campaign_not_active`, `public_page_missing`/`public_page_draft`, `no_recipients` (perso) |
+| true | false | **QR-bill only** | 1 single-page PDF: compressed appeal + IG QR-bill strip at y=192 mm (auto-fallback to 2 pages on long content) | `campaign_not_active`, `swiss_qr_bill_*` (4 gates) |
+| true | true | **Hybrid** | 2 sibling PDFs: appeal letter + rich QR-bill | All gates from Standard + all `swiss_qr_bill_*` gates |
+| false | false | **Blocked** | nothing | New `postal_export_not_configured` gate |
+
+The mode resolver lives in `@givernance/shared/postal-export-mode.ts` as a pure function. The API readiness-gate evaluator, the worker render dispatcher, and the web mode-summary panel all call the same code path — drift across the three would silently re-introduce the "preview lies about generation" bug PR #4 was opened to fix.
+
+**Tie-break on the both-true case → `hybrid` wins.** Reason: the Swiss flow MUST be a strict superset of the French tracking surface (this §). Dropping the scan-tracking QR when the operator clearly published a public donation page would silently kill the 3-stage funnel they already configured.
+
 ## 1.bis QR codes per mailing — preserve scan tracking when it makes sense, add payment in either mode
 
 **Critical design choice**: a Swiss QR-bill scan inside the donor's e-banking app **does NOT hit Givernance servers** — the QR encodes a payment instruction (SPC payload, IBAN, reference), not a URL. So a Swiss-only mailing would lose the **scan-to-donate funnel** the operator gets today on the French rail (`docs/23` §5: printed → scanned → donated → revenue).
@@ -118,7 +136,7 @@ The shape depends on `campaigns.mode`:
 | Surface | Carrier | Encodes | Tracking signal | Table |
 |---|---|---|---|---|
 | **Appeal letter (page 1)** — bottom of the existing A4 layout | Givernance opaque-token QR + printed URL `/p/:cid?qr=<token>` | URL → Givernance resolver | `scanned_at` stamped on first scan (existing mechanism, unchanged) | `campaign_qr_codes` |
-| **QR-bill (page 2, separate A4)** | Swiss IG-compliant QR-bill (Receipt + Payment Part bottom strip) | SPC payload (IBAN, amount, **per-recipient QRR/SCOR**) | none (donor's bank app is offline-to-Givernance) | `swiss_qr_references` |
+| **QR-bill (single-page sibling A4)** | Swiss IG-compliant QR-bill (compressed appeal content + bottom 105 mm Receipt + Payment Part strip) | SPC payload (IBAN, amount, **per-recipient QRR/SCOR**) | none (donor's bank app is offline-to-Givernance) | `swiss_qr_references` |
 
 The two rows are 1:1-paired in the worker: the same `(campaign_id, constituent_id, export_id)` mints exactly one `campaign_qr_codes` row AND one `swiss_qr_references` row per personalised letter. They live in different tables for the reasons in §2 (different alphabet, different security model, different retention) but share their lifecycle and their export run.
 
@@ -139,7 +157,7 @@ Door-drop letters have no recipient identity at print time — they're distribut
 | Surface | Carrier | Encodes | Tracking signal | Table |
 |---|---|---|---|---|
 | **Appeal letter (page 1)** | None (no per-recipient opaque token — there's no recipient to attribute) | — | — | — |
-| **QR-bill (page 2, separate A4)** | Swiss IG-compliant QR-bill | SPC payload (IBAN, amount, **one campaign-level QRR/SCOR per export**) | none direct; per-donor attribution comes from camt.053 debtor data on payment | `swiss_qr_references` row with `constituent_id = NULL` |
+| **QR-bill (single-page A4)** | Swiss IG-compliant QR-bill (compressed appeal + bottom 105 mm payment strip) | SPC payload (IBAN, amount, **one campaign-level QRR/SCOR per export**) | none direct; per-donor attribution comes from camt.053 debtor data on payment | `swiss_qr_references` row with `constituent_id = NULL` |
 
 The reconciler creates / matches the constituent **from the camt.053 debtor fields** (`RltdPties.Dbtr.Nm` + `DbtrAcct.Id.IBAN`) when the QR-reference resolves to a NULL-constituent row — see §5 reconciliation.
 
@@ -687,6 +705,86 @@ Per uploaded statement:
 
 **Reversal entries** (`Ntry.RvslInd = true`) reverse the prior donation rather than double-book. **Pending entries** (`Sts != BOOK`) are skipped and re-evaluated on next statement upload.
 
+### 5.5 Constituent enrichment from camt.053 — what we extract and how
+
+**Why this matters.** A constituent created via the door-drop reconciler (or matched-but-augmented via the personalised reconciler) determines whether the operator can re-engage by post: without `addressLine1` + `postalCode` + `city`, future appeal letters cannot be sent to this donor. The Swiss QR-bill rail typically carries no email address (the donor never typed one — they paid via BVR, not via the public donation page), so postal address is the *only* re-engagement channel for ~70% of new constituents created this way.
+
+**The data is there for most banks, but not all.** ISO 20022 camt.053 specifies a rich `RltdPties.Dbtr` block — the question is whether the donor's bank populates it. Empirically:
+
+| Bank | `Dbtr.Nm` | `Dbtr.PstlAdr` structured (`StrtNm`, `BldgNb`, `PstCd`, `TwnNm`, `Ctry`) | `Dbtr.PstlAdr.AdrLine` free-form fallback | Notes |
+|---|---|---|---|---|
+| **PostFinance** | ✅ | ✅ usually complete | rarely needed | reference implementation; most generous output |
+| **UBS Switzerland** | ✅ | ✅ often complete | sometimes used for street+number on one line | |
+| **Raiffeisen** | ✅ | ⚠️ variable by regional bank | sometimes used | larger caisses ≈ PostFinance; smaller ones omit address |
+| **ZKB / cantonales** | ✅ | ⚠️ variable | variable | |
+| **Néo-banques (Yuh, Neon, Wise CH, Revolut CHF)** | ✅ | ❌ name-only is common | ❌ | minimalist by design |
+| **TWINT-rail credits** | ⚠️ often anonymised as `"TWINT"` | ❌ | ❌ | already covered by the `no_debtor_info` unreconciled reason (§5.1) |
+
+Net practical effect: **~70-85% of QR-bill credits carry an exploitable postal address**, **~15-30% arrive name-only**. The reconciler must handle both gracefully.
+
+#### Extraction matrix per ISO 20022 field
+
+```
+RltdPties.Dbtr.Nm                  → constituents.firstName + lastName
+                                     (split on the last space; preserve compound surnames
+                                     when the bank emits "Pia-Maria Rutschmann-Schnyder")
+
+RltdPties.Dbtr.PstlAdr.StrtNm      → constituents.addressLine1 (street only)
+RltdPties.Dbtr.PstlAdr.BldgNb      → appended to addressLine1 as " {BldgNb}"
+RltdPties.Dbtr.PstlAdr.PstCd       → constituents.postalCode
+RltdPties.Dbtr.PstlAdr.TwnNm       → constituents.city
+RltdPties.Dbtr.PstlAdr.Ctry        → constituents.countryCode (ISO 3166-1 alpha-2)
+
+# Free-form fallback when structured fields are absent
+RltdPties.Dbtr.PstlAdr.AdrLine[*]  → heuristic parser:
+                                     - last line matching /^\d{4,5}\s+\w/ → "{PostCode} {City}"
+                                     - prior line → addressLine1
+                                     - lines beyond → addressLine2
+
+RltdPties.DbtrAcct.Id.IBAN         → constituents.paymentSourceIban (NEW field, PR #5 schema)
+                                     — secondary match key for re-imports + cross-tenant collisions
+```
+
+#### Idempotent enrichment on re-import
+
+A donor who gives twice may show up once with a name-only camt.053 and a second time with a full address (different bank correspondent, different month). The reconciler must:
+
+1. **First import** → create constituent with whatever fields are available; set `dataSource='camt053'`
+2. **Second import (same IBAN)** → match the existing constituent by IBAN; **fill missing fields** but **never overwrite** existing ones (the operator may have manually corrected/completed the row in the meantime)
+3. **Re-import of the same statement** (idempotency key matched) → skip; no enrichment passes
+
+#### New constituent indicators
+
+Two new fields on `constituents` (PR #5 schema):
+- `dataSource: 'camt053' | 'manual' | 'public_form' | 'csv_import'` — provenance flag
+- `identityCompleteness: 'full' | 'partial' | 'minimal'` — derived at write-time:
+  - `full` = name + (email OR postal address) at minimum
+  - `partial` = name + IBAN, missing both email and address
+  - `minimal` = name only (no IBAN, no contact) — the TWINT-anonymised case
+
+The UI surfaces `partial` / `minimal` as a soft signal on the constituent detail page ("This donor was created from a bank transfer — no contact info on file. [Request address by email]") so the operator can act on the gap rather than discovering it the next time they try to mail.
+
+### 5.6 Future: AI normalisation layer for cross-bank heterogeneity
+
+The matrix above is deterministic and works well for the structured-camt.053 happy path. But **bank-to-bank variation in real-world camt.053 files is the main long-term reliability risk** for this reconciler:
+
+- Same address rendered as `"Rue de la Paix 12"` (PostFinance) vs `"12, Rue de la Paix"` (UBS) vs split across `AdrLine[1]`+`AdrLine[2]` (Raiffeisen)
+- Names with title prefixes (`"M. Jean Dupont"`, `"Dr. med. Anna Müller"`) the deterministic split mishandles
+- Hyphenated / compound / aristocratic / Asian-name-order surnames that the "last space" heuristic gets wrong (`"van der Berg"`, `"de la Croix"`, `"Wong Wei Ming"`)
+- Free-form `AdrLine` with inconsistent ordering across banks
+- Future donor-rail expansions (TWINT enrichment, Revolut multi-currency, foreign-bank cross-border via SEPA) will widen the matrix
+
+**Planned mitigation (post-MVP)**: an LLM normalisation step between raw camt.053 extraction and constituent write. The model receives `{ rawDbtrName, rawDbtrPstlAdr, rawAdrLines, rawIban, ibanCountry }` and returns `{ firstName, lastName, street, buildingNumber, postalCode, city, countryCode, confidence }` in the canonical shape Givernance stores. Bank-specific heuristics become training data rather than per-bank code branches, and a single confidence score lets the reconciler queue low-confidence rows for human review.
+
+Constraints inherited from the project posture:
+- **EU-resident inference only** — runs via Scaleway Generative APIs (Mistral / Llama 3.1) per the Tech Stack table in CLAUDE.md
+- **GDPR Art. 9 boundary** — donor address is personal data; the model must not be used for inference outside the tenant's EU region
+- **Operator-visible confidence flag** — never silently rewrite a deterministic-extracted address with an LLM-normalised one; surface the diff in the unreconciled queue when confidence < threshold
+- **Deterministic fallback always available** — the deterministic parser stays in code as the primary path; LLM is an enrichment layer on the deterministic output, not a replacement
+- **No cross-tenant data sharing** — each tenant's reconciler runs against its own data only; the model receives no training updates from one tenant's data that leak into another's inference
+
+This lives in a dedicated future ADR (`adr-029-ai-camt053-normalisation.md`, TBD) and a separate epic — *not* PR #5. PR #5 ships the deterministic extraction matrix from §5.5 above. The AI layer is the natural next step once we see actual bank-by-bank variance in production.
+
 ## 6. Permissions matrix
 
 | Endpoint | Guard | Notes |
@@ -749,6 +847,8 @@ The `actor_id` is the impersonation-aware `effective_actor_id` per `docs/19` §5
 | **Annual-giving statement integration** | Camt-derived donations flow into the same annual statement pipeline as Stripe; no special handling needed but covered by the receipts epic. |
 | **MT940 legacy import** | Swiss banks deprecated MT940; not worth supporting. |
 | **Donor self-service: switch from CHF QR-bill to SEPA bank transfer** | Cross-border donors paying EUR → SCOR works; deeper SEPA DD integration is the existing payment-strategy roadmap (`docs/20` §11). |
+| **AI normalisation of camt.053 donor data (cross-bank heterogeneity)** | See §5.6. Deterministic parser ships first; an LLM enrichment layer is the natural follow-up once production data exposes the long tail of per-bank quirks (`AdrLine` variants, compound surnames, free-form ordering). Scaleway Generative APIs (EU residency) per ADR-010-equivalent posture. Future `adr-029-ai-camt053-normalisation.md`. |
+| **Donor profile-completion workflow** | Constituents created from camt.053 with `identityCompleteness='partial'` (no email, no address) need a re-engagement flow — e.g. a small notice on the next QR-bill letter, or a follow-up email if the operator collects the email by other means. Out of MVP scope; the data flag from §5.5 sets it up. |
 
 ## 9. References
 

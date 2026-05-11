@@ -36,6 +36,7 @@ function renderSection(overrides: Partial<Parameters<typeof PostalCampaignSectio
       campaignType="nominative_postal"
       campaignStatus="active"
       publicPageStatus="published"
+      bankAccount={null}
       initialMembers={[]}
       initialMemberTotal={0}
       initialExports={[]}
@@ -48,30 +49,38 @@ describe("PostalCampaignSection", () => {
   it("disables Generate ZIP and shows the readiness banner when the campaign is still a draft", () => {
     renderSection({ campaignStatus: "draft" });
 
-    const generateBtn = screen.getByRole("button", { name: /Generate ZIP/i });
+    const generateBtn = screen.getByRole("button", { name: /Generate.*ZIP/i });
     expect(generateBtn).toBeDisabled();
 
     expect(screen.getByText(/Activate the campaign first/i)).toBeInTheDocument();
   });
 
-  it("disables Generate ZIP and shows the public-page-missing banner when no page is configured", () => {
-    renderSection({ publicPageStatus: "missing" });
+  it("disables Generate ZIP and shows the not-configured banner when no page AND no bank are configured", () => {
+    // Epic #318 PR #4 — when both rails are off, the resolved mode is
+    // `blocked` and the operator sees the disambiguated notConfigured
+    // banner instead of the misleading "configure a public page" hint
+    // (their actual intent might be Swiss QR-bill only).
+    renderSection({ publicPageStatus: "missing", bankAccount: null });
 
-    const generateBtn = screen.getByRole("button", { name: /Generate ZIP/i });
+    const generateBtn = screen.getByRole("button", { name: /Generate.*ZIP/i });
     expect(generateBtn).toBeDisabled();
 
-    expect(screen.getByText(/Configure a public donation page first/i)).toBeInTheDocument();
-    // CTA points at the public-page editor so the operator can fix the gate.
-    expect(screen.getByRole("link", { name: /Open the public page settings/i })).toHaveAttribute(
+    expect(screen.getByText(/Postal export not configured/i)).toBeInTheDocument();
+    // Banner offers two CTAs: publish the public page OR link a bank account.
+    expect(screen.getByRole("link", { name: /Publish a public donation page/i })).toHaveAttribute(
       "href",
       `/campaigns/${CAMPAIGN_ID}/public-page`,
+    );
+    expect(screen.getByRole("link", { name: /Link a Swiss bank account/i })).toHaveAttribute(
+      "href",
+      `/campaigns/${CAMPAIGN_ID}/edit`,
     );
   });
 
   it("disables Generate ZIP and shows the publish-page banner when the page is a draft", () => {
     renderSection({ publicPageStatus: "draft" });
 
-    const generateBtn = screen.getByRole("button", { name: /Generate ZIP/i });
+    const generateBtn = screen.getByRole("button", { name: /Generate.*ZIP/i });
     expect(generateBtn).toBeDisabled();
     expect(screen.getByText(/Publish your public donation page first/i)).toBeInTheDocument();
   });
@@ -112,7 +121,7 @@ describe("PostalCampaignSection", () => {
 
     // With 3 members linked and an active+published campaign, the
     // Generate button is enabled and defaults to personalized mode.
-    const generateBtn = screen.getByRole("button", { name: /Generate ZIP/i });
+    const generateBtn = screen.getByRole("button", { name: /Generate.*ZIP/i });
     expect(generateBtn).not.toBeDisabled();
 
     await user.click(generateBtn);
@@ -143,7 +152,7 @@ describe("PostalCampaignSection", () => {
 
     renderSection({ initialMemberTotal: 1 });
 
-    await user.click(screen.getByRole("button", { name: /Generate ZIP/i }));
+    await user.click(screen.getByRole("button", { name: /Generate.*ZIP/i }));
 
     await waitFor(() =>
       expect(mockToast.error).toHaveBeenCalledWith(

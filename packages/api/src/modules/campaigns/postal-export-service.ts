@@ -18,6 +18,10 @@
  */
 
 import {
+  type PostalExportRunMode,
+  resolvePostalExportMode,
+} from "@givernance/shared/postal-export-mode";
+import {
   bankAccounts,
   campaignConstituents,
   campaignPostalExports,
@@ -40,18 +44,24 @@ import { resolveInternalUserId } from "../../lib/resolve-user.js";
  */
 export type PostalExportErrorCode =
   | "campaign_not_active"
+  // Standard or Hybrid mode only (modes that print an appeal-letter QR
+  // pointing at the public donation page).
   | "public_page_missing"
   | "public_page_draft"
   | "personalized_on_door_drop"
   | "no_recipients"
-  // Epic #318: Swiss QR-bill readiness gates — fire only when the
-  // campaign has `bank_account_id IS NOT NULL`. A NULL bank account
-  // keeps the campaign on the standard postal rail (no QR-bill, no
-  // Swiss-specific checks).
+  // Epic #318 PR #3: Swiss QR-bill readiness gates — fire in `qr_bill_only`
+  // and `hybrid` modes (anything that emits a QR-bill PDF). Skip in
+  // `standard` mode (no bank account).
   | "swiss_qr_bill_bank_account_deleted"
   | "swiss_qr_bill_invalid_iban"
   | "swiss_qr_bill_currency_mismatch"
   | "swiss_qr_bill_address_too_long"
+  // Epic #318 PR #4: blocked mode — neither a public page is published
+  // nor a bank account is linked. Nothing to print. The previous
+  // `public_page_missing` code fired here even when the operator's intent
+  // was Swiss QR-bill only; this new code disambiguates.
+  | "postal_export_not_configured"
   | "insert_failed";
 
 export class PostalExportError extends Error {
@@ -204,6 +214,55 @@ async function assertSwissQrBillReadiness(
   }
 }
 
+/**
+ * Epic #318 PR #4 — dispatch the readiness gates per resolved mode. Each
+ * mode only fires the gates that are actually relevant to the artefacts
+ * it will produce. Extracted from `startPostalExport` so the main flow
+ * stays under the biome cognitive-complexity ceiling.
+ */
+async function dispatchModeReadinessGates(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  runMode: PostalExportRunMode,
+  campaign: {
+    bankAccountId: string | null;
+    qrReferenceMode: "auto" | "qrr" | "scor";
+  },
+  publicPage: { status: "draft" | "published" | "archived" } | undefined,
+): Promise<void> {
+  if (runMode === "blocked") {
+    throw new PostalExportError(
+      "This campaign has neither a public donation page nor a linked bank account — there is nothing to print. Publish the public page (donors scan a QR to give online) or link a Swiss bank account (donors pay by QR-bill).",
+      "postal_export_not_configured",
+    );
+  }
+
+  // Public-page gates fire only when the chosen mode actually emits an
+  // appeal letter (standard, hybrid). Swiss QR-bill only mode has no
+  // public page to scan to — the donor pays the printed BVR.
+  if (runMode === "standard" || runMode === "hybrid") {
+    if (!publicPage) {
+      throw new PostalExportError(
+        "Public donation page does not exist. Configure and publish it before generating a postal export.",
+        "public_page_missing",
+      );
+    }
+    if (publicPage.status !== "published") {
+      throw new PostalExportError(
+        "Public donation page is still a draft. Publish it before generating a postal export — otherwise donors scanning the printed QR codes won't reach a working donation page.",
+        "public_page_draft",
+      );
+    }
+  }
+
+  // Swiss QR-bill gates fire only when the chosen mode actually emits a
+  // QR-bill PDF (qr_bill_only, hybrid). Explicit null guard satisfies
+  // TS narrowing without a non-null assertion.
+  if ((runMode === "qr_bill_only" || runMode === "hybrid") && campaign.bankAccountId !== null) {
+    await assertSwissQrBillReadiness(tx, orgId, campaign.bankAccountId, campaign.qrReferenceMode);
+  }
+}
+
 /** Count linked constituents for a campaign (used to lock the totalCount at job-start). */
 async function countLinkedConstituents(
   tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
@@ -268,33 +327,21 @@ export async function startPostalExport(
       );
     }
 
-    // Readiness gate 2 — the public donation page must be published. The
-    // QR codes printed on the letters resolve to `/p/:campaignId`, which
-    // 404s if the public page is missing or in draft (cf.
-    // `public/service.ts` filters `WHERE status = 'published'`). Catching
-    // this here is far cheaper than catching it in the donor's hand.
+    // Epic #318 PR #4 — mode resolution + dispatch.
+    // The 4-input truth table is encoded in `@givernance/shared/postal-export-mode`
+    // so API, worker and web speak the exact same vocabulary.
     const [publicPage] = await tx
       .select({ status: campaignPublicPages.status })
       .from(campaignPublicPages)
       .where(eq(campaignPublicPages.campaignId, campaignId));
 
-    if (!publicPage) {
-      throw new PostalExportError(
-        "Public donation page does not exist. Configure and publish it before generating a postal export.",
-        "public_page_missing",
-      );
-    }
-    if (publicPage.status !== "published") {
-      throw new PostalExportError(
-        "Public donation page is still a draft. Publish it before generating a postal export — otherwise donors scanning the printed QR codes won't reach a working donation page.",
-        "public_page_draft",
-      );
-    }
-
-    // Epic #318 — Swiss QR-bill readiness gates (only when linked).
-    if (campaign.bankAccountId !== null) {
-      await assertSwissQrBillReadiness(tx, orgId, campaign.bankAccountId, campaign.qrReferenceMode);
-    }
+    const runMode: PostalExportRunMode = resolvePostalExportMode({
+      hasBank: campaign.bankAccountId !== null,
+      // `hasPage = page row exists` (any status). The publish gate
+      // fires separately inside the dispatched standard/hybrid branch.
+      hasPage: !!publicPage,
+    });
+    await dispatchModeReadinessGates(tx, orgId, runMode, campaign, publicPage);
 
     let totalCount = 0;
     if (mode === "personalized") {

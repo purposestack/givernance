@@ -13,6 +13,7 @@
     "./constants": "./src/constants/index.ts",
     "./i18n": "./src/i18n/locales.ts",
     "./contracts/branding": "./src/contracts/branding.ts",
+    "./postal-export-mode": "./src/postal-export-mode.ts",
     "./signup": "./src/signup/index.ts"
   },
   "scripts": {

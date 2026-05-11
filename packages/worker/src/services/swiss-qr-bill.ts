@@ -22,6 +22,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import type { Locale } from "@givernance/shared/i18n";
 import {
   type BankAccount,
   bankAccounts,
@@ -33,6 +34,25 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import PDFDocument from "pdfkit";
 import { SwissQRBill } from "swissqrbill/pdf";
 import { withWorkerContext } from "../lib/db.js";
+import { type CampaignLetterData, renderCompressedAppealForQrBill } from "./campaign-pdf.js";
+
+/**
+ * Map our internal `tenants.default_locale` (FR/EN today; DE/IT cheap to
+ * add when those locales land — see `docs/25` §8) to the `swissqrbill`
+ * v4 `language` option which accepts `"DE" | "EN" | "FR" | "IT" | "RM"`.
+ * Default `FR` matches the MVP's primary market and the schema-level
+ * default for new tenants — never `DE` (the swissqrbill library default)
+ * so a French/English appeal never ends up with a German payment strip.
+ */
+export function localeToQrBillLanguage(
+  locale: Locale | null | undefined,
+): "DE" | "EN" | "FR" | "IT" {
+  if (locale === "en") return "EN";
+  // FR is the MVP default — covers `fr`, `null`, `undefined`, and any
+  // locale the schema-level validator might let through that this
+  // mapper doesn't explicitly know.
+  return "FR";
+}
 
 /**
  * Effective reference type given a campaign's mode override + the bank
@@ -68,7 +88,8 @@ function mintReferenceString(type: SwissQrReferenceType): string {
     const bytes = randomBytes(26);
     let body = "";
     for (let i = 0; i < 26; i++) {
-      body += (bytes[i]! % 10).toString();
+      const b = bytes[i] ?? 0;
+      body += (b % 10).toString();
     }
     return computeQrr(body);
   }
@@ -196,27 +217,49 @@ export async function loadBankAccountForRender(
 }
 
 /**
- * Render a Swiss QR-bill on its own A4 portrait page and return the PDF
- * buffer. `swissqrbill` v4 attaches onto a PDFKit document; we manage the
- * stream → Buffer collection ourselves so the postal-export processor
- * can `archive.append(buffer, { name })` synchronously alongside the
- * appeal letter.
+ * Render a Swiss QR-bill PDF and return the buffer.
  *
- * IG QR-bill v2.4 structured-address (S) shape — combined-address (K)
- * is intentionally not produced (see ADR-027 §"Address-type readiness").
+ * **1-page canonical (Epic #318 PR #4 follow-up).** The Swiss QR-bill is
+ * traditionally a single A4 — invoice/letter content on top, detachable
+ * 105 mm payment strip at the bottom (IG QR-bill v2.4 §3). We render the
+ * appeal-letter content in compressed form (`renderCompressedAppealForQrBill`)
+ * so it fits in the 192 mm zone above the strip, then attach the strip
+ * at `y = 192 mm` of the SAME page.
  *
- * `amount` is left `undefined` so the slip prints "donor-fills" — the
- * Swiss fundraising default. Future operators can pass a suggested amount
- * per ADR-027's "amount" guidance once the campaign form exposes it.
+ * **Auto-fallback to 2 pages** when the appeal content overflows
+ * `APPEAL_MAX_Y_PT` (long campaign description, deep mission, etc.).
+ * In that case the appeal letter occupies the full page 1 and the strip
+ * lands alone on page 2 with a small "Payment slip" header.
+ *
+ * Used by both **QR-bill only** mode (sole artefact per recipient) and
+ * **Hybrid** mode (sibling to the standard letter PDF).
+ *
+ * IG QR-bill v2.4 structured-address (S) shape only — combined-address
+ * (K) is intentionally not produced (see ADR-027 §"Address-type
+ * readiness"). Amount is left `undefined` so the donor types it in
+ * their e-banking app (the standard Swiss fundraising default).
  */
 export async function renderSwissQrBillPdf(args: {
   bankAccount: BankAccount;
   reference: string;
-  /** Surfaced near the QR for donor context. */
   campaignName: string;
+  campaignDescription: string | null;
+  organisationName: string;
+  organisationMission: string | null;
+  logoBuffer: Buffer | null;
+  locale: Locale | null;
+  recipient: CampaignLetterData["recipient"];
 }): Promise<Buffer> {
-  const { bankAccount, reference, campaignName } = args;
-  const pdf = new PDFDocument({ size: "A4", autoFirstPage: false });
+  const pdf = new PDFDocument({
+    size: "A4",
+    margin: 50,
+    autoFirstPage: false,
+    info: {
+      Title: `${args.organisationName} — ${args.campaignName} — QR-bill`,
+      Author: args.organisationName,
+      Subject: args.campaignName,
+    },
+  });
   const chunks: Buffer[] = [];
 
   const finished = new Promise<Buffer>((resolve, reject) => {
@@ -225,47 +268,72 @@ export async function renderSwissQrBillPdf(args: {
     pdf.on("error", reject);
   });
 
-  // Page header (the top 192 mm of the A4 — see docs/25 §1.ter ASCII layout).
-  pdf.addPage({ size: "A4" });
-  pdf.fontSize(14).font("Helvetica-Bold").text(bankAccount.holderName, 50, 60);
-  pdf.fontSize(10).font("Helvetica").fillColor("#555555").text(`Campaign: ${campaignName}`, 50, 82);
-  pdf
-    .fontSize(10)
-    .fillColor("#000000")
-    .text(`Reference: ${reference}`, 50, 100)
-    .text(`Currency: ${bankAccount.currency} (amount specified by donor)`, 50, 116)
-    .text("Pay this QR-bill from your e-banking app — scan the QR below.", 50, 145);
+  // ── Page 1: compressed appeal-letter content.
+  pdf.addPage({ size: "A4", margin: 50 });
+  const appealData: CampaignLetterData = {
+    organisationName: args.organisationName,
+    organisationMission: args.organisationMission,
+    logoBuffer: args.logoBuffer,
+    campaignName: args.campaignName,
+    campaignDescription: args.campaignDescription,
+    locale: args.locale,
+    // `qrPayload` is reused for the printed reference token; the compressed
+    // renderer never emits a scan-QR (the BVR strip below IS the CTA).
+    qrPayload: args.reference,
+    qrReference: args.reference,
+    recipient: args.recipient,
+  };
+  // The renderer commits to a strip location ("same_page" / "next_page")
+  // based on its own overflow prediction AND picks the right "scan ci-
+  // dessous" / "scan sur la page suivante" wording. We honour its
+  // decision here — if it predicted next_page we addPage; the wording
+  // and the actual strip placement stay aligned for the donor.
+  const stripLocation = await renderCompressedAppealForQrBill(pdf, appealData);
+  if (stripLocation === "next_page") {
+    pdf.addPage({ size: "A4", margin: 0 });
+  }
 
-  // swissqrbill v4 attaches the canonical bottom 105 mm strip
-  // (Receipt 62 mm + Payment Part 148 mm + 46×46 mm QR with Swiss cross).
-  // Address shape passed in IG `StrtNm` / `BldgNb` / `PstCd` / `TwnNm` /
-  // `Ctry` — the v4 library renders the S form natively when these
-  // structured fields are present.
-  const qrBill = new SwissQRBill({
-    currency: bankAccount.currency,
-    reference,
-    creditor: {
-      account: bankAccount.iban,
-      name: bankAccount.holderName,
-      address: bankAccount.holderStreet,
-      buildingNumber: bankAccount.holderBuildingNumber ?? undefined,
-      zip: bankAccount.holderPostalCode,
-      city: bankAccount.holderTown,
-      country: bankAccount.holderCountryCode,
+  // ── BVR strip — same page when it fits, page 2 on auto-fallback.
+  // `language` drives the printed slip labels (Account, Reference,
+  // Payable by, …). Falls back to `FR` for the MVP — same default as
+  // the rest of the letter copy (`docs/25` §8 only supports FR/EN
+  // until DE/IT land). swissqrbill v4 default is `DE`, which would
+  // surface a German strip under a French appeal — operator bug
+  // surfaced on PR #355 review.
+  const qrBill = new SwissQRBill(
+    {
+      currency: args.bankAccount.currency,
+      reference: args.reference,
+      creditor: {
+        account: args.bankAccount.iban,
+        name: args.bankAccount.holderName,
+        address: args.bankAccount.holderStreet,
+        buildingNumber: args.bankAccount.holderBuildingNumber ?? undefined,
+        zip: args.bankAccount.holderPostalCode,
+        city: args.bankAccount.holderTown,
+        country: args.bankAccount.holderCountryCode,
+      },
+      message: args.campaignName,
     },
-    message: campaignName,
-  });
+    { language: localeToQrBillLanguage(args.locale) },
+  );
   qrBill.attachTo(pdf);
 
   pdf.end();
   return finished;
 }
 
-/** Sanitised filename for the QR-bill PDF, paired with the appeal letter. */
+/**
+ * Sanitised filename for the QR-bill PDF, paired with the appeal letter
+ * in **Hybrid mode**. Returns `something.pdf` → `something-qr-bill.pdf`
+ * so the ZIP entries land adjacent for the print partner to staple.
+ *
+ * In **QR-bill only mode** the QR-bill PDF takes the bare recipient name
+ * (no `-qr-bill` suffix) since it's the SOLE artefact — caller picks the
+ * filename in that branch.
+ */
 export function qrBillFilenameFor(letterFilename: string): string {
-  // `something.pdf` → `something-qr-bill.pdf`. Keep the ZIP entries
-  // adjacent so the print partner can staple/distribute as one mailing.
-  return letterFilename.replace(/\.pdf$/i, "") + "-qr-bill.pdf";
+  return `${letterFilename.replace(/\.pdf$/i, "")}-qr-bill.pdf`;
 }
 
 /**

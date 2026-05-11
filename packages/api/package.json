@@ -28,6 +28,7 @@
     "@fastify/swagger-ui": "^5.2.6",
     "@givernance/shared": "workspace:*",
     "@sinclair/typebox": "^0.34.12",
+    "archiver": "^7.0.1",
     "bullmq": "^5.76.6",
     "dompurify": "^3.2.4",
     "drizzle-orm": "^0.45.2",
@@ -44,9 +45,11 @@
     "pino": "10.3.1",
     "qrcode": "^1.5.4",
     "sharp": "^0.34.5",
-    "stripe": "^22.1.1"
+    "stripe": "^22.1.1",
+    "swissqrbill": "^4.3.0"
   },
   "devDependencies": {
+    "@types/archiver": "^6.0.4",
     "@types/jsdom": "^28.0.1",
     "@types/node": "^25.6.2",
     "@types/pdfkit": "^0.17.6",

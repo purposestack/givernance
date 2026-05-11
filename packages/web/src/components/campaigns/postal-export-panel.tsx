@@ -1,7 +1,12 @@
 "use client";
 
 import {
+  type PostalExportRunMode,
+  resolvePostalExportMode,
+} from "@givernance/shared/postal-export-mode";
+import {
   AlertTriangle,
+  Banknote,
   Download,
   Eye,
   FileArchive,
@@ -11,7 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +50,18 @@ interface PostalExportPanelProps {
    * status).
    */
   publicPageStatus: "missing" | "draft" | "published";
+  /**
+   * Epic #318 PR #4 — Swiss QR-bill discriminator. NULL = no bank
+   * account linked (standard postal mode); set = QR-bill or hybrid
+   * mode depending on whether the public page is also published.
+   * Drives the mode-summary panel + the mode-aware button label.
+   */
+  bankAccount: {
+    bankName: string;
+    /** Last 4 digits of the IBAN — surfaced in the summary panel. */
+    ibanLast4: string;
+    currency: "CHF" | "EUR";
+  } | null;
   initialExports: PostalExport[];
   /** Number of constituents currently linked — used to disable "personalized" when 0. */
   linkedConstituentCount: number;
@@ -56,12 +73,20 @@ interface PostalExportPanelProps {
  * Renders mode toggle (door-drop / personalized) + Preview + Generate buttons,
  * the active job's progress bar (polled every 2s while pending|processing),
  * and the recent-jobs history list with per-row download links.
+ *
+ * Epic #318 PR #4 adds the mode-summary panel + mode-aware button label
+ * + content-type-aware preview handler. Complexity is intrinsic to a
+ * component with this many state branches (Swiss mode resolution +
+ * polling + start + preview + readiness gates). Extracting more would
+ * make the code less readable, not more.
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: see JSDoc above
 export function PostalExportPanel({
   campaignId,
   campaignType,
   campaignStatus,
   publicPageStatus,
+  bankAccount,
   initialExports,
   linkedConstituentCount,
 }: PostalExportPanelProps) {
@@ -69,60 +94,27 @@ export function PostalExportPanel({
   const [mode, setMode] = useState<PostalExportMode>(
     campaignType === "door_drop" ? "door_drop" : "personalized",
   );
+
+  // Epic #318 PR #4 — resolve the run mode the same way the API and worker
+  // resolve it. Single source of truth in `@givernance/shared/postal-export-mode`.
+  const runMode: PostalExportRunMode = useMemo(
+    () =>
+      resolvePostalExportMode({
+        hasBank: bankAccount !== null,
+        // `hasPage = page row exists` (draft or published) — the
+        // publish-status banner fires separately. Same semantics as the
+        // API + worker resolvers.
+        hasPage: publicPageStatus !== "missing",
+      }),
+    [bankAccount, publicPageStatus],
+  );
   const [exports, setExports] = useState<PostalExport[]>(initialExports);
   const [isStarting, setIsStarting] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
 
   const activeJob = exports.find((e) => e.status === "pending" || e.status === "processing");
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Polling lifecycle: keep a 2s ticker running whenever there's at least one
-  // in-flight job. Tear down when the list is fully terminal so we're not
-  // hammering the API on idle tabs.
-  useEffect(() => {
-    if (!activeJob) {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-      return;
-    }
-
-    if (pollRef.current) return;
-
-    const client = createClientApiClient();
-    const stopPolling = () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-    const tick = async () => {
-      try {
-        const fresh = await PostalCampaignService.getExport(client, campaignId, activeJob.id);
-        setExports((prev) => prev.map((e) => (e.id === fresh.id ? fresh : e)));
-        // Stop the ticker BEFORE firing the toast — the next 2s tick
-        // can land before the React effect cleanup re-runs, and we'd
-        // otherwise emit a duplicate success/error toast on every
-        // subsequent poll until the parent re-renders.
-        if (fresh.status === "completed") {
-          stopPolling();
-          toast.success(t("toast.exportReady"));
-        }
-        if (fresh.status === "failed") {
-          stopPolling();
-          toast.error(fresh.error ?? t("toast.exportFailed"));
-        }
-      } catch (err) {
-        if (err instanceof ApiProblem && err.status === 404) {
-          stopPolling();
-        }
-      }
-    };
-    pollRef.current = setInterval(() => void tick(), 2000);
-
-    return stopPolling;
-  }, [activeJob, campaignId, t]);
+  useExportPolling({ activeJob, campaignId, setExports, t });
 
   const refreshList = useCallback(async () => {
     const client = createClientApiClient();
@@ -160,38 +152,8 @@ export function PostalExportPanel({
   const handlePreview = useCallback(async () => {
     if (isPreviewing) return;
     setIsPreviewing(true);
-    // Open in a new tab via form submit so the browser handles the
-    // `application/pdf` response natively. We keep the popup synchronous
-    // to the click for popup-blocker friendliness, then redirect to the
-    // actual URL once we've gone through the CSRF + cookie hop.
-    const previewUrl = PostalCampaignService.previewPdfUrl(campaignId);
     try {
-      // The auth plugin's CSRF double-submit guard reads from the
-      // `csrf-token` cookie — NOT a `csrf=` cookie. The previous inline
-      // reader (`c.startsWith("csrf=")`) never matched and the request
-      // went out without the header → auth plugin rejected with 403.
-      // Reuse the canonical helper so the preview path stays in lockstep
-      // with the rest of the app's mutating fetches.
-      const csrf = readCsrfTokenFromDocumentCookie();
-
-      const response = await fetch(previewUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-          ...(csrf ? { [getCsrfHeaderName()]: csrf } : {}),
-        },
-        body: JSON.stringify({ mode }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Preview failed (${response.status})`);
-      }
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      // Best-effort cleanup; the new tab still has its own reference.
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      await fetchAndOpenPreview({ campaignId, mode });
     } catch (err) {
       const message = err instanceof Error ? err.message : t("toast.previewFailed");
       toast.error(message);
@@ -202,14 +164,15 @@ export function PostalExportPanel({
 
   const personalizedDisabled = campaignType === "door_drop" || linkedConstituentCount === 0;
 
-  // Readiness gates (Epic #274). The Preview button is intentionally NOT
-  // gated — it produces a fake-data sample with a never-registered QR
-  // token so the operator can validate the layout before publishing the
-  // public donation page. The Generate ZIP button blocks until both
-  // gates pass; the API enforces the same checks (defense-in-depth).
+  // Epic #318 PR #4 — mode-aware readiness gates.
+  // The public-page banner only fires in `standard` / `hybrid` (modes that
+  // emit an appeal letter with a Givernance scan QR). `qr_bill_only` mode
+  // has no public page to scan to. `blocked` mode shows its own banner.
   const campaignNotActive = campaignStatus !== "active";
-  const publicPageNotReady = publicPageStatus !== "published";
-  const generateBlocked = campaignNotActive || publicPageNotReady;
+  const publicPageNotReady =
+    (runMode === "standard" || runMode === "hybrid") && publicPageStatus !== "published";
+  const exportNotConfigured = runMode === "blocked";
+  const generateBlocked = campaignNotActive || publicPageNotReady || exportNotConfigured;
 
   return (
     <Card>
@@ -233,11 +196,14 @@ export function PostalExportPanel({
         </Button>
       </CardHeader>
       <CardContent className="space-y-5">
+        <ModeSummaryPanel runMode={runMode} bankAccount={bankAccount} campaignId={campaignId} />
+
         {generateBlocked ? (
           <ReadinessBanners
             campaignId={campaignId}
             campaignNotActive={campaignNotActive}
             publicPageStatus={publicPageStatus}
+            runMode={runMode}
           />
         ) : null}
 
@@ -283,7 +249,9 @@ export function PostalExportPanel({
               generateBlocked
                 ? campaignNotActive
                   ? t("readiness.activateCampaignFirst")
-                  : t("readiness.publishPublicPageFirst")
+                  : exportNotConfigured
+                    ? t("readiness.notConfiguredTooltip")
+                    : t("readiness.publishPublicPageFirst")
                 : undefined
             }
           >
@@ -295,7 +263,7 @@ export function PostalExportPanel({
             ) : (
               <>
                 <FileArchive size={16} aria-hidden="true" />
-                {t("actions.generateZip")}
+                {t(`actions.generateZip.${runMode}`)}
               </>
             )}
           </Button>
@@ -449,16 +417,135 @@ function StatusBadge({ status }: { status: PostalExport["status"] }) {
  * page (a draft campaign is still being scoped). When both are blocked
  * the operator gets two banners with two distinct CTAs.
  */
+/**
+ * Fetch the preview PDF (or ZIP for hybrid mode) and open it in the
+ * browser. Extracted from `PostalExportPanel.handlePreview` so the
+ * component stays under the biome cognitive-complexity ceiling.
+ */
+async function fetchAndOpenPreview({
+  campaignId,
+  mode,
+}: {
+  campaignId: string;
+  mode: PostalExportMode;
+}): Promise<void> {
+  const previewUrl = PostalCampaignService.previewPdfUrl(campaignId);
+  // The auth plugin's CSRF double-submit guard reads from the
+  // `csrf-token` cookie — keep this path in lockstep with the rest of
+  // the app's mutating fetches.
+  const csrf = readCsrfTokenFromDocumentCookie();
+
+  const response = await fetch(previewUrl, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "content-type": "application/json",
+      ...(csrf ? { [getCsrfHeaderName()]: csrf } : {}),
+    },
+    body: JSON.stringify({ mode }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Preview failed (${response.status})`);
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  // Epic #318 PR #4 — content-type dispatch:
+  //   - `application/pdf` → open inline in new tab (standard, qr_bill_only)
+  //   - `application/zip` → trigger download (hybrid: two PDFs per recipient)
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/zip")) {
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = "postal-preview.zip";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } else {
+    window.open(objectUrl, "_blank", "noopener,noreferrer");
+  }
+  // Best-effort cleanup; the new tab still has its own reference.
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
+
+/**
+ * Polling lifecycle extracted out of `PostalExportPanel` so the component
+ * stays under the biome cognitive-complexity ceiling. Keeps a 2s ticker
+ * running whenever there's at least one in-flight job; tears down when
+ * the list is fully terminal so idle tabs don't hammer the API.
+ */
+function useExportPolling({
+  activeJob,
+  campaignId,
+  setExports,
+  t,
+}: {
+  activeJob: PostalExport | undefined;
+  campaignId: string;
+  setExports: React.Dispatch<React.SetStateAction<PostalExport[]>>;
+  t: ReturnType<typeof useTranslations>;
+}): void {
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!activeJob) {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
+    }
+    if (pollRef.current) return;
+
+    const client = createClientApiClient();
+    const stopPolling = () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+    const tick = async () => {
+      try {
+        const fresh = await PostalCampaignService.getExport(client, campaignId, activeJob.id);
+        setExports((prev) => prev.map((e) => (e.id === fresh.id ? fresh : e)));
+        // Stop BEFORE firing the toast — the next 2s tick can land before
+        // the React effect cleanup re-runs and would duplicate toasts.
+        if (fresh.status === "completed") {
+          stopPolling();
+          toast.success(t("toast.exportReady"));
+        }
+        if (fresh.status === "failed") {
+          stopPolling();
+          toast.error(fresh.error ?? t("toast.exportFailed"));
+        }
+      } catch (err) {
+        if (err instanceof ApiProblem && err.status === 404) {
+          stopPolling();
+        }
+      }
+    };
+    pollRef.current = setInterval(() => void tick(), 2000);
+    return stopPolling;
+  }, [activeJob, campaignId, setExports, t]);
+}
+
 function ReadinessBanners({
   campaignId,
   campaignNotActive,
   publicPageStatus,
+  runMode,
 }: {
   campaignId: string;
   campaignNotActive: boolean;
   publicPageStatus: "missing" | "draft" | "published";
+  runMode: PostalExportRunMode;
 }) {
   const t = useTranslations("campaigns.postal.readiness");
+  // Epic #318 PR #4 — public-page banner only fires in modes that emit
+  // an appeal letter with a scan-QR. QR-bill-only mode has no scan-QR.
+  const publicPageBannerActive =
+    publicPageStatus !== "published" && (runMode === "standard" || runMode === "hybrid");
+  const notConfiguredBannerActive = runMode === "blocked";
   return (
     <div className="space-y-3">
       {campaignNotActive ? (
@@ -470,7 +557,7 @@ function ReadinessBanners({
           </div>
         </div>
       ) : null}
-      {publicPageStatus !== "published" ? (
+      {publicPageBannerActive ? (
         <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-on-surface">
           <AlertTriangle size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-warning" />
           <div className="flex-1">
@@ -493,6 +580,91 @@ function ReadinessBanners({
           </div>
         </div>
       ) : null}
+      {notConfiguredBannerActive ? (
+        <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-on-surface">
+          <AlertTriangle size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-warning" />
+          <div className="flex-1">
+            <p className="font-medium">{t("notConfigured.title")}</p>
+            <p className="mt-1 text-on-surface-variant">{t("notConfigured.body")}</p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              <Link
+                href={`/campaigns/${campaignId}/public-page`}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                {t("notConfigured.publicPageCta")}
+              </Link>
+              <Link
+                href={`/campaigns/${campaignId}/edit`}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                {t("notConfigured.bankAccountCta")}
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Epic #318 PR #4 — Mode summary panel rendered above the readiness banners.
+ *
+ * The operator chose the mode upstream (link a bank account / publish a
+ * public page); this panel REFLECTS that choice rather than re-asking it.
+ * It tells them exactly what the export will produce, plus a single-line
+ * "this mode is selected because …" explainer that turns the upstream
+ * configuration into something they can click to change.
+ */
+function ModeSummaryPanel({
+  runMode,
+  bankAccount,
+  campaignId,
+}: {
+  runMode: PostalExportRunMode;
+  bankAccount: PostalExportPanelProps["bankAccount"];
+  campaignId: string;
+}) {
+  const t = useTranslations("campaigns.postal.modeSummary");
+  const bankAccountLabel = bankAccount
+    ? `${bankAccount.bankName} · ****${bankAccount.ibanLast4} · ${bankAccount.currency}`
+    : "—";
+  const reasonText =
+    runMode === "standard"
+      ? t("reason.standard")
+      : runMode === "qr_bill_only"
+        ? t("reason.qr_bill_only", { bank: bankAccountLabel })
+        : runMode === "hybrid"
+          ? t("reason.hybrid", { bank: bankAccountLabel })
+          : t("reason.blocked");
+
+  return (
+    <div className="rounded-xl bg-surface-container p-4">
+      <div className="flex items-center gap-2">
+        <Badge variant={runMode === "blocked" ? "warning" : "info"}>{t(`badge.${runMode}`)}</Badge>
+        {bankAccount ? (
+          <Banknote size={14} aria-hidden="true" className="text-on-surface-variant" />
+        ) : null}
+      </div>
+      <p className="mt-2 text-sm font-medium text-on-surface">{t("contentsHeading")}</p>
+      <ul className="mt-1 space-y-0.5 text-sm text-on-surface-variant">
+        {runMode === "standard" || runMode === "hybrid" ? (
+          <li>✓ {t("contents.appealLetter")}</li>
+        ) : null}
+        {runMode === "qr_bill_only" || runMode === "hybrid" ? (
+          <li>✓ {t("contents.qrBill")}</li>
+        ) : null}
+        {runMode === "blocked" ? <li>✗ {t("contents.nothing")}</li> : null}
+      </ul>
+      <p className="mt-3 text-xs text-on-surface-variant">
+        {reasonText}{" "}
+        <Link
+          href={`/campaigns/${campaignId}/edit`}
+          className="font-medium text-primary hover:underline"
+        >
+          {t("reason.editLink")}
+        </Link>
+      </p>
     </div>
   );
 }
