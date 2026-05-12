@@ -2,7 +2,7 @@
 
 > **Status**: Foundation merged (Epic #318)
 > **Owner**: Payment Engineer agent
-> **Related**: `23-postal-campaigns.md`, `20-payment-strategy.md`, `03-data-model.md`, `06-security-compliance.md`, `15-infra-adr.md`
+> **Related**: `23-postal-campaigns.md`, `20-payment-strategy.md`, `03-data-model.md`, `06-security-compliance.md`, `15-infra-adr.md`, [`adrs/adr-027-swiss-qr-bill.md`](./adrs/adr-027-swiss-qr-bill.md), [`adrs/adr-028-camt053-ingestion.md`](./adrs/adr-028-camt053-ingestion.md)
 > **Companion diagrams**: [`diagrams/swiss-qr-bill-flow.mmd`](../diagrams/swiss-qr-bill-flow.mmd), [`diagrams/camt053-reconciliation-flow.mmd`](../diagrams/camt053-reconciliation-flow.mmd)
 > **Closes (foundation)**: #318 (foundation PR)
 
@@ -172,27 +172,34 @@ The conversion ratio is naturally lower than personalised (no engagement signal 
 
 > **Why not just use the Swiss QR-bill page on its own for personalised mailings?** Because it would silently degrade the operator's existing 3-stage reporting on the personalised rail. The Swiss flow on personalised MUST be a strict superset of the French flow's tracking surface — never a regression. Door-drop is the natural exception because it had no scan-tracking signal to begin with.
 
-## 1.ter Page format — Swiss QR-bill on a separate A4 sheet
+## 1.ter Page format — Swiss QR-bill: canonical 1-page layout (auto-fallback to 2 pages)
 
-The QR-bill is **always rendered on its own A4 portrait sheet**, sibling to the appeal letter in the ZIP. The Style Guide explicitly allows this layout (no perforation negotiation with the print partner; donor unfolds two sheets). The bottom 105mm strip is the canonical IG-mandated structure (Receipt + Payment Part); the top 192mm carries a minimal Givernance summary banner so the donor sees the campaign context before the slip.
+The Swiss QR-bill PDF is **rendered as a single A4 portrait page** by default — compressed appeal content in the top 175 mm safe zone with the canonical IG QR-bill BVR strip at y=192 mm of the SAME A4. The IG Style Guide explicitly authorises this "invoice/letter at top, detachable BVR slip at bottom" layout. When the operator's appeal content overflows the 175 mm safe zone (measured at render time via `doc.y > 175 mm` after writing the compressed appeal + payment hint), the renderer **auto-falls back to a 2-page PDF** — appeal on page 1, BVR strip alone on page 2. The strip itself is **always at y=192 mm of an A4**, never moved or compressed; only the page hosting it changes. See [ADR-027 § amendment](./adrs/adr-027-swiss-qr-bill.md#2026-05-11-amendment--three-export-modes--rich-qr-bill-pdf) for the rationale (PR #354's 2-page-always layout gave donors a near-empty top half that disconnected the slip from its appeal) and [§1.bis.0](#1bis0-mode-resolution-matrix-pr-4) for which export modes use this layout (QR-bill-only + Hybrid both ship it).
 
 ```
 ┌───────────── A4 portrait (210×297mm) ─────────────┐
-│  [ ORGANISATION NAME — bold ]                     │  y=20mm
-│  Campaign: <campaign.name>                        │  y=30mm
-│  Reference: <QRR or SCOR>  · Amount: <CHF / leave blank>
+│  [ ORGANISATION NAME — bold ]                     │  y=20mm  ┐
+│  Campaign: <campaign.name>                        │  y=30mm  │
+│                                                   │          │
+│  Dear <salutation>,                               │  y=45mm  │  COMPRESSED APPEAL ZONE
+│                                                   │          │  (top 175 mm safe zone)
+│  <compressed appeal body — operator-authored,     │          │
+│   tightened typography vs. the standalone letter  │          │  When doc.y > 175 mm here
+│   in Hybrid mode; same calls-to-action and        │          │  after writing the appeal +
+│   donor thanks language>                          │          │  payment hint, the renderer
+│                                                   │          │  auto-falls back to a
+│  Recipient: Jean Dupont, Rue de Lausanne 12       │          │  2-page PDF (appeal on
+│             1003 Lausanne                         │          │  page 1, BVR strip alone
+│  (only if prefill_donor_identity is enabled)      │          │  on a fresh page 2).
+│                                                   │          │
+│  Pay this QR-bill from your e-banking app:        │          │
+│  Scan the QR code on the receipt below.           │          │
+│                                                   │  y=175mm ┘ <-- SAFE-ZONE CEILING
 │                                                   │
-│  Recipient: Jean Dupont, Rue de Lausanne 12       │  y=45mm (only if prefill_donor_identity)
-│             1003 Lausanne                         │
-│                                                   │
-│  Pay this QR-bill from your e-banking app:        │  y=70mm
-│  Scan the QR code on the receipt below.           │
-│                                                   │
-│                                                   │
-│  - - - - - - - - perforation marker - - - - - - - │  y=192mm (top of QR-bill strip)
-│                                                   │
+│  - - - - - - - - - - - - - - - - - - - - - - - - │  y=192mm  <-- BVR STRIP TOP
+│                                                   │              (canonical, fixed)
 │  ┌─────────────────────┬─────────────────────────┐│
-│  │  RECEIPT            │  PAYMENT PART           ││
+│  │  RECEIPT (62 mm)    │  PAYMENT PART (148 mm)  ││
 │  │  ─────────────      │  ──────────────────     ││
 │  │  Account / Payable  │  ┌─────────────┐        ││
 │  │  to:                │  │             │        ││  y=200mm
@@ -217,7 +224,9 @@ The QR-bill is **always rendered on its own A4 portrait sheet**, sibling to the 
 └───────────────────────────────────────────────────┘
 ```
 
-The Receipt + Payment Part dimensions are **fixed by IG QR-bill v2.4** — `swissqrbill` v4 handles them (210×105mm strip, 62mm Receipt + 148mm Payment Part). Section labels (Account, Reference, Payable by, Acceptance point) are **mandatory in DE/FR/IT/EN**; the active label set is driven by the existing `tenants.default_locale` (FR/EN in MVP — DE deferred but cheap to add since `swissqrbill` ships all four locales out of the box, see §8).
+The Receipt + Payment Part dimensions are **fixed by IG QR-bill v2.4** — `swissqrbill` v4 handles them (210×105mm strip, 62mm Receipt + 148mm Payment Part). The 105 mm strip is the canonical IG-mandated structure; section labels (Account, Reference, Payable by, Acceptance point) are **mandatory in DE/FR/IT/EN**; the active label set is driven by the existing `tenants.default_locale` (FR/EN in MVP — DE deferred but cheap to add since `swissqrbill` ships all four locales out of the box, see §8).
+
+The **y=175 mm safe-zone ceiling** and **y=192 mm strip top** are the two coordinates the renderer enforces at every export. They're load-bearing: a regression that lets the appeal content cross y=175 mm without triggering the 2-page fallback would push text into the IG-mandated 17 mm white margin above the strip, breaking IG conformance and donor scannability at the same time.
 
 **Pre-flight printable checklist** (the worker validates before each render):
 
@@ -711,6 +720,8 @@ Per uploaded statement:
 
 **The data is there for most banks, but not all.** ISO 20022 camt.053 specifies a rich `RltdPties.Dbtr` block — the question is whether the donor's bank populates it. Empirically:
 
+> **SWIFT Nov-2026 milestone — camt.053 is explicitly exempt.** The SWIFT [ISO 20022 Nov-2026 milestone](https://www.swift.com/news-events/news/iso-20022-milestone-november-2026-unstructured-addresses-be-removed) removes unstructured (free-form) addresses from **cross-border payment messages** (`pacs.008`, `pacs.009`, `pain.001`) — but **statement messages (`camt.053`, `camt.054`) are out of scope**. PostFinance, UBS, Raiffeisen, and the other Swiss banks may therefore continue emitting `RltdPties.Dbtr.PstlAdr.AdrLine` (free-form lines) in camt.053 indefinitely. The `AdrLine` fallback parser documented in the matrix below is **permanent infrastructure**, not a transitional shim — we cannot retire it after Nov 2026, and we should not architect around an expected reduction in free-form data volume on the statement side.
+
 | Bank | `Dbtr.Nm` | `Dbtr.PstlAdr` structured (`StrtNm`, `BldgNb`, `PstCd`, `TwnNm`, `Ctry`) | `Dbtr.PstlAdr.AdrLine` free-form fallback | Notes |
 |---|---|---|---|---|
 | **PostFinance** | ✅ | ✅ usually complete | rarely needed | reference implementation; most generous output |
@@ -751,7 +762,15 @@ A donor who gives twice may show up once with a name-only camt.053 and a second 
 
 1. **First import** → create constituent with whatever fields are available; set `dataSource='camt053'`
 2. **Second import (same IBAN)** → match the existing constituent by IBAN; **fill missing fields** but **never overwrite** existing ones (the operator may have manually corrected/completed the row in the meantime)
-3. **Re-import of the same statement** (idempotency key matched) → skip; no enrichment passes
+3. **Re-import of the same statement** (statement-level idempotency key matched at §5.4 step 2) → skip; no enrichment passes
+
+**The three layers of idempotency stacked here, top-to-bottom.** A second upload of the same physical XML, a second upload of a different statement that happens to repeat one entry, and a second upload that legitimately carries the same donor reaching enrichment — each is short-circuited at a different boundary by a different constraint:
+
+- **Statement-level** (file-of-records) — `camt_statements_org_msg_id_uniq` on `(org_id, msg_id)`. Re-importing the SAME statement (same `GrpHdr.MsgId`) is rejected wholesale at §5.4 step 2 (the MsgId short-circuit); no entries are scanned, no enrichment runs.
+- **Entry-level** (record-within-file) — `camt_credit_entries_org_statement_entry_uniq` on `(org_id, statement_id, acct_svcr_ref, COALESCE(end_to_end_id, ''))`. Within a single accepted statement, individual `Ntry` rows are de-duplicated against this index at §5.4 step 3.a; a bank that repeats the same `AcctSvcrRef` across two `Ntry` elements (rare ISO 20022 maintenance edge case) writes only one `camt_credit_entries` row, so enrichment runs at most once per entry.
+- **Enrichment-level** (donor-across-statements) — existing constituents are matched by IBAN (`constituents.paymentSourceIban`) so a DIFFERENT statement (different `MsgId`, accepted at step 2) carrying the same donor reaches the enrichment branch (steps 1-2 of the list above), fills missing fields, and **never creates a duplicate constituent**. This is the layer the operator actually relies on for the "donor gave twice, second statement filled in the address" use case.
+
+The three constraints are independent — a regression in one does not silently fall through to the next, it surfaces as either a `unique_violation` (statement-level / entry-level) or a duplicate constituent row (enrichment-level) the operator can spot in the unreconciled queue.
 
 #### New constituent indicators
 
