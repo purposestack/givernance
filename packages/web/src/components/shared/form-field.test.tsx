@@ -50,26 +50,54 @@ function HarnessForm() {
 }
 
 describe("FormMessage — a11y (issue #155)", () => {
-  it("announces validation errors via role=alert + aria-live=assertive", async () => {
+  it("announces validation errors via a polite status live-region", async () => {
     const user = userEvent.setup();
     render(<HarnessForm />);
 
     const input = screen.getByLabelText("Email");
     await user.click(input);
-    await user.tab(); // onBlur triggers validation → error renders
+    await user.tab(); // onBlur triggers validation → error text appears
 
-    // role=alert is what fires the live-region announcement on AT.
-    // Without it, the error stays silent until the user re-focuses
-    // the field — the exact bug #155 captures.
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Email is required");
-    // Belt-and-suspenders for the legacy screen readers that honour
-    // aria-live without recognising the implicit role mapping.
-    expect(alert).toHaveAttribute("aria-live", "assertive");
+    // `role=status` (which implies `aria-live=polite` + `aria-atomic=true`)
+    // queues the message after the current screen-reader speech rather
+    // than pre-empting it — the assertive variant turned out to flood
+    // over the curated `rootError` summary that 9 forms render alongside
+    // FormMessage (multi-agent review M1 on PR #358).
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Email is required");
+    expect(status).toHaveAttribute("aria-live", "polite");
   });
 
-  it("does not render an alert region when there is no error", () => {
+  it("keeps the live region mounted across error → clear → re-error transitions", async () => {
+    // AT combinations (NVDA + Firefox in particular) skip the re-
+    // announce when the live region itself mounts and unmounts every
+    // time the error toggles. Keeping the `<p>` in the DOM (sr-only
+    // when empty) turns each transition into a *content change* on a
+    // stable region, which is what assistive tech reliably fires on.
+    const user = userEvent.setup();
     render(<HarnessForm />);
-    expect(screen.queryByRole("alert")).toBeNull();
+
+    const input = screen.getByLabelText("Email");
+    // Initial render: region exists, body is empty.
+    const initialStatus = screen.getByRole("status", { hidden: true });
+    expect(initialStatus.id).toBeTruthy();
+    expect(initialStatus.textContent).toBe("");
+    const stableId = initialStatus.id;
+
+    // Trigger validation → same node carries the message (same id).
+    await user.click(input);
+    await user.tab();
+    const errored = await screen.findByRole("status");
+    expect(errored.id).toBe(stableId);
+    expect(errored).toHaveTextContent("Email is required");
+
+    // Clear by typing then blurring with a valid value — region stays
+    // mounted, body empties.
+    await user.click(input);
+    await user.type(input, "valid@example.org");
+    await user.tab();
+    const cleared = screen.getByRole("status", { hidden: true });
+    expect(cleared.id).toBe(stableId);
+    expect(cleared.textContent).toBe("");
   });
 });
