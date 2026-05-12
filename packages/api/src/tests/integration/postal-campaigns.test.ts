@@ -413,12 +413,15 @@ describe("QR tracking metrics", () => {
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json<{ data: Record<string, number> }>().data).toEqual({
+    expect(res.json<{ data: Record<string, number | null | object> }>().data).toEqual({
       campaignId: freshCampaignId,
       totalCodes: 0,
       scannedCodes: 0,
       qrAttributedDonations: 0,
       qrAttributedAmountCents: 0,
+      // Epic #318 PR #5 — Swiss-rail block is null on campaigns with no
+      // linked bank account (standard French-rail campaign).
+      swissRail: null,
     });
   });
 
