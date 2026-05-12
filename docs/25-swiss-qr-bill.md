@@ -783,17 +783,22 @@ Per uploaded statement:
 
 ### 5.4.bis Statement state machine
 
-`camt_statements.status` transitions:
+`camt_statements.status` (enum `camt_statement_status`) transitions:
 
 `pending` (upload landed, outbox emitted) →
-  `processing` (worker dequeued; XSD/structural validation passed; persist loop running) →
+  `processing` (worker dequeued; structural validation passed; persist loop running) →
   `processed` (reconciler ran; matched/unmatched counts written; outbox `camt053.processed` emitted)
 
-Failure states are terminal:
-- `failed` — XSD/structural invalid, schema-version unsupported, foreign IBAN, missing required field. `error_code` + `error_message` populated; file moved to `rejected/` prefix.
-- `duplicate` — `GrpHdr.MsgId` already seen on a different statement row. Original entries untouched; file kept in main bucket for audit.
+Failure path is a single terminal state:
+- `failed` — set on every rejection. The `error` column carries a structured `<code>:<message>` discriminator the UI parses to distinguish failure classes:
+  - `duplicate_msg_id:…` — `GrpHdr.MsgId` already seen on a different statement row. Original entries untouched; file kept in main bucket for audit.
+  - `foreign_iban:…` — `Acct.Id.IBAN` not registered in the tenant's `bank_accounts`. File moved to `rejected/` prefix.
+  - `camt_unsupported_version:…` — `Document/@xmlns` not in `{camt.053.001.04, camt.053.001.08}`. File moved to `rejected/` prefix.
+  - `parse_error:…` / `missing_required_field:…` — structural validation failed. File moved to `rejected/` prefix.
 
-The UI poller (operator upload progress widget) binds to this 3-state happy path (`pending → processing → processed`) plus 2 terminal failures (`failed`, `duplicate`).
+The UI poller (operator upload progress widget) binds to the 3-state happy path (`pending → processing → processed`) plus the single terminal `failed` state, and parses `error` to render the failure class.
+
+> A future refactor may split `failed` into a `duplicate` terminal status so the UI can render duplicates as an informational state rather than an error (a re-uploaded statement is operator-recoverable, not a defect). That's a follow-up ENUM addition; the present shape collapses every rejection class into `failed + error_code` for forward compatibility.
 
 **`paymentSource` vs `paymentMethod` on camt.053 donations.** Every donation that flowed through the camt.053 rail carries `payment_source='camt053'`. The `payment_method` discriminates auto-reconciled (`payment_method='camt053'`) from operator-resolved (`payment_method='camt053_manual'`) — useful for reporting "auto-match rate" without re-deriving from `camt_unreconciled_entries`. Operator-resolved donations are still camt-rail provenance and inherit the same retention rule.
 
