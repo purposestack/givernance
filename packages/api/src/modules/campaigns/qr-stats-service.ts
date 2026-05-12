@@ -159,8 +159,6 @@ async function getCampaignSwissRailStats(
   const [paidStats] = await tx
     .select({
       paidCount: sql<number>`count(DISTINCT ${donations.id}) FILTER (WHERE ${donations.status} = 'cleared')::int`,
-      // Door-drop denominator is distinct constituents, not distinct refs.
-      distinctConstituents: sql<number>`count(DISTINCT ${donations.constituentId}) FILTER (WHERE ${donations.status} = 'cleared')::int`,
       amountCents: sql<number>`COALESCE(SUM(${donations.amountCents}) FILTER (WHERE ${donations.status} = 'cleared'), 0)::int`,
       partialMatchCount: sql<number>`count(*) FILTER (
         WHERE ${donations.status} = 'cleared'
@@ -178,10 +176,36 @@ async function getCampaignSwissRailStats(
       ),
     );
 
+  // Door-drop `paidQrBills` counts DISTINCT debtor IBANs from the
+  // camt.053 credit entries that matched this campaign's references,
+  // NOT distinct constituents. Sticky by IBAN, not by constituent —
+  // docs/25 §5.3 financial-integrity rule (GDPR Art. 17 must not
+  // silently change the count). If we counted distinct constituents,
+  // a donor's erasure would silently decrement the historical paid
+  // count, mis-representing financial reality. TWINT-anonymised
+  // entries with NULL debtor_iban are excluded from the distinct count
+  // (they ARE real matched donations but we can't honour the
+  // sticky-distinct semantic without an IBAN — the operator sees them
+  // in the no_debtor_info / unreconciled surface separately when they
+  // don't auto-match).
+  let doorDropPaidCount = 0;
+  if (isDoorDrop) {
+    const ddRows = await tx.execute(sql<{ count: number }>`
+      SELECT count(DISTINCT ce.debtor_iban)::int AS count
+      FROM camt_credit_entries ce
+      JOIN donations d ON d.id = ce.donation_id
+      WHERE ce.org_id = ${orgId}
+        AND d.campaign_id = ${campaignId}
+        AND d.status = 'cleared'
+        AND ce.debtor_iban IS NOT NULL
+    `);
+    doorDropPaidCount = Number(
+      (ddRows as unknown as { rows: Array<{ count: number }> }).rows?.[0]?.count ?? 0,
+    );
+  }
+
   const totalQrBills = Number(refCount?.count ?? 0);
-  const paidQrBills = isDoorDrop
-    ? Number(paidStats?.distinctConstituents ?? 0)
-    : Number(paidStats?.paidCount ?? 0);
+  const paidQrBills = isDoorDrop ? doorDropPaidCount : Number(paidStats?.paidCount ?? 0);
 
   // Unreconciled count — joined via the bank_account_id on the
   // statement (one bank account can clear donations across many
