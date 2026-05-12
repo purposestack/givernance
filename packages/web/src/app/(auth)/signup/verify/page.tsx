@@ -152,6 +152,9 @@ function VerifyContent() {
         // Organization, the user with the chosen password, and the
         // membership, plus stamped the `org_id` user attribute that the
         // realm's mapper turns into the JWT claim the callback requires.
+        // `?hint=<slug>` is forwarded as `kc_idp_hint` so federated
+        // tenants land directly on their IdP (issue #150); KC ignores
+        // it for non-federated aliases.
         window.location.href = `/api/auth/login?hint=${encodeURIComponent(res.data.slug)}`;
         return;
       }

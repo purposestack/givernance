@@ -16,6 +16,7 @@ import {
   safeReturnToPath,
 } from "@/lib/auth/keycloak";
 import { logAuthEvent } from "@/lib/auth/log";
+import { validateLoginHint } from "@/lib/auth/login-hint";
 import { STEP_UP_ACR_VALUE } from "@/lib/auth/step-up";
 
 /**
@@ -98,6 +99,20 @@ export async function GET(request: NextRequest) {
     params.set("kc_org", orgAlias);
   }
 
+  // Post-verify / post-accept redirect carries `?hint=<tenant-slug>` so KC
+  // can route federated/SAML tenants straight to their IdP without an
+  // extra picker click (issue #150). Forwarded as `kc_idp_hint`: KC
+  // matches the alias to a configured IdP and redirects directly when
+  // it exists, silently ignoring the hint otherwise — so non-federated
+  // tenants are unaffected. Validated as a tenant-slug shape (the same
+  // pattern enforced on the signup side) to prevent injection of
+  // arbitrary IdP aliases by a malicious caller.
+  const url = new URL(request.url);
+  const hint = validateLoginHint(url.searchParams.get("hint"));
+  if (hint) {
+    params.set("kc_idp_hint", hint);
+  }
+
   // Step-up MFA support (issue #250). The impersonation form redirects
   // here with `acr_values=2` + `prompt=login` to force a fresh MFA-backed
   // re-auth. Both params are pass-throughs to Keycloak — the realm's
@@ -106,7 +121,6 @@ export async function GET(request: NextRequest) {
   // malicious caller can't smuggle arbitrary OIDC params into the
   // upstream auth request. The literal acr value lives in step-up.ts so
   // a future LoA bump (`"3"`, `"high"`) lands in one place.
-  const url = new URL(request.url);
   const acrValues = url.searchParams.get("acr_values");
   const stepUpRequested = acrValues === STEP_UP_ACR_VALUE;
   if (stepUpRequested) {

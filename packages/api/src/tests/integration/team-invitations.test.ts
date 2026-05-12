@@ -179,6 +179,10 @@ beforeEach(async () => {
 
   const keys = await redis.keys("*rate-limit*");
   if (keys.length > 0) await redis.del(...keys);
+  // Issue #149 — per-recipient resend bucket lives outside fastify rate-limit
+  // namespace; wipe it explicitly so tests don't bleed.
+  const resendKeys = await redis.keys("invitation:resend:email:*");
+  if (resendKeys.length > 0) await redis.del(...resendKeys);
 });
 
 afterAll(async () => {
@@ -444,6 +448,65 @@ describe("POST /v1/invitations/:id/resend", () => {
       sql`SELECT type FROM outbox_events WHERE tenant_id = ${f.orgId} AND type = 'invitation.resent'`,
     );
     expect(events).toHaveLength(1);
+  });
+
+  it("caps resends to one inbox at 3/hour (issue #149) and 4th attempt silently 204s without rotating the token", async () => {
+    const f = await makeFixture();
+    const email = `cap+${f.slug}@example.org`;
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email },
+    });
+    const created = create.json<{ data: { id: string } }>().data;
+
+    // Three successful resends rotate the token each time.
+    const tokens: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/v1/invitations/${created.id}/resend`,
+        headers: authHeader(f.inviterToken),
+      });
+      expect(res.statusCode).toBe(204);
+      const [row] = await db
+        .select({ token: invitations.token })
+        .from(invitations)
+        .where(eq(invitations.id, created.id));
+      tokens.push(row?.token ?? "");
+    }
+    // Each successful resend MUST rotate the token — anything else
+    // means the per-recipient cap leaked into the success path.
+    expect(new Set(tokens).size).toBe(3);
+
+    // 4th call is over the per-recipient cap. Response shape is 204
+    // (matches the success path so a bucket-full state can't be
+    // detected from status-code timing) but the token does NOT rotate
+    // and no fresh `invitation.resent` outbox row is written.
+    const before = tokens[2];
+    const eventsBefore = await db.execute<{ c: number }>(
+      sql`SELECT COUNT(*)::int AS c FROM outbox_events WHERE tenant_id = ${f.orgId} AND type = 'invitation.resent'`,
+    );
+
+    const fourth = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${created.id}/resend`,
+      headers: authHeader(f.inviterToken),
+    });
+    expect(fourth.statusCode).toBe(204);
+
+    const [afterRow] = await db
+      .select({ token: invitations.token })
+      .from(invitations)
+      .where(eq(invitations.id, created.id));
+    expect(afterRow?.token).toBe(before);
+
+    const eventsAfter = await db.execute<{ c: number }>(
+      sql`SELECT COUNT(*)::int AS c FROM outbox_events WHERE tenant_id = ${f.orgId} AND type = 'invitation.resent'`,
+    );
+    expect(eventsAfter.rows[0]?.c).toBe(eventsBefore.rows[0]?.c);
   });
 
   it("returns 404 for an unknown id and 409 for an accepted invitation", async () => {

@@ -62,6 +62,7 @@ import {
   KeycloakUserExistsError,
   keycloakAdmin,
 } from "../../lib/keycloak-admin.js";
+import { redis } from "../../lib/redis.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -531,7 +532,32 @@ export interface ResendInvitationInput {
 
 export type ResendInvitationResult =
   | { ok: true; data: { id: string; expiresAt: Date } }
-  | { ok: false; error: "not_found" | "already_accepted" };
+  | { ok: false; error: "not_found" | "already_accepted" | "rate_limited" };
+
+/**
+ * Per-recipient resend cap (issue #149). The fastify per-IP limit on
+ * the route only stops one IP; a compromised org_admin (or a botnet of
+ * admins) could still rotate tokens against the same invitee 5× per
+ * 15min per source IP, burning inbox quota + invalidating just-
+ * delivered links. This bucket caps the inbox-side blast radius at
+ * 3 resends per email per hour regardless of source IP, mirroring the
+ * signup-resend pattern in `signup/routes.ts`.
+ *
+ * Returns true when the request is allowed, false when the bucket is
+ * full. Bucket key normalises the email so case + whitespace drift
+ * across re-invites can't be used to bypass the cap.
+ */
+const INVITATION_RESEND_CAP = 3;
+const INVITATION_RESEND_WINDOW_SECONDS = 60 * 60;
+
+async function acceptResendForInvitationEmail(email: string): Promise<boolean> {
+  const key = `invitation:resend:email:${email.trim().toLowerCase()}`;
+  const hits = await redis.incr(key);
+  if (hits === 1) {
+    await redis.expire(key, INVITATION_RESEND_WINDOW_SECONDS);
+  }
+  return hits <= INVITATION_RESEND_CAP;
+}
 
 /**
  * Rotate the token + expiry on a pending invitation and re-emit the
@@ -573,6 +599,16 @@ export async function resendTeamInvitation(
     if (!row) return { ok: false as const, error: "not_found" as const };
     if (row.acceptedAt) {
       return { ok: false as const, error: "already_accepted" as const };
+    }
+
+    // Issue #149 — per-recipient cap, evaluated AFTER the row lookup so a
+    // bad invitation id still returns 404 instead of 204 (preserves the
+    // "missing invitation" diagnostic). The route translates rate_limited
+    // into a silent 204 so an angry operator can't probe the bucket from
+    // status-code deltas.
+    const allowed = await acceptResendForInvitationEmail(row.email);
+    if (!allowed) {
+      return { ok: false as const, error: "rate_limited" as const };
     }
 
     const newToken = randomUUID();
