@@ -304,12 +304,10 @@
       "donations": "Dons",
       "settings": "Paramètres",
       "orgPlaceholder": "Association",
-      "userPlaceholder": "Utilisateur",
       "workspaceSwitcher": "Ouvrir le sélecteur d’espace de travail",
       "changeOrganization": "Changer d’organisation",
       "workspaceSettings": "Paramètres de l’organisation",
       "profile": "Mon profil",
-      "signOut": "Se déconnecter",
       "admin": {
         "section": "Back-office",
         "tenants": "Tenants",
@@ -329,10 +327,11 @@
       "profileOf": "Profil de {name}",
       "accountMenu": {
         "triggerLabel": "Menu compte, {name}",
+        "triggerLabelAnonymous": "Menu compte",
         "myAccount": "Mon compte",
         "language": "Langue",
-        "languageChoice": "Passer l'interface en {label}",
-        "signOut": "Se déconnecter"
+        "signOut": "Se déconnecter",
+        "signOutAriaLabel": "Se déconnecter — termine votre session"
       }
     },
     "impersonation": {

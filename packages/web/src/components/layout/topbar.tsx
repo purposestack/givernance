@@ -12,6 +12,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -43,11 +45,22 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
   const displayName = user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() : "";
   const email = user?.email ?? "";
 
+  // PR #360 review (Frontend i11): fall back to email when the user has
+  // no name on file, so the SR announcement never reads "Account menu, "
+  // with a trailing comma and nothing after it.
+  const triggerLabel = displayName
+    ? tMenu("triggerLabel", { name: displayName })
+    : email
+      ? tMenu("triggerLabel", { name: email })
+      : tMenu("triggerLabelAnonymous");
+
   const handleLocaleSelect = useCallback(
-    async (next: Locale) => {
-      if (next === locale) return;
-      await setLocale(next);
-      startLocaleTransition(() => router.refresh());
+    (next: string) => {
+      if (!isLocale(next) || next === locale) return;
+      void (async () => {
+        await setLocale(next);
+        startLocaleTransition(() => router.refresh());
+      })();
     },
     [locale, router],
   );
@@ -104,27 +117,33 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className={avatarTriggerClasses}
-              aria-label={tMenu("triggerLabel", { name: displayName })}
-            >
+            <button type="button" className={avatarTriggerClasses} aria-label={triggerLabel}>
               <span aria-hidden="true">{initials}</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72">
-            <div className="flex items-center gap-3 px-3 py-2">
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"
-                aria-hidden="true"
-              >
-                {initials}
+          {/*
+            sideOffset=12 — mockup spec calls for ~20px between avatar bottom
+            and menu top; the primitive's default 8 was visually tight (Frontend m8).
+          */}
+          <DropdownMenuContent align="end" sideOffset={12} className="w-72">
+            <DropdownMenuLabel className="font-normal normal-case tracking-normal">
+              <div className="flex items-center gap-3 py-1">
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"
+                  aria-hidden="true"
+                >
+                  {initials}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-on-surface">
+                    {displayName || email}
+                  </div>
+                  {displayName ? (
+                    <div className="truncate text-xs text-on-surface-variant">{email}</div>
+                  ) : null}
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-on-surface">{displayName}</div>
-                <div className="truncate text-xs text-on-surface-variant">{email}</div>
-              </div>
-            </div>
+            </DropdownMenuLabel>
 
             <DropdownMenuSeparator />
 
@@ -138,40 +157,50 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
             <DropdownMenuSeparator />
 
             <DropdownMenuLabel>{tMenu("language")}</DropdownMenuLabel>
-            {SUPPORTED_LOCALES.map((next) => {
-              const isActive = next === locale;
-              const label = LOCALE_NATIVE_NAMES[next];
-              return (
-                <DropdownMenuItem
-                  key={next}
-                  // Radix' onSelect fires for both pointer + keyboard activation
-                  // and closes the menu by default — exactly what we want here.
-                  onSelect={(event) => {
-                    if (isActive || isLocalePending) {
-                      event.preventDefault();
-                      return;
-                    }
-                    void handleLocaleSelect(next);
-                  }}
-                  aria-current={isActive ? "true" : undefined}
-                  aria-disabled={isLocalePending}
-                  className={isActive ? "font-semibold text-primary" : undefined}
-                >
-                  <span className="flex h-5 w-7 items-center justify-center rounded-sm bg-surface-container font-mono text-[10px] font-semibold uppercase text-on-surface-variant">
-                    {next}
-                  </span>
-                  <span>{label}</span>
-                  {isActive ? (
-                    <Check size={14} className="ml-auto text-primary" aria-hidden="true" />
-                  ) : null}
-                </DropdownMenuItem>
-              );
-            })}
+            {/*
+              PR #360 review (Frontend M1): RadioGroup + RadioItem so Radix
+              applies role="menuitemradio" + aria-checked. Earlier
+              implementation used plain DropdownMenuItem + aria-current,
+              which is the wrong ARIA pattern for a radio group (aria-current
+              is for the active item in a *navigational* set, not an option
+              in a chooser). Visible Check icon retained for sighted users.
+            */}
+            <DropdownMenuRadioGroup value={locale} onValueChange={handleLocaleSelect}>
+              {SUPPORTED_LOCALES.map((next) => {
+                const isActive = next === locale;
+                const label = LOCALE_NATIVE_NAMES[next];
+                return (
+                  <DropdownMenuRadioItem
+                    key={next}
+                    value={next}
+                    // Only the NON-active items go disabled while a switch
+                    // is in flight — disabling the active row would make
+                    // the menu look broken to a keyboard user mid-transition.
+                    disabled={isLocalePending && !isActive}
+                    className={isActive ? "font-semibold text-primary" : undefined}
+                  >
+                    <span className="flex h-5 w-7 items-center justify-center rounded-sm bg-surface-container font-mono text-[10px] font-semibold uppercase text-on-surface-variant">
+                      {next}
+                    </span>
+                    <span>{label}</span>
+                    {isActive ? (
+                      <Check size={14} className="ml-auto text-primary" aria-hidden="true" />
+                    ) : null}
+                  </DropdownMenuRadioItem>
+                );
+              })}
+            </DropdownMenuRadioGroup>
 
             <DropdownMenuSeparator />
 
+            {/*
+              PR #360 review (Frontend M2): destructive cue uses color +
+              icon + explicit aria-label so it doesn't depend on color
+              alone (WCAG 1.4.1 Level A).
+            */}
             <DropdownMenuItem
               onSelect={logout}
+              aria-label={tMenu("signOutAriaLabel")}
               className="text-error focus:bg-error-container focus:text-error"
             >
               <LogOut size={16} aria-hidden="true" />
@@ -182,4 +211,8 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
       </div>
     </header>
   );
+}
+
+function isLocale(value: string): value is Locale {
+  return (SUPPORTED_LOCALES as readonly string[]).includes(value);
 }
