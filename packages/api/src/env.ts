@@ -1,5 +1,6 @@
 /** Strict environment validation for the API process — crash early on missing vars */
 
+import { KEYCLOAK_DEFAULT_CLIENT_ID } from "@givernance/shared/constants";
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
@@ -72,8 +73,12 @@ const EnvSchema = Type.Object({
    * Public-client identifier the web app authenticates as. The back-channel
    * logout endpoint (issue #76 / PR-2) validates the logout token's `aud`
    * against this so a token minted for a different client is rejected.
+   *
+   * Default sourced from `@givernance/shared/constants` so all four
+   * existing hardcoded `"givernance-web"` sites collapse to one place
+   * (PR #360 review M8 + Architect m9).
    */
-  KEYCLOAK_CLIENT_ID: Type.String({ minLength: 1, default: "givernance-web" }),
+  KEYCLOAK_CLIENT_ID: Type.String({ minLength: 1, default: KEYCLOAK_DEFAULT_CLIENT_ID }),
   /** hCaptcha server-side secret used by the public signup flow (ADR-016 / issue #108). */
   HCAPTCHA_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   /** Explicit override for CAPTCHA enforcement — `disabled` fails open, `prod` fails closed. */

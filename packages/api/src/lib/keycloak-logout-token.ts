@@ -34,8 +34,15 @@ const BACKCHANNEL_LOGOUT_EVENT = "http://schemas.openid.net/event/backchannel-lo
 /** Max acceptable skew between Keycloak's clock and ours, in seconds. */
 const LOGOUT_TOKEN_MAX_AGE_S = 5 * 60;
 
-/** Audience the realm-givernance.json configures for `givernance-web`. */
-const EXPECTED_AUDIENCE = env.KEYCLOAK_CLIENT_ID ?? "givernance-web";
+/**
+ * Audience the realm configures for `givernance-web`. Resolved at module
+ * load — the env schema (`packages/api/src/env.ts`) already supplies the
+ * shared default, so this is always a non-empty string. We DON'T fall
+ * back here a second time: a missing `KEYCLOAK_CLIENT_ID` would mean the
+ * env parser failed elsewhere, and silently defaulting to `"givernance-web"`
+ * would hide misconfigured deploys (PR #360 review Security M8).
+ */
+const EXPECTED_AUDIENCE: string = env.KEYCLOAK_CLIENT_ID;
 
 export interface LogoutTokenClaims {
   /** Stable Keycloak SSO session id — what we blocklist. */

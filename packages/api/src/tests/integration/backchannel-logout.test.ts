@@ -33,7 +33,7 @@ function formBody(token: string): string {
   return new URLSearchParams({ logout_token: token }).toString();
 }
 
-describe("POST /v1/auth/backchannel-logout — happy path", () => {
+describe("POST /v1/session/backchannel-logout — happy path", () => {
   it("accepts a spec-compliant token, returns 200, and blocklists the sid", async () => {
     const token = signLogoutToken();
     // Decode sid from the token (we generated it; just parse the payload back)
@@ -42,7 +42,7 @@ describe("POST /v1/auth/backchannel-logout — happy path", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: "/v1/auth/backchannel-logout",
+      url: "/v1/session/backchannel-logout",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: formBody(token),
     });
@@ -61,7 +61,7 @@ describe("POST /v1/auth/backchannel-logout — happy path", () => {
     // 1. Trigger back-channel logout for that sid.
     const logoutRes = await app.inject({
       method: "POST",
-      url: "/v1/auth/backchannel-logout",
+      url: "/v1/session/backchannel-logout",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: formBody(logoutToken),
     });
@@ -87,7 +87,7 @@ describe("POST /v1/auth/backchannel-logout — happy path", () => {
     const token = signLogoutToken();
     const res = await app.inject({
       method: "POST",
-      url: "/v1/auth/backchannel-logout",
+      url: "/v1/session/backchannel-logout",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: formBody(token),
     });
@@ -96,12 +96,12 @@ describe("POST /v1/auth/backchannel-logout — happy path", () => {
   });
 });
 
-describe("POST /v1/auth/backchannel-logout — rejected tokens", () => {
+describe("POST /v1/session/backchannel-logout — rejected tokens", () => {
   async function postLogout(claims: Record<string, unknown>) {
     const token = signLogoutToken(claims);
     return app.inject({
       method: "POST",
-      url: "/v1/auth/backchannel-logout",
+      url: "/v1/session/backchannel-logout",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: formBody(token),
     });
@@ -137,7 +137,7 @@ describe("POST /v1/auth/backchannel-logout — rejected tokens", () => {
   it("400s a missing logout_token body field", async () => {
     const res = await app.inject({
       method: "POST",
-      url: "/v1/auth/backchannel-logout",
+      url: "/v1/session/backchannel-logout",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: "logout_token=",
     });

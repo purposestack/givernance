@@ -193,27 +193,38 @@ Stateless access tokens used to mean a Keycloak session ended on another device 
 
 | Attribute | Value | Purpose |
 |---|---|---|
-| `backchannel.logout.url` | `http://api:3000/v1/auth/backchannel-logout` (dev) | Where Keycloak POSTs the signed `logout_token` |
+| `backchannel.logout.url` | `http://api:3000/v1/session/backchannel-logout` (dev) | Where Keycloak POSTs the signed `logout_token` |
 | `backchannel.logout.session.required` | `true` | Keycloak emits the OIDC `sid` claim on every access/ID token, and includes it in the logout token |
 | `backchannel.logout.revoke.offline.tokens` | `false` | We don't issue offline tokens; explicit for posterity |
 
-Staging / production operators override `backchannel.logout.url` per-environment via the Keycloak admin API (`https://staging.givernance.org/v1/auth/backchannel-logout`, `https://app.givernance.org/v1/auth/backchannel-logout`). The dev URL uses the docker-compose service hostname (`api`) so Keycloak can reach the API container.
+Staging / production operators override `backchannel.logout.url` per-environment via the Keycloak admin API (`https://staging.givernance.org/v1/session/backchannel-logout`, `https://app.givernance.org/v1/session/backchannel-logout`). The dev URL uses the docker-compose service hostname (`api`) so Keycloak can reach the API container. **`scripts/keycloak-sync-realm.sh` will overwrite a manual override back to the dev value on its next reconcile run** — a per-environment runbook for the override is tracked as a follow-up to this PR.
 
-**App side** (`packages/api/src/modules/auth/routes.ts`):
+**Why on the Fastify API instead of the Next.js web** (PR #360 review Architect M3): Keycloak's back-channel POST is server-to-server, not browser-mediated, so the OIDC-client property normally located on the web is not load-bearing for the route's home. The API already owns the Redis blocklist primitives (`session/service.ts`), the realm JWKS verifier (`keycloak-jwt.ts`), and the JWT-extraction code path (`plugins/auth.ts`). Putting the webhook there avoids a hop through the Next.js process for every revocation and removes the need to add a Redis client to the web runtime.
 
-1. `POST /v1/auth/backchannel-logout` receives `application/x-www-form-urlencoded` body with a `logout_token` field. Exempt from the JWT auth gate (`isAuthExempt`) — the logout token IS the authentication.
+**App side** (`packages/api/src/modules/session/routes.ts`):
+
+1. `POST /v1/session/backchannel-logout` receives `application/x-www-form-urlencoded` body with a `logout_token` field. Exempt from the JWT auth gate (`isAuthExempt` in `plugins/auth.ts`, exact-pathname match) — the logout token IS the authentication. Rate-limited at 1000/min as a DoS floor.
 2. [`verifyBackchannelLogoutToken`](../packages/api/src/lib/keycloak-logout-token.ts) validates the token per OIDC Back-Channel Logout 1.0 § 2.4:
    - Signature against realm JWKS (RS256)
    - `iss` matches realm issuer
-   - `aud` matches the `KEYCLOAK_CLIENT_ID` env var (`givernance-web`)
-   - `iat` recent (≤ 5 min skew)
+   - `aud` matches the `KEYCLOAK_CLIENT_ID` env var (defaults to `givernance-web` via the shared `KEYCLOAK_DEFAULT_CLIENT_ID` constant; no second-layer fallback in the verifier)
+   - `iat` recent (≤ 5 min skew via `maxTokenAge`)
+   - `jti` MUST be present (OIDC requirement — duplicate-receipt detection)
    - `events` contains `http://schemas.openid.net/event/backchannel-logout` mapped to a JSON object
    - `nonce` MUST NOT be present (defends against replaying a leaked ID token as a logout token)
-   - `sid` MUST be present
-3. The `sid` is written to a Redis blocklist `auth:kc-sid-blocklist:<sid>` with a 10-minute TTL (covers the 5-min access-token lifespan + skew).
+   - `sid` MUST be present (realm sets `backchannel.logout.session.required=true`, so every legitimate logout token carries it)
+3. The `sid` is written to a Redis blocklist `auth:kc-sid-blocklist:<sid>` with a 10-minute TTL (covers the 5-min access-token lifespan + skew). If the Redis write fails, the route returns 400 — Keycloak surfaces the failure via its "Failed back-channel logout" admin event instead of mounting a retry storm.
 4. On the next authenticated request, the Fastify `auth` plugin extracts `sid` from the JWT claims and rejects the request with `401 Unauthorized — Session revoked.` if blocklisted.
 
 **Why `sid` and not `jti`**: the existing `session_blocklist:<jti>` (used by `switch-org`) revokes a single access token. After a silent refresh (see §4.2 below), `jti` rotates but `sid` stays stable for the same Keycloak SSO session. Blocklisting `sid` therefore invalidates every refresh, not just the token in flight.
+
+**Privacy / GDPR posture**:
+
+- `sid` is a session identifier — not direct PII, but linkable to a natural person via Keycloak's session store. Classification: pseudonymous identifier (GDPR Art. 4(5)).
+- Retention: bounded by the Redis key TTL (10 minutes). No persistence beyond that.
+- Encryption at rest: inherits from the managed-Redis posture (Scaleway Managed Redis EU per ADR-009 in SaaS deployments; operator-configured in self-hosted).
+- Log lines emit `sid` and a sha256-truncated hash of `sub` (raw `sub` is omitted from info-level logs per the codebase's `hashIp`/redaction convention). `jti` is logged for duplicate-receipt diagnostics.
+- The endpoint is unauthenticated by design (Keycloak signs the payload). A forged `logout_token` cannot leak data — the 400 response never echoes any claim from the rejected token.
 
 ### 4.2 Short access-token TTL + silent refresh (issue #76 / PR-3)
 

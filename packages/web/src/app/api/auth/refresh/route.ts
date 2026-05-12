@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { getCsrfCookieName } from "@/lib/auth/csrf";
+import { buildCsrfCookieOptions, getCsrfCookieName } from "@/lib/auth/csrf";
 import {
   ID_TOKEN_COOKIE_NAME,
   JWT_COOKIE_NAME,
@@ -108,6 +108,27 @@ export async function POST(_request: NextRequest) {
   if (tokens.refresh_token) {
     jar.set(REFRESH_TOKEN_COOKIE_NAME, tokens.refresh_token, jwtCookieOptions(sessionMaxAge));
   }
+
+  // PR #360 review (Security m6 + Architect m6): re-mint the CSRF
+  // double-submit cookie alongside the rotated JWT. Two reasons:
+  //   1. The CSRF cookie was set at callback time with the *original*
+  //      session maxAge — after several refreshes the browser would
+  //      drop it while the JWT keeps rotating, breaking every
+  //      authenticated mutation with a 403 the user can't diagnose.
+  //   2. If the original CSRF token leaked (e.g. XSS read at minute 1),
+  //      refreshing without rotation hands the attacker a still-valid
+  //      double-submit token paired with brand-new JWTs for the rest
+  //      of the session ("XSS once → CSRF forever within session").
+  // Preserve the existing value if present so in-flight reads on the
+  // client side stay consistent across the rotation; only mint a fresh
+  // value when there's nothing to preserve.
+  const csrfCookieName = getCsrfCookieName();
+  const existingCsrf = jar.get(csrfCookieName)?.value;
+  jar.set(
+    csrfCookieName,
+    existingCsrf && existingCsrf.length > 0 ? existingCsrf : crypto.randomUUID(),
+    buildCsrfCookieOptions(sessionMaxAge),
+  );
 
   return NextResponse.json(
     { ok: true, expiresIn: tokens.expires_in ?? null },

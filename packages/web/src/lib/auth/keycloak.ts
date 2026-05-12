@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
+import { KEYCLOAK_DEFAULT_CLIENT_ID } from "@givernance/shared/constants";
 import {
   COOKIE_MAX_AGE_S,
   ID_TOKEN_COOKIE_NAME,
@@ -18,7 +19,7 @@ import {
 export const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? "http://localhost:8080";
 export const KEYCLOAK_INTERNAL_URL = process.env.KEYCLOAK_INTERNAL_URL ?? KEYCLOAK_URL;
 export const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM ?? "givernance";
-export const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID ?? "givernance-web";
+export const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID ?? KEYCLOAK_DEFAULT_CLIENT_ID;
 export const KEYCLOAK_ISSUER =
   process.env.KEYCLOAK_ISSUER ?? `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}`;
 export const KEYCLOAK_JWKS_URL =
