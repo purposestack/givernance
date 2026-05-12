@@ -202,14 +202,9 @@ function AcceptContent() {
         // Redirect to Keycloak login. The API has already attached us as
         // an Organization member and stamped the `org_id` user attribute
         // that the realm's mapper turns into the JWT claim the callback
-        // requires.
-        //
-        // NOTE: `?hint=<slug>` is currently a no-op — the `/api/auth/login`
-        // route handler doesn't read query params, so the slug round-trip
-        // doesn't actually drive `kc_idp_hint`/`login_hint`. Kept for
-        // structural parity with `/signup/verify` (same dead query string)
-        // until both can be wired or removed together. Tracked as a
-        // follow-up to issue #145 (review F1).
+        // requires. `?hint=<slug>` is forwarded as `kc_idp_hint` so
+        // federated tenants land directly on their IdP (issue #150);
+        // KC ignores it for non-federated aliases.
         window.location.href = `/api/auth/login?hint=${encodeURIComponent(res.data.slug)}`;
         return;
       }

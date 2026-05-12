@@ -656,7 +656,17 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     "/superadmin/tenants/:id/first-admin-invitations/:invitationId/resend",
     {
       preHandler: requireSuperAdmin,
-      config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
+      // keyGenerator scopes the bucket to (ip, tenant) instead of just ip
+      // so a single super-admin IP can't burn through 5 resends across
+      // distinct tenants per window (issue #156). orgId isn't on the
+      // super-admin auth context, so `:id` is the per-target piece.
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "15 minutes",
+          keyGenerator: (req) => `${req.ip}:${(req.params as { id?: string }).id ?? "none"}`,
+        },
+      },
       schema: {
         tags: ["Tenant Admin"],
         params: FirstAdminInvitationParams,

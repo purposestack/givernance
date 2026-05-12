@@ -6,7 +6,7 @@ import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { env } from "./env.js";
 import { jobLogger, logger } from "./lib/logger.js";
-import { resolvePayloadLocale } from "./lib/payload-locale.js";
+import { routeDomainEvent } from "./lib/route-domain-event.js";
 import { extractTraceId } from "./lib/trace-context.js";
 import { processBrandingActivateLogo } from "./processors/branding-activate-logo.js";
 import { processBrandingGcAsset } from "./processors/branding-gc-asset.js";
@@ -18,15 +18,9 @@ import { processKeycloakSyncOrgLogo } from "./processors/keycloak-sync-org-logo.
 import { processPlatformAdminInviteEmail } from "./processors/platform-admin-invite-email.js";
 import { processGeneratePostalExport } from "./processors/postal-export.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
-import {
-  processSignupVerificationEmail,
-  type SignupEmailJobPayload,
-} from "./processors/signup-email.js";
+import { processSignupVerificationEmail } from "./processors/signup-email.js";
 import { processStripeWebhook } from "./processors/stripe-webhook.js";
-import {
-  processTeamInviteEmail,
-  type TeamInviteEmailJobPayload,
-} from "./processors/team-invite-email.js";
+import { processTeamInviteEmail } from "./processors/team-invite-email.js";
 import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
 
 /** Create a fresh ioredis connection — BullMQ requires separate connections for Queue vs Worker */
@@ -70,71 +64,14 @@ async function scheduleRepeatableJobs() {
 }
 
 /**
- * Route the four branding-related outbox events to their queues.
- * Returns `true` when the event was handled (the caller short-circuits)
- * and `false` when the type doesn't match — keeps `processDomainEvent`
- * under Biome's cognitive complexity ceiling.
- */
-async function routeBrandingEvent(args: {
-  type: string;
-  payload: Record<string, unknown>;
-  tenantId: string;
-  traceparent?: string;
-  log: ReturnType<typeof jobLogger>;
-}): Promise<boolean> {
-  const { type, payload, tenantId, traceparent, log } = args;
-  if (type === BRANDING_EVENT_TYPES.PROCESS_ASSET) {
-    const assetId = payload.assetId as string;
-    await brandingQueue.add(
-      BRANDING_EVENT_TYPES.PROCESS_ASSET,
-      { assetId, orgId: tenantId, traceparent },
-      { jobId: `branding-process-${assetId}` },
-    );
-    log.info({ assetId }, "Enqueued branding asset pipeline");
-    return true;
-  }
-  if (type === BRANDING_EVENT_TYPES.ACTIVATE_LOGO) {
-    const assetId = payload.assetId as string;
-    await brandingQueue.add(
-      BRANDING_EVENT_TYPES.ACTIVATE_LOGO,
-      { assetId, orgId: tenantId, traceparent },
-      { jobId: `branding-activate-${assetId}` },
-    );
-    log.info({ assetId }, "Enqueued branding activate logo");
-    return true;
-  }
-  if (type === BRANDING_EVENT_TYPES.GC_ASSET) {
-    const assetId = payload.assetId as string;
-    const prefix = payload.prefix as string;
-    await brandingQueue.add(
-      BRANDING_EVENT_TYPES.GC_ASSET,
-      { assetId, orgId: tenantId, prefix, traceparent },
-      { jobId: `branding-gc-${assetId}` },
-    );
-    log.info({ assetId, prefix }, "Enqueued branding asset GC");
-    return true;
-  }
-  if (type === BRANDING_EVENT_TYPES.KEYCLOAK_SYNC_ORG_LOGO) {
-    await keycloakSyncQueue.add(
-      BRANDING_EVENT_TYPES.KEYCLOAK_SYNC_ORG_LOGO,
-      { orgId: tenantId, traceparent },
-      // Per-tenant jobId so a flurry of activations + gc on the same
-      // tenant collapses to a single sync (last-write-wins).
-      { jobId: `kc-sync-org-logo-${tenantId}` },
-    );
-    log.info({ tenantId }, "Enqueued KC org logo sync");
-    return true;
-  }
-  return false;
-}
-
-/**
  * Process a domain event from the transactional outbox relay.
- * Routes events to specific handlers based on type.
  *
- * Locale-resolution helper extracted to `./lib/payload-locale.ts` so it
- * can be unit-tested without booting the worker singletons below
- * (issue #153 / PR #158 review).
+ * Type-routing decisions live in the pure `routeDomainEvent` helper
+ * (issue #152) so they can be unit-tested without booting any of the
+ * worker singletons or Redis/BullMQ infrastructure below. This wrapper
+ * keeps the side-effecting concerns — BullMQ enqueues, inline
+ * processor invocations, log lines — and just dispatches on the
+ * decision shape.
  */
 async function processDomainEvent(job: Job): Promise<void> {
   const { id, tenantId, type, payload, traceparent } = job.data as {
@@ -154,149 +91,182 @@ async function processDomainEvent(job: Job): Promise<void> {
 
   log.info({ eventType: type }, "Processing domain event");
 
-  if (type === "donation.created") {
-    const donationId = payload.donationId as string;
-    const fiscalYear = new Date().getFullYear();
+  const decision = routeDomainEvent({ id, tenantId, type, payload, traceparent });
 
-    // Forward traceparent so the child job's jobLogger inherits the same
-    // trace-id — Loki can reconstruct "API request → event → receipt".
-    await receiptsQueue.add(
-      "generate-receipt",
-      {
-        donationId,
-        orgId: tenantId,
-        fiscalYear,
-        locale: "en",
-        traceparent,
-      },
-      { jobId: `receipt-${donationId}` },
-    );
+  switch (decision.kind) {
+    case "donation-receipt": {
+      // Forward traceparent so the child job's jobLogger inherits the same
+      // trace-id — Loki can reconstruct "API request → event → receipt".
+      await receiptsQueue.add(
+        "generate-receipt",
+        {
+          donationId: decision.donationId,
+          orgId: decision.orgId,
+          fiscalYear: new Date().getFullYear(),
+          locale: "en",
+          traceparent: decision.traceparent,
+        },
+        { jobId: `receipt-${decision.donationId}` },
+      );
+      log.info({ donationId: decision.donationId }, "Enqueued receipt generation");
+      return;
+    }
 
-    log.info({ donationId }, "Enqueued receipt generation");
-    return;
+    case "campaign-documents": {
+      await campaignsQueue.add(
+        "generate-campaign-documents",
+        {
+          campaignId: decision.campaignId,
+          orgId: decision.orgId,
+          constituentIds: decision.constituentIds,
+          traceparent: decision.traceparent,
+        },
+        { jobId: `campaign-docs-${decision.campaignId}` },
+      );
+      log.info({ campaignId: decision.campaignId }, "Enqueued campaign document generation");
+      return;
+    }
+
+    case "postal-export": {
+      await postalExportsQueue.add(
+        "generate-postal-export",
+        {
+          exportId: decision.exportId,
+          campaignId: decision.campaignId,
+          orgId: decision.orgId,
+          mode: decision.mode,
+          traceparent: decision.traceparent,
+        },
+        { jobId: `postal-export-${decision.exportId}` },
+      );
+      log.info(
+        { exportId: decision.exportId, campaignId: decision.campaignId, mode: decision.mode },
+        "Enqueued postal export job",
+      );
+      return;
+    }
+
+    case "bulk-email": {
+      // Issue #326 — the outbox payload only carries the bulk_email_jobs
+      // row id. The processor reads subject/body/constituent_ids from that
+      // row at job start so PII never lives in Redis and a resume job
+      // picks up the freshest `delivered_constituent_ids` snapshot when
+      // it computes "remaining".
+      await emailsQueue.add(
+        "send-bulk-email",
+        {
+          orgId: decision.orgId,
+          bulkEmailJobId: decision.bulkEmailJobId,
+          traceparent: decision.traceparent,
+        },
+        // Per-payload job id so a transactional retry of the outbox row
+        // doesn't fan-out into duplicate sends.
+        { jobId: `bulk-email-${decision.outboxId}` },
+      );
+      log.info(
+        { outboxId: decision.outboxId, bulkEmailJobId: decision.bulkEmailJobId },
+        "Enqueued bulk email dispatch",
+      );
+      return;
+    }
+
+    case "signup-email": {
+      const result = await processSignupVerificationEmail({
+        tenantId: decision.tenantId,
+        invitationId: decision.invitationId,
+        expiresAt: decision.expiresAt,
+        locale: decision.locale,
+      });
+      // `not_found` / `already_accepted` are terminal no-ops (old token
+      // rotated, or user already verified) — do not throw, the outbox
+      // event is done.
+      log.info({ invitationId: decision.invitationId, ...result }, "Signup email dispatched");
+      return;
+    }
+
+    case "team-invite-email": {
+      const result = await processTeamInviteEmail({
+        tenantId: decision.tenantId,
+        invitationId: decision.invitationId,
+        inviterUserId: decision.inviterUserId,
+        locale: decision.locale,
+      });
+      log.info(
+        { invitationId: decision.invitationId, eventType: type, ...result },
+        "Team-invite email dispatched",
+      );
+      return;
+    }
+
+    case "platform-admin-invite": {
+      // Issue #254 — distinct from `team_invite` because the accept URL
+      // points at `/admin/platform-admins/accept` (super-admin
+      // onboarding), not `/invite/accept`.
+      const result = await processPlatformAdminInviteEmail({
+        invitationId: decision.invitationId,
+        locale: decision.locale,
+      });
+      log.info(
+        { invitationId: decision.invitationId, eventType: type, ...result },
+        "Platform-admin invite dispatched",
+      );
+      return;
+    }
+
+    case "branding-process-asset": {
+      await brandingQueue.add(
+        BRANDING_EVENT_TYPES.PROCESS_ASSET,
+        { assetId: decision.assetId, orgId: decision.orgId, traceparent: decision.traceparent },
+        { jobId: `branding-process-${decision.assetId}` },
+      );
+      log.info({ assetId: decision.assetId }, "Enqueued branding asset pipeline");
+      return;
+    }
+
+    case "branding-activate-logo": {
+      await brandingQueue.add(
+        BRANDING_EVENT_TYPES.ACTIVATE_LOGO,
+        { assetId: decision.assetId, orgId: decision.orgId, traceparent: decision.traceparent },
+        { jobId: `branding-activate-${decision.assetId}` },
+      );
+      log.info({ assetId: decision.assetId }, "Enqueued branding activate logo");
+      return;
+    }
+
+    case "branding-gc-asset": {
+      await brandingQueue.add(
+        BRANDING_EVENT_TYPES.GC_ASSET,
+        {
+          assetId: decision.assetId,
+          orgId: decision.orgId,
+          prefix: decision.prefix,
+          traceparent: decision.traceparent,
+        },
+        { jobId: `branding-gc-${decision.assetId}` },
+      );
+      log.info(
+        { assetId: decision.assetId, prefix: decision.prefix },
+        "Enqueued branding asset GC",
+      );
+      return;
+    }
+
+    case "keycloak-sync-org-logo": {
+      await keycloakSyncQueue.add(
+        BRANDING_EVENT_TYPES.KEYCLOAK_SYNC_ORG_LOGO,
+        { orgId: decision.orgId, traceparent: decision.traceparent },
+        // Per-tenant jobId so a flurry of activations + gc on the same
+        // tenant collapses to a single sync (last-write-wins).
+        { jobId: `kc-sync-org-logo-${decision.orgId}` },
+      );
+      log.info({ tenantId: decision.orgId }, "Enqueued KC org logo sync");
+      return;
+    }
+
+    case "unhandled":
+      log.warn({ eventType: decision.type }, "Unhandled event type");
+      return;
   }
-
-  if (type === "campaign.documents_requested") {
-    const campaignId = payload.campaignId as string;
-    const constituentIds = payload.constituentIds as string[];
-
-    await campaignsQueue.add(
-      "generate-campaign-documents",
-      {
-        campaignId,
-        orgId: tenantId,
-        constituentIds,
-        traceparent,
-      },
-      { jobId: `campaign-docs-${campaignId}` },
-    );
-
-    log.info({ campaignId }, "Enqueued campaign document generation");
-    return;
-  }
-
-  if (type === "campaign.postal_export_requested") {
-    const campaignId = payload.campaignId as string;
-    const exportId = payload.exportId as string;
-    const mode = payload.mode as "door_drop" | "personalized";
-
-    await postalExportsQueue.add(
-      "generate-postal-export",
-      {
-        exportId,
-        campaignId,
-        orgId: tenantId,
-        mode,
-        traceparent,
-      },
-      { jobId: `postal-export-${exportId}` },
-    );
-
-    log.info({ exportId, campaignId, mode }, "Enqueued postal export job");
-    return;
-  }
-
-  if (type === "communication.bulk_email_requested") {
-    // Issue #326 — the outbox payload only carries the bulk_email_jobs
-    // row id. The processor reads subject/body/constituent_ids from that
-    // row at job start so:
-    //   - PII (email, name) never lives in Redis — same GDPR Art. 5(1)(e)
-    //     posture as before, just via a smaller payload.
-    //   - A resume job picks up the freshest `delivered_constituent_ids`
-    //     snapshot when computing "remaining", not a stale outbox copy.
-    const bulkEmailJobId = payload.bulkEmailJobId as string;
-    await emailsQueue.add(
-      "send-bulk-email",
-      {
-        orgId: tenantId,
-        bulkEmailJobId,
-        traceparent,
-      },
-      // Per-payload job id so a transactional retry of the outbox row
-      // doesn't fan-out into duplicate sends.
-      { jobId: `bulk-email-${id}` },
-    );
-
-    log.info({ outboxId: id, bulkEmailJobId }, "Enqueued bulk email dispatch");
-    return;
-  }
-
-  if (
-    type === "tenant.signup_verification_requested" ||
-    type === "tenant.signup_verification_resent"
-  ) {
-    const emailPayload: SignupEmailJobPayload = {
-      tenantId,
-      invitationId: payload.invitationId as string,
-      expiresAt: payload.expiresAt as string,
-      locale: resolvePayloadLocale(payload),
-    };
-    const result = await processSignupVerificationEmail(emailPayload);
-    // `not_found` / `already_accepted` are terminal no-ops (old token rotated,
-    // or user already verified) — do not throw, the outbox event is done.
-    log.info({ invitationId: emailPayload.invitationId, ...result }, "Signup email dispatched");
-    return;
-  }
-
-  if (
-    type === "invitation.created" ||
-    type === "invitation.resent" ||
-    type === "tenant.first_admin_invited"
-  ) {
-    const invitationId = payload.invitationId as string;
-    const inviterUserId = typeof payload.inviterUserId === "string" ? payload.inviterUserId : null;
-    const emailPayload: TeamInviteEmailJobPayload = {
-      tenantId,
-      invitationId,
-      inviterUserId,
-      locale: resolvePayloadLocale(payload),
-    };
-    const result = await processTeamInviteEmail(emailPayload);
-    log.info({ invitationId, eventType: type, ...result }, "Team-invite email dispatched");
-    return;
-  }
-
-  // ── Org branding (Epic #286) ───────────────────────────────────────
-  // Routed through a helper so the parent function's cognitive
-  // complexity stays under the Biome cap.
-  if (await routeBrandingEvent({ type, payload, tenantId, traceparent, log })) {
-    return;
-  }
-
-  // Issue #254 — platform-admin invitation. Distinct from `team_invite`
-  // because the accept URL points at `/admin/platform-admins/accept`
-  // (super-admin onboarding), not `/invite/accept`.
-  if (type === "platform_admin.invited") {
-    const invitationId = payload.invitationId as string;
-    const result = await processPlatformAdminInviteEmail({
-      invitationId,
-      locale: resolvePayloadLocale(payload),
-    });
-    log.info({ invitationId, eventType: type, ...result }, "Platform-admin invite dispatched");
-    return;
-  }
-
-  log.warn({ eventType: type }, "Unhandled event type");
 }
 
 /** Start all queue workers */

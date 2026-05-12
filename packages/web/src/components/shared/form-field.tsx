@@ -139,7 +139,20 @@ export function FormMessage({
   const body = error ? String(error.message ?? "") : children;
   if (!body) return null;
   return (
-    <p id={formMessageId} className={cn("text-xs font-medium text-error", className)} {...props}>
+    <p
+      id={formMessageId}
+      // role=alert + aria-live=assertive announce the validation message
+      // immediately when react-hook-form's onBlur cycle attaches an error
+      // — AT users were otherwise required to re-focus the field to hear
+      // why it stayed invalid (issue #155). `role=alert` already implies
+      // `aria-live=assertive`, but a few legacy screen readers honour
+      // only one or the other; spelling both out costs nothing and
+      // covers the matrix.
+      role="alert"
+      aria-live="assertive"
+      className={cn("text-xs font-medium text-error", className)}
+      {...props}
+    >
       {body}
     </p>
   );

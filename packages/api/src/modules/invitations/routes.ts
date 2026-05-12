@@ -260,12 +260,26 @@ export async function invitationRoutes(app: FastifyInstance) {
    * Per-invitation rate limiting protects against an admin accidentally
    * spamming a single invitee — the service rotates the token on every
    * call, so a tight loop here would invalidate just-delivered links.
+   *
+   * keyGenerator scopes the bucket to (ip, org, invitation). The fastify
+   * default (`req.ip` only) lets a single source IP burn through 5
+   * resends across distinct tenants and invitations per window, which
+   * with PR #154's first-admin path becomes a single-IP fan-out into
+   * the email worker (issue #156). Scoping the key forces the cap to
+   * apply per-(tenant, invitation) instead of globally per IP.
    */
   app.post(
     "/invitations/:id/resend",
     {
       preHandler: requireOrgAdmin,
-      config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "15 minutes",
+          keyGenerator: (req) =>
+            `${req.ip}:${req.auth?.orgId ?? "anon"}:${(req.params as { id?: string }).id ?? "none"}`,
+        },
+      },
       schema: {
         tags: ["Invitations"],
         params: IdParams,
@@ -292,6 +306,17 @@ export async function invitationRoutes(app: FastifyInstance) {
       if (!result.ok) {
         if (result.error === "not_found") {
           return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
+        }
+        if (result.error === "rate_limited") {
+          // Issue #149 — collapse the per-email cap into a success-shaped
+          // 204 so the bucket can't be probed via status-code timing.
+          // Service-side `invitation.resend_rate_limited` warn gives SRE
+          // the breadcrumb.
+          request.log.warn(
+            { event: "invitation.resend_rate_limited", invitationId: id, orgId },
+            "invitation resend skipped: per-email cap reached",
+          );
+          return reply.status(204).send();
         }
         return reply
           .status(409)
