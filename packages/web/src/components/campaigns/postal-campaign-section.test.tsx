@@ -173,4 +173,169 @@ describe("PostalCampaignSection", () => {
       screen.getByText(/Personalized letters are not available for door-drop campaigns/i),
     ).toBeInTheDocument();
   });
+
+  describe("Swiss QR-bill modes (Epic #318 PR #4 / PR #5)", () => {
+    const BANK = {
+      bankName: "PostFinance",
+      ibanLast4: "1234",
+      currency: "CHF" as const,
+    };
+
+    it("renders the Swiss QR-bill badge + bank label when a bank account is linked and no public page is configured (qr_bill_only)", () => {
+      renderSection({
+        publicPageStatus: "missing",
+        bankAccount: BANK,
+        initialMemberTotal: 1,
+      });
+
+      // The mode-summary badge advertises the Swiss QR-bill mode.
+      // `modeSummary.badge.qr_bill_only` is the only string that uses
+      // the unaccompanied flag emoji + "Swiss QR-bill" (the `hybrid`
+      // badge prefixes "Standard + …" and the CTA strings include
+      // "ZIP"). Match the canonical badge copy explicitly to avoid
+      // colliding with other QR-bill mentions on the page.
+      expect(screen.getByText("🇨🇭 Swiss QR-bill")).toBeInTheDocument();
+      // The bank-account label surfaces in the explainer copy with the
+      // last 4 of the IBAN.
+      expect(screen.getByText(/PostFinance/)).toBeInTheDocument();
+      expect(screen.getByText(/\*\*\*\*1234/)).toBeInTheDocument();
+    });
+
+    it("does NOT show the public-page-missing banner in qr_bill_only mode", () => {
+      // §1.bis.0 truth-table invariant: when the run mode is `qr_bill_only`,
+      // the appeal letter is NOT emitted, so the absence of a public page
+      // is by design, not a configuration error. The misleading
+      // "publicPageMissing" banner from standard mode must not fire here.
+      renderSection({
+        publicPageStatus: "missing",
+        bankAccount: BANK,
+        initialMemberTotal: 1,
+      });
+
+      expect(screen.queryByText(/Configure a public donation page first/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Postal export not configured/i)).not.toBeInTheDocument();
+      // Generate button is enabled — the operator has everything they need
+      // to mint a QR-bill ZIP.
+      expect(screen.getByRole("button", { name: /Generate.*ZIP/i })).not.toBeDisabled();
+    });
+
+    it("shows a per-recipient scope sub-label for personalized + qr_bill_only campaigns", () => {
+      renderSection({
+        campaignType: "nominative_postal",
+        publicPageStatus: "missing",
+        bankAccount: BANK,
+        initialMemberTotal: 1,
+      });
+
+      // Personalized campaign + QR-bill = one QR-bill reference per
+      // recipient (unique QRR/SCOR per letter). Match against the
+      // distinctive "1 QR-bill reference each" tail to avoid colliding
+      // with the existing `contentsHeading` ("This export will contain,
+      // per recipient:") which also matches `/Per recipient/i`.
+      expect(screen.getByText(/1 QR-bill reference each/i)).toBeInTheDocument();
+    });
+
+    it("shows a per-campaign (door-drop) scope sub-label for door-drop + qr_bill_only campaigns", () => {
+      renderSection({
+        campaignType: "door_drop",
+        publicPageStatus: "missing",
+        bankAccount: BANK,
+        initialMemberTotal: 0,
+      });
+
+      // Door-drop + QR-bill = one shared QR-bill reference for the
+      // whole campaign (no per-recipient identity to encode).
+      expect(screen.getByText(/1 shared QR-bill reference/i)).toBeInTheDocument();
+    });
+
+    it("hides the scope sub-label in standard mode (no QR-bill = no reference to scope)", () => {
+      // Standard mode has no QR-bill, so the per-recipient vs.
+      // per-campaign disambiguation is meaningless. Verifying it is
+      // hidden defends the operator from spurious UI noise on the
+      // dominant configuration. Match against the distinctive
+      // "QR-bill reference" tail to avoid colliding with the unrelated
+      // `contentsHeading` copy ("This export will contain, per recipient:").
+      expect(screen.queryByText(/QR-bill reference each/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/shared QR-bill reference/i)).not.toBeInTheDocument();
+    });
+
+    it("triggers a download (anchor with localized filename) when the preview response is an application/zip (hybrid mode)", async () => {
+      const user = userEvent.setup();
+
+      // jsdom doesn't ship `URL.createObjectURL` / `revokeObjectURL` —
+      // patch them on the global URL so the preview helper can call
+      // through without throwing.
+      const objectUrl = "blob:test/preview";
+      const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue(objectUrl);
+      const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+      // The preview endpoint returns an `application/zip` body — this is
+      // the hybrid-mode shape (one PDF letter + one PDF QR-bill). Mock
+      // the global `fetch` directly so the helper picks up the response
+      // without going through the API proxy.
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(new Blob(["zip-bytes"], { type: "application/zip" }), {
+            status: 200,
+            headers: { "content-type": "application/zip" },
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      // Track anchor clicks + the download filename so we can assert the
+      // localized name without relying on jsdom actually triggering a
+      // navigation.
+      const anchorClick = vi.fn();
+      let observedDownloadName: string | null = null;
+      const originalCreateElement = document.createElement.bind(document);
+      const createElementSpy = vi
+        .spyOn(document, "createElement")
+        .mockImplementation((tagName: string) => {
+          const el = originalCreateElement(tagName) as HTMLElement;
+          if (tagName === "a") {
+            const anchor = el as HTMLAnchorElement;
+            anchor.click = anchorClick;
+            // Capture the assignment to `anchor.download` so we can
+            // assert on it later. (Reading `anchor.download` after the
+            // click would also work; the property is preserved by jsdom.)
+            Object.defineProperty(anchor, "download", {
+              set(value: string) {
+                observedDownloadName = value;
+              },
+              get(): string {
+                return observedDownloadName ?? "";
+              },
+              configurable: true,
+            });
+          }
+          return el;
+        });
+
+      renderSection({
+        publicPageStatus: "published",
+        bankAccount: BANK,
+        initialMemberTotal: 1,
+      });
+
+      await user.click(screen.getByRole("button", { name: /Preview/i }));
+
+      // The preview helper must trigger a download (anchor.click) rather
+      // than opening the blob inline — that path is reserved for the
+      // PDF content-type. The download filename comes from the i18n
+      // `postal.preview.zipFilename` key.
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalled();
+      });
+      await waitFor(() => {
+        expect(anchorClick).toHaveBeenCalledTimes(1);
+      });
+      expect(observedDownloadName).toBe("postal-preview.zip");
+      expect(createObjectURL).toHaveBeenCalled();
+
+      createElementSpy.mockRestore();
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+      vi.unstubAllGlobals();
+    });
+  });
 });
