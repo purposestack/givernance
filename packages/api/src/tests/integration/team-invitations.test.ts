@@ -450,7 +450,7 @@ describe("POST /v1/invitations/:id/resend", () => {
     expect(events).toHaveLength(1);
   });
 
-  it("caps resends to one inbox at 3/hour (issue #149) and 4th attempt silently 204s without rotating the token", async () => {
+  it("caps resends to one inbox at 3/hour (issue #149) and 4th attempt returns 429 without rotating the token or writing an audit row", async () => {
     const f = await makeFixture();
     const email = `cap+${f.slug}@example.org`;
 
@@ -481,13 +481,20 @@ describe("POST /v1/invitations/:id/resend", () => {
     // means the per-recipient cap leaked into the success path.
     expect(new Set(tokens).size).toBe(3);
 
-    // 4th call is over the per-recipient cap. Response shape is 204
-    // (matches the success path so a bucket-full state can't be
-    // detected from status-code timing) but the token does NOT rotate
-    // and no fresh `invitation.resent` outbox row is written.
+    // 4th call is over the per-recipient cap. The PR #358 multi-agent
+    // review (M3) replaced the original silent-204 plan with a real
+    // 429 + RFC 9457 body so an authenticated org_admin acting on a
+    // resource they own gets an honest signal instead of a misleading
+    // green toast. The token MUST NOT rotate, no fresh
+    // `invitation.resent` outbox row is written, and no `audit_logs`
+    // entry is added (M6 — guard a future refactor from leaking an
+    // audit row on the no-op path).
     const before = tokens[2];
     const eventsBefore = await db.execute<{ c: number }>(
       sql`SELECT COUNT(*)::int AS c FROM outbox_events WHERE tenant_id = ${f.orgId} AND type = 'invitation.resent'`,
+    );
+    const auditBefore = await db.execute<{ c: number }>(
+      sql`SELECT COUNT(*)::int AS c FROM audit_logs WHERE org_id = ${f.orgId} AND action = 'invitation.resent'`,
     );
 
     const fourth = await app.inject({
@@ -495,7 +502,18 @@ describe("POST /v1/invitations/:id/resend", () => {
       url: `/v1/invitations/${created.id}/resend`,
       headers: authHeader(f.inviterToken),
     });
-    expect(fourth.statusCode).toBe(204);
+    expect(fourth.statusCode).toBe(429);
+    // Lock the RFC 9457 body shape so a regression to a plain-string
+    // body or `{error: ...}` payload trips the test (per the repo
+    // `feedback_lock_rfc9457_body_in_tests.md` rule).
+    const problem = fourth.json<{
+      status: number;
+      title: string;
+      detail: string;
+    }>();
+    expect(problem.status).toBe(429);
+    expect(problem.title).toBe("Resend limit reached");
+    expect(typeof problem.detail).toBe("string");
 
     const [afterRow] = await db
       .select({ token: invitations.token })
@@ -507,6 +525,78 @@ describe("POST /v1/invitations/:id/resend", () => {
       sql`SELECT COUNT(*)::int AS c FROM outbox_events WHERE tenant_id = ${f.orgId} AND type = 'invitation.resent'`,
     );
     expect(eventsAfter.rows[0]?.c).toBe(eventsBefore.rows[0]?.c);
+
+    const auditAfter = await db.execute<{ c: number }>(
+      sql`SELECT COUNT(*)::int AS c FROM audit_logs WHERE org_id = ${f.orgId} AND action = 'invitation.resent'`,
+    );
+    expect(auditAfter.rows[0]?.c).toBe(auditBefore.rows[0]?.c);
+  });
+
+  it("keys the resend bucket by EMAIL (not invitation id) — distinct invitations to the same inbox share one cap (issue #149 C1)", async () => {
+    // The headline of #149 is "per-recipient". A regression that named
+    // the redis key `invitation:resend:id:${invitationId}` would still
+    // pass the single-invitation cap test above because (email, id)
+    // is fixed. This test creates TWO distinct invitations to the same
+    // email and proves the cap is shared.
+    const f = await makeFixture();
+    const email = `shared+${f.slug}@example.org`;
+
+    const createA = await app.inject({
+      method: "POST",
+      url: "/v1/invitations",
+      headers: authHeader(f.inviterToken),
+      payload: { email },
+    });
+    const inviteA = createA.json<{ data: { id: string } }>().data;
+
+    // Service guards against a second pending invitation to the same
+    // email through the route. To exercise the per-EMAIL key from two
+    // distinct invitation ids, we insert the second invitation row
+    // directly — same shape the service would have created.
+    const inviteBId = randomUUID();
+    await db.execute(
+      sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`,
+    );
+    await db.execute(sql`
+      INSERT INTO invitations (id, org_id, email, role, token, purpose, expires_at, created_at)
+      VALUES (
+        ${inviteBId}::uuid,
+        ${f.orgId}::uuid,
+        ${email},
+        'user',
+        ${randomUUID()}::uuid,
+        'team_invite',
+        ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)},
+        ${new Date()}
+      )
+    `);
+
+    // 2 successful resends against invitation A.
+    for (let i = 0; i < 2; i++) {
+      const r = await app.inject({
+        method: "POST",
+        url: `/v1/invitations/${inviteA.id}/resend`,
+        headers: authHeader(f.inviterToken),
+      });
+      expect(r.statusCode).toBe(204);
+    }
+    // 1 successful resend against invitation B — same email, so the
+    // bucket has now consumed 3 of 3 hits.
+    const thirdHit = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${inviteBId}/resend`,
+      headers: authHeader(f.inviterToken),
+    });
+    expect(thirdHit.statusCode).toBe(204);
+
+    // 4th hit on EITHER invitation must 429 — proves the cap key is
+    // the email, not the invitation id.
+    const overcap = await app.inject({
+      method: "POST",
+      url: `/v1/invitations/${inviteA.id}/resend`,
+      headers: authHeader(f.inviterToken),
+    });
+    expect(overcap.statusCode).toBe(429);
   });
 
   it("returns 404 for an unknown id and 409 for an accepted invitation", async () => {

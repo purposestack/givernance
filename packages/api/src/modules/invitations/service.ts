@@ -569,10 +569,48 @@ async function acceptResendForInvitationEmail(email: string): Promise<boolean> {
  * never arrived" — if the invitee only just received the original and
  * the operator clicks resend in parallel, we want only the most recent
  * link to be live to keep audit trails unambiguous.
+ *
+ * Three phases — split so the Redis cap check (issue #149) doesn't run
+ * while a Postgres transaction is held open (PR #358 review M5):
+ *   1. Probe tx (read-only): resolve email + acceptedAt to decide
+ *      whether the cap should be charged at all.
+ *   2. Cap check (Redis only, no tx).
+ *   3. Rotation tx (read-modify-write): re-fetch the row to guard
+ *      against TOCTOU with a concurrent accept, then rotate.
  */
 export async function resendTeamInvitation(
   input: ResendInvitationInput,
 ): Promise<ResendInvitationResult> {
+  // ── Phase 1: probe ──────────────────────────────────────────────────
+  const probe = await withTenantContext(input.orgId, async (tx) => {
+    const [row] = await tx
+      .select({ acceptedAt: invitations.acceptedAt, email: invitations.email })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.id, input.invitationId),
+          eq(invitations.orgId, input.orgId),
+          eq(invitations.purpose, "team_invite"),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  });
+
+  if (!probe) return { ok: false as const, error: "not_found" as const };
+  if (probe.acceptedAt) {
+    return { ok: false as const, error: "already_accepted" as const };
+  }
+
+  // ── Phase 2: per-recipient cap (issue #149) ────────────────────────
+  // Evaluated AFTER the probe so an invalid id still returns 404
+  // instead of 429 (preserves the "missing invitation" diagnostic).
+  const allowed = await acceptResendForInvitationEmail(probe.email);
+  if (!allowed) {
+    return { ok: false as const, error: "rate_limited" as const };
+  }
+
+  // ── Phase 3: rotation tx ───────────────────────────────────────────
   return withTenantContext(input.orgId, async (tx) => {
     const [row] = await tx
       .select({
@@ -596,19 +634,13 @@ export async function resendTeamInvitation(
       )
       .limit(1);
 
+    // Re-check state after the cap charge — TOCTOU guard against a
+    // concurrent accept between the probe and the rotation tx. The
+    // cap leak (one increment with no actual resend) is bounded at
+    // one bucket unit per race; acceptable.
     if (!row) return { ok: false as const, error: "not_found" as const };
     if (row.acceptedAt) {
       return { ok: false as const, error: "already_accepted" as const };
-    }
-
-    // Issue #149 — per-recipient cap, evaluated AFTER the row lookup so a
-    // bad invitation id still returns 404 instead of 204 (preserves the
-    // "missing invitation" diagnostic). The route translates rate_limited
-    // into a silent 204 so an angry operator can't probe the bucket from
-    // status-code deltas.
-    const allowed = await acceptResendForInvitationEmail(row.email);
-    if (!allowed) {
-      return { ok: false as const, error: "rate_limited" as const };
     }
 
     const newToken = randomUUID();
