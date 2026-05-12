@@ -123,11 +123,26 @@ erDiagram
     uuid id PK
     uuid org_id FK
     uuid campaign_id FK
-    uuid constituent_id FK "nullable for door_drop (V2)"
+    uuid constituent_id FK "nullable for door_drop (campaign-level ref)"
     uuid export_id FK "backlink for retry idempotency"
     uuid bank_account_id FK
     enum reference_type "qrr | scor"
     string reference "27 digits (QRR) or RF... (SCOR)"
+  }
+  constituents {
+    uuid id PK
+    uuid org_id FK
+    string firstName
+    string lastName
+    string email "nullable; many donors arrive name-only via camt.053"
+    string addressLine1 "nullable"
+    string postalCode "nullable"
+    string city "nullable"
+    string countryCode "ISO 3166-1 alpha-2"
+    string paymentSourceIban "PR #5: secondary match key from camt.053 RltdPties.DbtrAcct.Id.IBAN"
+    enum dataSource "PR #5: camt053 | manual | public_form | csv_import"
+    enum identityCompleteness "PR #5: full | partial | minimal — derived at write-time"
+    timestamp deleted_at "soft delete; GDPR Art. 17"
   }
   camt_statements {
     uuid id PK

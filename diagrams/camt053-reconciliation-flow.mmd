@@ -29,20 +29,32 @@ sequenceDiagram
       DB->>Q: outbox relay enqueues
       Q->>WI: dequeue
       WI->>S3: GET XML
-      WI->>WI: XSD-validate (libxmljs2 + camt.053.001.08.xsd)
-      alt malformed
-        WI->>DB: UPDATE status=failed, error
-      else valid
-        WI->>DB: SELECT camt_statements WHERE (org_id, msg_id)=$1<br/>(file-level idempotency)
-        alt re-import
-          WI->>WI: short-circuit (no double-import)
-        else first import
-          WI->>WI: Verify Acct.Id.IBAN ∈ tenant bank_accounts<br/>(reject foreign-IBAN files outright)
-          loop Per Ntry where CdtDbtInd=CRDT and Sts=BOOK
-            WI->>WI: idempotency_key = (org_id, msg_id, AcctSvcrRef, EndToEndId?)
-            WI->>DB: INSERT camt_credit_entries (matched OR not)
+      WI->>WI: Detect Document/@xmlns → schema version<br/>(camt.053.001.04 OR camt.053.001.08)
+      alt unsupported version
+        WI->>S3: PUT rejected XML to<br/>{org_id}/camt053/rejected/{yyyy}/{mm}/{uuid}.xml
+        WI->>DB: UPDATE status=failed, error='camt_unsupported_version'
+      else supported version
+        WI->>WI: XSD-validate (libxmljs2 + matching .04/.08 bundle)<br/>safe flags: noent=false, nonet, no DTD, no huge
+        alt malformed
+          WI->>S3: PUT rejected XML to rejected/ prefix
+          WI->>DB: UPDATE status=failed, error
+        else valid
+          WI->>DB: SELECT camt_statements WHERE (org_id, msg_id)=$1<br/>(file-level idempotency)
+          alt re-import
+            WI->>WI: short-circuit (no double-import)
+          else first import
+            WI->>WI: Verify Acct.Id.IBAN ∈ tenant bank_accounts
+            alt foreign IBAN
+              WI->>S3: PUT rejected XML to rejected/ prefix
+              WI->>DB: UPDATE status=failed, error='foreign_iban'
+            else known IBAN
+              loop Per Ntry where CdtDbtInd=CRDT and Sts=BOOK<br/>For each NtryDtls.TxDtls (banks may batch)
+                WI->>WI: idempotency_key = (org_id, statement_id,<br/>AcctSvcrRef, COALESCE(EndToEndId, ''))
+                WI->>DB: INSERT camt_credit_entries (matched OR not)
+              end
+              WI->>Q: enqueue camt-reconcile job per statement
+            end
           end
-          WI->>Q: enqueue camt-reconcile job per statement
         end
       end
     end
@@ -74,9 +86,9 @@ sequenceDiagram
 
     rect rgb(252, 232, 232)
       Note over WR,DB: 4. Reversal handling (Ntry.RvslInd=true)
-      WR->>DB: SELECT donation WHERE swiss_qr_reference_id=$1<br/>AND parent_id IS NULL
+      WR->>DB: SELECT donation WHERE swiss_qr_reference_id=$1<br/>AND reverses_donation_id IS NULL AND status='cleared'
       alt original donation found
-        WR->>DB: INSERT donation reversal<br/>+ link via donations.parent_id<br/>+ emit donation.refunded
+        WR->>DB: INSERT reversal donation<br/>(amount_cents = -original.amount_cents,<br/>status='refunded',<br/>reverses_donation_id = original.id)<br/>+ emit donation.refunded
       else orphan reversal
         WR->>DB: INSERT camt_unreconciled_entries<br/>(reason=orphan_reversal)
       end

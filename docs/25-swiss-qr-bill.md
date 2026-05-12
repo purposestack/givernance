@@ -376,7 +376,17 @@ erDiagram
     donations {
         uuid swiss_qr_reference_id FK "nullable, set by reconciliation"
         uuid camt_credit_entry_id FK "nullable"
+        uuid reverses_donation_id FK "nullable; set on the reversal row when Ntry.RvslInd=true — see §5.2"
         enum payment_source "stripe | camt053 | manual"
+        enum status "cleared | refunded | failed (existing enum, reused for reversals)"
+        int amount_cents "negative on reversal rows by convention"
+    }
+
+    constituents {
+        uuid id PK
+        string paymentSourceIban "nullable; secondary match key from camt.053 RltdPties.DbtrAcct.Id.IBAN — extracted by PR #5 reconciler"
+        enum dataSource "camt053 | manual | public_form | csv_import — provenance flag, set at row creation"
+        enum identityCompleteness "full | partial | minimal — derived at write-time, see §5.5"
     }
 ```
 
