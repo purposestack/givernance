@@ -189,6 +189,39 @@ The topbar avatar is a `DropdownMenu` (the **account menu** — see [GLO-005 moc
 
 Stateless access tokens used to mean a Keycloak session ended on another device (admin "Sign out all sessions", sibling-device logout) could not invalidate an already-issued access token until natural expiry. OIDC Back-Channel Logout 1.0 closes that gap.
 
+**End-to-end revocation flow** (ADR-029 covers the design rationale):
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Keycloak admin
+    participant KC as Keycloak
+    participant API as Givernance API
+    participant Redis
+    actor User as Victim browser
+
+    Admin->>KC: "Sign out all sessions" for user X
+    KC->>KC: terminate SSO session for user X
+    KC->>+API: POST /v1/session/backchannel-logout<br/>application/x-www-form-urlencoded<br/>logout_token=<signed JWT>
+    API->>API: verify JWT signature + iss + aud<br/>+ iat skew + events claim<br/>+ no-nonce + jti + sid
+    alt token verification OK
+        API->>+Redis: SETEX auth:kc-sid-blocklist:<sid> 600 "1"
+        Redis-->>-API: OK
+        API-->>-KC: 200 {sid}
+    else token rejected (bad sig / wrong aud / nonce present / …)
+        API-->>KC: 400 RFC 9457 problem-detail
+        Note over KC,API: Keycloak surfaces the failure<br/>via "Failed back-channel logout"<br/>admin event; no retry storm
+    end
+
+    Note over User: 5 minutes later, the silent-refresh<br/>scheduler hits /api/auth/refresh
+    User->>+API: GET /v1/users/me<br/>(cookie: givernance_jwt with sid=X)
+    API->>API: verify JWT signature
+    API->>+Redis: GET auth:kc-sid-blocklist:<sid>
+    Redis-->>-API: "1"
+    API-->>-User: 401 {"detail":"Session revoked."}
+    Note over User: AuthProvider clears local state;<br/>next nav → middleware → /login
+```
+
 **Keycloak side** (`infra/keycloak/realm-givernance.json` → `givernance-web` client):
 
 | Attribute | Value | Purpose |
