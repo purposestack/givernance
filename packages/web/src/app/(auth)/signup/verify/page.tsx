@@ -154,7 +154,8 @@ function VerifyContent() {
         // realm's mapper turns into the JWT claim the callback requires.
         // `?hint=<slug>` is forwarded as `kc_idp_hint` so federated
         // tenants land directly on their IdP (issue #150); KC ignores
-        // it for non-federated aliases.
+        // it for non-federated or unmatched aliases — useful breadcrumb
+        // for operators debugging "why didn't the IdP open".
         window.location.href = `/api/auth/login?hint=${encodeURIComponent(res.data.slug)}`;
         return;
       }

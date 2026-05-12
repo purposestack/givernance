@@ -137,20 +137,32 @@ export function FormMessage({
 }: HTMLAttributes<HTMLParagraphElement>) {
   const { formMessageId, error } = useFormField();
   const body = error ? String(error.message ?? "") : children;
-  if (!body) return null;
+  // Always mount the live region — even when empty. Several screen-reader
+  // combinations (NVDA + Firefox in particular) skip the announcement
+  // when the element mounts together with its content in the same tick;
+  // keeping the node in the DOM with a stable id turns the AT
+  // notification into a *content change* on a known region, which is
+  // reliably announced on every error → clear → re-error cycle.
+  //
+  // `aria-live="polite"` is the default — the assertive level would
+  // pre-empt any concurrent `role=alert` rootError summary (used on the
+  // signup / new-tenant / donation / etc. forms) and turn submit-with-
+  // errors into a flood that drowns the curated summary. Call sites
+  // that need to interrupt the user (payment failure, session expiry)
+  // can override `aria-live` via the spread props.
   return (
     <p
       id={formMessageId}
-      // role=alert + aria-live=assertive announce the validation message
-      // immediately when react-hook-form's onBlur cycle attaches an error
-      // — AT users were otherwise required to re-focus the field to hear
-      // why it stayed invalid (issue #155). `role=alert` already implies
-      // `aria-live=assertive`, but a few legacy screen readers honour
-      // only one or the other; spelling both out costs nothing and
-      // covers the matrix.
-      role="alert"
-      aria-live="assertive"
-      className={cn("text-xs font-medium text-error", className)}
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "text-xs font-medium text-error",
+        // Reserve the row when empty so screen readers see content
+        // changes on a stable region; visually hidden when there's
+        // nothing to read.
+        !body && "sr-only",
+        className,
+      )}
       {...props}
     >
       {body}
