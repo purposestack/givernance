@@ -18,7 +18,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { setLocale } from "@/i18n/locale";
+import { createClientApiClient } from "@/lib/api/client-browser";
 import { useAuth } from "@/lib/auth";
+import { UserService } from "@/services/UserService";
 
 interface TopbarProps {
   title?: string;
@@ -58,6 +60,24 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
     (next: string) => {
       if (!isLocale(next) || next === locale) return;
       void (async () => {
+        // PATCH the server-side personal override first — the i18n
+        // resolver on authenticated routes reads `users.locale` from
+        // `/v1/users/me` and ignores the NEXT_LOCALE cookie when a
+        // session exists (see `packages/web/src/i18n/request.ts`
+        // → `resolveSessionLocale`). Setting the cookie alone has no
+        // effect once authenticated.
+        try {
+          await UserService.updateMe(createClientApiClient(), { locale: next });
+        } catch {
+          // Network blip / API down — leave the UI on the current
+          // locale; user will see they're still on the old one and
+          // can retry. We deliberately do NOT toast here to keep the
+          // dropdown surface quiet for a transient failure.
+          return;
+        }
+        // Mirror the choice into NEXT_LOCALE so the next pre-auth
+        // page (e.g. after sign-out) lands in the right language
+        // without requiring a server round-trip.
         await setLocale(next);
         startLocaleTransition(() => router.refresh());
       })();

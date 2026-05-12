@@ -23,6 +23,7 @@ import { render, screen, userEvent, waitFor } from "@/tests/test-utils";
 const mockLogout = vi.fn();
 const mockSetLocale = vi.fn();
 const mockRouterRefresh = vi.fn();
+const mockUpdateMe = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
@@ -52,6 +53,19 @@ vi.mock("@/i18n/locale", () => ({
   },
 }));
 
+vi.mock("@/lib/api/client-browser", () => ({
+  createClientApiClient: () => ({}),
+}));
+
+vi.mock("@/services/UserService", () => ({
+  UserService: {
+    updateMe: (_client: unknown, input: { locale: string | null }) => {
+      mockUpdateMe(input);
+      return Promise.resolve({ locale: input.locale });
+    },
+  },
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: mockRouterRefresh }),
 }));
@@ -74,6 +88,7 @@ beforeEach(() => {
   mockLogout.mockClear();
   mockSetLocale.mockClear();
   mockRouterRefresh.mockClear();
+  mockUpdateMe.mockClear();
 });
 
 afterEach(() => {
@@ -124,13 +139,19 @@ describe("Topbar account menu", () => {
     expect(screen.getByRole("menuitem", { name: /ends your session/i })).toBeInTheDocument();
   });
 
-  it("calls setLocale and refreshes the router when an inactive locale is selected", async () => {
+  it("PATCHes users.locale, sets the cookie, and refreshes the router when an inactive locale is selected", async () => {
     const user = userEvent.setup();
     renderTopbar();
     await user.click(screen.getByRole("button", { name: /account menu/i }));
 
     await user.click(screen.getByRole("menuitemradio", { name: /français/i }));
 
+    // The server-side `users.locale` is the load-bearing write —
+    // `resolveSessionLocale()` reads it from `/v1/users/me` and ignores
+    // the NEXT_LOCALE cookie for authenticated pages.
+    await waitFor(() => {
+      expect(mockUpdateMe).toHaveBeenCalledWith({ locale: "fr" });
+    });
     await waitFor(() => {
       expect(mockSetLocale).toHaveBeenCalledWith("fr");
     });
@@ -139,15 +160,32 @@ describe("Topbar account menu", () => {
     });
   });
 
-  it("does NOT call setLocale when the active locale row is clicked", async () => {
+  it("does NOT PATCH or set cookie when the active locale row is clicked", async () => {
     const user = userEvent.setup();
     renderTopbar();
     await user.click(screen.getByRole("button", { name: /account menu/i }));
 
     await user.click(screen.getByRole("menuitemradio", { name: /english/i }));
 
-    // setLocale must NOT be called for the already-active row.
+    expect(mockUpdateMe).not.toHaveBeenCalled();
     expect(mockSetLocale).not.toHaveBeenCalled();
+  });
+
+  it("does not write the cookie or refresh when the PATCH fails (transient API error)", async () => {
+    mockUpdateMe.mockImplementationOnce(() => {
+      throw new Error("api down");
+    });
+    const user = userEvent.setup();
+    renderTopbar();
+    await user.click(screen.getByRole("button", { name: /account menu/i }));
+
+    await user.click(screen.getByRole("menuitemradio", { name: /français/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateMe).toHaveBeenCalled();
+    });
+    expect(mockSetLocale).not.toHaveBeenCalled();
+    expect(mockRouterRefresh).not.toHaveBeenCalled();
   });
 
   it("invokes useAuth().logout when the sign-out item is activated", async () => {
