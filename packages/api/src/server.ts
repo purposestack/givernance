@@ -21,6 +21,7 @@ import { bankAccountRoutes } from "./modules/bank-accounts/routes.js";
 import { brandingRoutes } from "./modules/branding/routes.js";
 import { postalCampaignRoutes } from "./modules/campaigns/postal-routes.js";
 import { campaignRoutes } from "./modules/campaigns/routes.js";
+import { camtStatementsRoutes } from "./modules/camt-statements/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
 import { dashboardRoutes } from "./modules/dashboard/routes.js";
 import { disputeRoutes } from "./modules/disputes/routes.js";
@@ -206,6 +207,7 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(donationRoutes, { prefix: "/v1" });
   await app.register(fundRoutes, { prefix: "/v1" });
   await app.register(bankAccountRoutes, { prefix: "/v1" });
+  await app.register(camtStatementsRoutes, { prefix: "/v1" });
   await app.register(pledgeRoutes, { prefix: "/v1" });
   await app.register(campaignRoutes, { prefix: "/v1" });
   await app.register(postalCampaignRoutes, { prefix: "/v1" });
