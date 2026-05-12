@@ -21,6 +21,7 @@ import {
   type PostalExportRunMode,
   resolvePostalExportMode,
 } from "@givernance/shared/postal-export-mode";
+import { hasPageFromStatus } from "@givernance/shared/postal-print-layout";
 import {
   bankAccounts,
   campaignConstituents,
@@ -337,9 +338,11 @@ export async function startPostalExport(
 
     const runMode: PostalExportRunMode = resolvePostalExportMode({
       hasBank: campaign.bankAccountId !== null,
-      // `hasPage = page row exists` (any status). The publish gate
-      // fires separately inside the dispatched standard/hybrid branch.
-      hasPage: !!publicPage,
+      // `hasPage = page row exists` (status: draft OR published). The
+      // publish-readiness gate fires separately inside the dispatched
+      // standard/hybrid branch — see `hasPageFromStatus` for the full
+      // contract.
+      hasPage: hasPageFromStatus(publicPage?.status),
     });
     await dispatchModeReadinessGates(tx, orgId, runMode, campaign, publicPage);
 
@@ -376,6 +379,12 @@ export async function startPostalExport(
         orgId,
         campaignId,
         mode,
+        // Epic #318 PR #4 MAJOR-1 follow-up — stamp the resolved run mode
+        // so the worker can assert at pickup that the live inputs haven't
+        // drifted (operator unlinking the bank account or archiving the
+        // public page between Generate and the BullMQ pickup). `blocked`
+        // is unreachable here — the dispatcher above already rejected it.
+        runMode,
         status: "pending",
         totalCount,
         progressCount: 0,

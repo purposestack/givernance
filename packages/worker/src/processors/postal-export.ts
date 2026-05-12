@@ -44,6 +44,7 @@ import {
   type PostalExportRunMode,
   resolvePostalExportMode,
 } from "@givernance/shared/postal-export-mode";
+import { hasPageFromStatus } from "@givernance/shared/postal-print-layout";
 import {
   campaignConstituents,
   campaignPostalExports,
@@ -162,6 +163,11 @@ export async function processGeneratePostalExport(
       .select({
         status: campaignPostalExports.status,
         progressCount: campaignPostalExports.progressCount,
+        // Epic #318 PR #4 MAJOR-1 follow-up: read the stamped run mode
+        // so we can assert downstream that the live inputs haven't
+        // drifted since the operator enqueued. NULL = legacy row
+        // (pre-migration 0045); we skip the drift assertion in that case.
+        runMode: campaignPostalExports.runMode,
       })
       .from(campaignPostalExports)
       .where(and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, orgId))),
@@ -170,6 +176,8 @@ export async function processGeneratePostalExport(
     log.info({ exportId }, "Postal export already completed — skipping retry");
     return { uploaded: existing.progressCount };
   }
+  // Stamped at API enqueue time; NULL means a pre-0045 legacy row.
+  const stampedRunMode = existing?.runMode ?? null;
 
   // ── 1. Flip status to `processing`. ──────────────────────────────
   await withWorkerContext(orgId, async (tx) => {
@@ -282,18 +290,23 @@ export async function processGeneratePostalExport(
   // race between API enqueue and worker pickup.
   const runMode: PostalExportRunMode = resolvePostalExportMode({
     hasBank: campaign.bankAccountId !== null,
-    // `hasPage = page row exists` (any status) — same semantics as
-    // the API resolver. The publish-status gate already fired at API
-    // time, so a non-`published` page here implies a race we treat as
-    // blocked (worker fail-fast).
-    hasPage: publicPageStatus !== null,
+    // `hasPage = page row exists` (status: draft OR published) — same
+    // semantics as the API resolver. The publish-status gate already
+    // fired at API time, so a non-`published` page here implies a race
+    // we treat as blocked (worker fail-fast).
+    hasPage: hasPageFromStatus(publicPageStatus),
   });
   if (runMode === "blocked") {
     throw new Error(
       `Postal export ${exportId} resolved to mode=blocked at worker time — neither bank account nor published public page available (probable race with operator unconfiguration)`,
     );
   }
-  log.info({ exportId, runMode }, "Postal export mode resolved at worker");
+
+  await assertNoRunModeDrift({ orgId, exportId, stampedRunMode, liveRunMode: runMode, log });
+  log.info(
+    { exportId, runMode, stampedRunMode },
+    "Postal export mode resolved at worker (drift-assertion clean)",
+  );
 
   // ── 2b. Reuse QR codes from a prior crashed attempt. ─────────────
   // On retry, `campaign_qr_codes` may already hold rows that the previous
@@ -560,6 +573,42 @@ export async function processGeneratePostalExport(
 }
 
 /**
+ * Epic #318 PR #4 MAJOR-1 follow-up — assert that the run mode the API
+ * stamped at enqueue time still matches the mode the worker re-resolves
+ * from live inputs at pickup time. The API readiness gate ran the same
+ * resolver and stamped `run_mode` on the row before emitting the outbox
+ * event; if the live inputs (bank-account link, public-page presence)
+ * changed in the meantime — operator unlinked the bank account or
+ * archived the page — we'd silently ship a ZIP whose contents don't
+ * match the export panel the operator clicked Generate from. Fail loud
+ * with `postal_export_mode_drift` and `markFailed` instead.
+ *
+ * NULL `stampedRunMode` = legacy row from before migration 0045; we
+ * skip the assertion to keep history exports retrying cleanly through
+ * the BullMQ retry path until those rows age out.
+ *
+ * Extracted from `processGeneratePostalExport` to keep that function
+ * under the biome cognitive-complexity ceiling.
+ */
+async function assertNoRunModeDrift(args: {
+  orgId: string;
+  exportId: string;
+  stampedRunMode: string | null;
+  liveRunMode: PostalExportRunMode;
+  log: ReturnType<typeof jobLogger>;
+}): Promise<void> {
+  if (args.stampedRunMode === null) return; // legacy row — skip
+  if (args.stampedRunMode === args.liveRunMode) return; // happy path
+  const message = `postal_export_mode_drift: stamped=${args.stampedRunMode} live=${args.liveRunMode} (operator unconfigured an input between enqueue and pickup)`;
+  args.log.error(
+    { exportId: args.exportId, stampedRunMode: args.stampedRunMode, liveRunMode: args.liveRunMode },
+    message,
+  );
+  await markFailed(args.orgId, args.exportId, message);
+  throw new Error(message);
+}
+
+/**
  * Epic #318 — load the Swiss QR-bill render context when the campaign
  * has a linked bank account, otherwise null. Extracted from
  * `processGeneratePostalExport` to keep that function under the
@@ -635,6 +684,18 @@ async function emitWorkItemPdfs(args: {
   exportId: string;
 }): Promise<void> {
   const { archive, runMode, item, publicPageUrl, tenant, campaign, logoBuffer, swissQrCtx } = args;
+
+  // Self-defending dispatcher (minor #11 from PR #355 review): the caller's
+  // mode resolver guards `blocked` upstream, but a refactor that reorders
+  // the early-exit could silently fall through here with `blocked` and
+  // emit zero PDFs for the recipient — the export would then mark
+  // `completed` with an empty ZIP. Make the contract explicit at the
+  // module boundary so a future regression fails loud.
+  if (runMode === "blocked") {
+    throw new Error(
+      `emitWorkItemPdfs invoked with runMode=blocked for export ${args.exportId} — caller MUST guard this upstream`,
+    );
+  }
 
   // Standard rail (appeal letter with scan-QR) — emit in `standard` + `hybrid`.
   if (runMode === "standard" || runMode === "hybrid") {

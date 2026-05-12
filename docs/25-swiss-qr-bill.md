@@ -110,7 +110,9 @@ sequenceDiagram
 Two booleans on the campaign drive the postal-export experience:
 
 - `hasBank` — `campaign.bank_account_id IS NOT NULL` (a Swiss bank account is linked)
-- `hasPage` — `campaign_public_pages.status === 'published'` (a donor-facing donation page is published)
+- `hasPage` — a page row exists in `campaign_public_pages` for this campaign (status: `draft` OR `published`).[^haspage] The publish-status gate (`public_page_missing` / `public_page_draft`) fires separately inside the standard / hybrid path at the API layer — using `status === 'published'` here would silently flip a draft-page-only campaign into `blocked` and surface a misleading "not-configured" banner when the operator just needs to publish.
+
+[^haspage]: Resolved via the shared `hasPageFromStatus(status)` helper in [`@givernance/shared/postal-print-layout`](../packages/shared/src/postal-print-layout.ts). The hypothetical future `archived` status would map to `false` (an archived page is not a usable scan target).
 
 | `hasBank` | `hasPage` | Mode | What ships per recipient | Readiness gates that fire |
 |---|---|---|---|---|
@@ -122,6 +124,8 @@ Two booleans on the campaign drive the postal-export experience:
 The mode resolver lives in `@givernance/shared/postal-export-mode.ts` as a pure function. The API readiness-gate evaluator, the worker render dispatcher, and the web mode-summary panel all call the same code path — drift across the three would silently re-introduce the "preview lies about generation" bug PR #4 was opened to fix.
 
 **Tie-break on the both-true case → `hybrid` wins.** Reason: the Swiss flow MUST be a strict superset of the French tracking surface (this §). Dropping the scan-tracking QR when the operator clearly published a public donation page would silently kill the 3-stage funnel they already configured.
+
+**Run-mode persistence + drift assertion (migration 0050).** The API stamps the resolved `run_mode` on the `campaign_postal_exports` row at enqueue time. The worker re-resolves the mode at pickup; if the stamped and re-resolved modes diverge — operator unlinked the bank account or archived the public page between Generate and the BullMQ pickup — the worker fails the job with `postal_export_mode_drift` rather than shipping a ZIP whose contents don't match the export panel the operator clicked from. NULL `run_mode` = legacy row from before migration 0050; the assertion is skipped for those (history exports keep retrying cleanly until they age out).
 
 ## 1.bis QR codes per mailing — preserve scan tracking when it makes sense, add payment in either mode
 

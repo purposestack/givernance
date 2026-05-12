@@ -1,0 +1,44 @@
+-- 0050 — Persist the resolved run mode on the postal-export row (Epic #318 PR #4 MAJOR-1 follow-up).
+--
+-- Prior to this migration the run mode (`standard` / `qr_bill_only` /
+-- `hybrid` / `blocked`) was re-derived at worker pickup from the live
+-- inputs (`campaign.bank_account_id IS NOT NULL`, `campaign_public_pages`
+-- row presence). That worked but it had a quiet failure mode: if the
+-- operator unconfigured an input between API enqueue and worker pickup
+-- (unlinked the bank account, archived the public page), the worker
+-- would silently flip to a different mode than the API readiness gate
+-- accepted at enqueue time — and the operator would receive a ZIP whose
+-- contents don't match the export panel they clicked Generate from.
+--
+-- We now stamp `run_mode` at API enqueue time and assert at worker
+-- pickup that the re-resolved mode still matches. Drift fails the job
+-- with `postal_export_mode_drift` (caught + surfaced via the standard
+-- `markFailed` path) so the operator sees an honest error rather than
+-- a confusingly-shaped artefact.
+--
+-- Column shape:
+--
+--   * `run_mode TEXT` (nullable, no CHECK constraint at DB level).
+--     Nullable so existing pre-PR-4 rows (history of completed/failed
+--     exports from before this migration) round-trip cleanly — the
+--     worker treats NULL as "legacy row, skip the drift assertion".
+--     TEXT not ENUM because the resolved mode lives in TypeScript as
+--     a string-literal union (`@givernance/shared/postal-export-mode`);
+--     mirroring it as a Postgres enum would force two-step migrations
+--     every time we add a mode. A future tightening can add a CHECK
+--     constraint pinned to the canonical values if we observe
+--     application-level drift.
+--
+-- Idempotent — `ADD COLUMN IF NOT EXISTS` so re-runs on a fresh checkout
+-- are no-ops.
+
+ALTER TABLE campaign_postal_exports
+  ADD COLUMN IF NOT EXISTS run_mode TEXT;
+
+-- No backfill: existing rows stay NULL (= "legacy") and the worker's
+-- drift assertion explicitly tolerates that. Stamping retroactively
+-- would require re-deriving each row's mode from the campaign's
+-- *current* `bank_account_id` + `campaign_public_pages` state, which
+-- can have diverged from the original enqueue-time state (the very
+-- drift this column was added to detect). Leaving NULL is the honest
+-- representation.
