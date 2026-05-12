@@ -372,3 +372,99 @@ describe("processGeneratePostalExport — failure handling", () => {
   // synchronously created at the top of the archive loop and only
   // awaited at the end — fine in production, noisy in vitest.
 });
+
+describe("processGeneratePostalExport — run-mode drift assertion (Epic #318 PR #4 MAJOR-1)", () => {
+  // The API stamps `run_mode` on the postal-export row at enqueue time.
+  // The worker re-resolves the mode at pickup. If those disagree
+  // (operator unconfigured an input between Generate and the BullMQ
+  // pickup), the worker MUST fail-fast with `postal_export_mode_drift`
+  // rather than ship a ZIP whose contents don't match the export panel
+  // the operator clicked from.
+
+  it("fails the job when stamped run_mode disagrees with the live re-resolved mode", async () => {
+    // Seed a postal-export row with a stamped run_mode of
+    // `qr_bill_only` — that mode requires a linked bank account on
+    // the campaign. Our test campaign has NO bank_account_id, so the
+    // worker re-resolves to `standard` at pickup → drift.
+    const [row] = await db
+      .insert(campaignPostalExports)
+      .values({
+        orgId: ORG_ID,
+        campaignId,
+        mode: "personalized",
+        status: "pending",
+        totalCount: 2,
+        runMode: "qr_bill_only",
+      })
+      .returning();
+    const exportId = row!.id;
+
+    await expect(
+      processGeneratePostalExport(
+        makeMockJob({ exportId, campaignId, orgId: ORG_ID, mode: "personalized" }, 0),
+      ),
+    ).rejects.toThrow(/postal_export_mode_drift/);
+
+    const [post] = await db
+      .select({ status: campaignPostalExports.status, error: campaignPostalExports.error })
+      .from(campaignPostalExports)
+      .where(eq(campaignPostalExports.id, exportId));
+    expect(post?.status).toBe("failed");
+    expect(post?.error).toContain("postal_export_mode_drift");
+    expect(post?.error).toContain("stamped=qr_bill_only");
+    expect(post?.error).toContain("live=standard");
+  });
+
+  it("runs cleanly when stamped run_mode matches the live re-resolved mode", async () => {
+    // Same campaign (no bank account, page published) → both API and
+    // worker resolve to `standard`. Stamping `standard` explicitly
+    // exercises the happy path of the drift assertion.
+    const [row] = await db
+      .insert(campaignPostalExports)
+      .values({
+        orgId: ORG_ID,
+        campaignId,
+        mode: "personalized",
+        status: "pending",
+        totalCount: 2,
+        runMode: "standard",
+      })
+      .returning();
+    const exportId = row!.id;
+
+    await processGeneratePostalExport(
+      makeMockJob({ exportId, campaignId, orgId: ORG_ID, mode: "personalized" }, 0),
+    );
+
+    const [post] = await db
+      .select({ status: campaignPostalExports.status })
+      .from(campaignPostalExports)
+      .where(eq(campaignPostalExports.id, exportId));
+    expect(post?.status).toBe("completed");
+  });
+
+  it("skips the assertion on a legacy row with NULL run_mode (pre-migration 0045)", async () => {
+    // Legacy rows (postal_exports inserted before migration 0045
+    // added the column) have run_mode IS NULL. The worker treats NULL
+    // as "skip the drift assertion" so history exports retrying
+    // through the BullMQ retry path keep running cleanly.
+    const exportId = await createPostalExport("personalized", 2);
+    // Confirm the column is NULL — the test helper's INSERT omits
+    // `runMode` entirely, which Drizzle persists as NULL.
+    const [seeded] = await db
+      .select({ runMode: campaignPostalExports.runMode })
+      .from(campaignPostalExports)
+      .where(eq(campaignPostalExports.id, exportId));
+    expect(seeded?.runMode).toBeNull();
+
+    await processGeneratePostalExport(
+      makeMockJob({ exportId, campaignId, orgId: ORG_ID, mode: "personalized" }, 0),
+    );
+
+    const [post] = await db
+      .select({ status: campaignPostalExports.status })
+      .from(campaignPostalExports)
+      .where(eq(campaignPostalExports.id, exportId));
+    expect(post?.status).toBe("completed");
+  });
+});

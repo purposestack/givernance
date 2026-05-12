@@ -1181,6 +1181,17 @@ export const campaignPostalExports = pgTable(
     mode: postalExportModeEnum("mode").notNull(),
     status: postalExportStatusEnum("status").notNull().default("pending"),
     /**
+     * Resolved run mode (Epic #318 PR #4 MAJOR-1 follow-up) — `standard` /
+     * `qr_bill_only` / `hybrid`. Stamped at API enqueue time so the worker
+     * can assert at pickup that the live inputs (`bank_account_id`,
+     * public-page presence) haven't drifted since the operator clicked
+     * Generate. NULL on rows that pre-date migration 0045 (legacy
+     * history); the worker treats NULL as "skip the drift assertion".
+     * Never `blocked` — that mode short-circuits at the API readiness
+     * gate before a row is ever inserted.
+     */
+    runMode: text("run_mode"),
+    /**
      * Total expected PDFs (= constituent count for personalized, 1 for
      * door-drop). Locked at job-start so the progress bar denominator stays
      * stable even if the campaign membership is mutated mid-job.

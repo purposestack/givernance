@@ -351,6 +351,13 @@
       "when": 1778030000000,
       "tag": "0049_feature_flags_friendly_text",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1778040000000,
+      "tag": "0050_postal_export_run_mode",
+      "breakpoints": true
     }
   ]
 }
