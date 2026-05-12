@@ -781,6 +781,22 @@ Per uploaded statement:
 
 **Reversal entries** (`Ntry.RvslInd = true`) reverse the prior donation rather than double-book — see §5.2 for the concrete reversal mechanics (`donations.reverses_donation_id`, negative `amount_cents`, `status='refunded'`). **Pending entries** (`Sts != BOOK`) are skipped and re-evaluated on next statement upload; the entry-level idempotency key (step 4.b.i) catches the eventual `BOOK` re-emission without double-booking.
 
+### 5.4.bis Statement state machine
+
+`camt_statements.status` transitions:
+
+`pending` (upload landed, outbox emitted) →
+  `processing` (worker dequeued; XSD/structural validation passed; persist loop running) →
+  `processed` (reconciler ran; matched/unmatched counts written; outbox `camt053.processed` emitted)
+
+Failure states are terminal:
+- `failed` — XSD/structural invalid, schema-version unsupported, foreign IBAN, missing required field. `error_code` + `error_message` populated; file moved to `rejected/` prefix.
+- `duplicate` — `GrpHdr.MsgId` already seen on a different statement row. Original entries untouched; file kept in main bucket for audit.
+
+The UI poller (operator upload progress widget) binds to this 3-state happy path (`pending → processing → processed`) plus 2 terminal failures (`failed`, `duplicate`).
+
+**`paymentSource` vs `paymentMethod` on camt.053 donations.** Every donation that flowed through the camt.053 rail carries `payment_source='camt053'`. The `payment_method` discriminates auto-reconciled (`payment_method='camt053'`) from operator-resolved (`payment_method='camt053_manual'`) — useful for reporting "auto-match rate" without re-deriving from `camt_unreconciled_entries`. Operator-resolved donations are still camt-rail provenance and inherit the same retention rule.
+
 ### 5.5 Constituent enrichment from camt.053 — what we extract and how
 
 **Why this matters.** A constituent created via the door-drop reconciler (or matched-but-augmented via the personalised reconciler) determines whether the operator can re-engage by post: without `addressLine1` + `postalCode` + `city`, future appeal letters cannot be sent to this donor. The Swiss QR-bill rail typically carries no email address (the donor never typed one — they paid via BVR, not via the public donation page), so postal address is the *only* re-engagement channel for ~70% of new constituents created this way.

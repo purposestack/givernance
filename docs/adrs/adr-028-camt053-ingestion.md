@@ -101,6 +101,17 @@ The original Decision section above is preserved verbatim; this subsection recor
 
 These notes do NOT amend the Decision — they pin the concrete shape PR #5 ships where the original wording was a sketch.
 
+### Parser library — fast-xml-parser (PR #5)
+
+PR #5 ships `fast-xml-parser` as the primary parser instead of `libxmljs2` mentioned in the original Decision. Rationale:
+
+- The §5.5 enrichment matrix needs deterministic access to `RltdPties.Dbtr.{Nm, PstlAdr.{StrtNm, BldgNb, PstCd, TwnNm, Ctry}, PstlAdr.AdrLine[]}` as bare data structures. `fast-xml-parser` exposes them directly; an iso20022.js-style wrapper would mediate through a typed surface that adds latency to per-field access.
+- libxmljs2 carries a native libxml2 binding. fast-xml-parser is pure JS; one fewer build-environment concern (matters for the `pnpm test` matrix and for future Bun/Deno experimentation).
+- **XXE / billion-laughs hardening:** fast-xml-parser disables DTD/entity resolution by default — the threat model that motivated libxmljs2's parse-flag tuning is mitigated by parser choice. If we ever swap back, the original Decision's hardening flags still apply.
+- The parser interface in `packages/worker/src/services/camt053-parser.ts` exposes a swap-friendly surface: parser function + typed output. iso20022.js or libxmljs2 can replace fast-xml-parser as a single-file change.
+
+XSD validation against the `camt.053.001.{04,08}.xsd` schemas is intentionally deferred — the parser's structural validation (namespace + root tag + required-field presence) already catches malformed XML, missing-namespace, and missing-required-field defects. Adding XSD on top is a future hardening if production sees XSD-passing-but-semantically-broken files.
+
 ### References
 
 - [Swiss Implementation Guidelines for Cash Management (camt) — SPS 2026 v2.3](https://www.six-group.com/dam/download/banking-services/standardization/sps/ig-cash-management-sps-2026-en.pdf)
