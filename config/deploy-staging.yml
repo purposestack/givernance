@@ -71,6 +71,17 @@ env:
     NEXT_PUBLIC_KEYCLOAK_URL: https://auth.staging.givernance.org
     S3_ENDPOINT: http://givernance-minio:9000
     S3_ACCESS_KEY_ID: admin
+    # Browser-reachable base for the `branding` (public-read, ADR-023)
+    # bucket. The default in `brandingPublicUrl()` falls back to
+    # `${S3_ENDPOINT}/${S3_BRANDING_BUCKET}` — fine for docker-compose
+    # where MinIO is published on the host, but unresolvable from the
+    # browser on staging where the accessory only lives on the internal
+    # `kamal` network. We front bucket reads through kamal-proxy on
+    # `assets.staging.givernance.org` (see the minio accessory's `proxy:`
+    # block below); same hostname serves the donation page hero and the
+    # Keycloak login template's `organization.attributes['logo_url']`,
+    # so the KC HTTPS-only guard accepts it without a CDN.
+    KEYCLOAK_LOGO_PUBLIC_URL_BASE: https://assets.staging.givernance.org/branding
     KEYCLOAK_URL: https://auth.staging.givernance.org
     KEYCLOAK_INTERNAL_URL: http://givernance-keycloak:8080
     # Worker email backend — issue #190 / docs/05 §3.1. Resend handles
@@ -270,20 +281,34 @@ accessories:
   minio:
     image: minio/minio:latest
     host: <%= ENV["STAGING_VPS_IP"] %>
-    # No `port:` publishing — MinIO is reachable only on the internal
-    # `kamal` Docker network at `givernance-minio:9000`. Closes the
-    # browser-facing presigned-URL hole that issue #214 fixed: the API
-    # streams receipts through `:id/receipt/download`, so no donor
-    # browser ever needs to resolve port 9000 directly. The bucket-
-    # creation step in deploy-staging.yml uses `--network kamal` so it
-    # still works without a published port. Local docker-compose still
-    # publishes 9000 — that's intentional, the local console UI + `mc`
-    # from the host shell both need it.
+    # No `port:` publishing — MinIO's S3 API stays off the public
+    # internet. Receipts + campaigns use the API streaming endpoints
+    # (issue #214) so no donor browser needs raw 9000 access for them.
     #
-    # When `deploy-prod.yml` lands, do NOT re-publish port 9000 — the
-    # streaming endpoint covers every browser-facing path. Adding
-    # `port: 9000` to the prod accessory would silently re-open the
-    # public attack surface this PR closed.
+    # The `branding` bucket (Epic #286 / ADR-023) is a deliberate
+    # exception: it's public-read at the bucket level so donor-facing
+    # surfaces (donation page hero, Keycloak login template logo) can
+    # fetch directly with `Cache-Control: public, max-age=31536000,
+    # immutable` and a future CDN edge can cache content-addressed
+    # keys. We expose that read path through kamal-proxy on
+    # `assets.staging.givernance.org` — the proxy forwards to MinIO's
+    # S3 API, and MinIO's own per-bucket ACLs do the filtering:
+    #   - `branding`     → anonymous GetObject allowed (mc anonymous
+    #                      set download, applied in the deploy workflow)
+    #   - `receipts`     → 403 anonymous (S3-auth required)
+    #   - `campaigns`    → 403 anonymous (S3-auth required)
+    # The console port (9001) is NOT exposed by the proxy (only
+    # `app_port: 9000`) so the MinIO admin UI stays internal.
+    #
+    # When `deploy-prod.yml` lands, mirror this exactly: a public
+    # hostname (or a CDN in front of the bucket) for `branding`, no
+    # public path to receipts/campaigns.
+    proxy:
+      host: assets.staging.givernance.org
+      ssl: true
+      app_port: 9000
+      healthcheck:
+        path: /minio/health/live
     env:
       clear:
         MINIO_ROOT_USER: admin
