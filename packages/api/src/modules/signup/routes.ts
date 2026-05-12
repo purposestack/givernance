@@ -22,7 +22,6 @@ import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { defaultCaptchaVerifier } from "../../lib/captcha.js";
-import { redis } from "../../lib/redis.js";
 import {
   DataResponse,
   ErrorResponses,
@@ -122,19 +121,12 @@ function clientIp(request: FastifyRequest): string | undefined {
   return request.ip ?? undefined;
 }
 
-/**
- * Per-email rate limit for the resend endpoint, on top of the per-IP Fastify
- * limit. Defends against a botnet spamming a single victim's inbox (SEC-10).
- * Returns `true` when the request is allowed, `false` when the bucket is full.
- */
-async function acceptResendForEmail(email: string): Promise<boolean> {
-  const key = `signup:resend:email:${email.trim().toLowerCase()}`;
-  const hits = await redis.incr(key);
-  if (hits === 1) {
-    await redis.expire(key, 60 * 60); // 1h window
-  }
-  return hits <= 3; // max 3 resends per email per hour globally
-}
+// Per-email rate-limit (SEC-10) was moved to the worker after F3 review —
+// keeping it on the HTTP route would re-introduce a timing asymmetry
+// between "bucket full → 204 fast" and "bucket open → 204 slow because
+// of enqueue". The worker enforces the cap now; the Fastify per-IP
+// limiter on this route still bounds queue fan-out from any single
+// source.
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
@@ -319,18 +311,12 @@ export async function signupRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { email } = request.body as { email: string };
-      const allowed = await acceptResendForEmail(email);
-      if (!allowed) {
-        // Silently accept — the endpoint cannot be used as an enumeration or
-        // spam-amplification oracle.
-        return reply.status(204).send();
-      }
-      // F3 — Hand the lookup-and-rotate work to the BullMQ worker so the
-      // public HTTP response is constant-time across both branches
-      // ("email matches a pending tenant" vs. "no match"). Doing the DB tx
-      // synchronously here would let an attacker compare latencies and tell
-      // a registered email from an unknown one, defeating the
-      // anti-enumeration property the silent-204 contract was designed for.
+      // F3 — Always enqueue. The worker enforces the per-email
+      // SEC-10 cap and runs the lookup-and-rotate tx. Keeping a
+      // synchronous branch here (e.g. for the bucket-full "fast 204"
+      // path) would re-open the timing asymmetry the BullMQ hand-off
+      // was meant to close. The Fastify per-IP rate-limiter on this
+      // route bounds queue fan-out from any single source.
       await enqueueSignupResend(email);
       return reply.status(204).send();
     },

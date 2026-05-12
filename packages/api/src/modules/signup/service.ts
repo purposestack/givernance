@@ -53,12 +53,7 @@
 
 import { randomUUID } from "node:crypto";
 import { isPersonalEmailDomain, PINO_REDACT_PATHS } from "@givernance/shared/constants";
-import {
-  APP_DEFAULT_LOCALE,
-  isSupportedLocale,
-  type Locale,
-  localeFromCountry,
-} from "@givernance/shared/i18n";
+import { isSupportedLocale, type Locale, localeFromCountry } from "@givernance/shared/i18n";
 import {
   auditLogs,
   invitations,
@@ -98,20 +93,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * so a Fastify-bound `request.log` isn't always available. PII is masked
  * via the same redact list every other service uses.
  */
-// Pass `process.stdout` as the destination so the logger writes via the
-// Writable stream's `write()` method instead of pino's default sonic-boom
-// path (which bypasses `process.stdout.write` via `fs.writeSync` on fd 1).
-// Behaviour is identical in production (both end up on stdout); the
-// difference matters in tests, where `vi.spyOn(process.stdout, "write")`
-// can intercept the JSON line to assert structured warns like
-// `signup.kc_user_exists` actually fire (F4).
-const log = pino(
-  {
-    name: "signup-service",
-    redact: { paths: [...PINO_REDACT_PATHS], censor: "[REDACTED]" },
-  },
-  process.stdout,
-);
+// Exported so integration tests can `vi.spyOn(log, "warn")` to pin
+// SRE-visible breadcrumbs like `signup.kc_user_exists` (F4). Pino logger
+// instances expose level methods as own-properties, so the spy attaches
+// to *this* instance — the service's call sites are captured because
+// they use the same imported binding.
+export const log = pino({
+  name: "signup-service",
+  redact: { paths: [...PINO_REDACT_PATHS], censor: "[REDACTED]" },
+});
 
 const PROVISIONAL_GRACE_DAYS = 7;
 const VERIFICATION_TTL_HOURS = 24;
@@ -332,142 +322,12 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
   }
 }
 
-// ─── Resend verification ────────────────────────────────────────────────────
-
-export type ResendResult =
-  | { ok: true; tenantId: string; email: string; verificationToken: string }
-  | { ok: false };
-
-/**
- * Re-emit a verification token. Matches three recoverable states so a
- * half-failed signup isn't a dead-end:
- *
- *  1. **Pending verify.** Tenant `provisional`, invitation not yet accepted —
- *     the original happy-path resend.
- *  2. **No Keycloak credential yet.** Tenant `active` but the user's
- *     `keycloak_id` is NULL — what self-serve signups looked like before
- *     the verify endpoint started provisioning the Keycloak user.
- *  3. **No Keycloak Organization yet.** Tenant `active`, user has a
- *     `keycloak_id`, but `tenant.keycloak_org_id` is NULL — what they look
- *     like after the credential-only fix landed but before the Organization
- *     wiring did. Without an Org the realm's user-attribute mapper has no
- *     `org_id` to emit and the web auth callback bounces with
- *     `missing_org_id`.
- *
- * Cases (2) and (3) both resolve by clearing `acceptedAt` on the latest
- * `signup_verification` invitation and letting the next verify call run —
- * `verifySignup` is idempotent for every step (org get-or-create, user
- * create-or-update with attribute merge, member attach with 409 swallow).
- *
- * Silently returns `{ok: false}` for everything else (fully-bound users,
- * unknown emails) — the route always responds 204 so this cannot be used
- * as an email-enumeration oracle.
- */
-export async function resendVerification(email: string): Promise<ResendResult> {
-  const normalised = email.trim().toLowerCase();
-
-  // Owner role: same justification as verifySignup — no org context yet, and
-  // the app role would have RLS filter the invitation join to zero rows.
-  // Match all recoverable states in one query, ordered so a still-valid
-  // pending invitation wins over an older half-provisioned row.
-  // Case-insensitive email join: `invitations.email` is normalised
-  // lowercase at INSERT (signup() / resend()), but `users.email` has no
-  // schema-level case-folding constraint. Mixed-case future writes to
-  // users.email would silently break this join under `eq(...)`. Compare
-  // both sides via lower() so the recovery match stays robust.
-  const rows = await systemDb
-    .select({
-      tenantId: tenants.id,
-      status: tenants.status,
-      // Issue #153: read default_locale directly from the row so the resend
-      // payload can stamp the right `locale` without walking the outbox.
-      // Populated at signup time (or backfilled by migration 0027) so a NULL
-      // here only happens for legacy archived tenants the resend wouldn't
-      // match anyway.
-      defaultLocale: tenants.defaultLocale,
-      invitationId: invitations.id,
-      invitationToken: invitations.token,
-      expiresAt: invitations.expiresAt,
-      createdAt: invitations.createdAt,
-    })
-    .from(invitations)
-    .innerJoin(tenants, eq(invitations.orgId, tenants.id))
-    .leftJoin(
-      users,
-      and(
-        eq(users.orgId, invitations.orgId),
-        sql`lower(${users.email}) = lower(${invitations.email})`,
-      ),
-    )
-    .where(
-      and(
-        eq(invitations.email, normalised),
-        eq(invitations.purpose, "signup_verification"),
-        eq(tenants.createdVia, "self_serve"),
-        sql`(
-          (${tenants.status} = 'provisional' AND ${invitations.acceptedAt} IS NULL)
-          OR
-          (${tenants.status} = 'active'
-            AND (${users.keycloakId} IS NULL OR ${tenants.keycloakOrgId} IS NULL))
-        )`,
-      ),
-    )
-    .orderBy(sql`${invitations.createdAt} DESC`)
-    .limit(1);
-
-  if (rows.length === 0) {
-    log.info({ event: "signup.resend", matched: false }, "resend silent no-match");
-    return { ok: false };
-  }
-
-  const row = rows[0];
-  if (!row) return { ok: false };
-
-  // Issue #153: `tenants.default_locale` is the durable source of truth for
-  // template selection — `lookupTenantCountry`'s outbox-walking helper has
-  // been removed. There's no signed-up user yet at this point in the flow
-  // (the verify form hasn't been submitted), so the per-user locale layer
-  // doesn't apply; the tenant default is the right value to stamp.
-  const localeForResend: Locale = isSupportedLocale(row.defaultLocale)
-    ? row.defaultLocale
-    : APP_DEFAULT_LOCALE;
-
-  const newToken = generateVerificationToken();
-  const expiresAt = new Date(Date.now() + VERIFICATION_TTL_HOURS * 60 * 60 * 1000);
-
-  await systemDb.transaction(async (tx) => {
-    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${row.tenantId}, true)`);
-
-    // Half-provisioned rows have `acceptedAt` set from the prior verify;
-    // clearing it lets verifySignup's invitation-validity guard accept the
-    // fresh token. The pre-existing audit_logs row preserves the original
-    // acceptance event, so this isn't a history rewrite.
-    await tx
-      .update(invitations)
-      .set({ token: newToken, expiresAt, acceptedAt: null })
-      .where(eq(invitations.id, row.invitationId));
-
-    await tx.insert(outboxEvents).values({
-      tenantId: row.tenantId,
-      type: "tenant.signup_verification_resent",
-      payload: {
-        tenantId: row.tenantId,
-        invitationId: row.invitationId,
-        expiresAt: expiresAt.toISOString(),
-        locale: localeForResend,
-      },
-    });
-  });
-
-  log.info(
-    { event: "signup.resend", matched: true, tenantId: row.tenantId, status: row.status },
-    "resend rotated invitation token",
-  );
-
-  return { ok: true, tenantId: row.tenantId, email: normalised, verificationToken: newToken };
-}
-
 // ─── Verify ─────────────────────────────────────────────────────────────────
+// Resend lookup-and-rotate lives in `@givernance/shared/signup`
+// (`resendSignupVerification`) — invoked from the worker's
+// `processSignupResend`. The HTTP route enqueues a BullMQ job; nothing in
+// the API package calls into it synchronously. This keeps the api +
+// worker sides on one canonical implementation (F3b cleanup).
 
 export type VerifyResult =
   | {

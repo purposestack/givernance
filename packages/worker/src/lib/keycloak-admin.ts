@@ -15,6 +15,7 @@
  * GET-then-PUT for attribute merges, idempotent on 404.
  */
 
+import { assertSafeOrgAttributes } from "@givernance/shared/constants";
 import { env } from "../env.js";
 import { logger } from "./logger.js";
 
@@ -134,31 +135,8 @@ export async function getOrganization(id: string): Promise<KeycloakOrganization 
   return adminRequest<KeycloakOrganization>("GET", `/organizations/${e(id)}`);
 }
 
-/**
- * Allowlist of Organization attribute keys the worker may write. Mirrors
- * `SAFE_ORG_ATTRIBUTES` in `packages/api/src/lib/keycloak-admin.ts` —
- * duplicated here to keep the worker free of api imports (see file header).
- * The realm mapper emits every Organization attribute into the JWT of
- * every member; a stray secret-shaped key would leak to all browsers.
- */
-const SAFE_ORG_ATTRIBUTES: ReadonlySet<string> = new Set([
-  "org_id",
-  "org_slug",
-  "logo_url",
-  "theme_primary_color",
-]);
-
-function assertSafeOrgAttributes(attributes: Record<string, string[]> | undefined): void {
-  if (!attributes) return;
-  for (const key of Object.keys(attributes)) {
-    if (!SAFE_ORG_ATTRIBUTES.has(key)) {
-      throw new Error(
-        `Refusing to write Keycloak Organization attribute "${key}" — not in SAFE_ORG_ATTRIBUTES. ` +
-          `The realm's organization mapper emits every attribute into the JWT of every member.`,
-      );
-    }
-  }
-}
+// F2 — Allowlist + guard sourced from `@givernance/shared/constants` so the
+// api and worker copies of this guard cannot drift apart.
 
 /**
  * Merge attributes onto an organization via GET-then-PUT. Identical

@@ -12,7 +12,8 @@
     "./validators": "./src/validators/index.ts",
     "./constants": "./src/constants/index.ts",
     "./i18n": "./src/i18n/locales.ts",
-    "./contracts/branding": "./src/contracts/branding.ts"
+    "./contracts/branding": "./src/contracts/branding.ts",
+    "./signup": "./src/signup/index.ts"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm",
