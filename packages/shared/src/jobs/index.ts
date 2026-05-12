@@ -338,6 +338,21 @@ export const QUEUE_NAMES = {
    * worker pods, not concurrency.
    */
   PLATFORM_REPORTS: "platform_reports",
+  /**
+   * camt.053 ingestion + reconciliation (Epic #318 PR #5, ADR-028).
+   * Two job names share the queue:
+   *   - `camt053.import`    — parse + XSD-validate + persist credit entries
+   *   - `camt053.reconcile` — match references + create donations
+   * Concurrency-1: each job streams a multipart S3 fetch + sequential
+   * DB inserts; scaling axis is pods, not concurrency.
+   */
+  CAMT: "camt",
+} as const;
+
+/** Job name constants for the CAMT queue. */
+export const CAMT_JOB_NAMES = {
+  IMPORT: "camt053.import",
+  RECONCILE: "camt053.reconcile",
 } as const;
 
 /** Job names inside the NOTIFICATIONS_DIGEST queue. */
