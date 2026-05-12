@@ -119,6 +119,14 @@ async function fetchPostalExportsOrEmpty(
  * org_admins can read this surface) so the postal-export panel can
  * render the Swiss QR-bill mode summary. Returns null when no bank
  * account is linked or the campaign is in standard mode.
+ *
+ * Failure surface (M6): a 404 is the only meaningful "no bank account
+ * here" signal (soft-deleted account, or the row vanished between page
+ * load and request). Every other status — 401/403/5xx — is a real bug
+ * we MUST surface to the operator instead of collapsing to "standard
+ * postal mode" and misdirecting them to re-link an account that isn't
+ * actually missing. Re-throwing propagates to Next.js's error boundary,
+ * which is the right UX: a real error message beats a silent lie.
  */
 async function fetchLinkedBankAccountOrNull(
   client: Awaited<ReturnType<typeof createServerApiClient>>,
@@ -133,8 +141,9 @@ async function fetchLinkedBankAccountOrNull(
       ibanLast4: account.iban.slice(-4),
       currency: account.currency,
     };
-  } catch {
-    return null;
+  } catch (err) {
+    if (err instanceof ApiProblem && err.status === 404) return null;
+    throw err;
   }
 }
 
