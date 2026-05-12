@@ -2,6 +2,8 @@
 
 import type { Readable } from "node:stream";
 import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
@@ -209,4 +211,77 @@ export async function deleteBrandingPrefix(prefix: string): Promise<number> {
 export function brandingPublicUrl(key: string): string {
   const base = env.KEYCLOAK_LOGO_PUBLIC_URL_BASE ?? `${env.S3_ENDPOINT}/${env.S3_BRANDING_BUCKET}`;
   return `${base.replace(/\/+$/, "")}/${key}`;
+}
+
+// ─── Bank-statements bucket (worker side, Epic #318 PR #5) ─────────────────
+//
+// Worker reads accepted uploads and, on XSD-fail / foreign-IBAN, copies
+// them into the `rejected/{yyyy}/{mm}/{uuid}.xml` prefix and deletes the
+// original. The API is the writer; the worker only reads + relocates.
+
+/**
+ * Fetch a camt.053 XML from the `bank-statements` bucket. Returns null
+ * on 404 — the worker surfaces missing-object as a `camt_statements.error`
+ * row rather than crashing the job.
+ */
+export async function getBankStatement(key: string): Promise<Buffer | null> {
+  try {
+    const out = await s3.send(
+      new GetObjectCommand({
+        Bucket: env.S3_BANK_STATEMENTS_BUCKET,
+        Key: key,
+      }),
+    );
+    const body = out.Body as Readable | undefined;
+    if (!body) return null;
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks);
+  } catch (err) {
+    const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
+    if (e?.name === "NoSuchKey" || e?.$metadata?.httpStatusCode === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+/** Build the canonical S3 key for a rejected (XSD-fail / foreign-IBAN) upload. */
+export function bankStatementRejectedKey(args: {
+  orgId: string;
+  year: number;
+  month: number;
+  uuid: string;
+}): string {
+  const mm = String(args.month).padStart(2, "0");
+  return `${args.orgId}/camt053/rejected/${args.year}/${mm}/${args.uuid}.xml`;
+}
+
+/**
+ * Relocate an upload into the `rejected/` prefix. Server-side copy +
+ * delete — the file MUST remain in the bucket for the full 10-yr Swiss
+ * CO Art. 958f retention, just under a key prefix the operator can
+ * audit separately (docs/25 §7).
+ */
+export async function moveBankStatementToRejected(args: {
+  srcKey: string;
+  dstKey: string;
+}): Promise<void> {
+  await s3.send(
+    new CopyObjectCommand({
+      Bucket: env.S3_BANK_STATEMENTS_BUCKET,
+      CopySource: `${env.S3_BANK_STATEMENTS_BUCKET}/${args.srcKey}`,
+      Key: args.dstKey,
+      ServerSideEncryption: "AES256",
+      ACL: "private",
+    }),
+  );
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: env.S3_BANK_STATEMENTS_BUCKET,
+      Key: args.srcKey,
+    }),
+  );
 }

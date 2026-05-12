@@ -64,6 +64,14 @@ const EnvSchema = Type.Object({
    * `monthly/{YYYY-MM}/{report_id}.pdf`. ADR-023.
    */
   S3_REPORTS_BUCKET: Type.String({ minLength: 1, default: "reports" }),
+  /**
+   * Private bucket for ISO 20022 camt.053 bank statements (Epic #318,
+   * ADR-023 + ADR-028). 10-year Swiss CO Art. 958f retention; signed
+   * URLs only; SSE-S3 at rest. Worker reads accepted uploads here and
+   * may relocate rejected files to the `{org_id}/camt053/rejected/`
+   * prefix on XSD-fail / foreign-IBAN.
+   */
+  S3_BANK_STATEMENTS_BUCKET: Type.String({ minLength: 1, default: "bank-statements" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
   /**
