@@ -181,7 +181,8 @@
         "label": "Get a new verification link",
         "placeholder": "you@example.org",
         "submit": "Send link",
-        "sent": "If the email matches an account, we've sent a fresh verification link. Please check your inbox."
+        "sent": "If the email matches an account, we've sent a fresh verification link. Please check your inbox.",
+        "tryDifferent": "Try a different email"
       }
     },
     "inviteAccept": {

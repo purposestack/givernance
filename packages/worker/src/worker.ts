@@ -19,6 +19,7 @@ import { processPlatformAdminInviteEmail } from "./processors/platform-admin-inv
 import { processGeneratePostalExport } from "./processors/postal-export.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import { processSignupVerificationEmail } from "./processors/signup-email.js";
+import { processSignupResend } from "./processors/signup-resend.js";
 import { processStripeWebhook } from "./processors/stripe-webhook.js";
 import { processTeamInviteEmail } from "./processors/team-invite-email.js";
 import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
@@ -342,11 +343,26 @@ function startWorkers() {
     ...defaultJobOpts,
   });
 
-  const tenantLifecycleWorker = new Worker(QUEUE_NAMES.TENANT_LIFECYCLE, processTenantLifecycle, {
-    connection: createRedisConnection(),
-    concurrency: 1,
-    ...defaultJobOpts,
-  });
+  // Tenant-lifecycle carries two job names:
+  //  - `tenant.provisional-admin-expire` — nightly repeatable expire pass.
+  //  - `tenant.signup-resend` (F3) — deferred lookup-and-rotate for the
+  //    public resend endpoint, kept off the HTTP request path so the
+  //    response is constant-time and doesn't leak a match/no-match oracle.
+  const tenantLifecycleWorker = new Worker(
+    QUEUE_NAMES.TENANT_LIFECYCLE,
+    async (job: Job) => {
+      if (job.name === TENANT_LIFECYCLE_JOBS.SIGNUP_RESEND) {
+        // biome-ignore lint/suspicious/noExplicitAny: BullMQ Job is heterogeneously typed at runtime
+        return processSignupResend(job as Job<any>);
+      }
+      return processTenantLifecycle(job);
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 1,
+      ...defaultJobOpts,
+    },
+  );
 
   // ── Branding queue (Epic #286) ──────────────────────────────────────
   // The branding queue carries three job names — process / activate / gc.

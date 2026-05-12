@@ -1,5 +1,6 @@
 "use client";
 
+import { PASSWORD_MIN_LENGTH } from "@givernance/shared/constants";
 import { CheckCircle2, LogOut, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -14,7 +15,6 @@ import {
   probePlatformAdminInvitation,
 } from "@/services/PlatformAdminInvitationService";
 
-const PASSWORD_MIN_LENGTH = 12;
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 interface SignedInUser {

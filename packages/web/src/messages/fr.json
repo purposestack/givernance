@@ -181,7 +181,8 @@
         "label": "Recevoir un nouveau lien de vérification",
         "placeholder": "vous@exemple.org",
         "submit": "Envoyer le lien",
-        "sent": "Si l'adresse correspond à un compte, nous avons envoyé un nouveau lien. Pensez à vérifier votre boîte de réception."
+        "sent": "Si l'adresse correspond à un compte, nous avons envoyé un nouveau lien. Pensez à vérifier votre boîte de réception.",
+        "tryDifferent": "Essayer une autre adresse"
       }
     },
     "inviteAccept": {

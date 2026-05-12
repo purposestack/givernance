@@ -1,5 +1,6 @@
 "use client";
 
+import { PASSWORD_MIN_LENGTH } from "@givernance/shared/constants";
 import {
   APP_DEFAULT_LOCALE,
   LOCALE_NATIVE_NAMES,
@@ -24,7 +25,6 @@ import {
 } from "@/components/ui/select";
 import { acceptInvitation, probeInvitation } from "@/services/InvitationService";
 
-const PASSWORD_MIN_LENGTH = 12;
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 interface SignedInUser {

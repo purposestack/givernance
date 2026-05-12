@@ -17,6 +17,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@givernance/shared/constants";
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -29,13 +30,8 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
-import {
-  lookupTenantForEmail,
-  openDomainDispute,
-  resendVerification,
-  signup,
-  verifySignup,
-} from "./service.js";
+import { enqueueSignupResend } from "./queue.js";
+import { lookupTenantForEmail, openDomainDispute, signup, verifySignup } from "./service.js";
 
 // ─── Request / response shapes ──────────────────────────────────────────────
 
@@ -73,11 +69,11 @@ const VerifyBody = Type.Object({
   /**
    * The password the user picks on the verify form — provisioned as their
    * non-temporary Keycloak credential so they can log in immediately after
-   * the post-verify redirect (issue #109 follow-up). Min 12 to comply with
-   * the realm's brute-force protection without leaking exact policy back to
-   * the frontend.
+   * the post-verify redirect (issue #109 follow-up). Min/max sourced from
+   * `@givernance/shared/constants` so server-side validation, web signup,
+   * invite-accept, and platform-admin-accept never drift apart (F11).
    */
-  password: Type.String({ minLength: 12, maxLength: 128 }),
+  password: Type.String({ minLength: PASSWORD_MIN_LENGTH, maxLength: PASSWORD_MAX_LENGTH }),
 });
 
 const SignupResponse = Type.Object({
@@ -329,7 +325,13 @@ export async function signupRoutes(app: FastifyInstance) {
         // spam-amplification oracle.
         return reply.status(204).send();
       }
-      await resendVerification(email);
+      // F3 — Hand the lookup-and-rotate work to the BullMQ worker so the
+      // public HTTP response is constant-time across both branches
+      // ("email matches a pending tenant" vs. "no match"). Doing the DB tx
+      // synchronously here would let an attacker compare latencies and tell
+      // a registered email from an unknown one, defeating the
+      // anti-enumeration property the silent-204 contract was designed for.
+      await enqueueSignupResend(email);
       return reply.status(204).send();
     },
   );

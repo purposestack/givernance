@@ -1,5 +1,6 @@
 "use client";
 
+import { PASSWORD_MIN_LENGTH } from "@givernance/shared/constants";
 import { CheckCircle2, LogIn, Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -10,8 +11,6 @@ import { AuthLogo } from "@/components/auth/auth-logo";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { resendVerification, verifySignup } from "@/services/SignupService";
-
-const PASSWORD_MIN_LENGTH = 12;
 
 type ValidationKey = "invalid" | "namesRequired" | "passwordTooShort" | "passwordMismatch";
 
@@ -58,10 +57,27 @@ function ResendForm() {
   );
 
   if (state === "sent") {
+    // F13 — Once the user lands here after typing a typo'd address, the
+    // anti-enumeration confirmation copy ("if your email matches…") makes
+    // a refresh-the-page retry the only obvious recourse. Surface an
+    // explicit "Try a different email" reset so they can correct it
+    // without losing the verify-page context.
     return (
-      <p className="mt-3 text-sm text-text-secondary" role="status" aria-live="polite">
-        {t("resend.sent")}
-      </p>
+      <div className="mt-3 space-y-2">
+        <p className="text-sm text-text-secondary" role="status" aria-live="polite">
+          {t("resend.sent")}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setEmail("");
+            setState("idle");
+          }}
+          className="text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+        >
+          {t("resend.tryDifferent")}
+        </button>
+      </div>
     );
   }
 

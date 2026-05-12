@@ -4,6 +4,15 @@
  * Exercises the four endpoints + the cleanup helper end-to-end against
  * the real test DB (migration 0021 applied). CAPTCHA fails open in
  * NODE_ENV=test so no external provider is hit.
+ *
+ * F3 — `POST /v1/public/signup/resend` now enqueues a BullMQ job and
+ * returns 204 in constant time; the lookup-and-rotate work happens in
+ * the worker process. To keep the integration test fast and isolated
+ * from a live worker, we mock the enqueue helper to call the existing
+ * `resendVerification` service inline. This preserves the previous
+ * "assert DB state after the 204" pattern while still exercising the
+ * production route. Worker-side coverage of the same logic lives in
+ * `packages/worker/src/tests/integration/signup-resend.test.ts`.
  */
 
 import { randomUUID } from "node:crypto";
@@ -25,8 +34,18 @@ import {
   type KeycloakAdminClient,
 } from "../../lib/keycloak-admin.js";
 import { redis } from "../../lib/redis.js";
-import { cleanupUnverifiedTenants } from "../../modules/signup/service.js";
+import { cleanupUnverifiedTenants, resendVerification } from "../../modules/signup/service.js";
 import { createServer } from "../../server.js";
+
+// F3 — replace the BullMQ enqueue with an inline call to the legacy
+// service so the existing integration tests can keep asserting DB state
+// immediately after `POST /v1/public/signup/resend` without spinning up
+// a worker. Equivalent flow shape: route → "enqueue" → handler → DB tx.
+vi.mock("../../modules/signup/queue.js", () => ({
+  enqueueSignupResend: async (email: string) => {
+    await resendVerification(email);
+  },
+}));
 
 let app: FastifyInstance;
 
@@ -905,6 +924,26 @@ describe("POST /v1/public/signup/verify", () => {
         "kc-existing@example.org",
       ),
     );
+
+    // F4 — Pin SRE-visible behaviour: the service-side `signup.kc_user_exists`
+    // warn must fire (so the on-call paging signal isn't silently dropped),
+    // and we must NOT have called `kcResetUserPassword` on the existing KC
+    // user. A regression that "helpfully" re-wired the hijack branch to
+    // reset-and-attach would silently take over a stranger's credential
+    // while still surfacing 410 — both assertions are needed to catch it.
+    //
+    // The signup service's module-scoped pino is configured with
+    // `process.stdout` as its destination (see signup/service.ts) so the
+    // logger writes via the Writable stream's `write()` method —
+    // `vi.spyOn(process.stdout, "write")` then captures the JSON line.
+    // Restore immediately after `inject` so unrelated logging during
+    // cleanup hooks isn't disturbed.
+    const captured: string[] = [];
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      captured.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    });
+
     const res = await app.inject({
       method: "POST",
       url: "/v1/public/signup/verify",
@@ -915,11 +954,21 @@ describe("POST /v1/public/signup/verify", () => {
         password: TEST_PASSWORD,
       },
     });
+    writeSpy.mockRestore();
     expect(res.statusCode).toBe(410);
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
     expect(tenant?.status).toBe("provisional");
     const userRows = await db.select().from(users).where(eq(users.orgId, tenantId));
     expect(userRows.length).toBe(0);
+
+    // The hijack-defence path must NOT have touched the existing KC user's
+    // password. If it had, an attacker who proved inbox control could
+    // silently overwrite the realm credential of an enterprise SSO user or
+    // a seeded super-admin (the exact attack the guard exists for).
+    expect(kcResetUserPassword).not.toHaveBeenCalled();
+
+    const warnedHijack = captured.some((line) => line.includes('"event":"signup.kc_user_exists"'));
+    expect(warnedHijack).toBe(true);
   });
 
   it("rolls back when attachUserToOrg fails (verifies the orphan KC user gap)", async () => {
@@ -966,6 +1015,51 @@ describe("POST /v1/public/signup/verify", () => {
     // contacted.
     expect(res.statusCode).toBe(400);
     expect(kcCreateUser).not.toHaveBeenCalled();
+  });
+
+  // F1 — Concurrent verify race. The service comment says the duplicate-row
+  // catch is "no longer reachable in practice" thanks to `FOR UPDATE` on
+  // the invitation row. Fire two verify calls in parallel with the same
+  // token and assert exactly ONE creates a users row (status `[201, 410]`
+  // after sort). A regression that dropped `FOR UPDATE` would let both
+  // SELECTs see acceptedAt=NULL and race past the guard.
+  it("serialises two concurrent verify calls on the same token (FOR UPDATE)", async () => {
+    const { tenantId, token } = await createSignup("verify-race");
+
+    const [r1, r2] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/v1/public/signup/verify",
+        payload: {
+          token,
+          firstName: "Race",
+          lastName: "One",
+          password: TEST_PASSWORD,
+        },
+      }),
+      app.inject({
+        method: "POST",
+        url: "/v1/public/signup/verify",
+        payload: {
+          token,
+          firstName: "Race",
+          lastName: "Two",
+          password: TEST_PASSWORD,
+        },
+      }),
+    ]);
+
+    const codes = [r1.statusCode, r2.statusCode].sort();
+    expect(codes).toEqual([201, 410]);
+
+    // Exactly one users row was created (the FOR UPDATE serialised the
+    // SELECT, so the loser saw `acceptedAt !== NULL` and short-circuited).
+    const userRows = await db.select().from(users).where(eq(users.orgId, tenantId));
+    expect(userRows.length).toBe(1);
+
+    // Tenant flipped exactly once.
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+    expect(tenant?.status).toBe("active");
   });
 
   it("returns 410 when the same token is used twice", async () => {

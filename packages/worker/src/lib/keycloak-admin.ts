@@ -135,6 +135,32 @@ export async function getOrganization(id: string): Promise<KeycloakOrganization 
 }
 
 /**
+ * Allowlist of Organization attribute keys the worker may write. Mirrors
+ * `SAFE_ORG_ATTRIBUTES` in `packages/api/src/lib/keycloak-admin.ts` —
+ * duplicated here to keep the worker free of api imports (see file header).
+ * The realm mapper emits every Organization attribute into the JWT of
+ * every member; a stray secret-shaped key would leak to all browsers.
+ */
+const SAFE_ORG_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "org_id",
+  "org_slug",
+  "logo_url",
+  "theme_primary_color",
+]);
+
+function assertSafeOrgAttributes(attributes: Record<string, string[]> | undefined): void {
+  if (!attributes) return;
+  for (const key of Object.keys(attributes)) {
+    if (!SAFE_ORG_ATTRIBUTES.has(key)) {
+      throw new Error(
+        `Refusing to write Keycloak Organization attribute "${key}" — not in SAFE_ORG_ATTRIBUTES. ` +
+          `The realm's organization mapper emits every attribute into the JWT of every member.`,
+      );
+    }
+  }
+}
+
+/**
  * Merge attributes onto an organization via GET-then-PUT. Identical
  * semantics to `KeycloakAdminClient.updateOrganization` in the api
  * package — see that file for the security rationale.
@@ -143,6 +169,7 @@ export async function updateOrganization(
   id: string,
   updates: { attributes?: Record<string, string[]> },
 ): Promise<void> {
+  assertSafeOrgAttributes(updates.attributes);
   const current = await getOrganization(id);
   if (!current) {
     logger.warn(
