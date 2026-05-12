@@ -149,8 +149,8 @@ export async function ensureTestTenants() {
   `);
 }
 
-function signJwt(payload: Record<string, unknown>) {
-  const header = { alg: "RS256", kid: "test-key-1", typ: "JWT" };
+function signJwt(payload: Record<string, unknown>, kid: string = "test-key-1") {
+  const header = { alg: "RS256", kid, typ: "JWT" };
   const encodedHeader = base64UrlEncode(JSON.stringify(header));
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   const signingInput = `${encodedHeader}.${encodedPayload}`;
@@ -167,20 +167,34 @@ function base64UrlEncode(value: string | Buffer) {
  * the test JWKS. Callers override the `claims` arg to test rejection
  * paths (missing `sid`, presence of `nonce`, wrong audience, stale
  * `iat`, missing `events`, …). Default produces a spec-compliant token.
+ *
+ * Returns `{ token, sid }` rather than just the token so tests don't
+ * have to manually decode the JWT to recover the sid they generated
+ * (PR #360 review QA m12).
+ *
+ * The audience reads `process.env.KEYCLOAK_CLIENT_ID` so a CI override
+ * (a hypothetical `KEYCLOAK_CLIENT_ID=givernance-staging`) doesn't
+ * silently break the happy-path test (QA m11).
  */
-export function signLogoutToken(claims: Record<string, unknown> = {}) {
+export function signLogoutToken(
+  claims: Record<string, unknown> = {},
+  opts: { kid?: string } = {},
+): { token: string; sid: string } {
   const now = Math.floor(Date.now() / 1000);
+  const sid =
+    (typeof claims.sid === "string" ? claims.sid : undefined) ??
+    `kc-sid-${now}-${Math.random().toString(36).slice(2)}`;
   const payload = {
     iss: TEST_JWT_ISSUER,
-    aud: "givernance-web",
+    aud: process.env.KEYCLOAK_CLIENT_ID ?? "givernance-web",
     iat: now,
     jti: `logout-jti-${now}-${Math.random().toString(36).slice(2)}`,
-    sid: `kc-sid-${now}-${Math.random().toString(36).slice(2)}`,
+    sid,
     sub: USER_A,
     events: {
       "http://schemas.openid.net/event/backchannel-logout": {},
     },
     ...claims,
   };
-  return signJwt(payload);
+  return { token: signJwt(payload, opts.kid), sid: payload.sid };
 }
