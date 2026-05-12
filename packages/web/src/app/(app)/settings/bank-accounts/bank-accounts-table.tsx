@@ -104,10 +104,13 @@ export function BankAccountsTable({ bankAccounts, canManage }: BankAccountsTable
                 className="border-b border-outline-variant last:border-b-0 hover:bg-surface-container/40"
               >
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
+                  <Link
+                    href={`/settings/bank-accounts/${account.id}`}
+                    className="inline-flex items-center gap-2 text-on-surface hover:underline"
+                  >
                     <Banknote size={16} aria-hidden="true" className="text-on-surface-variant" />
-                    <span className="font-medium text-on-surface">{account.bankName}</span>
-                  </div>
+                    <span className="font-medium">{account.bankName}</span>
+                  </Link>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs text-on-surface-variant">
                   {formatIbanForDisplay(account.iban)}
