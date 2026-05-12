@@ -758,34 +758,95 @@ export const impersonationSessions = pgTable(
 );
 
 /** Constituents — donors, volunteers, members, beneficiaries */
-export const constituents = pgTable("constituents", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id")
-    .notNull()
-    .references(() => tenants.id, { onDelete: "cascade" }),
-  firstName: varchar("first_name", { length: 255 }).notNull(),
-  lastName: varchar("last_name", { length: 255 }).notNull(),
-  email: varchar("email", { length: 255 }),
-  phone: varchar("phone", { length: 50 }),
-  // ── Postal address (Epic #274 follow-up) ────────────────────────────
-  // Used to render the recipient block in the window of a French DL
-  // window envelope (norme NF Z-10-011). The renderer skips the block
-  // when these are NULL — the resulting PDF still prints, just without
-  // the in-window address. All five fields are independent (a P.O. box
-  // tenant might leave `addressLine1` populated and `addressLine2` NULL)
-  // and the operator opts in per-constituent via the create/edit form.
-  addressLine1: varchar("address_line1", { length: 255 }),
-  addressLine2: varchar("address_line2", { length: 255 }),
-  postalCode: varchar("postal_code", { length: 20 }),
-  city: varchar("city", { length: 255 }),
-  /** ISO 3166-1 alpha-2 country code. Same convention as `tenants.country`. */
-  countryCode: varchar("country_code", { length: 2 }),
-  type: varchar("type", { length: 50 }).notNull().default("donor"),
-  tags: text("tags").array(),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+/** Provenance discriminator for a constituent row (Epic #318 PR #5). */
+export const CONSTITUENT_DATA_SOURCE_VALUES = [
+  "manual",
+  "csv_import",
+  "public_form",
+  "camt053",
+] as const;
+export type ConstituentDataSource = (typeof CONSTITUENT_DATA_SOURCE_VALUES)[number];
+
+/**
+ * Identity-completeness flag derived at write-time from the available
+ * fields on the constituent row (Epic #318 PR #5, docs/25 §5.5):
+ *
+ *   - `full`    = name + (email OR full postal address)
+ *   - `partial` = name + IBAN, missing both email AND address
+ *   - `minimal` = name only (TWINT-anonymised, very rare)
+ *
+ * Surfaced on the constituent detail page so the operator knows whether
+ * post-mailing is still possible and whether a re-engagement flow is
+ * justified.
+ */
+export const CONSTITUENT_IDENTITY_COMPLETENESS_VALUES = ["full", "partial", "minimal"] as const;
+export type ConstituentIdentityCompleteness =
+  (typeof CONSTITUENT_IDENTITY_COMPLETENESS_VALUES)[number];
+
+export const constituents = pgTable(
+  "constituents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    firstName: varchar("first_name", { length: 255 }).notNull(),
+    lastName: varchar("last_name", { length: 255 }).notNull(),
+    email: varchar("email", { length: 255 }),
+    phone: varchar("phone", { length: 50 }),
+    // ── Postal address (Epic #274 follow-up) ────────────────────────────
+    // Used to render the recipient block in the window of a French DL
+    // window envelope (norme NF Z-10-011). The renderer skips the block
+    // when these are NULL — the resulting PDF still prints, just without
+    // the in-window address. All five fields are independent (a P.O. box
+    // tenant might leave `addressLine1` populated and `addressLine2` NULL)
+    // and the operator opts in per-constituent via the create/edit form.
+    addressLine1: varchar("address_line1", { length: 255 }),
+    addressLine2: varchar("address_line2", { length: 255 }),
+    postalCode: varchar("postal_code", { length: 20 }),
+    city: varchar("city", { length: 255 }),
+    /** ISO 3166-1 alpha-2 country code. Same convention as `tenants.country`. */
+    countryCode: varchar("country_code", { length: 2 }),
+    type: varchar("type", { length: 50 }).notNull().default("donor"),
+    tags: text("tags").array(),
+    /**
+     * Provenance flag (Epic #318 PR #5). `manual` for every pre-existing
+     * row via the migration's backfill; `camt053` for rows auto-created
+     * by the Swiss QR-bill reconciler from `Dbtr` data in a camt.053
+     * statement (docs/25 §5.5).
+     */
+    dataSource: varchar("data_source", { length: 32 }).notNull().default("manual"),
+    /**
+     * Identity-completeness derived at write-time (docs/25 §5.5 + this
+     * file's `CONSTITUENT_IDENTITY_COMPLETENESS_VALUES`). The reconciler
+     * recomputes this whenever it enriches an existing row — `full` once
+     * the donor's address arrives on a second statement, never demoted
+     * back.
+     */
+    identityCompleteness: varchar("identity_completeness", { length: 16 })
+      .notNull()
+      .default("minimal"),
+    /**
+     * Secondary match key for camt.053 enrichment re-imports (docs/25
+     * §5.5 idempotency layer 3). NULL on rows that never received a
+     * bank transfer; canonicalised (uppercase alnum) on insert. The
+     * partial unique index in migration 0051 enforces tenant-scoped
+     * lookup for the enrichment branch — never globally unique because
+     * the same donor may give to multiple tenants we host.
+     */
+    paymentSourceIban: varchar("payment_source_iban", { length: 34 }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // Partial index on `(org_id, payment_source_iban)` — supports the
+    // §5.5 enrichment lookup (`SELECT … WHERE org_id=$1 AND payment_source_iban=$2`)
+    // without bloating the index with NULL rows. Drizzle Kit can't model
+    // partial indexes; the WHERE clause lives in migration 0051.
+    index("constituents_org_payment_iban_idx").on(table.orgId, table.paymentSourceIban),
+  ],
+);
 
 /** Donations — financial contributions linked to a constituent */
 export const donations = pgTable(

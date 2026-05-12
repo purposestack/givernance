@@ -33,9 +33,11 @@
 
 import {
   bigint,
+  boolean,
   date,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -361,6 +363,21 @@ export const camtCreditEntries = pgTable(
     structuredRef: varchar("structured_ref", { length: 40 }),
     debtorName: varchar("debtor_name", { length: 255 }),
     debtorIban: varchar("debtor_iban", { length: 34 }),
+    /**
+     * Bank-emitted reversal flag (`Ntry.RvslInd`). The reconciler reads
+     * this to dispatch onto the reversal branch (find original donation
+     * by structured-ref → mark refunded) instead of the normal "create
+     * donation" path. Default false; column added by migration 0051.
+     */
+    reversalIndicator: boolean("reversal_indicator").notNull().default(false),
+    /**
+     * Flattened `RltdPties.Dbtr.PstlAdr` — used by the reconciler's
+     * §5.5 extraction matrix (structured fields first, AdrLine heuristic
+     * fallback). Shape:
+     *   { streetName, buildingNumber, postalCode, town, countryCode, addressLines: string[] }
+     * Column added by migration 0051.
+     */
+    debtorAddress: jsonb("debtor_address"),
     donationId: uuid("donation_id").references(() => donations.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -407,6 +424,15 @@ export const camtUnreconciledEntries = pgTable(
     resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolutionNote: text("resolution_note"),
+    /**
+     * Set when the operator resolves via `action: 'link'` — points at
+     * the donation row they manually created. ON DELETE SET NULL
+     * preserves the audit trail even if the donation is later hard-
+     * deleted through the admin tool. Column added by migration 0051.
+     */
+    linkedDonationId: uuid("linked_donation_id").references(() => donations.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
