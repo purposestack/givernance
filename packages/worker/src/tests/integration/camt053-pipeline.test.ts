@@ -215,6 +215,14 @@ async function uploadFixture(args: {
   qrrB?: string;
   qrrDoorDrop?: string;
   msgIdSuffix?: string;
+  /**
+   * Suffix appended to every AcctSvcrRef / EndToEndId in the fixture
+   * so re-uploads with different msgIds don't collide on the
+   * `(org_id, payment_method, payment_ref)` UNIQUE on donations. Tests
+   * that re-use the same fixture template across describe blocks
+   * MUST pass a distinct suffix.
+   */
+  acctSvcrRefSuffix?: string;
 }): Promise<{ statementId: string; s3Key: string }> {
   let xml = loadFixture(args.fixture);
   if (args.qrrA) xml = xml.replace("__QRR_PLACEHOLDER_A__", args.qrrA);
@@ -222,6 +230,11 @@ async function uploadFixture(args: {
   if (args.qrrDoorDrop) xml = xml.replace("__QRR_PLACEHOLDER_DOORDROP__", args.qrrDoorDrop);
   if (args.msgIdSuffix) {
     xml = xml.replace(/<MsgId>[^<]+<\/MsgId>/, `<MsgId>MSG-${args.msgIdSuffix}</MsgId>`);
+  }
+  if (args.acctSvcrRefSuffix) {
+    const sfx = args.acctSvcrRefSuffix;
+    xml = xml.replace(/<AcctSvcrRef>([^<]+)<\/AcctSvcrRef>/g, `<AcctSvcrRef>$1-${sfx}</AcctSvcrRef>`);
+    xml = xml.replace(/<EndToEndId>([^<]+)<\/EndToEndId>/g, `<EndToEndId>$1-${sfx}</EndToEndId>`);
   }
   const s3Key = `${ORG_ID}/camt053/2026/05/${Math.random().toString(36).slice(2, 10)}_${args.fixture}`;
   fakeStorage.set(s3Key, Buffer.from(xml, "utf-8"));
@@ -385,6 +398,313 @@ describe("camt053-reconcile — door-drop find-or-create + enrichment", () => {
     expect(created[0]!.paymentSourceIban).toBe("CH5104835012345678123");
     // No address on this fixture → partial (name + IBAN, no email no addr).
     expect(created[0]!.identityCompleteness).toBe("partial");
+  });
+});
+
+describe("camt053-reconcile — reversal handling (docs/25 §5.2)", () => {
+  it("INSERTs a reversal donation row, leaves the original untouched", async () => {
+    // ── 1. Book the original donation via the personalised rail. ──
+    const originalQrr = mintQrr("7001");
+    const exportR1 = await db.execute(
+      sql`INSERT INTO campaign_postal_exports (org_id, campaign_id, mode, status, total_count, progress_count)
+          VALUES (${ORG_ID}, ${campaignId}, 'personalized', 'completed', 1, 1) RETURNING id`,
+    );
+    const exportR1Id = (exportR1 as unknown as { rows: Array<{ id: string }> }).rows[0]!.id;
+    const [revConstituent] = await db
+      .insert(constituents)
+      .values({
+        orgId: ORG_ID,
+        firstName: "Hans",
+        lastName: "Reverser",
+        type: "donor",
+      })
+      .returning();
+    await db.insert(swissQrReferences).values([
+      {
+        orgId: ORG_ID,
+        campaignId,
+        constituentId: revConstituent!.id,
+        exportId: exportR1Id,
+        bankAccountId,
+        referenceType: "qrr",
+        reference: originalQrr,
+        currency: "CHF",
+      },
+    ]);
+
+    const original = await uploadFixture({
+      fixture: "happy-path.xml",
+      qrrA: originalQrr,
+      qrrB: mintQrr("7099"), // no swiss_qr_references row → goes to unreconciled
+      msgIdSuffix: "REV-ORIGINAL",
+      acctSvcrRefSuffix: "REV", // avoid colliding with other tests' BKID-001-A
+    });
+    await processCamt053Import(
+      makeMockJob({ statementId: original.statementId, bankAccountId, orgId: ORG_ID }),
+    );
+    await processCamt053Reconcile(makeMockJob({ statementId: original.statementId }));
+
+    const [originalDonation] = await db
+      .select()
+      .from(donations)
+      .where(
+        and(
+          eq(donations.orgId, ORG_ID),
+          eq(donations.constituentId, revConstituent!.id),
+          eq(donations.paymentSource, "camt053"),
+        ),
+      );
+    expect(originalDonation).toBeDefined();
+    expect(originalDonation!.status).toBe("cleared");
+    expect(originalDonation!.amountCents).toBe(5000);
+    expect(originalDonation!.reversesDonationId).toBeNull();
+
+    // ── 2. Apply the reversal. ─────────────────────────────────────
+    const reversal = await uploadFixture({
+      fixture: "reversal.xml",
+      qrrA: originalQrr,
+      msgIdSuffix: "REV-APPLY",
+    });
+    await processCamt053Import(
+      makeMockJob({ statementId: reversal.statementId, bankAccountId, orgId: ORG_ID }),
+    );
+    await processCamt053Reconcile(makeMockJob({ statementId: reversal.statementId }));
+
+    // ── 3. Original donation row is UNCHANGED. ─────────────────────
+    const [originalAfter] = await db
+      .select()
+      .from(donations)
+      .where(eq(donations.id, originalDonation!.id));
+    expect(originalAfter!.status).toBe("cleared");
+    expect(originalAfter!.amountCents).toBe(5000);
+    expect(originalAfter!.reversesDonationId).toBeNull();
+
+    // ── 4. A NEW reversal donation row exists with the expected shape. ──
+    const reversalRows = await db
+      .select()
+      .from(donations)
+      .where(
+        and(
+          eq(donations.orgId, ORG_ID),
+          eq(donations.reversesDonationId, originalDonation!.id),
+        ),
+      );
+    expect(reversalRows).toHaveLength(1);
+    const reversalDonation = reversalRows[0]!;
+    expect(reversalDonation.amountCents).toBe(-5000);
+    expect(reversalDonation.status).toBe("refunded");
+    expect(reversalDonation.paymentSource).toBe("camt053");
+    expect(reversalDonation.paymentMethod).toBe("camt053");
+    expect(reversalDonation.paymentRef).toBe("BKID-REV-001");
+    expect(reversalDonation.swissQrReferenceId).toBe(originalDonation!.swissQrReferenceId);
+    expect(reversalDonation.campaignId).toBe(originalDonation!.campaignId);
+    expect(reversalDonation.constituentId).toBe(originalDonation!.constituentId);
+
+    // ── 5. The reversal credit entry points at the NEW reversal row. ──
+    const [reversalEntry] = await db
+      .select()
+      .from(camtCreditEntries)
+      .where(
+        and(eq(camtCreditEntries.orgId, ORG_ID), eq(camtCreditEntries.acctSvcrRef, "BKID-REV-001")),
+      );
+    expect(reversalEntry).toBeDefined();
+    expect(reversalEntry!.donationId).toBe(reversalDonation.id);
+
+    // ── 6. donation.refunded outbox event carries the NEW donation id. ──
+    const outboxRows = await db.execute(sql<{ payload: unknown }>`
+      SELECT payload FROM outbox_events
+      WHERE tenant_id = ${ORG_ID}
+        AND type = 'donation.refunded'
+        AND payload->>'donationId' = ${reversalDonation.id}
+    `);
+    const eventRows = (outboxRows as unknown as { rows: Array<{ payload: { donationId: string; reversesDonationId: string } }> }).rows;
+    expect(eventRows.length).toBeGreaterThanOrEqual(1);
+    expect(eventRows[0]!.payload.reversesDonationId).toBe(originalDonation!.id);
+  });
+
+  it("queues orphan_reversal when no original donation matches", async () => {
+    const orphanQrr = mintQrr("7500");
+    const orphanExport = await db.execute(
+      sql`INSERT INTO campaign_postal_exports (org_id, campaign_id, mode, status, total_count, progress_count)
+          VALUES (${ORG_ID}, ${campaignId}, 'personalized', 'completed', 1, 1) RETURNING id`,
+    );
+    const orphanExportId = (orphanExport as unknown as { rows: Array<{ id: string }> }).rows[0]!.id;
+    const [orphanConstituent] = await db
+      .insert(constituents)
+      .values({
+        orgId: ORG_ID,
+        firstName: "Orphan",
+        lastName: "Reverser",
+        type: "donor",
+      })
+      .returning();
+    await db.insert(swissQrReferences).values([
+      {
+        orgId: ORG_ID,
+        campaignId,
+        constituentId: orphanConstituent!.id,
+        exportId: orphanExportId,
+        bankAccountId,
+        referenceType: "qrr",
+        reference: orphanQrr,
+        currency: "CHF",
+      },
+    ]);
+
+    // Upload only the reversal — no prior donation exists for this ref.
+    const reversal = await uploadFixture({
+      fixture: "reversal.xml",
+      qrrA: orphanQrr,
+      msgIdSuffix: "REV-ORPHAN",
+    });
+    await processCamt053Import(
+      makeMockJob({ statementId: reversal.statementId, bankAccountId, orgId: ORG_ID }),
+    );
+    await processCamt053Reconcile(makeMockJob({ statementId: reversal.statementId }));
+
+    const unrec = await db
+      .select()
+      .from(camtUnreconciledEntries)
+      .innerJoin(camtCreditEntries, eq(camtUnreconciledEntries.creditEntryId, camtCreditEntries.id))
+      .where(
+        and(
+          eq(camtUnreconciledEntries.orgId, ORG_ID),
+          eq(camtUnreconciledEntries.reason, "orphan_reversal"),
+          eq(camtCreditEntries.acctSvcrRef, "BKID-REV-001"),
+        ),
+      );
+    expect(unrec.length).toBe(1);
+  });
+});
+
+describe("camt053-reconcile — partial-match handling (docs/25 §5.4 step 4.d)", () => {
+  it("books the donation at the credited amount AND writes a pre-resolved audit row", async () => {
+    // The personalised ref carries a PRINTED expected amount of CHF 100
+    // (10000 cents). The partial-match fixture pays CHF 80 (8000 cents).
+    const pmQrr = mintQrr("8001");
+    const pmExport = await db.execute(
+      sql`INSERT INTO campaign_postal_exports (org_id, campaign_id, mode, status, total_count, progress_count)
+          VALUES (${ORG_ID}, ${campaignId}, 'personalized', 'completed', 1, 1) RETURNING id`,
+    );
+    const pmExportId = (pmExport as unknown as { rows: Array<{ id: string }> }).rows[0]!.id;
+    const [pmConstituent] = await db
+      .insert(constituents)
+      .values({
+        orgId: ORG_ID,
+        firstName: "Anna",
+        lastName: "Frei",
+        type: "donor",
+      })
+      .returning();
+    await db.insert(swissQrReferences).values([
+      {
+        orgId: ORG_ID,
+        campaignId,
+        constituentId: pmConstituent!.id,
+        exportId: pmExportId,
+        bankAccountId,
+        referenceType: "qrr",
+        reference: pmQrr,
+        amountCents: 10000, // printed CHF 100
+        currency: "CHF",
+      },
+    ]);
+
+    // Load the fixture and inject our partial-match QRR.
+    let xml = loadFixture("partial-match.xml");
+    xml = xml.replace("__QRR_PLACEHOLDER_PM__", pmQrr);
+    const s3Key = `${ORG_ID}/camt053/2026/05/partial-match.xml`;
+    fakeStorage.set(s3Key, Buffer.from(xml, "utf-8"));
+    const [stmtRow] = await db
+      .insert(camtStatements)
+      .values({
+        orgId: ORG_ID,
+        bankAccountId,
+        s3Path: s3Key,
+        msgId: `__pending_pm_${Date.now()}`,
+        status: "pending",
+      })
+      .returning();
+
+    await processCamt053Import(makeMockJob({ statementId: stmtRow!.id, bankAccountId, orgId: ORG_ID }));
+    await processCamt053Reconcile(makeMockJob({ statementId: stmtRow!.id }));
+
+    // ── 1. Donation booked at the CREDITED amount (CHF 80). ────────
+    const donationRows = await db
+      .select()
+      .from(donations)
+      .where(
+        and(eq(donations.orgId, ORG_ID), eq(donations.constituentId, pmConstituent!.id)),
+      );
+    expect(donationRows).toHaveLength(1);
+    expect(donationRows[0]!.amountCents).toBe(8000);
+    expect(donationRows[0]!.status).toBe("cleared");
+    expect(donationRows[0]!.paymentMethod).toBe("camt053");
+
+    // ── 2. Credit entry has partial_match=true. ─────────────────────
+    const [pmEntry] = await db
+      .select()
+      .from(camtCreditEntries)
+      .where(
+        and(eq(camtCreditEntries.orgId, ORG_ID), eq(camtCreditEntries.acctSvcrRef, "BKID-PM-001")),
+      );
+    expect(pmEntry).toBeDefined();
+    expect(pmEntry!.partialMatch).toBe(true);
+    expect(pmEntry!.donationId).toBe(donationRows[0]!.id);
+
+    // ── 3. A pre-resolved audit row exists (reason=partial_match, status=resolved). ──
+    const auditRows = await db
+      .select()
+      .from(camtUnreconciledEntries)
+      .where(
+        and(
+          eq(camtUnreconciledEntries.orgId, ORG_ID),
+          eq(camtUnreconciledEntries.creditEntryId, pmEntry!.id),
+        ),
+      );
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]!.reason).toBe("partial_match");
+    expect(auditRows[0]!.status).toBe("resolved");
+    expect(auditRows[0]!.resolvedAt).not.toBeNull();
+
+    // ── 4. The active-queue filter (status='pending') EXCLUDES it. ──
+    const activeQueue = await db
+      .select()
+      .from(camtUnreconciledEntries)
+      .where(
+        and(
+          eq(camtUnreconciledEntries.orgId, ORG_ID),
+          eq(camtUnreconciledEntries.creditEntryId, pmEntry!.id),
+          eq(camtUnreconciledEntries.status, "pending"),
+        ),
+      );
+    expect(activeQueue).toHaveLength(0);
+  });
+
+  it("does NOT flag partial_match when the printed amount is 0 (donor-fills)", async () => {
+    // qrrDoorDrop has amountCents=0 (set in beforeAll via the default).
+    // The door-drop fixture pays an arbitrary amount; no partial_match.
+    const { statementId } = await uploadFixture({
+      fixture: "name-only-debtor.xml",
+      qrrDoorDrop,
+      msgIdSuffix: "PM-DONOR-FILLS",
+    });
+    await processCamt053Import(makeMockJob({ statementId, bankAccountId, orgId: ORG_ID }));
+    await processCamt053Reconcile(makeMockJob({ statementId }));
+
+    // No partial_match row anywhere.
+    const partialRows = await db
+      .select()
+      .from(camtUnreconciledEntries)
+      .innerJoin(camtCreditEntries, eq(camtUnreconciledEntries.creditEntryId, camtCreditEntries.id))
+      .where(
+        and(
+          eq(camtUnreconciledEntries.orgId, ORG_ID),
+          eq(camtUnreconciledEntries.reason, "partial_match"),
+          eq(camtCreditEntries.statementId, statementId),
+        ),
+      );
+    expect(partialRows).toHaveLength(0);
   });
 });
 

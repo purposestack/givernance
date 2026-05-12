@@ -7,11 +7,20 @@
  *      `donation_id IS NULL`.
  *   2. For each entry:
  *      a. Reversals → find the original donation by structured-ref +
- *         amount; mark refunded, or queue as `orphan_reversal`.
+ *         amount; INSERT a new reversal donation row that points at the
+ *         original via `reverses_donation_id` (negative amount_cents,
+ *         status='refunded') — the original row is NEVER mutated, per
+ *         docs/25 §5.2 + ADR-028 implementation notes. Orphan reversals
+ *         go to the unreconciled queue.
  *      b. Normal entries → validate the QRR / SCOR format; look up
  *         `swiss_qr_references`; resolve the constituent (personalized
  *         rail: use `ref.constituent_id`; door-drop rail: find-or-
  *         create via the §5.5 extraction matrix); INSERT donation.
+ *         On amount-divergence (paid != printed AND printed > 0) the
+ *         donation is STILL booked at the credited amount and a
+ *         `camt_unreconciled_entries(reason='partial_match',
+ *         status='resolved')` audit row is written — docs/25 §5.4
+ *         step 4.d.
  *      c. No-match / invalid-ref / no-debtor-info → queue an
  *         `camt_unreconciled_entries` row for operator review.
  *   3. Update `camt_statements` with the matched / unmatched counters
@@ -20,11 +29,11 @@
  * Idempotency: the reconciler is safe to re-run (BullMQ retry, manual
  * replay) because every donation INSERT goes through `(org_id,
  * payment_method, payment_ref) UNIQUE` from migration 0008 (we set
- * paymentRef=AcctSvcrRef + paymentMethod='camt053') and every
- * unreconciled INSERT short-circuits on the `(credit_entry_id) UNIQUE`
- * from migration 0044. The statement-level flip to `processed` only
- * happens once because the WHERE clause gates on the row not already
- * being in that state.
+ * paymentRef=AcctSvcrRef + paymentMethod=<'camt053'|'camt053_manual'>)
+ * and every unreconciled INSERT short-circuits on the
+ * `(credit_entry_id) UNIQUE` from migration 0044. The statement-level
+ * flip to `processed` only happens once because the WHERE clause gates
+ * on the row not already being in that state.
  */
 
 import {
@@ -214,6 +223,32 @@ async function handleNormalEntry(args: {
     return;
   }
 
+  // ── Detect partial-match (amount divergence). ────────────────────
+  // docs/25 §5.4 step 4.d: match-by-amount is NEVER the reason to skip
+  // a donation. If the printed amount was non-zero AND the credited
+  // amount differs, we STILL book the donation (at the credited amount —
+  // match by reference, never by amount, per ADR-028) but we set the
+  // `partial_match` flag on the credit entry AND write a pre-resolved
+  // unreconciled row so the operator's review history surfaces the
+  // divergence without re-opening it.
+  const isPartialMatch =
+    refRow.amountCents != null &&
+    refRow.amountCents > 0 &&
+    refRow.amountCents !== entry.amountCents;
+  if (isPartialMatch) {
+    log.info(
+      {
+        event: "camt053.reconcile.partial_match",
+        creditEntryId: entry.id,
+        // No PII (no debtor name / IBAN); the two amounts are financial
+        // signal only.
+        printedAmountCents: refRow.amountCents,
+        paidAmountCents: entry.amountCents,
+      },
+      "Partial match — donation booked at credited amount; audit row recorded",
+    );
+  }
+
   // ── Resolve the constituent. ─────────────────────────────────────
   let constituentId: string;
   if (refRow.constituentId) {
@@ -252,17 +287,40 @@ async function handleNormalEntry(args: {
     currency: entry.currency,
     paymentRef: entry.acctSvcrRef,
     valueDate: entry.valueDate,
+    partialMatch: isPartialMatch,
   });
   counters.matched += 1;
 }
 
 /**
- * Reversal handling (docs/25 §5.2):
- *   - Find the original donation by the swiss_qr_reference_id +
- *     amount match.
- *   - If found: flip the donation status to `refunded`; emit
- *     `donation.refunded` so the receipt + reporting paths react.
- *   - If not found: queue `orphan_reversal` for operator review.
+ * Reversal handling (docs/25 §5.2 + ADR-028 implementation notes §1).
+ *
+ * Reversals are modelled as an ADDITIVE event — the bank refunded the
+ * donor, and Givernance records that with a SECOND `donations` row:
+ *
+ *   - `amount_cents` = -original.amount_cents (negative; the column is
+ *     a plain INTEGER, no positive-only check)
+ *   - `status` = 'refunded'
+ *   - `payment_source` = 'camt053' (same rail as the original)
+ *   - `payment_method` = 'camt053' (auto-reconciled — distinct from
+ *     'camt053_manual' which the operator-resolved path uses)
+ *   - `payment_ref` = current_entry.acct_svcr_ref (the reversal entry's
+ *     own AcctSvcrRef — distinct from the original donation's ref, so
+ *     the `(org_id, payment_method, payment_ref) UNIQUE` doesn't reject)
+ *   - `reverses_donation_id` = original.id
+ *   - `swiss_qr_reference_id` = original.swiss_qr_reference_id (same ref
+ *     printed on the slip; the reversal is a credit on that ref)
+ *   - `campaign_id` / `constituent_id` = original's
+ *   - `camt_credit_entry_id` = current_entry.id (the reversal entry)
+ *
+ * **The original row is NEVER mutated** — its `status` stays whatever
+ * it was (typically `cleared`), preserving the financial audit trail
+ * (Swiss CO Art. 958f). Downstream consumers (receipt revocation,
+ * annual statements) filter via `status='cleared' AND reverses_donation_id IS NULL`
+ * to get the net non-refunded set; the SUM(amount_cents) over the pair
+ * settles to zero naturally without sign-special-casing.
+ *
+ * Orphan reversals (no matching original) → `camt_unreconciled_entries(reason='orphan_reversal')`.
  */
 async function handleReversal(args: {
   orgId: string;
@@ -290,10 +348,14 @@ async function handleReversal(args: {
     );
     return;
   }
-  await markDonationRefunded({
+  await insertReversalDonation({
     orgId,
-    donationId: original.donationId,
+    original,
     creditEntryId: entry.id,
+    paymentRef: entry.acctSvcrRef,
+    currency: entry.currency,
+    valueDate: entry.valueDate,
+    log,
   });
   counters.matched += 1;
 }
@@ -307,7 +369,12 @@ async function loadSwissQrReference(args: {
   orgId: string;
   bankAccountId: string;
   reference: string;
-}): Promise<{ id: string; campaignId: string; constituentId: string | null } | null> {
+}): Promise<{
+  id: string;
+  campaignId: string;
+  constituentId: string | null;
+  amountCents: number | null;
+} | null> {
   const { orgId, bankAccountId, reference } = args;
   return withWorkerContext(orgId, async (tx) => {
     const [row] = await tx
@@ -315,6 +382,7 @@ async function loadSwissQrReference(args: {
         id: swissQrReferences.id,
         campaignId: swissQrReferences.campaignId,
         constituentId: swissQrReferences.constituentId,
+        amountCents: swissQrReferences.amountCents,
       })
       .from(swissQrReferences)
       .where(
@@ -324,16 +392,30 @@ async function loadSwissQrReference(args: {
           eq(swissQrReferences.reference, reference.replace(/\s+/g, "")),
         ),
       );
-    return row ?? null;
+    if (!row) return null;
+    return {
+      id: row.id,
+      campaignId: row.campaignId,
+      constituentId: row.constituentId,
+      amountCents: row.amountCents == null ? null : Number(row.amountCents),
+    };
   });
 }
 
 async function queueUnreconciled(args: {
   orgId: string;
   creditEntryId: string;
-  reason: "no_match" | "invalid_ref" | "orphan_reversal" | "no_debtor_info";
+  reason: "no_match" | "invalid_ref" | "orphan_reversal" | "no_debtor_info" | "partial_match";
+  /**
+   * Defaults to `'pending'` (the operator's active queue). For
+   * `partial_match` the reconciler pre-resolves to `'resolved'` so the
+   * row surfaces in the operator's review HISTORY but not in the active
+   * queue — docs/25 §5.4 step 4.d.
+   */
+  status?: "pending" | "resolved";
+  resolutionNote?: string;
 }): Promise<void> {
-  const { orgId, creditEntryId, reason } = args;
+  const { orgId, creditEntryId, reason, status, resolutionNote } = args;
   await withWorkerContext(orgId, async (tx) => {
     await tx
       .insert(camtUnreconciledEntries)
@@ -341,6 +423,9 @@ async function queueUnreconciled(args: {
         orgId,
         creditEntryId,
         reason,
+        ...(status ? { status } : {}),
+        ...(resolutionNote ? { resolutionNote } : {}),
+        ...(status === "resolved" ? { resolvedAt: new Date() } : {}),
       })
       .onConflictDoNothing();
   });
@@ -589,6 +674,14 @@ async function createDonationAndLink(args: {
   currency: string;
   paymentRef: string;
   valueDate: string | null;
+  /**
+   * TRUE when the credited amount diverges from the printed amount on
+   * the swiss_qr_references row (and the printed amount was non-zero).
+   * docs/25 §5.4 step 4.d — the donation is still booked at the
+   * credited amount; the flag + a pre-resolved unreconciled audit row
+   * carry the divergence forward for the operator's review history.
+   */
+  partialMatch: boolean;
 }): Promise<void> {
   const {
     orgId,
@@ -600,6 +693,7 @@ async function createDonationAndLink(args: {
     currency,
     paymentRef,
     valueDate,
+    partialMatch,
   } = args;
   await withWorkerContext(orgId, async (tx) => {
     const donatedAt = valueDate ? new Date(valueDate) : new Date();
@@ -647,7 +741,11 @@ async function createDonationAndLink(args: {
       if (existing) {
         await tx
           .update(camtCreditEntries)
-          .set({ donationId: existing.id, updatedAt: new Date() })
+          .set({
+            donationId: existing.id,
+            ...(partialMatch ? { partialMatch: true } : {}),
+            updatedAt: new Date(),
+          })
           .where(and(eq(camtCreditEntries.id, creditEntryId), eq(camtCreditEntries.orgId, orgId)));
       }
       return;
@@ -655,7 +753,11 @@ async function createDonationAndLink(args: {
 
     await tx
       .update(camtCreditEntries)
-      .set({ donationId: donation.id, updatedAt: new Date() })
+      .set({
+        donationId: donation.id,
+        ...(partialMatch ? { partialMatch: true } : {}),
+        updatedAt: new Date(),
+      })
       .where(and(eq(camtCreditEntries.id, creditEntryId), eq(camtCreditEntries.orgId, orgId)));
 
     await tx.insert(outboxEvents).values({
@@ -669,20 +771,61 @@ async function createDonationAndLink(args: {
         paymentMethod: "camt053",
         paymentRef,
         source: "camt053",
+        ...(partialMatch ? { partialMatch: true } : {}),
       },
     });
+
+    if (partialMatch) {
+      // Pre-resolved audit row — surfaces in the operator's review
+      // history under `reason='partial_match'` + `status='resolved'`,
+      // but is excluded from the active queue (default filter
+      // `status='pending'`). The unique on `(credit_entry_id)` keeps
+      // BullMQ retries idempotent. docs/25 §5.4 step 4.d.
+      await tx
+        .insert(camtUnreconciledEntries)
+        .values({
+          orgId,
+          creditEntryId,
+          reason: "partial_match",
+          status: "resolved",
+          resolvedAt: new Date(),
+          resolutionNote: "Auto-resolved by reconciler — donation booked at credited amount.",
+        })
+        .onConflictDoNothing();
+    }
   });
+}
+
+interface OriginalDonationForReversal {
+  donationId: string;
+  campaignId: string | null;
+  constituentId: string;
+  swissQrReferenceId: string;
+  amountCents: number;
+  currency: string;
 }
 
 async function findOriginalDonationForReversal(args: {
   orgId: string;
   reference: string;
   amountCents: number;
-}): Promise<{ donationId: string } | null> {
+}): Promise<OriginalDonationForReversal | null> {
   const { orgId, reference, amountCents } = args;
+  // Reversal entry's amount is positive (banks emit absolute values
+  // with the RvslInd flag). The matching original donation row is the
+  // POSITIVE cleared row, NOT a prior reversal row — gate on
+  // `reverses_donation_id IS NULL` to make sure a re-imported reversal
+  // doesn't accidentally pair with the prior reversal row we wrote.
   return withWorkerContext(orgId, async (tx) => {
     const [row] = await tx
-      .select({ donationId: donations.id })
+      .select({
+        donationId: donations.id,
+        campaignId: donations.campaignId,
+        constituentId: donations.constituentId,
+        swissQrReferenceId: donations.swissQrReferenceId,
+        amountCents: donations.amountCents,
+        currency: donations.currency,
+      })
       .from(donations)
       .innerJoin(swissQrReferences, eq(donations.swissQrReferenceId, swissQrReferences.id))
       .where(
@@ -691,32 +834,117 @@ async function findOriginalDonationForReversal(args: {
           eq(swissQrReferences.reference, reference.replace(/\s+/g, "")),
           eq(donations.amountCents, amountCents),
           eq(donations.status, "cleared"),
+          isNull(donations.reversesDonationId),
         ),
       )
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    if (!row.swissQrReferenceId) return null;
+    return {
+      donationId: row.donationId,
+      campaignId: row.campaignId,
+      constituentId: row.constituentId,
+      swissQrReferenceId: row.swissQrReferenceId,
+      amountCents: Number(row.amountCents),
+      currency: row.currency,
+    };
   });
 }
 
-async function markDonationRefunded(args: {
+/**
+ * INSERT a new reversal donation row and link the reversal credit entry
+ * to it. The original donation row is NEVER mutated — that preserves
+ * the financial audit trail (Swiss CO Art. 958f). See `handleReversal`
+ * for the full shape rationale.
+ *
+ * Idempotency: `(org_id, payment_method, payment_ref) UNIQUE` on
+ * `donations` (paymentRef = current entry's AcctSvcrRef, which differs
+ * from the original donation's paymentRef) prevents double-inserting
+ * the reversal on a BullMQ retry. If we hit the unique we look up the
+ * existing reversal and re-link the credit entry, same pattern as
+ * `createDonationAndLink`.
+ */
+async function insertReversalDonation(args: {
   orgId: string;
-  donationId: string;
+  original: OriginalDonationForReversal;
   creditEntryId: string;
+  paymentRef: string;
+  currency: string;
+  valueDate: string | null;
+  log: ReturnType<typeof jobLogger>;
 }): Promise<void> {
-  const { orgId, donationId, creditEntryId } = args;
+  const { orgId, original, creditEntryId, paymentRef, currency, valueDate, log } = args;
+  const reversalAmountCents = -Math.abs(original.amountCents);
+  const donatedAt = valueDate ? new Date(valueDate) : new Date();
+
   await withWorkerContext(orgId, async (tx) => {
-    await tx
-      .update(donations)
-      .set({ status: "refunded", updatedAt: new Date() })
-      .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)));
+    const [reversal] = await tx
+      .insert(donations)
+      .values({
+        orgId,
+        constituentId: original.constituentId,
+        amountCents: reversalAmountCents,
+        currency,
+        amountBaseCents: reversalAmountCents,
+        campaignId: original.campaignId,
+        swissQrReferenceId: original.swissQrReferenceId,
+        camtCreditEntryId: creditEntryId,
+        reversesDonationId: original.donationId,
+        paymentSource: "camt053",
+        status: "refunded",
+        paymentMethod: "camt053",
+        paymentRef,
+        donatedAt,
+        fiscalYear: donatedAt.getFullYear(),
+      })
+      .onConflictDoNothing()
+      .returning({ id: donations.id });
+
+    let reversalId: string | undefined = reversal?.id;
+    if (!reversalId) {
+      // BullMQ retry — the reversal donation already exists. Look it
+      // up by the same idempotency tuple and re-link the credit entry.
+      const [existing] = await tx
+        .select({ id: donations.id })
+        .from(donations)
+        .where(
+          and(
+            eq(donations.orgId, orgId),
+            eq(donations.paymentMethod, "camt053"),
+            eq(donations.paymentRef, paymentRef),
+          ),
+        );
+      reversalId = existing?.id;
+    }
+    if (!reversalId) {
+      // Pathological — the unique violated but we can't find the row.
+      // Log and bail rather than corrupt the audit trail.
+      log.error(
+        {
+          event: "camt053.reversal_insert_failed",
+          creditEntryId,
+          paymentRef,
+          originalDonationId: original.donationId,
+        },
+        "Reversal INSERT hit unique but no existing row found",
+      );
+      return;
+    }
+
     await tx
       .update(camtCreditEntries)
-      .set({ donationId, updatedAt: new Date() })
+      .set({ donationId: reversalId, updatedAt: new Date() })
       .where(and(eq(camtCreditEntries.id, creditEntryId), eq(camtCreditEntries.orgId, orgId)));
+
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
       type: "donation.refunded",
-      payload: { donationId, source: "camt053" },
+      payload: {
+        donationId: reversalId,
+        reversesDonationId: original.donationId,
+        amountCents: reversalAmountCents,
+        source: "camt053",
+      },
     });
   });
 }

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>REVERSAL-MSG-001</MsgId>
+      <CreDtTm>2026-05-12T08:00:00</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>STMT-REV-001</Id>
+      <ElctrncSeqNb>1</ElctrncSeqNb>
+      <CreDtTm>2026-05-12T08:00:00</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-05-11T00:00:00</FrDtTm>
+        <ToDtTm>2026-05-11T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id>
+          <IBAN>CH9300762011623852957</IBAN>
+        </Id>
+      </Acct>
+      <Ntry>
+        <AcctSvcrRef>BKID-REV-001</AcctSvcrRef>
+        <Amt Ccy="CHF">50.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <RvslInd>true</RvslInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><Dt>2026-05-11</Dt></BookgDt>
+        <ValDt><Dt>2026-05-11</Dt></ValDt>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>EE-REV-001</EndToEndId>
+            </Refs>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Tp>
+                    <CdOrPrtry>
+                      <Prtry>QRR</Prtry>
+                    </CdOrPrtry>
+                  </Tp>
+                  <Ref>__QRR_PLACEHOLDER_A__</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+            <RltdPties>
+              <Dbtr>
+                <Nm>Jean Dupont</Nm>
+              </Dbtr>
+            </RltdPties>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>
