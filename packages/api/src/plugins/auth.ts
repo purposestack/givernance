@@ -89,17 +89,29 @@ async function auth(app: FastifyInstance) {
 }
 
 function isAuthExempt(url: string): boolean {
-  return (
-    url.startsWith("/healthz") ||
-    url.startsWith("/readyz") ||
-    url.startsWith("/docs") ||
-    // Back-channel logout (issue #76 / PR-2) authenticates via the signed
-    // OIDC `logout_token` form field, not the JWT cookie/header — the JWT
-    // never reaches this endpoint because Keycloak posts to it
-    // server-to-server. Forcing it through the JWT auth path would 401
-    // every legitimate logout signal.
-    url.startsWith("/v1/auth/backchannel-logout")
-  );
+  // Pathname-only comparison so query strings don't escape the exempt
+  // set. `url` here is Fastify's `request.url` which already strips the
+  // origin but keeps `?…` — split it off before matching.
+  const pathname = url.split("?", 1)[0] ?? url;
+
+  if (
+    pathname.startsWith("/healthz") ||
+    pathname.startsWith("/readyz") ||
+    pathname.startsWith("/docs")
+  ) {
+    return true;
+  }
+
+  // Back-channel logout (issue #76 / PR-2) authenticates via the signed
+  // OIDC `logout_token` form field, not the JWT cookie/header — the JWT
+  // never reaches this endpoint because Keycloak posts to it
+  // server-to-server. Forcing it through the JWT auth path would 401
+  // every legitimate logout signal.
+  //
+  // PR #360 review (API M7 + Security M3): exact-match the pathname so a
+  // sibling route like `/v1/session/backchannel-logout-spoof` doesn't
+  // accidentally inherit the exemption.
+  return pathname === "/v1/session/backchannel-logout";
 }
 
 /**
