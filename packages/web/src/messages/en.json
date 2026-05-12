@@ -1860,7 +1860,12 @@
     },
     "postal": {
       "title": "Postal export",
-      "description": "Generate printable letters with QR codes pointing at this campaign.",
+      "description": {
+        "standard": "Generate printable letters with a QR code that points donors at the public donation page.",
+        "qr_bill_only": "Generate printable Swiss QR-bills (BVR) for postal donations.",
+        "hybrid": "Generate printable letters that pair the public donation page with a Swiss QR-bill option.",
+        "blocked": "Postal export is not configured yet — link a Swiss bank account or publish a public donation page to start."
+      },
       "refresh": "Refresh",
       "modes": {
         "personalized": {
@@ -1904,6 +1909,10 @@
           "hybrid": "This mode is selected because you linked bank account {bank} and your public page is published.",
           "blocked": "Neither a public donation page nor a Swiss bank account is configured — there is nothing to print.",
           "editLink": "Change on the campaign settings →"
+        },
+        "scope": {
+          "personalized": "Per recipient · 1 QR-bill reference each",
+          "door_drop": "Per campaign (door-drop) · 1 shared QR-bill reference"
         }
       },
       "readiness": {
@@ -1937,6 +1946,9 @@
         "startFailed": "Could not start the export. Please try again.",
         "refreshFailed": "Could not refresh the export list.",
         "previewFailed": "Could not load the preview."
+      },
+      "preview": {
+        "zipFilename": "postal-preview.zip"
       },
       "progress": {
         "queued": "Queued, waiting for a worker…",

@@ -1860,7 +1860,12 @@
     },
     "postal": {
       "title": "Export postal",
-      "description": "Générez des lettres imprimables avec un QR code pointant vers cette campagne.",
+      "description": {
+        "standard": "Générez des lettres imprimables avec un QR code renvoyant le donateur vers la page de don publique.",
+        "qr_bill_only": "Générez des BVR suisses imprimables pour les dons par courrier.",
+        "hybrid": "Générez des lettres imprimables combinant la page de don publique et un BVR suisse.",
+        "blocked": "L'export postal n'est pas encore configuré — liez un compte bancaire suisse ou publiez une page de don publique pour commencer."
+      },
       "refresh": "Actualiser",
       "modes": {
         "personalized": {
@@ -1904,6 +1909,10 @@
           "hybrid": "Ce mode est sélectionné car vous avez lié le compte {bank} et la page publique est publiée.",
           "blocked": "Ni page de don publique ni compte bancaire suisse — il n'y a rien à imprimer.",
           "editLink": "Modifier dans les réglages de la campagne →"
+        },
+        "scope": {
+          "personalized": "Par destinataire · 1 référence QR par envoi",
+          "door_drop": "Par campagne (boîtage) · 1 référence QR partagée"
         }
       },
       "readiness": {
@@ -1937,6 +1946,9 @@
         "startFailed": "Impossible de démarrer l'export. Veuillez réessayer.",
         "refreshFailed": "Impossible d'actualiser la liste des exports.",
         "previewFailed": "Impossible de charger l'aperçu."
+      },
+      "preview": {
+        "zipFilename": "apercu-postal.zip"
       },
       "progress": {
         "queued": "En attente d'un worker…",
