@@ -2,10 +2,13 @@
  * Swiss QR-bill (BVR) rendering + reference minting service (Epic #318).
  *
  * Hooked into the postal-export processor — when a campaign has a
- * `bank_account_id` set, every letter in the export gains a second
- * PDF (`{recipient}-qr-bill.pdf`) carrying a canonical IG QR-bill on
- * a separate A4 sheet. Reference granularity is mode-dependent (per
- * ADR-027):
+ * `bank_account_id` set, every letter in the export gains a canonical
+ * Swiss QR-bill PDF: **1-page canonical layout** (Epic #318 PR #4
+ * follow-up) where the compressed appeal content sits above the BVR
+ * 105 mm payment strip on the SAME A4 sheet, with **auto-fallback to
+ * 2 pages** when the appeal content overflows the 175 mm safe zone
+ * (long description, deep mission, etc.). Reference granularity is
+ * mode-dependent (per ADR-027):
  *
  *   - personalised → one QRR/SCOR per (recipient, export)
  *   - door-drop    → one campaign-level QRR/SCOR per export
@@ -23,6 +26,7 @@
 
 import { randomBytes } from "node:crypto";
 import type { Locale } from "@givernance/shared/i18n";
+import { APPEAL_MAX_Y_PT, localeToQrBillLanguage } from "@givernance/shared/postal-print-layout";
 import {
   type BankAccount,
   bankAccounts,
@@ -30,29 +34,17 @@ import {
   swissQrReferences,
 } from "@givernance/shared/schema";
 import { computeQrr, computeScor } from "@givernance/shared/validators";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import PDFDocument from "pdfkit";
 import { SwissQRBill } from "swissqrbill/pdf";
 import { withWorkerContext } from "../lib/db.js";
 import { type CampaignLetterData, renderCompressedAppealForQrBill } from "./campaign-pdf.js";
 
-/**
- * Map our internal `tenants.default_locale` (FR/EN today; DE/IT cheap to
- * add when those locales land — see `docs/25` §8) to the `swissqrbill`
- * v4 `language` option which accepts `"DE" | "EN" | "FR" | "IT" | "RM"`.
- * Default `FR` matches the MVP's primary market and the schema-level
- * default for new tenants — never `DE` (the swissqrbill library default)
- * so a French/English appeal never ends up with a German payment strip.
- */
-export function localeToQrBillLanguage(
-  locale: Locale | null | undefined,
-): "DE" | "EN" | "FR" | "IT" {
-  if (locale === "en") return "EN";
-  // FR is the MVP default — covers `fr`, `null`, `undefined`, and any
-  // locale the schema-level validator might let through that this
-  // mapper doesn't explicitly know.
-  return "FR";
-}
+// `localeToQrBillLanguage` is now imported from `@givernance/shared/postal-print-layout`
+// (Epic #318 PR #4 MAJOR-3 follow-up) — the API preview and the worker bulk
+// render share the exact same locale → swissqrbill language mapping. Re-
+// exported so existing callers (worker integration tests, etc.) keep working.
+export { localeToQrBillLanguage };
 
 /**
  * Effective reference type given a campaign's mode override + the bank
@@ -291,6 +283,19 @@ export async function renderSwissQrBillPdf(args: {
   const stripLocation = await renderCompressedAppealForQrBill(pdf, appealData);
   if (stripLocation === "next_page") {
     pdf.addPage({ size: "A4", margin: 0 });
+  } else if (pdf.y > APPEAL_MAX_Y_PT) {
+    // Defense-in-depth (MAJOR-7 follow-up to PR #355): the prediction
+    // inside `renderCompressedAppealForQrBill` is conservative but can
+    // still misfire on unusually long campaign descriptions — PDFKit's
+    // line-height + justification produce a final `doc.y` that the
+    // predictor estimates from a fixed-height heuristic. If we'd
+    // overprint the BVR strip's quiet zone (IG QR-bill v2.4 §3.4 — the
+    // payment strip MUST remain unobstructed), pre-empt with a
+    // 2nd-page fallback. The hint text on page 1 still reads "scan the
+    // strip below" (incorrect wording) but BVR conformance trumps
+    // copy precision; the operator-grade scenario is rare and the
+    // donor still pays correctly from the strip on page 2.
+    pdf.addPage({ size: "A4", margin: 0 });
   }
 
   // ── BVR strip — same page when it fits, page 2 on auto-fallback.
@@ -403,7 +408,3 @@ export interface SwissQrBillRenderContext {
   referenceType: SwissQrReferenceType;
   campaignName: string;
 }
-
-// Suppress unused-import lint on `sql` until the post-PR-3 follow-up
-// adds a denormalised counter (per ADR-027's sequential minting note).
-void sql;

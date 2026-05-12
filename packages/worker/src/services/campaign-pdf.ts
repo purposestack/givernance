@@ -21,91 +21,36 @@
 
 import { resolveCountryName } from "@givernance/shared/constants";
 import type { Locale } from "@givernance/shared/i18n";
+import {
+  APPEAL_MAX_Y_PT,
+  copyForLocale,
+  type LetterCopy,
+  MM_TO_PT,
+  QR_BILL_HINT_HEIGHT_PT,
+  type QrBillStripLocation,
+} from "@givernance/shared/postal-print-layout";
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
+
+// Re-export `LetterCopy` so existing intra-package imports (if any future
+// helper lands here) keep working without crossing the shared boundary.
+// `LetterCopy` is intentionally re-exported as a type so this file remains
+// the canonical worker-side entry point.
+// Re-export the strip-location prediction type — worker callers in
+// `swiss-qr-bill.ts` import it from here today; preserving the symbol
+// keeps the change behaviour-preserving.
+export type { LetterCopy, QrBillStripLocation };
 
 const PAGE_MARGIN = 50;
 const PAGE_WIDTH = 595.28;
 const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2;
 const QR_SIZE = 140;
 
-// Locale-driven static copy — lockstep duplicate of the same table in
-// `packages/api/src/modules/campaigns/postal-pdf.ts`. See that file for
-// the full rationale and per-key documentation.
-//
-// **Intentional divergence vs. the api copy:** the api `LetterCopy` has
-// a `previewWatermark` field that this interface does not. The worker
-// path is the bulk-export pipeline (production print) and never renders
-// a preview, so the watermark string would be dead code here. The api
-// preview path is the only consumer of that field. All OTHER fields
-// MUST stay byte-equivalent across the two files.
-interface LetterCopy {
-  greetingNamed: (firstName: string, lastName: string) => string;
-  greetingDoorDrop: string;
-  thanksWithDescriptionNamed: string;
-  thanksWithDescriptionDoorDrop: string;
-  thanksFallbackNamed: string;
-  thanksFallbackDoorDrop: string;
-  callToScan: string;
-  referenceLabel: (token: string) => string;
-  /**
-   * Epic #318 PR #4 — Swiss QR-bill rail CTA strings. Two variants
-   * because the BVR strip can land on the SAME page as the appeal
-   * (1-page canonical layout) or on the NEXT page (auto-fallback when
-   * the appeal overflows the 175mm safe zone). The renderer predicts
-   * the layout and picks the right wording so the donor never reads
-   * "scan the strip on the next page" when it's actually below.
-   */
-  payViaQrBillSamePage: string;
-  payViaQrBillNextPage: string;
-}
-
-const LETTER_COPY: Record<Locale, LetterCopy> = {
-  fr: {
-    greetingNamed: (firstName, lastName) => `Bonjour ${firstName} ${lastName},`,
-    greetingDoorDrop: "Bonjour,",
-    thanksWithDescriptionNamed:
-      "Merci pour votre soutien — chaque contribution, petite ou grande, fait une différence concrète.",
-    thanksWithDescriptionDoorDrop:
-      "Chaque contribution, petite ou grande, fait une différence concrète.",
-    thanksFallbackNamed:
-      "Merci pour votre soutien continu. Votre générosité est ce qui rend cette campagne possible — chaque contribution, petite ou grande, fait une différence concrète.",
-    thanksFallbackDoorDrop:
-      "Votre soutien peut faire une vraie différence pour cette campagne. Chaque contribution, petite ou grande, nous aide à aller plus loin.",
-    callToScan: "Pour en savoir plus ou contribuer, scannez le QR code ci-dessous :",
-    referenceLabel: (token) => `Référence · ${token}`,
-    payViaQrBillSamePage:
-      "Pour régler ce don, scannez le BVR ci-dessous depuis votre application d'e-banking. Il contient toutes les informations de paiement nécessaires.",
-    payViaQrBillNextPage:
-      "Pour régler ce don, scannez le BVR sur la page suivante depuis votre application d'e-banking. Il contient toutes les informations de paiement nécessaires.",
-  },
-  en: {
-    greetingNamed: (firstName, lastName) => `Dear ${firstName} ${lastName},`,
-    greetingDoorDrop: "Dear Supporter,",
-    thanksWithDescriptionNamed:
-      "Thank you for your continued support — every contribution, big or small, makes a tangible difference.",
-    thanksWithDescriptionDoorDrop: "Every contribution, big or small, makes a tangible difference.",
-    thanksFallbackNamed:
-      "Thank you for your continued support. Your generosity is what makes this campaign possible — every contribution, big or small, makes a tangible difference.",
-    thanksFallbackDoorDrop:
-      "Your support could make a real difference for this campaign. Every contribution, big or small, helps us go further.",
-    callToScan: "To learn more or contribute, scan the QR code below:",
-    referenceLabel: (token) => `Reference · ${token}`,
-    payViaQrBillSamePage:
-      "To make your donation, scan the QR-bill below from your e-banking app. It carries all the payment details you need.",
-    payViaQrBillNextPage:
-      "To make your donation, scan the QR-bill on the next page from your e-banking app. It carries all the payment details you need.",
-  },
-};
-
-function copyForLocale(locale: Locale | null | undefined): LetterCopy {
-  return LETTER_COPY[locale ?? "fr"] ?? LETTER_COPY.fr;
-}
-
 // See `packages/api/src/modules/campaigns/postal-pdf.ts` for the full
 // rationale behind the A4-folded-in-half / C5-window-envelope geometry.
 // Both files MUST stay byte-equivalent in their rendering output.
-const MM_TO_PT = 2.834645;
+// `MM_TO_PT` is imported from `@givernance/shared/postal-print-layout` so
+// the API preview and the worker bulk render share the exact same value.
 const ADDRESS_BLOCK_X = 110 * MM_TO_PT;
 const ADDRESS_BLOCK_Y = 60 * MM_TO_PT;
 const ADDRESS_BLOCK_WIDTH = 80 * MM_TO_PT;
@@ -206,7 +151,7 @@ export type AppealCtaPanelRenderer = (
     /** Full data payload, useful for the panel to read the reference, etc. */
     data: CampaignLetterData;
   },
-) => void;
+) => Promise<void>;
 
 /**
  * Default CTA panel — the QR code that drives the donor to the public
@@ -352,7 +297,10 @@ async function renderAppealLetterPage1OnDoc(
   doc.moveDown(0.8);
 
   // CTA panel — caller decides what goes here (scan QR vs see-qr-bill-next-page).
-  ctaPanel(doc, { panelTopY: doc.y, copy, data });
+  // The panel renderer is async (the scan-QR variant awaits QRCode.toDataURL);
+  // we MUST await it before returning so the caller can safely `doc.end()`
+  // immediately afterwards without the QR-render racing the stream seal.
+  await ctaPanel(doc, { panelTopY: doc.y, copy, data });
 }
 
 /**
@@ -377,16 +325,15 @@ export async function createCampaignLetterPdfStream(
     },
   });
 
-  await renderAppealLetterPage1OnDoc(doc, data, (d, ctx) => {
-    void renderScanQrCtaPanel(d, ctx.data, ctx.copy, ctx.panelTopY);
+  // `renderScanQrCtaPanel` is async (it awaits `QRCode.toDataURL`). Pass it
+  // through as an async callback so `renderAppealLetterPage1OnDoc` awaits
+  // the QR raster before returning — otherwise `doc.end()` below would seal
+  // the PDF stream before the QR image landed on the page, and every
+  // standard / hybrid postal letter would ship WITHOUT the donor-facing
+  // scan QR (silent regression; the PDF still validates, just empty CTA).
+  await renderAppealLetterPage1OnDoc(doc, data, async (d, ctx) => {
+    await renderScanQrCtaPanel(d, ctx.data, ctx.copy, ctx.panelTopY);
   });
-
-  // Note: `renderScanQrCtaPanel` is async (it calls QRCode.toDataURL),
-  // but the standard letter path needs to await it before `doc.end()`.
-  // We call it directly here in addition to via the closure so that
-  // we await the actual QR-code generation properly.
-  // ↑ Actually the closure call already kicks it off; we need to await
-  // the QR-render to complete before ending the doc. Refactor below.
   doc.end();
   return doc;
 }
@@ -406,20 +353,16 @@ export async function createCampaignLetterPdfStream(
  *     2-page layout (strip on its own page 2)
  *
  * Lockstep with `packages/api/src/modules/campaigns/postal-pdf.ts`.
+ *
+ * `APPEAL_MAX_Y_PT`, `QR_BILL_HINT_HEIGHT_PT`, and `QrBillStripLocation` all
+ * live in `@givernance/shared/postal-print-layout` so the API preview and
+ * the worker bulk render share the exact same threshold (drift here would
+ * silently re-introduce the "preview lies about generation" bug).
  */
-export const APPEAL_MAX_Y_PT = 175 * MM_TO_PT; // ≈ 496pt, ~17mm above the BVR strip start
-
-/** Predicted height of the pay-via-QR-bill hint paragraph + reference token. */
-const QR_BILL_HINT_HEIGHT_PT = 30 * MM_TO_PT; // ≈ 85pt — conservative
-
-/**
- * Outcome the renderer commits to: SAME page = the BVR strip will land
- * at y=192mm on this page; NEXT page = the caller must `addPage()`
- * before attaching the strip. The wording in the rendered hint is
- * picked to match this prediction so the donor never reads "below"
- * when the strip is on the next page (or vice versa).
- */
-export type QrBillStripLocation = "same_page" | "next_page";
+// Re-export for downstream callers that need to read the threshold or
+// switch on the strip-location prediction. Kept here for symmetry with
+// the historical worker-side surface.
+export { APPEAL_MAX_Y_PT };
 
 // PDF rendering is intrinsically a long linear sequence; extracting
 // helpers would disperse the layout without clarifying it.
