@@ -273,11 +273,18 @@ describe("PostalCampaignSection", () => {
       // the hybrid-mode shape (one PDF letter + one PDF QR-bill). Mock
       // the global `fetch` directly so the helper picks up the response
       // without going through the API proxy.
+      //
+      // Body is a plain string (not a Blob) — Node 22's native Response
+      // re-streams a Blob body through a ReadableStream and the round-trip
+      // through `response.blob()` is brittle on CI (works on Node 24
+      // locally, hangs on Node 22 in GitHub Actions). A string body is
+      // converted to a Blob via the standard text-encoding path and is
+      // stable across Node versions.
       const fetchMock = vi.fn(
         async () =>
-          new Response(new Blob(["zip-bytes"], { type: "application/zip" }), {
+          new Response("zip-bytes", {
             status: 200,
-            headers: { "content-type": "application/zip" },
+            headers: new Headers({ "content-type": "application/zip" }),
           }),
       );
       vi.stubGlobal("fetch", fetchMock);
@@ -326,9 +333,16 @@ describe("PostalCampaignSection", () => {
       await waitFor(() => {
         expect(fetchMock).toHaveBeenCalled();
       });
-      await waitFor(() => {
-        expect(anchorClick).toHaveBeenCalledTimes(1);
-      });
+      // Defensive timeout — the async chain inside `fetchAndOpenPreview`
+      // takes a handful of microtask cycles (await fetch + await
+      // response.blob() + URL.createObjectURL + setState round-trip). On
+      // CI scheduling is slower than the 1000ms vitest default.
+      await waitFor(
+        () => {
+          expect(anchorClick).toHaveBeenCalledTimes(1);
+        },
+        { timeout: 5000 },
+      );
       expect(observedDownloadName).toBe("postal-preview.zip");
       expect(createObjectURL).toHaveBeenCalled();
 
