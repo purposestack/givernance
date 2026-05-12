@@ -896,6 +896,22 @@ export const donations = pgTable(
       { onDelete: "set null" },
     ),
     /**
+     * 1:1 backlink from a REVERSAL donation row to its original (Epic
+     * #318 PR #5 hardening — docs/25 §5.2, ADR-028 implementation notes).
+     * On `Ntry.RvslInd=true` from the bank, the reconciler INSERTs a new
+     * donation row with `amount_cents=-original.amount_cents`,
+     * `status='refunded'`, and this column set to the original's id —
+     * the original row is NEVER mutated, preserving the financial audit
+     * trail (Swiss CO Art. 958f). NULL on every non-reversal row
+     * (including the original being refunded). ON DELETE SET NULL so
+     * hard-deleting the original through the admin tool doesn't break
+     * the reversal's audit row. Column added by migration 0052.
+     */
+    reversesDonationId: uuid("reverses_donation_id").references(
+      (): AnyPgColumn => donations.id,
+      { onDelete: "set null" },
+    ),
+    /**
      * Origin rail discriminator (Epic #318). `stripe` (default, back-compat
      * with every existing row), `camt053` (Swiss bank-transfer rail), or
      * `manual` (operator-entered). Distinct from `paymentMethod` which is
@@ -954,6 +970,10 @@ export const donations = pgTable(
     // is the source of truth. Unconditional declaration here gives
     // type-side parity for the query builder.
     index("donations_refunded_at_idx").on(table.refundedAt),
+    // Partial index `WHERE reverses_donation_id IS NOT NULL` lives in the
+    // migration (Drizzle Kit can't model partial-predicate indexes); the
+    // unconditional one here gives type-side parity for the query builder.
+    index("donations_reverses_donation_id_idx").on(table.reversesDonationId),
     unique("donations_org_payment_uniq").on(table.orgId, table.paymentMethod, table.paymentRef),
   ],
 );

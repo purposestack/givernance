@@ -378,6 +378,18 @@ export const camtCreditEntries = pgTable(
      * Column added by migration 0051.
      */
     debtorAddress: jsonb("debtor_address"),
+    /**
+     * TRUE when the reconciled credit amount differs from the printed
+     * `swiss_qr_references.amount_cents` (and that printed amount was
+     * non-zero — donor-fills slips never set this). Set by the reconciler
+     * on the matched-reference branch; the corresponding
+     * `camt_unreconciled_entries(reason='partial_match', status='resolved')`
+     * row is the audit surface (operator review history) while this
+     * boolean stays a denormalised cache for the campaign QR-tracking
+     * widget's `partialMatchCount` metric (docs/25 §5.3). Column added
+     * by migration 0052 — see also `docs/25` §5.4 step 4.d.
+     */
+    partialMatch: boolean("partial_match").notNull().default(false),
     donationId: uuid("donation_id").references(() => donations.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
