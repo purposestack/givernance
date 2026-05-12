@@ -16,17 +16,18 @@
 4. [Constituants](#module-constituants)
 5. [Dons](#module-dons)
 6. [Campagnes](#module-campagnes)
-7. [Subventions](#module-subventions)
-8. [Programmes](#module-programmes)
-9. [Bénévoles](#module-benevoles)
-10. [Impact](#module-impact)
-11. [Communications](#module-communications)
-12. [Finance](#module-finance)
-13. [RGPD](#module-rgpd)
-14. [Migration](#module-migration)
-15. [Admin](#module-admin)
-16. [Rapports](#module-rapports)
-17. [Mode Conversationnel (Vision 2026-2028)](#module-conversationnel)
+7. [Swiss QR-bill](#module-swiss-qr-bill)
+8. [Subventions](#module-subventions)
+9. [Programmes](#module-programmes)
+10. [Bénévoles](#module-benevoles)
+11. [Impact](#module-impact)
+12. [Communications](#module-communications)
+13. [Finance](#module-finance)
+14. [RGPD](#module-rgpd)
+15. [Migration](#module-migration)
+16. [Admin](#module-admin)
+17. [Rapports](#module-rapports)
+18. [Mode Conversationnel (Vision 2026-2028)](#module-conversationnel)
 
 ---
 
@@ -752,6 +753,115 @@ flowchart TD
 | **Interactions IA** | Aucune dans Phase 1 — suggestions d'archétype basées sur la mission de l'org explicitement hors scope |
 | **Priorité** | MUST (archétype Foundation = par défaut, sans-régression) · SHOULD (les 9 autres archétypes derrière le flag) |
 | **Voir aussi** | [`docs/26-public-page-styles.md`](26-public-page-styles.md) · [ADR-030](adrs/adr-030-public-page-style-archetypes.md) · 10 maquettes HTML sous [`docs/design/donations/public-*.html`](design/donations/) |
+
+---
+
+## Module SWISS QR-BILL {#module-swiss-qr-bill}
+
+> **Architecture note (Epic [#318](https://github.com/purposestack/givernance/issues/318))**: Le module Swiss QR-bill ajoute au rail postal existant (`docs/23-postal-campaigns.md`) la capacité d'émettre des bulletins de versement suisses (BVR) personnalisés et de réconcilier les paiements via les relevés bancaires ISO 20022 camt.053. Spécification complète : [`docs/25-swiss-qr-bill.md`](./25-swiss-qr-bill.md). Les écrans SWISS-001..SWISS-002 livrés par PR #1-4 ; SWISS-003..SWISS-007 livrés par PR #5 (camt.053 ingestion + reconciliation).
+
+### SWISS-003 — Compte bancaire — Détail &amp; statements camt.053
+
+| Champ | Valeur |
+|---|---|
+| **ID** | SWISS-003 |
+| **Module** | Swiss QR-bill |
+| **Nom de l'écran** | Détail compte bancaire — statements camt.053 |
+| **URL pattern** | `/settings/bank-accounts/:id` |
+| **Description** | Page de détail d'un compte bancaire suisse. Section principale : zone d'upload camt.053 + table des relevés récents (filename, dates, status pill, taux de matching, actions). Carte de droite : santé de réconciliation 90 j (crédits matchés / non rapprochés / écrits-off) avec CTA vers la file unreconciled. |
+| **États** | Default (avec relevés), Empty (0 statements), Hover/upload zone, Failed (XSD invalid), Duplicate, Processing en vol |
+| **Actions principales** | 1. Uploader un camt.053 · 2. Ouvrir un relevé · 3. Télécharger XML original · 4. Ouvrir la file unreconciled filtrée · 5. Éditer le compte |
+| **Données affichées** | IBAN masqué (4 derniers chiffres), holder + adresse structurée, devise, BIC, mode QRR/SCOR. Relevés : filename, uploaded at, processed at, status pill, match rate, actions. Carte santé : statements 90 j, dernier import, crédits 90 j (total/matched/unreconciled/written off) |
+| **Rôles autorisés** | `org_admin` |
+| **Composants clés** | `UploadZone`, `DataTable`, `StatusPill`, `MatchRateBar`, `ReconciliationHealthCard`, `Button` |
+| **Interactions IA** | Aucune (futur — voir §5.6 docs/25 pour la couche IA de normalisation post-MVP) |
+| **Priorité** | MUST |
+| **API endpoints** | `POST /v1/bank-accounts/:id/statements`, `GET /v1/camt-statements`, `GET /v1/camt-statements/:id/download`, `GET /v1/bank-accounts/:id/reconciliation-health` |
+| **Maquette** | [`docs/design/settings/bank-account-detail.html`](./design/settings/bank-account-detail.html) |
+
+---
+
+### SWISS-004 — Relevé camt.053 — Détail
+
+| Champ | Valeur |
+|---|---|
+| **ID** | SWISS-004 |
+| **Module** | Swiss QR-bill |
+| **Nom de l'écran** | Détail d'un relevé camt.053 |
+| **URL pattern** | `/settings/bank-accounts/:id/statements/:statementId` |
+| **Description** | Décomposition complète d'un fichier camt.053 importé. En-tête : MsgId, période, status, uploader. KPI strip : nb entrées, matchées, non rapprochées, reversals. Table des entrées créditrices (CdtDbtInd=CRDT, Sts=BOOK) avec montant, débiteur, IBAN masqué, référence, donation matchée. Variantes échec : XSD invalid (diagnostic libxmljs2) et IBAN étranger (redirection vers le compte correspondant). |
+| **États** | Processed (happy), Processing, Failed (XSD), Failed (foreign IBAN), Duplicate (re-import) |
+| **Actions principales** | 1. Télécharger XML original · 2. Relancer le reconciler · 3. Ouvrir la donation matchée · 4. Résoudre une entrée non rapprochée · 5. (Échec) Switch vers le bon compte · 6. (Échec) Move to rejected archive |
+| **Données affichées** | GrpHdr.MsgId, Acct.Id.IBAN (masqué), période, taille fichier, schéma XSD, retention 10 ans. Par entrée : montant, devise, value date, débiteur (PII visible org_admin), IBAN débiteur (last 4), référence raw (QRR/SCOR), match status |
+| **Rôles autorisés** | `org_admin` |
+| **Composants clés** | `KvGrid`, `KpiStrip`, `FilterChips`, `DataTable`, `Badge`, `Alert` (failure variants), `DownloadButton` |
+| **Interactions IA** | Aucune (post-MVP — normalisation cross-bank des Dbtr.Nm / PstlAdr) |
+| **Priorité** | MUST |
+| **API endpoints** | `GET /v1/camt-statements/:id`, `GET /v1/camt-statements/:id/download`, `POST /v1/camt-unreconciled/:id/resolve` |
+| **Maquette** | [`docs/design/settings/bank-statement-detail.html`](./design/settings/bank-statement-detail.html) |
+
+---
+
+### SWISS-005 — File des crédits non rapprochés
+
+| Champ | Valeur |
+|---|---|
+| **ID** | SWISS-005 |
+| **Module** | Swiss QR-bill |
+| **Nom de l'écran** | File des crédits non rapprochés (cross-bank-account) |
+| **URL pattern** | `/settings/bank-accounts/unreconciled` |
+| **Description** | Vue transverse de toutes les entrées camt.053 que le reconciler n'a pas pu matcher automatiquement. Filtres : compte bancaire, raison (`invalid_ref` / `no_match` / `no_debtor_info` / `orphan_reversal`), status (`pending` / `resolved` / `written_off`), date. Drawer de résolution par ligne avec 3 modes : link to existing donation, create constituent + donation (pré-rempli depuis RltdPties.Dbtr §5.5), write off. Actions bulk : sélection multiple + bulk write-off gated par chip de raison active. |
+| **États** | Default (liste), Empty (clean queue), Drawer open (3 modes), Bulk selection active |
+| **Actions principales** | 1. Filtrer · 2. Ouvrir drawer Resolve · 3. Link to existing donation · 4. Create constituent + donation · 5. Write off avec note · 6. Bulk write-off |
+| **Données affichées** | Par ligne : amount, currency, value date, débiteur (PII visible org_admin/accountant), bank account, raw reference, raison (pill), status (badge). Drawer : entry summary, radio resolution, formulaire pré-rempli (firstName/lastName/address/postalCode/city/paymentSourceIban) avec flags `dataSource='camt053'` + `identityCompleteness` (full/partial/minimal) |
+| **Rôles autorisés** | `org_admin`, `finance_officer` (via `requireWrite`) |
+| **Composants clés** | `FilterBar`, `ReasonChips`, `BulkActionBar`, `DataTable`, `Drawer`, `RadioGroup`, `Autocomplete` (existing donations), `Form` (pre-filled), `Badge` |
+| **Interactions IA** | Aucune (post-MVP — confidence-scored normalisation des Dbtr blocks pour faciliter la résolution) |
+| **Priorité** | MUST |
+| **API endpoints** | `GET /v1/camt-unreconciled`, `POST /v1/camt-unreconciled/:id/resolve`, `POST /v1/camt-unreconciled/bulk-write-off` (planned) |
+| **Maquette** | [`docs/design/settings/camt-unreconciled-queue.html`](./design/settings/camt-unreconciled-queue.html) |
+
+---
+
+### SWISS-006 — Flux upload camt.053 — Micro-états
+
+| Champ | Valeur |
+|---|---|
+| **ID** | SWISS-006 |
+| **Module** | Swiss QR-bill |
+| **Nom de l'écran** | Flux upload camt.053 (spec micro-états) |
+| **URL pattern** | (composant — affordance dans SWISS-003) |
+| **Description** | Spécification visuelle des 5 micro-états du composant d'upload camt.053 : idle, dragging (drag-enter), uploading (multipart avec progress + cancel), processing (status pill polled toutes les 2 s : pending → imported → processing → processed), result (4 variantes terminales : success avec compteurs et CTA queue, XSD invalid, foreign IBAN, duplicate). Page de référence pour les développeurs frontend. |
+| **États** | 1. Idle · 2. Dragging · 3. Uploading (progress + cancel) · 4. Processing (polled) · 5. Result · 4 variantes terminales (success, XSD invalid, foreign IBAN, duplicate) |
+| **Actions principales** | 1. Drop fichier · 2. Click pour browser · 3. Annuler upload · 4. (Succès) Review unreconciled queue · 5. (Échec) Download / switch / archive |
+| **Données affichées** | Filename + size, progress %, statement_id, status transitions horodatées, counters (statements / matched / unreconciled / failed), error message (XSD diagnostic), IBAN suggéré (foreign IBAN), date original import (duplicate) |
+| **Rôles autorisés** | `org_admin` |
+| **Composants clés** | `UploadZone` (idle / dragging), `UploadProgress` (file row + progress bar), `StatusStepRow` (pill transitions), `ResultPanel` (4 variantes), `aria-live` polite pour les transitions |
+| **Interactions IA** | Aucune |
+| **Priorité** | MUST |
+| **API endpoints** | `POST /v1/bank-accounts/:id/statements`, `GET /v1/camt-statements/:id` (polled toutes les 2 s, max 5 min) |
+| **Maquette** | [`docs/design/settings/camt053-upload-flow.html`](./design/settings/camt053-upload-flow.html) |
+
+---
+
+### SWISS-007 — Suivi campagne — Rail suisse (variantes)
+
+| Champ | Valeur |
+|---|---|
+| **ID** | SWISS-007 |
+| **Module** | Swiss QR-bill |
+| **Nom de l'écran** | Suivi campagne postale — rail suisse (3 variantes) |
+| **URL pattern** | `/campaigns/:id` (widget intégré) |
+| **Description** | Extension du widget de suivi de campagne postale existant (`qr-tracking-card.tsx`) pour ajouter la dimension paiement Swiss QR-bill. L'entonnoir `printed → scanned → paid` est préservé, le rail "paid" se décompose en branches Stripe + Swiss + remarketing. Le composant rend 3 variantes selon le mode de la campagne : (a) Mixed = Stripe + Swiss tous deux actifs, (b) Pure-Swiss = Stripe rail collapsed, (c) Door-drop = scan stage omitted (pas de signal scan, juste distinct donors paid via camt). Métriques mode-aware retournent `null` pour les colonnes non applicables (jamais "0" — désambiguation cruciale). |
+| **États** | Variante (a) Mixed · Variante (b) Pure-Swiss · Variante (c) Door-drop · loading · refresh |
+| **Actions principales** | 1. Voir détail campagne · 2. Ouvrir file unreconciled filtrée par campagne · 3. Voir dernier relevé bancaire · 4. Relancer le segment "scanned but not paid" (remarketing) |
+| **Données affichées** | `totalLetters`, `scannedLetters` (mode-dependent), `qrAttributedDonations` + amount (Stripe rail), `paidQrBills` + amount (Swiss rail), `pendingQrBills` (Mixed/Pure-Swiss only), `scannedNotPaidCount` (Mixed/Pure-Swiss only), `partialMatchCount`, `unreconciledCount`, `lastStatementImportedAt` |
+| **Rôles autorisés** | `org_admin`, `fundraiser`, `reporter` (lecture) |
+| **Composants clés** | `Funnel`, `FunnelBranch`, `VariantTag`, `MetricBlock`, `Link` (deep links vers queue / statement detail) |
+| **Interactions IA** | "21 donateurs ont scanné sans payer — préparer un email de relance ?" (cohort remarketing) |
+| **Priorité** | MUST |
+| **API endpoints** | `GET /v1/campaigns/:id/qr-stats` (endpoint existant — shape étendu, pas de nouveau endpoint) |
+| **Maquette** | [`docs/design/campaigns/postal/campaign-tracking-swiss-rail.html`](./design/campaigns/postal/campaign-tracking-swiss-rail.html) |
 
 ---
 
@@ -1693,6 +1803,11 @@ flowchart TD
 | CAMP-003 | Campagnes | Créer / modifier campagne | `/campaigns/new` | MUST |
 | CAMP-004 | Campagnes | Statistiques campagne | `/campaigns/:id/stats` | SHOULD |
 | CAMP-005 | Campagnes | Page don publique (10 archétypes) | `/p/:id` | MUST (Foundation) / SHOULD (9 autres) |
+| SWISS-003 | Swiss QR-bill | Compte bancaire — Détail &amp; camt.053 | `/settings/bank-accounts/:id` | MUST |
+| SWISS-004 | Swiss QR-bill | Relevé camt.053 — Détail | `/settings/bank-accounts/:id/statements/:statementId` | MUST |
+| SWISS-005 | Swiss QR-bill | File des crédits non rapprochés | `/settings/bank-accounts/unreconciled` | MUST |
+| SWISS-006 | Swiss QR-bill | Flux upload camt.053 — Micro-états | (composant SWISS-003) | MUST |
+| SWISS-007 | Swiss QR-bill | Suivi campagne — Rail suisse (3 variantes) | `/campaigns/:id` (widget) | MUST |
 | GRANT-001 | Subventions | Pipeline Kanban | `/grants` | MUST |
 | GRANT-002 | Subventions | Détail subvention | `/grants/:id` | MUST |
 | GRANT-003 | Subventions | Formulaire subvention | `/grants/new` | MUST |
