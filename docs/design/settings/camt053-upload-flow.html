@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Givernance — Settings — camt.053 upload flow micro-states</title>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/base.css">
+  <style>
+    /* ── Settings → camt.053 upload micro-state journey (Epic #318 PR #5) ── */
+    body { background: var(--color-background); }
+    .layout { display: grid; grid-template-columns: 280px 1fr; max-width: 1600px; margin: 0 auto; gap: var(--space-8); padding: var(--space-6) var(--space-6); }
+
+    /* Annotations rail */
+    .annotations { position: sticky; top: var(--space-6); align-self: flex-start; max-height: calc(100vh - 48px); overflow-y: auto; padding-right: var(--space-3); }
+    .annotations h2 { font-family: var(--font-heading); font-size: var(--text-xl); color: var(--color-text); margin-bottom: var(--space-2); }
+    .annotations .lead { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: var(--leading-relaxed); margin-bottom: var(--space-5); }
+    .anno { margin-bottom: var(--space-5); padding-left: var(--space-3); border-left: 2px solid var(--color-primary); }
+    .anno h3 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); font-weight: var(--weight-semi); color: var(--color-text); margin-bottom: 4px; }
+    .anno p { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: var(--leading-relaxed); }
+    .anno code { font-family: var(--font-mono); font-size: 11px; background: var(--color-surface-container); padding: 1px 4px; border-radius: 3px; color: var(--color-text); }
+    .anno.warn { border-left-color: var(--color-tertiary-container); }
+    .anno.gdpr { border-left-color: var(--color-indigo); }
+
+    /* Page */
+    .page { min-width: 0; }
+    .breadcrumb { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2); }
+    .breadcrumb a { color: var(--color-primary); text-decoration: none; }
+    .page-header h1 { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); margin: var(--space-1) 0; }
+    .page-header .sub { color: var(--color-text-secondary); font-size: var(--text-sm); max-width: 75ch; margin-bottom: var(--space-6); }
+
+    /* Step header */
+    .step-block { margin-bottom: var(--space-8); }
+    .step-header { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border); }
+    .step-pill { background: var(--color-primary); color: var(--color-on-primary); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--weight-semi); padding: 3px 10px; border-radius: var(--radius-pill); }
+    .step-header h2 { font-family: var(--font-heading); font-size: var(--text-xl); color: var(--color-text); margin: 0; }
+    .step-header .desc { font-size: var(--text-xs); color: var(--color-text-secondary); margin-left: auto; }
+
+    /* Shared upload zone */
+    .zone { background: var(--color-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-5); }
+    .upload-zone { border: 1.5px dashed var(--color-border); border-radius: var(--radius-md); padding: var(--space-8) var(--space-6); text-align: center; background: var(--color-surface-container-low); transition: all 150ms ease; }
+    .upload-zone.dragging { border-color: var(--color-primary); border-style: solid; background: var(--color-primary-50); box-shadow: 0 0 0 3px rgba(9, 100, 71, 0.12); }
+    .upload-zone .icon { font-size: 36px; color: var(--color-text-muted); margin-bottom: var(--space-2); }
+    .upload-zone.dragging .icon { color: var(--color-primary); }
+    .upload-zone .lead { font-size: var(--text-sm); color: var(--color-text); font-weight: var(--weight-medium); }
+    .upload-zone .hint { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 4px; }
+    .upload-zone .btn-inline { display: inline-block; margin-top: var(--space-3); background: var(--color-primary); color: var(--color-on-primary); border: none; padding: 8px var(--space-4); border-radius: var(--radius-button); font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer; }
+
+    /* Uploading state */
+    .upload-progress { padding: var(--space-5); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-container-low); }
+    .upload-progress .file-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+    .upload-progress .file-icon { width: 36px; height: 36px; border-radius: var(--radius-sm); background: var(--color-primary-50); display: flex; align-items: center; justify-content: center; color: var(--color-primary); flex-shrink: 0; }
+    .upload-progress .file-meta { flex: 1; min-width: 0; }
+    .upload-progress .file-name { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text); }
+    .upload-progress .file-size { font-size: 11px; color: var(--color-text-muted); }
+    .upload-progress .file-pct { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-primary); font-weight: var(--weight-semi); }
+    .upload-progress .progress-track { width: 100%; height: 6px; background: var(--color-surface-container); border-radius: 3px; overflow: hidden; }
+    .upload-progress .progress-bar { height: 100%; background: var(--color-primary); border-radius: 3px; transition: width 150ms ease; }
+    .upload-progress .progress-note { display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-2); font-size: 11px; color: var(--color-text-muted); }
+    .upload-progress .cancel-btn { background: transparent; border: none; color: var(--color-on-error-container); font-size: 11px; cursor: pointer; text-decoration: underline; }
+
+    /* Status pill row (processing) */
+    .status-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background: var(--color-surface-container-low); border-radius: var(--radius-md); font-size: var(--text-xs); }
+    .status-step { display: inline-flex; align-items: center; gap: 4px; padding: 3px var(--space-2); border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-white); color: var(--color-text-secondary); font-weight: var(--weight-medium); font-family: var(--font-mono); }
+    .status-step.done { background: var(--color-green-light); color: var(--color-green-text); border-color: var(--color-green-border); }
+    .status-step.active { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); animation: pulse 1.5s ease-in-out infinite; }
+    .status-step.pending { background: var(--color-white); color: var(--color-text-muted); }
+    .status-step .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; background: currentColor; }
+    .status-row .arrow { color: var(--color-text-muted); font-family: var(--font-mono); }
+    .poll-note { margin-left: auto; font-size: 11px; color: var(--color-text-muted); font-family: var(--font-mono); }
+    @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(9, 100, 71, 0.4); } 50% { box-shadow: 0 0 0 6px rgba(9, 100, 71, 0); } }
+
+    /* Result panels */
+    .result { padding: var(--space-5); border-radius: var(--radius-md); border-left: 3px solid; display: flex; gap: var(--space-3); align-items: flex-start; }
+    .result.success { background: var(--color-green-50); border-left-color: var(--color-green-text); }
+    .result.error { background: var(--color-error-container); border-left-color: var(--color-error); }
+    .result.warn { background: #FFFBEB; border-left-color: var(--color-amber); }
+    .result .icon { font-size: 24px; flex-shrink: 0; }
+    .result h3 { font-size: var(--text-base); font-weight: var(--weight-semi); margin-bottom: 4px; }
+    .result.success h3 { color: var(--color-green-text); }
+    .result.error h3 { color: var(--color-on-error-container); }
+    .result.warn h3 { color: var(--color-amber-dark); }
+    .result p { font-size: var(--text-xs); line-height: var(--leading-relaxed); margin-bottom: var(--space-2); }
+    .result.success p { color: var(--color-green-text); }
+    .result.error p { color: var(--color-on-error-container); }
+    .result.warn p { color: var(--color-amber-text); }
+    .result code { font-family: var(--font-mono); font-size: 11px; background: rgba(255,255,255,0.55); padding: 1px 4px; border-radius: 3px; }
+    .result-cta { display: inline-flex; gap: var(--space-2); margin-top: var(--space-2); }
+    .result-cta button { padding: 6px 12px; font-size: var(--text-xs); font-weight: var(--weight-medium); border-radius: var(--radius-sm); cursor: pointer; }
+    .result-cta button.primary { background: var(--color-primary); color: var(--color-on-primary); border: none; }
+    .result.success .result-cta button.primary { background: var(--color-green-text); }
+    .result.error .result-cta button.primary { background: var(--color-on-error-container); color: var(--color-error-container); }
+    .result.warn .result-cta button.primary { background: var(--color-amber-dark); color: var(--color-amber-light); }
+    .result-cta button.secondary { background: var(--color-white); color: var(--color-text); border: 1px solid var(--color-border); }
+
+    /* Counters grid (in success result) */
+    .counters { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-green-border); }
+    .counter { font-size: 11px; color: var(--color-green-text); }
+    .counter .value { font-family: var(--font-mono); font-size: var(--text-2xl); font-weight: var(--weight-semi); color: var(--color-green-text); display: block; line-height: 1; margin-bottom: 2px; }
+    .counter.muted .value { color: var(--color-text-muted); }
+    .counter.warn .value { color: var(--color-amber-text); }
+    .counter.error .value { color: var(--color-on-error-container); }
+
+    /* Variant result label */
+    .result-variant-label { font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); font-weight: var(--weight-semi); margin-bottom: var(--space-2); margin-top: var(--space-4); }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .annotations { position: static; max-height: none; }
+      .counters { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ============================================================
+         Annotations rail (left)
+         ============================================================ -->
+    <aside class="annotations" aria-label="Mockup annotations">
+      <h2>Upload micro-state journey</h2>
+      <p class="lead">All five steps of the camt.053 upload lifecycle, plus four terminal result variants. Every state is rendered on this page so the developer can implement them without guessing transitions.</p>
+
+      <div class="anno">
+        <h3>Five states (§5.1)</h3>
+        <p>1. <strong>Idle</strong> — empty zone, awaiting drop or click<br>
+        2. <strong>Dragging</strong> — visual reinforcement on drag-enter<br>
+        3. <strong>Uploading</strong> — multipart in flight, cancel-able<br>
+        4. <strong>Processing</strong> — server-side: pending → imported → processing → processed (polled every 2 s)<br>
+        5. <strong>Result</strong> — four terminal variants below</p>
+      </div>
+
+      <div class="anno">
+        <h3>Polling cadence</h3>
+        <p>After upload completes, the UI polls <code>GET /v1/camt-statements/:id</code> every 2 s for up to 5 minutes. The status pill animates from <code>pending</code> → <code>imported</code> → <code>processing</code> → <code>processed</code>; on <code>failed</code> the result panel renders the error variant.</p>
+      </div>
+
+      <div class="anno warn">
+        <h3>Result variants</h3>
+        <p>✓ <strong>Success</strong> — counters + CTA to review queue<br>
+        ✗ <strong>XSD invalid</strong> — file isn't ISO 20022 camt.053<br>
+        ✗ <strong>Foreign IBAN</strong> — file is for a different tenant bank account; offer to switch tab<br>
+        ⚠ <strong>Duplicate</strong> — same <code>GrpHdr.MsgId</code> already imported, idempotency short-circuit</p>
+      </div>
+
+      <div class="anno">
+        <h3>API endpoints touched</h3>
+        <p>Upload: <code>POST /v1/bank-accounts/:id/statements</code> (multipart, ≤ 50 MB)<br>
+        Poll: <code>GET /v1/camt-statements/:id</code><br>
+        Both <code>requireOrgAdmin</code>.</p>
+      </div>
+
+      <div class="anno gdpr">
+        <h3>GDPR posture</h3>
+        <p>Raw XML PUT into the <code>bank-statements</code> private bucket at <code>{org_id}/camt053/{yyyy}/{mm}/{filename}</code> before any processing — even rejected files land at <code>…/rejected/…</code> for 10-yr audit. Operator's name + timestamp captured in <code>audit_logs</code> per §7.bis.</p>
+      </div>
+
+      <div class="anno">
+        <h3>Accessibility</h3>
+        <p>Drop zone is a button (<code>role="button"</code>, <code>aria-label</code>); click + Enter both trigger the file picker. Status pill row uses <code>aria-live="polite"</code> so a screen reader announces each transition. Cancel button keyboard-reachable during upload.</p>
+      </div>
+    </aside>
+
+    <!-- ============================================================
+         Main page
+         ============================================================ -->
+    <main class="page">
+      <div class="breadcrumb"><a href="#">Dashboard</a> / <a href="#">Settings</a> / <a href="bank-accounts-list.html">Bank accounts</a> / <a href="bank-account-detail.html">PostFinance · CH•••8901·2</a> / Upload flow (micro-state spec)</div>
+      <div class="page-header">
+        <h1>camt.053 upload flow · micro-states</h1>
+        <p class="sub">Every state the upload affordance can be in, side-by-side with the API call that produced it and the next transition that takes the operator to the next state.</p>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Step 1 — Idle
+           ────────────────────────────────────────────────────────── -->
+      <div class="step-block">
+        <div class="step-header">
+          <span class="step-pill">1 · Idle</span>
+          <h2>Empty upload zone</h2>
+          <span class="desc">no file selected · waiting for drop or click</span>
+        </div>
+        <div class="zone">
+          <div class="upload-zone" role="button" tabindex="0" aria-label="Upload camt.053 XML statement">
+            <div class="icon">⬆</div>
+            <div class="lead">Drop a camt.053 XML file here, or click to browse</div>
+            <div class="hint">.xml only · 50 MB max · ISO 20022 camt.053.001.08</div>
+            <button class="btn-inline" type="button">Choose file</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Step 2 — Dragging
+           ────────────────────────────────────────────────────────── -->
+      <div class="step-block">
+        <div class="step-header">
+          <span class="step-pill">2 · Dragging</span>
+          <h2>Drag-enter hover</h2>
+          <span class="desc">file dragged over zone · visual + color shift confirms drop target</span>
+        </div>
+        <div class="zone">
+          <div class="upload-zone dragging" role="button" tabindex="0" aria-label="Upload camt.053 XML statement">
+            <div class="icon">📥</div>
+            <div class="lead" style="color: var(--color-primary);">Drop your camt.053 XML here</div>
+            <div class="hint">Release to upload to PostFinance · CH•••8901·2</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Step 3 — Uploading
+           ────────────────────────────────────────────────────────── -->
+      <div class="step-block">
+        <div class="step-header">
+          <span class="step-pill">3 · Uploading</span>
+          <h2>Multipart in flight</h2>
+          <span class="desc">POST /v1/bank-accounts/:id/statements · progress bar · cancel-able</span>
+        </div>
+        <div class="zone">
+          <div class="upload-progress">
+            <div class="file-row">
+              <div class="file-icon">XML</div>
+              <div class="file-meta">
+                <div class="file-name">camt053_20260506_001.xml</div>
+                <div class="file-size">42.3 KB · uploading to bank-statements bucket</div>
+              </div>
+              <div class="file-pct">68%</div>
+            </div>
+            <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="68" aria-label="Upload progress">
+              <div class="progress-bar" style="width: 68%;"></div>
+            </div>
+            <div class="progress-note">
+              <span>~ 0.4 s remaining</span>
+              <button class="cancel-btn">Cancel upload</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Step 4 — Processing (polled status)
+           ────────────────────────────────────────────────────────── -->
+      <div class="step-block">
+        <div class="step-header">
+          <span class="step-pill">4 · Processing</span>
+          <h2>Server-side state machine</h2>
+          <span class="desc">polled every 2 s · pending → imported → processing → processed</span>
+        </div>
+        <div class="zone">
+          <div class="upload-progress" style="margin-bottom: var(--space-4);">
+            <div class="file-row">
+              <div class="file-icon" style="background: var(--color-green-light); color: var(--color-green-text);">✓</div>
+              <div class="file-meta">
+                <div class="file-name">camt053_20260506_001.xml</div>
+                <div class="file-size">42.3 KB · uploaded · statement_id <code style="font-family:var(--font-mono);font-size:11px;background:var(--color-surface-container);padding:0 4px;border-radius:2px;">st_01J9A…</code></div>
+              </div>
+              <div class="file-pct" style="color: var(--color-green-text);">✓ 100%</div>
+            </div>
+          </div>
+
+          <!-- Status transition row -->
+          <div class="result-variant-label">Polling transition · t = 0 s (just uploaded)</div>
+          <div class="status-row" aria-live="polite">
+            <span class="status-step active"><span class="dot"></span> pending</span>
+            <span class="arrow">→</span>
+            <span class="status-step pending">imported</span>
+            <span class="arrow">→</span>
+            <span class="status-step pending">processing</span>
+            <span class="arrow">→</span>
+            <span class="status-step pending">processed</span>
+            <span class="poll-note">polled every 2 s · max 5 min</span>
+          </div>
+
+          <div class="result-variant-label">Polling transition · t = 4 s (worker picked it up)</div>
+          <div class="status-row" aria-live="polite">
+            <span class="status-step done"><span class="dot"></span> pending</span>
+            <span class="arrow">→</span>
+            <span class="status-step done"><span class="dot"></span> imported</span>
+            <span class="arrow">→</span>
+            <span class="status-step active"><span class="dot"></span> processing</span>
+            <span class="arrow">→</span>
+            <span class="status-step pending">processed</span>
+            <span class="poll-note">XSD-valid · 14 entries · reconciler running</span>
+          </div>
+
+          <div class="result-variant-label">Polling transition · t = 8 s (terminal)</div>
+          <div class="status-row" aria-live="polite">
+            <span class="status-step done"><span class="dot"></span> pending</span>
+            <span class="arrow">→</span>
+            <span class="status-step done"><span class="dot"></span> imported</span>
+            <span class="arrow">→</span>
+            <span class="status-step done"><span class="dot"></span> processing</span>
+            <span class="arrow">→</span>
+            <span class="status-step done"><span class="dot"></span> processed</span>
+            <span class="poll-note">polling stopped</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Step 5 — Result variants
+           ────────────────────────────────────────────────────────── -->
+      <div class="step-block">
+        <div class="step-header">
+          <span class="step-pill">5 · Result</span>
+          <h2>Terminal variants</h2>
+          <span class="desc">four mutually-exclusive outcomes · each surfaces a different next action</span>
+        </div>
+        <div class="zone">
+
+          <!-- 5a Success -->
+          <div class="result-variant-label">5a · Success — happy path</div>
+          <div class="result success" role="status">
+            <span class="icon">✓</span>
+            <div style="flex: 1;">
+              <h3>3 statements imported · 11 credits matched · 2 unreconciled</h3>
+              <p>14 credit entries booked · 11 matched cleanly to open Swiss QR-bill references and created <code>donations.payment_source = camt053</code> rows · 2 flagged for operator review · 0 failed XSD validation.</p>
+              <div class="counters">
+                <div class="counter">
+                  <span class="value">3</span>
+                  Statements imported
+                </div>
+                <div class="counter">
+                  <span class="value">11</span>
+                  Credits matched
+                </div>
+                <div class="counter warn">
+                  <span class="value">2</span>
+                  Unreconciled
+                </div>
+                <div class="counter muted">
+                  <span class="value">0</span>
+                  Failed
+                </div>
+              </div>
+              <div class="result-cta">
+                <button class="primary">Review unreconciled queue →</button>
+                <button class="secondary">View statement detail</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5b XSD invalid -->
+          <div class="result-variant-label">5b · Failure — XSD validation failed</div>
+          <div class="result error" role="alert">
+            <span class="icon">✗</span>
+            <div style="flex: 1;">
+              <h3>This file isn't a valid ISO 20022 camt.053 statement</h3>
+              <p>Givernance validates every uploaded statement against the official <code>camt.053.001.08.xsd</code> before reading entries. This file failed schema validation, so no donations were created. The raw XML is preserved in the rejected-archive prefix (<code>{org_id}/camt053/rejected/2026/05/…</code>) for 10 years.</p>
+              <div class="result-cta">
+                <button class="primary">↓ Download original to inspect</button>
+                <button class="secondary">View XSD diagnostic</button>
+                <button class="secondary">Contact support</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5c Foreign IBAN -->
+          <div class="result-variant-label">5c · Failure — foreign IBAN (file is for a different tenant bank account)</div>
+          <div class="result error" role="alert">
+            <span class="icon">🚫</span>
+            <div style="flex: 1;">
+              <h3>This file isn't for this bank account</h3>
+              <p>The file's <code>Acct.Id.IBAN</code> is <code>CH•••5295·7</code> — not <code>CH•••8901·2</code> (this tab). The good news: <code>CH•••5295·7</code> <em>is</em> one of your registered tenant accounts (UBS Switzerland AG). Switch to that tab to retry, or move this file to the rejected archive if it was uploaded by mistake.</p>
+              <div class="result-cta">
+                <button class="primary">Switch to UBS · CH•••5295·7</button>
+                <button class="secondary">↓ Download original</button>
+                <button class="secondary">Move to rejected archive</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5d Duplicate -->
+          <div class="result-variant-label">5d · Idempotency short-circuit — duplicate</div>
+          <div class="result warn" role="status">
+            <span class="icon">⚠</span>
+            <div style="flex: 1;">
+              <h3>This statement was already imported on 2026-04-15 — no new entries created</h3>
+              <p>The file's <code>GrpHdr.MsgId</code> (<code>2026041509000088-PF-CHF</code>) matched an existing row in <code>camt_statements</code>. Per the statement-level idempotency rule (§5.4 step 2 · <code>camt_statements_org_msg_id_uniq</code>), Givernance short-circuited the import and did not re-enqueue the reconciler. No donations were created. No constituents were enriched. The original upload is untouched.</p>
+              <div class="result-cta">
+                <button class="primary">View original import →</button>
+                <button class="secondary">↓ Download this file</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+  </div>
+</body>
+</html>

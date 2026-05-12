@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Givernance — Campaign tracking · Swiss rail variants</title>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../shared/tokens.css">
+  <link rel="stylesheet" href="../../shared/base.css">
+  <style>
+    /* ── Campaigns → Tracking widget · Swiss rail variants (Epic #318 PR #5) ── */
+    body { background: var(--color-background); }
+    .layout { display: grid; grid-template-columns: 280px 1fr; max-width: 1600px; margin: 0 auto; gap: var(--space-8); padding: var(--space-6) var(--space-6); }
+
+    /* Annotations rail */
+    .annotations { position: sticky; top: var(--space-6); align-self: flex-start; max-height: calc(100vh - 48px); overflow-y: auto; padding-right: var(--space-3); }
+    .annotations h2 { font-family: var(--font-heading); font-size: var(--text-xl); color: var(--color-text); margin-bottom: var(--space-2); }
+    .annotations .lead { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: var(--leading-relaxed); margin-bottom: var(--space-5); }
+    .anno { margin-bottom: var(--space-5); padding-left: var(--space-3); border-left: 2px solid var(--color-primary); }
+    .anno h3 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); font-weight: var(--weight-semi); color: var(--color-text); margin-bottom: 4px; }
+    .anno p { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: var(--leading-relaxed); }
+    .anno code { font-family: var(--font-mono); font-size: 11px; background: var(--color-surface-container); padding: 1px 4px; border-radius: 3px; color: var(--color-text); }
+    .anno.warn { border-left-color: var(--color-tertiary-container); }
+
+    /* Page */
+    .page { min-width: 0; }
+    .breadcrumb { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2); }
+    .breadcrumb a { color: var(--color-primary); text-decoration: none; }
+    .page-header h1 { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); margin: var(--space-1) 0; }
+    .page-header .sub { color: var(--color-text-secondary); font-size: var(--text-sm); max-width: 75ch; margin-bottom: var(--space-6); }
+
+    /* Variants row */
+    .variants { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-5); }
+    .variants .full { grid-column: 1 / -1; }
+
+    /* Tracking card */
+    .tracking-card { background: var(--color-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-5) var(--space-5) var(--space-6); position: relative; }
+    .tracking-card .variant-tag { position: absolute; top: var(--space-4); right: var(--space-4); padding: 2px var(--space-2); border-radius: var(--radius-pill); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); font-weight: var(--weight-semi); }
+    .tracking-card .variant-tag.mixed { background: var(--color-primary-50); color: var(--color-primary); }
+    .tracking-card .variant-tag.swiss { background: #DCFCE7; color: #166534; }
+    .tracking-card .variant-tag.door-drop { background: var(--color-indigo-light); color: var(--color-indigo-text); }
+
+    .tc-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2); padding-right: 90px; }
+    .tc-header h2 { font-family: var(--font-heading); font-size: var(--text-xl); color: var(--color-text); margin: 0; }
+    .tc-header .meta { font-size: 11px; color: var(--color-text-muted); font-family: var(--font-mono); }
+    .tc-sub { font-size: var(--text-xs); color: var(--color-text-secondary); margin-bottom: var(--space-5); }
+
+    /* Funnel */
+    .funnel { display: flex; flex-direction: column; gap: 0; }
+    .funnel-row { display: grid; grid-template-columns: 80px 1fr; gap: var(--space-3); align-items: center; padding: var(--space-3) 0; border-bottom: 1px dashed var(--color-border); }
+    .funnel-row:last-of-type { border-bottom: 0; }
+    .funnel-row .num { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); line-height: 1; text-align: right; padding-right: var(--space-2); }
+    .funnel-row .label { font-size: var(--text-sm); color: var(--color-text); font-weight: var(--weight-medium); }
+    .funnel-row .label .sub { display: block; font-size: 11px; color: var(--color-text-muted); margin-top: 2px; font-weight: var(--weight-regular); }
+    .funnel-row .label .pct { color: var(--color-primary); font-family: var(--font-mono); font-weight: var(--weight-semi); }
+
+    /* Branched (indented) sub-rows */
+    .branch { display: grid; grid-template-columns: 80px 24px 1fr; gap: var(--space-2); align-items: center; padding: 6px 0; }
+    .branch .num { font-family: var(--font-mono); font-size: var(--text-base); color: var(--color-text); text-align: right; padding-right: var(--space-2); }
+    .branch .connector { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-lg); text-align: center; }
+    .branch .label { font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .branch .label .amount { color: var(--color-text); font-family: var(--font-mono); font-weight: var(--weight-medium); }
+    .branch .label .tag { display: inline-block; padding: 1px 6px; border-radius: var(--radius-pill); font-size: 10px; font-weight: var(--weight-semi); margin-left: 4px; }
+    .branch .label .tag.stripe { background: var(--color-indigo-light); color: var(--color-indigo-text); }
+    .branch .label .tag.swiss { background: #DCFCE7; color: #166534; }
+    .branch .label .tag.remarket { background: var(--color-amber-light); color: var(--color-amber-text); }
+
+    /* Footer block — pending + last import */
+    .tc-footer { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-border); display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+    .tc-footer .meta-block { font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .tc-footer .meta-block .v { display: block; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text); margin-top: 2px; }
+    .tc-footer .meta-block.unrec .v { color: var(--color-amber-text); font-weight: var(--weight-semi); }
+    .tc-footer .meta-block.unrec a { color: var(--color-amber-text); text-decoration: none; }
+    .tc-footer .meta-block.unrec a:hover { text-decoration: underline; }
+
+    /* Conditional rendering — hidden rows */
+    .row-disabled { display: none; }
+    .row-omitted { opacity: 0.42; position: relative; }
+    .row-omitted::after { content: 'omitted on door-drop'; position: absolute; top: 50%; right: 0; transform: translateY(-50%); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); background: var(--color-surface-container); padding: 2px 8px; border-radius: var(--radius-pill); }
+
+    /* Variant explainer */
+    .variant-explainer { background: var(--color-surface-container-low); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-top: var(--space-4); font-size: 11px; color: var(--color-text-secondary); line-height: var(--leading-relaxed); }
+    .variant-explainer strong { color: var(--color-text); }
+
+    /* Section title */
+    .section-title { margin-top: var(--space-8); margin-bottom: var(--space-3); }
+    .section-title h2 { font-family: var(--font-heading); font-size: var(--text-2xl); color: var(--color-text); }
+    .section-title p { font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 80ch; }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .annotations { position: static; max-height: none; }
+      .variants { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ============================================================
+         Annotations rail (left)
+         ============================================================ -->
+    <aside class="annotations" aria-label="Mockup annotations">
+      <h2>Campaign tracking — Swiss rail</h2>
+      <p class="lead">Extension of the existing <code>qr-tracking-card.tsx</code> for postal campaigns. The same component renders three variants based on the campaign's <code>postal_run_mode</code> and Stripe-connect status.</p>
+
+      <div class="anno">
+        <h3>Mode resolution (docs/25 §1.bis.0)</h3>
+        <p>Variant chosen at render-time from <code>getCampaignQrStats()</code> shape:<br>
+        – <strong>(a) Mixed</strong> — <code>stripeRailActive=true</code> AND <code>bankAccountId</code> set<br>
+        – <strong>(b) Pure-Swiss</strong> — <code>stripeRailActive=false</code> AND <code>bankAccountId</code> set<br>
+        – <strong>(c) Door-drop</strong> — <code>mode=door_drop</code>, scan stage <code>null</code></p>
+      </div>
+
+      <div class="anno">
+        <h3>Funnel anatomy (§5.3)</h3>
+        <p>Three-stage core: <code>printed → scanned → paid</code>. The paid stage branches into the two payment rails (Stripe + Swiss). The "scanned but not paid" cohort is the remarketing target — always shown when scan tracking exists.</p>
+      </div>
+
+      <div class="anno">
+        <h3>Door-drop omissions (§5.3 table)</h3>
+        <p>Mode-aware fields return <code>null</code> on door-drop because the signal doesn't exist: no per-letter QR, no scan, no Stripe pre-fill. The component must <em>visually</em> omit those rows (not render them faded) — operator must not misread an unfilled metric as "0 scans".</p>
+      </div>
+
+      <div class="anno">
+        <h3>API endpoints touched</h3>
+        <p><code>GET /v1/campaigns/:id/qr-stats</code> (no new endpoint — extends existing shape with <code>paidQrBills</code>, <code>paidQrBillAmountCents</code>, <code>pendingQrBills</code>, <code>partialMatchCount</code>, <code>unreconciledCount</code>, <code>lastStatementImportedAt</code>).</p>
+      </div>
+
+      <div class="anno warn">
+        <h3>Partial-match badge (§5.3)</h3>
+        <p><code>partialMatchCount</code> only counted when the printed QR-bill carried a non-zero amount and the donor adjusted it. Donor-fills (printed amount = blank) never produce a "partial" — they're always full-match.</p>
+      </div>
+
+      <div class="anno">
+        <h3>Unreconciled link</h3>
+        <p>Click-through opens <code>camt-unreconciled-queue.html</code> filtered to <code>campaign_id = $1</code>. Closes the loop between "I see 3 pending" and "let me act on them".</p>
+      </div>
+    </aside>
+
+    <!-- ============================================================
+         Main page
+         ============================================================ -->
+    <main class="page">
+      <div class="breadcrumb"><a href="#">Campaigns</a> / <a href="../detail.html">Hiver 2026</a> / Tracking widget · Swiss rail variants</div>
+      <div class="page-header">
+        <h1>Postal campaign tracking — three variants</h1>
+        <p class="sub">Same component, three render paths chosen at request time from the campaign's mode + bank-account binding. The funnel structure is preserved across all three — only the rows that have no underlying signal are omitted.</p>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Variant (a) Mixed — Stripe + Swiss QR-bill both active
+           ────────────────────────────────────────────────────────── -->
+      <div class="section-title">
+        <h2>(a) Mixed campaign · Stripe + Swiss QR-bill</h2>
+        <p>The most common case for an NPO with both a Stripe-Connect account and a Swiss bank account on file. Donors choose their rail: scan + pay online, or detach the QR-bill slip and pay by bank transfer.</p>
+      </div>
+
+      <section class="tracking-card full" style="margin-bottom: var(--space-6);">
+        <span class="variant-tag mixed">Mixed · Stripe + Swiss</span>
+        <div class="tc-header">
+          <h2>Hiver 2026 · Personalised mailing</h2>
+          <span class="meta">last refresh 12 s ago</span>
+        </div>
+        <p class="tc-sub">100 personalised letters · QRR refs minted per constituent · PostFinance CH•••8901·2 · Stripe Connect active.</p>
+
+        <div class="funnel">
+          <div class="funnel-row">
+            <span class="num">100</span>
+            <span class="label">Letters printed <span class="sub">= constituents on mailing list</span></span>
+          </div>
+          <div class="funnel-row">
+            <span class="num">38</span>
+            <span class="label">Letters scanned <span class="pct">(38%)</span> <span class="sub">campaign_qr_codes.scanned_at NOT NULL</span></span>
+          </div>
+          <div class="branch">
+            <span class="num">17</span>
+            <span class="connector">├─→</span>
+            <span class="label"><span class="amount">CHF 1 250</span> paid via Stripe <span class="tag stripe">Stripe rail</span></span>
+          </div>
+          <div class="branch">
+            <span class="num">42</span>
+            <span class="connector">├─→</span>
+            <span class="label"><span class="amount">CHF 3 200</span> paid via QR-bill <span class="tag swiss">camt.053 rail</span></span>
+          </div>
+          <div class="branch">
+            <span class="num">21</span>
+            <span class="connector">└─→</span>
+            <span class="label">scanned but not paid <span class="tag remarket">remarket</span></span>
+          </div>
+        </div>
+
+        <div class="tc-footer">
+          <div class="meta-block unrec">
+            <span>Pending camt review</span>
+            <span class="v"><a href="../../settings/camt-unreconciled-queue.html">3 unreconciled →</a></span>
+          </div>
+          <div class="meta-block">
+            <span>Last bank statement import</span>
+            <span class="v">2026-05-06 09:12</span>
+          </div>
+        </div>
+
+        <div class="variant-explainer">
+          <strong>What this tells the operator:</strong> printed 100 letters; 38 donors scanned the QR (engaged) but only 17 of them actually paid via Stripe. Meanwhile, 42 donors used the QR-bill rail — they may or may not have scanned. The intersection isn't 100-to-1 because some donors scanned <em>and</em> paid via QR-bill (counted once on each side; the headline metric is <code>scanned</code> ≠ <code>scanned and Stripe-paid</code>). The 21 "scanned not paid" are the highest-intent remarketing cohort.
+        </div>
+      </section>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Variant (b) Pure-Swiss — no Stripe rail
+           ────────────────────────────────────────────────────────── -->
+      <div class="section-title">
+        <h2>(b) Pure-Swiss campaign · QR-bill only</h2>
+        <p>The NPO has no Stripe Connect account (or chose not to enable it for this campaign). Funnel structure stays identical — the Stripe branch collapses, leaving QR-bill + remarketing intact.</p>
+      </div>
+
+      <section class="tracking-card full" style="margin-bottom: var(--space-6);">
+        <span class="variant-tag swiss">Pure-Swiss · QR-bill only</span>
+        <div class="tc-header">
+          <h2>Hiver 2026 · Personalised mailing (no Stripe)</h2>
+          <span class="meta">last refresh 18 s ago</span>
+        </div>
+        <p class="tc-sub">100 personalised letters · QRR refs minted per constituent · PostFinance CH•••8901·2 · no Stripe rail.</p>
+
+        <div class="funnel">
+          <div class="funnel-row">
+            <span class="num">100</span>
+            <span class="label">Letters printed <span class="sub">= constituents on mailing list</span></span>
+          </div>
+          <div class="funnel-row">
+            <span class="num">38</span>
+            <span class="label">Letters scanned <span class="pct">(38%)</span> <span class="sub">campaign_qr_codes.scanned_at NOT NULL — opens the donation page in read-only mode for QR-bill viewers</span></span>
+          </div>
+          <div class="branch">
+            <span class="num">42</span>
+            <span class="connector">├─→</span>
+            <span class="label"><span class="amount">CHF 3 200</span> paid via QR-bill <span class="tag swiss">camt.053 rail</span></span>
+          </div>
+          <div class="branch">
+            <span class="num">21</span>
+            <span class="connector">└─→</span>
+            <span class="label">scanned but not paid <span class="tag remarket">remarket</span></span>
+          </div>
+        </div>
+
+        <div class="tc-footer">
+          <div class="meta-block unrec">
+            <span>Pending camt review</span>
+            <span class="v"><a href="../../settings/camt-unreconciled-queue.html">1 unreconciled →</a></span>
+          </div>
+          <div class="meta-block">
+            <span>Last bank statement import</span>
+            <span class="v">2026-05-06 09:12</span>
+          </div>
+        </div>
+
+        <div class="variant-explainer">
+          <strong>What this tells the operator:</strong> same campaign without Stripe wired up. The "paid via Stripe" row is gone; the funnel reads cleanly as printed → scanned → paid (QR-bill) → remarketing. Note: the 42-paid count can exceed the 38-scanned count (e.g. donor read the paper letter, paid via bank app without scanning) — the rows are independent signals, not strict subsets.
+        </div>
+      </section>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Variant (c) Door-drop — no scan stage
+           ────────────────────────────────────────────────────────── -->
+      <div class="section-title">
+        <h2>(c) Door-drop campaign · anonymous letters</h2>
+        <p>Anonymous distribution (newspaper insert, door-to-door). No per-letter QR code, no scan signal, no per-recipient pre-fill. Conversion is measured purely at payment time, with distinct constituent counts resolved from <code>RltdPties.Dbtr</code> on the camt.053 side.</p>
+      </div>
+
+      <section class="tracking-card full">
+        <span class="variant-tag door-drop">Door-drop · anonymous</span>
+        <div class="tc-header">
+          <h2>Door-drop Lausanne mai 2026</h2>
+          <span class="meta">last refresh 22 s ago</span>
+        </div>
+        <p class="tc-sub">5 000 anonymous slips distributed · single campaign-level QRR ref · PostFinance CH•••8901·2 · no per-letter scan tracking.</p>
+
+        <div class="funnel">
+          <div class="funnel-row">
+            <span class="num">5 000</span>
+            <span class="label">Letters distributed <span class="sub">campaign_postal_exports.printed_count</span></span>
+          </div>
+
+          <!-- Scan stage omitted on door-drop -->
+          <div class="funnel-row row-omitted">
+            <span class="num">—</span>
+            <span class="label">Letters scanned <span class="sub">no per-letter QR · scan tracking N/A</span></span>
+          </div>
+
+          <div class="funnel-row">
+            <span class="num">87</span>
+            <span class="label">Distinct donors paid <span class="sub">distinct constituents resolved from camt.053 RltdPties.Dbtr</span></span>
+          </div>
+          <div class="branch">
+            <span class="num">87</span>
+            <span class="connector">└─→</span>
+            <span class="label"><span class="amount">CHF 6 540</span> paid via QR-bill <span class="tag swiss">camt.053 rail</span></span>
+          </div>
+        </div>
+
+        <div class="tc-footer">
+          <div class="meta-block unrec">
+            <span>Pending camt review</span>
+            <span class="v"><a href="../../settings/camt-unreconciled-queue.html">2 unreconciled · TWINT no-debtor-info →</a></span>
+          </div>
+          <div class="meta-block">
+            <span>Last bank statement import</span>
+            <span class="v">2026-05-06 09:12</span>
+          </div>
+        </div>
+
+        <div class="variant-explainer">
+          <strong>What this tells the operator:</strong> 87 distinct donors gave CHF 6 540 in response to a 5 000-slip door-drop = 1.74% response rate. There's no scan stage — the donor never typed an email and the QR code on the slip is campaign-level (same for every donor), so we can't measure scan-to-pay conversion at the letter level. The <code>pendingQrBills</code> row is omitted (no fixed denominator: a door-drop campaign has no per-letter pending dimension). 2 unreconciled credits are flagged for review — typically TWINT-rail credits where the bank's debtor block is anonymised.
+        </div>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>
