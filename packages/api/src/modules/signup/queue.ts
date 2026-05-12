@@ -19,18 +19,24 @@ const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, { connectio
  * Enqueue a deferred resend-verification job. The handler runs in the
  * worker so the public HTTP response stays constant-time across the
  * "matches a candidate" and "no match" branches.
+ *
+ * `attempts: 1` is deliberate — the processor commits a token rotation
+ * (UPDATE invitations) and an outbox INSERT in a single tx. If BullMQ
+ * retried after a commit-then-crash mid-ack, the retry would rotate the
+ * token again and emit a second `tenant.signup_verification_resent`
+ * event, so the user would receive two emails with the first one now
+ * carrying a dead token. The per-email rate-limit and the user's own
+ * "Try a different email" path are the recovery channels; we'd rather
+ * drop a single resend than ship a stale-token email.
  */
 export async function enqueueSignupResend(email: string): Promise<void> {
   await tenantLifecycleQueue.add(
     TENANT_LIFECYCLE_JOBS.SIGNUP_RESEND,
     { email: email.trim().toLowerCase() },
     {
+      attempts: 1,
       removeOnComplete: 1000,
       removeOnFail: 5000,
-      // The HTTP per-email bucket (`signup:resend:email:<email>`) already
-      // caps fan-out at 3/h, so we don't need a queue-level dedup. A
-      // generated jobId keeps each enqueue distinct so a legitimate
-      // rotation-after-failure isn't accidentally swallowed.
     },
   );
 }

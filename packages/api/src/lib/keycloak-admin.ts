@@ -34,7 +34,7 @@
  * test ships with issue #114 once the realm is upgraded.
  */
 
-import { PINO_REDACT_PATHS } from "@givernance/shared/constants";
+import { assertSafeOrgAttributes, PINO_REDACT_PATHS } from "@givernance/shared/constants";
 import pino from "pino";
 import { env } from "../env.js";
 
@@ -59,48 +59,10 @@ export interface KeycloakOrganization {
   domains?: Array<{ name: string; verified: boolean }>;
 }
 
-/**
- * F2 — Allowlist of Organization attribute keys that are safe to set from
- * Givernance code. The realm's `organization` client scope is wired to
- * `oidc-organization-membership-mapper` with `addOrganizationAttributes:
- * true`, which means **every** Organization attribute is emitted into the
- * access, ID, and introspection JWT of every member of that org. Any key
- * not in this set is treated as a secret-leak risk and the admin client
- * refuses to write it.
- *
- * Why an allowlist (not a denylist): the mapper has no per-attribute filter,
- * so the only line of defence is what our code chooses to write. A
- * developer adding `stripe_customer_id` "for worker convenience" would
- * leak it to every browser; with this allowlist, the next attribute
- * addition is forced through code review.
- */
-export const SAFE_ORG_ATTRIBUTES: ReadonlySet<string> = new Set([
-  // Canonical tenant id — also emitted as a designated JWT claim via the
-  // `oidc-usermodel-attribute-mapper`. Mirrored on the org so we can find a
-  // half-created org by id during recovery (signup verify 409 path).
-  "org_id",
-  // Used by `tenant-admin.createOrganization`. Public information (the
-  // tenant URL) but kept on the allowlist for explicitness.
-  "org_slug",
-  // Public branding rendered on the Keycloak login template. Epic #286.
-  "logo_url",
-  // Public branding rendered on the Keycloak login template. Epic #286.
-  "theme_primary_color",
-]);
-
-function assertSafeOrgAttributes(attributes: Record<string, string[]> | undefined): void {
-  if (!attributes) return;
-  for (const key of Object.keys(attributes)) {
-    if (!SAFE_ORG_ATTRIBUTES.has(key)) {
-      throw new Error(
-        `Refusing to write Keycloak Organization attribute "${key}" — it is not in SAFE_ORG_ATTRIBUTES. ` +
-          `The realm's organization mapper emits every attribute into the JWT of every member; adding a ` +
-          `new attribute requires opting in via SAFE_ORG_ATTRIBUTES in keycloak-admin.ts after confirming ` +
-          `it is safe to leak to all browsers.`,
-      );
-    }
-  }
-}
+// F2 — `SAFE_ORG_ATTRIBUTES` + `assertSafeOrgAttributes` live in
+// `@givernance/shared/constants/keycloak-org-attributes` so the api and
+// worker copies cannot drift. See that file for the rationale and the
+// review checklist for additions.
 
 export interface KeycloakIdentityProvider {
   alias: string;

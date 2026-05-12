@@ -5,13 +5,13 @@
  * the real test DB (migration 0021 applied). CAPTCHA fails open in
  * NODE_ENV=test so no external provider is hit.
  *
- * F3 — `POST /v1/public/signup/resend` now enqueues a BullMQ job and
- * returns 204 in constant time; the lookup-and-rotate work happens in
- * the worker process. To keep the integration test fast and isolated
- * from a live worker, we mock the enqueue helper to call the existing
- * `resendVerification` service inline. This preserves the previous
- * "assert DB state after the 204" pattern while still exercising the
- * production route. Worker-side coverage of the same logic lives in
+ * F3 — `POST /v1/public/signup/resend` enqueues a BullMQ job and returns
+ * 204 in constant time; the lookup-and-rotate work happens in the worker
+ * via `@givernance/shared/signup`. To keep the integration test fast and
+ * self-contained, the vi.mock below replaces the enqueue helper with an
+ * inline call into the same shared function so DB state can be asserted
+ * immediately after the 204. Worker-side coverage of the cap + rate
+ * limit lives in
  * `packages/worker/src/tests/integration/signup-resend.test.ts`.
  */
 
@@ -24,26 +24,44 @@ import {
   tenants,
   users,
 } from "@givernance/shared/schema";
+import { resendSignupVerification } from "@givernance/shared/signup";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { db } from "../../lib/db.js";
+import { db, systemDb } from "../../lib/db.js";
 import {
   _resetKeycloakAdminSingleton,
   _setKeycloakAdminSingleton,
   type KeycloakAdminClient,
 } from "../../lib/keycloak-admin.js";
 import { redis } from "../../lib/redis.js";
-import { cleanupUnverifiedTenants, resendVerification } from "../../modules/signup/service.js";
+import { cleanupUnverifiedTenants, log as signupLog } from "../../modules/signup/service.js";
 import { createServer } from "../../server.js";
 
-// F3 — replace the BullMQ enqueue with an inline call to the legacy
-// service so the existing integration tests can keep asserting DB state
-// immediately after `POST /v1/public/signup/resend` without spinning up
-// a worker. Equivalent flow shape: route → "enqueue" → handler → DB tx.
+// F3 — route the in-process "enqueue" back through the same shared
+// `resendSignupVerification` helper the worker uses so DB state remains
+// assertable immediately after the 204. The production shape (route →
+// enqueue → worker processor → shared helper → DB tx) is identical;
+// only the BullMQ hop is collapsed. The per-email rate-limit gate
+// lives on the worker side (it was moved off the HTTP route to close
+// the timing oracle) — we faithfully replicate that step here so the
+// existing "caps outbox emission at 3 per email per hour" test stays
+// meaningful in this file. Worker-side coverage of the same rate-limit
+// + lookup logic lives in
+// `packages/worker/src/tests/integration/signup-resend.test.ts`.
 vi.mock("../../modules/signup/queue.js", () => ({
   enqueueSignupResend: async (email: string) => {
-    await resendVerification(email);
+    const normalised = email.trim().toLowerCase();
+    const key = `signup:resend:email:${normalised}`;
+    const hits = await redis.incr(key);
+    if (hits === 1) {
+      await redis.expire(key, 60 * 60);
+    }
+    if (hits > 3) {
+      // Worker-side rate-limit cap exhausted — silent drop, no DB writes.
+      return;
+    }
+    await resendSignupVerification(systemDb, normalised, randomUUID());
   },
 }));
 
@@ -146,13 +164,34 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  // Reset the KC stub spies so per-test assertions on call counts are clean.
-  kcCreateUser.mockClear();
-  kcCreateOrganization.mockClear();
-  kcAttachUserToOrg.mockClear();
-  kcGetOrganizationByAlias.mockClear();
-  kcResetUserPassword.mockClear();
-  kcSetUserAttributes.mockClear();
+  // `mockReset` (not `mockClear`) — also drains any unconsumed
+  // `mockRejectedValueOnce` / `mockResolvedValueOnce` queued by a
+  // previous test that threw before reaching the inject. With plain
+  // `mockClear`, a leftover `Once` rejection silently leaks into the
+  // next test and corrupts the assertion (we hit this exact failure
+  // mode during PR #359 review).
+  //
+  // `mockReset` wipes the default implementation too, so we re-install
+  // the per-fn defaults the rest of the suite assumes.
+  kcCreateUser.mockReset();
+  kcCreateUser.mockImplementation(async (input) => ({
+    id: `kc-${input.email}-${randomUUID().slice(0, 8)}`,
+  }));
+  kcCreateOrganization.mockReset();
+  kcCreateOrganization.mockImplementation(async ({ name, alias, attributes }) => ({
+    id: randomUUID(),
+    name,
+    alias,
+    attributes,
+  }));
+  kcAttachUserToOrg.mockReset();
+  kcAttachUserToOrg.mockImplementation(async () => {});
+  kcGetOrganizationByAlias.mockReset();
+  kcGetOrganizationByAlias.mockImplementation(async () => null);
+  kcResetUserPassword.mockReset();
+  kcResetUserPassword.mockImplementation(async () => {});
+  kcSetUserAttributes.mockReset();
+  kcSetUserAttributes.mockImplementation(async () => {});
   // Clear any rate-limiter + per-email signup counters from Redis so the
   // 5/hour limits don't poison successive tests. Scoped deletes only — a
   // full `flushdb` would destroy unrelated test fixtures (ENG-3).
@@ -925,24 +964,18 @@ describe("POST /v1/public/signup/verify", () => {
       ),
     );
 
-    // F4 — Pin SRE-visible behaviour: the service-side `signup.kc_user_exists`
-    // warn must fire (so the on-call paging signal isn't silently dropped),
-    // and we must NOT have called `kcResetUserPassword` on the existing KC
-    // user. A regression that "helpfully" re-wired the hijack branch to
-    // reset-and-attach would silently take over a stranger's credential
-    // while still surfacing 410 — both assertions are needed to catch it.
+    // F4 — Pin SRE-visible behaviour and the hijack defence:
+    //  1. `signup.kc_user_exists` warn fires so on-call gets paged.
+    //  2. `kcResetUserPassword` is NOT called — proves inbox-control didn't
+    //     overwrite the existing realm credential.
+    //  3. `kcAttachUserToOrg` is NOT called — proves no silent "create-and-
+    //     attach to our org" path snuck in past the throw.
     //
-    // The signup service's module-scoped pino is configured with
-    // `process.stdout` as its destination (see signup/service.ts) so the
-    // logger writes via the Writable stream's `write()` method —
-    // `vi.spyOn(process.stdout, "write")` then captures the JSON line.
-    // Restore immediately after `inject` so unrelated logging during
-    // cleanup hooks isn't disturbed.
-    const captured: string[] = [];
-    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
-      captured.push(typeof chunk === "string" ? chunk : String(chunk));
-      return true;
-    });
+    // The pino logger is exported from signup/service.ts so we spy on its
+    // `warn` method directly (logger instances expose level methods as
+    // own properties), avoiding test-only knobs in the production pino
+    // destination.
+    const warnSpy = vi.spyOn(signupLog, "warn");
 
     const res = await app.inject({
       method: "POST",
@@ -954,21 +987,23 @@ describe("POST /v1/public/signup/verify", () => {
         password: TEST_PASSWORD,
       },
     });
-    writeSpy.mockRestore();
     expect(res.statusCode).toBe(410);
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
     expect(tenant?.status).toBe("provisional");
     const userRows = await db.select().from(users).where(eq(users.orgId, tenantId));
     expect(userRows.length).toBe(0);
 
-    // The hijack-defence path must NOT have touched the existing KC user's
-    // password. If it had, an attacker who proved inbox control could
-    // silently overwrite the realm credential of an enterprise SSO user or
-    // a seeded super-admin (the exact attack the guard exists for).
     expect(kcResetUserPassword).not.toHaveBeenCalled();
+    expect(kcAttachUserToOrg).not.toHaveBeenCalled();
 
-    const warnedHijack = captured.some((line) => line.includes('"event":"signup.kc_user_exists"'));
+    const warnedHijack = warnSpy.mock.calls.some(
+      ([fields]) =>
+        fields !== null &&
+        typeof fields === "object" &&
+        (fields as { event?: string }).event === "signup.kc_user_exists",
+    );
     expect(warnedHijack).toBe(true);
+    warnSpy.mockRestore();
   });
 
   it("rolls back when attachUserToOrg fails (verifies the orphan KC user gap)", async () => {
@@ -1017,12 +1052,25 @@ describe("POST /v1/public/signup/verify", () => {
     expect(kcCreateUser).not.toHaveBeenCalled();
   });
 
-  // F1 — Concurrent verify race. The service comment says the duplicate-row
-  // catch is "no longer reachable in practice" thanks to `FOR UPDATE` on
-  // the invitation row. Fire two verify calls in parallel with the same
-  // token and assert exactly ONE creates a users row (status `[201, 410]`
-  // after sort). A regression that dropped `FOR UPDATE` would let both
-  // SELECTs see acceptedAt=NULL and race past the guard.
+  // F1 — Concurrent verify race. The service comment says the duplicate-
+  // row catch is "no longer reachable in practice" thanks to `FOR UPDATE`
+  // on the invitation row. Fire two verify calls in parallel with the
+  // same token and assert:
+  //
+  //   - One returns 201, the other 410.
+  //   - `kcCreateOrganization` and `kcCreateUser` were each called EXACTLY
+  //     ONCE. If FOR UPDATE were dropped, both verifies would race past
+  //     the acceptedAt check, each calling createOrg + createUser, and
+  //     the loser would only fail later (on the partial-unique
+  //     `users_one_first_admin_per_org` constraint). That backstop was
+  //     kept on purpose, so without these call-count assertions the test
+  //     would silently pass against a missing-FOR-UPDATE regression.
+  //   - Exactly one `users` row exists.
+  //
+  // Pool size: `db.ts` configures `max: 20`, so the two txs get distinct
+  // connections and the lock contention happens at the row level, not at
+  // the pool level (a future shrink to `max: 1` would invalidate this
+  // test silently — flagged in the comment so a reader notices).
   it("serialises two concurrent verify calls on the same token (FOR UPDATE)", async () => {
     const { tenantId, token } = await createSignup("verify-race");
 
@@ -1052,8 +1100,13 @@ describe("POST /v1/public/signup/verify", () => {
     const codes = [r1.statusCode, r2.statusCode].sort();
     expect(codes).toEqual([201, 410]);
 
-    // Exactly one users row was created (the FOR UPDATE serialised the
-    // SELECT, so the loser saw `acceptedAt !== NULL` and short-circuited).
+    // FOR UPDATE serialised the SELECT — the loser saw `acceptedAt != NULL`
+    // and short-circuited before any KC call. Without the lock both would
+    // have made the round-trip.
+    expect(kcCreateOrganization).toHaveBeenCalledTimes(1);
+    expect(kcCreateUser).toHaveBeenCalledTimes(1);
+
+    // Exactly one users row was created.
     const userRows = await db.select().from(users).where(eq(users.orgId, tenantId));
     expect(userRows.length).toBe(1);
 

@@ -22,7 +22,7 @@
  * change with a specific operator session.
  */
 
-import { PASSWORD_MIN_LENGTH } from "@givernance/shared/constants";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@givernance/shared/constants";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireSuperAdmin } from "../../lib/guards.js";
@@ -115,7 +115,7 @@ const PublicInvitationSchema = Type.Object({
 });
 
 const AcceptBody = Type.Object({
-  password: Type.String({ minLength: PASSWORD_MIN_LENGTH, maxLength: 255 }),
+  password: Type.String({ minLength: PASSWORD_MIN_LENGTH, maxLength: PASSWORD_MAX_LENGTH }),
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
 });

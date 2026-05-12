@@ -5,9 +5,10 @@ import { CheckCircle2, LogIn, Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type FormEvent, Suspense, useCallback, useId, useState } from "react";
+import { type FormEvent, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { resendVerification, verifySignup } from "@/services/SignupService";
@@ -38,12 +39,22 @@ function validateVerifyForm(f: VerifyFormFields): ValidationKey | null {
  * UI can't distinguish "sent" from "no match" without leaking enumeration
  * signal. We always show the same "if your email matches, we've sent a new
  * link" confirmation.
+ *
+ * F13 surfaces a "Try a different email" reset so a typo'd address isn't a
+ * dead-end. The live region stays mounted across both states so screen
+ * readers reliably announce subsequent submits (re-mounting a fresh
+ * `aria-live` element on each submit is unreliable across SRs).
  */
 function ResendForm() {
   const t = useTranslations("auth.signupVerify");
   const inputId = useId();
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "submitting" | "sent">("idle");
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  // Tracks whether the user has been through a successful submit at least
+  // once, so the "back to idle" useEffect only re-focuses the input on a
+  // user-initiated reset — not on the initial render of the form.
+  const wasSentRef = useRef(false);
 
   const onSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
@@ -52,62 +63,75 @@ function ResendForm() {
       setState("submitting");
       await resendVerification(email.trim());
       setState("sent");
+      wasSentRef.current = true;
     },
     [email],
   );
 
-  if (state === "sent") {
-    // F13 — Once the user lands here after typing a typo'd address, the
-    // anti-enumeration confirmation copy ("if your email matches…") makes
-    // a refresh-the-page retry the only obvious recourse. Surface an
-    // explicit "Try a different email" reset so they can correct it
-    // without losing the verify-page context.
-    return (
-      <div className="mt-3 space-y-2">
-        <p className="text-sm text-text-secondary" role="status" aria-live="polite">
-          {t("resend.sent")}
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            setEmail("");
-            setState("idle");
-          }}
-          className="text-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
-        >
-          {t("resend.tryDifferent")}
-        </button>
-      </div>
-    );
-  }
+  const onReset = useCallback(() => {
+    setEmail("");
+    setState("idle");
+  }, []);
+
+  // F13 — restore focus to the email input after a reset so keyboard /
+  // SR users don't tab from the page root all the way back through the
+  // alert and label. Gated on `wasSentRef` so the initial mount doesn't
+  // steal focus on page load.
+  useEffect(() => {
+    if (state === "idle" && wasSentRef.current) {
+      emailInputRef.current?.focus();
+    }
+  }, [state]);
 
   return (
-    <form onSubmit={onSubmit} className="mt-3 space-y-2">
-      <Label htmlFor={inputId}>{t("resend.label")}</Label>
-      <div className="flex gap-2">
-        <Input
-          id={inputId}
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder={t("resend.placeholder")}
-        />
-        <button
-          type="submit"
-          disabled={state === "submitting"}
-          className="inline-flex h-[var(--btn-height-md)] shrink-0 items-center justify-center gap-2 rounded-button bg-primary px-4 text-sm font-medium text-on-primary transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {state === "submitting" ? (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-primary border-t-transparent" />
-          ) : (
-            <Mail className="h-4 w-4" aria-hidden="true" />
-          )}
-          {t("resend.submit")}
-        </button>
-      </div>
-    </form>
+    <div className="mt-3 space-y-2">
+      <form onSubmit={onSubmit} className="space-y-2" hidden={state === "sent"}>
+        <Label htmlFor={inputId}>{t("resend.label")}</Label>
+        <div className="flex gap-2">
+          <Input
+            id={inputId}
+            ref={emailInputRef}
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={t("resend.placeholder")}
+          />
+          <Button
+            type="submit"
+            variant="primary"
+            size="default"
+            disabled={state === "submitting"}
+            className="shrink-0 px-4"
+          >
+            {state === "submitting" ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-primary border-t-transparent" />
+            ) : (
+              <Mail className="h-4 w-4" aria-hidden="true" />
+            )}
+            {t("resend.submit")}
+          </Button>
+        </div>
+      </form>
+
+      {/*
+        Persistent live region — kept mounted in BOTH states so subsequent
+        successful submits are reliably announced. `aria-live="polite"`
+        will only re-announce when the *content* of the region changes,
+        which is why unmounting the <p> on reset (and remounting on send)
+        loses the second announcement.
+      */}
+      <p className="text-sm text-text-secondary" role="status" aria-live="polite">
+        {state === "sent" ? t("resend.sent") : ""}
+      </p>
+
+      {state === "sent" && (
+        <Button type="button" variant="link" size="inline" onClick={onReset}>
+          {t("resend.tryDifferent")}
+        </Button>
+      )}
+    </div>
   );
 }
 
