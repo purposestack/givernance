@@ -286,6 +286,7 @@ export async function invitationRoutes(app: FastifyInstance) {
         response: {
           204: Type.Null(),
           409: ProblemDetailSchema,
+          429: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -308,15 +309,32 @@ export async function invitationRoutes(app: FastifyInstance) {
           return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
         }
         if (result.error === "rate_limited") {
-          // Issue #149 — collapse the per-email cap into a success-shaped
-          // 204 so the bucket can't be probed via status-code timing.
-          // Service-side `invitation.resend_rate_limited` warn gives SRE
-          // the breadcrumb.
+          // Issue #149 — per-recipient cap. We return a real 429 instead
+          // of the signup-resend silent 204 because this path is org_admin-
+          // authenticated and operating on a resource they own: a
+          // success-shaped status would mislead the operator into
+          // believing the email went out (PR #358 review M3). The body
+          // is RFC 9457 + neutral so it doesn't leak whether the bucket
+          // is full because of this specific invitee or because of
+          // another recent resend to the same email.
           request.log.warn(
-            { event: "invitation.resend_rate_limited", invitationId: id, orgId },
+            {
+              event: "invitation.resend_rate_limited",
+              invitationId: id,
+              orgId,
+              actorKeycloakId: userId,
+            },
             "invitation resend skipped: per-email cap reached",
           );
-          return reply.status(204).send();
+          return reply
+            .status(429)
+            .send(
+              problemDetail(
+                429,
+                "Resend limit reached",
+                "A recent invitation was already sent to this address. The existing link is still valid; please wait before resending.",
+              ),
+            );
         }
         return reply
           .status(409)
