@@ -151,6 +151,20 @@ export interface KeycloakSyncOrgLogoJob {
   };
 }
 
+/**
+ * Defer the signup-resend lookup-and-rotate work onto BullMQ so the public
+ * resend endpoint takes constant HTTP time whether or not the email matches
+ * a pending/half-provisioned tenant (F3 — close the timing-side-channel that
+ * defeats the resend route's anti-enumeration property).
+ */
+export interface SignupResendJob {
+  name: "tenant.signup-resend";
+  data: {
+    /** Email submitted to `POST /v1/public/signup/resend` (lowercased / trimmed). */
+    email: string;
+  };
+}
+
 /** Union of all job types */
 export type JobDefinition =
   | GenerateReceiptJob
@@ -163,7 +177,8 @@ export type JobDefinition =
   | BrandingProcessAssetJob
   | BrandingActivateLogoJob
   | BrandingGcAssetJob
-  | KeycloakSyncOrgLogoJob;
+  | KeycloakSyncOrgLogoJob
+  | SignupResendJob;
 
 /** Queue names */
 export const QUEUE_NAMES = {
@@ -197,4 +212,10 @@ export const QUEUE_NAMES = {
 /** Repeatable job names inside TENANT_LIFECYCLE queue. */
 export const TENANT_LIFECYCLE_JOBS = {
   PROVISIONAL_ADMIN_EXPIRE: "tenant.provisional-admin-expire",
+  /**
+   * F3 — Defer the public resend endpoint's lookup-and-rotate work onto the
+   * worker so the HTTP response is constant-time across the
+   * "matches a pending tenant" and "no match" branches.
+   */
+  SIGNUP_RESEND: "tenant.signup-resend",
 } as const;

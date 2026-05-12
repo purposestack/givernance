@@ -124,7 +124,13 @@ describe("processSignupVerificationEmail", () => {
     if (!call) return;
     expect(call.to).toBe("admin@acme.org");
     expect(call.subject).toContain("Acme Charity");
-    expect(call.subject).toMatch(/Confirm|Givernance/);
+    // F9 — Use an EN-only anchor. "Confirmez" (FR) contains "Confirm", so
+    // `/Confirm/` would silently match the FR template too — meaning a
+    // regression that always picked FR (or fell back to FR after a missing
+    // EN template) would NOT trip this assertion. Anchor on the EN-specific
+    // verb phrase "Confirm your" so the test fails when the wrong template
+    // is selected.
+    expect(call.subject).toMatch(/Confirm your/);
     expect(call.html).toContain(`/signup/verify?token=${INVITATION_TOKEN}`);
     expect(call.text).toContain(`/signup/verify?token=${INVITATION_TOKEN}`);
   });
@@ -145,7 +151,11 @@ describe("processSignupVerificationEmail", () => {
     expect(call).toBeDefined();
     if (!call) return;
     expect(call.subject).toContain("Assoc Demo");
-    expect(call.subject).toMatch(/Confirmez/);
+    // F9 companion anchor — `/Confirmez votre/` is FR-only; `/Confirm /`
+    // would not match the EN subject ("Confirm your Givernance workspace
+    // ..."). Locks both templates into mutually-exclusive subject anchors
+    // so a swap is loud either direction.
+    expect(call.subject).toMatch(/Confirmez votre/);
     expect(call.html).toContain(`/signup/verify?token=${INVITATION_TOKEN_FR}`);
   });
 
@@ -179,5 +189,27 @@ describe("processSignupVerificationEmail", () => {
 
     expect(result).toEqual({ sent: false, reason: "not_found" });
     expect(sender.send).not.toHaveBeenCalled();
+  });
+
+  // F10 — Pin the contract that an SMTP outage propagates out of the
+  // processor so BullMQ's retry/backoff catches it. Silently swallowing
+  // a `sender.send` rejection would mark the job complete and an operator
+  // would never see the failed verification email.
+  it("propagates SMTP errors so BullMQ can retry the job", async () => {
+    const sender = {
+      send: vi.fn().mockRejectedValueOnce(new Error("EHOSTUNREACH smtp.example")),
+    };
+    await expect(
+      processSignupVerificationEmail(
+        {
+          tenantId: ORG_ID,
+          invitationId: INVITATION_ID,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          locale: "en",
+        },
+        { sender },
+      ),
+    ).rejects.toThrow(/smtp\.example/);
+    expect(sender.send).toHaveBeenCalledTimes(1);
   });
 });

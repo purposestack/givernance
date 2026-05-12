@@ -16,6 +16,7 @@ export {
   type ImpersonationEndReason,
   type ImpersonationMode,
 } from "./impersonation";
+export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "./password";
 export { isPersonalEmailDomain, PERSONAL_EMAIL_DOMAINS } from "./personal-email-domains";
 export { PINO_REDACT_PATHS } from "./pino-redact";
 export { isReservedSlug, RESERVED_SLUGS } from "./reserved-slugs";

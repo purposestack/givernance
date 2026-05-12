@@ -98,10 +98,20 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * so a Fastify-bound `request.log` isn't always available. PII is masked
  * via the same redact list every other service uses.
  */
-const log = pino({
-  name: "signup-service",
-  redact: { paths: [...PINO_REDACT_PATHS], censor: "[REDACTED]" },
-});
+// Pass `process.stdout` as the destination so the logger writes via the
+// Writable stream's `write()` method instead of pino's default sonic-boom
+// path (which bypasses `process.stdout.write` via `fs.writeSync` on fd 1).
+// Behaviour is identical in production (both end up on stdout); the
+// difference matters in tests, where `vi.spyOn(process.stdout, "write")`
+// can intercept the JSON line to assert structured warns like
+// `signup.kc_user_exists` actually fire (F4).
+const log = pino(
+  {
+    name: "signup-service",
+    redact: { paths: [...PINO_REDACT_PATHS], censor: "[REDACTED]" },
+  },
+  process.stdout,
+);
 
 const PROVISIONAL_GRACE_DAYS = 7;
 const VERIFICATION_TTL_HOURS = 24;

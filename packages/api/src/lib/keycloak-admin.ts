@@ -59,6 +59,49 @@ export interface KeycloakOrganization {
   domains?: Array<{ name: string; verified: boolean }>;
 }
 
+/**
+ * F2 — Allowlist of Organization attribute keys that are safe to set from
+ * Givernance code. The realm's `organization` client scope is wired to
+ * `oidc-organization-membership-mapper` with `addOrganizationAttributes:
+ * true`, which means **every** Organization attribute is emitted into the
+ * access, ID, and introspection JWT of every member of that org. Any key
+ * not in this set is treated as a secret-leak risk and the admin client
+ * refuses to write it.
+ *
+ * Why an allowlist (not a denylist): the mapper has no per-attribute filter,
+ * so the only line of defence is what our code chooses to write. A
+ * developer adding `stripe_customer_id` "for worker convenience" would
+ * leak it to every browser; with this allowlist, the next attribute
+ * addition is forced through code review.
+ */
+export const SAFE_ORG_ATTRIBUTES: ReadonlySet<string> = new Set([
+  // Canonical tenant id — also emitted as a designated JWT claim via the
+  // `oidc-usermodel-attribute-mapper`. Mirrored on the org so we can find a
+  // half-created org by id during recovery (signup verify 409 path).
+  "org_id",
+  // Used by `tenant-admin.createOrganization`. Public information (the
+  // tenant URL) but kept on the allowlist for explicitness.
+  "org_slug",
+  // Public branding rendered on the Keycloak login template. Epic #286.
+  "logo_url",
+  // Public branding rendered on the Keycloak login template. Epic #286.
+  "theme_primary_color",
+]);
+
+function assertSafeOrgAttributes(attributes: Record<string, string[]> | undefined): void {
+  if (!attributes) return;
+  for (const key of Object.keys(attributes)) {
+    if (!SAFE_ORG_ATTRIBUTES.has(key)) {
+      throw new Error(
+        `Refusing to write Keycloak Organization attribute "${key}" — it is not in SAFE_ORG_ATTRIBUTES. ` +
+          `The realm's organization mapper emits every attribute into the JWT of every member; adding a ` +
+          `new attribute requires opting in via SAFE_ORG_ATTRIBUTES in keycloak-admin.ts after confirming ` +
+          `it is safe to leak to all browsers.`,
+      );
+    }
+  }
+}
+
 export interface KeycloakIdentityProvider {
   alias: string;
   providerId: "oidc" | "saml";
@@ -592,6 +635,10 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
 
   return {
     createOrganization: async ({ name, alias, attributes }) => {
+      // F2 — fail closed when a caller passes an attribute outside the
+      // allowlist. The realm mapper emits every attribute into every
+      // member's JWT, so a stray `secret_token` would leak to all browsers.
+      assertSafeOrgAttributes(attributes);
       const out = await adminRequest<KeycloakOrganization & { __locationHeader?: string }>(
         "POST",
         `/organizations`,
@@ -638,6 +685,9 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
     },
 
     updateOrganization: async (id, updates) => {
+      // F2 — same SAFE_ORG_ATTRIBUTES gate as create (every attribute is
+      // surfaced into every member's JWT via the realm mapper).
+      assertSafeOrgAttributes(updates.attributes);
       // GET-then-PUT so we don't clobber attributes the API never set
       // (e.g. `theme_primary_color` already on the org from issue #114).
       // Mirrors `setUserAttributes` / `updateUser` exactly so the same
@@ -857,13 +907,15 @@ export function createKeycloakAdminClient(config: ClientConfig): KeycloakAdminCl
 
     getOrganizationByAlias: async (alias) => {
       const normalised = alias.trim().toLowerCase();
+      // Keycloak 26.1 added `&exact=true` for the org search endpoint
+      // (mirrors what `getUserByEmail` does above); rely on the server-side
+      // exact-match instead of a substring-then-client-filter dance so the
+      // recovery path doesn't shift if KC's `search` semantics evolve (F7).
       const rows = await adminRequest<KeycloakOrganization[]>(
         "GET",
-        `/organizations?search=${e(normalised)}`,
+        `/organizations?search=${e(normalised)}&exact=true`,
       );
-      // `search` is substring-match on Keycloak's side. Filter to exact alias
-      // so a tenant named `acme` doesn't collide with `acme-foundation`.
-      return rows?.find((o) => o.alias?.toLowerCase() === normalised) ?? null;
+      return rows?.[0] ?? null;
     },
 
     createIdentityProvider: async (idp) => {

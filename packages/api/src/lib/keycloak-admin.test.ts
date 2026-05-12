@@ -702,41 +702,91 @@ describe("updateUser", () => {
 });
 
 describe("getOrganizationByAlias", () => {
-  it("GETs /organizations?search=alias and returns the EXACT-alias match (filters substring matches client-side)", async () => {
+  it("GETs /organizations?search=alias&exact=true and returns the server-side exact match (F7)", async () => {
     const h = makeHarness();
     h.enqueue(() => tokenResponse({ expires_in: 300 }));
-    h.enqueue(() =>
-      okJson([
-        // Substring-match drift — KC's `search` does substring matching, so
-        // a query for `acme` returns both. The client MUST pick the exact one.
-        { id: "org-foundation", name: "Acme Foundation", alias: "acme-foundation" },
-        { id: "org-acme", name: "Acme", alias: "acme" },
-      ]),
-    );
+    // With `&exact=true` (Keycloak 26.1+) the server-side filter already
+    // restricts to alias matches, so the client trusts the first row instead
+    // of post-filtering substring noise client-side.
+    h.enqueue(() => okJson([{ id: "org-acme", name: "Acme", alias: "acme" }]));
 
     const result = await h.client.getOrganizationByAlias("acme");
     expect(result?.id).toBe("org-acme");
     expect(h.calls[1]?.url).toBe(
-      "http://kc.test/admin/realms/givernance/organizations?search=acme",
+      "http://kc.test/admin/realms/givernance/organizations?search=acme&exact=true",
     );
   });
 
-  it("returns null when no exact alias matches (substring matches alone don't qualify)", async () => {
+  it("returns null when the server returns an empty list", async () => {
     const h = makeHarness();
     h.enqueue(() => tokenResponse({ expires_in: 300 }));
-    h.enqueue(() =>
-      okJson([{ id: "org-foundation", name: "Acme Foundation", alias: "acme-foundation" }]),
-    );
+    h.enqueue(() => okJson([]));
 
     expect(await h.client.getOrganizationByAlias("acme")).toBeNull();
   });
 
-  it("normalises the alias (trim + lowercase) before matching", async () => {
+  it("normalises the alias (trim + lowercase) before issuing the request", async () => {
     const h = makeHarness();
     h.enqueue(() => tokenResponse({ expires_in: 300 }));
     h.enqueue(() => okJson([{ id: "org-acme", name: "Acme", alias: "acme" }]));
 
     const result = await h.client.getOrganizationByAlias("  ACME  ");
     expect(result?.id).toBe("org-acme");
+    expect(h.calls[1]?.url).toBe(
+      "http://kc.test/admin/realms/givernance/organizations?search=acme&exact=true",
+    );
+  });
+});
+
+// F2 — Defense in depth for the JWT leak the `organization` scope mapper
+// (with `addOrganizationAttributes: true`) would otherwise create whenever
+// a developer added a new Organization attribute "for worker convenience".
+// Every attribute on a KC Organization is emitted into every member's
+// access / ID / introspection JWT; without a code-side allowlist, a
+// `stripe_customer_id` or `secret_token` would silently leak to every
+// browser. Locked at the admin-client boundary so the next attribute
+// addition has to go through code review.
+describe("Organization attribute allowlist (F2 — JWT leak guard)", () => {
+  it("createOrganization refuses to write a stranger attribute", async () => {
+    const h = makeHarness();
+    // No fetch stubs queued — the guard must throw BEFORE any HTTP call.
+    await expect(
+      h.client.createOrganization({
+        name: "Acme",
+        alias: "acme",
+        attributes: { org_id: ["tenant-uuid"], secret_token: ["leak-me"] },
+      }),
+    ).rejects.toThrow(/secret_token/);
+    expect(h.calls.length).toBe(0);
+  });
+
+  it("createOrganization accepts the allowlisted attribute keys (org_id, logo_url, theme_primary_color)", async () => {
+    const h = makeHarness();
+    h.enqueue(() => tokenResponse({ expires_in: 300 }));
+    h.enqueue(
+      () =>
+        new Response(JSON.stringify({ id: "org-x", name: "Acme", alias: "acme" }), { status: 201 }),
+    );
+
+    const result = await h.client.createOrganization({
+      name: "Acme",
+      alias: "acme",
+      attributes: {
+        org_id: ["tenant-uuid"],
+        logo_url: ["https://cdn.example/org.png"],
+        theme_primary_color: ["#123456"],
+      },
+    });
+    expect(result.id).toBe("org-x");
+  });
+
+  it("updateOrganization refuses to write a stranger attribute", async () => {
+    const h = makeHarness();
+    await expect(
+      h.client.updateOrganization("org-x", {
+        attributes: { stripe_customer_id: ["cus_abc"] },
+      }),
+    ).rejects.toThrow(/stripe_customer_id/);
+    expect(h.calls.length).toBe(0);
   });
 });

@@ -16,6 +16,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@givernance/shared/constants";
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -67,11 +68,11 @@ const AcceptInvitationBody = Type.Object({
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
   /**
-   * Cleartext password the invitee picks. Min 12 to comply with the
-   * realm's brute-force protection without leaking exact policy back to
-   * the frontend (matches the signup verify endpoint).
+   * Cleartext password the invitee picks. Min/max sourced from
+   * `@givernance/shared/constants` so accept-form and signup-verify
+   * never drift apart (F11).
    */
-  password: Type.String({ minLength: 12, maxLength: 128 }),
+  password: Type.String({ minLength: PASSWORD_MIN_LENGTH, maxLength: PASSWORD_MAX_LENGTH }),
   /**
    * Optional BCP-47 locale picked at acceptance (issue #153). Persisted
    * to `users.locale` only when it differs from the tenant's
