@@ -104,13 +104,21 @@ export async function GET(request: NextRequest) {
   // extra picker click (issue #150). Forwarded as `kc_idp_hint`: KC
   // matches the alias to a configured IdP and redirects directly when
   // it exists, silently ignoring the hint otherwise — so non-federated
-  // tenants are unaffected. Validated as a tenant-slug shape (the same
-  // pattern enforced on the signup side) to prevent injection of
-  // arbitrary IdP aliases by a malicious caller.
+  // tenants are unaffected. Validated via the shared tenant-slug
+  // checker so the punycode + reserved-slug rejects stay aligned with
+  // signup. Rejected hints emit a warn log mirroring the
+  // `auth.return_to.rejected` pattern below, so attacker probes are
+  // visible on Cockpit instead of failing silently (PR #358 review m2).
   const url = new URL(request.url);
-  const hint = validateLoginHint(url.searchParams.get("hint"));
-  if (hint) {
-    params.set("kc_idp_hint", hint);
+  const rawHint = url.searchParams.get("hint");
+  const hint = validateLoginHint(rawHint);
+  if (hint.kind === "valid") {
+    params.set("kc_idp_hint", hint.slug);
+  } else if (hint.kind === "rejected" && rawHint) {
+    logAuthEvent("warn", "auth.login_hint.rejected", {
+      raw: rawHint.slice(0, 256),
+      reason: hint.reason,
+    });
   }
 
   // Step-up MFA support (issue #250). The impersonation form redirects
