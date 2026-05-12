@@ -554,9 +554,7 @@ describe("POST /v1/invitations/:id/resend", () => {
     // distinct invitation ids, we insert the second invitation row
     // directly — same shape the service would have created.
     const inviteBId = randomUUID();
-    await db.execute(
-      sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`,
-    );
+    await db.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
     await db.execute(sql`
       INSERT INTO invitations (id, org_id, email, role, token, purpose, expires_at, created_at)
       VALUES (

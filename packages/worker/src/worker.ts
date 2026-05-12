@@ -266,6 +266,21 @@ async function processDomainEvent(job: Job): Promise<void> {
     case "unhandled":
       log.warn({ eventType: decision.type }, "Unhandled event type");
       return;
+
+    default: {
+      // Exhaustiveness check (PR #358 review M4). If a new `kind` is
+      // added to `RoutingDecision` and a matching `case` isn't added
+      // here, TypeScript fails to narrow `decision` to `never` and
+      // surfaces a compile error — turning "I added a routing kind
+      // and forgot to wire it" into a build failure rather than a
+      // silent no-op at runtime.
+      const _exhaustive: never = decision;
+      log.error(
+        { decision: _exhaustive },
+        "routeDomainEvent returned an unhandled RoutingDecision kind — switch is non-exhaustive",
+      );
+      return;
+    }
   }
 }
 

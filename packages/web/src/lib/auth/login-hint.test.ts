@@ -3,51 +3,58 @@ import { describe, expect, it } from "vitest";
 import { validateLoginHint } from "./login-hint";
 
 describe("validateLoginHint", () => {
-  // Accepted shapes mirror `validateTenantSlug` (shared/validators) — the
-  // signup-verify and invite-accept pages forward `response.slug` directly,
-  // so the accept criteria here is "round-trips a server-issued slug".
-  it("accepts canonical lowercase slugs", () => {
-    expect(validateLoginHint("acme")).toBe("acme");
-    expect(validateLoginHint("foo-bar")).toBe("foo-bar");
-    expect(validateLoginHint("a1")).toBe("a1");
+  // The validator delegates to the canonical `validateTenantSlug`, so its
+  // shape rules — regex, 2–50 char length, `xn--` punycode reject, and
+  // the reserved-slug list — are inherited. The cases below cover the
+  // discriminated-result contract the login route now consumes.
+
+  it("returns `valid` with the canonical (trimmed + lowercased) slug for accepted shapes", () => {
+    expect(validateLoginHint("acme")).toEqual({ kind: "valid", slug: "acme" });
+    expect(validateLoginHint("foo-bar")).toEqual({ kind: "valid", slug: "foo-bar" });
+    expect(validateLoginHint("  Acme-Foundation  ")).toEqual({
+      kind: "valid",
+      slug: "acme-foundation",
+    });
   });
 
-  it("normalises trimmed + mixed-case input", () => {
-    expect(validateLoginHint("  Acme-Foundation  ")).toBe("acme-foundation");
+  it("returns `absent` when the input is missing or empty (no warn log fires)", () => {
+    expect(validateLoginHint(null)).toEqual({ kind: "absent" });
+    expect(validateLoginHint(undefined)).toEqual({ kind: "absent" });
+    expect(validateLoginHint("")).toEqual({ kind: "absent" });
+    expect(validateLoginHint("   ")).toEqual({ kind: "absent" });
   });
 
-  it("returns null when absent", () => {
-    expect(validateLoginHint(null)).toBeNull();
-    expect(validateLoginHint(undefined)).toBeNull();
-    expect(validateLoginHint("")).toBeNull();
+  it("returns `rejected` with `syntax` for shape violations", () => {
+    expect(validateLoginHint("a")).toEqual({ kind: "rejected", reason: "syntax" });
+    expect(validateLoginHint("-acme")).toEqual({ kind: "rejected", reason: "syntax" });
+    expect(validateLoginHint("acme-")).toEqual({ kind: "rejected", reason: "syntax" });
+    expect(validateLoginHint("Acme Foundation")).toEqual({
+      kind: "rejected",
+      reason: "syntax",
+    });
+    expect(validateLoginHint("acme/etc")).toEqual({ kind: "rejected", reason: "syntax" });
+    expect(validateLoginHint("acme&kc_idp_hint=other")).toEqual({
+      kind: "rejected",
+      reason: "syntax",
+    });
+    expect(validateLoginHint("a".repeat(51))).toEqual({ kind: "rejected", reason: "syntax" });
   });
 
-  // Each rejection below would otherwise reach Keycloak as a literal
-  // `kc_idp_hint` value and probe for alias matches. Dropping them
-  // server-side keeps upstream logs free of attacker probes.
-  it("rejects single-character slugs (< 2 chars violates the shared pattern)", () => {
-    expect(validateLoginHint("a")).toBeNull();
+  it("returns `rejected` with `punycode` for IDNA-prefixed values", () => {
+    // Without delegation to validateTenantSlug, a local regex would
+    // accept `xn--paypal` as a valid slug shape and forward it to
+    // Keycloak as a `kc_idp_hint` value — low blast radius but exactly
+    // the kind of probe the multi-agent review M7 flagged. Pinning the
+    // reason discriminator here so a future regression is loud.
+    expect(validateLoginHint("xn--paypal")).toEqual({ kind: "rejected", reason: "punycode" });
   });
 
-  it("rejects leading or trailing hyphens", () => {
-    expect(validateLoginHint("-acme")).toBeNull();
-    expect(validateLoginHint("acme-")).toBeNull();
-  });
-
-  it("rejects uppercase that doesn't normalise to a valid slug", () => {
-    // Uppercase WITH characters that don't survive lowercasing (e.g. spaces)
-    expect(validateLoginHint("Acme Foundation")).toBeNull();
-  });
-
-  it("rejects slug-injection attempts (spaces, slashes, query separators)", () => {
-    expect(validateLoginHint("acme/etc")).toBeNull();
-    expect(validateLoginHint("acme&kc_idp_hint=other")).toBeNull();
-    expect(validateLoginHint("acme?x=1")).toBeNull();
-    expect(validateLoginHint("acme foundation")).toBeNull();
-  });
-
-  it("rejects slugs longer than the 50-char shared cap", () => {
-    const tooLong = "a".repeat(51);
-    expect(validateLoginHint(tooLong)).toBeNull();
+  it("returns `rejected` with `reserved` for platform-reserved slugs", () => {
+    // `admin`, `api`, `www`, … are reserved by the platform (see
+    // `packages/shared/src/constants/reserved-slugs.ts`). Forwarding
+    // them as a hint to KC is harmless (no IdP alias will match) but
+    // probing for them belongs in the warn log, not the upstream URL.
+    expect(validateLoginHint("admin")).toEqual({ kind: "rejected", reason: "reserved" });
+    expect(validateLoginHint("api")).toEqual({ kind: "rejected", reason: "reserved" });
   });
 });
