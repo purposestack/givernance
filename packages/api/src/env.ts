@@ -68,6 +68,12 @@ const EnvSchema = Type.Object({
   KEYCLOAK_ADMIN_CLIENT_ID: Type.String({ minLength: 1, default: "givernance-admin" }),
   /** Service-account client secret used for Keycloak Admin API calls. */
   KEYCLOAK_ADMIN_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
+  /**
+   * Public-client identifier the web app authenticates as. The back-channel
+   * logout endpoint (issue #76 / PR-2) validates the logout token's `aud`
+   * against this so a token minted for a different client is rejected.
+   */
+  KEYCLOAK_CLIENT_ID: Type.String({ minLength: 1, default: "givernance-web" }),
   /** hCaptcha server-side secret used by the public signup flow (ADR-016 / issue #108). */
   HCAPTCHA_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   /** Explicit override for CAPTCHA enforcement — `disabled` fails open, `prod` fails closed. */

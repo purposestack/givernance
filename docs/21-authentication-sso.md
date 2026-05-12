@@ -173,7 +173,7 @@ Data residency is **not a per-tenant choice** in the onboarding flow. All SaaS t
 
 ## 4. Sign-Out Flow
 
-The sidebar footer hosts a `LogOut` icon button that triggers the sign-out. It submits a form POST (not `fetch`) so the browser can natively follow the cross-origin redirect to Keycloak's end-session endpoint.
+The topbar avatar is a `DropdownMenu` (the **account menu** — see [GLO-005 mockup](design/shared/account-menu.html), issue #76). "Se déconnecter" calls `useAuth().logout()` which submits a form POST (not `fetch`) so the browser can natively follow the cross-origin redirect to Keycloak's end-session endpoint.
 
 1. `POST /api/auth/logout` — clears the `givernance_jwt`, `givernance_id_token`, and `givernance_refresh_token` cookies, then 303-redirects to Keycloak's end-session URL with:
    - `client_id=givernance-web`
@@ -185,7 +185,50 @@ The sidebar footer hosts a `LogOut` icon button that triggers the sign-out. It s
 
 > **Why `post.logout.redirect.uris` must be registered**: Keycloak 21+ requires the client to explicitly allow the `post_logout_redirect_uri`. The attribute is set in `infra/keycloak/realm-givernance.json`. Existing containers that already imported the realm need the attribute pushed via the admin API (`--import-realm` skips existing realms).
 
-**Limitation — stateless access token**: the JWT is still self-contained and verified by signature, so revoking the Keycloak session does NOT invalidate an already-issued access token immediately. Silent refresh reduces user-facing expiry interruptions, but instant revocation still requires server-side session invalidation / blocklisting. Back-channel logout with a Redis `sid` blocklist is tracked in [#76](https://github.com/purposestack/givernance/issues/76).
+### 4.1 Back-channel logout (issue #76 / PR-2)
+
+Stateless access tokens used to mean a Keycloak session ended on another device (admin "Sign out all sessions", sibling-device logout) could not invalidate an already-issued access token until natural expiry. OIDC Back-Channel Logout 1.0 closes that gap.
+
+**Keycloak side** (`infra/keycloak/realm-givernance.json` → `givernance-web` client):
+
+| Attribute | Value | Purpose |
+|---|---|---|
+| `backchannel.logout.url` | `http://api:3000/v1/auth/backchannel-logout` (dev) | Where Keycloak POSTs the signed `logout_token` |
+| `backchannel.logout.session.required` | `true` | Keycloak emits the OIDC `sid` claim on every access/ID token, and includes it in the logout token |
+| `backchannel.logout.revoke.offline.tokens` | `false` | We don't issue offline tokens; explicit for posterity |
+
+Staging / production operators override `backchannel.logout.url` per-environment via the Keycloak admin API (`https://staging.givernance.org/v1/auth/backchannel-logout`, `https://app.givernance.org/v1/auth/backchannel-logout`). The dev URL uses the docker-compose service hostname (`api`) so Keycloak can reach the API container.
+
+**App side** (`packages/api/src/modules/auth/routes.ts`):
+
+1. `POST /v1/auth/backchannel-logout` receives `application/x-www-form-urlencoded` body with a `logout_token` field. Exempt from the JWT auth gate (`isAuthExempt`) — the logout token IS the authentication.
+2. [`verifyBackchannelLogoutToken`](../packages/api/src/lib/keycloak-logout-token.ts) validates the token per OIDC Back-Channel Logout 1.0 § 2.4:
+   - Signature against realm JWKS (RS256)
+   - `iss` matches realm issuer
+   - `aud` matches the `KEYCLOAK_CLIENT_ID` env var (`givernance-web`)
+   - `iat` recent (≤ 5 min skew)
+   - `events` contains `http://schemas.openid.net/event/backchannel-logout` mapped to a JSON object
+   - `nonce` MUST NOT be present (defends against replaying a leaked ID token as a logout token)
+   - `sid` MUST be present
+3. The `sid` is written to a Redis blocklist `auth:kc-sid-blocklist:<sid>` with a 10-minute TTL (covers the 5-min access-token lifespan + skew).
+4. On the next authenticated request, the Fastify `auth` plugin extracts `sid` from the JWT claims and rejects the request with `401 Unauthorized — Session revoked.` if blocklisted.
+
+**Why `sid` and not `jti`**: the existing `session_blocklist:<jti>` (used by `switch-org`) revokes a single access token. After a silent refresh (see §4.2 below), `jti` rotates but `sid` stays stable for the same Keycloak SSO session. Blocklisting `sid` therefore invalidates every refresh, not just the token in flight.
+
+### 4.2 Short access-token TTL + silent refresh (issue #76 / PR-3)
+
+To narrow the blocklist window (and the worst-case "compromised access token" lifetime), the realm sets `access.token.lifespan=300` (5 min) on `givernance-web`. The web app refreshes silently before the token expires so the user never gets bounced to `/login` mid-session.
+
+| Component | Role |
+|---|---|
+| `POST /api/auth/refresh` (`packages/web/src/app/api/auth/refresh/route.ts`) | Reads the `givernance_refresh_token` cookie, calls Keycloak's token endpoint with `grant_type=refresh_token`, rotates `givernance_jwt` + `givernance_id_token` + `givernance_refresh_token` on success. On `invalid_grant` (session revoked, refresh token expired) clears all session cookies and returns 401. |
+| `AuthProvider` (`packages/web/src/lib/auth/auth-context.tsx`) | Schedules a refresh ~240s after the user hydrates; on success, re-schedules using the server's `expires_in`. On failure, clears local auth state so the next protected navigation hits middleware → `/login`. |
+
+CSRF: the refresh endpoint does not require the double-submit token. The refresh cookie is httpOnly, the only side effect is rotating the victim's own tokens, and the response goes to the same origin. Adding CSRF would block legitimate cross-tab refreshes without adding security.
+
+**Multi-tab race**: each tab schedules its own refresh. Keycloak's refresh-token rotation means concurrent refreshes from two tabs may produce one winner + one `invalid_grant` failure; the losing tab catches the 401 and bounces to `/login`. This is acceptable for v1; a shared-worker / `BroadcastChannel` coordinator is tracked as a follow-up if it becomes a UX issue.
+
+**Limitation — JWT signature still self-contained**: the access token is still verified by signature alone within its 5-min lifespan. The combined back-channel `sid` blocklist + short TTL closes the practical attack window to ≤ 5 minutes for any compromised or revoked session, with explicit fail-closed behaviour on Redis outage (see `isKeycloakSessionBlocklisted`).
 
 ## 5. Cookies Set by the Flow
 

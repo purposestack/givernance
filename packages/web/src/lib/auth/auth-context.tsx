@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
@@ -56,6 +57,16 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
+/**
+ * Silent-refresh cadence (issue #76 / PR-3). The realm sets
+ * `access.token.lifespan=300` (5 minutes), so we rotate the token at
+ * ~4 minutes (240s) — gives 60s of headroom for a Keycloak blip or a
+ * slow refresh round-trip without the user noticing. Server response
+ * carries `expiresIn` so we self-correct if the realm policy changes.
+ */
+const DEFAULT_REFRESH_INTERVAL_MS = 240 * 1000;
+const REFRESH_GRACE_MS = 60 * 1000;
+
 async function fetchMe(): Promise<UserProfile> {
   const res = await fetch(`${API_URL}/v1/users/me`, {
     credentials: "include",
@@ -93,6 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: true,
     error: null,
   });
+  // Holds the next scheduled silent-refresh timer so we can cancel/replace
+  // it (e.g. when a refresh succeeds and returns a new `expires_in`, or
+  // when the provider unmounts during navigation).
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadUser = useCallback(async () => {
     try {
@@ -111,6 +126,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadUser();
   }, [loadUser]);
+
+  // Silent access-token refresh (issue #76 / PR-3). Rotates the access
+  // token before it expires so the user doesn't get bounced to /login
+  // every 5 minutes. On refresh failure, clear local auth state so the
+  // next protected navigation falls through to the middleware redirect.
+  useEffect(() => {
+    // Only schedule once we have a hydrated user — refreshing before
+    // we even know who the user is would race the first /v1/users/me.
+    if (!state.user) return;
+
+    let cancelled = false;
+
+    const scheduleNext = (delayMs: number) => {
+      if (cancelled) return;
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(runRefresh, Math.max(delayMs, 1000));
+    };
+
+    const runRefresh = async () => {
+      try {
+        const res = await fetch("/api/auth/refresh", {
+          method: "POST",
+          credentials: "include",
+          // No CSRF header — the refresh route does not gate on it.
+          // See `/api/auth/refresh/route.ts` for the rationale.
+        });
+        if (!res.ok) {
+          // Refresh refused (refresh-token revoked / session ended via
+          // back-channel logout / admin sign-out-all). Mark the local
+          // session as gone — middleware sends the next nav to /login.
+          if (!cancelled) {
+            setState({ user: null, loading: false, error: "session_expired" });
+          }
+          return;
+        }
+        const body = (await res.json().catch(() => null)) as { expiresIn?: number } | null;
+        const expiresInMs =
+          typeof body?.expiresIn === "number" && body.expiresIn > 0
+            ? body.expiresIn * 1000
+            : DEFAULT_REFRESH_INTERVAL_MS + REFRESH_GRACE_MS;
+        scheduleNext(expiresInMs - REFRESH_GRACE_MS);
+      } catch {
+        // Transient network failure — retry sooner than the default
+        // cadence (30s) so a brief blip doesn't leak into a forced
+        // logout when the token would otherwise still be valid.
+        scheduleNext(30 * 1000);
+      }
+    };
+
+    scheduleNext(DEFAULT_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+  }, [state.user]);
 
   const hasRole = useCallback(
     (role: string) => state.user?.roles.includes(role) ?? false,

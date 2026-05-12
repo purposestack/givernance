@@ -326,7 +326,14 @@
       "searchPlaceholder": "Search...",
       "searchLabel": "Search",
       "notifications": "Notifications",
-      "profileOf": "Profile of {name}"
+      "profileOf": "Profile of {name}",
+      "accountMenu": {
+        "triggerLabel": "Account menu, {name}",
+        "myAccount": "My account",
+        "language": "Language",
+        "languageChoice": "Switch interface language to {label}",
+        "signOut": "Sign out"
+      }
     },
     "impersonation": {
       "browsingAs": "You are browsing as {name}",
