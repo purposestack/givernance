@@ -16,6 +16,13 @@ export interface KeycloakJwtClaims {
   auth_time?: number;
   /** Authentication Context Class Reference — `"2"` ⇒ MFA-backed login. */
   acr?: string;
+  /**
+   * Keycloak SSO session id. Stable across access-token refreshes for the
+   * same Keycloak session — what OIDC back-channel logout (issue #76 / PR-2)
+   * blocklists when an admin or sibling-device sign-out invalidates the
+   * upstream session before the access token would naturally expire.
+   */
+  sid?: string;
 }
 
 const KEYCLOAK_ISSUER = env.KEYCLOAK_ISSUER ?? `${env.KEYCLOAK_URL}/realms/${env.KEYCLOAK_REALM}`;
@@ -24,7 +31,15 @@ const KEYCLOAK_JWKS_URL =
   env.KEYCLOAK_JWKS_URL ??
   `${KEYCLOAK_INTERNAL_BASE}/realms/${env.KEYCLOAK_REALM}/protocol/openid-connect/certs`;
 
-const keycloakJwks = createRemoteJWKSet(new URL(KEYCLOAK_JWKS_URL));
+/**
+ * Shared JWKS for the realm. Reused by `verifyKeycloakJwt` (access tokens)
+ * and `verifyBackchannelLogoutToken` (issue #76 / PR-2) so they go through
+ * the same key-rotation cache instead of opening two parallel remote sets.
+ */
+export const keycloakJwks = createRemoteJWKSet(new URL(KEYCLOAK_JWKS_URL));
+
+/** Realm issuer string — exported so logout-token verification can reuse it. */
+export const keycloakIssuer = KEYCLOAK_ISSUER;
 
 export async function verifyKeycloakJwt(token: string): Promise<KeycloakJwtClaims> {
   const { payload } = await jwtVerify(token, keycloakJwks, {

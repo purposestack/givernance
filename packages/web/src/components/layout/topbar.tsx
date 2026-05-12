@@ -1,10 +1,21 @@
 "use client";
 
-import { Bell, Menu, Search } from "lucide-react";
+import { LOCALE_NATIVE_NAMES, type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import { Bell, Check, LogOut, Menu, Search, User } from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
-import type { RefObject } from "react";
+import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
+import { type RefObject, useCallback, useTransition } from "react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { setLocale } from "@/i18n/locale";
 import { useAuth } from "@/lib/auth";
 
 interface TopbarProps {
@@ -14,25 +25,32 @@ interface TopbarProps {
   hamburgerRef: RefObject<HTMLButtonElement | null>;
 }
 
-/**
- * Top bar — 80px sticky, glass effect.
- * Matches dashboard.html mockup: breadcrumb left, search center, actions right.
- */
+const avatarTriggerClasses =
+  "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary outline-none transition-shadow duration-normal ease-out hover:shadow-[0_0_0_4px_rgba(9,100,71,0.10)] data-[state=open]:shadow-[0_0_0_4px_rgba(9,100,71,0.15)] focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
+
 export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: TopbarProps) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const t = useTranslations("appShell.topbar");
+  const tMenu = useTranslations("appShell.topbar.accountMenu");
+  const locale = useLocale() as Locale;
+  const router = useRouter();
+  const [isLocalePending, startLocaleTransition] = useTransition();
 
   const initials = user
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
     : "?";
 
   const displayName = user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() : "";
-  // Issue #153: avatar links to `/profile` for every authenticated role —
-  // it's the user's own preference page (locale switcher today, more
-  // personal preferences later). The previous "org_admin-only" wiring is
-  // gone now that a profile page exists.
-  const avatarClasses =
-    "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
+  const email = user?.email ?? "";
+
+  const handleLocaleSelect = useCallback(
+    async (next: Locale) => {
+      if (next === locale) return;
+      await setLocale(next);
+      startLocaleTransition(() => router.refresh());
+    },
+    [locale, router],
+  );
 
   return (
     <header className="sticky top-0 z-[var(--z-sticky)] flex h-[var(--topbar-height)] items-center gap-4 border-b border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-[var(--content-padding)] backdrop-blur-xl">
@@ -84,14 +102,83 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
           />
         </button>
 
-        <Link
-          href="/profile"
-          className={avatarClasses}
-          title={displayName}
-          aria-label={t("profileOf", { name: displayName })}
-        >
-          {initials}
-        </Link>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={avatarTriggerClasses}
+              aria-label={tMenu("triggerLabel", { name: displayName })}
+            >
+              <span aria-hidden="true">{initials}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72">
+            <div className="flex items-center gap-3 px-3 py-2">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"
+                aria-hidden="true"
+              >
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-on-surface">{displayName}</div>
+                <div className="truncate text-xs text-on-surface-variant">{email}</div>
+              </div>
+            </div>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem asChild>
+              <Link href="/profile">
+                <User size={16} aria-hidden="true" />
+                <span>{tMenu("myAccount")}</span>
+              </Link>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuLabel>{tMenu("language")}</DropdownMenuLabel>
+            {SUPPORTED_LOCALES.map((next) => {
+              const isActive = next === locale;
+              const label = LOCALE_NATIVE_NAMES[next];
+              return (
+                <DropdownMenuItem
+                  key={next}
+                  // Radix' onSelect fires for both pointer + keyboard activation
+                  // and closes the menu by default — exactly what we want here.
+                  onSelect={(event) => {
+                    if (isActive || isLocalePending) {
+                      event.preventDefault();
+                      return;
+                    }
+                    void handleLocaleSelect(next);
+                  }}
+                  aria-current={isActive ? "true" : undefined}
+                  aria-disabled={isLocalePending}
+                  className={isActive ? "font-semibold text-primary" : undefined}
+                >
+                  <span className="flex h-5 w-7 items-center justify-center rounded-sm bg-surface-container font-mono text-[10px] font-semibold uppercase text-on-surface-variant">
+                    {next}
+                  </span>
+                  <span>{label}</span>
+                  {isActive ? (
+                    <Check size={14} className="ml-auto text-primary" aria-hidden="true" />
+                  ) : null}
+                </DropdownMenuItem>
+              );
+            })}
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem
+              onSelect={logout}
+              className="text-error focus:bg-error-container focus:text-error"
+            >
+              <LogOut size={16} aria-hidden="true" />
+              <span>{tMenu("signOut")}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

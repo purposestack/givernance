@@ -15,6 +15,7 @@ import { verifyKeycloakJwt } from "../lib/keycloak-jwt.js";
 import { problemDetail } from "../lib/schemas.js";
 import {
   getActiveUserCache,
+  isKeycloakSessionBlocklisted,
   isSessionBlocklisted,
   isUserBlocklisted,
   setActiveUserCache,
@@ -88,7 +89,17 @@ async function auth(app: FastifyInstance) {
 }
 
 function isAuthExempt(url: string): boolean {
-  return url.startsWith("/healthz") || url.startsWith("/readyz") || url.startsWith("/docs");
+  return (
+    url.startsWith("/healthz") ||
+    url.startsWith("/readyz") ||
+    url.startsWith("/docs") ||
+    // Back-channel logout (issue #76 / PR-2) authenticates via the signed
+    // OIDC `logout_token` form field, not the JWT cookie/header — the JWT
+    // never reaches this endpoint because Keycloak posts to it
+    // server-to-server. Forcing it through the JWT auth path would 401
+    // every legitimate logout signal.
+    url.startsWith("/v1/auth/backchannel-logout")
+  );
 }
 
 /**
@@ -160,6 +171,17 @@ async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult>
   // realm didn't emit one — the switch endpoint will still authorise
   // itself, but will not be able to revoke the prior session.
   if (decoded.jti && (await isSessionBlocklisted(decoded.jti))) {
+    return "session_revoked";
+  }
+
+  // Issue #76 / PR-2 — Keycloak SSO session blocklist. When the upstream
+  // session is ended (admin "Sign out all sessions", sibling-device
+  // logout), Keycloak POSTs a back-channel logout token to the API,
+  // which blocklists the `sid`. Any access token still carrying that
+  // `sid` is rejected here on the next request, regardless of natural
+  // expiry. `sid` is stable across access-token refreshes, so this
+  // also rejects refreshed tokens for the revoked session.
+  if (await isKeycloakSessionBlocklisted(decoded.sid)) {
     return "session_revoked";
   }
 

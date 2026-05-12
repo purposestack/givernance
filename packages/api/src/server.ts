@@ -17,6 +17,7 @@ import { featureFlagsRoutes } from "./modules/admin/feature-flags-routes.js";
 import { impersonationRoutes } from "./modules/admin/impersonation-routes.js";
 import { platformAdminsRoutes } from "./modules/admin/platform-admins-routes.js";
 import { auditRoutes } from "./modules/audit/routes.js";
+import { authRoutes } from "./modules/auth/routes.js";
 import { bankAccountRoutes } from "./modules/bank-accounts/routes.js";
 import { brandingRoutes } from "./modules/branding/routes.js";
 import { postalCampaignRoutes } from "./modules/campaigns/postal-routes.js";
@@ -206,6 +207,7 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(featureFlagsRoutes, { prefix: "/v1" });
   await app.register(tenantAdminRoutes, { prefix: "/v1" });
   await app.register(sessionRoutes, { prefix: "/v1" });
+  await app.register(authRoutes, { prefix: "/v1" });
   await app.register(disputeRoutes, { prefix: "/v1" });
   await app.register(dashboardRoutes, { prefix: "/v1" });
 

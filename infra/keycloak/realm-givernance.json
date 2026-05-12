@@ -312,7 +312,11 @@
         "https://*.givernance.org/*"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:3001/*##https://staging.givernance.org/*##https://staging.givernance.org/login##https://app.givernance.org/*##https://*.givernance.org/*"
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:3001/*##https://staging.givernance.org/*##https://staging.givernance.org/login##https://app.givernance.org/*##https://*.givernance.org/*",
+        "access.token.lifespan": "300",
+        "backchannel.logout.url": "http://api:3000/v1/auth/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
       },
       "webOrigins": [
         "+"

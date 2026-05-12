@@ -161,3 +161,26 @@ function signJwt(payload: Record<string, unknown>) {
 function base64UrlEncode(value: string | Buffer) {
   return Buffer.from(value).toString("base64url");
 }
+
+/**
+ * Sign an OIDC Back-Channel Logout 1.0 token (issue #76 / PR-2) against
+ * the test JWKS. Callers override the `claims` arg to test rejection
+ * paths (missing `sid`, presence of `nonce`, wrong audience, stale
+ * `iat`, missing `events`, …). Default produces a spec-compliant token.
+ */
+export function signLogoutToken(claims: Record<string, unknown> = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: TEST_JWT_ISSUER,
+    aud: "givernance-web",
+    iat: now,
+    jti: `logout-jti-${now}-${Math.random().toString(36).slice(2)}`,
+    sid: `kc-sid-${now}-${Math.random().toString(36).slice(2)}`,
+    sub: USER_A,
+    events: {
+      "http://schemas.openid.net/event/backchannel-logout": {},
+    },
+    ...claims,
+  };
+  return signJwt(payload);
+}

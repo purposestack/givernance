@@ -317,3 +317,56 @@ export async function invalidateActiveUserCache(keycloakId: string, orgId: strin
     logger.error({ err, keycloakId, orgId }, "active-user cache invalidation failed");
   }
 }
+
+// ─── Keycloak SSO session blocklist (issue #76 / PR-2) ─────────────────────
+//
+// Distinct from the `jti` blocklist above: this one keys on the OIDC `sid`
+// claim, which is stable across access-token refreshes for the same
+// upstream Keycloak session. Used by the back-channel logout webhook —
+// when Keycloak notifies us that an upstream session has ended (admin
+// "Sign out all sessions", sibling-device logout), we blocklist the `sid`
+// so any access token still carrying it gets rejected on the next request
+// instead of remaining valid until natural expiry.
+//
+// Fail-closed on Redis outage matches `isSessionBlocklisted` /
+// `isUserBlocklisted` — a transient Redis blip surfaces as 401 rather
+// than silently accepting tokens we cannot vouch for.
+
+const KEYCLOAK_SID_BLOCKLIST_PREFIX = "auth:kc-sid-blocklist:";
+/**
+ * Default blocklist TTL — must outlive the longest access token Keycloak
+ * might mint after the back-channel signal arrives. The realm currently
+ * sets `access.token.lifespan=300` (5 minutes — issue #76 / PR-3) so 10
+ * minutes gives generous headroom for clock skew without leaving stale
+ * entries around. Callers can pass an explicit TTL when they know better.
+ */
+export const KEYCLOAK_SID_BLOCKLIST_DEFAULT_TTL_S = 10 * 60;
+
+function keycloakSessionBlocklistKey(sid: string): string {
+  return `${KEYCLOAK_SID_BLOCKLIST_PREFIX}${sid}`;
+}
+
+/**
+ * Mark a Keycloak SSO session id as revoked. Called by the back-channel
+ * logout webhook after the logout token is signature-verified. `ttlSeconds`
+ * should cover the longest still-valid access token that could carry this
+ * `sid`; the default tracks the realm's `access.token.lifespan` with a
+ * skew buffer.
+ */
+export async function blocklistKeycloakSession(
+  sid: string,
+  ttlSeconds: number = KEYCLOAK_SID_BLOCKLIST_DEFAULT_TTL_S,
+): Promise<void> {
+  await redis.setex(keycloakSessionBlocklistKey(sid), Math.max(ttlSeconds, 1), "1");
+}
+
+export async function isKeycloakSessionBlocklisted(sid: string | undefined): Promise<boolean> {
+  if (!sid) return false;
+  try {
+    const hit = await redis.get(keycloakSessionBlocklistKey(sid));
+    return hit !== null;
+  } catch (err) {
+    logger.error({ err, sid }, "keycloak-session blocklist lookup failed — failing closed");
+    return true;
+  }
+}
