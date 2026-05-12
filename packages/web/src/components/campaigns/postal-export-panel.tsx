@@ -4,6 +4,7 @@ import {
   type PostalExportRunMode,
   resolvePostalExportMode,
 } from "@givernance/shared/postal-export-mode";
+import { hasPageFromStatus } from "@givernance/shared/postal-print-layout";
 import {
   AlertTriangle,
   Banknote,
@@ -80,7 +81,6 @@ interface PostalExportPanelProps {
  * polling + start + preview + readiness gates). Extracting more would
  * make the code less readable, not more.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: see JSDoc above
 export function PostalExportPanel({
   campaignId,
   campaignType,
@@ -96,15 +96,19 @@ export function PostalExportPanel({
   );
 
   // Epic #318 PR #4 — resolve the run mode the same way the API and worker
-  // resolve it. Single source of truth in `@givernance/shared/postal-export-mode`.
+  // resolve it. Single source of truth in `@givernance/shared/postal-export-mode`,
+  // and `hasPageFromStatus` from `@givernance/shared/postal-print-layout` so the
+  // web layer derives `hasPage` from the public-page status with exactly the
+  // same rule the API and worker use.
   const runMode: PostalExportRunMode = useMemo(
     () =>
       resolvePostalExportMode({
         hasBank: bankAccount !== null,
-        // `hasPage = page row exists` (draft or published) — the
-        // publish-status banner fires separately. Same semantics as the
-        // API + worker resolvers.
-        hasPage: publicPageStatus !== "missing",
+        // Shared helper accepts `draft | published | null | undefined`. The
+        // web type carries an extra `"missing"` sentinel that represents
+        // "no row in `campaign_public_pages`" — map it to `null` so the
+        // helper returns `false` (same as missing).
+        hasPage: hasPageFromStatus(publicPageStatus === "missing" ? null : publicPageStatus),
       }),
     [bankAccount, publicPageStatus],
   );
@@ -153,7 +157,15 @@ export function PostalExportPanel({
     if (isPreviewing) return;
     setIsPreviewing(true);
     try {
-      await fetchAndOpenPreview({ campaignId, mode });
+      await fetchAndOpenPreview({
+        campaignId,
+        mode,
+        // n2 — locale-aware download filename for the hybrid-preview ZIP.
+        // We resolve it at the call site (component scope) instead of inside
+        // the helper so the helper stays a plain fetch/UI plumbing function
+        // with no next-intl dependency.
+        zipFilename: t("preview.zipFilename"),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : t("toast.previewFailed");
       toast.error(message);
@@ -182,7 +194,11 @@ export function PostalExportPanel({
             <FileArchive size={18} aria-hidden="true" />
             {t("title")}
           </CardTitle>
-          <CardDescription>{t("description")}</CardDescription>
+          {/* Epic #318 PR #4 — mode-keyed description so the card header
+              matches the actual export shape (appeal letter / QR-bill /
+              hybrid / blocked) instead of a one-size-fits-all string that
+              lies in qr_bill_only and blocked modes. */}
+          <CardDescription>{t(`description.${runMode}`)}</CardDescription>
         </div>
         <Button
           type="button"
@@ -196,7 +212,12 @@ export function PostalExportPanel({
         </Button>
       </CardHeader>
       <CardContent className="space-y-5">
-        <ModeSummaryPanel runMode={runMode} bankAccount={bankAccount} campaignId={campaignId} />
+        <ModeSummaryPanel
+          runMode={runMode}
+          bankAccount={bankAccount}
+          campaignId={campaignId}
+          campaignType={campaignType}
+        />
 
         {generateBlocked ? (
           <ReadinessBanners
@@ -235,38 +256,53 @@ export function PostalExportPanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant="primary"
-            onClick={() => void handleStart()}
-            disabled={
-              isStarting ||
-              (mode === "personalized" && personalizedDisabled) ||
-              activeJob !== undefined ||
-              generateBlocked
-            }
-            title={
-              generateBlocked
-                ? campaignNotActive
-                  ? t("readiness.activateCampaignFirst")
-                  : exportNotConfigured
-                    ? t("readiness.notConfiguredTooltip")
-                    : t("readiness.publishPublicPageFirst")
-                : undefined
-            }
-          >
-            {isStarting ? (
-              <>
-                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                {t("actions.starting")}
-              </>
-            ) : (
-              <>
-                <FileArchive size={16} aria-hidden="true" />
-                {t(`actions.generateZip.${runMode}`)}
-              </>
-            )}
-          </Button>
+          {/*
+            m1 — a11y for the disabled CTA. `title` is famously inaccessible
+            on disabled buttons (no keyboard reveal, and screen-readers often
+            skip it entirely). Pair it with an `aria-label` that concatenates
+            the visible label with the blocker reason, so SR users hear the
+            "why" even when the visual title tooltip doesn't fire.
+          */}
+          {(() => {
+            const blockerReason = !generateBlocked
+              ? null
+              : campaignNotActive
+                ? t("readiness.activateCampaignFirst")
+                : exportNotConfigured
+                  ? t("readiness.notConfiguredTooltip")
+                  : t("readiness.publishPublicPageFirst");
+            const buttonAriaLabel =
+              generateBlocked && blockerReason
+                ? `${t(`actions.generateZip.${runMode}`)} — ${blockerReason}`
+                : undefined;
+            return (
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => void handleStart()}
+                disabled={
+                  isStarting ||
+                  (mode === "personalized" && personalizedDisabled) ||
+                  activeJob !== undefined ||
+                  generateBlocked
+                }
+                title={blockerReason ?? undefined}
+                aria-label={buttonAriaLabel}
+              >
+                {isStarting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                    {t("actions.starting")}
+                  </>
+                ) : (
+                  <>
+                    <FileArchive size={16} aria-hidden="true" />
+                    {t(`actions.generateZip.${runMode}`)}
+                  </>
+                )}
+              </Button>
+            );
+          })()}
           <Button
             type="button"
             variant="secondary"
@@ -425,9 +461,11 @@ function StatusBadge({ status }: { status: PostalExport["status"] }) {
 async function fetchAndOpenPreview({
   campaignId,
   mode,
+  zipFilename,
 }: {
   campaignId: string;
   mode: PostalExportMode;
+  zipFilename: string;
 }): Promise<void> {
   const previewUrl = PostalCampaignService.previewPdfUrl(campaignId);
   // The auth plugin's CSRF double-submit guard reads from the
@@ -458,7 +496,7 @@ async function fetchAndOpenPreview({
   if (contentType.includes("application/zip")) {
     const anchor = document.createElement("a");
     anchor.href = objectUrl;
-    anchor.download = "postal-preview.zip";
+    anchor.download = zipFilename;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -487,6 +525,13 @@ function useExportPolling({
   t: ReturnType<typeof useTranslations>;
 }): void {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // m3 — `t` from `useTranslations()` is NOT guaranteed stable across renders
+  // (next-intl returns a fresh function reference each call). Including it in
+  // the effect dep array tears down + re-starts the poll interval on every
+  // parent re-render, which can drop the 2s rhythm. Capture it in a ref so
+  // the effect can call the latest `t` without re-subscribing.
+  const tRef = useRef(t);
+  tRef.current = t;
   useEffect(() => {
     if (!activeJob) {
       if (pollRef.current) {
@@ -512,11 +557,11 @@ function useExportPolling({
         // the React effect cleanup re-runs and would duplicate toasts.
         if (fresh.status === "completed") {
           stopPolling();
-          toast.success(t("toast.exportReady"));
+          toast.success(tRef.current("toast.exportReady"));
         }
         if (fresh.status === "failed") {
           stopPolling();
-          toast.error(fresh.error ?? t("toast.exportFailed"));
+          toast.error(fresh.error ?? tRef.current("toast.exportFailed"));
         }
       } catch (err) {
         if (err instanceof ApiProblem && err.status === 404) {
@@ -526,7 +571,7 @@ function useExportPolling({
     };
     pollRef.current = setInterval(() => void tick(), 2000);
     return stopPolling;
-  }, [activeJob, campaignId, setExports, t]);
+  }, [activeJob, campaignId, setExports]);
 }
 
 function ReadinessBanners({
@@ -620,10 +665,12 @@ function ModeSummaryPanel({
   runMode,
   bankAccount,
   campaignId,
+  campaignType,
 }: {
   runMode: PostalExportRunMode;
   bankAccount: PostalExportPanelProps["bankAccount"];
   campaignId: string;
+  campaignType: CampaignType;
 }) {
   const t = useTranslations("campaigns.postal.modeSummary");
   const bankAccountLabel = bankAccount
@@ -638,15 +685,31 @@ function ModeSummaryPanel({
           ? t("reason.hybrid", { bank: bankAccountLabel })
           : t("reason.blocked");
 
+  // Epic #318 PR #4 — only render the scope sub-label in modes that actually
+  // mint a QR-bill reference. In `standard` the letter has no QR-bill, and
+  // in `blocked` nothing prints — neither needs the per-recipient vs.
+  // per-campaign disambiguation.
+  const showScopeSubLabel = runMode === "qr_bill_only" || runMode === "hybrid";
+  const scopeKey = campaignType === "door_drop" ? "door_drop" : "personalized";
+  const contentsHeadingId = `postal-mode-summary-contents-${campaignId}`;
+
   return (
-    <div className="rounded-xl bg-surface-container p-4">
+    // m2 — wrap as a labelled section so screen readers can navigate the
+    // mode-summary card by landmark. The `aria-labelledby` points at the
+    // contents heading so the announced name is meaningful.
+    <section aria-labelledby={contentsHeadingId} className="rounded-xl bg-surface-container p-4">
       <div className="flex items-center gap-2">
         <Badge variant={runMode === "blocked" ? "warning" : "info"}>{t(`badge.${runMode}`)}</Badge>
         {bankAccount ? (
           <Banknote size={14} aria-hidden="true" className="text-on-surface-variant" />
         ) : null}
       </div>
-      <p className="mt-2 text-sm font-medium text-on-surface">{t("contentsHeading")}</p>
+      {showScopeSubLabel ? (
+        <p className="mt-1 text-xs text-on-surface-variant">{t(`scope.${scopeKey}`)}</p>
+      ) : null}
+      <h3 id={contentsHeadingId} className="mt-2 text-sm font-medium text-on-surface">
+        {t("contentsHeading")}
+      </h3>
       <ul className="mt-1 space-y-0.5 text-sm text-on-surface-variant">
         {runMode === "standard" || runMode === "hybrid" ? (
           <li>✓ {t("contents.appealLetter")}</li>
@@ -665,6 +728,6 @@ function ModeSummaryPanel({
           {t("reason.editLink")}
         </Link>
       </p>
-    </div>
+    </section>
   );
 }
