@@ -907,10 +907,9 @@ export const donations = pgTable(
      * hard-deleting the original through the admin tool doesn't break
      * the reversal's audit row. Column added by migration 0052.
      */
-    reversesDonationId: uuid("reverses_donation_id").references(
-      (): AnyPgColumn => donations.id,
-      { onDelete: "set null" },
-    ),
+    reversesDonationId: uuid("reverses_donation_id").references((): AnyPgColumn => donations.id, {
+      onDelete: "set null",
+    }),
     /**
      * Origin rail discriminator (Epic #318). `stripe` (default, back-compat
      * with every existing row), `camt053` (Swiss bank-transfer rail), or

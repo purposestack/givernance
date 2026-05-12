@@ -233,7 +233,10 @@ async function uploadFixture(args: {
   }
   if (args.acctSvcrRefSuffix) {
     const sfx = args.acctSvcrRefSuffix;
-    xml = xml.replace(/<AcctSvcrRef>([^<]+)<\/AcctSvcrRef>/g, `<AcctSvcrRef>$1-${sfx}</AcctSvcrRef>`);
+    xml = xml.replace(
+      /<AcctSvcrRef>([^<]+)<\/AcctSvcrRef>/g,
+      `<AcctSvcrRef>$1-${sfx}</AcctSvcrRef>`,
+    );
     xml = xml.replace(/<EndToEndId>([^<]+)<\/EndToEndId>/g, `<EndToEndId>$1-${sfx}</EndToEndId>`);
   }
   const s3Key = `${ORG_ID}/camt053/2026/05/${Math.random().toString(36).slice(2, 10)}_${args.fixture}`;
@@ -484,10 +487,7 @@ describe("camt053-reconcile — reversal handling (docs/25 §5.2)", () => {
       .select()
       .from(donations)
       .where(
-        and(
-          eq(donations.orgId, ORG_ID),
-          eq(donations.reversesDonationId, originalDonation!.id),
-        ),
+        and(eq(donations.orgId, ORG_ID), eq(donations.reversesDonationId, originalDonation!.id)),
       );
     expect(reversalRows).toHaveLength(1);
     const reversalDonation = reversalRows[0]!;
@@ -517,7 +517,11 @@ describe("camt053-reconcile — reversal handling (docs/25 §5.2)", () => {
         AND type = 'donation.refunded'
         AND payload->>'donationId' = ${reversalDonation.id}
     `);
-    const eventRows = (outboxRows as unknown as { rows: Array<{ payload: { donationId: string; reversesDonationId: string } }> }).rows;
+    const eventRows = (
+      outboxRows as unknown as {
+        rows: Array<{ payload: { donationId: string; reversesDonationId: string } }>;
+      }
+    ).rows;
     expect(eventRows.length).toBeGreaterThanOrEqual(1);
     expect(eventRows[0]!.payload.reversesDonationId).toBe(originalDonation!.id);
   });
@@ -626,16 +630,16 @@ describe("camt053-reconcile — partial-match handling (docs/25 §5.4 step 4.d)"
       })
       .returning();
 
-    await processCamt053Import(makeMockJob({ statementId: stmtRow!.id, bankAccountId, orgId: ORG_ID }));
+    await processCamt053Import(
+      makeMockJob({ statementId: stmtRow!.id, bankAccountId, orgId: ORG_ID }),
+    );
     await processCamt053Reconcile(makeMockJob({ statementId: stmtRow!.id }));
 
     // ── 1. Donation booked at the CREDITED amount (CHF 80). ────────
     const donationRows = await db
       .select()
       .from(donations)
-      .where(
-        and(eq(donations.orgId, ORG_ID), eq(donations.constituentId, pmConstituent!.id)),
-      );
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.constituentId, pmConstituent!.id)));
     expect(donationRows).toHaveLength(1);
     expect(donationRows[0]!.amountCents).toBe(8000);
     expect(donationRows[0]!.status).toBe("cleared");
