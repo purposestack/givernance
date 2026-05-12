@@ -353,8 +353,20 @@ jobs:
           set -euo pipefail
           for acc in $ACCESSORIES_TO_REBOOT; do
             echo "::group::Reboot accessory: $acc"
-            if ! bundle exec kamal accessory reboot "$acc" -c config/deploy-staging.yml; then
-              echo "::error::kamal accessory reboot $acc failed; dumping last 100 log lines"
+            # `kamal accessory reboot` issues `kamal-proxy remove`
+            # unconditionally, which fails with "service not found" the
+            # first time a `proxy:` block is added to an accessory —
+            # the 2026-05-12 MinIO incident. Drive the sequence
+            # manually; idempotent for both first-time proxy
+            # registration and subsequent reboots. Mirrors the
+            # composite action at
+            # .github/actions/reboot-kamal-accessory/action.yml —
+            # keep these two in sync.
+            bundle exec kamal server exec -c config/deploy-staging.yml \
+              "docker exec kamal-proxy kamal-proxy remove givernance-${acc} >/dev/null 2>&1 || true; \
+               docker container rm -f givernance-${acc} >/dev/null 2>&1 || true"
+            if ! bundle exec kamal accessory boot "$acc" -c config/deploy-staging.yml; then
+              echo "::error::kamal accessory boot $acc failed; dumping last 100 log lines"
               bundle exec kamal server exec -c config/deploy-staging.yml \
                 "docker logs givernance-${acc} --tail 100" || true
               exit 1

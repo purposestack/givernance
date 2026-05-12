@@ -26,10 +26,27 @@ inputs:
 runs:
   using: composite
   steps:
+    # `kamal accessory reboot` issues `kamal-proxy remove <service>`
+    # unconditionally, which fails with "Error: service not found" the
+    # first time a `proxy:` block is added to an existing accessory —
+    # leaving the accessory container stopped and the deploy red
+    # (2026-05-12 incident, MinIO on staging). Drive the sequence
+    # manually instead: tolerantly clear any prior proxy registration
+    # and the existing container (host-mounted volumes preserve data),
+    # then `accessory boot` to create the container fresh and register
+    # the proxy. Idempotent for both first-time proxy registration AND
+    # subsequent reboots, so callers don't need to special-case.
     - name: Reboot accessory
       id: reboot
       shell: bash
-      run: bundle exec kamal accessory reboot "${{ inputs.accessory }}" -c "${{ inputs.config }}"
+      run: |
+        set -euo pipefail
+        ACC="${{ inputs.accessory }}"
+        CFG="${{ inputs.config }}"
+        bundle exec kamal server exec -c "$CFG" \
+          "docker exec kamal-proxy kamal-proxy remove givernance-${ACC} >/dev/null 2>&1 || true; \
+           docker container rm -f givernance-${ACC} >/dev/null 2>&1 || true"
+        bundle exec kamal accessory boot "$ACC" -c "$CFG"
 
     # Scoped to "the reboot itself failed" rather than `if: failure()`,
     # which would also fire on any earlier failure in the parent job and

@@ -303,6 +303,15 @@ accessories:
     # When `deploy-prod.yml` lands, mirror this exactly: a public
     # hostname (or a CDN in front of the bucket) for `branding`, no
     # public path to receipts/campaigns.
+    #
+    # Note (2026-05-12): the first deploy that added this `proxy:`
+    # block on an already-running MinIO accessory failed because
+    # `kamal accessory reboot` issues `kamal-proxy remove` even when
+    # nothing is registered yet ("service not found"). The reboot step
+    # in `.github/workflows/deploy-staging.yml` + the composite action
+    # `.github/actions/reboot-kamal-accessory/action.yml` now drive
+    # the sequence manually; this comment also tickles the per-
+    # accessory subtree-diff gate so MinIO actually re-bootstraps.
     proxy:
       host: assets.staging.givernance.org
       ssl: true
