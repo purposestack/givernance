@@ -14,6 +14,7 @@
 
 import { PassThrough } from "node:stream";
 import { resolvePostalExportMode } from "@givernance/shared/postal-export-mode";
+import { hasPageFromStatus } from "@givernance/shared/postal-print-layout";
 import {
   bankAccounts,
   CAMPAIGN_TYPE_VALUES,
@@ -22,6 +23,7 @@ import {
   POSTAL_EXPORT_STATUS_VALUES,
   tenants,
 } from "@givernance/shared/schema";
+import { computeQrr } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import archiver from "archiver";
 import { and, eq, isNull } from "drizzle-orm";
@@ -54,9 +56,10 @@ import {
   PostalExportError,
   startPostalExport,
 } from "./postal-export-service.js";
-import { renderPostalLetterToBuffer, renderSwissQrBillPreviewToBuffer } from "./postal-pdf.js";
+import { renderPostalLetterToBuffer } from "./postal-pdf.js";
 import { getCampaignQrStats } from "./qr-stats-service.js";
 import { getCampaign } from "./service.js";
+import { renderSwissQrBillPreviewToBuffer } from "./swiss-qr-bill-preview.js";
 
 const PostalExportModeSchema = Type.Union(POSTAL_EXPORT_MODE_VALUES.map((v) => Type.Literal(v)));
 const PostalExportStatusSchema = Type.Union(
@@ -451,17 +454,24 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
       // Epic #318 PR #4 — resolve the preview mode the same way the
       // worker resolves the generation mode. Preview MUST match what
       // Generate produces (operator feedback on PR #354).
+      // RLS defense-in-depth (minor #7 from PR #355 review): explicitly
+      // filter the `campaignPublicPages` lookup on `orgId` even though
+      // `requireOrgAdmin` already authenticated the operator + the
+      // route narrowed to `campaign.orgId` upstream. The query runs via
+      // `systemDb` (RLS-bypass), so a stray cross-tenant `campaignId`
+      // collision would otherwise return another org's page row.
       const [publicPage] = await systemDb
         .select({ status: campaignPublicPages.status })
         .from(campaignPublicPages)
-        .where(eq(campaignPublicPages.campaignId, id))
+        .where(and(eq(campaignPublicPages.campaignId, id), eq(campaignPublicPages.orgId, orgId)))
         .limit(1);
       const runMode = resolvePostalExportMode({
         hasBank: campaign.bankAccountId !== null,
-        // `hasPage = page row exists` — same semantics as
-        // postal-export-service's mode resolution. Publish gate fires
-        // separately inside the standard/hybrid path.
-        hasPage: !!publicPage,
+        // `hasPage = page row exists` (status: draft OR published) —
+        // same semantics as postal-export-service's mode resolution.
+        // The publish gate fires separately inside the standard/hybrid
+        // path.
+        hasPage: hasPageFromStatus(publicPage?.status),
       });
       if (runMode === "blocked") {
         return reply
@@ -553,11 +563,13 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
 
       // 27-digit fixture QRR with a valid mod-10 check digit — never
       // registered in `swiss_qr_references` so a real bank scanning the
-      // preview will reject it (safe). Body = `21000000000000000000000000`
-      // (26 chars), computed check digit = `9` via the canonical
-      // Swiss "Modulo 10 recursive" table (cf.
-      // `packages/shared/src/validators/iban.ts ::computeQrr`).
-      const previewReference = "210000000000000000000000009";
+      // preview will reject it (safe). Computed via the canonical Swiss
+      // "Modulo 10 recursive" helper rather than hand-rolling the check
+      // digit: a future tweak to the helper (or to the 26-char body
+      // sentinel below) cannot silently desync from the validator and
+      // produce an invalid fixture that the swissqrbill library would
+      // reject at render time.
+      const previewReference = computeQrr("21000000000000000000000000");
 
       // ─── QR-bill only mode → single inline 2-page PDF. ─────────────
       if (runMode === "qr_bill_only") {
