@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="assets/logo-pheonix-vert.png">
+  <title>Givernance — Menu compte (mockup)</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="base.css">
+  <style>
+    /* ── Mockup page chrome ── */
+    body {
+      background: var(--color-bg);
+      font-family: var(--font-body);
+      color: var(--color-text);
+    }
+
+    .mockup-page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    .mockup-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+
+    .mockup-header-logo {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      object-fit: contain;
+    }
+
+    .mockup-header h1 {
+      font-family: var(--font-heading);
+      font-size: 32px;
+      color: var(--color-on-surface);
+      margin: 0;
+      letter-spacing: var(--tracking-tight);
+    }
+
+    .mockup-header-subtitle {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+    }
+
+    .mockup-divider {
+      height: 1px;
+      background: var(--color-border);
+      margin: 24px 0 32px;
+    }
+
+    .mockup-intro {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      max-width: 720px;
+      margin-bottom: 40px;
+    }
+
+    .mockup-intro strong {
+      color: var(--color-text);
+      font-weight: var(--weight-semi);
+    }
+
+    .mockup-section-title {
+      font-family: var(--font-heading);
+      font-size: var(--text-2xl);
+      color: var(--color-on-surface);
+      margin: 0 0 8px;
+      letter-spacing: var(--tracking-tight);
+    }
+
+    .mockup-section-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin: 0 0 24px;
+    }
+
+    .mockup-section {
+      margin-bottom: 64px;
+    }
+
+    /* ── Topbar context stage ── */
+    .topbar-stage {
+      background: var(--topbar-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: 0 var(--content-padding);
+      height: var(--topbar-height);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-6);
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+    }
+
+    .topbar-stage .topbar-breadcrumb-current {
+      font-family: var(--font-heading);
+      font-size: var(--text-lg);
+      color: var(--color-text);
+    }
+
+    .topbar-stage .topbar-search {
+      flex: 1;
+      max-width: 480px;
+      position: relative;
+    }
+
+    .topbar-stage .topbar-search-input {
+      width: 100%;
+      height: 40px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+      padding: 0 var(--space-3);
+      font-size: var(--text-sm);
+      background: var(--color-surface-container-lowest);
+      color: var(--color-text);
+    }
+
+    .topbar-stage .search-shortcut {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      background: var(--color-neutral-100);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 1px 6px;
+      font-family: var(--font-mono);
+      pointer-events: none;
+    }
+
+    /* ── Demo grid ── */
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+
+    @media (max-width: 960px) {
+      .demo-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .demo-card {
+      background: var(--color-surface-container-lowest);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .demo-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .demo-card-title {
+      font-family: var(--font-heading);
+      font-size: var(--text-lg);
+      color: var(--color-on-surface);
+      margin: 0;
+    }
+
+    .demo-card-tag {
+      font-family: var(--font-mono);
+      font-size: var(--text-2xs);
+      font-weight: var(--weight-semi);
+      letter-spacing: var(--tracking-wide);
+      text-transform: uppercase;
+      color: var(--color-primary-dark);
+      background: var(--color-primary-50);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+    }
+
+    .demo-card-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin: 0;
+      line-height: var(--leading-normal);
+    }
+
+    /* ── Stage for popovers (closed, open, hover, focus) ── */
+    .demo-stage {
+      position: relative;
+      background: var(--color-surface-container-low);
+      border-radius: var(--radius-lg);
+      min-height: 360px;
+      padding: 16px 16px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+
+    .demo-stage-topbar-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      align-self: stretch;
+      justify-content: flex-end;
+      padding-bottom: var(--space-3);
+      border-bottom: 1px dashed var(--color-border);
+      margin-bottom: var(--space-4);
+    }
+
+    .demo-stage-topbar-row .topbar-icon-btn {
+      width: 40px;
+      height: 40px;
+    }
+
+    /* ── Avatar trigger states ── */
+    .avatar-trigger {
+      width: 36px;
+      height: 36px;
+      background: var(--color-primary);
+      color: var(--color-white);
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semi);
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: box-shadow var(--duration-normal) var(--ease-out);
+      position: relative;
+    }
+
+    .avatar-trigger:hover {
+      box-shadow: 0 0 0 4px rgba(9, 100, 71, 0.10);
+    }
+
+    .avatar-trigger--open {
+      box-shadow: 0 0 0 4px rgba(9, 100, 71, 0.15);
+    }
+
+    .avatar-trigger--focus {
+      box-shadow: 0 0 0 2px var(--color-white), 0 0 0 4px var(--color-primary);
+    }
+
+    /* ── Account menu specifics — composed on top of .dropdown-menu / .dropdown-item primitives ── */
+    .account-menu {
+      position: absolute;
+      top: 56px;
+      right: 16px;
+      min-width: 280px;
+      max-width: 320px;
+      animation: account-menu-in var(--duration-normal) var(--ease-out);
+    }
+
+    @keyframes account-menu-in {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Header inside the menu — user identity */
+    .account-menu-identity {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-3) var(--space-3);
+    }
+
+    .account-menu-identity-avatar {
+      width: 40px;
+      height: 40px;
+      background: var(--color-primary);
+      color: var(--color-white);
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semi);
+      flex-shrink: 0;
+    }
+
+    .account-menu-identity-text {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .account-menu-identity-name {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semi);
+      color: var(--color-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .account-menu-identity-email {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Language sub-section */
+    .account-menu-section-label {
+      font-size: var(--text-2xs);
+      font-weight: var(--weight-semi);
+      letter-spacing: var(--tracking-wide);
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+      padding: var(--space-2) var(--space-3) var(--space-1);
+    }
+
+    .account-menu-lang-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--text-sm);
+      color: var(--color-text);
+      cursor: pointer;
+      transition: background var(--duration-fast) var(--ease-out);
+      text-decoration: none;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+    }
+
+    .account-menu-lang-item:hover {
+      background: var(--color-surface-container-low);
+    }
+
+    .account-menu-lang-item-flag {
+      width: 18px;
+      height: 18px;
+      border-radius: var(--radius-sm);
+      background: var(--color-surface-container);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: var(--weight-semi);
+      color: var(--color-text-secondary);
+      flex-shrink: 0;
+      letter-spacing: 0;
+    }
+
+    .account-menu-lang-item-label {
+      flex: 1;
+    }
+
+    .account-menu-lang-item[aria-current="true"] {
+      color: var(--color-primary-dark);
+      font-weight: var(--weight-semi);
+    }
+
+    .account-menu-lang-item[aria-current="true"] .account-menu-lang-item-flag {
+      background: var(--color-primary);
+      color: var(--color-white);
+    }
+
+    .account-menu-lang-item[aria-current="true"]::after {
+      content: 'check';
+      font-family: 'Material Symbols Outlined';
+      font-size: 16px;
+      color: var(--color-primary);
+    }
+
+    /* Item with leading icon (matches dropdown-item style + adds icon slot) */
+    .account-menu-link {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--text-sm);
+      color: var(--color-text);
+      cursor: pointer;
+      transition: background var(--duration-fast) var(--ease-out);
+      text-decoration: none;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+    }
+
+    .account-menu-link:hover {
+      background: var(--color-surface-container-low);
+    }
+
+    .account-menu-link--destructive {
+      color: var(--color-error);
+    }
+
+    .account-menu-link--destructive:hover {
+      background: var(--color-error-container);
+    }
+
+    .account-menu-link-icon {
+      font-family: 'Material Symbols Outlined';
+      font-size: 18px;
+      opacity: 0.8;
+      flex-shrink: 0;
+    }
+
+    /* Hover-state demo: simulate a hovered item */
+    .account-menu-link--demo-hover {
+      background: var(--color-surface-container-low);
+    }
+
+    .account-menu-link--demo-hover.account-menu-link--destructive {
+      background: var(--color-error-container);
+    }
+
+    /* Keyboard-focus ring on a menu item */
+    .account-menu-link--demo-focus,
+    .account-menu-lang-item--demo-focus {
+      background: var(--color-surface-container-low);
+      box-shadow: inset 0 0 0 2px var(--color-primary);
+      border-radius: var(--radius-sm);
+    }
+
+    /* ── Annotations callouts (legend dots) ── */
+    .legend {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+      padding: 16px;
+      background: var(--color-surface-container-low);
+      border-radius: var(--radius-lg);
+      border: 1px dashed var(--color-border);
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: var(--text-sm);
+      color: var(--color-text);
+      line-height: var(--leading-normal);
+    }
+
+    .legend-row code {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      background: var(--color-surface-container);
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+      color: var(--color-text);
+    }
+
+    .legend-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: var(--radius-full);
+      background: var(--color-primary);
+      color: var(--color-white);
+      font-size: 11px;
+      font-weight: var(--weight-semi);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ── Spec block ── */
+    .spec {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 24px;
+    }
+
+    @media (max-width: 960px) {
+      .spec {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .spec-card {
+      background: var(--color-surface-container-lowest);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+    }
+
+    .spec-card h3 {
+      font-family: var(--font-heading);
+      font-size: var(--text-lg);
+      color: var(--color-on-surface);
+      margin: 0 0 12px;
+    }
+
+    .spec-card ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .spec-card li {
+      font-size: var(--text-sm);
+      color: var(--color-text);
+      line-height: var(--leading-normal);
+      display: flex;
+      gap: 8px;
+    }
+
+    .spec-card li::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: var(--radius-full);
+      background: var(--color-primary);
+      flex-shrink: 0;
+      margin-top: 9px;
+    }
+
+    .spec-card code {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      background: var(--color-surface-container);
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+      color: var(--color-text);
+    }
+
+    /* ── Back to index nav ── */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--text-sm);
+      color: var(--color-primary-dark);
+      text-decoration: none;
+      margin-bottom: 16px;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="mockup-page">
+
+    <a href="../index.html" class="back-link">
+      <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+      Retour à l'index des maquettes
+    </a>
+
+    <!-- Header -->
+    <div class="mockup-header">
+      <img src="assets/logo-pheonix-vert.png" alt="Givernance" class="mockup-header-logo">
+      <div>
+        <h1>Menu compte</h1>
+        <div class="mockup-header-subtitle">SHARED-001 · Dropdown du topbar — déclenché par l'avatar utilisateur</div>
+      </div>
+    </div>
+    <div class="mockup-divider"></div>
+
+    <!-- Intro -->
+    <p class="mockup-intro">
+      <strong>Contexte.</strong> Le PR #73 a posé un bouton <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">LogOut</code> temporaire dans le pied de la sidebar parce qu'aucune maquette ne couvrait un menu compte. Cette maquette définit le menu déroulant ancré sur l'avatar du topbar : identité, accès rapide aux paramètres personnels, sélecteur de langue, déconnexion. Une fois implémenté, le bouton temporaire de la sidebar est retiré.
+      <br><br>
+      <strong>Issue de référence.</strong> <a href="https://github.com/purposestack/givernance/issues/76" style="color:var(--color-primary-dark);">#76 — Account menu UX + back-channel logout</a> · PR-1 Step 1.
+    </p>
+
+    <!-- ============================================================
+         SECTION 1 — Le menu dans son contexte (topbar réel)
+         ============================================================ -->
+    <section class="mockup-section">
+      <h2 class="mockup-section-title">1. Dans le contexte du topbar</h2>
+      <p class="mockup-section-desc">
+        Le déclencheur remplace l'actuel <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">&lt;Link href="/settings"&gt;</code> autour de l'avatar dans le topbar. Le menu s'ouvre au clic ou via la touche <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">Espace</code> / <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">Entrée</code> lorsque l'avatar a le focus.
+      </p>
+
+      <div class="topbar-stage">
+        <div class="topbar-breadcrumb">
+          <span class="topbar-breadcrumb-current">Tableau de bord</span>
+        </div>
+
+        <div class="topbar-search">
+          <input type="text" class="topbar-search-input" placeholder="Rechercher..." aria-label="Recherche globale">
+          <span class="search-shortcut">⌘K</span>
+        </div>
+
+        <div class="topbar-actions" style="position:relative;">
+          <button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
+            <span class="material-symbols-outlined" style="font-size:18px;">notifications</span>
+            <span class="notification-dot"></span>
+          </button>
+          <button
+            class="avatar-trigger avatar-trigger--open"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="true"
+            aria-controls="account-menu-context"
+            title="Claire Dubois"
+          >CD</button>
+
+          <!-- Open menu -->
+          <div
+            id="account-menu-context"
+            class="dropdown-menu account-menu"
+            role="menu"
+            aria-labelledby="avatar-trigger-context"
+          >
+            <!-- Identity header -->
+            <div class="account-menu-identity">
+              <div class="account-menu-identity-avatar">CD</div>
+              <div class="account-menu-identity-text">
+                <div class="account-menu-identity-name">Claire Dubois</div>
+                <div class="account-menu-identity-email">claire.dubois@solidarite-med.org</div>
+              </div>
+            </div>
+
+            <div class="dropdown-divider"></div>
+
+            <!-- Quick links -->
+            <a href="#" class="account-menu-link" role="menuitem" tabindex="-1">
+              <span class="account-menu-link-icon material-symbols-outlined">person</span>
+              <span>Mon compte</span>
+            </a>
+
+            <div class="dropdown-divider"></div>
+
+            <!-- Language section -->
+            <div class="account-menu-section-label" id="lang-label">Langue</div>
+            <button
+              class="account-menu-lang-item"
+              role="menuitemradio"
+              aria-checked="true"
+              aria-current="true"
+              tabindex="-1"
+            >
+              <span class="account-menu-lang-item-flag">FR</span>
+              <span class="account-menu-lang-item-label">Français</span>
+            </button>
+            <button
+              class="account-menu-lang-item"
+              role="menuitemradio"
+              aria-checked="false"
+              tabindex="-1"
+            >
+              <span class="account-menu-lang-item-flag">EN</span>
+              <span class="account-menu-lang-item-label">English</span>
+            </button>
+
+            <div class="dropdown-divider"></div>
+
+            <!-- Sign out -->
+            <button
+              class="account-menu-link account-menu-link--destructive"
+              role="menuitem"
+              tabindex="-1"
+            >
+              <span class="account-menu-link-icon material-symbols-outlined">logout</span>
+              <span>Se déconnecter</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-row">
+          <span class="legend-dot">1</span>
+          <div>
+            <strong>Déclencheur.</strong> L'avatar <code>topbar-avatar</code> existant devient un <code>&lt;button&gt;</code> avec <code>aria-haspopup="menu"</code> et <code>aria-expanded</code> qui bascule entre <code>"true"</code>/<code>"false"</code>.
+          </div>
+        </div>
+        <div class="legend-row">
+          <span class="legend-dot">2</span>
+          <div>
+            <strong>Position.</strong> Ancrage en haut-droite, <code>top: 56px; right: 16px;</code> relativement à <code>topbar-actions</code> (offset = hauteur avatar + 20px d'air). Largeur min 280px / max 320px.
+          </div>
+        </div>
+        <div class="legend-row">
+          <span class="legend-dot">3</span>
+          <div>
+            <strong>Animation d'apparition.</strong> Fade + slide-down 4px sur <code>--duration-normal</code> (150ms) avec <code>--ease-out</code>. Pas d'animation à la fermeture (réactivité perçue).
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 2 — États du déclencheur (avatar)
+         ============================================================ -->
+    <section class="mockup-section">
+      <h2 class="mockup-section-title">2. États du déclencheur</h2>
+      <p class="mockup-section-desc">
+        L'avatar a quatre états visuels distincts : repos, survol souris, ouvert, focus clavier. Tous utilisent uniquement <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">box-shadow</code> pour ne pas faire bouger le voisinage.
+      </p>
+
+      <div class="demo-grid">
+
+        <!-- État: repos -->
+        <div class="demo-card">
+          <div class="demo-card-header">
+            <h3 class="demo-card-title">Repos</h3>
+            <span class="demo-card-tag">default</span>
+          </div>
+          <p class="demo-card-desc">État par défaut. Aucune ombre, juste la couleur primaire et les initiales.</p>
+          <div class="demo-stage" style="min-height:200px;justify-content:center;align-items:center;">
+            <div class="demo-stage-topbar-row" style="border-bottom:none;margin-bottom:0;padding-bottom:0;">
+              <button class="avatar-trigger" type="button" aria-haspopup="menu" aria-expanded="false">CD</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- État: hover -->
+        <div class="demo-card">
+          <div class="demo-card-header">
+            <h3 class="demo-card-title">Survol souris</h3>
+            <span class="demo-card-tag">:hover</span>
+          </div>
+          <p class="demo-card-desc">Halo doux (<code>rgba primary 10%</code>) — signal qu'on peut cliquer, sans agression visuelle.</p>
+          <div class="demo-stage" style="min-height:200px;justify-content:center;align-items:center;">
+            <div class="demo-stage-topbar-row" style="border-bottom:none;margin-bottom:0;padding-bottom:0;">
+              <button class="avatar-trigger" type="button" aria-haspopup="menu" aria-expanded="false" style="box-shadow:0 0 0 4px rgba(9, 100, 71, 0.10);">CD</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- État: ouvert -->
+        <div class="demo-card">
+          <div class="demo-card-header">
+            <h3 class="demo-card-title">Menu ouvert</h3>
+            <span class="demo-card-tag">aria-expanded</span>
+          </div>
+          <p class="demo-card-desc">Halo renforcé (<code>15%</code>) tant que le menu est visible. Persiste pendant la navigation clavier dans le menu.</p>
+          <div class="demo-stage" style="min-height:200px;justify-content:center;align-items:center;">
+            <div class="demo-stage-topbar-row" style="border-bottom:none;margin-bottom:0;padding-bottom:0;">
+              <button class="avatar-trigger avatar-trigger--open" type="button" aria-haspopup="menu" aria-expanded="true">CD</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- État: focus clavier -->
+        <div class="demo-card">
+          <div class="demo-card-header">
+            <h3 class="demo-card-title">Focus clavier</h3>
+            <span class="demo-card-tag">:focus-visible</span>
+          </div>
+          <p class="demo-card-desc">Anneau de focus standard (<code>--focus-ring</code>) — distinct du survol souris pour respecter <code>:focus-visible</code>.</p>
+          <div class="demo-stage" style="min-height:200px;justify-content:center;align-items:center;">
+            <div class="demo-stage-topbar-row" style="border-bottom:none;margin-bottom:0;padding-bottom:0;">
+              <button class="avatar-trigger avatar-trigger--focus" type="button" aria-haspopup="menu" aria-expanded="false">CD</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 3 — États du menu (ouvert + interactions internes)
+         ============================================================ -->
+    <section class="mockup-section">
+      <h2 class="mockup-section-title">3. États du menu</h2>
+      <p class="mockup-section-desc">
+        Le menu réutilise les primitives <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">.dropdown-menu</code> et <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">.dropdown-item</code> du design system, étendues avec : en-tête identité, séparateurs, sélecteur de langue, item destructif final.
+      </p>
+
+      <div class="demo-grid">
+
+        <!-- Carte 1: menu ouvert (état nominal) -->
+        <div class="demo-card">
+          <div class="demo-card-header">
+            <h3 class="demo-card-title">Ouvert — état nominal</h3>
+            <span class="demo-card-tag">opened</span>
+          </div>
+          <p class="demo-card-desc">Aucun item survolé ni focalisé. Le sélecteur de langue indique le choix actif via <code>aria-current="true"</code> + coche.</p>
+          <div class="demo-stage">
+            <div class="demo-stage-topbar-row">
+              <button class="topbar-icon-btn" aria-label="Notifications">
+                <span class="material-symbols-outlined" style="font-size:18px;">notifications</span>
+              </button>
+              <button class="avatar-trigger avatar-trigger--open" type="button" aria-haspopup="menu" aria-expanded="true">CD</button>
+            </div>
+
+            <div class="dropdown-menu account-menu" role="menu" style="position:absolute;top:80px;right:16px;">
+              <div class="account-menu-identity">
+                <div class="account-menu-identity-avatar">CD</div>
+                <div class="account-menu-identity-text">
+                  <div class="account-menu-identity-name">Claire Dubois</div>
+                  <div class="account-menu-identity-email">claire.dubois@solidarite-med.org</div>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <a href="#" class="account-menu-link" role="menuitem" tabindex="-1">
+                <span class="account-menu-link-icon material-symbols-outlined">person</span>
+                <span>Mon compte</span>
+              </a>
+              <div class="dropdown-divider"></div>
+              <div class="account-menu-section-label">Langue</div>
+              <button class="account-menu-lang-item" role="menuitemradio" aria-checked="true" aria-current="true" tabindex="-1">
+                <span class="account-menu-lang-item-flag">FR</span>
+                <span class="account-menu-lang-item-label">Français</span>
+              </button>
+              <button class="account-menu-lang-item" role="menuitemradio" aria-checked="false" tabindex="-1">
+                <span class="account-menu-lang-item-flag">EN</span>
+                <span class="account-menu-lang-item-label">English</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="account-menu-link account-menu-link--destructive" role="menuitem" tabindex="-1">
+                <span class="account-menu-link-icon material-symbols-outlined">logout</span>
+                <span>Se déconnecter</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Carte 2: hover sur un item -->
+        <div class="demo-card">
+          <div class="demo-card-header">
+            <h3 class="demo-card-title">Survol — item neutre</h3>
+            <span class="demo-card-tag">:hover</span>
+          </div>
+          <p class="demo-card-desc">Fond <code>surface-container-low</code> sur l'item survolé. Pas de bordure, pas de changement de poids.</p>
+          <div class="demo-stage">
+            <div class="demo-stage-topbar-row">
+              <button class="topbar-icon-btn" aria-label="Notifications">
+                <span class="material-symbols-outlined" style="font-size:18px;">notifications</span>
+              </button>
+              <button class="avatar-trigger avatar-trigger--open" type="button" aria-haspopup="menu" aria-expanded="true">CD</button>
+            </div>
+
+            <div class="dropdown-menu account-menu" role="menu" style="position:absolute;top:80px;right:16px;">
+              <div class="account-menu-identity">
+                <div class="account-menu-identity-avatar">CD</div>
+                <div class="account-menu-identity-text">
+                  <div class="account-menu-identity-name">Claire Dubois</div>
+                  <div class="account-menu-identity-email">claire.dubois@solidarite-med.org</div>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <a href="#" class="account-menu-link account-menu-link--demo-hover" role="menuitem" tabindex="-1">
+                <span class="account-menu-link-icon material-symbols-outlined">person</span>
+                <span>Mon compte</span>
+              </a>
+              <div class="dropdown-divider"></div>
+              <div class="account-menu-section-label">Langue</div>
+              <button class="account-menu-lang-item" role="menuitemradio" aria-checked="true" aria-current="true" tabindex="-1">
+                <span class="account-menu-lang-item-flag">FR</span>
+                <span class="account-menu-lang-item-label">Français</span>
+              </button>
+              <button class="account-menu-lang-item" role="menuitemradio" aria-checked="false" tabindex="-1">
+                <span class="account-menu-lang-item-flag">EN</span>
+                <span class="account-menu-lang-item-label">English</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="account-menu-link account-menu-link--destructive" role="menuitem" tabindex="-1">
+                <span class="account-menu-link-icon material-symbols-outlined">logout</span>
+                <span>Se déconnecter</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Carte 3: hover destructif -->
+        <div class="demo-card">
+          <div class="demo-card-header">
+            <h3 class="demo-card-title">Survol — déconnexion</h3>
+            <span class="demo-card-tag">destructive</span>
+          </div>
+          <p class="demo-card-desc">Fond <code>error-container</code>, texte <code>--color-error</code> hérité de la variante destructive. Confirme que l'action est terminale.</p>
+          <div class="demo-stage">
+            <div class="demo-stage-topbar-row">
+              <button class="topbar-icon-btn" aria-label="Notifications">
+                <span class="material-symbols-outlined" style="font-size:18px;">notifications</span>
+              </button>
+              <button class="avatar-trigger avatar-trigger--open" type="button" aria-haspopup="menu" aria-expanded="true">CD</button>
+            </div>
+
+            <div class="dropdown-menu account-menu" role="menu" style="position:absolute;top:80px;right:16px;">
+              <div class="account-menu-identity">
+                <div class="account-menu-identity-avatar">CD</div>
+                <div class="account-menu-identity-text">
+                  <div class="account-menu-identity-name">Claire Dubois</div>
+                  <div class="account-menu-identity-email">claire.dubois@solidarite-med.org</div>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <a href="#" class="account-menu-link" role="menuitem" tabindex="-1">
+                <span class="account-menu-link-icon material-symbols-outlined">person</span>
+                <span>Mon compte</span>
+              </a>
+              <div class="dropdown-divider"></div>
+              <div class="account-menu-section-label">Langue</div>
+              <button class="account-menu-lang-item" role="menuitemradio" aria-checked="true" aria-current="true" tabindex="-1">
+                <span class="account-menu-lang-item-flag">FR</span>
+                <span class="account-menu-lang-item-label">Français</span>
+              </button>
+              <button class="account-menu-lang-item" role="menuitemradio" aria-checked="false" tabindex="-1">
+                <span class="account-menu-lang-item-flag">EN</span>
+                <span class="account-menu-lang-item-label">English</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="account-menu-link account-menu-link--destructive account-menu-link--demo-hover" role="menuitem" tabindex="-1">
+                <span class="account-menu-link-icon material-symbols-outlined">logout</span>
+                <span>Se déconnecter</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Carte 4: focus clavier sur un item -->
+        <div class="demo-card">
+          <div class="demo-card-header">
+            <h3 class="demo-card-title">Focus clavier — item</h3>
+            <span class="demo-card-tag">:focus-visible</span>
+          </div>
+          <p class="demo-card-desc">Anneau de focus <em>intérieur</em> 2px <code>--color-primary</code>. Distinct du survol souris : indispensable pour la navigation flèche-haut / flèche-bas.</p>
+          <div class="demo-stage">
+            <div class="demo-stage-topbar-row">
+              <button class="topbar-icon-btn" aria-label="Notifications">
+                <span class="material-symbols-outlined" style="font-size:18px;">notifications</span>
+              </button>
+              <button class="avatar-trigger avatar-trigger--open" type="button" aria-haspopup="menu" aria-expanded="true">CD</button>
+            </div>
+
+            <div class="dropdown-menu account-menu" role="menu" style="position:absolute;top:80px;right:16px;">
+              <div class="account-menu-identity">
+                <div class="account-menu-identity-avatar">CD</div>
+                <div class="account-menu-identity-text">
+                  <div class="account-menu-identity-name">Claire Dubois</div>
+                  <div class="account-menu-identity-email">claire.dubois@solidarite-med.org</div>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <a href="#" class="account-menu-link" role="menuitem" tabindex="-1">
+                <span class="account-menu-link-icon material-symbols-outlined">person</span>
+                <span>Mon compte</span>
+              </a>
+              <div class="dropdown-divider"></div>
+              <div class="account-menu-section-label">Langue</div>
+              <button class="account-menu-lang-item account-menu-lang-item--demo-focus" role="menuitemradio" aria-checked="true" aria-current="true" tabindex="0">
+                <span class="account-menu-lang-item-flag">FR</span>
+                <span class="account-menu-lang-item-label">Français</span>
+              </button>
+              <button class="account-menu-lang-item" role="menuitemradio" aria-checked="false" tabindex="-1">
+                <span class="account-menu-lang-item-flag">EN</span>
+                <span class="account-menu-lang-item-label">English</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="account-menu-link account-menu-link--destructive" role="menuitem" tabindex="-1">
+                <span class="account-menu-link-icon material-symbols-outlined">logout</span>
+                <span>Se déconnecter</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 4 — Spécification (structure + a11y)
+         ============================================================ -->
+    <section class="mockup-section">
+      <h2 class="mockup-section-title">4. Spécification</h2>
+      <p class="mockup-section-desc">
+        Ce qu'attend l'implémentation React. Le composant cible utilisera <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">@radix-ui/react-dropdown-menu</code> via la primitive shadcn/ui (ADR-012) — Radix gère l'a11y, on apporte les styles ci-dessus.
+      </p>
+
+      <div class="spec">
+
+        <div class="spec-card">
+          <h3>Structure du menu (de haut en bas)</h3>
+          <ul>
+            <li><strong>En-tête identité</strong> : avatar 40px + nom complet + email, non cliquable, troncature avec <code>text-overflow: ellipsis</code> si débordement.</li>
+            <li><code>dropdown-divider</code></li>
+            <li><strong>Mon compte</strong> — lien vers <code>/account</code> (préférences personnelles, distinct de <code>/admin</code>).</li>
+            <li><code>dropdown-divider</code></li>
+            <li><strong>Section Langue</strong> — label discret + 2 items radio <code>FR</code> / <code>EN</code>, choix actif marqué <code>aria-current="true"</code> + coche.</li>
+            <li><code>dropdown-divider</code></li>
+            <li><strong>Se déconnecter</strong> — item destructif, icône <code>logout</code>, déclenche <code>useAuth().logout()</code>.</li>
+          </ul>
+        </div>
+
+        <div class="spec-card">
+          <h3>Accessibilité (WCAG 2.1 AA)</h3>
+          <ul>
+            <li>Le déclencheur est un <code>&lt;button&gt;</code> (pas un <code>&lt;a&gt;</code>) avec <code>aria-haspopup="menu"</code> et <code>aria-expanded</code> dynamique.</li>
+            <li>Le menu a <code>role="menu"</code> ; les liens ont <code>role="menuitem"</code> ; les items langue ont <code>role="menuitemradio"</code> avec <code>aria-checked</code>.</li>
+            <li>Le focus est piégé dans le menu tant qu'il est ouvert (gestion native par Radix). <code>Tab</code> et <code>Maj+Tab</code> sortent du menu en le fermant.</li>
+            <li>Touches : <code>↑</code>/<code>↓</code> pour naviguer, <code>Enter</code>/<code>Espace</code> pour activer, <code>Esc</code> pour fermer et rendre le focus au déclencheur, <code>Home</code>/<code>End</code> pour aller au premier/dernier item.</li>
+            <li>Contraste : texte primaire <code>--color-text</code> sur <code>--color-surface-container-lowest</code> = 16.4:1 ; item destructif <code>--color-error</code> sur fond clair = 5.8:1 (≥ AA 4.5:1).</li>
+            <li>Le clic en dehors du menu le ferme. Sur mobile (largeur ≤ 640px), même bottom-sheet pattern via Radix.</li>
+          </ul>
+        </div>
+
+        <div class="spec-card">
+          <h3>Comportement</h3>
+          <ul>
+            <li><strong>Déconnexion</strong> : appelle <code>useAuth().logout()</code> qui POSTe sur <code>/api/auth/logout</code>. Le côté front efface ensuite <code>givernance_session</code>, <code>givernance_csrf</code>, puis redirige vers Keycloak avec <code>id_token_hint</code> (déjà câblé par PR #73).</li>
+            <li><strong>Mon compte</strong> : navigue vers <code>/account</code> (page à implémenter ; pour l'instant, redirection silencieuse vers <code>/admin/organization</code> tant que la page personnelle n'existe pas — à confirmer en review).</li>
+            <li><strong>Changement de langue</strong> : appelle <code>next-intl</code>'s <code>setRequestLocale</code> via une route helper et recharge la page avec le préfixe locale correct. Persisté côté serveur dans <code>givernance_locale</code> cookie.</li>
+            <li><strong>Sidebar logout</strong> : la version icône du footer sidebar est supprimée dans le même PR — le menu compte devient l'unique point de sortie.</li>
+          </ul>
+        </div>
+
+        <div class="spec-card">
+          <h3>Tokens utilisés</h3>
+          <ul>
+            <li>Conteneur : <code>--color-surface-container-lowest</code>, <code>--radius-lg</code>, <code>--shadow-elevated</code>.</li>
+            <li>Bordure : <code>--color-outline-variant</code>.</li>
+            <li>Item destructif : <code>--color-error</code> + <code>--color-error-container</code> au survol.</li>
+            <li>Animation entrée : <code>--duration-normal</code> + <code>--ease-out</code>.</li>
+            <li>Espacement : <code>--space-2</code> (8px) padding vertical item, <code>--space-3</code> (12px) padding horizontal.</li>
+            <li>Aucun token nouveau introduit — réutilisation pure du design system existant.</li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+</body>
+</html>

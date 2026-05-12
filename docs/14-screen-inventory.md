@@ -1619,6 +1619,27 @@ flowchart TD
 
 ---
 
+### GLO-005 — Menu compte (account menu dropdown)
+
+| Champ | Valeur |
+|---|---|
+| **ID** | GLO-005 |
+| **Module** | Global |
+| **Nom de l'écran** | Menu compte |
+| **URL pattern** | Dropdown ancré sur l'avatar du topbar (toutes les pages authentifiées) |
+| **Description** | Menu déroulant déclenché par l'avatar utilisateur dans le topbar. Centralise l'identité de l'utilisateur connecté, l'accès à ses préférences personnelles, le sélecteur de langue, et la déconnexion SSO. Remplace le bouton `LogOut` temporaire posé dans le pied de la sidebar par PR #73. |
+| **États** | Closed, Open, ItemHover, ItemHoverDestructive, ItemKeyboardFocus, TriggerKeyboardFocus |
+| **Actions principales** | 1. Naviguer vers Mon compte · 2. Changer la langue d'interface (FR / EN) · 3. Se déconnecter (déclenche le flow OIDC end-session) |
+| **Données affichées** | Nom complet, email, langue active (`aria-current`) |
+| **Rôles autorisés** | Tous les rôles authentifiés |
+| **Composants clés** | `DropdownMenu` (shadcn/ui sur `@radix-ui/react-dropdown-menu`), `Avatar`, items réutilisant `.dropdown-item` / `.dropdown-divider` |
+| **Interactions IA** | — |
+| **Priorité** | MUST |
+| **Issue** | [#76](https://github.com/purposestack/givernance/issues/76) |
+| **Maquette** | [`docs/design/shared/account-menu.html`](design/shared/account-menu.html) |
+
+---
+
 ## Annexe B — Inventaire complet (index)
 
 | ID | Module | Nom de l'écran | URL | Priorité |
@@ -1696,6 +1717,7 @@ flowchart TD
 | GLO-002 | Global | Page 404 | `/*` | MUST |
 | GLO-003 | Global | Erreur 500 | fallback | MUST |
 | GLO-004 | Global | Centre de notifications | panneau latéral | MUST |
+| GLO-005 | Global | Menu compte | dropdown topbar (toutes pages auth) | MUST |
 | CONV-001 | Conversationnel | Hub conversationnel | vision | VISION |
 | CONV-002 | Conversationnel | Résultats inline | vision | VISION |
 | CONV-003 | Conversationnel | Orchestration d'actions | vision | VISION |
