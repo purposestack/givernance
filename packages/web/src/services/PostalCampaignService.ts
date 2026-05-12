@@ -45,12 +45,35 @@ export interface PostalExport {
   completedAt: string | null;
 }
 
+/**
+ * Swiss QR-bill rail metrics (Epic #318 PR #5, docs/25 §5.3). Returned
+ * on `getQrStats` for campaigns with a linked bank account; `null` for
+ * standard French-rail campaigns. Mode-aware fields (`pendingQrBills`,
+ * `scannedNotPaidCount`) may be `null` on door-drop because the
+ * underlying signal doesn't exist.
+ */
+export interface CampaignSwissRailStats {
+  totalQrBills: number;
+  paidQrBills: number;
+  paidQrBillAmountCents: number;
+  pendingQrBills: number | null;
+  partialMatchCount: number;
+  unreconciledCount: number;
+  lastStatementImportedAt: string | null;
+}
+
 export interface CampaignQrStats {
   campaignId: string;
   totalCodes: number;
   scannedCodes: number;
   qrAttributedDonations: number;
   qrAttributedAmountCents: number;
+  /**
+   * Swiss QR-bill rail metrics (Epic #318 PR #5, docs/25 §5.3). `null`
+   * when the campaign has no linked `bank_account_id` (standard French
+   * rail only).
+   */
+  swissRail: CampaignSwissRailStats | null;
 }
 
 /**
