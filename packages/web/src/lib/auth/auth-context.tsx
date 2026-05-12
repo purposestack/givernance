@@ -66,6 +66,15 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
  */
 const DEFAULT_REFRESH_INTERVAL_MS = 240 * 1000;
 const REFRESH_GRACE_MS = 60 * 1000;
+/** Backoff after a transient network failure. */
+const REFRESH_RETRY_DELAY_MS = 30 * 1000;
+/**
+ * Max consecutive transient failures before treating the session as gone
+ * (PR #360 review Frontend M4). At 30s per retry, 5 ≈ 2.5 min — well past
+ * the access-token TTL, so any token the user still has is already dead
+ * and we should let them re-auth rather than keep hammering Keycloak.
+ */
+const MAX_REFRESH_RETRIES = 5;
 
 async function fetchMe(): Promise<UserProfile> {
   const res = await fetch(`${API_URL}/v1/users/me`, {
@@ -131,60 +140,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // token before it expires so the user doesn't get bounced to /login
   // every 5 minutes. On refresh failure, clear local auth state so the
   // next protected navigation falls through to the middleware redirect.
+  //
+  // Depends on `state.user?.userId` (stable string), not the full user
+  // object, so a re-fetch of /v1/users/me that returns content-equal
+  // data doesn't cancel-and-re-schedule the timer mid-cycle
+  // (PR #360 review Frontend M5).
+  const userId = state.user?.userId;
   useEffect(() => {
-    // Only schedule once we have a hydrated user — refreshing before
-    // we even know who the user is would race the first /v1/users/me.
-    if (!state.user) return;
+    if (!userId) return;
 
-    let cancelled = false;
-
-    const scheduleNext = (delayMs: number) => {
-      if (cancelled) return;
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = setTimeout(runRefresh, Math.max(delayMs, 1000));
+    const ctx: RefreshLoopContext = {
+      cancelled: false,
+      retryCount: 0,
+      lastSuccessAt: Date.now(),
+      timerRef: refreshTimerRef,
+      setState,
     };
 
-    const runRefresh = async () => {
-      try {
-        const res = await fetch("/api/auth/refresh", {
-          method: "POST",
-          credentials: "include",
-          // No CSRF header — the refresh route does not gate on it.
-          // See `/api/auth/refresh/route.ts` for the rationale.
-        });
-        if (!res.ok) {
-          // Refresh refused (refresh-token revoked / session ended via
-          // back-channel logout / admin sign-out-all). Mark the local
-          // session as gone — middleware sends the next nav to /login.
-          if (!cancelled) {
-            setState({ user: null, loading: false, error: "session_expired" });
-          }
-          return;
-        }
-        const body = (await res.json().catch(() => null)) as { expiresIn?: number } | null;
-        const expiresInMs =
-          typeof body?.expiresIn === "number" && body.expiresIn > 0
-            ? body.expiresIn * 1000
-            : DEFAULT_REFRESH_INTERVAL_MS + REFRESH_GRACE_MS;
-        scheduleNext(expiresInMs - REFRESH_GRACE_MS);
-      } catch {
-        // Transient network failure — retry sooner than the default
-        // cadence (30s) so a brief blip doesn't leak into a forced
-        // logout when the token would otherwise still be valid.
-        scheduleNext(30 * 1000);
-      }
+    const scheduleNext = (delayMs: number) => {
+      if (ctx.cancelled) return;
+      if (ctx.timerRef.current) clearTimeout(ctx.timerRef.current);
+      ctx.timerRef.current = setTimeout(
+        () => {
+          void runRefreshIteration(ctx, scheduleNext);
+        },
+        Math.max(delayMs, 1000),
+      );
     };
 
     scheduleNext(DEFAULT_REFRESH_INTERVAL_MS);
 
-    return () => {
-      cancelled = true;
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
+    // PR #360 review (Frontend M3): browsers throttle setTimeout in
+    // background tabs (Chrome's intensive throttling kicks in after
+    // ~5 min of inactivity). A user who backgrounds the tab for an hour
+    // would otherwise have the 4-min timer fire well past token expiry,
+    // landing them at /login on their next foreground action. On every
+    // tab-focus, if we're past-due for a refresh, fire one immediately.
+    const onVisibilityChange = () => {
+      if (ctx.cancelled || document.visibilityState !== "visible") return;
+      const elapsed = Date.now() - ctx.lastSuccessAt;
+      if (elapsed >= DEFAULT_REFRESH_INTERVAL_MS - REFRESH_GRACE_MS) {
+        scheduleNext(0);
       }
     };
-  }, [state.user]);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      ctx.cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (ctx.timerRef.current) {
+        clearTimeout(ctx.timerRef.current);
+        ctx.timerRef.current = null;
+      }
+    };
+  }, [userId]);
 
   const hasRole = useCallback(
     (role: string) => state.user?.roles.includes(role) ?? false,
@@ -255,4 +264,80 @@ export function useAuth(): AuthContextValue {
     throw new Error("useAuth must be used within an <AuthProvider>");
   }
   return context;
+}
+
+// ─── Silent-refresh helpers (issue #76 / PR-3) ─────────────────────────────
+//
+// Extracted from the AuthProvider effect to keep its cognitive complexity
+// below the Biome ceiling — the effect now just owns the lifecycle
+// (scheduling, visibility, cleanup) while these functions own the
+// fetch + response → next-action mapping.
+
+interface RefreshLoopContext {
+  cancelled: boolean;
+  retryCount: number;
+  lastSuccessAt: number;
+  timerRef: { current: ReturnType<typeof setTimeout> | null };
+  setState: (state: AuthState) => void;
+}
+
+async function runRefreshIteration(
+  ctx: RefreshLoopContext,
+  scheduleNext: (delayMs: number) => void,
+): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch("/api/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      // No CSRF header — the refresh route does not gate on it.
+      // See `/api/auth/refresh/route.ts` for the rationale.
+    });
+  } catch {
+    handleRefreshNetworkError(ctx, scheduleNext);
+    return;
+  }
+
+  if (!res.ok) {
+    // Refresh refused (refresh-token revoked / session ended via
+    // back-channel logout / admin sign-out-all). Mark the local
+    // session as gone — middleware sends the next nav to /login.
+    if (!ctx.cancelled) {
+      ctx.setState({ user: null, loading: false, error: "session_expired" });
+    }
+    return;
+  }
+
+  ctx.retryCount = 0;
+  ctx.lastSuccessAt = Date.now();
+  const expiresInMs = await readExpiresInMs(res);
+  scheduleNext(expiresInMs - REFRESH_GRACE_MS);
+}
+
+function handleRefreshNetworkError(
+  ctx: RefreshLoopContext,
+  scheduleNext: (delayMs: number) => void,
+): void {
+  ctx.retryCount += 1;
+  if (ctx.retryCount >= MAX_REFRESH_RETRIES) {
+    // Keycloak / network sustained-down past the access-token TTL —
+    // any token we still have is already dead, so stop hammering and
+    // let the user re-auth on the next protected navigation.
+    if (!ctx.cancelled) {
+      ctx.setState({ user: null, loading: false, error: "refresh_unreachable" });
+    }
+    return;
+  }
+  // Transient network failure — retry sooner than the default cadence
+  // so a brief blip doesn't leak into a forced logout when the token
+  // would otherwise still be valid.
+  scheduleNext(REFRESH_RETRY_DELAY_MS);
+}
+
+async function readExpiresInMs(res: Response): Promise<number> {
+  const body = (await res.json().catch(() => null)) as { expiresIn?: number } | null;
+  if (typeof body?.expiresIn === "number" && body.expiresIn > 0) {
+    return body.expiresIn * 1000;
+  }
+  return DEFAULT_REFRESH_INTERVAL_MS + REFRESH_GRACE_MS;
 }

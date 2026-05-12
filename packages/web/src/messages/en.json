@@ -304,12 +304,10 @@
       "donations": "Donations",
       "settings": "Settings",
       "orgPlaceholder": "Organisation",
-      "userPlaceholder": "User",
       "workspaceSwitcher": "Open workspace switcher",
       "changeOrganization": "Change organisation",
       "workspaceSettings": "Organisation settings",
       "profile": "My profile",
-      "signOut": "Sign out",
       "admin": {
         "section": "Back office",
         "tenants": "Tenants",
@@ -329,10 +327,11 @@
       "profileOf": "Profile of {name}",
       "accountMenu": {
         "triggerLabel": "Account menu, {name}",
+        "triggerLabelAnonymous": "Account menu",
         "myAccount": "My account",
         "language": "Language",
-        "languageChoice": "Switch interface language to {label}",
-        "signOut": "Sign out"
+        "signOut": "Sign out",
+        "signOutAriaLabel": "Sign out — ends your session"
       }
     },
     "impersonation": {

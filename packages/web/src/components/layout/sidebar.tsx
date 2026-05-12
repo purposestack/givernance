@@ -6,7 +6,6 @@ import {
   Flag,
   Gift,
   LayoutDashboard,
-  LogOut,
   Megaphone,
   RefreshCw,
   ShieldAlert,
@@ -28,7 +27,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth";
@@ -108,7 +106,7 @@ export function Sidebar({
   orgLogo = null,
 }: SidebarProps) {
   const pathname = usePathname();
-  const { user, hasRole, hasAppRole, logout } = useAuth();
+  const { user, hasRole, hasAppRole } = useAuth();
   const t = useTranslations("appShell.sidebar");
   const tAdmin = useTranslations("appShell.sidebar.admin");
   // Prefer the SSR-resolved flag; fall back to client-side role check so
@@ -326,12 +324,11 @@ export function Sidebar({
                   </Link>
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>{user?.email ?? t("userPlaceholder")}</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={logout}>
-                <LogOut size={16} aria-hidden="true" />
-                <span>{t("signOut")}</span>
-              </DropdownMenuItem>
+              {/*
+                Sign-out lives in the topbar account menu (issue #76 — GLO-005).
+                Removed from the sidebar workspace switcher in PR #360 review
+                (Architect m7) so there's a single sign-out entry point.
+              */}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
