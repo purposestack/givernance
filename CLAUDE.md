@@ -249,9 +249,11 @@ Valid uses for Organization attributes: non-sensitive identifiers (`org_id`, slu
 Before concluding your task or pushing to origin, you must run and verify:
 1. `pnpm install` (to sync dependencies)
 2. `pnpm build` (to check compilation)
-3. `pnpm run format` (to fix any Biome formatting)
-4. `pnpm run lint` (to fix any Biome linter rules)
-5. `pnpm typecheck` (to catch TypeScript strict errors)
-6. `pnpm test` (to ensure the integration tests still pass)
+3. `pnpm run format` (auto-fix Biome formatting)
+4. `pnpm typecheck` (catch TypeScript strict errors)
+5. `pnpm test` (ensure the integration tests still pass)
+6. **`pnpm biome check .`** (final gate — this is the EXACT command CI runs; matches lint + format-check together)
 
 If any of these fail, **fix the underlying issue** before pushing. Never leave a branch with a failing `typecheck` or `lint` command.
+
+⚠ **Step 6 is the load-bearing one.** `pnpm run lint` is check-only and `pnpm run format` only auto-fixes — running them separately lets format drift sneak back in if you make edits between or after them. CI runs `pnpm biome check .` which combines both, so that's what you must run **last**, after every other edit, immediately before `git push`. If it returns non-zero, run `pnpm biome check --write .` to auto-fix, then re-run `pnpm biome check .` to confirm clean.
