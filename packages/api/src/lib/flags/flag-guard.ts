@@ -31,7 +31,12 @@ import { flagService as defaultFlagService, type FlagService } from "./flag-serv
 export function requireFlag(flagKey: FeatureFlagKey, service: FlagService = defaultFlagService) {
   return async function flagPreHandler(request: FastifyRequest, reply: FastifyReply) {
     const effective: FlagService = request.flagService ?? service;
-    const enabled = await effective.isEnabled(flagKey);
+    // Pass the caller's orgId (from the validated JWT) so tenant-
+    // scoped flags evaluate against this tenant's override row. For
+    // public / unauthenticated routes `request.auth` is undefined
+    // and the evaluator falls back to the platform default — same
+    // behaviour as the Phase-1 no-context call.
+    const enabled = await effective.isEnabled(flagKey, { orgId: request.auth?.orgId ?? null });
     if (!enabled) {
       // Structured log so SRE can see how often a gated route is hit
       // while disabled — useful signal that a feature is in demand

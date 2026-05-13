@@ -1,45 +1,69 @@
 /**
- * Platform-admin routes for the global feature-flag registry
- * (issue #326 / PR #352 follow-up — Magino-on-comment).
+ * Feature-flag routes (issue #326 / PR #352, expanded by Epic #365 PR #366).
  *
- * Scope is intentionally minimal:
- *   - `GET    /v1/admin/feature-flags` — list every flag for the
- *     Back Office page.
- *   - `PATCH  /v1/admin/feature-flags/:key` — flip `enabled`. No
- *     other field is mutable from the UI: description + key are
- *     code-owned (see `FEATURE_FLAG_REGISTRY`); the only operator
- *     decision is on/off.
+ * Surface map (every new Phase-2 route is gated by
+ * `ADMIN_FEATURE_FLAGS_PHASE2` as the FIRST preHandler — before
+ * role guards — so an off-state 404 leaks no role info per the
+ * Feature-flag-first rule in CLAUDE.md):
  *
- * No POST / DELETE — flag rows are created by the seed migration
- * (`0047_feature_flags.sql`) and live for the life of the code
- * reference. Removing a flag means deleting the code AND the row in
- * a follow-up migration; the UI can't sneak this in.
+ *   GET    /v1/feature-flags                                — public projection (public=true only)
+ *   GET    /v1/admin/feature-flags                          — super-admin list (+ overrideStats when phase2 on)
+ *   PATCH  /v1/admin/feature-flags/:key                     — super-admin platform-default flip
+ *   GET    /v1/admin/tenants/:tenantId/feature-flags        — super-admin tenant-detail tab
+ *   PUT    /v1/admin/tenants/:tenantId/feature-flags/:key   — super-admin upsert override
+ *   DELETE /v1/admin/tenants/:tenantId/feature-flags/:key   — super-admin remove override
+ *   GET    /v1/org/feature-flags                            — org-admin self-service list
+ *   PATCH  /v1/org/feature-flags/:key                       — org-admin self-service toggle
  *
- * Guard: `requireSuperAdmin` → 404 to non-super-admins (same anti-
- * disclosure posture as the rest of `/v1/admin/*`).
+ * Audit trail: the existing `audit-plugin` records every mutating
+ * request (PATCH/PUT/DELETE) to `audit_logs` automatically — no
+ * bespoke emit calls in the handlers below. The plugin captures
+ * `actor_id`, `org_id`, `action`, `resource_type`, `resource_id`,
+ * + impersonation context, satisfying doc 18 § 4.3.
  *
- * Audit: the existing `audit-plugin` already records every mutating
- * request to `audit_logs`. A PATCH against this route therefore lands
- * with `action = 'PATCH:/v1/admin/feature-flags/:key'` and
- * `resourceType = 'admin'` — no extra wiring needed. The structured
- * service log below adds the BEFORE/AFTER values so SIEM can answer
- * "who flipped what" without joining tables.
+ * Cache invalidation: every override write calls
+ * `flagService.invalidateTenant(tenantId)` after the DB commit so the
+ * next read sees the new value rather than waiting on the 60-s TTL.
+ * Platform-default flips still call `flagService.invalidate()`.
  */
 
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { flagService } from "../../lib/flags/flag-service.js";
-import { requireAuth, requireSuperAdmin } from "../../lib/guards.js";
+import { requireAuth, requireOrgAdmin, requireSuperAdmin } from "../../lib/guards.js";
 import {
   DataArrayResponseNoPagination,
   DataResponse,
   ErrorResponses,
   problemDetail,
 } from "../../lib/schemas.js";
-import { setFeatureFlag } from "./feature-flags-service.js";
+import {
+  removeTenantOverride,
+  resolveOverrideTarget,
+  setFeatureFlag,
+  upsertTenantOverride,
+} from "./feature-flags-service.js";
 
 const FlagKeyParams = Type.Object({
   key: Type.String({ minLength: 1, maxLength: 100 }),
+});
+
+const TenantFlagKeyParams = Type.Object({
+  tenantId: Type.String({ format: "uuid" }),
+  key: Type.String({ minLength: 1, maxLength: 100 }),
+});
+
+const TenantParams = Type.Object({
+  tenantId: Type.String({ format: "uuid" }),
+});
+
+const ScopeSchema = Type.Union([Type.Literal("platform"), Type.Literal("tenant")]);
+
+const OverrideStatsSchema = Type.Object({
+  enabledCount: Type.Integer({ minimum: 0 }),
+  disabledCount: Type.Integer({ minimum: 0 }),
 });
 
 const FlagRowSchema = Type.Object({
@@ -47,22 +71,55 @@ const FlagRowSchema = Type.Object({
   enabled: Type.Boolean(),
   label: Type.String(),
   description: Type.String(),
+  scope: ScopeSchema,
+  tenantOverrideAllowed: Type.Boolean(),
+  public: Type.Boolean(),
   updatedBy: Type.Union([Type.Null(), Type.String()]),
   createdAt: Type.String(),
   updatedAt: Type.String(),
+  /**
+   * Present only when the caller is super-admin AND the
+   * `admin.feature_flags_phase2` flag is on. Null otherwise — the
+   * field stays in the schema so the frontend doesn't have to branch
+   * on undefined vs. missing.
+   */
+  overrideStats: Type.Union([Type.Null(), OverrideStatsSchema]),
 });
 
 const ToggleBody = Type.Object({
   enabled: Type.Boolean(),
 });
 
-/**
- * Tenant-readable projection — just `{ key, enabled }` so a non-admin
- * UI can hide gated surfaces without seeing super-admin metadata
- * (description, updated_by, timestamps). Same shape every authenticated
- * caller gets; not tenant-scoped because the registry is global in
- * the MVP.
- */
+const TenantOverrideUpsertBody = Type.Object({
+  value: Type.Boolean(),
+  reason: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 1000 })])),
+});
+
+const TenantOverrideRowSchema = Type.Object({
+  tenantId: Type.String(),
+  flagKey: Type.String(),
+  value: Type.Boolean(),
+  reason: Type.Union([Type.Null(), Type.String()]),
+  setBy: Type.Union([Type.Null(), Type.String()]),
+  setAt: Type.String(),
+});
+
+const TenantFlagViewRowSchema = Type.Object({
+  /** Flag metadata (mirrors the platform list shape). */
+  key: Type.String(),
+  label: Type.String(),
+  description: Type.String(),
+  scope: ScopeSchema,
+  tenantOverrideAllowed: Type.Boolean(),
+  public: Type.Boolean(),
+  /** Platform default. */
+  platformDefault: Type.Boolean(),
+  /** Effective value for this tenant (override if present, else default). */
+  effectiveValue: Type.Boolean(),
+  /** Override row when present, null when the tenant uses the default. */
+  override: Type.Union([Type.Null(), TenantOverrideRowSchema]),
+});
+
 const PublicFlagRowSchema = Type.Object({
   key: Type.String(),
   enabled: Type.Boolean(),
@@ -71,20 +128,19 @@ const PublicFlagRowSchema = Type.Object({
 export async function featureFlagsRoutes(app: FastifyInstance) {
   /**
    * Tenant-readable flag list. Drives the SSR-side check on tenant
-   * pages that need to hide a button when a flag is off (e.g. the
-   * bulk-email button on the constituents page — PR #352 / issue
-   * #326). Only `requireAuth` because flag *visibility* (the fact
-   * that "feature X exists and is off") is not sensitive — what's
-   * gated by super-admin is *control* + *description*, both of which
-   * stay on `/v1/admin/feature-flags`.
+   * pages that need to hide a button when a flag is off. Phase 2:
+   * the projection is filtered by `public=true` so unreleased flag
+   * names no longer leak via DevTools — resolves the
+   * public-projection caveat from doc 18 § 0. The evaluator also
+   * overlays this caller's tenant overrides (when applicable) on
+   * the value, so an org-admin who flipped a `scope='tenant'` flag
+   * on for their org sees `enabled: true` here.
    */
   app.get(
     "/feature-flags",
     {
       preHandler: requireAuth,
-      // Same polling-cadence cap as the per-id GET on bulk-email-jobs
-      // — the constituents page fetches once per render, but a buggy
-      // client could re-fetch in a loop.
+      // Same polling-cadence cap as the per-id GET on bulk-email-jobs.
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       schema: {
         tags: ["Feature flags"],
@@ -94,16 +150,17 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         },
       },
     },
-    async () => {
-      const rows = await flagService.list();
-      return { data: rows.map((row) => ({ key: row.key, enabled: row.enabled })) };
+    async (request) => {
+      const rows = await flagService.listPublic({ orgId: request.auth?.orgId ?? null });
+      return { data: rows };
     },
   );
 
   /**
-   * List every flag in the registry. The Back Office page reads this
-   * once on mount; no polling needed — flag flips are operator-driven
-   * and infrequent.
+   * Super-admin global list. Returns the full registry. When the
+   * Phase-2 flag is on, every row carries `overrideStats` (count of
+   * tenants overriding to true / false). When the Phase-2 flag is
+   * off, `overrideStats` is `null` so the JSON shape stays stable.
    */
   app.get(
     "/admin/feature-flags",
@@ -117,25 +174,39 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         },
       },
     },
-    async () => {
+    async (request) => {
       const rows = await flagService.list();
-      return { data: rows };
+      const phase2On = await flagService.isEnabled(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2, {
+        orgId: request.auth?.orgId ?? null,
+      });
+      if (!phase2On) {
+        return { data: rows.map((row) => ({ ...row, overrideStats: null })) };
+      }
+      const statsRows = await flagService.overrideStats();
+      const statsByKey = new Map(statsRows.map((s) => [s.flagKey, s]));
+      return {
+        data: rows.map((row) => {
+          const stats = statsByKey.get(row.key);
+          return {
+            ...row,
+            overrideStats: stats
+              ? { enabledCount: stats.enabledCount, disabledCount: stats.disabledCount }
+              : { enabledCount: 0, disabledCount: 0 },
+          };
+        }),
+      };
     },
   );
 
   /**
-   * Flip a flag's `enabled` value. Returns the updated row.
-   *
-   * `key` is path-bound + validated against the existing registry
-   * (404 on unknown key). The flag's `description` + `key` are
-   * code-owned and not mutable from this endpoint — keep this in
-   * lockstep with `FEATURE_FLAG_REGISTRY`.
+   * Flip a platform default. Same Phase-1 behaviour — code-owned
+   * label / description / scope / tenant_override_allowed / public
+   * fields are NOT mutable from this endpoint (only `enabled` is).
    */
   app.patch(
     "/admin/feature-flags/:key",
     {
       preHandler: requireSuperAdmin,
-      // Rate limit a chatty admin UI / scripted toggle storm.
       config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
       schema: {
         tags: ["Admin"],
@@ -155,18 +226,11 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
       const { key } = request.params as { key: string };
       const { enabled } = request.body as { enabled: boolean };
 
-      // `updated_by` references `users(id)` and SET NULLs on purge.
-      // Super-admins live in `platform_admins` (no `users` row), so
-      // we leave this NULL and rely on `audit_logs` for the "who"
-      // — actorId there carries the JWT subject.
       const result = await setFeatureFlag(key, enabled, null);
       if (!result) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));
       }
 
-      // Invalidate the Redis cache so the new value is observed on
-      // the next gated-route hit (rather than waiting for the 60-s
-      // TTL to expire).
       await flagService.invalidate();
 
       request.log.info(
@@ -178,6 +242,300 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
           actorUserId: userId,
         },
         "Feature flag toggled",
+      );
+
+      return { data: { ...result.row, overrideStats: null } };
+    },
+  );
+
+  // ─── Phase 2: super-admin tenant-overrides ────────────────────────────────
+
+  /**
+   * List every flag from the super-admin's perspective on a single
+   * tenant. Returns flag metadata + the platform default + the
+   * effective value for THIS tenant + the override row (if any).
+   * Drives the "Feature flags" tab on `/admin/tenants/[id]`.
+   *
+   * Includes `scope='platform'` flags as read-only context (the UI
+   * renders them but the toggle is disabled): super-admin sometimes
+   * needs to see "what's the bulk-email posture across this tenant?"
+   * even though they can't override it per-tenant.
+   */
+  app.get(
+    "/admin/tenants/:tenantId/feature-flags",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireSuperAdmin],
+      schema: {
+        tags: ["Admin"],
+        params: TenantParams,
+        response: {
+          200: DataArrayResponseNoPagination(TenantFlagViewRowSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request) => {
+      const { tenantId } = request.params as { tenantId: string };
+      const [flagRows, overrideRows] = await Promise.all([
+        flagService.list(),
+        flagService.listOverridesForTenant(tenantId),
+      ]);
+      const overrideByKey = new Map(overrideRows.map((o) => [o.flagKey, o]));
+      return {
+        data: flagRows.map((flag) => {
+          const override = overrideByKey.get(flag.key) ?? null;
+          // For platform-scoped flags the override row is meaningless;
+          // we still surface it as null so the UI doesn't see stale
+          // data if a historical override existed before the scope
+          // was tightened. Effective value uses the override only
+          // for tenant-scoped flags.
+          const effective =
+            flag.scope === "tenant" && override ? override.value : flag.enabled;
+          return {
+            key: flag.key,
+            label: flag.label,
+            description: flag.description,
+            scope: flag.scope,
+            tenantOverrideAllowed: flag.tenantOverrideAllowed,
+            public: flag.public,
+            platformDefault: flag.enabled,
+            effectiveValue: effective,
+            override: flag.scope === "tenant" ? override : null,
+          };
+        }),
+      };
+    },
+  );
+
+  /**
+   * Upsert a per-tenant override. PUT semantics — re-PUT with the
+   * same payload returns 200 and refreshes `set_by` / `reason` /
+   * `updated_at`. Idempotent.
+   *
+   * Returns 404 when the flag key doesn't exist (anti-disclosure),
+   * 422 when the flag is platform-scoped (the operator picked the
+   * wrong tool for the job — the registry edit is a code change).
+   */
+  app.put(
+    "/admin/tenants/:tenantId/feature-flags/:key",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireSuperAdmin],
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["Admin"],
+        params: TenantFlagKeyParams,
+        body: TenantOverrideUpsertBody,
+        response: {
+          200: DataResponse(TenantOverrideRowSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { tenantId, key } = request.params as { tenantId: string; key: string };
+      const body = request.body as { value: boolean; reason?: string | null };
+
+      const target = await resolveOverrideTarget(key, "super_admin");
+      if (!target.writable) {
+        if (target.rejection === "flag_not_found") {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));
+        }
+        return reply.status(422).send(
+          problemDetail(
+            422,
+            "Unprocessable Entity",
+            "This flag is platform-scoped and cannot have per-tenant overrides — flip the platform default instead",
+          ),
+        );
+      }
+
+      const result = await upsertTenantOverride({
+        tenantId,
+        flagKey: key,
+        value: body.value,
+        reason: body.reason ?? null,
+        // `set_by` references `users(id)`; super-admins live in
+        // `platform_admins` (no `users` row), so we leave this NULL
+        // and rely on `audit_logs` for the "who". Org-admin path
+        // populates this with their `users.id`.
+        setBy: null,
+      });
+      if (!result) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));
+      }
+
+      await flagService.invalidateTenant(tenantId);
+
+      request.log.info(
+        {
+          event: "tenant_flag_override.set",
+          tenantId,
+          flagKey: key,
+          value: body.value,
+          previousValue: result.previousValue,
+          actorUserId: request.auth?.userId,
+        },
+        "Tenant flag override upserted",
+      );
+
+      return { data: result.row };
+    },
+  );
+
+  /**
+   * Remove a per-tenant override (revert to platform default).
+   * 204 on success regardless of whether a row was actually
+   * deleted — the caller's intent is "ensure no override exists",
+   * which is the same outcome either way.
+   */
+  app.delete(
+    "/admin/tenants/:tenantId/feature-flags/:key",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireSuperAdmin],
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["Admin"],
+        params: TenantFlagKeyParams,
+        response: {
+          204: Type.Null(),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { tenantId, key } = request.params as { tenantId: string; key: string };
+      const result = await removeTenantOverride(tenantId, key);
+      await flagService.invalidateTenant(tenantId);
+      request.log.info(
+        {
+          event: "tenant_flag_override.removed",
+          tenantId,
+          flagKey: key,
+          previousValue: result?.previousValue ?? null,
+          actorUserId: request.auth?.userId,
+        },
+        "Tenant flag override removed",
+      );
+      return reply.status(204).send();
+    },
+  );
+
+  // ─── Phase 2: org-admin self-service ──────────────────────────────────────
+
+  /**
+   * Org-admin self-service list. Returns ONLY flags where
+   * `scope='tenant' AND tenant_override_allowed=true`. Day-one,
+   * the registry has zero such flags — the page renders an
+   * explanatory empty state.
+   *
+   * `effectiveValue` is computed with the caller's org context so
+   * a recently-flipped override is visible immediately.
+   */
+  app.get(
+    "/org/feature-flags",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireOrgAdmin],
+      schema: {
+        tags: ["Org"],
+        response: {
+          200: DataArrayResponseNoPagination(TenantFlagViewRowSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing org context"));
+      }
+      const [flagRows, overrideRows] = await Promise.all([
+        flagService.list(),
+        flagService.listOverridesForTenant(orgId),
+      ]);
+      const overrideByKey = new Map(overrideRows.map((o) => [o.flagKey, o]));
+      return {
+        data: flagRows
+          .filter((flag) => flag.scope === "tenant" && flag.tenantOverrideAllowed)
+          .map((flag) => {
+            const override = overrideByKey.get(flag.key) ?? null;
+            return {
+              key: flag.key,
+              label: flag.label,
+              description: flag.description,
+              scope: flag.scope,
+              tenantOverrideAllowed: flag.tenantOverrideAllowed,
+              public: flag.public,
+              platformDefault: flag.enabled,
+              effectiveValue: override ? override.value : flag.enabled,
+              override,
+            };
+          }),
+      };
+    },
+  );
+
+  /**
+   * Org-admin self-service toggle. Re-uses the override upsert
+   * path with `org_admin` actor — `resolveOverrideTarget` enforces
+   * `scope='tenant' AND tenant_override_allowed=true`, returning
+   * 404 (anti-disclosure) when the org-admin tries to write a
+   * flag that's platform-scoped or admin-gated.
+   */
+  app.patch(
+    "/org/feature-flags/:key",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireOrgAdmin],
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["Org"],
+        params: FlagKeyParams,
+        body: TenantOverrideUpsertBody,
+        response: {
+          200: DataResponse(TenantOverrideRowSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { key } = request.params as { key: string };
+      const body = request.body as { value: boolean; reason?: string | null };
+
+      const target = await resolveOverrideTarget(key, "org_admin");
+      if (!target.writable) {
+        // Org-admin path uses 404 for every rejection — same anti-
+        // disclosure posture as `requireSuperAdmin` returning 404 to
+        // non-super-admins.
+        return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));
+      }
+
+      const result = await upsertTenantOverride({
+        tenantId: orgId,
+        flagKey: key,
+        value: body.value,
+        reason: body.reason ?? null,
+        setBy: userId,
+      });
+      if (!result) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));
+      }
+
+      await flagService.invalidateTenant(orgId);
+
+      request.log.info(
+        {
+          event: "org_flag_override.set",
+          tenantId: orgId,
+          flagKey: key,
+          value: body.value,
+          previousValue: result.previousValue,
+          actorUserId: userId,
+        },
+        "Org-admin flag override upserted",
       );
 
       return { data: result.row };
