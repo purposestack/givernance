@@ -556,9 +556,23 @@ export function AuthBackground() {
       mouseY = -1;
     };
 
+    // bfcache restore: navigating to Keycloak and pressing the browser
+    // back button freezes this page and resumes it from memory. The
+    // useEffect doesn't re-run (component never unmounted), and the
+    // pending requestAnimationFrame callback is sometimes never delivered
+    // — leaving the canvas frozen on the last pre-freeze frame. Cancel
+    // any stale handle and re-kick the loop when the page is shown again.
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (!e.persisted || reduceMotion) return;
+      cancelAnimationFrame(rafId);
+      lastTs = performance.now();
+      rafId = requestAnimationFrame(tick);
+    };
+
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);
+    window.addEventListener("pageshow", onPageShow);
     reduceMotionQuery.addEventListener("change", onMotionChange);
 
     return () => {
@@ -566,6 +580,7 @@ export function AuthBackground() {
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerleave", onPointerLeave);
+      window.removeEventListener("pageshow", onPageShow);
       reduceMotionQuery.removeEventListener("change", onMotionChange);
     };
   }, []);
