@@ -42,6 +42,12 @@
 
   var SPRITE_SIZE = 90;
 
+  // Mouse-repulsion tuning. Radius is in CSS pixels — particles closer than
+  // this from the cursor get pushed away, with a quadratic falloff so the
+  // effect feels soft near the edge and firm near the centre.
+  var REPEL_RADIUS = 180;
+  var REPEL_STRENGTH = 60;
+
   function paintIcon(ctx, type) {
     var size = SPRITE_SIZE;
     var cx = size / 2;
@@ -369,6 +375,11 @@
       rotSpeed: (Math.random() - 0.5) * 0.25,
       opacity: 0.18 + Math.random() * 0.32,
       type: type,
+      // Smoothed displacement applied on top of (x, y) by the mouse-
+      // repulsion pass. Stored on the particle so the eased return-to-zero
+      // doesn't snap when the cursor leaves the influence radius.
+      offsetX: 0,
+      offsetY: 0,
     };
   }
 
@@ -385,6 +396,11 @@
     var particles = [];
     var width = 0;
     var height = 0;
+    // Cursor in CSS-pixel coordinates relative to the viewport. -1 sentinel
+    // means "no active cursor" (initial state or pointer left the window) so
+    // the eased offset returns to zero without a hard snap.
+    var mouseX = -1;
+    var mouseY = -1;
 
     function resize() {
       var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -422,7 +438,10 @@
         var op = p.opacity * (1.25 - yFrac * 1.1);
         ctx.save();
         ctx.globalAlpha = op;
-        ctx.translate(p.x + Math.sin(t / 1200 + p.swayPhase) * p.sway, p.y);
+        ctx.translate(
+          p.x + p.offsetX + Math.sin(t / 1200 + p.swayPhase) * p.sway,
+          p.y + p.offsetY,
+        );
         ctx.rotate(p.rotation);
         ctx.drawImage(
           sprites[p.type],
@@ -441,6 +460,11 @@
     function tick(ts) {
       var dt = Math.min(0.05, (ts - lastTs) / 1000);
       lastTs = ts;
+      // Framerate-independent easing factor for the cursor-offset low-pass.
+      // 1 − exp(−dt · k) converges to the target with time constant 1/k
+      // regardless of frame timing; k = 6 → ~95 % settled in 0.5 s.
+      var easing = 1 - Math.exp(-dt * 6);
+      var cursorActive = mouseX >= 0 && mouseY >= 0;
       for (var i = 0; i < particles.length; i++) {
         var p = particles[i];
         p.y += p.speed * dt;
@@ -457,7 +481,28 @@
           p.rotSpeed = fresh.rotSpeed;
           p.opacity = fresh.opacity;
           p.type = fresh.type;
+          p.offsetX = 0;
+          p.offsetY = 0;
         }
+        // Compute the cursor-repulsion target. Quadratic falloff inside the
+        // radius, zero outside. The eased offset converges toward this every
+        // frame, so leaving the cursor stationary lets icons settle and
+        // leaving the window resets the target to zero (smooth return).
+        var targetOx = 0;
+        var targetOy = 0;
+        if (cursorActive) {
+          var dx = p.x - mouseX;
+          var dy = p.y - mouseY;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 0 && dist < REPEL_RADIUS) {
+            var f = 1 - dist / REPEL_RADIUS;
+            var falloff = f * f;
+            targetOx = (dx / dist) * falloff * REPEL_STRENGTH;
+            targetOy = (dy / dist) * falloff * REPEL_STRENGTH;
+          }
+        }
+        p.offsetX += (targetOx - p.offsetX) * easing;
+        p.offsetY += (targetOy - p.offsetY) * easing;
       }
       draw(ts);
       rafId = requestAnimationFrame(tick);
@@ -484,7 +529,22 @@
       }
     }
 
+    // Cursor tracking — only meaningful when motion is allowed; under
+    // reduce-motion the canvas paints a single static frame and there is
+    // no rAF loop to consume the position.
+    function onPointerMove(e) {
+      if (reduceMotion) return;
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    }
+    function onPointerLeave() {
+      mouseX = -1;
+      mouseY = -1;
+    }
+
     window.addEventListener("resize", resize);
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointerleave", onPointerLeave);
     if (mq.addEventListener) {
       mq.addEventListener("change", onMotionChange);
     } else if (mq.addListener) {
