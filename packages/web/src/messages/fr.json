@@ -481,6 +481,52 @@
         "disabledCount": "{count, plural, =0 {Aucune organisation n'a désactivé cette fonctionnalité} one {1 organisation a désactivé cette fonctionnalité} other {# organisations ont désactivé cette fonctionnalité}}",
         "noOverrides": "Aucune organisation n'a modifié la valeur par défaut."
       },
+      "perFlagTenants": {
+        "title": "{label}",
+        "subtitle": "Choisissez les organisations pour lesquelles cette fonctionnalité est activée. Les organisations sans surcharge utilisent la valeur par défaut plateforme.",
+        "backToList": "← Retour aux feature flags",
+        "fetchFailed": "Impossible de charger la liste des organisations. Veuillez rafraîchir la page.",
+        "empty": "Aucune organisation active à afficher.",
+        "platformLocked": "Cette fonctionnalité est à l'échelle plateforme. Les surcharges par organisation sont ignorées même quand elles existent. Modifiez la valeur par défaut depuis la page précédente.",
+        "platformDefaultBadge": "Par défaut : {state}",
+        "filters": {
+          "all": "Toutes les organisations",
+          "enabled": "Activées (surcharge ou défaut)",
+          "disabled": "Désactivées (surcharge ou défaut)",
+          "overridden": "Surchargées",
+          "default": "Utilisant le défaut plateforme"
+        },
+        "searchPlaceholder": "Rechercher par nom d'organisation…",
+        "tableColumns": {
+          "tenant": "Organisation",
+          "effective": "Actuellement",
+          "source": "Source",
+          "actions": "Actions"
+        },
+        "source": {
+          "default": "Défaut plateforme",
+          "overrideOn": "Surcharge → activée",
+          "overrideOff": "Surcharge → désactivée"
+        },
+        "actions": {
+          "enable": "Activer",
+          "disable": "Désactiver",
+          "clearOverride": "Utiliser le défaut",
+          "saving": "Enregistrement…"
+        },
+        "bulk": {
+          "selectionLabel": "{count, plural, =0 {Aucune sélection} one {1 organisation sélectionnée} other {# organisations sélectionnées}}",
+          "enable": "Activer pour la sélection",
+          "disable": "Désactiver pour la sélection",
+          "clear": "Utiliser le défaut pour la sélection",
+          "selectAll": "Tout sélectionner",
+          "clearSelection": "Effacer la sélection",
+          "saving": "Mise à jour…",
+          "progress": "{done} sur {total}",
+          "successAll": "{count} organisations mises à jour.",
+          "partial": "{success} sur {total} organisations mises à jour. {failed} échec(s)."
+        }
+      },
       "tenantDetail": {
         "title": "Feature flags pour cette organisation",
         "subtitle": "Activez ou désactivez des fonctionnalités pour cette organisation. Les fonctionnalités à l'échelle plateforme sont affichées pour contexte ; seul Givernance peut les modifier à ce niveau.",

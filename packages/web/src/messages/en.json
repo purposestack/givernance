@@ -481,6 +481,52 @@
         "disabledCount": "{count, plural, =0 {No organisation has turned this off} one {1 organisation has turned this off} other {# organisations have turned this off}}",
         "noOverrides": "No organisation has changed the default."
       },
+      "perFlagTenants": {
+        "title": "{label}",
+        "subtitle": "Choose which organisations have this feature on. Tenants without an override use the platform default.",
+        "backToList": "← Back to feature flags",
+        "fetchFailed": "Could not load the tenant list. Please refresh the page.",
+        "empty": "No active organisations to display.",
+        "platformLocked": "This is a platform-wide feature. Per-organisation overrides are ignored even when present. Change the platform default from the previous page.",
+        "platformDefaultBadge": "Default: {state}",
+        "filters": {
+          "all": "All organisations",
+          "enabled": "Enabled (override or default)",
+          "disabled": "Disabled (override or default)",
+          "overridden": "Overridden",
+          "default": "Using platform default"
+        },
+        "searchPlaceholder": "Search by organisation name…",
+        "tableColumns": {
+          "tenant": "Organisation",
+          "effective": "Currently",
+          "source": "Source",
+          "actions": "Actions"
+        },
+        "source": {
+          "default": "Platform default",
+          "overrideOn": "Override → on",
+          "overrideOff": "Override → off"
+        },
+        "actions": {
+          "enable": "Enable",
+          "disable": "Disable",
+          "clearOverride": "Use default",
+          "saving": "Saving…"
+        },
+        "bulk": {
+          "selectionLabel": "{count, plural, =0 {No selection} one {1 organisation selected} other {# organisations selected}}",
+          "enable": "Enable for selected",
+          "disable": "Disable for selected",
+          "clear": "Use default for selected",
+          "selectAll": "Select all",
+          "clearSelection": "Clear selection",
+          "saving": "Updating…",
+          "progress": "{done} of {total}",
+          "successAll": "Updated {count} organisations.",
+          "partial": "Updated {success} of {total} organisations. {failed} failed."
+        }
+      },
       "tenantDetail": {
         "title": "Feature flags for this organisation",
         "subtitle": "Turn features on or off for this organisation. Platform-wide features are shown for context but only Givernance staff can flip them at the platform level.",
