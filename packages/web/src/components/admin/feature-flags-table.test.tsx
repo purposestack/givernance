@@ -29,9 +29,17 @@ const baseRow = {
   label: "Bulk emails to constituents",
   description:
     "Lets operators send one email to several constituents at once from the Constituents page.",
+  scope: "platform" as const,
+  tenantOverrideAllowed: false,
+  public: true,
   updatedBy: null,
   createdAt: "2026-05-10T10:00:00.000Z",
   updatedAt: "2026-05-10T10:00:00.000Z",
+  // Phase 1 shape — Phase 2's overrideStats is null when the
+  // `admin.feature_flags_phase2` self-flag is off. The existing
+  // test fixtures exercise the row layout in the off-state of
+  // Phase 2 (Phase-2-on coverage lives in the API integration tests).
+  overrideStats: null,
 };
 
 describe("FeatureFlagsTable", () => {

@@ -1,0 +1,191 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+import { useState } from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
+import { ApiProblem } from "@/lib/api";
+import { createClientApiClient } from "@/lib/api/client-browser";
+import { FeatureFlagsService, type TenantFlagViewRow } from "@/services/FeatureFlagsService";
+
+/**
+ * Org-admin self-service feature-flags list (Epic #365 / PR #366).
+ *
+ * Mirrors the visual shape of the super-admin Back Office table for
+ * UX familiarity, but scoped to the caller's own organisation: every
+ * row is `scope='tenant' AND tenant_override_allowed=true` (the API
+ * enforces it), and the only verbs are "Turn on" / "Turn off" / "Use
+ * the default". Org-admins never see the API key, audit metadata, or
+ * platform-wide stats — those are super-admin concerns.
+ *
+ * The "platform default" badge shows the value Givernance ships for
+ * every NPO; the effective-state badge reflects whether this org has
+ * overridden it. The "Use the default" action is only present when
+ * an override is currently set.
+ */
+interface OrgFeatureFlagsListProps {
+  initialRows: TenantFlagViewRow[];
+}
+
+export function OrgFeatureFlagsList({ initialRows }: OrgFeatureFlagsListProps) {
+  const t = useTranslations("settings.featureFlags");
+  const [rows, setRows] = useState<TenantFlagViewRow[]>(initialRows);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+
+  const applyRow = (key: string, mutator: (row: TenantFlagViewRow) => TenantFlagViewRow) => {
+    setRows((prev) => prev.map((row) => (row.key === key ? mutator(row) : row)));
+  };
+
+  const handleSet = async (row: TenantFlagViewRow, value: boolean) => {
+    setBusyKey(row.key);
+    const previous = row;
+    applyRow(row.key, (r) => ({
+      ...r,
+      override: {
+        tenantId: r.override?.tenantId ?? "",
+        flagKey: r.key,
+        value,
+        reason: null,
+        setBy: null,
+        setAt: new Date().toISOString(),
+      },
+      effectiveValue: value,
+    }));
+    try {
+      const updated = await FeatureFlagsService.setOrgOverride(createClientApiClient(), row.key, {
+        value,
+      });
+      applyRow(row.key, (r) => ({ ...r, override: updated, effectiveValue: value }));
+      toast.success(
+        value
+          ? t("toast.enabled", { label: row.label })
+          : t("toast.disabled", { label: row.label }),
+      );
+    } catch (err) {
+      applyRow(row.key, () => previous);
+      const message =
+        err instanceof ApiProblem
+          ? (err.detail ?? err.title ?? t("toast.error"))
+          : t("toast.error");
+      toast.error(message);
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  /**
+   * Org-admin "use the default" path. The server endpoint is
+   * PATCH-only (no DELETE on `/v1/org/feature-flags/:key`), so we
+   * emulate "clear override" by writing the platform default value.
+   * The audit trail still records the action; the visual outcome is
+   * "no longer overridden" but the underlying row stays (with value
+   * = platform default). Same semantic outcome, simpler API surface.
+   *
+   * Trade-off accepted: a future org-admin DELETE endpoint would
+   * cleanly remove the row + nil out `setBy`. Until then this
+   * pattern keeps the surface focused on what the operator wants
+   * ("make my org match the default") rather than the row mechanics.
+   */
+  const handleUseDefault = async (row: TenantFlagViewRow) => {
+    setBusyKey(row.key);
+    const previous = row;
+    applyRow(row.key, (r) => ({
+      ...r,
+      override: null,
+      effectiveValue: r.platformDefault,
+    }));
+    try {
+      await FeatureFlagsService.setOrgOverride(createClientApiClient(), row.key, {
+        value: row.platformDefault,
+      });
+      applyRow(row.key, (r) => ({
+        ...r,
+        override: null,
+        effectiveValue: r.platformDefault,
+      }));
+      toast.success(t("toast.cleared", { label: row.label }));
+    } catch (err) {
+      applyRow(row.key, () => previous);
+      const message =
+        err instanceof ApiProblem
+          ? (err.detail ?? err.title ?? t("toast.error"))
+          : t("toast.error");
+      toast.error(message);
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  return (
+    <ul className="space-y-3">
+      {rows.map((row) => {
+        const hasOverride = row.override !== null;
+        const busy = busyKey === row.key;
+        const defaultStateLabel = row.platformDefault
+          ? t("platformDefaultEnabled")
+          : t("platformDefaultDisabled");
+        const effectiveStateLabel = row.effectiveValue
+          ? t("effectiveEnabled")
+          : t("effectiveDisabled");
+        return (
+          <li
+            key={row.key}
+            className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-medium text-on-surface">{row.label}</h2>
+                  <Badge variant={row.effectiveValue ? "success" : "neutral"} shape="square">
+                    {t("effectiveLabel", { state: effectiveStateLabel })}
+                  </Badge>
+                  {hasOverride ? (
+                    <Badge variant="warning" shape="square">
+                      {t("source.override")}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs italic text-on-surface-variant">
+                      {t("source.default")}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-on-surface-variant">{row.description}</p>
+                <p className="text-xs text-on-surface-variant">
+                  {t("platformDefaultLabel", { state: defaultStateLabel })}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant={row.effectiveValue ? "secondary" : "primary"}
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void handleSet(row, !row.effectiveValue)}
+                >
+                  {busy
+                    ? t("actions.saving")
+                    : row.effectiveValue
+                      ? t("actions.disable")
+                      : t("actions.enable")}
+                </Button>
+                {hasOverride ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void handleUseDefault(row)}
+                  >
+                    {t("actions.clearOverride")}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

@@ -6,7 +6,15 @@ import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
-const SETTINGS_NAV_ITEMS = [
+type SettingsNavKey = "organization" | "members" | "funds" | "bankAccounts" | "featureFlags";
+
+interface SettingsNavItem {
+  href: string;
+  key: SettingsNavKey;
+  match: (pathname: string) => boolean;
+}
+
+const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   {
     href: "/settings",
     key: "organization",
@@ -27,16 +35,40 @@ const SETTINGS_NAV_ITEMS = [
     key: "bankAccounts",
     match: (pathname: string) => pathname.startsWith("/settings/bank-accounts"),
   },
-] as const;
+];
 
-export function SettingsNavigation() {
+const FEATURE_FLAGS_NAV_ITEM: SettingsNavItem = {
+  href: "/settings/feature-flags",
+  key: "featureFlags",
+  match: (pathname: string) => pathname.startsWith("/settings/feature-flags"),
+};
+
+/**
+ * Settings-area nav strip.
+ *
+ * Phase 2 (Epic #365) adds an optional "Feature flags" entry — the
+ * parent server component decides whether to surface it by reading
+ * the `admin.feature_flags_phase2` flag SSR-side and passing
+ * `showFeatureFlags`. We render the entry conditionally rather than
+ * always-on so a non-org_admin user (or an org where the flag is
+ * off) never sees a dead-end link.
+ */
+export function SettingsNavigation({
+  showFeatureFlags = false,
+}: {
+  showFeatureFlags?: boolean;
+} = {}) {
   const pathname = usePathname();
   const t = useTranslations("settings.navigation");
+
+  const items = showFeatureFlags
+    ? [...SETTINGS_NAV_ITEMS, FEATURE_FLAGS_NAV_ITEM]
+    : SETTINGS_NAV_ITEMS;
 
   return (
     <nav aria-label={t("label")} className="overflow-x-auto">
       <div className="inline-flex min-w-full gap-2 rounded-2xl bg-surface-container p-2 shadow-card">
-        {SETTINGS_NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const isActive = item.match(pathname);
           return (
             <Link
