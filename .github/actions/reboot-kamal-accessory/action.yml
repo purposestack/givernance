@@ -49,9 +49,15 @@ runs:
     # the running image was the prior-day's cached `:latest`. Force a
     # pull before the boot so the reboot step is self-healing for image
     # bumps that reuse a tag (`:latest`, `:staging`).
+    #
+    # NOTE: the kamal subcommand is `pull_image` (not `pull`) — kamal 2.x
+    # exposes the accessory pull verb under that name; see
+    # https://github.com/basecamp/kamal/blob/v2.11.0/lib/kamal/cli/accessory.rb
+    # PR #368 originally shipped this as `pull` and broke the staging
+    # deploy with "Could not find command pull".
     - name: Pull latest accessory image on host
       shell: bash
-      run: bundle exec kamal accessory pull "${{ inputs.accessory }}" -c "${{ inputs.config }}"
+      run: bundle exec kamal accessory pull_image "${{ inputs.accessory }}" -c "${{ inputs.config }}"
 
     # `kamal accessory reboot` issues `kamal-proxy remove <service>`
     # unconditionally, which fails with "Error: service not found" the
