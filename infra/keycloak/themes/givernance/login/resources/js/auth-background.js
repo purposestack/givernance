@@ -396,10 +396,7 @@
       canvas.style.height = height + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      var target = Math.min(
-        160,
-        Math.max(40, Math.round((width * height) / 14000)),
-      );
+      var target = Math.min(110, Math.max(28, Math.round((width * height) / 22000)));
       if (particles.length === 0) {
         for (var i = 0; i < target; i++) {
           particles.push(makeParticle(width, height, false));
@@ -418,8 +415,11 @@
       for (var i = 0; i < particles.length; i++) {
         var p = particles[i];
         var drawSize = SPRITE_SIZE * p.scale;
-        var fade = Math.min(1, (p.y + drawSize) / (height * 0.25));
-        var op = p.opacity * Math.max(0.25, fade);
+        // Vertical-position opacity ramp: nearly invisible near the top of
+        // the viewport, fully present toward the bottom. Clamped to [0, 1]
+        // so off-screen positions don't blow up or go negative.
+        var yFrac = Math.max(0, Math.min(1, p.y / height));
+        var op = p.opacity * (0.15 + yFrac * 1.1);
         ctx.save();
         ctx.globalAlpha = op;
         ctx.translate(p.x + Math.sin(t / 1200 + p.swayPhase) * p.sway, p.y);

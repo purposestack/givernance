@@ -432,7 +432,7 @@ export function AuthBackground() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // Density scales with viewport area so small phones get fewer icons.
-      const target = Math.min(160, Math.max(40, Math.round((width * height) / 14000)));
+      const target = Math.min(110, Math.max(28, Math.round((width * height) / 22000)));
       if (particles.length === 0) {
         particles = Array.from({ length: target }, () => makeParticle(width, height, false));
       } else if (particles.length < target) {
@@ -448,8 +448,11 @@ export function AuthBackground() {
       ctx.clearRect(0, 0, width, height);
       for (const p of particles) {
         const drawSize = SPRITE_SIZE * p.scale;
-        const fade = Math.min(1, (p.y + drawSize) / (height * 0.25));
-        const op = p.opacity * Math.max(0.25, fade);
+        // Vertical-position opacity ramp: nearly invisible near the top of
+        // the viewport, fully present toward the bottom. Clamped to [0, 1]
+        // so off-screen positions don't blow up or go negative.
+        const yFrac = Math.max(0, Math.min(1, p.y / height));
+        const op = p.opacity * (0.15 + yFrac * 1.1);
         ctx.save();
         ctx.globalAlpha = op;
         ctx.translate(p.x + Math.sin(t / 1200 + p.swayPhase) * p.sway, p.y);
