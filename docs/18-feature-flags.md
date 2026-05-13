@@ -1,30 +1,42 @@
 # 18 — Feature Flag Strategy
 
-> **Status**: Phase 1 MVP shipped (PR #352 — global flags only); spec for tenant-overrides + plan-gating remains as the Phase-2 target
+> **Status**: Phase 2 backend shipped (PR #366 — tenant overrides + scope + public projection filter); Phase 2 frontend lands incrementally on the same PR. Plan-gating remains as a future-phase target.
 > **Owner**: Feature Flag Engineer agent (`.claude/agents/feature-flag-engineer.md`)
 > **Related**: `02-reference-architecture.md`, `03-data-model.md`, `04-business-capabilities.md`, `06-security-compliance.md`, `07-delivery-roadmap.md`
 
-## 0. What's actually shipped (Phase 1 MVP, PR #352)
+## 0. What's actually shipped (Phase 1 MVP + Phase 2 backend)
 
-The sections that follow describe the **target** design. The **shipped** subset is intentionally narrow per the @magino discussion on PR #352:
+Phase 1 (PR #352) shipped the global-flag subset; Phase 2 (PR #366 / Epic #365) added tenant overrides, scope-based gating, and the public-projection filter. The table below is the live status as of PR #366 (status banner at the top of [`.claude/agents/feature-flag-engineer.md`](../.claude/agents/feature-flag-engineer.md) carries the same summary for agent briefings):
 
 | Surface | Status | Notes |
 |---|---|---|
-| `feature_flags` table | ✅ shipped (migration `0047_feature_flags`) | Global flags only — `enabled` boolean per row. No `scope` / `plan_gate` columns; no `tenant_flag_overrides` table |
-| `FEATURE_FLAG_REGISTRY` const (`packages/shared/src/constants/feature-flags.ts`) | ✅ shipped | Typed `FeatureFlagKey` union; first key is `communication.bulk_email` (default: off) |
-| `flagService.isEnabled(key)` + Redis cache (TTL 60s) | ✅ shipped | `packages/api/src/lib/flags/flag-service.ts`; cache key `flags:global` holds the whole map |
-| `requireFlag(key)` preHandler | ✅ shipped | `packages/api/src/lib/flags/flag-guard.ts` — 404 on disabled, runs BEFORE other preHandlers so a scanner can't enumerate role requirements |
-| Worker-side `isFlagEnabled(key)` | ✅ shipped | `packages/worker/src/lib/flags.ts` — defence-in-depth at job pickup |
-| `GET /v1/admin/feature-flags` + `PATCH /v1/admin/feature-flags/:key` | ✅ shipped | Super-admin only (404 to others) |
-| `GET /v1/feature-flags` (public projection) | ✅ shipped | `requireAuth` only — returns `{key, enabled}` rows; drives tenant-side UI hide-on-disabled |
-| Back Office page `/admin/feature-flags` | ✅ shipped | Toggle UI; optimistic update + rollback on failure |
-| `tenant_flag_overrides` table | ❌ deferred | Section 4.2 below is the target spec |
-| Plan-gating (`plan_gate` column) | ❌ deferred | Section 5 evaluation algorithm is the target |
-| React `<FlagProvider>` + `useFlags()` hook | ❌ deferred | Each consumer page passes the prop down for now |
+| `feature_flags` table | ✅ shipped (`0047` + `0051`) | Phase 2 added `scope` (enum platform/tenant), `tenant_override_allowed` boolean, `public` boolean. Partial index on `WHERE public = TRUE` for the hot projection path. |
+| `tenant_flag_overrides` table | ✅ shipped (`0051`) | Per-org overrides. RLS forced via `tenant_id = app_current_organization_id()`. `UNIQUE (tenant_id, flag_key)`. `reason` free-text + `set_by SET NULL ON DELETE`. `expires_at` reserved (UI deferred). |
+| `FEATURE_FLAG_REGISTRY` const (`packages/shared/src/constants/feature-flags.ts`) | ✅ shipped | Typed `FeatureFlagKey` union; entries now declare `scope` + `tenantOverrideAllowed` + `public`. Keys: `communication.bulk_email`, `admin.feature_flags_phase2`. |
+| `flagService.isEnabled(key, ctx?)` + Redis cache | ✅ shipped (Phase 2) | `ctx.orgId` activates tenant overrides for `scope='tenant'` flags. Caches: `flags:global:v2` (Map<key, {enabled, scope}>) + per-tenant `flags:tenant:{orgId}:v1`. TTL 60 s. v2 because Phase-1 shape was `Record<key, boolean>` and the evaluator now needs `scope`. |
+| Precedence algorithm | ✅ shipped (Phase 2) | unknown key → false; `scope='platform'` → platform default (overrides ignored even if rows exist); `scope='tenant'` + orgId → override row if present else default; `scope='tenant'` + no orgId → default (worker / platform path). Section 5 below is the live spec. |
+| `requireFlag(key)` preHandler | ✅ shipped | 404 on disabled, runs FIRST in the preHandler chain so a scanner can't enumerate role requirements. Now passes `request.auth.orgId` so tenant-scoped flags evaluate against the caller's org (backward-compatible: public/unauthenticated routes get a null orgId and fall back to platform default, identical to the Phase-1 no-context call). |
+| Worker-side `isFlagEnabled(key)` | ✅ shipped | `packages/worker/src/lib/flags.ts` — defence-in-depth at job pickup. Workers operate without an `orgId` context (platform path) — fine for `scope='platform'` flags, which are the only thing workers gate on today. |
+| `GET /v1/admin/feature-flags` | ✅ shipped | Super-admin global view. Response now carries `overrideStats` per row (count of tenants overriding to true / false) when `admin.feature_flags_phase2` is on — null otherwise so the JSON shape stays stable across flag flips. |
+| `PATCH /v1/admin/feature-flags/:key` | ✅ shipped | Super-admin platform-default flip. Unchanged from Phase 1. |
+| `GET /v1/admin/tenants/:tenantId/feature-flags` | ✅ shipped (Phase 2) | Super-admin tenant-detail tab. Returns each flag with platform default + effective value + override row (if any). `scope='platform'` flags surface as read-only context. |
+| `PUT /v1/admin/tenants/:tenantId/feature-flags/:key` | ✅ shipped (Phase 2) | Super-admin upsert override. 404 on missing flag (anti-disclosure), 422 on `scope='platform'` attempt (operator picked the wrong tool). Idempotent — re-PUT with same payload refreshes `set_by` / `reason` / `updated_at`. |
+| `DELETE /v1/admin/tenants/:tenantId/feature-flags/:key` | ✅ shipped (Phase 2) | Super-admin remove override (revert to platform default). 204 regardless of prior state. |
+| `GET /v1/org/feature-flags` | ✅ shipped (Phase 2) | Org-admin self-service list. Filtered to `scope='tenant' AND tenant_override_allowed=true`. Day-one registry has zero such flags — page renders an explanatory empty state. |
+| `PATCH /v1/org/feature-flags/:key` | ✅ shipped (Phase 2) | Org-admin self-service toggle. 404 (anti-disclosure) for every rejection — platform-scoped flags, admin-gated flags, missing keys all look identical to the caller. |
+| `GET /v1/feature-flags` (public projection) | ✅ shipped (Phase 2) | Now filtered by `public=true` — unreleased flag names no longer leak via DevTools. Evaluator overlays the caller's tenant overrides on each value. Resolves the public-projection caveat from prior § 0. |
+| Audit trail | ✅ shipped | The existing `audit-plugin` (`packages/api/src/plugins/audit.ts`) auto-records every mutating request including the new override CRUD. `action` (e.g. `PUT:/v1/admin/tenants/:tenantId/feature-flags/:key`), `org_id`, `actor_id`, `resource_type`, `resource_id`, impersonation context — all captured. Satisfies § 4.3 with zero new audit code. |
+| `admin.feature_flags_phase2` self-flag | ✅ shipped (Phase 2) | All Phase-2 endpoints + UI surfaces are gated by this flag — kill-switch for the whole Epic. Off-state: every new endpoint 404s, new UI surfaces absent. `scope='platform'` so tenants can't opt themselves in; `public=true` so the org-admin SSR layout can decide to render the sidebar entry. |
+| Back Office page `/admin/feature-flags` | ✅ shipped Phase 1; 🚧 Phase 2 tenant-override column lands on PR #366 | Existing toggle UI for platform defaults. Tenant-override count column + drill-down side-panel land on this PR. |
+| Super-admin "Feature flags" tab on `/admin/tenants/[id]` | 🚧 in progress (PR #366) | Lands on this PR. |
+| Org-admin `/settings/feature-flags` page | 🚧 in progress (PR #366) | Lands on this PR. |
+| Plan-gating (`plan_gate` column) | ❌ deferred | A separate Epic tied to subscription/billing infra. Operator-controlled flags (Epic #365) and billing-controlled entitlements are different concerns; bundling them here would have coupled this Epic to billing work that hasn't been scoped. |
+| React `<FlagProvider>` + `useFlags()` hook | ❌ deferred | Each consumer page passes the prop down for now. |
+| Auto-expire worker for `tenant_flag_overrides.expires_at` | ❌ deferred | Column exists; no worker enforces it. UI for setting expiry deferred. |
 
-Adding a new flag (Phase 1 MVP):
-1. Append the key to `FEATURE_FLAG_KEYS` in `packages/shared/src/constants/feature-flags.ts` AND to `FEATURE_FLAG_REGISTRY` with its default + `label` + `description`.
-2. Write a migration that `INSERT … ON CONFLICT (key) DO NOTHING` for the key with matching `default_value` + `label` + `description`. The integration test in `packages/api/src/tests/integration/feature-flags.test.ts` enforces label + description parity between `FEATURE_FLAG_REGISTRY` and the seeded DB row — drift fails CI.
+Adding a new flag (Phase 2 procedure):
+1. Append the key to `FEATURE_FLAG_KEYS` in `packages/shared/src/constants/feature-flags.ts` AND to `FEATURE_FLAG_REGISTRY` with its `defaultEnabled` + `label` + `description` + **`scope`** + **`tenantOverrideAllowed`** + **`public`**. Scope decisions: `platform` for super-admin-only features (DKIM-blocked, internal tools, billing-coupled); `tenant` for features each NPO genuinely chooses. Public decision: `true` for any flag whose key needs to appear in the tenant-side public projection (e.g. the SSR layer reads it to render conditional UI); `false` for unreleased keys whose name shouldn't leak via DevTools.
+2. Write a migration that `INSERT … ON CONFLICT (key) DO NOTHING` for the key with matching `default_value` + `label` + `description` + `scope` + `tenant_override_allowed` + `public`. The integration parity test enforces label + description parity between `FEATURE_FLAG_REGISTRY` and the seeded DB row — drift fails CI.
 3. Wire `requireFlag(FEATURE_FLAG_KEYS.YOUR_KEY)` on the gated routes.
 4. If the worker has a matching processor, add an `isFlagEnabled(...)` check at job pickup (defence-in-depth).
 5. If the UI surface is conditional, SSR-fetch `/v1/feature-flags` and pass `xEnabled` as a prop into the consumer component. Hide every dependent surface (buttons, columns, panels) on the consumer page — not just the action button. A dead selection column is operator-confusing UX.
