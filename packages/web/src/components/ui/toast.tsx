@@ -4,10 +4,12 @@ import { Toaster as SonnerToaster, toast } from "sonner";
 
 type ToasterProps = React.ComponentProps<typeof SonnerToaster>;
 
-export function Toaster({ position = "top-right", ...props }: ToasterProps) {
+export function Toaster({ position = "bottom-right", ...props }: ToasterProps) {
   return (
     <SonnerToaster
       position={position}
+      // 5 s default; destructive actions stay visible long enough to undo
+      duration={5000}
       toastOptions={{
         classNames: {
           toast:

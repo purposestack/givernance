@@ -104,7 +104,7 @@ function HeaderCell<TData>({ header, padding }: HeaderCellProps<TData>) {
         <button
           type="button"
           onClick={header.column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          className="inline-flex items-center gap-1 rounded-sm hover:text-on-surface focus-visible:outline-none focus-visible:shadow-ring"
         >
           {content}
           <SortDirectionIndicator sort={sortDirection} />
