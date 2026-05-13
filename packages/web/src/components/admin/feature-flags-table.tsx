@@ -98,13 +98,17 @@ export function FeatureFlagsTable({ rows: initialRows }: FeatureFlagsTableProps)
                 {t(`scopeHint.${row.scope}`)}
               </p>
               {/*
-                Override-stats summary — present only when Phase-2 is
-                on (overrideStats is null otherwise). The "Manage per
-                organisation" button is a design-system Button (not a
-                raw Link) so the call-to-action affordance is clearer
-                than the previous group-hover-underline pattern.
+                Override-stats summary + "Manage per organisation" —
+                only meaningful for `scope='tenant'` flags. For
+                platform-scoped flags the evaluator ignores tenant
+                overrides anyway (per doc 18 § 5), so showing
+                "0 organisations" + a Manage button alongside the
+                scope hint "only Givernance staff can change this"
+                is contradictory UX. Phase-2-off case: `overrideStats`
+                is null and the block degrades to absent regardless
+                of scope.
               */}
-              {row.overrideStats ? (
+              {row.overrideStats && row.scope === "tenant" ? (
                 <div className="flex flex-wrap items-center gap-3 pt-1">
                   {row.overrideStats.enabledCount === 0 && row.overrideStats.disabledCount === 0 ? (
                     <span className="text-xs text-on-surface-variant">
