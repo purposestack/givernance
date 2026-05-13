@@ -448,11 +448,11 @@ export function AuthBackground() {
       ctx.clearRect(0, 0, width, height);
       for (const p of particles) {
         const drawSize = SPRITE_SIZE * p.scale;
-        // Vertical-position opacity ramp: nearly invisible near the top of
-        // the viewport, fully present toward the bottom. Clamped to [0, 1]
-        // so off-screen positions don't blow up or go negative.
+        // Vertical-position opacity ramp: fully present near the top of
+        // the viewport, fading toward the bottom. Clamped to [0, 1] so
+        // off-screen positions don't blow up or go negative.
         const yFrac = Math.max(0, Math.min(1, p.y / height));
-        const op = p.opacity * (0.15 + yFrac * 1.1);
+        const op = p.opacity * (1.25 - yFrac * 1.1);
         ctx.save();
         ctx.globalAlpha = op;
         ctx.translate(p.x + Math.sin(t / 1200 + p.swayPhase) * p.sway, p.y);
