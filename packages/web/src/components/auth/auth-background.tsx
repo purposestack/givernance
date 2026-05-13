@@ -378,7 +378,18 @@ type Particle = {
   rotSpeed: number;
   opacity: number;
   type: IconType;
+  // Smoothed displacement applied on top of (x, y) by the mouse-repulsion
+  // pass. Stored on the particle so the eased return-to-zero doesn't snap
+  // when the cursor leaves the influence radius.
+  offsetX: number;
+  offsetY: number;
 };
+
+// Mouse-repulsion tuning. Radius is in CSS pixels — particles closer than
+// this from the cursor get pushed away, with a quadratic falloff so the
+// effect feels soft near the edge and firm near the centre.
+const REPEL_RADIUS = 180;
+const REPEL_STRENGTH = 60;
 
 function pickType(): IconType {
   // ICON_TYPES is non-empty and `idx` is bounded by its length, so the
@@ -400,6 +411,8 @@ function makeParticle(width: number, height: number, aboveScreen: boolean): Part
     rotSpeed: (Math.random() - 0.5) * 0.25, // rad/s
     opacity: 0.18 + Math.random() * 0.32,
     type,
+    offsetX: 0,
+    offsetY: 0,
   };
 }
 
@@ -420,6 +433,11 @@ export function AuthBackground() {
     let width = 0;
     let height = 0;
     let dpr = 1;
+    // Cursor in CSS-pixel coordinates relative to the viewport. -1 sentinel
+    // means "no active cursor" (initial state or pointer left the window) so
+    // the eased offset returns to zero without a hard snap.
+    let mouseX = -1;
+    let mouseY = -1;
 
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -455,7 +473,7 @@ export function AuthBackground() {
         const op = p.opacity * (1.25 - yFrac * 1.1);
         ctx.save();
         ctx.globalAlpha = op;
-        ctx.translate(p.x + Math.sin(t / 1200 + p.swayPhase) * p.sway, p.y);
+        ctx.translate(p.x + p.offsetX + Math.sin(t / 1200 + p.swayPhase) * p.sway, p.y + p.offsetY);
         ctx.rotate(p.rotation);
         ctx.drawImage(sprites[p.type], -drawSize / 2, -drawSize / 2, drawSize, drawSize);
         ctx.restore();
@@ -468,6 +486,11 @@ export function AuthBackground() {
     const tick = (ts: number) => {
       const dt = Math.min(0.05, (ts - lastTs) / 1000);
       lastTs = ts;
+      // Framerate-independent easing factor for the cursor-offset low-pass.
+      // 1 − exp(−dt · k) converges to the target with time constant 1/k
+      // regardless of frame timing; k = 6 → ~95 % settled in 0.5 s.
+      const easing = 1 - Math.exp(-dt * 6);
+      const cursorActive = mouseX >= 0 && mouseY >= 0;
       for (const p of particles) {
         p.y += p.speed * dt;
         p.rotation += p.rotSpeed * dt;
@@ -475,6 +498,25 @@ export function AuthBackground() {
           const fresh = makeParticle(width, height, true);
           Object.assign(p, fresh);
         }
+        // Compute the cursor-repulsion target. Quadratic falloff inside the
+        // radius, zero outside. The eased offset converges toward this every
+        // frame, so leaving the cursor stationary lets icons settle and
+        // leaving the window resets the target to zero (smooth return).
+        let targetOx = 0;
+        let targetOy = 0;
+        if (cursorActive) {
+          const dx = p.x - mouseX;
+          const dy = p.y - mouseY;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 0 && dist < REPEL_RADIUS) {
+            const f = 1 - dist / REPEL_RADIUS;
+            const falloff = f * f;
+            targetOx = (dx / dist) * falloff * REPEL_STRENGTH;
+            targetOy = (dy / dist) * falloff * REPEL_STRENGTH;
+          }
+        }
+        p.offsetX += (targetOx - p.offsetX) * easing;
+        p.offsetY += (targetOy - p.offsetY) * easing;
       }
       draw(ts);
       rafId = requestAnimationFrame(tick);
@@ -501,12 +543,29 @@ export function AuthBackground() {
       }
     };
 
+    // Cursor tracking — only meaningful when motion is allowed; under
+    // reduce-motion the canvas paints a single static frame and there is
+    // no rAF loop to consume the position.
+    const onPointerMove = (e: PointerEvent) => {
+      if (reduceMotion) return;
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    };
+    const onPointerLeave = () => {
+      mouseX = -1;
+      mouseY = -1;
+    };
+
     window.addEventListener("resize", resize);
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointerleave", onPointerLeave);
     reduceMotionQuery.addEventListener("change", onMotionChange);
 
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resize);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerleave", onPointerLeave);
       reduceMotionQuery.removeEventListener("change", onMotionChange);
     };
   }, []);
