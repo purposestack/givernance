@@ -556,23 +556,40 @@ export function AuthBackground() {
       mouseY = -1;
     };
 
-    // bfcache restore: navigating to Keycloak and pressing the browser
-    // back button freezes this page and resumes it from memory. The
-    // useEffect doesn't re-run (component never unmounted), and the
-    // pending requestAnimationFrame callback is sometimes never delivered
-    // — leaving the canvas frozen on the last pre-freeze frame. Cancel
-    // any stale handle and re-kick the loop when the page is shown again.
-    const onPageShow = (e: PageTransitionEvent) => {
-      if (!e.persisted || reduceMotion) return;
+    // Re-kick the rAF loop whenever the page becomes active again.
+    //
+    // Two restore paths to cover:
+    //   - bfcache (`pageshow` with persisted=true): Chrome can freeze the
+    //     page in memory when the user redirects to Keycloak and resume
+    //     it on back. The pending rAF callback is sometimes never
+    //     delivered, leaving the canvas stuck on the last pre-freeze
+    //     frame.
+    //   - `visibilitychange` to "visible": covers tab switches, OS
+    //     focus changes, AND the common dev-mode case where Next.js'
+    //     HMR WebSocket disqualifies the page from bfcache outright — a
+    //     full re-render happens but the freshly registered rAF can
+    //     still race with the document becoming visible.
+    //
+    // `cancelAnimationFrame` on a stale or no-op handle is harmless, so
+    // both handlers can blindly restart the loop.
+    const ensureRunning = () => {
+      if (reduceMotion) return;
       cancelAnimationFrame(rafId);
       lastTs = performance.now();
       rafId = requestAnimationFrame(tick);
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) ensureRunning();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") ensureRunning();
     };
 
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);
     window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     reduceMotionQuery.addEventListener("change", onMotionChange);
 
     return () => {
@@ -581,6 +598,7 @@ export function AuthBackground() {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerleave", onPointerLeave);
       window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       reduceMotionQuery.removeEventListener("change", onMotionChange);
     };
   }, []);
