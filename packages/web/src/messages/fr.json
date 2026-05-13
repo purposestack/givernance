@@ -479,11 +479,12 @@
         "label": "Organisations modifiant la valeur par défaut",
         "enabledCount": "{count, plural, =0 {Aucune organisation n'a activé cette fonctionnalité} one {1 organisation a activé cette fonctionnalité} other {# organisations ont activé cette fonctionnalité}}",
         "disabledCount": "{count, plural, =0 {Aucune organisation n'a désactivé cette fonctionnalité} one {1 organisation a désactivé cette fonctionnalité} other {# organisations ont désactivé cette fonctionnalité}}",
-        "noOverrides": "Aucune organisation n'a modifié la valeur par défaut."
+        "noOverrides": "Aucune organisation n'a modifié la valeur par défaut.",
+        "manageButton": "Gérer par organisation"
       },
       "perFlagTenants": {
-        "title": "{label}",
-        "subtitle": "Choisissez les organisations pour lesquelles cette fonctionnalité est activée. Les organisations sans surcharge utilisent la valeur par défaut plateforme.",
+        "title": "Organisations utilisant {label}",
+        "subtitle": "Choisissez les organisations pour lesquelles cette fonctionnalité est activée. Les organisations sans réglage spécifique utilisent la valeur par défaut plateforme.",
         "backToList": "← Retour aux feature flags",
         "fetchFailed": "Impossible de charger la liste des organisations. Veuillez rafraîchir la page.",
         "empty": "Aucune organisation active à afficher.",
