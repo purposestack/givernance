@@ -101,6 +101,24 @@ interface OverrideUpsertResponse {
   data: TenantFlagOverrideRow;
 }
 
+/**
+ * One row of the "tenants per flag" listing — drives the
+ * `/admin/feature-flags/[key]` per-flag tenant management page.
+ * `effectiveValue` reflects the evaluator's actual answer for this
+ * tenant (override if set, else platform default).
+ */
+export interface FlagTenantRow {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  override: TenantFlagOverrideRow | null;
+  effectiveValue: boolean;
+}
+
+interface FlagTenantListResponse {
+  data: FlagTenantRow[];
+}
+
 export const FeatureFlagsService = {
   /** Super-admin global list — drives the Back Office page. */
   async list(client: ApiClient): Promise<FeatureFlagRow[]> {
@@ -123,6 +141,18 @@ export const FeatureFlagsService = {
     const response = await client.patch<PatchResponse>(
       `/v1/admin/feature-flags/${encodeURIComponent(key)}`,
       { enabled },
+    );
+    return response.data;
+  },
+
+  /**
+   * Super-admin: list every active tenant + their current state for
+   * one flag (drives the `/admin/feature-flags/[key]` page). Includes
+   * tenants without an override (they render at the platform default).
+   */
+  async listTenantsForFlag(client: ApiClient, flagKey: string): Promise<FlagTenantRow[]> {
+    const response = await client.get<FlagTenantListResponse>(
+      `/v1/admin/feature-flags/${encodeURIComponent(flagKey)}/tenants`,
     );
     return response.data;
   },

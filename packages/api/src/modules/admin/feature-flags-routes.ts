@@ -128,6 +128,14 @@ async function ensureTenantExists(tenantId: string): Promise<boolean> {
   return Boolean(row);
 }
 
+const FlagTenantRowSchema = Type.Object({
+  tenantId: UuidSchema,
+  tenantName: Type.String(),
+  tenantSlug: Type.String(),
+  override: Type.Union([Type.Null(), TenantOverrideRowSchema]),
+  effectiveValue: Type.Boolean(),
+});
+
 const TenantFlagViewRowSchema = Type.Object({
   /** Flag metadata (mirrors the platform list shape). */
   key: Type.String(),
@@ -273,6 +281,39 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
   );
 
   // ─── Phase 2: super-admin tenant-overrides ────────────────────────────────
+
+  /**
+   * Per-flag tenant management — drives the new
+   * `/admin/feature-flags/[key]` page. Returns every active tenant
+   * with its current effective value + override row (if any) for the
+   * requested flag. Lets the super-admin manage "5 enabled across 45
+   * tenants" without navigating tenant-by-tenant. Added on PR #366
+   * after reviewer feedback that the per-tenant flow was impractical
+   * at any meaningful tenant count.
+   *
+   * Returns an empty data array (not 404) for an unknown flag key —
+   * the route is for browsing, and the page renders an "unknown flag"
+   * empty state more gracefully than a 404 redirect.
+   */
+  app.get(
+    "/admin/feature-flags/:key/tenants",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireSuperAdmin],
+      schema: {
+        tags: ["Admin"],
+        params: FlagKeyParams,
+        response: {
+          200: DataArrayResponseNoPagination(FlagTenantRowSchema),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request) => {
+      const { key } = request.params as { key: string };
+      const rows = await flagService.listTenantsForFlag(key);
+      return { data: rows };
+    },
+  );
 
   /**
    * List every flag from the super-admin's perspective on a single

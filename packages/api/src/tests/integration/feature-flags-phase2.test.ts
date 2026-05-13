@@ -657,6 +657,95 @@ describe("Cross-tenant isolation on super-admin routes (Phase 2)", () => {
   });
 });
 
+// ─── 12. Per-flag tenant listing (drives /admin/feature-flags/[key]) ────────
+
+describe("GET /v1/admin/feature-flags/:key/tenants (Phase 2)", () => {
+  it("returns every active tenant + their effective value for the flag", async () => {
+    const token = superAdminToken();
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/admin/feature-flags/${TENANT_DEMO_KEY}/tenants`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: Array<{
+        tenantId: string;
+        tenantName: string;
+        effectiveValue: boolean;
+        override: { value: boolean } | null;
+      }>;
+    }>();
+    // Both seed tenants (ORG_A, ORG_B) must be present.
+    const ids = body.data.map((row) => row.tenantId);
+    expect(ids).toContain(ORG_A);
+    expect(ids).toContain(ORG_B);
+    // Without overrides, both should reflect the platform default.
+    const a = body.data.find((row) => row.tenantId === ORG_A);
+    const b = body.data.find((row) => row.tenantId === ORG_B);
+    expect(a?.override).toBeNull();
+    expect(b?.override).toBeNull();
+    expect(a?.effectiveValue).toBe(false); // platform default for TENANT_DEMO_KEY
+    expect(b?.effectiveValue).toBe(false);
+  });
+
+  it("reflects an override on the listing's effectiveValue + override row", async () => {
+    const token = superAdminToken();
+    // Set an override for ORG_A.
+    await app.inject({
+      method: "PUT",
+      url: `/v1/admin/tenants/${ORG_A}/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+      payload: { value: true, reason: "Per-flag listing test" },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/admin/feature-flags/${TENANT_DEMO_KEY}/tenants`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: Array<{
+        tenantId: string;
+        effectiveValue: boolean;
+        override: { value: boolean; reason: string | null } | null;
+      }>;
+    }>();
+    const a = body.data.find((row) => row.tenantId === ORG_A);
+    expect(a?.effectiveValue).toBe(true);
+    expect(a?.override?.value).toBe(true);
+    expect(a?.override?.reason).toBe("Per-flag listing test");
+
+    // ORG_B still uses the platform default.
+    const b = body.data.find((row) => row.tenantId === ORG_B);
+    expect(b?.effectiveValue).toBe(false);
+    expect(b?.override).toBeNull();
+  });
+
+  it("returns empty array for an unknown flag key (browse-friendly, not 404)", async () => {
+    const token = superAdminToken();
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/feature-flags/nonexistent.key/tenants",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: unknown[] }>();
+    expect(body.data).toEqual([]);
+  });
+
+  it("non-super-admin gets 404 (anti-disclosure)", async () => {
+    const token = signToken(app); // ORG_A org_admin
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/admin/feature-flags/${TENANT_DEMO_KEY}/tenants`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
 // ─── 10. Org-admin DELETE — clean revert-to-default ────────────────────────
 
 describe("DELETE /v1/org/feature-flags/:key (Phase 2)", () => {

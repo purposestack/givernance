@@ -28,8 +28,8 @@
  * throws, never returns null.
  */
 
-import { featureFlags, tenantFlagOverrides } from "@givernance/shared/schema";
-import { count, eq, sql } from "drizzle-orm";
+import { featureFlags, tenantFlagOverrides, tenants } from "@givernance/shared/schema";
+import { and, count, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type Redis from "ioredis";
 import pino from "pino";
@@ -75,6 +75,23 @@ export interface TenantFlagOverrideRow {
   reason: string | null;
   setBy: string | null;
   setAt: string;
+}
+
+/**
+ * One row of the "tenants per flag" listing — drives the new
+ * `/admin/feature-flags/[key]` multi-tenant management page
+ * (Epic #365 / PR #366 — added after the reviewer flagged that
+ * navigating individual `/admin/tenants/[id]` pages to manage
+ * "5 enabled / 40 disabled" was impractical).
+ */
+export interface FlagTenantRow {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  /** Override row when present, null when the tenant uses the platform default. */
+  override: TenantFlagOverrideRow | null;
+  /** Effective value for this tenant — override.value if set, else flag's platform default. */
+  effectiveValue: boolean;
 }
 
 /**
@@ -222,6 +239,15 @@ export interface FlagService {
   listPublic(ctx?: FlagContext): Promise<Array<{ key: string; enabled: boolean }>>;
   /** Override listing for the super-admin tenant detail page. */
   listOverridesForTenant(orgId: string): Promise<TenantFlagOverrideRow[]>;
+  /**
+   * Tenant listing for the super-admin per-flag management page.
+   * LEFT-JOINs every active tenant against `tenant_flag_overrides`
+   * for the supplied `flagKey`, so tenants without an override row
+   * still appear (with `override: null` + `effectiveValue` = platform
+   * default). Filters out non-active tenants (suspended / archived
+   * shouldn't accumulate noise in the operator UI). Ordered by name.
+   */
+  listTenantsForFlag(flagKey: string): Promise<FlagTenantRow[]>;
   /** Override count per flag for the super-admin global view. */
   overrideStats(): Promise<Array<{ flagKey: string; enabledCount: number; disabledCount: number }>>;
   /** Invalidate the global flags cache. Called after a platform PATCH. */
@@ -308,6 +334,69 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
           return { key, enabled: entry.enabled };
         })
         .sort((a, b) => a.key.localeCompare(b.key));
+    },
+
+    async listTenantsForFlag(flagKey) {
+      // LEFT JOIN every active tenant against this flag's overrides.
+      // Drizzle's `leftJoin` on the override side leaves the row
+      // columns nullable — we coalesce to `override: null` when the
+      // join produced no match.
+      const [flag] = await getDb(deps)
+        .select({ enabled: featureFlags.enabled, scope: featureFlags.scope })
+        .from(featureFlags)
+        .where(eq(featureFlags.key, flagKey))
+        .limit(1);
+      if (!flag) return [];
+
+      const rows = await getDb(deps)
+        .select({
+          tenantId: tenants.id,
+          tenantName: tenants.name,
+          tenantSlug: tenants.slug,
+          overrideValue: tenantFlagOverrides.value,
+          overrideReason: tenantFlagOverrides.reason,
+          overrideSetBy: tenantFlagOverrides.setBy,
+          overrideUpdatedAt: tenantFlagOverrides.updatedAt,
+        })
+        .from(tenants)
+        .leftJoin(
+          tenantFlagOverrides,
+          and(
+            eq(tenantFlagOverrides.tenantId, tenants.id),
+            eq(tenantFlagOverrides.flagKey, flagKey),
+          ),
+        )
+        .where(eq(tenants.status, "active"))
+        .orderBy(tenants.name);
+
+      return rows.map((row) => {
+        const hasOverride = row.overrideValue !== null;
+        // Platform-scoped flags ignore overrides at evaluation time;
+        // we still surface the override row if one exists historically
+        // so the operator can clean it up, but `effectiveValue` reflects
+        // the evaluator's actual behaviour (= platform default).
+        const effective =
+          flag.scope === "tenant" && hasOverride ? (row.overrideValue as boolean) : flag.enabled;
+        return {
+          tenantId: row.tenantId,
+          tenantName: row.tenantName,
+          tenantSlug: row.tenantSlug,
+          override: hasOverride
+            ? {
+                tenantId: row.tenantId,
+                flagKey,
+                value: row.overrideValue as boolean,
+                reason: row.overrideReason,
+                setBy: row.overrideSetBy,
+                setAt:
+                  row.overrideUpdatedAt instanceof Date
+                    ? row.overrideUpdatedAt.toISOString()
+                    : String(row.overrideUpdatedAt),
+              }
+            : null,
+          effectiveValue: effective,
+        };
+      });
     },
 
     async listOverridesForTenant(orgId) {

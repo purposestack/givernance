@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -99,11 +100,18 @@ export function FeatureFlagsTable({ rows: initialRows }: FeatureFlagsTableProps)
               {/*
                 Override-stats summary — present only when Phase-2 is
                 on (overrideStats is null otherwise so the row gracefully
-                degrades to the Phase-1 shape).
+                degrades to the Phase-1 shape). The whole block links to
+                `/admin/feature-flags/[key]` for the per-flag tenant
+                management page (added on PR #366 follow-up after the
+                reviewer flagged that managing "5 of 45" via per-tenant
+                pages was impractical).
               */}
               {row.overrideStats ? (
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                <Link
+                  href={`/admin/feature-flags/${encodeURIComponent(row.key)}`}
+                  className="group flex flex-wrap items-center gap-2 pt-1 hover:underline"
+                >
+                  <span className="text-xs font-semibold uppercase tracking-wide text-text-muted group-hover:text-primary">
                     {t("overrideStats.label")}
                   </span>
                   {row.overrideStats.enabledCount === 0 && row.overrideStats.disabledCount === 0 ? (
@@ -124,7 +132,10 @@ export function FeatureFlagsTable({ rows: initialRows }: FeatureFlagsTableProps)
                       </Badge>
                     </>
                   )}
-                </div>
+                  <span aria-hidden="true" className="text-xs text-primary">
+                    →
+                  </span>
+                </Link>
               ) : null}
               <p className="text-xs text-on-surface-variant">
                 <span className="sr-only">Internal identifier: </span>
