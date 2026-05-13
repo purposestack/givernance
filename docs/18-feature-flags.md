@@ -63,6 +63,57 @@ Why DB-stored text (vs i18n-keyed): the registry is small (<10 keys foreseeable)
 
 If the Back Office page is unavailable and a flag needs to come down NOW, see `docs/runbooks/feature-flag-rollback.md` — the canonical procedure is `UPDATE feature_flags SET enabled = false WHERE key = ?;` + `redis-cli DEL flags:global`.
 
+### How to verify Phase 2 surfaces locally
+
+Because every Phase-2 surface is gated by `admin.feature_flags_phase2` (off by default — the kill-switch pattern), a fresh local checkout shows **no visible change** until that flag is flipped on. Symptoms of "I don't see anything": (a) the new "Feature flags" tab is absent from `/admin/tenants/[id]`, (b) the `/settings/feature-flags` route returns 404, (c) the Feature flags entry is missing from the org-admin settings nav strip.
+
+To see the Phase-2 UI end-to-end:
+
+1. **Apply migration 0051** on the local DB:
+   ```bash
+   DATABASE_URL="postgresql://givernance:givernance_dev@localhost:5432/givernance" \
+     pnpm --filter @givernance/api run db:migrate
+   ```
+
+2. **Verify the seed**:
+   ```bash
+   psql "postgresql://givernance:givernance_dev@localhost:5432/givernance" \
+     -c "SELECT key, enabled, scope, tenant_override_allowed, public FROM feature_flags;"
+   ```
+   Two rows are expected: `communication.bulk_email` and `admin.feature_flags_phase2`, both `enabled=false`.
+
+3. **Flip the self-flag on**. Either toggle it from the Back Office (`/admin/feature-flags`), or via SQL:
+   ```bash
+   psql "postgresql://givernance:givernance_dev@localhost:5432/givernance" \
+     -c "UPDATE feature_flags SET enabled=true WHERE key='admin.feature_flags_phase2';"
+   redis-cli DEL flags:global:v2      # bypass the 60 s TTL
+   ```
+
+4. **Reload + observe**:
+   - **Super-admin** `/admin/feature-flags` — `Platform-wide` / `Per-organisation` scope badges per row + plain-language scope hint; "Organisations overriding the default" line renders (zeros until overrides exist).
+   - **Super-admin** `/admin/tenants/[id]` — new **Feature flags** tab to the right of Audit. `scope='platform'` flags render read-only with a "use the global page" hint.
+   - **Org-admin** `/settings/feature-flags` — page renders, with an explanatory empty state because no flag in the production registry is `scope='tenant' AND tenant_override_allowed=true` yet.
+
+5. **To see the real override controls** (the per-tenant toggle on the super-admin tenant tab + the toggle row on the org-admin page), insert a demo flag that's actually tenant-overridable. This is **local-only**; do not seed it in a shipped migration:
+   ```bash
+   psql "postgresql://givernance:givernance_dev@localhost:5432/givernance" <<'SQL'
+   INSERT INTO feature_flags (key, enabled, label, description, scope, tenant_override_allowed, public)
+   VALUES (
+     'demo.notification_digest',
+     false,
+     'Notification digest',
+     'Sends a weekly summary of donations and grant deadlines to each user.',
+     'tenant',
+     true,
+     true
+   );
+   SQL
+   redis-cli DEL flags:global:v2
+   ```
+   After reload, the `Notification digest` row appears in both the super-admin tenant tab (with **Turn on for this organisation** / **Use platform default**) and the org-admin self-service page (with **Turn on** / **Turn off** / **Use the default**).
+
+   To clean up: `DELETE FROM tenant_flag_overrides WHERE flag_key='demo.notification_digest'; DELETE FROM feature_flags WHERE key='demo.notification_digest'; redis-cli FLUSHDB`.
+
 ## 1. Goals
 
 The feature flag strategy must enable:
