@@ -387,6 +387,41 @@ describe("GET /v1/admin/feature-flags — overrideStats (Phase 2)", () => {
     const demo = body.data.find((r) => r.key === TENANT_DEMO_KEY);
     expect(demo?.overrideStats).toEqual({ enabledCount: 1, disabledCount: 1 });
   });
+
+  it("PATCH /admin/feature-flags/:key returns the same overrideStats shape as GET (regression)", async () => {
+    // Bug: the PATCH (toggle platform default) used to hard-code
+    // `overrideStats: null`, so the FE's optimistic row-replace
+    // dropped the badges + the "Manage per organisation" button
+    // every time the operator clicked Enable/Disable on the global
+    // list. The shape must mirror the GET response.
+    const token = superAdminToken();
+    // Seed an override so we get a non-zero counter to assert against.
+    await app.inject({
+      method: "PUT",
+      url: `/v1/admin/tenants/${ORG_A}/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+      payload: { value: true },
+    });
+
+    // No-op PATCH (set to the current seed value) so we don't bleed
+    // platform-default state into subsequent tests in the suite.
+    // `setFeatureFlag` still UPDATEs the row (bumps updated_at) and
+    // the route still attaches `overrideStats` — which is what we're
+    // asserting.
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/admin/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+      payload: { enabled: false },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { overrideStats: { enabledCount: number; disabledCount: number } | null };
+    }>();
+    expect(body.data.overrideStats).not.toBeNull();
+    expect(body.data.overrideStats?.enabledCount).toBe(1);
+    expect(body.data.overrideStats?.disabledCount).toBe(0);
+  });
 });
 
 // ─── 6. Org-admin self-service ─────────────────────────────────────────────
