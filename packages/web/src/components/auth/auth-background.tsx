@@ -411,7 +411,7 @@ function makeParticle(width: number, height: number, aboveScreen: boolean): Part
   return {
     x: Math.random() * width,
     y: aboveScreen ? -SPRITE_SIZE - Math.random() * height * 0.6 : Math.random() * height,
-    scale: 0.55 + Math.random() * 0.55,
+    scale: 0.4 + Math.random() * 0.45,
     speed: 12 + Math.random() * 28, // px/s
     sway: 6 + Math.random() * 12, // px amplitude
     swayPhase: Math.random() * Math.PI * 2,
