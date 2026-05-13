@@ -479,11 +479,12 @@
         "label": "Organisations overriding the default",
         "enabledCount": "{count, plural, =0 {No organisation has turned this on} one {1 organisation has turned this on} other {# organisations have turned this on}}",
         "disabledCount": "{count, plural, =0 {No organisation has turned this off} one {1 organisation has turned this off} other {# organisations have turned this off}}",
-        "noOverrides": "No organisation has changed the default."
+        "noOverrides": "No organisation has changed the default.",
+        "manageButton": "Manage per organisation"
       },
       "perFlagTenants": {
-        "title": "{label}",
-        "subtitle": "Choose which organisations have this feature on. Tenants without an override use the platform default.",
+        "title": "Organisations using {label}",
+        "subtitle": "Choose which organisations have this feature turned on. Organisations without a per-organisation setting fall back to the platform default.",
         "backToList": "← Back to feature flags",
         "fetchFailed": "Could not load the tenant list. Please refresh the page.",
         "empty": "No active organisations to display.",

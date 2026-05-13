@@ -26,19 +26,27 @@ export const FEATURE_FLAG_KEYS = {
    * Gates the bulk-email feature added in PR #352 (issue #326).
    *
    * Disabled by default until DKIM / SPF / DMARC are configured for
-   * the platform's outbound mail domain. Without them every operator-
+   * the tenant's outbound mail domain. Without them every operator-
    * triggered "donor follow-up" looks like phishing to recipient
    * MX servers — discussed with @magino on PR #352. Once the DNS
-   * posture is in place this flips to `enabled = true` from the
-   * Back Office UI; no deploy required.
+   * posture is verified for a tenant, super-admin flips the
+   * per-tenant override on from the Back Office; no deploy required.
    *
-   * `scope='platform'`: DKIM/SPF/DMARC is a platform precondition,
-   * not a per-tenant preference. Stays platform-locked until
-   * deliverability is verified end-to-end.
+   * `scope='tenant'` + `tenant_override_allowed=false`
+   * (migration 0052, PR #366 follow-up): super-admin gates the
+   * deliverability check per tenant — the platform-default stays
+   * OFF, super-admin overrides ON for tenants whose DNS posture is
+   * verified. Org-admins are NOT self-service yet because
+   * DKIM/SPF/DMARC is an operational step they cannot do on their
+   * own; once Epic #279 (per-tenant sending domain) ships and
+   * tenants can self-verify deliverability, this flag can flip to
+   * `tenant_override_allowed=true`.
    *
    * `public=true`: the tenant UI on the constituents page reads
    * `/v1/feature-flags` to hide the bulk-email buttons, so the row
-   * must be in the public projection.
+   * must be in the public projection. The projection now correctly
+   * overlays the tenant override, so each org sees its own
+   * effective value.
    *
    * Surfaces gated by this key:
    *   - API: POST /v1/constituents/bulk-email
@@ -136,8 +144,8 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     defaultEnabled: false,
     label: "Bulk emails to constituents",
     description:
-      "Lets operators send one email to several constituents at once from the Constituents page. Currently off — we'll turn it on once the email-deliverability setup is finished so messages don't land in donors' spam folders.",
-    scope: "platform",
+      "Lets operators send one email to several constituents at once from the Constituents page. Off by default — Givernance staff will turn it on for your organisation once your email-deliverability setup is verified so messages don't land in donors' spam folders.",
+    scope: "tenant",
     tenantOverrideAllowed: false,
     public: true,
   },

@@ -351,7 +351,7 @@ function PerFlagFilters({
               type="button"
               aria-pressed={active}
               onClick={() => onFilterChange(value)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
                 active
                   ? "border-primary bg-primary-container text-on-primary-container"
                   : "border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container"

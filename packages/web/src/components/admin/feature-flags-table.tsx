@@ -99,27 +99,22 @@ export function FeatureFlagsTable({ rows: initialRows }: FeatureFlagsTableProps)
               </p>
               {/*
                 Override-stats summary — present only when Phase-2 is
-                on (overrideStats is null otherwise so the row gracefully
-                degrades to the Phase-1 shape). The whole block links to
-                `/admin/feature-flags/[key]` for the per-flag tenant
-                management page (added on PR #366 follow-up after the
-                reviewer flagged that managing "5 of 45" via per-tenant
-                pages was impractical).
+                on (overrideStats is null otherwise). The "Manage per
+                organisation" button is a design-system Button (not a
+                raw Link) so the call-to-action affordance is clearer
+                than the previous group-hover-underline pattern.
               */}
               {row.overrideStats ? (
-                <Link
-                  href={`/admin/feature-flags/${encodeURIComponent(row.key)}`}
-                  className="group flex flex-wrap items-center gap-2 pt-1 hover:underline"
-                >
-                  <span className="text-xs font-semibold uppercase tracking-wide text-text-muted group-hover:text-primary">
-                    {t("overrideStats.label")}
-                  </span>
+                <div className="flex flex-wrap items-center gap-3 pt-1">
                   {row.overrideStats.enabledCount === 0 && row.overrideStats.disabledCount === 0 ? (
                     <span className="text-xs text-on-surface-variant">
                       {t("overrideStats.noOverrides")}
                     </span>
                   ) : (
-                    <>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                        {t("overrideStats.label")}
+                      </span>
                       <Badge variant="success" shape="square">
                         {t("overrideStats.enabledCount", {
                           count: row.overrideStats.enabledCount,
@@ -130,12 +125,14 @@ export function FeatureFlagsTable({ rows: initialRows }: FeatureFlagsTableProps)
                           count: row.overrideStats.disabledCount,
                         })}
                       </Badge>
-                    </>
+                    </span>
                   )}
-                  <span aria-hidden="true" className="text-xs text-primary">
-                    →
-                  </span>
-                </Link>
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href={`/admin/feature-flags/${encodeURIComponent(row.key)}`}>
+                      {t("overrideStats.manageButton")}
+                    </Link>
+                  </Button>
+                </div>
               ) : null}
               <p className="text-xs text-on-surface-variant">
                 <span className="sr-only">Internal identifier: </span>
