@@ -48,6 +48,14 @@
   var REPEL_RADIUS = 180;
   var REPEL_STRENGTH = 60;
 
+  // Wheel-driven speed multiplier bounds. Exponential mapping
+  // (`Math.exp(deltaY * SPEED_SENSITIVITY)`) means each wheel tick scales
+  // the multiplier by a constant factor, so a few ticks span the whole
+  // glacial-to-frantic range without feeling sluggish near the middle.
+  var SPEED_MIN = 0.1;
+  var SPEED_MAX = 20;
+  var SPEED_SENSITIVITY = 0.003;
+
   function paintIcon(ctx, type) {
     var size = SPRITE_SIZE;
     var cx = size / 2;
@@ -401,6 +409,10 @@
     // the eased offset returns to zero without a hard snap.
     var mouseX = -1;
     var mouseY = -1;
+    // Wheel-controlled fall-speed multiplier. Applied uniformly in the
+    // tick to every particle's vertical velocity; rotation and sway are
+    // left alone so the motion stays legible at high speed.
+    var speedMultiplier = 1;
 
     function resize() {
       var prevWidth = width;
@@ -478,7 +490,7 @@
       var cursorActive = mouseX >= 0 && mouseY >= 0;
       for (var i = 0; i < particles.length; i++) {
         var p = particles[i];
-        p.y += p.speed * dt;
+        p.y += p.speed * dt * speedMultiplier;
         p.rotation += p.rotSpeed * dt;
         if (p.y - SPRITE_SIZE > height) {
           var fresh = makeParticle(width, height, true);
@@ -553,6 +565,16 @@
       mouseY = -1;
     }
 
+    // Wheel-driven speed control. Registered passively so the browser's
+    // native scroll behaviour on the page (when there's overflow) is
+    // unaffected — we *also* react to the wheel, we don't capture it.
+    // Wheel down (deltaY > 0) accelerates the fall, wheel up slows it.
+    function onWheel(e) {
+      if (reduceMotion) return;
+      var factor = Math.exp(e.deltaY * SPEED_SENSITIVITY);
+      speedMultiplier = Math.min(SPEED_MAX, Math.max(SPEED_MIN, speedMultiplier * factor));
+    }
+
     // Re-kick the rAF loop whenever the page becomes active again.
     //
     // Two restore paths to cover:
@@ -584,6 +606,7 @@
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);
+    window.addEventListener("wheel", onWheel, { passive: true });
     window.addEventListener("pageshow", onPageShow);
     document.addEventListener("visibilitychange", onVisibilityChange);
     if (mq.addEventListener) {
