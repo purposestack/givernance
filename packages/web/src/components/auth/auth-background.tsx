@@ -391,6 +391,14 @@ type Particle = {
 const REPEL_RADIUS = 180;
 const REPEL_STRENGTH = 60;
 
+// Wheel-driven speed multiplier bounds. Exponential mapping
+// (`Math.exp(deltaY * SPEED_SENSITIVITY)`) means each wheel tick scales
+// the multiplier by a constant factor, so a few ticks span the whole
+// glacial-to-frantic range without feeling sluggish near the middle.
+const SPEED_MIN = 0.1;
+const SPEED_MAX = 20;
+const SPEED_SENSITIVITY = 0.003;
+
 function pickType(): IconType {
   // ICON_TYPES is non-empty and `idx` is bounded by its length, so the
   // narrowing is sound — Math.floor(Math.random() * n) ∈ [0, n).
@@ -438,6 +446,10 @@ export function AuthBackground() {
     // the eased offset returns to zero without a hard snap.
     let mouseX = -1;
     let mouseY = -1;
+    // Wheel-controlled fall-speed multiplier. Applied uniformly in the
+    // tick to every particle's vertical velocity; rotation and sway are
+    // left alone so the motion stays legible at high speed.
+    let speedMultiplier = 1;
 
     // Density scales with viewport area so small phones get fewer icons.
     const computeTarget = () => Math.min(110, Math.max(28, Math.round((width * height) / 22000)));
@@ -507,7 +519,7 @@ export function AuthBackground() {
       const easing = 1 - Math.exp(-dt * 6);
       const cursorActive = mouseX >= 0 && mouseY >= 0;
       for (const p of particles) {
-        p.y += p.speed * dt;
+        p.y += p.speed * dt * speedMultiplier;
         p.rotation += p.rotSpeed * dt;
         if (p.y - SPRITE_SIZE > height) {
           const fresh = makeParticle(width, height, true);
@@ -571,6 +583,16 @@ export function AuthBackground() {
       mouseY = -1;
     };
 
+    // Wheel-driven speed control. Registered passively so the browser's
+    // native scroll behaviour on the page (when there's overflow) is
+    // unaffected — we *also* react to the wheel, we don't capture it.
+    // Wheel down (deltaY > 0) accelerates the fall, wheel up slows it.
+    const onWheel = (e: WheelEvent) => {
+      if (reduceMotion) return;
+      const factor = Math.exp(e.deltaY * SPEED_SENSITIVITY);
+      speedMultiplier = Math.min(SPEED_MAX, Math.max(SPEED_MIN, speedMultiplier * factor));
+    };
+
     // Re-kick the rAF loop whenever the page becomes active again.
     //
     // Two restore paths to cover:
@@ -603,6 +625,7 @@ export function AuthBackground() {
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);
+    window.addEventListener("wheel", onWheel, { passive: true });
     window.addEventListener("pageshow", onPageShow);
     document.addEventListener("visibilitychange", onVisibilityChange);
     reduceMotionQuery.addEventListener("change", onMotionChange);
@@ -612,6 +635,7 @@ export function AuthBackground() {
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerleave", onPointerLeave);
+      window.removeEventListener("wheel", onWheel);
       window.removeEventListener("pageshow", onPageShow);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       reduceMotionQuery.removeEventListener("change", onMotionChange);
