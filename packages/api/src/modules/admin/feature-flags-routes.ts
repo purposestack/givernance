@@ -310,10 +310,9 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
       // Same shape as `GET /admin/feature-flags` so the FE can
       // optimistically replace the row without losing the
       // override-stats badges + the Manage button.
-      const phase2On = await flagService.isEnabled(
-        FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2,
-        { orgId: request.auth?.orgId ?? null },
-      );
+      const phase2On = await flagService.isEnabled(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2, {
+        orgId: request.auth?.orgId ?? null,
+      });
       const overrideStats = await resolveOverrideStatsFor(key, phase2On);
       return { data: { ...result.row, overrideStats } };
     },
