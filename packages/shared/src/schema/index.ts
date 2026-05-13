@@ -1351,6 +1351,13 @@ export const bulkEmailJobs = pgTable(
  * create or delete flags — drift between code and DB is the failure
  * mode the registry exists to prevent.
  */
+/**
+ * Allowed values for `feature_flags.scope` — kept in lockstep with
+ * `FEATURE_FLAG_SCOPES` in `packages/shared/src/constants/feature-flags.ts`.
+ * Defined here as a `pgEnum` so the Drizzle migration generator picks it up.
+ */
+export const featureFlagScopeEnum = pgEnum("feature_flag_scope", ["platform", "tenant"]);
+
 export const featureFlags = pgTable(
   "feature_flags",
   {
@@ -1362,7 +1369,11 @@ export const featureFlags = pgTable(
      * truth for what keys exist.
      */
     key: varchar("key", { length: 100 }).notNull().unique(),
-    /** Current value. Single boolean per row — no per-tenant variance in the MVP. */
+    /**
+     * Platform-default value. The evaluator overlays tenant overrides
+     * on top of this for `scope='tenant'` rows; for `scope='platform'`
+     * rows this is the only source of truth.
+     */
     enabled: boolean("enabled").notNull().default(false),
     /**
      * Short, friendly title shown as the row heading in the Back Office
@@ -1373,12 +1384,42 @@ export const featureFlags = pgTable(
     label: varchar("label", { length: 120 }).notNull(),
     /**
      * Operator-facing description shown under the label in the
-     * Back Office UI. One or two sentences in plain language, focused
-     * on **what the feature does for the operator**. The engineering
-     * rationale (RFCs, incident IDs, infra prerequisites) belongs in
-     * `FEATURE_FLAG_REGISTRY` code comments, NOT in this column.
+     * Back Office UI AND the org-admin `/settings/feature-flags`
+     * page (Epic #365). One or two sentences in plain language,
+     * focused on **what the feature does for the operator**. The
+     * engineering rationale (RFCs, incident IDs, infra prerequisites)
+     * belongs in `FEATURE_FLAG_REGISTRY` code comments, NOT in this
+     * column.
      */
     description: text("description").notNull(),
+    /**
+     * Controls who can flip this flag. Epic #365 (Phase 2):
+     *   - `platform`: super-admin only. Tenant overrides are
+     *     IGNORED by the evaluator even if rows exist.
+     *   - `tenant`: super-admin can set tenant overrides; org-admin
+     *     can ALSO set them IF `tenant_override_allowed=true`.
+     * Default `platform` for safety — a newly registered flag is
+     * platform-locked until explicitly opened up.
+     */
+    scope: featureFlagScopeEnum("scope").notNull().default("platform"),
+    /**
+     * Extra gate on tenant-scoped flags. `scope='tenant' AND
+     * tenant_override_allowed=true` is what makes a flag appear in
+     * the org-admin `/settings/feature-flags` page. Super-admin can
+     * still set tenant overrides on `scope='tenant' AND
+     * tenant_override_allowed=false` rows when there's a platform
+     * precondition (DKIM posture, etc.) that the operator must
+     * verify per-tenant.
+     */
+    tenantOverrideAllowed: boolean("tenant_override_allowed").notNull().default(false),
+    /**
+     * Controls whether `GET /v1/feature-flags` emits this row to
+     * non-admin tenant callers. Resolves the public-projection
+     * caveat from doc 18 § 0 — unreleased flag names no longer leak
+     * via DevTools. Default `false` (private) so a newly registered
+     * flag stays hidden until explicitly opened up to tenants.
+     */
+    public: boolean("public").notNull().default(false),
     /**
      * Last super-admin to flip the flag. `SET NULL` on user purge so a
      * GDPR-erased staff account doesn't FK-block the row. Audit history
@@ -1391,6 +1432,72 @@ export const featureFlags = pgTable(
   // No explicit key-index — the `UNIQUE` constraint on `key` already
   // creates one and that's what `flagService` + `requireFlag` look up
   // by. (PR #352 Platform review Plat-LOW-2a.)
+  // The partial index on `WHERE public = TRUE` is created by migration
+  // 0051 and not modelled here (Drizzle does not yet support partial
+  // indexes in `pgTable` declarations; the migration is the source of
+  // truth for that index).
+);
+
+/**
+ * Per-tenant overrides on top of the platform default in
+ * `feature_flags` (Epic #365 / doc 18 § 4.2). Highest precedence in
+ * the evaluator after the `deprecated`/`scope='platform'` hard gates.
+ *
+ * Tenant-scoped table — RLS forced. `givernance_app` (NOBYPASSRLS)
+ * sees only rows where `tenant_id = app_current_organization_id()`.
+ * Platform endpoints (super-admin tenant-overrides UI) connect via
+ * the owner role and see every row.
+ */
+export const tenantFlagOverrides = pgTable(
+  "tenant_flag_overrides",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /**
+     * References `feature_flags.key` by VARCHAR rather than by id —
+     * keeps the override row referenceable even when migrations
+     * renumber the registry. ON DELETE CASCADE means flag retirement
+     * (a code change + migration) cleans up every override in one
+     * step.
+     */
+    flagKey: varchar("flag_key", { length: 100 })
+      .notNull()
+      .references(() => featureFlags.key, { onDelete: "cascade", onUpdate: "cascade" }),
+    /** The override value — wins over `feature_flags.enabled` for this tenant. */
+    value: boolean("value").notNull(),
+    /**
+     * Last operator (super-admin OR org-admin) to set / change this
+     * override. `SET NULL` on user purge. Audit history lives in
+     * `audit_logs` (the audit plugin auto-records every mutating
+     * request to /v1/admin/tenants/:id/feature-flags + /v1/org/feature-flags).
+     */
+    setBy: uuid("set_by").references(() => users.id, { onDelete: "set null" }),
+    /**
+     * Optional operator-facing free-text. WHY this override exists
+     * ("Beta-tested with this NPO on 2026-04 standup", "GDPR
+     * compliance request from legal"). Not a structured field —
+     * just a note for the audit reader.
+     */
+    reason: text("reason"),
+    /**
+     * Reserved for a future auto-expire worker. UI for setting this
+     * is deferred per doc 18 § 4.2; the column lands now so the
+     * shape doesn't migrate again.
+     */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    /** Natural upsert key — one row per (tenant, flag). */
+    tenantFlagUnique: unique("tenant_flag_overrides_unique").on(table.tenantId, table.flagKey),
+    /** Supports the per-tenant listing in the super-admin + org-admin pages. */
+    tenantIdx: index("tenant_flag_overrides_tenant_idx").on(table.tenantId),
+    /** Supports `overrideStats` aggregation on /admin/feature-flags. */
+    flagIdx: index("tenant_flag_overrides_flag_idx").on(table.flagKey),
+  }),
 );
 
 // ─── Public Page Status Enum ───────────────────────────────────────────────
