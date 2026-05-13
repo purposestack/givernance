@@ -466,7 +466,51 @@
         "disabled": "Disabled {key}",
         "error": "Could not update this flag. Please try again."
       },
-      "lastUpdated": "Last updated {date}"
+      "lastUpdated": "Last updated {date}",
+      "scope": {
+        "platform": "Platform-wide",
+        "tenant": "Per-organisation"
+      },
+      "scopeHint": {
+        "platform": "Only Givernance staff can change this — the same value applies to every organisation.",
+        "tenant": "Each organisation can choose its own value (subject to platform availability)."
+      },
+      "overrideStats": {
+        "label": "Organisations overriding the default",
+        "enabledCount": "{count, plural, =0 {No organisation has turned this on} one {1 organisation has turned this on} other {# organisations have turned this on}}",
+        "disabledCount": "{count, plural, =0 {No organisation has turned this off} one {1 organisation has turned this off} other {# organisations have turned this off}}",
+        "noOverrides": "No organisation has changed the default."
+      },
+      "tenantDetail": {
+        "title": "Feature flags for this organisation",
+        "subtitle": "Turn features on or off for this organisation. Platform-wide features are shown for context but only Givernance staff can flip them at the platform level.",
+        "fetchFailed": "Could not load this organisation's feature flags. Please refresh the page.",
+        "empty": "No feature flags registered.",
+        "columns": {
+          "feature": "Feature",
+          "platformDefault": "Platform default",
+          "effective": "Effective for this org",
+          "override": "Override"
+        },
+        "source": {
+          "default": "Using the platform default",
+          "override": "Overridden for this organisation"
+        },
+        "actions": {
+          "enableForTenant": "Turn on for this organisation",
+          "disableForTenant": "Turn off for this organisation",
+          "clearOverride": "Use platform default",
+          "saving": "Saving…"
+        },
+        "reasonLabel": "Reason (optional, recorded in the audit log)",
+        "reasonPlaceholder": "e.g. Pilot for beta cohort — Sept 2026",
+        "platformLockedHint": "This is a platform-wide feature. Use the global Feature flags page to change it.",
+        "toast": {
+          "set": "Override saved for {key}",
+          "cleared": "Override cleared for {key}",
+          "error": "Could not save this override. Please try again."
+        }
+      }
     },
     "disputes": {
       "list": {
@@ -643,7 +687,8 @@
           "overview": "Overview",
           "domains": "Domains",
           "users": "Users",
-          "audit": "Audit"
+          "audit": "Audit",
+          "featureFlags": "Feature flags"
         },
         "overview": {
           "fields": {
@@ -882,7 +927,39 @@
       "organization": "Organisation",
       "members": "Members",
       "funds": "Funds",
-      "bankAccounts": "Bank accounts"
+      "bankAccounts": "Bank accounts",
+      "featureFlags": "Feature flags"
+    },
+    "featureFlags": {
+      "title": "Feature flags",
+      "subtitle": "Choose which optional features are turned on for your organisation. Givernance staff control which features are available here; you decide whether to use them.",
+      "fetchFailed": "Could not load your feature flags. Please refresh the page.",
+      "empty": {
+        "title": "Nothing to configure yet",
+        "body": "Your organisation doesn't have any feature flags to configure right now. Givernance staff manage these for you; this page will list anything you can switch on or off as soon as it becomes available."
+      },
+      "source": {
+        "default": "Using the default",
+        "override": "Set by you"
+      },
+      "actions": {
+        "enable": "Turn on",
+        "disable": "Turn off",
+        "clearOverride": "Use the default",
+        "saving": "Saving…"
+      },
+      "platformDefaultLabel": "Default: {state}",
+      "platformDefaultEnabled": "On",
+      "platformDefaultDisabled": "Off",
+      "effectiveLabel": "Currently {state}",
+      "effectiveEnabled": "on",
+      "effectiveDisabled": "off",
+      "toast": {
+        "enabled": "{label} turned on for your organisation.",
+        "disabled": "{label} turned off for your organisation.",
+        "cleared": "{label} reset to the platform default.",
+        "error": "Could not save your change. Please try again."
+      }
     },
     "branding": {
       "title": "Organisation logo",

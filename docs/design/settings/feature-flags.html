@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
+  <title>Givernance &mdash; Settings · Feature flags (org admin)</title>
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/base.css">
+  <style>
+    body { background: var(--color-background); font-family: 'Inter', sans-serif; padding: var(--space-6); color: var(--color-text); }
+    .page-wrap { max-width: 920px; margin: 0 auto; }
+    h1 { font-family: 'Newsreader', serif; font-size: 28px; margin: 0 0 var(--space-2); }
+    .subtitle { color: var(--color-text-secondary); font-size: 14px; margin-bottom: var(--space-6); }
+    .nav-strip { display: flex; gap: var(--space-2); padding: var(--space-2); background: var(--color-surface-container); border-radius: 16px; margin-bottom: var(--space-5); overflow-x: auto; }
+    .nav-item { padding: 10px 16px; border-radius: 10px; font-size: 14px; color: var(--color-text-secondary); cursor: pointer; min-height: 40px; display: inline-flex; align-items: center; }
+    .nav-item.active { background: var(--color-surface); color: var(--color-text); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    .flag-card { border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 16px; padding: var(--space-5); margin-bottom: var(--space-3); display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; }
+    .flag-meta { flex: 1; }
+    .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; align-items: center; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+    .badge-on { background: #DCFCE7; color: #15803D; }
+    .badge-off { background: #F1F5F9; color: #64748B; }
+    .badge-warn { background: #FEF3C7; color: #B45309; }
+    .description { color: var(--color-text-secondary); font-size: 14px; margin: 6px 0; }
+    .meta-row { font-size: 12px; color: var(--color-text-secondary); }
+    .source-default { font-size: 12px; color: var(--color-text-secondary); font-style: italic; }
+    .actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .btn { padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 500; border: 0; cursor: pointer; }
+    .btn-primary { background: var(--color-primary); color: white; }
+    .btn-secondary { background: var(--color-surface-container); color: var(--color-text); }
+    .btn-ghost { background: transparent; color: var(--color-text-secondary); }
+    .empty-state { border: 1px dashed var(--color-border); background: var(--color-surface); border-radius: 16px; padding: var(--space-7) var(--space-5); text-align: center; }
+    .empty-state h3 { font-family: 'Newsreader', serif; margin: 0 0 var(--space-2); }
+    .empty-state p { color: var(--color-text-secondary); margin: 0 auto; max-width: 560px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="page-wrap">
+    <h1>Feature flags</h1>
+    <p class="subtitle">Choose which optional features are turned on for your organisation. Givernance staff control which features are available here; you decide whether to use them.</p>
+
+    <nav class="nav-strip" aria-label="Organisation settings navigation">
+      <span class="nav-item">Organisation</span>
+      <span class="nav-item">Members</span>
+      <span class="nav-item">Funds</span>
+      <span class="nav-item">Bank accounts</span>
+      <span class="nav-item active">Feature flags</span>
+    </nav>
+
+    <!-- Empty state (day-one of registry) -->
+    <section class="empty-state" style="margin-bottom: var(--space-7);">
+      <h3>Nothing to configure yet</h3>
+      <p>Your organisation doesn't have any feature flags to configure right now. Givernance staff manage these for you; this page will list anything you can switch on or off as soon as it becomes available.</p>
+    </section>
+
+    <h2 style="font-family:'Newsreader',serif;font-size:14px;color:var(--color-text-secondary);margin: var(--space-5) 0 var(--space-3);">Mockup preview — once flags become available, rows will look like this:</h2>
+
+    <!-- Row with no override -->
+    <article class="flag-card">
+      <div class="flag-meta">
+        <div class="badges">
+          <h3 style="margin:0;font-weight:500;font-size:15px;">Notification centre digest</h3>
+          <span class="badge badge-off">Currently off</span>
+          <span class="source-default">Using the default</span>
+        </div>
+        <p class="description">Sends a weekly summary of new donations, grant deadlines, and assigned tasks to each user.</p>
+        <p class="meta-row">Default: Off</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary">Turn on</button>
+      </div>
+    </article>
+
+    <!-- Row with override -->
+    <article class="flag-card">
+      <div class="flag-meta">
+        <div class="badges">
+          <h3 style="margin:0;font-weight:500;font-size:15px;">Theory-of-change builder</h3>
+          <span class="badge badge-on">Currently on</span>
+          <span class="badge badge-warn">Set by you</span>
+        </div>
+        <p class="description">Visual builder for the Theory of Change diagram used in grant reports.</p>
+        <p class="meta-row">Default: Off</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-secondary">Turn off</button>
+        <button class="btn btn-ghost">Use the default</button>
+      </div>
+    </article>
+  </div>
+</body>
+</html>

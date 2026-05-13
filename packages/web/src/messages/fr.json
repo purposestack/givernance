@@ -466,7 +466,51 @@
         "disabled": "{key} désactivé",
         "error": "Impossible de mettre à jour ce flag. Veuillez réessayer."
       },
-      "lastUpdated": "Mis à jour {date}"
+      "lastUpdated": "Mis à jour {date}",
+      "scope": {
+        "platform": "À l'échelle de la plateforme",
+        "tenant": "Par organisation"
+      },
+      "scopeHint": {
+        "platform": "Seul Givernance peut modifier ce réglage — la même valeur s'applique à toutes les organisations.",
+        "tenant": "Chaque organisation peut choisir sa propre valeur (sous réserve de disponibilité plateforme)."
+      },
+      "overrideStats": {
+        "label": "Organisations modifiant la valeur par défaut",
+        "enabledCount": "{count, plural, =0 {Aucune organisation n'a activé cette fonctionnalité} one {1 organisation a activé cette fonctionnalité} other {# organisations ont activé cette fonctionnalité}}",
+        "disabledCount": "{count, plural, =0 {Aucune organisation n'a désactivé cette fonctionnalité} one {1 organisation a désactivé cette fonctionnalité} other {# organisations ont désactivé cette fonctionnalité}}",
+        "noOverrides": "Aucune organisation n'a modifié la valeur par défaut."
+      },
+      "tenantDetail": {
+        "title": "Feature flags pour cette organisation",
+        "subtitle": "Activez ou désactivez des fonctionnalités pour cette organisation. Les fonctionnalités à l'échelle plateforme sont affichées pour contexte ; seul Givernance peut les modifier à ce niveau.",
+        "fetchFailed": "Impossible de charger les feature flags de cette organisation. Veuillez rafraîchir la page.",
+        "empty": "Aucun feature flag enregistré.",
+        "columns": {
+          "feature": "Fonctionnalité",
+          "platformDefault": "Valeur par défaut plateforme",
+          "effective": "Effectif pour cette org",
+          "override": "Surcharge"
+        },
+        "source": {
+          "default": "Utilise la valeur par défaut",
+          "override": "Surchargé pour cette organisation"
+        },
+        "actions": {
+          "enableForTenant": "Activer pour cette organisation",
+          "disableForTenant": "Désactiver pour cette organisation",
+          "clearOverride": "Utiliser la valeur par défaut",
+          "saving": "Enregistrement…"
+        },
+        "reasonLabel": "Raison (optionnelle, enregistrée dans l'audit)",
+        "reasonPlaceholder": "ex. Pilote pour la cohorte bêta — septembre 2026",
+        "platformLockedHint": "Cette fonctionnalité est à l'échelle plateforme. Utilisez la page Feature flags globale pour la modifier.",
+        "toast": {
+          "set": "Surcharge enregistrée pour {key}",
+          "cleared": "Surcharge supprimée pour {key}",
+          "error": "Impossible d'enregistrer la surcharge. Veuillez réessayer."
+        }
+      }
     },
     "disputes": {
       "list": {
@@ -643,7 +687,8 @@
           "overview": "Vue d’ensemble",
           "domains": "Domaines",
           "users": "Utilisateurs",
-          "audit": "Audit"
+          "audit": "Audit",
+          "featureFlags": "Feature flags"
         },
         "overview": {
           "fields": {
@@ -882,7 +927,39 @@
       "organization": "Organisation",
       "members": "Membres",
       "funds": "Fonds",
-      "bankAccounts": "Comptes bancaires"
+      "bankAccounts": "Comptes bancaires",
+      "featureFlags": "Feature flags"
+    },
+    "featureFlags": {
+      "title": "Feature flags",
+      "subtitle": "Choisissez les fonctionnalités optionnelles activées pour votre organisation. Givernance contrôle quelles options sont disponibles ici ; vous décidez de les utiliser ou non.",
+      "fetchFailed": "Impossible de charger vos feature flags. Veuillez rafraîchir la page.",
+      "empty": {
+        "title": "Rien à configurer pour l'instant",
+        "body": "Votre organisation n'a pas de feature flag à configurer en ce moment. Givernance gère ces réglages pour vous ; tout ce que vous pourrez activer ou désactiver apparaîtra ici dès qu'il sera disponible."
+      },
+      "source": {
+        "default": "Utilise la valeur par défaut",
+        "override": "Défini par vous"
+      },
+      "actions": {
+        "enable": "Activer",
+        "disable": "Désactiver",
+        "clearOverride": "Utiliser la valeur par défaut",
+        "saving": "Enregistrement…"
+      },
+      "platformDefaultLabel": "Par défaut : {state}",
+      "platformDefaultEnabled": "Activé",
+      "platformDefaultDisabled": "Désactivé",
+      "effectiveLabel": "Actuellement {state}",
+      "effectiveEnabled": "activé",
+      "effectiveDisabled": "désactivé",
+      "toast": {
+        "enabled": "{label} activé pour votre organisation.",
+        "disabled": "{label} désactivé pour votre organisation.",
+        "cleared": "{label} réinitialisé à la valeur par défaut plateforme.",
+        "error": "Impossible d'enregistrer votre modification. Veuillez réessayer."
+      }
     },
     "branding": {
       "title": "Logo de l'organisation",

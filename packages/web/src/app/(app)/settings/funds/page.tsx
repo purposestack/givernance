@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
+import { isFeatureFlagsPhase2Enabled } from "@/lib/feature-flags/server";
 import type { FundSortField, FundSortOrder } from "@/models/fund";
 import { FundService } from "@/services/FundService";
 
@@ -59,6 +60,7 @@ export default async function FundsPage({ searchParams }: FundsPageProps) {
   const result = await FundService.listFunds(client, { page, perPage, sort, order });
 
   const hasAny = result.pagination.total > 0;
+  const showFeatureFlags = await isFeatureFlagsPhase2Enabled();
 
   return (
     <>
@@ -83,7 +85,7 @@ export default async function FundsPage({ searchParams }: FundsPageProps) {
           ) : null
         }
       />
-      <SettingsNavigation />
+      <SettingsNavigation showFeatureFlags={showFeatureFlags} />
 
       {hasAny ? (
         <FundsTable

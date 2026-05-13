@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
+import { isFeatureFlagsPhase2Enabled } from "@/lib/feature-flags/server";
 import { InvitationService } from "@/services/InvitationService";
 import { MemberService } from "@/services/MemberService";
 import { UserService } from "@/services/UserService";
@@ -76,6 +77,8 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
   const invitationCount = invitationsResult.pagination.total;
   const memberCount = members?.pagination.total ?? 0;
   const bothEmpty = invitationCount === 0 && memberCount === 0;
+  // Phase 2 (Epic #365): only surface the Feature flags nav entry when the self-flag is on.
+  const showFeatureFlags = await isFeatureFlagsPhase2Enabled();
 
   return (
     <>
@@ -98,7 +101,7 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
           ) : null
         }
       />
-      <SettingsNavigation />
+      <SettingsNavigation showFeatureFlags={showFeatureFlags} />
 
       {bothEmpty && canManageMembers ? (
         // Review D8 — single combined empty state for a fresh tenant

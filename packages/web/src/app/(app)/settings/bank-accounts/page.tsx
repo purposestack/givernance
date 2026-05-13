@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
+import { isFeatureFlagsPhase2Enabled } from "@/lib/feature-flags/server";
 import { BankAccountService } from "@/services/BankAccountService";
 
 import { BankAccountsTable } from "./bank-accounts-table";
@@ -29,6 +30,7 @@ export default async function BankAccountsPage() {
   });
 
   const hasAny = result.pagination.total > 0;
+  const showFeatureFlags = await isFeatureFlagsPhase2Enabled();
 
   return (
     <>
@@ -53,7 +55,7 @@ export default async function BankAccountsPage() {
           ) : null
         }
       />
-      <SettingsNavigation />
+      <SettingsNavigation showFeatureFlags={showFeatureFlags} />
 
       {hasAny ? (
         <BankAccountsTable bankAccounts={result.data} canManage={canManage} />
