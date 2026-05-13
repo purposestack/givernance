@@ -15,8 +15,10 @@
  *     so the doc never drifts away from what actually ships.
  *
  * Seed contract: every key here MUST have a matching row in the
- * `feature_flags` table (provisioned by migration `0047_feature_flags`).
- * The startup boot path SHOULD assert this — drift is a deploy bug.
+ * `feature_flags` table (provisioned by migration `0047_feature_flags`
+ * / `0051_feature_flags_phase2`). The parity integration test asserts
+ * label + description + scope + tenant_override_allowed + public
+ * parity between this registry and the seeded DB rows; drift fails CI.
  */
 
 export const FEATURE_FLAG_KEYS = {
@@ -30,6 +32,14 @@ export const FEATURE_FLAG_KEYS = {
    * posture is in place this flips to `enabled = true` from the
    * Back Office UI; no deploy required.
    *
+   * `scope='platform'`: DKIM/SPF/DMARC is a platform precondition,
+   * not a per-tenant preference. Stays platform-locked until
+   * deliverability is verified end-to-end.
+   *
+   * `public=true`: the tenant UI on the constituents page reads
+   * `/v1/feature-flags` to hide the bulk-email buttons, so the row
+   * must be in the public projection.
+   *
    * Surfaces gated by this key:
    *   - API: POST /v1/constituents/bulk-email
    *   - API: GET / POST /v1/constituents/bulk-email-jobs[/:id[/resume]]
@@ -41,9 +51,56 @@ export const FEATURE_FLAG_KEYS = {
    *     constituents page hide when the flag is off.
    */
   COMMUNICATION_BULK_EMAIL: "communication.bulk_email",
+
+  /**
+   * Gates the Feature flags Phase 2 work itself (Epic #365 / PR #366).
+   *
+   * Even flag-administration tooling gets a flag — the new tenant-
+   * override endpoints, the "Feature flags" tab on the tenant detail
+   * page, and the org-admin `/settings/feature-flags` page are all
+   * net-new user-facing surfaces and deserve the same kill-switch
+   * pattern as every other feature.
+   *
+   * `scope='platform'`: only Givernance staff decide when the
+   * Phase 2 surface ships; tenants can't opt themselves in.
+   *
+   * `public=true`: the org-admin layout reads `/v1/feature-flags`
+   * via SSR to decide whether to render the "Feature flags" sidebar
+   * entry. A private value here would unconditionally hide the
+   * entry, defeating the Epic.
+   *
+   * The evaluator's precedence change (deprecated → platform-locked
+   * → tenant override → default) and the `tenant_flag_overrides`
+   * table itself land UN-flagged because they're internal mechanics
+   * with no user-observable behaviour change while no overrides
+   * exist, and gating the evaluator on a flag is circular.
+   *
+   * Surfaces gated by this key:
+   *   - API: GET/PUT/DELETE /v1/admin/tenants/:id/feature-flags*
+   *   - API: GET /v1/org/feature-flags + PATCH /v1/org/feature-flags/:key
+   *   - API: `overrideStats` field on GET /v1/admin/feature-flags
+   *   - Web: "Feature flags" tab on /admin/tenants/[id]
+   *   - Web: /settings/feature-flags page + sidebar entry
+   *   - Web: tenant-override count column on /admin/feature-flags
+   */
+  ADMIN_FEATURE_FLAGS_PHASE2: "admin.feature_flags_phase2",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
+
+/**
+ * Allowed values for `feature_flags.scope`.
+ *
+ *   - `platform`: super-admin-controlled only. Tenant overrides are
+ *     IGNORED by the evaluator even if rows exist. Use for features
+ *     with platform-level preconditions (DKIM posture, internal
+ *     tools, billing-integrated capabilities).
+ *   - `tenant`: super-admin can set per-tenant overrides; org-admin
+ *     can ALSO set them via the self-service page IF
+ *     `tenant_override_allowed=true`.
+ */
+export const FEATURE_FLAG_SCOPES = ["platform", "tenant"] as const;
+export type FeatureFlagScope = (typeof FEATURE_FLAG_SCOPES)[number];
 
 /**
  * Registry entries the seed migration uses to provision the
@@ -51,10 +108,15 @@ export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLA
  * NOTHING so existing values are preserved across redeploys — the
  * defaults below are the *first-deploy* values, not runtime overrides.
  *
- * Text-field convention (PR #352 magino review):
+ * Text-field convention (PR #352 magino review, reinforced by
+ * Epic #365's org-admin audience):
  *   - `label` and `description` are **operator-facing**. Plain
  *     language, no engineering jargon, no issue numbers, no RFC
- *     references. These render in the Back Office UI.
+ *     references. These render in both the super-admin Back Office UI
+ *     AND the org-admin `/settings/feature-flags` page (Epic #365).
+ *     The latter is read by non-technical NPO org admins — every
+ *     string here must pass the "would a fundraising manager
+ *     understand this?" check.
  *   - The engineering rationale (DKIM/SPF/DMARC, incident IDs,
  *     follow-up issues) lives in the JSDoc above each `FEATURE_FLAG_KEYS`
  *     entry — invisible to operators, visible to anyone reading the
@@ -65,6 +127,9 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
   defaultEnabled: boolean;
   label: string;
   description: string;
+  scope: FeatureFlagScope;
+  tenantOverrideAllowed: boolean;
+  public: boolean;
 }> = [
   {
     key: FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL,
@@ -72,5 +137,18 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     label: "Bulk emails to constituents",
     description:
       "Lets operators send one email to several constituents at once from the Constituents page. Currently off — we'll turn it on once the email-deliverability setup is finished so messages don't land in donors' spam folders.",
+    scope: "platform",
+    tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2,
+    defaultEnabled: false,
+    label: "Per-organisation feature flag controls",
+    description:
+      "Lets Givernance staff turn features on or off for one organisation at a time, and lets each organisation's admin manage their own feature settings from the Settings menu. Off by default until the new pages have been verified end-to-end.",
+    scope: "platform",
+    tenantOverrideAllowed: false,
+    public: true,
   },
 ];

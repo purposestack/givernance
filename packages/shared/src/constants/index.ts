@@ -8,7 +8,9 @@ export { resolveCountryName } from "./country-names";
 export {
   FEATURE_FLAG_KEYS,
   FEATURE_FLAG_REGISTRY,
+  FEATURE_FLAG_SCOPES,
   type FeatureFlagKey,
+  type FeatureFlagScope,
 } from "./feature-flags";
 export {
   IMPERSONATION_END_REASON_VALUES,
