@@ -396,7 +396,7 @@ const REPEL_STRENGTH = 60;
 // the multiplier by a constant factor, so a few ticks span the whole
 // glacial-to-frantic range without feeling sluggish near the middle.
 const SPEED_MIN = 0.1;
-const SPEED_MAX = 20;
+const SPEED_MAX = 80;
 const SPEED_SENSITIVITY = 0.003;
 
 function pickType(): IconType {

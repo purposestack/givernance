@@ -53,7 +53,7 @@
   // the multiplier by a constant factor, so a few ticks span the whole
   // glacial-to-frantic range without feeling sluggish near the middle.
   var SPEED_MIN = 0.1;
-  var SPEED_MAX = 20;
+  var SPEED_MAX = 80;
   var SPEED_SENSITIVITY = 0.003;
 
   function paintIcon(ctx, type) {
