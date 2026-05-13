@@ -439,7 +439,7 @@ describe("PATCH /v1/org/feature-flags/:key (Phase 2)", () => {
     expect(enabled).toBe(true);
   });
 
-  it("org-admin gets 404 (anti-disclosure) when toggling a tenant_override_allowed=false flag", async () => {
+  it("org-admin gets 404 (anti-disclosure) when toggling a tenant_override_allowed=false flag — body matches RFC 9457", async () => {
     const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
@@ -448,9 +448,14 @@ describe("PATCH /v1/org/feature-flags/:key (Phase 2)", () => {
       payload: { value: true },
     });
     expect(res.statusCode).toBe(404);
+    // Lock RFC 9457 body shape per `feedback_lock_rfc9457_body_in_tests`
+    // so a regression to a plain-string or `{error}` body is caught.
+    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    expect(body.status).toBe(404);
+    expect(body.title).toBe("Not Found");
   });
 
-  it("org-admin gets 404 (anti-disclosure) when toggling a scope='platform' flag", async () => {
+  it("org-admin gets 404 (anti-disclosure) when toggling a scope='platform' flag — body matches RFC 9457", async () => {
     const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
@@ -459,6 +464,9 @@ describe("PATCH /v1/org/feature-flags/:key (Phase 2)", () => {
       payload: { value: true },
     });
     expect(res.statusCode).toBe(404);
+    const body = res.json<{ status: number; title: string }>();
+    expect(body.status).toBe(404);
+    expect(body.title).toBe("Not Found");
   });
 
   it("org-admin's override is isolated to their tenant (org A cannot affect org B)", async () => {
@@ -593,5 +601,195 @@ describe("Evaluator precedence matrix (Phase 2)", () => {
   it("scope='tenant' + no orgId → platform default (worker path)", async () => {
     const enabled = await flagService.isEnabled(TENANT_DEMO_KEY);
     expect(enabled).toBe(false); // platform default
+  });
+});
+
+// ─── 9. Cross-tenant API-surface isolation ────────────────────────────────
+
+describe("Cross-tenant isolation on super-admin routes (Phase 2)", () => {
+  it("org-admin token cannot reach the super-admin tenant-detail GET (404 anti-disclosure)", async () => {
+    const token = signToken(app); // ORG_A org_admin
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/admin/tenants/${ORG_B}/feature-flags`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("viewer token gets 404 on the super-admin tenant-detail PUT", async () => {
+    const token = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "PUT",
+      url: `/v1/admin/tenants/${ORG_B}/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+      payload: { value: true },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("super-admin gets 404 on a tenantId that doesn't exist (anti-disclosure pre-check)", async () => {
+    const token = superAdminToken();
+    // UUID-shaped but unseeded.
+    const fakeTenantId = "00000000-0000-0000-0000-00000000ffff";
+    const res = await app.inject({
+      method: "PUT",
+      url: `/v1/admin/tenants/${fakeTenantId}/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+      payload: { value: true },
+    });
+    expect(res.statusCode).toBe(404);
+    const body = res.json<{ status: number; title: string; detail: string }>();
+    expect(body.status).toBe(404);
+    expect(body.title).toBe("Not Found");
+    expect(body.detail).toMatch(/[Tt]enant/);
+  });
+
+  it("super-admin DELETE on a non-existent tenant returns 404 (not silent 204)", async () => {
+    const token = superAdminToken();
+    const fakeTenantId = "00000000-0000-0000-0000-00000000eeee";
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/admin/tenants/${fakeTenantId}/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+// ─── 10. Org-admin DELETE — clean revert-to-default ────────────────────────
+
+describe("DELETE /v1/org/feature-flags/:key (Phase 2)", () => {
+  it("removes the override + evaluator reverts to platform default", async () => {
+    const token = signToken(app);
+    // Seed an override first.
+    await app.inject({
+      method: "PATCH",
+      url: `/v1/org/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+      payload: { value: true },
+    });
+    expect(await flagService.isEnabled(TENANT_DEMO_KEY, { orgId: ORG_A })).toBe(true);
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/org/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(204);
+
+    // Evaluator reverts to platform default (false for TENANT_DEMO_KEY).
+    expect(await flagService.isEnabled(TENANT_DEMO_KEY, { orgId: ORG_A })).toBe(false);
+  });
+
+  it("204 when no override existed (idempotent intent)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/org/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(204);
+  });
+
+  it("404 (anti-disclosure) when targeting a scope='platform' flag", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/org/feature-flags/${PHASE2_KEY}`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("404 (anti-disclosure) when targeting a tenant_override_allowed=false flag", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/org/feature-flags/${TENANT_ADMIN_ONLY_KEY}`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("non-org_admin gets 403", async () => {
+    const token = signToken(app, { role: "viewer" });
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/org/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+// ─── 11. Audit-trail regression net ─────────────────────────────────────────
+//
+// The existing audit-plugin auto-logs every mutating request. These
+// tests pin one audit row per Phase-2 mutation verb so a future
+// refactor of the plugin's pattern matching (or a re-shaping of the
+// route URL template) doesn't silently break audit for the new
+// endpoints. Per `feedback_lock_rfc9457_body_in_tests`-style reasoning:
+// "audit trail covered by the plugin tests" only holds if the plugin
+// continues to pattern-match these routes.
+
+describe("Audit trail — Phase 2 override mutations land in audit_logs", () => {
+  // The audit plugin records via Fastify's `onResponse` hook which
+  // fires AFTER `app.inject()` returns. We poll briefly for the
+  // expected row rather than `await sleep(...)` so the test stays
+  // tight in the happy case and bounded in the slow case.
+  async function findAuditRow(predicate: (action: string) => boolean): Promise<boolean> {
+    const { auditLogs } = await import("@givernance/shared/schema");
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const rows = await db.select({ action: auditLogs.action }).from(auditLogs);
+      if (rows.some((r) => predicate(r.action))) return true;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return false;
+  }
+
+  it("PUT /admin/tenants/:id/feature-flags/:key emits an audit_logs row", async () => {
+    const token = superAdminToken();
+    await app.inject({
+      method: "PUT",
+      url: `/v1/admin/tenants/${ORG_A}/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+      payload: { value: true },
+    });
+    // Audit-plugin records `${method}:${routeOptions.url}`. We match
+    // by method + the tenant-feature-flags substring rather than the
+    // full path so we don't tie the assertion to whether Fastify
+    // stores the route template with or without the `/v1` prefix.
+    const found = await findAuditRow(
+      (action) => action.startsWith("PUT:") && action.includes("/feature-flags"),
+    );
+    expect(found, "Audit row for PUT override missing").toBe(true);
+  });
+
+  it("DELETE /admin/tenants/:id/feature-flags/:key emits an audit_logs row", async () => {
+    const token = superAdminToken();
+    await app.inject({
+      method: "DELETE",
+      url: `/v1/admin/tenants/${ORG_A}/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+    });
+    const found = await findAuditRow(
+      (action) => action.startsWith("DELETE:") && action.includes("/feature-flags"),
+    );
+    expect(found, "Audit row for DELETE override missing").toBe(true);
+  });
+
+  it("PATCH /org/feature-flags/:key emits an audit_logs row", async () => {
+    const token = signToken(app);
+    await app.inject({
+      method: "PATCH",
+      url: `/v1/org/feature-flags/${TENANT_DEMO_KEY}`,
+      headers: authHeader(token),
+      payload: { value: true },
+    });
+    const found = await findAuditRow(
+      (action) => action.startsWith("PATCH:") && action.includes("/org/feature-flags"),
+    );
+    expect(found, "Audit row for org-admin PATCH override missing").toBe(true);
   });
 });

@@ -28,8 +28,11 @@
  */
 
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import { tenants } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
+import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { db } from "../../lib/db.js";
 import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireSuperAdmin } from "../../lib/guards.js";
@@ -37,7 +40,9 @@ import {
   DataArrayResponseNoPagination,
   DataResponse,
   ErrorResponses,
+  ProblemDetailSchema,
   problemDetail,
+  UuidSchema,
 } from "../../lib/schemas.js";
 import {
   removeTenantOverride,
@@ -51,12 +56,12 @@ const FlagKeyParams = Type.Object({
 });
 
 const TenantFlagKeyParams = Type.Object({
-  tenantId: Type.String({ format: "uuid" }),
+  tenantId: UuidSchema,
   key: Type.String({ minLength: 1, maxLength: 100 }),
 });
 
 const TenantParams = Type.Object({
-  tenantId: Type.String({ format: "uuid" }),
+  tenantId: UuidSchema,
 });
 
 const ScopeSchema = Type.Union([Type.Literal("platform"), Type.Literal("tenant")]);
@@ -96,13 +101,32 @@ const TenantOverrideUpsertBody = Type.Object({
 });
 
 const TenantOverrideRowSchema = Type.Object({
-  tenantId: Type.String(),
+  tenantId: UuidSchema,
   flagKey: Type.String(),
   value: Type.Boolean(),
   reason: Type.Union([Type.Null(), Type.String()]),
-  setBy: Type.Union([Type.Null(), Type.String()]),
+  setBy: Type.Union([Type.Null(), UuidSchema]),
   setAt: Type.String(),
 });
+
+/**
+ * Anti-disclosure pre-check for super-admin tenant-scoped writes:
+ * resolve `:tenantId` against the `tenants` table BEFORE touching
+ * `tenant_flag_overrides`. Without this guard a malformed-but-UUID-
+ * shaped tenantId would FK-fail at INSERT and surface as an
+ * unstructured 500; worse, the per-route structured log would emit
+ * *before* the failure, creating a side channel that confirms
+ * tenant existence to an attacker probing super-admin creds.
+ * (Security review M1 on PR #366.)
+ */
+async function ensureTenantExists(tenantId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  return Boolean(row);
+}
 
 const TenantFlagViewRowSchema = Type.Object({
   /** Flag metadata (mirrors the platform list shape). */
@@ -326,6 +350,11 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         body: TenantOverrideUpsertBody,
         response: {
           200: DataResponse(TenantOverrideRowSchema),
+          // Explicit 422 in the contract — handler returns it on a
+          // platform-scoped flag, but `ErrorResponses` (401/403/404)
+          // doesn't include 422 so OpenAPI consumers wouldn't know to
+          // handle it. (API review item 1 on PR #366.)
+          422: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -333,6 +362,12 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { tenantId, key } = request.params as { tenantId: string; key: string };
       const body = request.body as { value: boolean; reason?: string | null };
+
+      // Anti-disclosure: 404 a non-existent tenant before touching
+      // the override row (security review M1).
+      if (!(await ensureTenantExists(tenantId))) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Tenant not found"));
+      }
 
       const target = await resolveOverrideTarget(key, "super_admin");
       if (!target.writable) {
@@ -405,6 +440,14 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { tenantId, key } = request.params as { tenantId: string; key: string };
+
+      // Anti-disclosure: 404 a non-existent tenant (security review M1).
+      // Returning 204 silently for an unknown tenant would leak existence
+      // via timing differences against a real-tenant DELETE.
+      if (!(await ensureTenantExists(tenantId))) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Tenant not found"));
+      }
+
       const result = await removeTenantOverride(tenantId, key);
       await flagService.invalidateTenant(tenantId);
       request.log.info(
@@ -540,6 +583,66 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
       );
 
       return { data: result.row };
+    },
+  );
+
+  /**
+   * Org-admin "use the platform default" — DELETE the override row
+   * for this org. Replaces the Phase-2 frontend's PATCH-as-delete
+   * hack (FE review R3 + API review item 2 on PR #366). 204 on
+   * success regardless of whether a row existed (idempotent intent
+   * = "ensure no override exists for this org").
+   *
+   * Gate: `resolveOverrideTarget(..., 'org_admin')` enforces the
+   * same `scope='tenant' AND tenant_override_allowed=true` check
+   * the PATCH path uses, so an org-admin can't side-channel-probe
+   * platform-scoped flag existence via DELETE either.
+   */
+  app.delete(
+    "/org/feature-flags/:key",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireOrgAdmin],
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      schema: {
+        tags: ["Org"],
+        params: FlagKeyParams,
+        response: {
+          204: Type.Null(),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { key } = request.params as { key: string };
+
+      const target = await resolveOverrideTarget(key, "org_admin");
+      if (!target.writable) {
+        // Same anti-disclosure posture as the PATCH path — every
+        // rejection (missing flag, platform-scoped, admin-gated)
+        // looks like a typo'd URL.
+        return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));
+      }
+
+      const result = await removeTenantOverride(orgId, key);
+      await flagService.invalidateTenant(orgId);
+
+      request.log.info(
+        {
+          event: "org_flag_override.removed",
+          tenantId: orgId,
+          flagKey: key,
+          previousValue: result?.previousValue ?? null,
+          actorUserId: userId,
+        },
+        "Org-admin flag override removed",
+      );
+
+      return reply.status(204).send();
     },
   );
 }

@@ -179,6 +179,18 @@ export const FeatureFlagsService = {
     );
     return response.data;
   },
+
+  /**
+   * Org-admin: remove the caller's own override (revert to platform
+   * default). Cleaner than the prior PATCH-as-delete emulation: the
+   * override row is genuinely gone, the audit log records a
+   * `feature_flag.override_removed` event, and a subsequent reload
+   * returns `override: null` instead of an override-equal-to-default
+   * row that the FE has to special-case.
+   */
+  async deleteOrgOverride(client: ApiClient, flagKey: string): Promise<void> {
+    await client.delete(`/v1/org/feature-flags/${encodeURIComponent(flagKey)}`);
+  },
 };
 
 /**

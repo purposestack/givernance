@@ -73,6 +73,7 @@ export function FeatureFlagsTable({ rows: initialRows }: FeatureFlagsTableProps)
       {rows.map((row) => (
         <li
           key={row.key}
+          aria-busy={busyKey === row.key}
           className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -126,6 +127,7 @@ export function FeatureFlagsTable({ rows: initialRows }: FeatureFlagsTableProps)
                 </div>
               ) : null}
               <p className="text-xs text-on-surface-variant">
+                <span className="sr-only">Internal identifier: </span>
                 <code className="font-mono">{row.key}</code>
                 <span className="mx-1">·</span>
                 {t("lastUpdated", { date: formatDate(row.updatedAt, locale) })}
