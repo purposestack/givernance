@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
-import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
+import { formatCurrency, formatCurrencyRounded, formatDate, formatNumber } from "@/lib/format";
 import type { Campaign, CampaignStats } from "@/models/campaign";
 import type { DashboardPeriod } from "@/models/dashboard";
 import type { DonationListRow } from "@/models/donation";
@@ -81,7 +81,7 @@ export default async function DashboardPage() {
   const activeCampaignCount = activeCampaigns?.pagination.total ?? 0;
   const trendLabel = t("stats.trendLabel");
   const trendRaised = buildTrend(stats?.totalRaisedCents, trendLabel, (cents) =>
-    formatCurrency(cents, locale, primaryCurrency),
+    formatCurrencyRounded(cents, locale, primaryCurrency),
   );
   const trendCampaigns = buildTrend(stats?.newActiveCampaigns, trendLabel, (n) =>
     formatNumber(n, locale),
@@ -105,7 +105,7 @@ export default async function DashboardPage() {
       >
         <StatCard
           label={t("stats.totalRaised")}
-          value={formatCurrency(totalRaisedCents, locale, primaryCurrency)}
+          value={formatCurrencyRounded(totalRaisedCents, locale, primaryCurrency)}
           description={t("stats.totalRaisedHint")}
           valueClassName="font-mono"
           icon={Banknote}
@@ -133,7 +133,7 @@ export default async function DashboardPage() {
           value={t("stats.noGrantDeadlinesValue")}
           description={t("stats.noGrantDeadlinesHint")}
           icon={Timer}
-          color="neutral"
+          color="amber"
         />
       </section>
 
@@ -313,14 +313,16 @@ function StatCard({
   description: string;
   valueClassName?: string;
   icon?: React.ElementType;
-  color?: "primary" | "secondary" | "tertiary" | "neutral";
+  color?: "primary" | "secondary" | "tertiary" | "amber";
   trend?: TrendProp;
 }) {
+  // Semantic icon background: maps stat type to palette.
+  // `amber` used for deadline/warning cards (grant deadlines).
   const colorStyles = {
     primary: "bg-primary-fixed text-on-primary-fixed-variant",
     secondary: "bg-secondary-fixed text-on-secondary-fixed-variant",
     tertiary: "bg-tertiary-fixed text-on-tertiary-fixed-variant",
-    neutral: "bg-surface-container text-on-surface-variant",
+    amber: "bg-amber-light text-amber-dark",
   };
 
   return (
@@ -418,7 +420,7 @@ function CampaignProgressItem({
           </p>
         </div>
         <span className="font-mono text-sm font-semibold text-on-surface">
-          {formatCurrency(raisedCents, locale)}
+          {formatCurrencyRounded(raisedCents, locale)}
         </span>
       </div>
       {goalCents > 0 ? (
@@ -432,7 +434,7 @@ function CampaignProgressItem({
           <p className="mt-2 text-xs text-on-surface-variant">
             {translate("campaigns.progressWithGoal", {
               progress,
-              goal: formatCurrency(goalCents, locale),
+              goal: formatCurrencyRounded(goalCents, locale),
             })}
           </p>
         </>

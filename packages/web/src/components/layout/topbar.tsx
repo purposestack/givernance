@@ -30,7 +30,7 @@ interface TopbarProps {
 }
 
 const avatarTriggerClasses =
-  "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary outline-none transition-shadow duration-normal ease-out hover:shadow-[0_0_0_4px_rgba(9,100,71,0.10)] data-[state=open]:shadow-[0_0_0_4px_rgba(9,100,71,0.15)] focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
+  "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary outline-none transition-shadow duration-normal ease-out hover:shadow-[0_0_0_4px_rgba(9,100,71,0.10)] data-[state=open]:shadow-[0_0_0_4px_rgba(9,100,71,0.15)] focus-visible:shadow-ring";
 
 export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: TopbarProps) {
   const { user, logout } = useAuth();
@@ -40,8 +40,12 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
   const router = useRouter();
   const [isLocalePending, startLocaleTransition] = useTransition();
 
+  // Fallback order: first+last initials → first initial only → email first
+  // char → "?" so the avatar is never blank or misleadingly generic.
   const initials = user
-    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
+    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() ||
+      user.email?.[0]?.toUpperCase() ||
+      "?"
     : "?";
 
   const displayName = user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() : "";
@@ -113,7 +117,7 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
         />
         <input
           type="text"
-          className="h-10 w-full rounded-pill border border-[var(--color-border-light)] bg-surface-container-lowest pl-10 pr-14 text-sm text-text placeholder:text-text-muted focus:ring-2 focus:ring-primary focus:outline-none"
+          className="h-10 w-full rounded-pill border border-[var(--color-border-light)] bg-surface-container-lowest pl-10 pr-14 text-sm text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring"
           placeholder={t("searchPlaceholder")}
           aria-label={t("searchLabel")}
         />
@@ -125,7 +129,7 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
       <div className="flex items-center gap-3">
         <button
           type="button"
-          className="relative flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-text focus-visible:ring-2 focus-visible:ring-primary"
+          className="relative flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-text focus-visible:outline-none focus-visible:shadow-ring"
           aria-label={t("notifications")}
         >
           <Bell size={18} aria-hidden="true" />

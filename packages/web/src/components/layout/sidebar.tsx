@@ -127,8 +127,11 @@ export function Sidebar({
   const canSwitchOrganization =
     !isSuperAdmin && typeof membershipCount === "number" && membershipCount > 1;
 
+  // Same fallback chain as Topbar: first+last → first only → email char → "?"
   const initials = user
-    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "?"
+    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() ||
+      user.email?.[0]?.toUpperCase() ||
+      "?"
     : "?";
 
   // Org logo (Epic #286) — server-resolved by `(app)/layout.tsx` and threaded
@@ -281,7 +284,7 @@ export function Sidebar({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                className="flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:outline-none focus-visible:shadow-ring"
               >
                 <div
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"

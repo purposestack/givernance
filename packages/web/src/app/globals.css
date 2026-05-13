@@ -64,6 +64,13 @@
   --color-error-border: rgba(186, 26, 26, 0.12);
   --color-surface-tint: #176b4d;
 
+  /* ── Interaction hover tokens ── */
+  /* Darker shade of primary for button hover — avoids opacity-based
+     hover which is too subtle on low-brightness displays. */
+  --color-primary-hover: #075436;
+  /* Darker shade of error for destructive button hover. */
+  --color-error-hover: #8c1414;
+
   /* ── Semantic aliases ── */
   --color-bg: var(--color-background);
   --color-text: var(--color-on-surface);

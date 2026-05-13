@@ -18,6 +18,20 @@ export function formatCurrency(cents: number, locale: string, currency = "EUR"):
   }).format(cents / 100);
 }
 
+/**
+ * Format a monetary amount in cents to a rounded currency string with no decimals.
+ * Intended for KPI / stat-card contexts where `€12 345` is cleaner than `€12 345,00`.
+ * Do NOT use in tables or accounting views — use `formatCurrency` there.
+ */
+export function formatCurrencyRounded(cents: number, locale: string, currency = "EUR"): string {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
 /** Format a date to a localized string. */
 export function formatDate(
   date: string | Date,

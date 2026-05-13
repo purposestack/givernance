@@ -7,18 +7,18 @@ import { cn } from "@/lib/utils";
 const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-button)]",
-    "font-body font-medium transition-opacity duration-normal ease-out",
+    "font-body font-medium transition-colors duration-normal ease-out",
     "focus-visible:outline-none focus-visible:shadow-ring",
     "disabled:pointer-events-none disabled:opacity-50",
   ],
   {
     variants: {
       variant: {
-        primary: "bg-primary text-on-primary hover:opacity-90",
+        primary: "bg-primary text-on-primary hover:bg-primary-hover",
         secondary: "bg-surface-container-highest text-on-surface hover:bg-surface-dim",
         ghost:
           "bg-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
-        destructive: "bg-error text-on-error hover:opacity-90",
+        destructive: "bg-error text-on-error hover:bg-error-hover",
         // Inline text-link affordance — used for "Try a different email"
         // style resets that sit inside surface/error containers and
         // shouldn't carry a button background. Preserves the standard
