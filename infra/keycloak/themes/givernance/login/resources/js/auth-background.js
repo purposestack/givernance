@@ -542,9 +542,23 @@
       mouseY = -1;
     }
 
+    // bfcache restore: when the user navigates away and presses the back
+    // button, the page is resumed from memory. The pending
+    // requestAnimationFrame callback is sometimes never delivered after
+    // the freeze, leaving the canvas stuck on the last pre-freeze frame.
+    // Cancel any stale handle and re-kick the loop on `pageshow` with
+    // `persisted=true`.
+    function onPageShow(e) {
+      if (!e.persisted || reduceMotion) return;
+      cancelAnimationFrame(rafId);
+      lastTs = performance.now();
+      rafId = requestAnimationFrame(tick);
+    }
+
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);
+    window.addEventListener("pageshow", onPageShow);
     if (mq.addEventListener) {
       mq.addEventListener("change", onMotionChange);
     } else if (mq.addListener) {
