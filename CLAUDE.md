@@ -133,6 +133,34 @@ Key ADRs for frontend work:
 - **ADR-012**: shadcn/ui + TanStack ecosystem, component hierarchy, design token integration, accessibility requirements
 - **ADR-013**: Frontend type boundary, Biome `noRestrictedImports`, no source maps in production
 
+### 🛑 Feature-flag-first rule (CRITICAL FOR NEW USER-FACING FEATURES)
+
+**Every new user-facing feature ships behind a feature flag, default-off.** Read [`docs/18-feature-flags.md`](docs/18-feature-flags.md) — specifically § "What's actually shipped (Phase 1 MVP)" — before implementing. No flag = no PR for net-new behaviour. The shipped naming convention is dotted-domain `<domain>.<feature>` (e.g. `communication.bulk_email`); the `ff.` prefix shown in older agent docs is **stale** — match the live `FEATURE_FLAG_KEYS` shape in [`packages/shared/src/constants/feature-flags.ts`](packages/shared/src/constants/feature-flags.ts).
+
+**When to flag (mandatory)**:
+- New API endpoints, pages, navigation items, worker jobs, BullMQ processors
+- Net-new visual surfaces (notification bell, command palette, style picker, dashboard tab)
+- Any change donors / operators / super-admins see for the first time
+- Super-admin-only features (dark-launch on prod before announcement counts)
+
+**When NOT to flag**:
+- Bug fixes to existing flagged-or-shipped features
+- Pure infra / migration / dependency / CI / ops-runbook work
+- Internal refactors with no behaviour change
+
+**Five-step pattern for every new-feature PR**:
+1. Append the key to `FEATURE_FLAG_KEYS` + `FEATURE_FLAG_REGISTRY` in [`packages/shared/src/constants/feature-flags.ts`](packages/shared/src/constants/feature-flags.ts). Engineering rationale (incident IDs, infra prerequisites, blocking conditions) goes in the **JSDoc above the entry**, never in the operator-facing `label` / `description`.
+2. Ship the seed migration (`INSERT INTO feature_flags … ON CONFLICT (key) DO NOTHING`). The parity integration test in `packages/api/src/tests/integration/feature-flags.test.ts` fails CI on drift between registry and DB row.
+3. Add `requireFlag(FEATURE_FLAG_KEYS.YOUR_KEY)` on every new route as the **FIRST** preHandler — before role guards — so scanners hit 404 without enumerating role requirements.
+4. Add `isFlagEnabled(...)` at every new worker job pickup (defence-in-depth; the worker is the second wall if a request slipped through the API gate).
+5. SSR-fetch `/v1/feature-flags` in the page server component, pass `xEnabled` down as a prop, and **hide every dependent surface** — buttons, columns, panels, bell icons, keyboard shortcuts — not just the primary action. A dead selection column on a disabled feature is operator-confusing UX.
+
+**Off-state QA (mandatory before merge)**: with the flag off, the surface is *completely absent* — button hidden, column hidden, bell icon hidden, keyboard binding inactive, route returns 404 (not 403, not blank).
+
+> ⚠ **Public-projection caveat**: `GET /v1/feature-flags` currently returns every registered key (name + enabled state) to every authenticated tenant user. Until a `public boolean` column lands on `feature_flags` (deferred follow-up), the key *name itself* is technically visible via DevTools. Pick names that don't tease an unreleased feature (`donation.public_page_styles` is fine; `donation.secret_q2_announcement` is not).
+
+**Emergency rollback** for a broken flagged feature when the Back Office UI is unavailable: see [`docs/runbooks/feature-flag-rollback.md`](docs/runbooks/feature-flag-rollback.md) — `UPDATE feature_flags SET enabled = false …` + `redis-cli DEL flags:global`.
+
 ## Conventions
 
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")

@@ -160,6 +160,28 @@ security: [{ bearerAuth: [] }],
 // No security declaration — must be explicitly justified in contract
 ```
 
+### Feature-flag gating (mandatory for net-new endpoints)
+
+Per CLAUDE.md's "Feature-flag-first rule", every new endpoint for a net-new feature MUST declare `requireFlag(...)` as the **FIRST** preHandler in the chain — before `authenticate`, before `setRLSContext`, before any role guard. The order matters: a flag-disabled route returns 404 *without* leaking that the route exists or what roles it would otherwise require to a scanner.
+
+```typescript
+import { FEATURE_FLAG_KEYS } from '@givernance/shared/constants/feature-flags'
+
+preHandler: [
+  fastify.requireFlag(FEATURE_FLAG_KEYS.YOUR_DOMAIN_YOUR_FEATURE), // FIRST — 404 if off
+  fastify.authenticate,
+  fastify.setRLSContext,
+  fastify.requireRole('org_admin'),
+],
+```
+
+Contract output for a new endpoint must include:
+- `Flag: <flag-key>` (or `Flag: none — existing feature` for endpoints on already-shipped surfaces)
+- The flag key naming convention is dotted-domain `<domain>.<feature>` matching the live `FEATURE_FLAG_REGISTRY` (NOT `ff.`-prefixed — that form earlier in this doc is stale; see [`packages/shared/src/constants/feature-flags.ts`](../../packages/shared/src/constants/feature-flags.ts) for the canonical convention)
+- A note on which surfaces (UI buttons, columns, worker jobs) are also gated by the same flag, so QA can verify off-state coverage end-to-end
+
+See `docs/18-feature-flags.md` for the full procedure and the public-projection caveat (every registered key name leaks to authenticated tenant users via `GET /v1/feature-flags` until a `public` column lands).
+
 Required `request.user` shape (from JWT claims):
 ```typescript
 interface AuthUser {

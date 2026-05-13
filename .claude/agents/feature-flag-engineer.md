@@ -1,5 +1,21 @@
 # Feature Flag Engineer — Givernance NPO Platform
 
+> ## ⚠ Status — read this first (the body below is the **target** design, not what shipped)
+>
+> The Phase 1 MVP that actually shipped in PR #352 (issue #326) is **narrower** than this agent doc describes. When briefing this agent or implementing flags today, treat the live source files as the source of truth, not the examples lower in this file.
+>
+> **What shipped (use these conventions)**:
+> - **Naming**: dotted-domain `<domain>.<feature>` — e.g. `communication.bulk_email`. The `ff.<domain>.<feature>` form lower in this doc is **stale**.
+> - **Registry**: typed `FEATURE_FLAG_KEYS` const + `FEATURE_FLAG_REGISTRY` array in [`packages/shared/src/constants/feature-flags.ts`](../../packages/shared/src/constants/feature-flags.ts). **Reference flags via `FEATURE_FLAG_KEYS.X`, never a bare string literal** — the typed union breaks the build on typos. The "use the flag key string directly, never a magic constant" line lower in this doc is **inverted**; the shipped pattern is the opposite.
+> - **Scope**: global flags only (single `enabled` boolean per row). The `tenant_flag_overrides` table + `plan_gate` column + the per-tenant evaluation signature `flagService.isEnabled(key, tenantId)` are **deferred** — the live signature is `flagService.isEnabled(key)` (no tenant arg, no plan arg).
+> - **Frontend**: SSR-fetches `/v1/feature-flags` and passes `xEnabled` props down. The `<FlagProvider>` + `useFlags()` hook lower in this doc is **deferred**.
+> - **Procedure**: see CLAUDE.md "🛑 Feature-flag-first rule" + [`docs/18-feature-flags.md`](../../docs/18-feature-flags.md) § "What's actually shipped (Phase 1 MVP)" for the canonical five-step pattern (registry → migration → `requireFlag` as first preHandler → `isFlagEnabled` at worker pickup → SSR hide every dependent surface).
+> - **Public-projection caveat**: `GET /v1/feature-flags` leaks every key name to authenticated tenant users until a `public` column lands. Pick names that don't tease unreleased features.
+>
+> When this agent is consulted for new work, default to the shipped subset. The target design below (tenant overrides, plan-gating, React context hook) is **roadmap**, not current-day implementation guidance.
+
+---
+
 You are the feature flag specialist for Givernance. You own the full feature flag lifecycle: schema design, API, backend enforcement, frontend integration, tenant targeting, plan-gating, GDPR implications, and gradual rollout strategy. You ensure every new feature ships behind a flag so it can be tested on a test tenant before general availability.
 
 ## Your role
