@@ -159,6 +159,35 @@ const PublicFlagRowSchema = Type.Object({
   enabled: Type.Boolean(),
 });
 
+/**
+ * Resolve `overrideStats` for a given flag key against the current
+ * Phase-2 self-flag state. Used by both `GET /admin/feature-flags`
+ * (list) and `PATCH /admin/feature-flags/:key` (single-row update)
+ * so the response shape stays identical across endpoints — without
+ * this, the PATCH used to return `overrideStats: null` and the FE
+ * would optimistically replace the row, losing the
+ * "Manage per organisation" button until the page reloaded.
+ *
+ * Accepts a pre-fetched stats map when the caller already has one
+ * (the list path queries `overrideStats()` once for all flags) to
+ * avoid the N+1 DB hit per row.
+ */
+async function resolveOverrideStatsFor(
+  flagKey: string,
+  phase2On: boolean,
+  statsByKey?: Map<string, { enabledCount: number; disabledCount: number }>,
+): Promise<{ enabledCount: number; disabledCount: number } | null> {
+  if (!phase2On) return null;
+  if (statsByKey) {
+    return statsByKey.get(flagKey) ?? { enabledCount: 0, disabledCount: 0 };
+  }
+  const allStats = await flagService.overrideStats();
+  const found = allStats.find((s) => s.flagKey === flagKey);
+  return found
+    ? { enabledCount: found.enabledCount, disabledCount: found.disabledCount }
+    : { enabledCount: 0, disabledCount: 0 };
+}
+
 export async function featureFlagsRoutes(app: FastifyInstance) {
   /**
    * Tenant-readable flag list. Drives the SSR-side check on tenant
@@ -213,21 +242,21 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
       const phase2On = await flagService.isEnabled(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2, {
         orgId: request.auth?.orgId ?? null,
       });
-      if (!phase2On) {
-        return { data: rows.map((row) => ({ ...row, overrideStats: null })) };
-      }
-      const statsRows = await flagService.overrideStats();
-      const statsByKey = new Map(statsRows.map((s) => [s.flagKey, s]));
+      const statsByKey = phase2On
+        ? new Map(
+            (await flagService.overrideStats()).map((s) => [
+              s.flagKey,
+              { enabledCount: s.enabledCount, disabledCount: s.disabledCount },
+            ]),
+          )
+        : undefined;
       return {
-        data: rows.map((row) => {
-          const stats = statsByKey.get(row.key);
-          return {
+        data: await Promise.all(
+          rows.map(async (row) => ({
             ...row,
-            overrideStats: stats
-              ? { enabledCount: stats.enabledCount, disabledCount: stats.disabledCount }
-              : { enabledCount: 0, disabledCount: 0 },
-          };
-        }),
+            overrideStats: await resolveOverrideStatsFor(row.key, phase2On, statsByKey),
+          })),
+        ),
       };
     },
   );
@@ -278,7 +307,15 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         "Feature flag toggled",
       );
 
-      return { data: { ...result.row, overrideStats: null } };
+      // Same shape as `GET /admin/feature-flags` so the FE can
+      // optimistically replace the row without losing the
+      // override-stats badges + the Manage button.
+      const phase2On = await flagService.isEnabled(
+        FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2,
+        { orgId: request.auth?.orgId ?? null },
+      );
+      const overrideStats = await resolveOverrideStatsFor(key, phase2On);
+      return { data: { ...result.row, overrideStats } };
     },
   );
 
