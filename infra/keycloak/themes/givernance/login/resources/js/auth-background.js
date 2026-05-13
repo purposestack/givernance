@@ -403,6 +403,7 @@
     var mouseY = -1;
 
     function resize() {
+      var prevWidth = width;
       var dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = window.innerWidth;
       height = window.innerHeight;
@@ -411,6 +412,16 @@
       canvas.style.width = width + "px";
       canvas.style.height = height + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Redistribute existing particles' x so they keep covering the full
+      // width after a window resize — otherwise enlarging the viewport
+      // leaves the icons bunched in the original column.
+      if (prevWidth > 0 && prevWidth !== width) {
+        var xScale = width / prevWidth;
+        for (var j = 0; j < particles.length; j++) {
+          particles[j].x *= xScale;
+        }
+      }
 
       var target = Math.min(110, Math.max(28, Math.round((width * height) / 22000)));
       if (particles.length === 0) {

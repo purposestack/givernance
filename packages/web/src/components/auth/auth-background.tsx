@@ -439,7 +439,22 @@ export function AuthBackground() {
     let mouseX = -1;
     let mouseY = -1;
 
+    // Density scales with viewport area so small phones get fewer icons.
+    const computeTarget = () => Math.min(110, Math.max(28, Math.round((width * height) / 22000)));
+
+    const syncParticleCount = (target: number) => {
+      if (particles.length === 0) {
+        particles = Array.from({ length: target }, () => makeParticle(width, height, false));
+        return;
+      }
+      while (particles.length < target) {
+        particles.push(makeParticle(width, height, true));
+      }
+      if (particles.length > target) particles.length = target;
+    };
+
     const resize = () => {
+      const prevWidth = width;
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = window.innerWidth;
       height = window.innerHeight;
@@ -449,17 +464,17 @@ export function AuthBackground() {
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Density scales with viewport area so small phones get fewer icons.
-      const target = Math.min(110, Math.max(28, Math.round((width * height) / 22000)));
-      if (particles.length === 0) {
-        particles = Array.from({ length: target }, () => makeParticle(width, height, false));
-      } else if (particles.length < target) {
-        while (particles.length < target) {
-          particles.push(makeParticle(width, height, true));
+      // Redistribute existing particles' x so they keep covering the
+      // full width after a window resize — otherwise enlarging the
+      // viewport leaves the icons bunched in the original column.
+      if (prevWidth > 0 && prevWidth !== width) {
+        const xScale = width / prevWidth;
+        for (const p of particles) {
+          p.x *= xScale;
         }
-      } else if (particles.length > target) {
-        particles.length = target;
       }
+
+      syncParticleCount(computeTarget());
     };
 
     const draw = (t: number) => {
