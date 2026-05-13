@@ -29,7 +29,7 @@
  */
 
 import { featureFlags, tenantFlagOverrides } from "@givernance/shared/schema";
-import { eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type Redis from "ioredis";
 import pino from "pino";
@@ -332,26 +332,30 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
     },
 
     async overrideStats() {
-      // One round-trip aggregation: count(true) + count(false) per flag.
-      // Reading directly via the Drizzle query builder keeps the
-      // result typed; the SQL fan-out is two scans of one index.
-      const rows = await getDb(deps)
+      // SQL `GROUP BY (flag_key, value)` — index-only scan against
+      // the existing `tenant_flag_overrides_flag_idx`. Replaces a
+      // prior in-memory aggregation that pulled every override row
+      // into Node (data-architect review on PR #366). Returns at most
+      // `2 × |tenant-scoped flags|` rows from the DB regardless of
+      // tenant count.
+      const grouped = await getDb(deps)
         .select({
           flagKey: tenantFlagOverrides.flagKey,
           value: tenantFlagOverrides.value,
+          n: count(),
         })
-        .from(tenantFlagOverrides);
+        .from(tenantFlagOverrides)
+        .groupBy(tenantFlagOverrides.flagKey, tenantFlagOverrides.value)
+        .orderBy(sql`${tenantFlagOverrides.flagKey} ASC`);
 
       const acc = new Map<string, { enabledCount: number; disabledCount: number }>();
-      for (const row of rows) {
+      for (const row of grouped) {
         const cur = acc.get(row.flagKey) ?? { enabledCount: 0, disabledCount: 0 };
-        if (row.value) cur.enabledCount += 1;
-        else cur.disabledCount += 1;
+        if (row.value) cur.enabledCount = Number(row.n);
+        else cur.disabledCount = Number(row.n);
         acc.set(row.flagKey, cur);
       }
-      return Array.from(acc.entries())
-        .map(([flagKey, counts]) => ({ flagKey, ...counts }))
-        .sort((a, b) => a.flagKey.localeCompare(b.flagKey));
+      return Array.from(acc.entries()).map(([flagKey, counts]) => ({ flagKey, ...counts }));
     },
 
     async invalidate() {

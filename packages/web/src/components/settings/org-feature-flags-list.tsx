@@ -76,17 +76,11 @@ export function OrgFeatureFlagsList({ initialRows }: OrgFeatureFlagsListProps) {
   };
 
   /**
-   * Org-admin "use the default" path. The server endpoint is
-   * PATCH-only (no DELETE on `/v1/org/feature-flags/:key`), so we
-   * emulate "clear override" by writing the platform default value.
-   * The audit trail still records the action; the visual outcome is
-   * "no longer overridden" but the underlying row stays (with value
-   * = platform default). Same semantic outcome, simpler API surface.
-   *
-   * Trade-off accepted: a future org-admin DELETE endpoint would
-   * cleanly remove the row + nil out `setBy`. Until then this
-   * pattern keeps the surface focused on what the operator wants
-   * ("make my org match the default") rather than the row mechanics.
+   * Org-admin "use the default" — calls the real DELETE endpoint so
+   * the override row is genuinely removed and a reload returns
+   * `override: null`. (Replaces a prior PATCH-as-delete emulation
+   * that desynced optimistic FE state from the persisted state —
+   * see FE review R3 + API review item 2 on PR #366.)
    */
   const handleUseDefault = async (row: TenantFlagViewRow) => {
     setBusyKey(row.key);
@@ -97,14 +91,7 @@ export function OrgFeatureFlagsList({ initialRows }: OrgFeatureFlagsListProps) {
       effectiveValue: r.platformDefault,
     }));
     try {
-      await FeatureFlagsService.setOrgOverride(createClientApiClient(), row.key, {
-        value: row.platformDefault,
-      });
-      applyRow(row.key, (r) => ({
-        ...r,
-        override: null,
-        effectiveValue: r.platformDefault,
-      }));
+      await FeatureFlagsService.deleteOrgOverride(createClientApiClient(), row.key);
       toast.success(t("toast.cleared", { label: row.label }));
     } catch (err) {
       applyRow(row.key, () => previous);
@@ -132,6 +119,7 @@ export function OrgFeatureFlagsList({ initialRows }: OrgFeatureFlagsListProps) {
         return (
           <li
             key={row.key}
+            aria-busy={busy}
             className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">

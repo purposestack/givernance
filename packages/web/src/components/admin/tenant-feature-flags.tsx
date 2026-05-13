@@ -166,7 +166,10 @@ function TenantFeatureFlagRow({
     : tDetail("actions.enableForTenant");
 
   return (
-    <li className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm">
+    <li
+      aria-busy={busy}
+      className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -194,6 +197,15 @@ function TenantFeatureFlagRow({
               <PlatformDefaultBadge value={row.platformDefault} label={platformDefaultLabel} />
             </span>
             <span aria-hidden="true">·</span>
+            {/*
+              Prefix the dotted key with an sr-only label so VoiceOver
+              announces "internal identifier communication.bulk_email"
+              instead of reading the dots as punctuation letter-by-
+              letter. `aria-label` on a bare `<code>` is rejected by
+              Biome's a11y rule (no implicit role); the visually-
+              hidden `<span>` is the supported pattern.
+            */}
+            <span className="sr-only">Internal identifier: </span>
             <code className="font-mono">{row.key}</code>
           </div>
           {isPlatform ? (

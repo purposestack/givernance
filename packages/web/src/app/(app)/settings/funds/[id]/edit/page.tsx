@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
+import { isFeatureFlagsPhase2Enabled } from "@/lib/feature-flags/server";
 import type { Fund } from "@/models/fund";
 import { FundService } from "@/services/FundService";
 
@@ -36,6 +37,7 @@ export default async function EditFundPage({ params }: EditFundPageProps) {
   const t = await getTranslations("settings.funds");
   const tSettings = await getTranslations("settings");
   const tForm = await getTranslations("settings.funds.form");
+  const showFeatureFlags = await isFeatureFlagsPhase2Enabled();
 
   return (
     <>
@@ -50,7 +52,7 @@ export default async function EditFundPage({ params }: EditFundPageProps) {
           { label: tForm("breadcrumbEdit") },
         ]}
       />
-      <SettingsNavigation />
+      <SettingsNavigation showFeatureFlags={showFeatureFlags} />
       <FundForm mode="edit" fund={fund} canManageFunds={auth.roles.includes("org_admin")} />
     </>
   );
