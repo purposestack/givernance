@@ -542,23 +542,39 @@
       mouseY = -1;
     }
 
-    // bfcache restore: when the user navigates away and presses the back
-    // button, the page is resumed from memory. The pending
-    // requestAnimationFrame callback is sometimes never delivered after
-    // the freeze, leaving the canvas stuck on the last pre-freeze frame.
-    // Cancel any stale handle and re-kick the loop on `pageshow` with
-    // `persisted=true`.
-    function onPageShow(e) {
-      if (!e.persisted || reduceMotion) return;
+    // Re-kick the rAF loop whenever the page becomes active again.
+    //
+    // Two restore paths to cover:
+    //   - bfcache (`pageshow` with persisted=true): Chrome can freeze
+    //     this Keycloak page in memory when the user goes back to the
+    //     SPA and resume it on forward (or vice-versa). The pending rAF
+    //     callback is sometimes never delivered after the freeze.
+    //   - `visibilitychange` to "visible": covers tab switches and the
+    //     case where bfcache is disqualified (HMR WebSockets, certain
+    //     cache headers) and a full re-render happens — the freshly
+    //     registered rAF can still race with the document becoming
+    //     visible.
+    //
+    // `cancelAnimationFrame` on a stale handle is harmless, so both
+    // handlers can blindly restart the loop.
+    function ensureRunning() {
+      if (reduceMotion) return;
       cancelAnimationFrame(rafId);
       lastTs = performance.now();
       rafId = requestAnimationFrame(tick);
+    }
+    function onPageShow(e) {
+      if (e.persisted) ensureRunning();
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") ensureRunning();
     }
 
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);
     window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     if (mq.addEventListener) {
       mq.addEventListener("change", onMotionChange);
     } else if (mq.addListener) {
