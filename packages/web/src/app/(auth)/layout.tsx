@@ -6,18 +6,21 @@
  * invite/accept, forgot-password) inherits it without each page managing its own.
  */
 import { getTranslations } from "next-intl/server";
+import { AuthBackground } from "@/components/auth/auth-background";
 import { LocalePicker } from "@/components/auth/locale-picker";
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations("common");
 
   // main is intentionally transparent — body already paints bg-background,
-  // and the login page layers a fixed background image behind its content.
+  // and AuthBackground layers a fixed icon-rain animation behind every
+  // pre-auth screen (login, signup, invite/accept, forgot-password, …).
   return (
     <main
       id="main-content"
       className="flex min-h-screen flex-col items-center justify-center gap-8 p-6"
     >
+      <AuthBackground />
       {children}
 
       {/* Locale picker — below the card, above the footer on all pre-auth pages */}

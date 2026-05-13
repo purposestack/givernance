@@ -70,6 +70,14 @@
   </style>
 </head>
 <body>
+<#-- Decorative full-viewport icon-rain background. Self-hosted JS (no
+     external requests) so the Keycloak login matches the SPA login page
+     while remaining GDPR-compliant (LG München ruling on third-party
+     scripts/fonts). aria-hidden + tabindex=-1 keep it out of AT trees and
+     focus order. -->
+<canvas id="gv-auth-bg" class="gv-bg-canvas" aria-hidden="true" tabindex="-1"></canvas>
+<script src="${url.resourcesPath}/js/auth-background.js"></script>
+
 <div class="gv-auth-page">
   <div class="gv-auth-card">
 

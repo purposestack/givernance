@@ -121,8 +121,26 @@ body {
   min-height: 100dvh;
 }
 
+/* ── Decorative background canvas ──
+   Full-viewport icon-rain animation, driven by resources/js/auth-background.js.
+   Sits behind the auth card; pointer-events disabled so it can't intercept
+   clicks. The body remains opaque (--gv-bg) so reduced-motion users with the
+   canvas hidden still see the brand background colour. */
+.gv-bg-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  display: block;
+}
+
 /* ── Page layout ── */
 .gv-auth-page {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
