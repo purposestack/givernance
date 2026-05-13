@@ -1,27 +1,35 @@
 /**
- * Feature flag evaluation service — Phase-1 MVP (global flags only).
+ * Feature flag evaluation service — Phase 2 (Epic #365).
  *
- * The whole registry lives in one Redis key, `flags:global`, stored as
- * a single JSON-serialised `Record<flagKey, boolean>`. Reads are
- * O(1); writes invalidate by overwriting the same key in one round-
- * trip. There are <10 flags expected in the foreseeable future, so a
- * full-map invalidate is cheaper to reason about than per-key keys.
+ * Evaluation precedence (highest wins) per doc 18 § 5:
  *
- * Why a single map + 60s TTL:
- *   - Misses fall through to PG → one query rebuilds the whole map,
- *     so a cold cache costs one round-trip not N.
- *   - 60s upper bound on staleness is acceptable for an operator-
- *     toggled flag — the admin UI also explicit-invalidates on write
- *     so a flip is visible immediately on the next request.
- *   - Unknown keys (typo / removed flag still referenced in old code)
- *     evaluate to `false`, matching doc 18 §5.
+ *   1. Unknown key                       → false  (typo / removed flag)
+ *   2. `scope='platform'`                → `enabled` from `feature_flags`
+ *                                          (tenant overrides ignored)
+ *   3. `scope='tenant'` + tenant ctx     → override row if present,
+ *                                          else `enabled` from `feature_flags`
+ *   4. `scope='tenant'` + no tenant ctx  → `enabled` from `feature_flags`
+ *                                          (worker / platform path)
  *
- * Per-tenant overrides + plan-gating from doc 18 are intentionally
- * out of scope here — the function signature takes a `key` only, so
- * future tenant-overload won't break existing callers.
+ * Cache topology:
+ *   - `flags:global:v2` — full map keyed by flag key, value `{ enabled,
+ *     scope }`. v2 because the Phase-1 shape was `Record<key, boolean>`
+ *     and the evaluator now needs the scope to decide whether to
+ *     consult the override cache.
+ *   - `flags:tenant:{orgId}:v1` — Map<key, boolean> of overrides for
+ *     that tenant. Empty (or missing) means no overrides — fall back
+ *     to the platform default.
+ *
+ * Both caches have a 60s TTL; the admin PATCH / PUT / DELETE routes
+ * call `invalidate()` / `invalidateTenant(orgId)` explicitly so a
+ * flip is visible on the next request, not waiting on TTL.
+ *
+ * Unknown keys still evaluate to `false` per doc 18 § 5 — never
+ * throws, never returns null.
  */
 
-import { featureFlags } from "@givernance/shared/schema";
+import { featureFlags, tenantFlagOverrides } from "@givernance/shared/schema";
+import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type Redis from "ioredis";
 import pino from "pino";
@@ -30,18 +38,43 @@ import { redis as defaultRedis } from "../redis.js";
 
 const logger = pino({ name: "flag-service" });
 
-const CACHE_KEY = "flags:global";
+const GLOBAL_CACHE_KEY = "flags:global:v2";
+const TENANT_CACHE_PREFIX = "flags:tenant:";
+const TENANT_CACHE_SUFFIX = ":v1";
 const CACHE_TTL_SECONDS = 60;
 
-/** Strict registry shape — only the columns the evaluator + admin UI need. */
+function tenantCacheKey(orgId: string): string {
+  return `${TENANT_CACHE_PREFIX}${orgId}${TENANT_CACHE_SUFFIX}`;
+}
+
+/** Internal cache shape — what each flag row contributes to evaluation. */
+interface GlobalFlagSummary {
+  enabled: boolean;
+  scope: "platform" | "tenant";
+}
+
+/** Strict registry shape — what the admin UI + list endpoints render. */
 export interface FeatureFlagRow {
   key: string;
   enabled: boolean;
   label: string;
   description: string;
+  scope: "platform" | "tenant";
+  tenantOverrideAllowed: boolean;
+  public: boolean;
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Per-tenant override row as exposed to the admin/org-admin pages. */
+export interface TenantFlagOverrideRow {
+  tenantId: string;
+  flagKey: string;
+  value: boolean;
+  reason: string | null;
+  setBy: string | null;
+  setAt: string;
 }
 
 /**
@@ -63,71 +96,138 @@ function getRedis(deps: FlagServiceDeps): Redis {
   return deps.redis ?? defaultRedis;
 }
 
-/**
- * Read every flag row from PG and return them as a `key → enabled`
- * map. Used internally on cache miss; also exposed for the admin
- * list endpoint (read-through behaviour is the same).
- */
-async function loadFromDb(
+/** Read every flag row from PG and project to the evaluator's summary shape. */
+async function loadGlobalFromDb(
   conn: NodePgDatabase<Record<string, never>>,
-): Promise<Record<string, boolean>> {
+): Promise<Record<string, GlobalFlagSummary>> {
   const rows = await conn
-    .select({ key: featureFlags.key, enabled: featureFlags.enabled })
+    .select({ key: featureFlags.key, enabled: featureFlags.enabled, scope: featureFlags.scope })
     .from(featureFlags);
-  const map: Record<string, boolean> = {};
+  const map: Record<string, GlobalFlagSummary> = {};
   for (const row of rows) {
-    map[row.key] = row.enabled;
+    map[row.key] = { enabled: row.enabled, scope: row.scope };
   }
   return map;
 }
 
-async function getMap(deps: FlagServiceDeps = {}): Promise<Record<string, boolean>> {
+/** Read every override for a tenant. Returns an empty object if no rows. */
+async function loadTenantFromDb(
+  conn: NodePgDatabase<Record<string, never>>,
+  orgId: string,
+): Promise<Record<string, boolean>> {
+  const rows = await conn
+    .select({ flagKey: tenantFlagOverrides.flagKey, value: tenantFlagOverrides.value })
+    .from(tenantFlagOverrides)
+    .where(eq(tenantFlagOverrides.tenantId, orgId));
+  const map: Record<string, boolean> = {};
+  for (const row of rows) {
+    map[row.flagKey] = row.value;
+  }
+  return map;
+}
+
+async function getGlobalMap(
+  deps: FlagServiceDeps = {},
+): Promise<Record<string, GlobalFlagSummary>> {
   const cache = getRedis(deps);
   try {
-    const cached = await cache.get(CACHE_KEY);
+    const cached = await cache.get(GLOBAL_CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached) as Record<string, GlobalFlagSummary>;
+    }
+  } catch (err) {
+    // Cache failure must NOT crash flag evaluation — fall through to
+    // PG. A Redis outage already manifests as elevated p99; we don't
+    // also want to flip every gated route to 404.
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "flags: global cache read failed, falling back to PG",
+    );
+  }
+
+  const map = await loadGlobalFromDb(getDb(deps));
+
+  try {
+    await cache.set(GLOBAL_CACHE_KEY, JSON.stringify(map), "EX", CACHE_TTL_SECONDS);
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "flags: global cache write failed, evaluator will keep falling through to PG until Redis recovers",
+    );
+  }
+
+  return map;
+}
+
+async function getTenantMap(
+  deps: FlagServiceDeps,
+  orgId: string,
+): Promise<Record<string, boolean>> {
+  const cache = getRedis(deps);
+  const key = tenantCacheKey(orgId);
+  try {
+    const cached = await cache.get(key);
     if (cached) {
       return JSON.parse(cached) as Record<string, boolean>;
     }
   } catch (err) {
-    // Cache failure must NOT crash flag evaluation — fall through to
-    // PG. A Redis outage already manifests as elevated p99 (cache
-    // misses); we don't want to also flip every gated route to 404.
     logger.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "flags: cache read failed, falling back to PG",
+      {
+        err: err instanceof Error ? err.message : String(err),
+        orgId,
+      },
+      "flags: tenant cache read failed, falling back to PG",
     );
   }
 
-  const map = await loadFromDb(getDb(deps));
+  const map = await loadTenantFromDb(getDb(deps), orgId);
 
   try {
-    await cache.set(CACHE_KEY, JSON.stringify(map), "EX", CACHE_TTL_SECONDS);
+    await cache.set(key, JSON.stringify(map), "EX", CACHE_TTL_SECONDS);
   } catch (err) {
     logger.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "flags: cache write failed, evaluator will keep falling through to PG until Redis recovers",
+      {
+        err: err instanceof Error ? err.message : String(err),
+        orgId,
+      },
+      "flags: tenant cache write failed, evaluator will keep falling through to PG until Redis recovers",
     );
   }
 
   return map;
 }
 
+/** Optional evaluation context. `orgId` activates tenant overrides for `scope='tenant'` flags. */
+export interface FlagContext {
+  orgId?: string | null;
+}
+
 export interface FlagService {
   /**
-   * Evaluate a single flag. Unknown keys (typo / DB drift) evaluate
-   * to `false` per doc 18 §5 — never throws, never returns null. Any
-   * unexpected DB error bubbles up; the route layer's existing 500
-   * handler catches it.
+   * Evaluate a single flag. Implements the doc 18 § 5 precedence:
+   *   - Unknown key → false.
+   *   - scope='platform' → platform default (tenant overrides ignored).
+   *   - scope='tenant' + ctx.orgId → override if present, else default.
+   *   - scope='tenant' + no ctx.orgId → platform default (worker path).
    */
-  isEnabled(key: string): Promise<boolean>;
-  /** Bulk fetch — used by the admin list endpoint + the web SSR layer. */
+  isEnabled(key: string, ctx?: FlagContext): Promise<boolean>;
+  /** Bulk fetch for the super-admin Back Office list. */
   list(): Promise<FeatureFlagRow[]>;
   /**
-   * Invalidate the Redis cache. Called by the admin PATCH route AFTER
-   * the DB write succeeds so the next read sees the new value.
-   * Idempotent — a stale del on a key that's already gone is a no-op.
+   * Public projection — what tenant users see on `/v1/feature-flags`.
+   * Filters by `public=true` AND evaluates the effective value for
+   * the supplied org (override if present, else platform default).
+   * Resolves the public-projection caveat from doc 18 § 0.
    */
+  listPublic(ctx?: FlagContext): Promise<Array<{ key: string; enabled: boolean }>>;
+  /** Override listing for the super-admin tenant detail page. */
+  listOverridesForTenant(orgId: string): Promise<TenantFlagOverrideRow[]>;
+  /** Override count per flag for the super-admin global view. */
+  overrideStats(): Promise<Array<{ flagKey: string; enabledCount: number; disabledCount: number }>>;
+  /** Invalidate the global flags cache. Called after a platform PATCH. */
   invalidate(): Promise<void>;
+  /** Invalidate one tenant's override cache. Called after a PUT/DELETE override or PATCH /org/feature-flags. */
+  invalidateTenant(orgId: string): Promise<void>;
 }
 
 /**
@@ -137,10 +237,24 @@ export interface FlagService {
  */
 export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
   return {
-    async isEnabled(key) {
-      const map = await getMap(deps);
-      return map[key] === true;
+    async isEnabled(key, ctx) {
+      const globalMap = await getGlobalMap(deps);
+      const entry = globalMap[key];
+      if (!entry) return false;
+
+      // Platform-locked: tenant overrides ignored even if rows exist.
+      if (entry.scope === "platform") return entry.enabled;
+
+      // Tenant-scoped, no caller context: worker / platform path —
+      // fall back to the platform default.
+      const orgId = ctx?.orgId;
+      if (!orgId) return entry.enabled;
+
+      const tenantMap = await getTenantMap(deps, orgId);
+      if (key in tenantMap) return tenantMap[key] === true;
+      return entry.enabled;
     },
+
     async list() {
       const rows = await getDb(deps)
         .select({
@@ -148,6 +262,9 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
           enabled: featureFlags.enabled,
           label: featureFlags.label,
           description: featureFlags.description,
+          scope: featureFlags.scope,
+          tenantOverrideAllowed: featureFlags.tenantOverrideAllowed,
+          public: featureFlags.public,
           updatedBy: featureFlags.updatedBy,
           createdAt: featureFlags.createdAt,
           updatedAt: featureFlags.updatedAt,
@@ -159,6 +276,9 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
         enabled: row.enabled,
         label: row.label,
         description: row.description,
+        scope: row.scope,
+        tenantOverrideAllowed: row.tenantOverrideAllowed,
+        public: row.public,
         updatedBy: row.updatedBy,
         createdAt:
           row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
@@ -166,17 +286,96 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
           row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
       }));
     },
+
+    async listPublic(ctx) {
+      const globalMap = await getGlobalMap(deps);
+      const orgId = ctx?.orgId ?? null;
+
+      // Public-projection means: only rows where `public = true`.
+      const publicKeys = await getDb(deps)
+        .select({ key: featureFlags.key })
+        .from(featureFlags)
+        .where(eq(featureFlags.public, true));
+
+      const tenantMap = orgId ? await getTenantMap(deps, orgId) : {};
+
+      return publicKeys
+        .map(({ key }) => {
+          const entry = globalMap[key];
+          if (!entry) return { key, enabled: false };
+          if (entry.scope === "platform") return { key, enabled: entry.enabled };
+          if (orgId && key in tenantMap) return { key, enabled: tenantMap[key] === true };
+          return { key, enabled: entry.enabled };
+        })
+        .sort((a, b) => a.key.localeCompare(b.key));
+    },
+
+    async listOverridesForTenant(orgId) {
+      const rows = await getDb(deps)
+        .select({
+          flagKey: tenantFlagOverrides.flagKey,
+          value: tenantFlagOverrides.value,
+          reason: tenantFlagOverrides.reason,
+          setBy: tenantFlagOverrides.setBy,
+          updatedAt: tenantFlagOverrides.updatedAt,
+        })
+        .from(tenantFlagOverrides)
+        .where(eq(tenantFlagOverrides.tenantId, orgId));
+      return rows.map((row) => ({
+        tenantId: orgId,
+        flagKey: row.flagKey,
+        value: row.value,
+        reason: row.reason,
+        setBy: row.setBy,
+        setAt:
+          row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
+      }));
+    },
+
+    async overrideStats() {
+      // One round-trip aggregation: count(true) + count(false) per flag.
+      // Reading directly via the Drizzle query builder keeps the
+      // result typed; the SQL fan-out is two scans of one index.
+      const rows = await getDb(deps)
+        .select({
+          flagKey: tenantFlagOverrides.flagKey,
+          value: tenantFlagOverrides.value,
+        })
+        .from(tenantFlagOverrides);
+
+      const acc = new Map<string, { enabledCount: number; disabledCount: number }>();
+      for (const row of rows) {
+        const cur = acc.get(row.flagKey) ?? { enabledCount: 0, disabledCount: 0 };
+        if (row.value) cur.enabledCount += 1;
+        else cur.disabledCount += 1;
+        acc.set(row.flagKey, cur);
+      }
+      return Array.from(acc.entries())
+        .map(([flagKey, counts]) => ({ flagKey, ...counts }))
+        .sort((a, b) => a.flagKey.localeCompare(b.flagKey));
+    },
+
     async invalidate() {
       try {
-        await getRedis(deps).del(CACHE_KEY);
+        await getRedis(deps).del(GLOBAL_CACHE_KEY);
       } catch (err) {
-        // Same posture as the read path — log + continue. The 60-second
-        // TTL is the worst-case lag between admin flip and observable
-        // effect; if Redis is down the admin sees their change on the
-        // next request anyway (PG read-through).
         logger.warn(
           { err: err instanceof Error ? err.message : String(err) },
-          "flags: cache invalidate failed, value will refresh within TTL",
+          "flags: global cache invalidate failed, value will refresh within TTL",
+        );
+      }
+    },
+
+    async invalidateTenant(orgId) {
+      try {
+        await getRedis(deps).del(tenantCacheKey(orgId));
+      } catch (err) {
+        logger.warn(
+          {
+            err: err instanceof Error ? err.message : String(err),
+            orgId,
+          },
+          "flags: tenant cache invalidate failed, value will refresh within TTL",
         );
       }
     },
