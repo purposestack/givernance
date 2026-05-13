@@ -26,6 +26,33 @@ inputs:
 runs:
   using: composite
   steps:
+    # Refresh the GHCR login on the host before pulling. Two reasons:
+    #   - The token stored in /root/.docker/config.json from a previous
+    #     `kamal setup` can become stale or be overwritten by ad-hoc
+    #     operator logins. A `kamal deploy` does NOT re-run registry
+    #     login, so without this step a single accidental
+    #     `docker login` on the VPS leaves the host unable to pull
+    #     until the next `kamal setup`.
+    #   - The runner's job has `packages: write` on the auto-issued
+    #     GITHUB_TOKEN, so this always re-establishes good creds via
+    #     `registry:` in the kamal config (server: ghcr.io,
+    #     password: GITHUB_TOKEN).
+    - name: Refresh registry login on host
+      shell: bash
+      run: bundle exec kamal registry login -c "${{ inputs.config }}"
+
+    # `kamal accessory boot` runs plain `docker run` on the host without
+    # `--pull=always`, so a fresh image pushed to GHCR earlier in this
+    # job is ignored if the host has the same tag locally cached. That
+    # produced a silent regression on 2026-05-13 where the Keycloak
+    # theme rebuild succeeded in CI, the container was recreated, but
+    # the running image was the prior-day's cached `:latest`. Force a
+    # pull before the boot so the reboot step is self-healing for image
+    # bumps that reuse a tag (`:latest`, `:staging`).
+    - name: Pull latest accessory image on host
+      shell: bash
+      run: bundle exec kamal accessory pull "${{ inputs.accessory }}" -c "${{ inputs.config }}"
+
     # `kamal accessory reboot` issues `kamal-proxy remove <service>`
     # unconditionally, which fails with "Error: service not found" the
     # first time a `proxy:` block is added to an existing accessory —
