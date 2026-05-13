@@ -271,10 +271,7 @@ export async function removeTenantOverride(
     const [deleted] = await tx
       .delete(tenantFlagOverrides)
       .where(
-        and(
-          eq(tenantFlagOverrides.tenantId, tenantId),
-          eq(tenantFlagOverrides.flagKey, flagKey),
-        ),
+        and(eq(tenantFlagOverrides.tenantId, tenantId), eq(tenantFlagOverrides.flagKey, flagKey)),
       )
       .returning({ value: tenantFlagOverrides.value });
     return deleted ? { previousValue: deleted.value } : null;

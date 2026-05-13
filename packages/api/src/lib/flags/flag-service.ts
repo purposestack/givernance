@@ -327,8 +327,7 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
         value: row.value,
         reason: row.reason,
         setBy: row.setBy,
-        setAt:
-          row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
+        setAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
       }));
     },
 

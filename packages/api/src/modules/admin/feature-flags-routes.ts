@@ -289,8 +289,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
           // data if a historical override existed before the scope
           // was tightened. Effective value uses the override only
           // for tenant-scoped flags.
-          const effective =
-            flag.scope === "tenant" && override ? override.value : flag.enabled;
+          const effective = flag.scope === "tenant" && override ? override.value : flag.enabled;
           return {
             key: flag.key,
             label: flag.label,
@@ -340,13 +339,15 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         if (target.rejection === "flag_not_found") {
           return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));
         }
-        return reply.status(422).send(
-          problemDetail(
-            422,
-            "Unprocessable Entity",
-            "This flag is platform-scoped and cannot have per-tenant overrides — flip the platform default instead",
-          ),
-        );
+        return reply
+          .status(422)
+          .send(
+            problemDetail(
+              422,
+              "Unprocessable Entity",
+              "This flag is platform-scoped and cannot have per-tenant overrides — flip the platform default instead",
+            ),
+          );
       }
 
       const result = await upsertTenantOverride({
