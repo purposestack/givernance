@@ -45,10 +45,12 @@ import {
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
-  removeTenantOverride,
+  removeOverrideAsSuperAdmin,
+  removeOwnOrgOverride,
   resolveOverrideTarget,
   setFeatureFlag,
-  upsertTenantOverride,
+  upsertOverrideAsSuperAdmin,
+  upsertOwnOrgOverride,
 } from "./feature-flags-service.js";
 
 const FlagKeyParams = Type.Object({
@@ -426,7 +428,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
           );
       }
 
-      const result = await upsertTenantOverride({
+      const result = await upsertOverrideAsSuperAdmin({
         tenantId,
         flagKey: key,
         value: body.value,
@@ -489,7 +491,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Tenant not found"));
       }
 
-      const result = await removeTenantOverride(tenantId, key);
+      const result = await removeOverrideAsSuperAdmin(tenantId, key);
       await flagService.invalidateTenant(tenantId);
       request.log.info(
         {
@@ -598,8 +600,8 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));
       }
 
-      const result = await upsertTenantOverride({
-        tenantId: orgId,
+      const result = await upsertOwnOrgOverride({
+        orgId,
         flagKey: key,
         value: body.value,
         reason: body.reason ?? null,
@@ -669,7 +671,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));
       }
 
-      const result = await removeTenantOverride(orgId, key);
+      const result = await removeOwnOrgOverride(orgId, key);
       await flagService.invalidateTenant(orgId);
 
       request.log.info(

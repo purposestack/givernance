@@ -172,6 +172,12 @@ export function PerFlagTenants({ flag, initialTenants }: PerFlagTenantsProps) {
    * batch — the operator gets a partial-success toast at the end. The
    * progress counter renders on the bulk-action bar while the batch
    * runs so the UI never freezes silently on 45-tenant fan-outs.
+   *
+   * Catches log the underlying error to the browser console (so the
+   * operator can open DevTools and see which tenant + status code
+   * blew up) AND capture the first ApiProblem detail to surface in
+   * the partial-success toast — silently swallowing every failure
+   * with just a "2 failed" count is a debugging black hole.
    */
   const handleBulkSet = async (mode: "enable" | "disable" | "clear") => {
     const ids = Array.from(selectedIds);
@@ -208,8 +214,13 @@ export function PerFlagTenants({ flag, initialTenants }: PerFlagTenantsProps) {
           }));
         }
         success += 1;
-      } catch {
+      } catch (err) {
         failed += 1;
+        // Diagnostic-only — the operator opens DevTools to see what
+        // blew up. The toast stays plain-language; raw DB errors
+        // and other technical details have no business in an
+        // operator-facing toast.
+        console.error(`[per-flag-tenants] bulk ${mode} failed for tenant ${id}`, err);
       }
       setBulkProgress({ done: i + 1, total: ids.length });
     }

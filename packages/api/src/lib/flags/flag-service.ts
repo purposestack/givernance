@@ -33,7 +33,7 @@ import { and, count, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type Redis from "ioredis";
 import pino from "pino";
-import { db } from "../db.js";
+import { db, systemDb, withTenantContext } from "../db.js";
 import { redis as defaultRedis } from "../redis.js";
 
 const logger = pino({ name: "flag-service" });
@@ -341,14 +341,21 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
       // Drizzle's `leftJoin` on the override side leaves the row
       // columns nullable — we coalesce to `override: null` when the
       // join produced no match.
-      const [flag] = await getDb(deps)
+      //
+      // Cross-tenant super-admin read: uses `systemDb` (BYPASSRLS
+      // owner pool) because `tenant_flag_overrides` has FORCE ROW
+      // LEVEL SECURITY and we need to scan every tenant's override
+      // in a single query. The route already gates this on
+      // `requireSuperAdmin`. Matches the platform-admins-service
+      // pattern.
+      const [flag] = await systemDb
         .select({ enabled: featureFlags.enabled, scope: featureFlags.scope })
         .from(featureFlags)
         .where(eq(featureFlags.key, flagKey))
         .limit(1);
       if (!flag) return [];
 
-      const rows = await getDb(deps)
+      const rows = await systemDb
         .select({
           tenantId: tenants.id,
           tenantName: tenants.name,
@@ -400,16 +407,24 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
     },
 
     async listOverridesForTenant(orgId) {
-      const rows = await getDb(deps)
-        .select({
-          flagKey: tenantFlagOverrides.flagKey,
-          value: tenantFlagOverrides.value,
-          reason: tenantFlagOverrides.reason,
-          setBy: tenantFlagOverrides.setBy,
-          updatedAt: tenantFlagOverrides.updatedAt,
-        })
-        .from(tenantFlagOverrides)
-        .where(eq(tenantFlagOverrides.tenantId, orgId));
+      // Tenant-scoped read against a FORCE-RLS table — wrap in
+      // `withTenantContext(orgId)` so the policy
+      // `tenant_id = app_current_organization_id()` matches. Used
+      // by both the super-admin tenant-detail tab AND the
+      // org-admin self-service page; both target a specific tenant
+      // so the same context wrapper is correct.
+      const rows = await withTenantContext(orgId, async (tx) =>
+        tx
+          .select({
+            flagKey: tenantFlagOverrides.flagKey,
+            value: tenantFlagOverrides.value,
+            reason: tenantFlagOverrides.reason,
+            setBy: tenantFlagOverrides.setBy,
+            updatedAt: tenantFlagOverrides.updatedAt,
+          })
+          .from(tenantFlagOverrides)
+          .where(eq(tenantFlagOverrides.tenantId, orgId)),
+      );
       return rows.map((row) => ({
         tenantId: orgId,
         flagKey: row.flagKey,
@@ -422,12 +437,12 @@ export function createFlagService(deps: FlagServiceDeps = {}): FlagService {
 
     async overrideStats() {
       // SQL `GROUP BY (flag_key, value)` — index-only scan against
-      // the existing `tenant_flag_overrides_flag_idx`. Replaces a
-      // prior in-memory aggregation that pulled every override row
-      // into Node (data-architect review on PR #366). Returns at most
-      // `2 × |tenant-scoped flags|` rows from the DB regardless of
-      // tenant count.
-      const grouped = await getDb(deps)
+      // the existing `tenant_flag_overrides_flag_idx`. Cross-tenant
+      // super-admin aggregate (counts overrides across the whole
+      // fleet), so uses `systemDb` (BYPASSRLS) to see every row.
+      // Returns at most 2 × |tenant-scoped flags| rows from the DB
+      // regardless of tenant count.
+      const grouped = await systemDb
         .select({
           flagKey: tenantFlagOverrides.flagKey,
           value: tenantFlagOverrides.value,
