@@ -42,6 +42,15 @@ const EnvSchema = Type.Object({
    * {variant}.{ext}`) so a stale CDN edge can't leak across logos.
    */
   S3_BRANDING_BUCKET: Type.String({ minLength: 1, default: "branding" }),
+  /**
+   * S3 bucket for bulk-import uploads (Epic #373). **Private** — every
+   * object carries PII (donor names, emails, phones, addresses). Served
+   * back through the API only, never via presigned URL nor public-read.
+   * Per-tenant isolation lives in the key prefix
+   * (`{org_id}/bulk-imports/{job_id}/{file}`), not in object ACLs — see
+   * ADR-023 (one bucket per visibility class).
+   */
+  S3_BULK_IMPORT_BUCKET: Type.String({ minLength: 1, default: "bulk-imports" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
   /**

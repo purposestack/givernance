@@ -178,6 +178,30 @@ export const FEATURE_FLAG_KEYS = {
    *   - Web: tenant-override count column on /admin/feature-flags
    */
   ADMIN_FEATURE_FLAGS_PHASE2: "admin.feature_flags_phase2",
+
+  /**
+   * Gates the bulk-import-constituents feature (Epic #373, PR #385).
+   *
+   * Off by default until we've watched a few real-world imports go
+   * through staging — large CSVs hitting RLS-bound INSERTs is a new
+   * shape of write traffic for the platform. `scope='tenant'` +
+   * `tenant_override_allowed=true` so each org-admin can self-serve
+   * the toggle from /settings/feature-flags once Givernance staff
+   * raises the platform default (or while it stays off): there is no
+   * platform-level precondition like DKIM — only operational caution.
+   *
+   * `public=true`: the constituents page reads `/v1/feature-flags`
+   * via SSR to decide whether to render the "Bulk import" button.
+   *
+   * Surfaces gated by this key:
+   *   - API: POST /v1/constituents/bulk-import (+ all sub-routes)
+   *   - Worker: `constituents.bulk_import_requested` outbox events drop
+   *     silently when the flag is off (defence in depth — if a request
+   *     slipped through the API gate, the worker is the second wall).
+   *   - Web: "Bulk import" button on the constituents page hides when
+   *     the flag is off.
+   */
+  CONSTITUENTS_BULK_IMPORT: "constituents.bulk_import",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -263,6 +287,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
       "Adds a bell icon to the top bar with a panel that lists what happened in your organisation — new donations, postal-export downloads, team invitations, and more. Each member can choose which alerts they want from the Settings menu. Off by default until Givernance staff confirm the bell, panel, and per-member preferences for your organisation.",
     scope: "tenant",
     tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.CONSTITUENTS_BULK_IMPORT,
+    defaultEnabled: false,
+    label: "Bulk import constituents from CSV / Excel",
+    description:
+      "Lets operators upload a CSV or Excel file (max 10 MB) to create constituents in bulk, with duplicate detection and a per-row progress view. Off by default while we monitor the first real-world imports — flip it on from this page when you're ready.",
+    scope: "tenant",
+    tenantOverrideAllowed: true,
     public: true,
   },
 ];
