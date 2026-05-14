@@ -1,6 +1,8 @@
 # Public donation page — competitive teardown & archetype shortlist
 
-> Spike artifact for [Epic #362 — Public donation page · multiple style presets](https://github.com/purposestack/givernance/issues/362). Reviewed alongside [ADR-030](../adrs/adr-030-public-page-style-archetypes.md) and the reference mockup `docs/design/donations/public-foundation.html`.
+> Spike artifact for [Epic #362 — Public donation page · multiple style presets](https://github.com/purposestack/givernance/issues/362). Reviewed alongside [ADR-030](../adrs/adr-030-public-page-style-archetypes.md) and the reference mockup [`docs/design/donations/public-foundation.html`](../design/donations/public-foundation.html).
+>
+> **This is a spike artifact, not the canonical domain doc.** The numbered `docs/26-public-page-styles.md` — covering the shipped ERD, permissions matrix, Mermaid user-flow diagram, GDPR posture, and the "how to add a new archetype" guide — lands in PR-5 of [Epic #362](https://github.com/purposestack/givernance/issues/362) alongside the implementation it documents. Future readers should prefer that doc once it exists; this file remains as the research-trail.
 
 ---
 
@@ -57,12 +59,12 @@ We ended up at 10 (the Epic asked for 3–5; the product directive asked for 10 
 | # | Key | Operator-facing label | Voice / posture | Typography | Hero treatment | Amount picker | Best for |
 |---|---|---|---|---|---|---|---|
 | 1 | `foundation` | **Foundation** *(default)* | Institutional, restrained, trustworthy. The "your grandmother's lawyer wrote the headline" archetype. | Serif display + humanist sans body (Source Serif + Inter). | Logo top-left, headline, mission sentence, soft gradient. Today's page. | Inline chips + write-in. | Long-running NPOs, foundations, board-driven orgs. |
-| 2 | `activist` | **Activist** | Urgent, vivid, emotionally direct. Big colour, big type. | Display sans (bold cut) + same sans body. | Oversized headline as the hero. Optional photo behind. Saturated brand colour wash. | Grid of 4 oversized chips, recurring as a second screen. | Climate, social-justice, mobilisation orgs. |
+| 2 | `activist` | **Activist** | Sustained-mobilisation. Urgent voice, but *recurring-first* — the page wants you back every month, not just today. Big colour, big type. | Display sans (bold cut) + same sans body. | Oversized headline as the hero. Optional photo behind. Saturated brand colour wash. | **Recurring chip-grid first**, one-time as a secondary toggle. Distinguishes from `emergency-appeal` (one-time, counter-led). | Climate, social-justice, sustained-campaign mobilisation orgs (Alternatiba, Sea Shepherd FR). |
 | 3 | `editorial-story` | **Editorial Story** | Long-form, photo-essay, beneficiary-driven. The "magazine feature" archetype. | Editorial serif (Spectral) + humanist sans body. | Full-bleed photo, byline-style attribution, drop cap on the description. | Sits below the story; reveals after scroll. | Humanitarian orgs with strong photography (MSF, Oxfam-adjacent). |
 | 4 | `minimal-checkout` | **Minimal Checkout** | Stripe-Payment-Link-grade. No pitch — the donor already trusts you. | Single sans throughout (Inter). | No hero. Logo small in the corner, headline as a label. | The page **is** the amount picker. | Repeat-donor campaigns, member-only appeals. |
-| 5 | `emergency-appeal` | **Emergency Appeal** | Urgent, counter-led, action-now. The GoFundMe disaster-page archetype. | Bold sans display + condensed mono for the counter. | Counter is the hero. Date stamp, time-since-launch line, optional banner. | Below the counter, single column. | Disasters, time-bound appeals, matching-day campaigns. |
+| 5 | `emergency-appeal` | **Emergency Appeal** | Urgent, counter-led, **one-time-first** — the page exists for *now*. The GoFundMe disaster-page archetype. | Bold sans display + condensed mono for the counter. | Counter is the hero. Date stamp, time-since-launch line, optional banner. | One-time front-and-centre; recurring is a tiny secondary affordance. Distinguishes from `activist` (recurring-mobilisation). | Disasters, time-bound appeals, matching-day campaigns. |
 | 6 | `neo-brutalist` | **Neo-Brutalist** | Confident, type-driven, deliberate visual roughness. Black borders, hard shadows, mono numerals. | All-mono throughout (JetBrains Mono) with one display serif accent. | Concrete-block grid, oversized chevrons, manual misalignments. | Square chips, hard borders, hover-on-shift. | Arts orgs, design-collective NPOs, indie civic-tech. |
-| 7 | `calm-wellness` | **Calm Wellness** | Soft, hopeful, breath-paced. Pastel washes, gentle motion. | Display sans with rounded terminals (Quicksand) + the same family for body. | Animated soft gradient (low-amplitude SVG morphing). Headline in lowercase. | Pill chips, generous whitespace, animated focus state. | Mental-health, mindfulness, ecology-meditation orgs. |
+| 7 | `calm-wellness` | **Calm Wellness** | Soft, hopeful, breath-paced. Pastel washes, gentle motion. | Display sans with rounded terminals (Quicksand) for headline only; humanist sans (Inter) for body — Quicksand body has known readability issues below 16 px which clashes with this archetype's older / SR-user audience. | Animated soft gradient (low-amplitude SVG morphing). Headline in lowercase. | Pill chips, generous whitespace, animated focus state. | Mental-health, mindfulness, ecology-meditation orgs. |
 | 8 | `civic-modern` | **Civic Modern** | Public-sector adjacent. French-administration neutral. Strong transparency framing. | Geometric sans (IBM Plex Sans) throughout, with mono for figures. | Two-column: headline + a transparency-stat block ("82 % programmes, 11 % support, 7 % fundraising"). | Inline chips + recurring + an explicit "where does it go?" expander. | French-NPO sector, civic-tech, public-partnership NPOs. |
 | 9 | `retro-print` | **Retro Print** | Riso-printed-poster energy. Off-register colour, paper grain, vintage feel. | Slab serif display + a thin humanist for body. | Two-colour duotone treatment of the logo. Subtle paper-grain background. | Stamped-postcard chips. | Vintage-feeling orgs: heritage, local museums, alumni associations. |
 | 10 | `cosmic-gradient` | **Cosmic Gradient** | Optimistic, ambitious, future-facing. Big animated gradient mesh, large display type. | Display sans (Geist) + humanist sans body. | Animated CSS gradient mesh as the hero background; headline floats. | Glassmorphism chips on the gradient. | Climate-tech, space, future-of-X NPOs, tech-adjacent orgs. |
@@ -86,17 +88,17 @@ Per the product directive, a subset of archetypes carry a hidden interaction the
 | `calm-wellness` | Click the headline 5 times | Falling-leaves / falling-snow animation (season-dependent in the user's locale). |
 | `neo-brutalist` | Hover and hold any chip for 2 s | RGB-channel glitch on the headline for 600 ms. |
 | `retro-print` | Triple-click the logo | The page flickers and the duotone briefly mis-registers, like a Riso paper-jam. |
-| `cosmic-gradient` | Click the counter | A particle burst spawns from the click point and drifts upward. |
+| `cosmic-gradient` | Click the gradient hero | A particle burst spawns from the click point and drifts upward through the gradient mesh. |
 | `emergency-appeal` | (no egg — emergency campaigns should never have a "fun" moment) | — |
 | `foundation`, `editorial-story`, `minimal-checkout`, `civic-modern` | (no egg — preserves credibility) | — |
 
-All easter eggs are pure-frontend, respect `prefers-reduced-motion` (they no-op when the user has asked for less motion), and are seed-able for screenshot tests so they don't cause flake.
+All easter eggs are pure-frontend, ride the shared `useEasterEgg` hook (ADR-030 § Motion policy) which short-circuits to no-op on `prefers-reduced-motion`, `prefers-reduced-data`, or `navigator.connection.saveData`; they're `aria-hidden`, never announce, never shift focus, and never log donor input. Seed-able for screenshot tests so they don't cause flake.
 
 ---
 
 ## 3. Mockup commitment
 
-Per the Epic's spike acceptance criteria, this PR ships the **first** archetype's HTML mockup — `Foundation` — at `docs/design/donations/public-foundation.html`. It is the closest to the existing live page so we can validate the chosen architecture doesn't break what's already shipped. The other 9 mockups land in [Phase 4 (PR-4)](../../README.md#phases) along with their implementation.
+Per the Epic's spike acceptance criteria, this PR ships the **first** archetype's HTML mockup — `Foundation` — at [`docs/design/donations/public-foundation.html`](../design/donations/public-foundation.html). It is the closest to the existing live page so we can validate the chosen architecture doesn't break what's already shipped. The other 9 mockups land in Phase 4 of [Epic #362](https://github.com/purposestack/givernance/issues/362) along with their implementation.
 
 ---
 
