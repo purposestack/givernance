@@ -184,3 +184,56 @@ export function brandingPublicUrl(key: string): string {
   const base = env.KEYCLOAK_LOGO_PUBLIC_URL_BASE ?? `${env.S3_ENDPOINT}/${env.S3_BRANDING_BUCKET}`;
   return `${base.replace(/\/+$/, "")}/${key}`;
 }
+
+// ─── Bulk Import bucket helpers (Epic #373) ───────────────────────────
+
+const BULK_IMPORT_BUCKET = env.S3_BULK_IMPORT_BUCKET ?? 'givernance-bulk-imports';
+
+/**
+ * Upload a bulk import file to S3/MinIO.
+ * Key format: `{org_id}/bulk-imports/{job_id}/{filename}`
+ */
+export async function putBulkImportObject(
+  key: string,
+  body: Buffer,
+  contentType: string,
+): Promise<void> {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: BULK_IMPORT_BUCKET,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
+}
+
+/**
+ * Fetch a bulk import file as a Readable stream.
+ */
+export async function getBulkImportObject(
+  key: string,
+): Promise<{ body: Readable; contentLength: number | undefined }> {
+  const command = new GetObjectCommand({
+    Bucket: BULK_IMPORT_BUCKET,
+    Key: key,
+  });
+  const response = await s3.send(command);
+  const body = response.Body as Readable | undefined;
+  if (!body) {
+    throw new Error(`S3 object missing body: ${key}`);
+  }
+  return { body, contentLength: response.ContentLength };
+}
+
+/**
+ * Delete a bulk import object from S3/MinIO.
+ */
+export async function deleteBulkImportObject(key: string): Promise<void> {
+  await s3.send(
+    new DeleteObjectsCommand({
+      Bucket: BULK_IMPORT_BUCKET,
+      Delete: { Objects: [{ Key: key }], Quiet: true },
+    }),
+  );
+}
