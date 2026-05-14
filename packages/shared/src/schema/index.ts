@@ -1409,7 +1409,7 @@ export type BulkImportResultStatus = (typeof BULK_IMPORT_RESULT_STATUS_VALUES)[n
  *   - The file itself sits in S3 (bucket `S3_BULK_IMPORT_BUCKET`,
  *     private, key prefix `{org_id}/bulk-imports/{job_id}/…`) and is
  *     subject to the bucket's retention policy (90 days, see
- *     `docs/26-bulk-import.md` §6). This row only carries the pointer.
+ *     `docs/28-bulk-import.md` §6). This row only carries the pointer.
  *   - On constituent erasure the file is NOT auto-purged — the row
  *     still has audit value (who-uploaded-what-when). The bucket
  *     lifecycle policy is the GDPR retention boundary.
@@ -1501,7 +1501,7 @@ export const bulkImportJobs = pgTable(
  * GDPR posture: `rowData` is a JSONB snapshot of the user-uploaded row
  * (PII). It is purged by the bucket lifecycle policy on the source file
  * (90 days), and additionally truncated by the `bulk_import_files`
- * soft-delete cascade. See `docs/26-bulk-import.md` §6 for the full
+ * soft-delete cascade. See `docs/28-bulk-import.md` §6 for the full
  * retention table.
  */
 export const bulkImportResults = pgTable(

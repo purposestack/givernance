@@ -65,6 +65,20 @@ Per [ADR-017](../15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-
 
 The app role that the API uses at runtime (`givernance_app`, NOBYPASSRLS) is provisioned by the Drizzle migrations inside the `givernance` database — see §6 of [`docs/02-reference-architecture.md`](../02-reference-architecture.md) for the 3-role RLS pattern.
 
+### Buckets
+
+Per [ADR-023](../adrs/adr-023-object-storage-bucket-topology.md), every asset class first picks a **visibility class** (public-read vs. private), and the bucket is determined by that visibility — never by the asset type. Tenant isolation lives in the **key prefix** (`{org_id}/…`), not in object-level ACLs. Adding a new asset class is an explicit decision: if its visibility AND lifecycle policy match an existing bucket, co-locate; otherwise fork a new one and add a row below.
+
+| Bucket | Visibility | Lifecycle | Content |
+|---|---|---|---|
+| `receipts` | **Private** (signed URLs only) | 7-year retention (EU fiscal) | Donor receipt PDFs |
+| `campaigns` | **Private** (signed URLs only) | `AbortIncompleteMultipartUpload` 1 d | Postal-export ZIPs (Epic #274) |
+| `branding` | **Public-read** (no per-object ACL) | Nightly orphan-GC sweep + tenant-offboarding prefix-delete | Org logos and their derived variants (Epic #286) |
+| `bank-statements` | **Private** (signed URLs only) | **10-year retention** (Swiss CO Art. 958f) | Raw camt.053 ISO 20022 statements + rejected uploads (Epic #318) |
+| `bulk-imports` | **Private** (signed URLs disabled — served via API only) | **90 days** | PII-laden CSV/Excel uploads + their re-download surface (Epic #373) |
+
+Bucket names are read from `S3_*_BUCKET` env vars (see `.env.example`). The bucket name is also persisted on each row that points into it (`bulk_import_files.s3_bucket`, `camt_statements.s3_path`, …) so a future env-var rename doesn't break older rows.
+
 ### Recommended Local Tooling (macOS Apple Silicon)
 
 | Tool | Purpose | Download |

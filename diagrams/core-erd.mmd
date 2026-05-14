@@ -44,6 +44,54 @@ erDiagram
   users ||--o{ org_branding_assets : "uploaded_by"
   %% Phase 2: campaigns ||--o| org_branding_assets : "hero_asset_id (deferred, separate migration)"
 
+  %% BULK IMPORT CONSTITUENTS (Epic #373) — see docs/28-bulk-import.md
+  orgs ||--o{ bulk_import_files : "owns"
+  orgs ||--o{ bulk_import_jobs : "owns"
+  orgs ||--o{ bulk_import_results : "owns"
+  bulk_import_files ||--o{ bulk_import_jobs : "parsed by"
+  bulk_import_jobs ||--o{ bulk_import_results : "produces"
+  users ||--o{ bulk_import_jobs : "requested_by"
+  constituents ||--o| bulk_import_results : "created by row"
+  constituents ||--o{ bulk_import_results : "duplicate_of"
+
+  bulk_import_files {
+    uuid id PK
+    uuid org_id FK
+    string s3_key "private bulk-imports bucket, 90-day lifecycle"
+    string s3_bucket "captured at write time"
+    string file_name "sanitised basename"
+    int file_size "≤ 10 MB hard cap"
+    string mime_type "from magic-byte sniff"
+    timestamp deleted_at "soft-delete sweep at 90 d"
+  }
+  bulk_import_jobs {
+    uuid id PK
+    uuid org_id FK
+    enum status "pending | processing | completed | partial | failed"
+    int total_rows
+    int processed_rows "live, drives 2 s polling"
+    int created_count
+    int duplicate_count
+    int failed_count
+    uuid file_id FK
+    uuid requested_by FK "users.id, SET NULL on user purge"
+    text error "terminal-failure message"
+    timestamp completed_at
+  }
+  bulk_import_results {
+    uuid id PK
+    uuid org_id FK
+    uuid job_id FK
+    int row_number
+    jsonb row_data "PII snapshot, 90-day retention"
+    string status "created | duplicate | failed"
+    uuid constituent_id FK "SET NULL on constituent purge"
+    uuid duplicate_of_id FK "SET NULL on constituent purge"
+    numeric duplicate_score
+    string error_code
+    text error_message
+  }
+
   %% SWISS QR-BILL + camt.053 RECONCILIATION (Epic #318) — see docs/25-swiss-qr-bill.md
   orgs ||--o{ bank_accounts : "owns"
   bank_accounts ||--o{ campaigns : "backs QR-bill issuance (campaigns.bank_account_id, nullable)"
