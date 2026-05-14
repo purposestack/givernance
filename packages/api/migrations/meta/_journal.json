@@ -372,6 +372,13 @@
       "when": 1778060000000,
       "tag": "0052_bulk_email_tenant_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1778070000000,
+      "tag": "0053_donation_public_page_styles_flag",
+      "breakpoints": true
     }
   ]
 }
