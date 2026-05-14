@@ -179,14 +179,24 @@ function buildListConstituentsWhere(
   }
 
   if (search) {
-    const pattern = `%${search}%`;
-    const searchCondition = or(
-      ilike(constituents.firstName, pattern),
-      ilike(constituents.lastName, pattern),
-      ilike(constituents.email, pattern),
-    );
-    if (searchCondition) {
-      conditions.push(searchCondition);
+    // Split on whitespace + drop empties so "John " (trailing space) and
+    // "John Doe" both behave intuitively. Single-token search keeps its
+    // legacy shape (one OR across firstName / lastName / email). Multi-
+    // token search AND-s the per-token ORs: each token must hit
+    // somewhere, which is what makes "John Doe" return the row whose
+    // first_name=John AND last_name=Doe even though no single column
+    // contains "John Doe" literally. Previously this returned 0 rows.
+    const tokens = search.trim().split(/\s+/).filter(Boolean);
+    for (const token of tokens) {
+      const pattern = `%${token}%`;
+      const tokenCondition = or(
+        ilike(constituents.firstName, pattern),
+        ilike(constituents.lastName, pattern),
+        ilike(constituents.email, pattern),
+      );
+      if (tokenCondition) {
+        conditions.push(tokenCondition);
+      }
     }
   }
 

@@ -273,6 +273,35 @@ describe("Constituents search and filtering", () => {
     }
   });
 
+  it("search with trailing whitespace is trimmed (does not return empty)", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?search=Curie%20",
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: unknown[] }>();
+    expect(body.data.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("multi-token search ANDs tokens across firstName/lastName/email", async () => {
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?search=Marie%20Curie",
+      headers: authHeader(tokenA),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { firstName: string; lastName: string }[];
+    }>();
+    expect(body.data.length).toBeGreaterThanOrEqual(1);
+    expect(body.data.some((c) => c.firstName === "Marie" && c.lastName === "Curie")).toBe(true);
+  });
+
   it("search by email returns matching constituents", async () => {
     const tokenA = signToken(app);
     const res = await app.inject({

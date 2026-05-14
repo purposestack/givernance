@@ -163,11 +163,15 @@ export function ConstituentsTable({
   // `router.push` so prev/next remain meaningful navigation steps.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {
-    if (searchTerm === initialSearch) return;
+    // Trim before comparing + writing — the backend already tokenises on
+    // whitespace, but a trailing space in the URL is visible cruft and
+    // re-fires the effect on every keystroke past the trim boundary.
+    const trimmed = searchTerm.trim();
+    if (trimmed === initialSearch) return;
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString());
-      if (searchTerm) {
-        params.set("search", searchTerm);
+      if (trimmed) {
+        params.set("search", trimmed);
       } else {
         params.delete("search");
       }
@@ -394,6 +398,17 @@ export function ConstituentsTable({
           ) : (
             <span className="text-on-surface-variant opacity-60">—</span>
           ),
+      },
+      {
+        id: "createdAt",
+        accessorKey: "createdAt",
+        header: () => t("columns.createdAt"),
+        enableSorting: true,
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-on-surface-variant">
+            {formatDate(row.original.createdAt, locale, "short")}
+          </span>
+        ),
       },
       // For viewers (no Edit, no Delete) we drop the column entirely — keeping
       // it would render an `sr-only` "Actions" header above empty cells, a
