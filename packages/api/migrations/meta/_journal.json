@@ -379,6 +379,13 @@
       "when": 1778070000000,
       "tag": "0053_donation_public_page_styles_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1778080000000,
+      "tag": "0054_public_page_style_columns",
+      "breakpoints": true
     }
   ]
 }
