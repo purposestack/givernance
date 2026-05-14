@@ -186,36 +186,48 @@ export function brandingPublicUrl(key: string): string {
 }
 
 // ─── Bulk Import bucket helpers (Epic #373) ───────────────────────────
-
-const BULK_IMPORT_BUCKET = env.S3_BULK_IMPORT_BUCKET ?? 'givernance-bulk-imports';
+//
+// **Private** bucket — every object carries PII (donor names, emails,
+// addresses). Served back only through the authenticated API (see
+// `GET /v1/constituents/bulk-import/:id/download`), never via presigned
+// URL nor public-read. Per-tenant isolation is enforced by the key
+// prefix `{org_id}/bulk-imports/{job_id}/…` (ADR-023, one bucket per
+// visibility class). The bucket name is captured into
+// `bulk_import_files.s3_bucket` at write time so a future env-var
+// change doesn't strand old rows.
 
 /**
- * Upload a bulk import file to S3/MinIO.
- * Key format: `{org_id}/bulk-imports/{job_id}/{filename}`
+ * Upload a bulk-import file (CSV / XLSX) to S3/MinIO.
+ *
+ * Returns the bucket name actually written to, so the caller can
+ * persist it on `bulk_import_files.s3_bucket`.
  */
 export async function putBulkImportObject(
   key: string,
   body: Buffer,
   contentType: string,
-): Promise<void> {
+): Promise<{ bucket: string }> {
   await s3.send(
     new PutObjectCommand({
-      Bucket: BULK_IMPORT_BUCKET,
+      Bucket: env.S3_BULK_IMPORT_BUCKET,
       Key: key,
       Body: body,
       ContentType: contentType,
     }),
   );
+  return { bucket: env.S3_BULK_IMPORT_BUCKET };
 }
 
 /**
- * Fetch a bulk import file as a Readable stream.
+ * Fetch a bulk-import file as a Node Readable. Streamed through the
+ * API by the download route so the donor-private blob never leaves
+ * the server-side trust boundary.
  */
 export async function getBulkImportObject(
   key: string,
 ): Promise<{ body: Readable; contentLength: number | undefined }> {
   const command = new GetObjectCommand({
-    Bucket: BULK_IMPORT_BUCKET,
+    Bucket: env.S3_BULK_IMPORT_BUCKET,
     Key: key,
   });
   const response = await s3.send(command);
@@ -227,12 +239,29 @@ export async function getBulkImportObject(
 }
 
 /**
- * Delete a bulk import object from S3/MinIO.
+ * Fetch a bulk-import file as an in-memory Buffer. Used by the worker
+ * processor to parse the file — sub-10 MB cap means the whole blob
+ * comfortably fits in memory, and ExcelJS / `csv-parse/sync` both
+ * want a contiguous buffer.
+ */
+export async function getBulkImportObjectBuffer(key: string): Promise<Buffer> {
+  const { body } = await getBulkImportObject(key);
+  const chunks: Buffer[] = [];
+  for await (const chunk of body) {
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Delete a bulk-import object — used by the cleanup compensation path
+ * if the S3 upload succeeded but the DB transaction failed, and by
+ * the lifecycle policy follow-up (issue #373 §6).
  */
 export async function deleteBulkImportObject(key: string): Promise<void> {
   await s3.send(
     new DeleteObjectsCommand({
-      Bucket: BULK_IMPORT_BUCKET,
+      Bucket: env.S3_BULK_IMPORT_BUCKET,
       Delete: { Objects: [{ Key: key }], Quiet: true },
     }),
   );

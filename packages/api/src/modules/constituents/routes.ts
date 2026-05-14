@@ -25,6 +25,7 @@ import {
   listBulkEmailJobs,
   resumeBulkEmailJob,
 } from "./bulk-email-service.js";
+import { registerBulkImportRoutes } from "./bulk-import/routes.js";
 import {
   CONSTITUENT_SORT_FIELDS,
   createConstituent,
@@ -772,4 +773,10 @@ export async function constituentRoutes(app: FastifyInstance) {
       }
     },
   );
+
+  // ─── Bulk-import constituents (Epic #373) ──────────────────────────────
+  // Mounted from the same `constituentRoutes` registrar so the `/v1`
+  // prefix is shared. All endpoints + their per-route guards live in
+  // `bulk-import/routes.ts`.
+  await registerBulkImportRoutes(app);
 }

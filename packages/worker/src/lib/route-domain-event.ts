@@ -113,6 +113,13 @@ export type RoutingDecision =
       orgId: string;
       traceparent?: string;
     }
+  | {
+      kind: "bulk-import";
+      outboxId: string;
+      orgId: string;
+      bulkImportJobId: string;
+      traceparent?: string;
+    }
   | { kind: "unhandled"; type: string };
 
 export function routeDomainEvent(input: RoutingInput): RoutingDecision {
@@ -225,6 +232,16 @@ export function routeDomainEvent(input: RoutingInput): RoutingDecision {
     return {
       kind: "keycloak-sync-org-logo",
       orgId: tenantId,
+      traceparent,
+    };
+  }
+
+  if (type === "constituents.bulk_import_requested") {
+    return {
+      kind: "bulk-import",
+      outboxId: id,
+      orgId: tenantId,
+      bulkImportJobId: payload.bulkImportJobId as string,
       traceparent,
     };
   }

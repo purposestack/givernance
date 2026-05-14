@@ -48,6 +48,13 @@ const EnvSchema = Type.Object({
    * bucket level — see api/src/env.ts comment for full rationale.
    */
   S3_BRANDING_BUCKET: Type.String({ minLength: 1, default: "branding" }),
+  /**
+   * S3 bucket for bulk-import uploads (Epic #373). Private — every
+   * object carries PII (donor names, emails, addresses). The processor
+   * reads files from here under the worker's RLS context and never
+   * exposes them off-server. ADR-023.
+   */
+  S3_BULK_IMPORT_BUCKET: Type.String({ minLength: 1, default: "bulk-imports" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
   /**
