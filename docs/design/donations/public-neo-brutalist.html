@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public donation — Neo-Brutalist · Givernance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+  <style>
+    /*
+     * NEO-BRUTALIST archetype (Epic #362).
+     *
+     * Voice: confident, type-driven, deliberate visual roughness.
+     * All-mono throughout (JetBrains Mono) with one display serif
+     * accent (Playfair). Hard borders, oversized chevrons, manual
+     * misalignments. For arts orgs, indie civic-tech, design-collective
+     * NPOs. Easter egg (motion.ambient = "none"; egg respects
+     * prefers-reduced-motion): hover and hold any chip for 2 s →
+     * RGB-channel glitch on the headline for 600 ms.
+     */
+    :root {
+      --brand-primary: #00ff85;
+      --brand-primary-deep: #00b85f;
+      --ink: #0a0a0a;
+      --paper: #f0eee6;
+      --pink: #ff007a;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    :focus-visible { outline: 4px solid var(--pink); outline-offset: 4px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums lining-nums; line-height: 1.4; }
+    .skip-link { position: absolute; left: -9999px; }
+    .skip-link:focus { left: 16px; top: 16px; background: var(--ink); color: var(--brand-primary); padding: 12px 16px; z-index: 100; }
+
+    .topbar { max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid var(--ink); }
+    .badge { font-weight: 700; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; }
+    .lang-switch a { font-size: 11px; padding: 2px 6px; text-decoration: none; color: var(--ink); }
+    .lang-switch a[aria-current="page"] { background: var(--ink); color: var(--brand-primary); }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 32px 24px 64px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(360px, 440px); gap: 32px; align-items: start; }
+    @media (max-width: 960px) { main { grid-template-columns: 1fr; padding: 16px 16px 32px; gap: 16px; } }
+
+    .hero { border: 4px solid var(--ink); background: var(--paper); padding: 40px 32px; transform: rotate(-0.4deg); position: relative; }
+    .hero::after { content: "▶"; position: absolute; top: 16px; right: 24px; font-size: 2rem; color: var(--brand-primary); }
+    .eyebrow { font-family: 'Playfair Display', serif; font-style: italic; font-weight: 600; font-size: 1.2rem; margin: 0 0 16px; color: var(--pink); }
+    h1 { font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: clamp(1.8rem, 4.5vw, 3.2rem); line-height: 1.05; letter-spacing: -0.02em; margin: 0; text-transform: uppercase; }
+    h1 .accent { font-family: 'Playfair Display', serif; font-style: italic; font-weight: 600; text-transform: none; color: var(--brand-primary-deep); }
+    .lede { font-size: 1.05rem; margin: 24px 0 0; max-width: 56ch; line-height: 1.55; }
+
+    .progress { border: 4px solid var(--ink); border-top: 0; background: var(--ink); color: var(--brand-primary); padding: 24px 32px; transform: rotate(-0.4deg); display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: center; }
+    .progress-amount { font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 2rem; line-height: 1; }
+    .progress-meta { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; }
+    .progress-bar { height: 12px; background: rgba(0,255,133,0.15); border: 1px solid var(--brand-primary); }
+    .progress-bar > span { display: block; height: 100%; background: var(--brand-primary); }
+
+    .form { border: 4px solid var(--ink); background: var(--paper); padding: 32px 24px; position: sticky; top: 24px; transform: rotate(0.5deg); }
+    @media (max-width: 960px) { .form { position: static; transform: none; } }
+    .form h2 { font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 1.4rem; line-height: 1.1; margin: 0 0 16px; text-transform: uppercase; }
+    .freq { display: grid; grid-template-columns: 1fr 1fr; border: 3px solid var(--ink); margin: 0 0 20px; }
+    .freq button { background: transparent; border: 0; padding: 12px; font-family: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; }
+    .freq button.active { background: var(--ink); color: var(--brand-primary); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 0 0 12px; border: 3px solid var(--ink); padding: 0; }
+    .grid input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+    .grid label { display: block; cursor: pointer; }
+    .grid .chip { padding: 18px 6px; border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink); background: var(--paper); text-align: center; font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 1.1rem; font-variant-numeric: tabular-nums lining-nums; }
+    .grid label:nth-of-type(3n) .chip { border-right: 0; }
+    .grid label:nth-last-of-type(-n+3) .chip { border-bottom: 0; }
+    .grid input[type="radio"]:checked + .chip { background: var(--brand-primary); color: var(--ink); }
+    .grid input[type="radio"]:focus-visible + .chip { outline: 4px solid var(--pink); outline-offset: -4px; }
+    .write { width: 100%; padding: 12px 14px; border: 3px solid var(--ink); background: var(--paper); font-family: inherit; font-weight: 700; font-size: 1rem; margin: 0 0 16px; font-variant-numeric: tabular-nums; }
+    .donor { display: grid; gap: 8px; margin-bottom: 16px; }
+    .donor input { padding: 10px 12px; border: 2px solid var(--ink); background: var(--paper); font-family: inherit; font-size: 13px; }
+    .donor .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .cta { width: 100%; padding: 16px; border: 4px solid var(--ink); background: var(--brand-primary); color: var(--ink); font-family: inherit; font-weight: 800; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+    .cta:hover { background: var(--pink); color: var(--paper); }
+    .cta:hover::before { content: "▶ "; }
+    .reassure { font-size: 11px; letter-spacing: 0.04em; margin: 12px 0 0; text-align: center; }
+
+    footer { max-width: 1200px; margin: 32px auto 0; padding: 16px 24px; border-top: 4px solid var(--ink); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 11px; }
+    footer a { color: var(--pink); }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#donate">Skip to donation form</a>
+  <header class="topbar">
+    <span class="badge">★ Atelier 21 · Marseille</span>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="?lang=en" aria-current="page" lang="en">EN</a>
+      <a href="?lang=fr" hreflang="fr" lang="fr">FR</a>
+    </nav>
+  </header>
+  <main>
+    <article>
+      <section class="hero">
+        <p class="eyebrow">Spring residency · 2026</p>
+        <h1>Pay artists.<br>Don't ask <span class="accent">"how"</span><br>ask <span class="accent">"how much."</span></h1>
+        <p class="lede">11 residencies. 4 600 €/month each. 6 months. We do everything in the open — budget, rejection letters, every line item. Fund a month of one residency, or fund the whole programme.</p>
+      </section>
+      <div class="progress">
+        <div>
+          <p class="progress-amount">€19&#8239;240</p>
+          <p class="progress-meta">↳ of €60&#8239;000 goal · 32 %</p>
+        </div>
+        <div class="progress-bar" role="progressbar" aria-valuenow="32" aria-valuemin="0" aria-valuemax="100" aria-valuetext="32 percent funded">
+          <span style="width: 32%;"></span>
+        </div>
+      </div>
+    </article>
+    <aside class="form" id="donate" aria-labelledby="donate-heading">
+      <h2 id="donate-heading">▶ Pay one of us</h2>
+      <div class="freq" role="tablist" aria-label="Frequency">
+        <button class="active" role="tab" aria-selected="true" type="button">One-time</button>
+        <button role="tab" aria-selected="false" type="button">Monthly</button>
+      </div>
+      <fieldset class="grid">
+        <legend style="position:absolute;left:-9999px;">Suggested amounts</legend>
+        <label><input type="radio" name="amount" value="20"><span class="chip">€20</span></label>
+        <label><input type="radio" name="amount" value="50"><span class="chip">€50</span></label>
+        <label><input type="radio" name="amount" value="100" checked><span class="chip">€100</span></label>
+        <label><input type="radio" name="amount" value="250"><span class="chip">€250</span></label>
+        <label><input type="radio" name="amount" value="500"><span class="chip">€500</span></label>
+        <label><input type="radio" name="amount" value="1000"><span class="chip">€1k</span></label>
+      </fieldset>
+      <input class="write" type="number" min="1" placeholder="// other amount" aria-label="Custom amount in euros">
+      <div class="donor">
+        <input type="email" placeholder="email@" aria-label="Email" autocomplete="email">
+        <div class="row">
+          <input type="text" placeholder="first" aria-label="First name" autocomplete="given-name">
+          <input type="text" placeholder="last" aria-label="Last name" autocomplete="family-name">
+        </div>
+      </div>
+      <button class="cta" type="submit">▶ Send €100</button>
+      <p class="reassure">Stripe · No middleman · No commission</p>
+    </aside>
+  </main>
+  <footer>
+    <span>Atelier 21 · 1901 · SIRET 814 220 113</span>
+    <span><a href="#">Open budget</a> · <a href="#">Givernance</a></span>
+  </footer>
+</body>
+</html>

@@ -2335,6 +2335,9 @@
       "trust": "Payment",
       "trustValue": "Secured by Stripe"
     },
+    "footer": {
+      "institutionalSignature": "This campaign is operated by <org></org>. By giving, you accept the donor terms displayed at the payment step."
+    },
     "form": {
       "eyebrow": "Online donation",
       "title": "Make a donation",

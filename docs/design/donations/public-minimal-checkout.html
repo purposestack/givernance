@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public donation — Minimal Checkout · Givernance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /*
+     * MINIMAL CHECKOUT archetype (Epic #362). Stripe-Payment-Link grade.
+     * No hero, no story, no progress bar. The form IS the page.
+     * Layout = "stacked" per ADR-030's Slot Inventory. Single sans
+     * (Inter) throughout. For repeat-donor / member-only appeals
+     * where the donor already trusts the org.
+     */
+    :root {
+      --brand-primary: #635bff;
+      --brand-primary-deep: #4b3fef;
+      --brand-on-primary: #ffffff;
+      --ink: #1a1f36;
+      --ink-soft: #697386;
+      --ink-faint: #b3bbc7;
+      --surface: #ffffff;
+      --surface-tint: #f6f9fc;
+      --border: #e5e9ef;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    :focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; border-radius: 4px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+    body { margin: 0; background: var(--surface-tint); color: var(--ink); font-family: 'Inter', sans-serif; min-height: 100vh; font-variant-numeric: tabular-nums lining-nums; }
+    .skip-link { position: absolute; left: -9999px; }
+    .skip-link:focus { left: 16px; top: 16px; background: var(--ink); color: var(--surface); padding: 12px 16px; z-index: 100; }
+
+    main { max-width: 440px; margin: 0 auto; padding: 48px 24px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+    .org { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
+    .org .logo { width: 28px; height: 28px; background: var(--brand-primary); color: var(--brand-on-primary); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+    .lang-switch { display: inline-flex; gap: 4px; font-size: 12px; }
+    .lang-switch a { color: var(--ink-soft); text-decoration: none; padding: 2px 8px; border-radius: 6px; }
+    .lang-switch a[aria-current="page"] { background: var(--border); color: var(--ink); }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px 28px; box-shadow: 0 1px 2px rgba(50, 50, 93, 0.04); }
+    .label-eyebrow { font-size: 12px; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 6px; }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 24px; letter-spacing: -0.01em; }
+
+    .freq { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--surface-tint); border-radius: 8px; padding: 3px; margin-bottom: 20px; }
+    .freq button { background: transparent; border: 0; padding: 8px; border-radius: 6px; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--ink-soft); }
+    .freq button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 1px rgba(50,50,93,0.08); }
+
+    .row-label { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 500; margin: 0 0 6px; }
+    .row-label .help { color: var(--ink-soft); font-weight: 400; }
+
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; border: 0; padding: 0; }
+    .grid input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+    .grid label { display: block; cursor: pointer; }
+    .grid .chip { padding: 12px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); text-align: center; font-weight: 600; font-size: 14px; transition: border-color 0.12s, background 0.12s; font-variant-numeric: tabular-nums lining-nums; }
+    .grid input[type="radio"]:checked + .chip { border-color: var(--brand-primary); background: rgba(99, 91, 255, 0.04); color: var(--brand-primary); }
+    .grid input[type="radio"]:focus-visible + .chip { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+    .write { width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 14px; font-weight: 500; margin: 0 0 16px; font-variant-numeric: tabular-nums; }
+
+    .donor { display: grid; gap: 10px; margin-bottom: 16px; }
+    .donor input { padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 14px; }
+    .donor .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .cta { width: 100%; padding: 14px; border: 0; border-radius: 8px; background: var(--brand-primary); color: var(--brand-on-primary); font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer; transition: background 0.12s; }
+    .cta:hover { background: var(--brand-primary-deep); }
+    .reassure { font-size: 11px; color: var(--ink-soft); margin: 12px 0 0; text-align: center; }
+
+    footer { text-align: center; font-size: 11px; color: var(--ink-soft); padding: 24px; }
+    footer a { color: var(--ink-soft); text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#donate">Skip to donation form</a>
+  <main id="donate">
+    <header class="topbar">
+      <span class="org">
+        <span class="logo" aria-hidden="true">F</span>
+        <span>Fondation Pierre Vérots</span>
+      </span>
+      <nav class="lang-switch" aria-label="Language">
+        <a href="?lang=en" aria-current="page" lang="en">EN</a>
+        <a href="?lang=fr" hreflang="fr" lang="fr">FR</a>
+      </nav>
+    </header>
+    <section class="card" aria-labelledby="donate-heading">
+      <p class="label-eyebrow">Member appeal · April 2026</p>
+      <h1 id="donate-heading">Renew your annual gift</h1>
+      <div class="freq" role="tablist" aria-label="Donation frequency">
+        <button class="active" role="tab" aria-selected="true" type="button">One-time</button>
+        <button role="tab" aria-selected="false" type="button">Monthly</button>
+      </div>
+      <div class="row-label"><span id="amount-label">Amount</span><span class="help">€ EUR</span></div>
+      <fieldset class="grid" aria-labelledby="amount-label">
+        <legend style="position:absolute;left:-9999px;">Suggested amounts</legend>
+        <label><input type="radio" name="amount" value="50"><span class="chip">€50</span></label>
+        <label><input type="radio" name="amount" value="100" checked><span class="chip">€100</span></label>
+        <label><input type="radio" name="amount" value="250"><span class="chip">€250</span></label>
+        <label><input type="radio" name="amount" value="500"><span class="chip">€500</span></label>
+      </fieldset>
+      <input class="write" type="number" min="1" placeholder="Other amount" aria-label="Custom amount in euros">
+      <div class="donor">
+        <input type="email" value="margot.fillon@example.fr" aria-label="Email" autocomplete="email">
+        <div class="row">
+          <input type="text" value="Margot" aria-label="First name" autocomplete="given-name">
+          <input type="text" value="Fillon" aria-label="Last name" autocomplete="family-name">
+        </div>
+      </div>
+      <button class="cta" type="submit">Pay €100 · Card</button>
+      <p class="reassure">Stripe-secured · welcome back, Margot</p>
+    </section>
+  </main>
+  <footer><a href="#">Receipts</a> · <a href="#">Contact</a> · Powered by <a href="#">Givernance</a></footer>
+</body>
+</html>
