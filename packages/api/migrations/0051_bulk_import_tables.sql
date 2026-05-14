@@ -54,6 +54,8 @@ CREATE TABLE bulk_import_jobs (
   created_count               INTEGER               NOT NULL DEFAULT 0,
   duplicate_count             INTEGER               NOT NULL DEFAULT 0,
   failed_count                INTEGER               NOT NULL DEFAULT 0,
+  complete_address_count      INTEGER               NOT NULL DEFAULT 0,
+  email_count                 INTEGER               NOT NULL DEFAULT 0,
   
   -- File reference
   file_id                     UUID                  NOT NULL REFERENCES bulk_import_files(id) ON DELETE CASCADE,
