@@ -66,7 +66,7 @@ sequenceDiagram
   Web->>API: GET /v1/public/campaigns/{id}/page
   API->>API: cache-check (raw columns; flag-resolution at boundary)
   API->>DB: SELECT campaign + tenant + org logo (joined)
-  DB-->>API: campaign.public_page_style=NULL, tenant.default=…='activist'
+  DB-->>API: campaign.public_page_style=NULL, tenant.default='activist'
   API->>Flags: isEnabled(DONATION_PUBLIC_PAGE_STYLES, {orgId})
   Flags-->>API: true
   API->>API: resolve: campaign override ?? tenant default ?? 'foundation'

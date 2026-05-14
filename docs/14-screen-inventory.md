@@ -68,6 +68,7 @@ flowchart TD
     CAMP --> CAMPNEW["/campaigns/new"]
     CAMP --> CAMPDET["/campaigns/:id"]
     CAMP --> CAMPSTATS["/campaigns/:id/stats"]
+    CAMP --> CAMPPUB["/p/:id — Page don publique (10 archétypes)"]
 
     APP --> GRANT["/grants"]
     GRANT --> GKANBAN["/grants — Kanban pipeline"]
@@ -1691,6 +1692,7 @@ flowchart TD
 | CAMP-002 | Campagnes | Détail campagne | `/campaigns/:id` | MUST |
 | CAMP-003 | Campagnes | Créer / modifier campagne | `/campaigns/new` | MUST |
 | CAMP-004 | Campagnes | Statistiques campagne | `/campaigns/:id/stats` | SHOULD |
+| CAMP-005 | Campagnes | Page don publique (10 archétypes) | `/p/:id` | MUST (Foundation) / SHOULD (9 autres) |
 | GRANT-001 | Subventions | Pipeline Kanban | `/grants` | MUST |
 | GRANT-002 | Subventions | Détail subvention | `/grants/:id` | MUST |
 | GRANT-003 | Subventions | Formulaire subvention | `/grants/new` | MUST |
