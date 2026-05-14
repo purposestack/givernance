@@ -734,6 +734,24 @@ flowchart TD
 | **Interactions IA** | Analyse automatique : "Le pic de dons le mardi correspond à vos envois emails — optimiser le timing ?" |
 | **Priorité** | SHOULD |
 
+### CAMP-005 — Page de don publique (10 archétypes)
+
+| Champ | Valeur |
+|---|---|
+| **ID** | CAMP-005 |
+| **Module** | Campagnes (donneur-facing) |
+| **Nom de l'écran** | Page publique de campagne — sélecteur d'archétype |
+| **URL pattern** | `/p/:id` (page publique donneur) · sélecteur d'archétype dans `/settings` (org_admin) |
+| **Description** | Page publique de don que le donateur voit. Depuis Epic [#362](https://github.com/purposestack/givernance/issues/362), 10 archétypes visuels distincts au choix de l'opérateur : Foundation (institutionnel), Activist (mobilisation récurrente), Editorial Story (essai photographique), Minimal Checkout (ultra-épuré), Emergency Appeal (compteur-héros), Neo-Brutalist (typo brute), Calm Wellness (gradient pastel animé), Civic Modern (transparence comptable), Retro Print (Riso bichromie), Cosmic Gradient (mesh animé futuriste). Chaque archétype porte sa propre structure, typographie et motion ; la couleur primaire et le logo restent gouvernés par Epic [#286](https://github.com/purposestack/givernance/issues/286). |
+| **États** | Default (archétype par défaut Foundation), Loading, Style picker enabled (PR-3), Easter-egg fired (5 archétypes sur 10) |
+| **Actions principales** | (donneur) Donner via la chip-grid · (opérateur) Choisir un archétype dans `/settings` · (opérateur) Override par campagne dans l'éditeur de campagne (PR-3b) |
+| **Données affichées** | Logo + nom organisation, titre + description campagne, progression collecte, formulaire de don Stripe Elements. Chaque archétype redessine la disposition (hero, progress, picker, footer). |
+| **Rôles autorisés** | Lecture donateur (non-authentifié) ; écriture archétype `org_admin` uniquement, derrière le flag `donation.public_page_styles` |
+| **Composants clés** | `<PublicDonationShell>` (shell partagé), `ARCHETYPES` registry (closed dynamic-import map), 4 slots par archétype (`Hero` / `Progress` / `AmountPicker` / `Footer`), `useEasterEgg` hook |
+| **Interactions IA** | Aucune dans Phase 1 — suggestions d'archétype basées sur la mission de l'org explicitement hors scope |
+| **Priorité** | MUST (archétype Foundation = par défaut, sans-régression) · SHOULD (les 9 autres archétypes derrière le flag) |
+| **Voir aussi** | [`docs/26-public-page-styles.md`](26-public-page-styles.md) · [ADR-030](adrs/adr-030-public-page-style-archetypes.md) · 10 maquettes HTML sous [`docs/design/donations/public-*.html`](design/donations/) |
+
 ---
 
 ## Module SUBVENTIONS {#module-subventions}

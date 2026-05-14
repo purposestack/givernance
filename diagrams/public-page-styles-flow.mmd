@@ -1,0 +1,41 @@
+%% Public donation page archetype-picker user flow (Epic #362).
+%% Companion to docs/26-public-page-styles.md § 2.
+sequenceDiagram
+  actor Operator as Operator (org_admin)
+  actor Donor
+  participant Web as Next.js (Settings + /p/[id])
+  participant API as Fastify API
+  participant Flags as flagService (Redis → PG)
+  participant DB as Postgres
+
+  Note over Operator, DB: Operator picks an archetype (PR-3 settings UI)
+  Operator->>Web: GET /settings
+  Web->>API: GET /v1/feature-flags  (public projection)
+  API-->>Web: { donation.public_page_styles: true }
+  Web->>API: GET /v1/org/style-default
+  API->>Flags: requireFlag(DONATION_PUBLIC_PAGE_STYLES)
+  Flags-->>API: enabled (for this tenant)
+  API->>DB: SELECT default_public_page_style FROM tenants WHERE id=…
+  DB-->>API: 'cosmic-gradient'
+  API-->>Web: { defaultPublicPageStyle: 'cosmic-gradient' }
+  Web-->>Operator: render picker tile-grid (Cosmic Gradient active)
+
+  Operator->>Web: clicks 'Activist' tile (optimistic flip)
+  Web->>API: PATCH /v1/org/style-default { defaultPublicPageStyle: 'activist' }
+  API->>DB: UPDATE tenants SET default_public_page_style='activist' WHERE id=…
+  API->>API: invalidateTenantPublicPageCache(orgId)
+  API-->>Web: 200 { defaultPublicPageStyle: 'activist' }
+  Web-->>Operator: toast 'Donation page style set to Activist.'
+
+  Note over Donor, DB: Donor lands on the page
+  Donor->>Web: GET /p/{campaignId}
+  Web->>API: GET /v1/public/campaigns/{id}/page
+  API->>API: cache-check (raw columns; flag-resolution at boundary)
+  API->>DB: SELECT campaign + tenant + org logo (joined)
+  DB-->>API: campaign.public_page_style=NULL, tenant.default='activist'
+  API->>Flags: isEnabled(DONATION_PUBLIC_PAGE_STYLES, {orgId})
+  Flags-->>API: true
+  API->>API: resolve: campaign override ?? tenant default ?? 'foundation'
+  API-->>Web: { …, publicPageStyle: 'activist' }
+  Web->>Web: dynamic import ARCHETYPES['activist']()
+  Web-->>Donor: render Activist shell + slots
