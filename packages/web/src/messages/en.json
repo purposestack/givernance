@@ -1842,6 +1842,99 @@
     },
     "errors": {
       "deleteGeneric": "Could not delete this constituent. Please try again."
+    },
+    "bulkImport": {
+      "action": "Bulk import",
+      "title": "Import constituents",
+      "description": "Import constituents from a CSV or Excel file.",
+      "steps": {
+        "template": "Download template",
+        "upload": "Upload file",
+        "progress": "Progress"
+      },
+      "template": {
+        "title": "Step 1 — Download the template",
+        "body": "Download the CSV template to prepare your data. Keep the header row as-is — it tells the server which field goes where.",
+        "download": "Download CSV template",
+        "next": "I have my file, continue",
+        "downloadError": "Could not download the template. Please try again."
+      },
+      "upload": {
+        "title": "Step 2 — Upload your file",
+        "dropzone": "Drop your file here or click to browse",
+        "browse": "Browse your files",
+        "hint": "Accepted formats: .csv, .xlsx, .xls · Max size: 10 MB",
+        "selectedFile": "Selected file",
+        "remove": "Remove file",
+        "force": "Skip duplicate detection",
+        "forceHint": "Creates every row even if a duplicate is detected.",
+        "back": "Back",
+        "submit": "Start import",
+        "submitting": "Uploading…",
+        "errors": {
+          "tooLarge": "File too large. The maximum size is 10 MB.",
+          "badType": "Unsupported format. Use a .csv, .xlsx or .xls file.",
+          "generic": "Could not upload the file. Please try again."
+        }
+      },
+      "progress": {
+        "title": "Step 3 — Import in progress",
+        "subtitle": "You can close this window — the import keeps running in the background.",
+        "rows": "{processed} of {total} rows processed",
+        "viewResults": "View detailed results",
+        "close": "Close",
+        "kpis": {
+          "created": "Created",
+          "duplicates": "Duplicates",
+          "failed": "Errors",
+          "addresses": "Complete addresses",
+          "emails": "Emails captured"
+        }
+      },
+      "status": {
+        "pending": "Queued",
+        "processing": "Processing",
+        "completed": "Completed",
+        "partial": "Partial",
+        "failed": "Failed"
+      },
+      "history": {
+        "title": "Import history",
+        "breadcrumb": "History",
+        "subtitle": "Review past imports and download the source files.",
+        "empty": "No imports yet.",
+        "columns": {
+          "createdAt": "Date",
+          "fileName": "File",
+          "status": "Status",
+          "rows": "Rows",
+          "results": "Results",
+          "actions": "Actions"
+        },
+        "results": "{created} created · {duplicates} duplicates · {failed} errors",
+        "downloadOriginal": "Download file",
+        "viewResults": "View results",
+        "loadError": "Could not load the history. Please try again."
+      },
+      "results": {
+        "title": "Import results",
+        "tabs": {
+          "all": "All",
+          "created": "Created",
+          "duplicates": "Duplicates",
+          "failed": "Errors"
+        },
+        "empty": "No rows in this category.",
+        "columns": {
+          "row": "Row",
+          "status": "Status",
+          "firstName": "First name",
+          "lastName": "Last name",
+          "email": "Email",
+          "error": "Error"
+        },
+        "loadError": "Could not load the results. Please try again."
+      }
     }
   },
   "campaigns": {
