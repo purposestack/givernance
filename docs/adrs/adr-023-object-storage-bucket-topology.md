@@ -34,6 +34,7 @@ The current topology after Epic #286 and the Epic #318 amendment:
 | `campaigns` | **Private** | Bucket-private, signed URLs only | Worker streams ZIPs, API serves via presign | `AbortIncompleteMultipartUpload` 1d |
 | `branding` | **Public-read** | Bucket-level public-read; **no per-object ACL** | Worker writes processed variants, anonymous reads via direct URL | Nightly orphan-GC sweep + tenant-offboarding prefix-delete |
 | `bank-statements` | **Private** | Bucket-private, signed URLs only | API stores raw camt.053 uploads, worker reads for reconciliation | **10-year retention** (Swiss CO Art. 958f) — see ADR-028 |
+| `bulk-imports` | **Private** | Bucket-private, **signed URLs disabled** — served via API only | API stores uploaded CSV/Excel, worker reads for parsing, API streams for re-download | **90-day retention** (PII-laden source files; minimal proportionate window) — see Epic #373 / `docs/28-bulk-import.md` |
 
 Inside `branding`, every key is prefixed by `org_id`:
 

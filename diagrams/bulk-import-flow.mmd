@@ -1,0 +1,64 @@
+sequenceDiagram
+    autonumber
+    actor Op as Operator (org_admin)
+    participant Web as Next.js (web)
+    participant API as Fastify (api)
+    participant DB as Postgres
+    participant S3 as Object storage<br/>(bulk-imports bucket)
+    participant Worker as BullMQ worker
+
+    Note over Op,Web: 1. Download the template
+    Op->>Web: Open Constituents → "Bulk import"
+    Web->>API: GET /v1/constituents/bulk-import/template
+    API-->>Web: text/csv (10 example rows, header documented)
+    Op->>Op: Fill the template in Excel / Numbers / Sheets
+
+    Note over Op,Web: 2. Upload the file
+    Op->>Web: Drag-drop the CSV/XLSX (≤ 10 MB)
+    Web->>API: POST /v1/constituents/bulk-import (multipart, CSRF token)
+    API->>API: requireAuth + requireWrite +<br/>requireFlag(CONSTITUENTS_BULK_IMPORT)
+    API->>API: Magic-byte sniff (file-type)<br/>+ filename sanitisation
+    API->>S3: PutObject {org_id}/bulk-imports/{job_id}/{name}
+    API->>DB: BEGIN
+    API->>DB: INSERT bulk_import_files (s3_key, mime, size, …)
+    API->>DB: INSERT bulk_import_jobs (status=pending, file_id, requested_by)
+    API->>DB: INSERT outbox_events ('constituents.bulk_import_requested', { jobId })
+    API->>DB: COMMIT
+    API-->>Web: 202 + { jobId }
+    Web->>Web: Open progress drawer, start polling every 2 s
+
+    Note over Worker,DB: 3. Async parse + per-row insert
+    DB->>Worker: outbox relay → BullMQ enqueue
+    Worker->>Worker: isFlagEnabled(CONSTITUENTS_BULK_IMPORT)<br/>(defence-in-depth — drop silently if off)
+    Worker->>DB: UPDATE jobs SET status='processing'
+    Worker->>S3: GetObject (signed URL disabled — server-side fetch only)
+    Worker->>Worker: Parse CSV / Excel (exceljs)<br/>+ formula-injection scrub
+    loop Per row (under withTenantContext)
+      Worker->>Worker: Validate (Zod)
+      alt Validation passes
+        Worker->>DB: SELECT … dedupe candidates (email, name+postcode)
+        alt No duplicate
+          Worker->>DB: INSERT constituents (…)
+          Worker->>DB: INSERT bulk_import_results (status='created', constituent_id)
+        else Duplicate found
+          Worker->>DB: INSERT bulk_import_results (status='duplicate', duplicate_of_id, score)
+        end
+      else Validation fails
+        Worker->>DB: INSERT bulk_import_results (status='failed', error_code, error_message)
+      end
+      Worker->>DB: UPDATE jobs SET processed_rows++, *_count++, updated_at=NOW()
+    end
+    Worker->>DB: UPDATE jobs SET status=<br/>completed | partial | failed,<br/>completed_at=NOW()
+
+    Note over Op,Web: 4. Operator sees the outcome
+    Web->>API: GET /v1/constituents/bulk-import/:id (poll)
+    API-->>Web: { status, totalRows, processedRows,<br/>createdCount, duplicateCount, failedCount, … }
+    Web->>Web: Status flips → load detail
+    Web->>API: GET /v1/constituents/bulk-import/:id/results?status=failed
+    API->>DB: SELECT bulk_import_results WHERE job_id = …
+    API-->>Web: Per-row error rows + remediation hints
+    Web-->>Op: "98 created, 12 duplicates skipped, 4 failed — fix and re-upload"
+
+    Note over Op,S3: 5. Retention (90 days)
+    S3->>S3: Lifecycle rule expires<br/>{org_id}/bulk-imports/* objects after 90 d
+    DB->>DB: Scheduled sweep soft-deletes<br/>bulk_import_files older than 90 d<br/>+ purges bulk_import_results.row_data
