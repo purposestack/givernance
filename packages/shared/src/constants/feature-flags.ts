@@ -61,6 +61,53 @@ export const FEATURE_FLAG_KEYS = {
   COMMUNICATION_BULK_EMAIL: "communication.bulk_email",
 
   /**
+   * Gates the public donation page style-archetype system (Epic #362).
+   *
+   * The Epic adds 10 visual archetypes the operator can pick from for
+   * the public donation page (`/p/[id]`) — `Foundation`, `Activist`,
+   * `Editorial Story`, `Minimal Checkout`, `Emergency Appeal`,
+   * `Neo-Brutalist`, `Calm Wellness`, `Civic Modern`, `Retro Print`,
+   * `Cosmic Gradient`. With the flag OFF the public page renders
+   * today's hardcoded layout — i.e. existing tenants see exactly what
+   * they see today, until they explicitly opt in via the picker.
+   *
+   * `scope='tenant'`: every NPO is independent; one tenant on
+   * `cosmic-gradient` shouldn't force every other tenant to be too.
+   *
+   * `tenant_override_allowed=false` for the initial rollout: super-
+   * admin flips the gate per tenant after a brief CSM walk-through.
+   * Flips to `true` in a follow-up once the picker UX is proven and
+   * org-admins can self-serve safely (no policy reason to keep them
+   * out beyond "let's see how the picker lands").
+   *
+   * `public=true`: SSR-fetch in the settings layout + the campaign
+   * editor decides whether to render the "Page style" picker; a
+   * private value would unconditionally hide the entry and defeat
+   * the Epic. The flag *name itself* (`donation.public_page_styles`)
+   * is intentionally descriptive — no tease of an unannounced
+   * surprise.
+   *
+   * Surfaces gated by this key:
+   *   - API: GET / PATCH on `publicPageStyle` field of campaigns and
+   *     tenants (Phase 1, PR-2). Routes return 404 not 403 when the
+   *     flag is off, so a scanner can't enumerate the feature.
+   *   - API: `publicPageStyle` field on `/v1/public/campaigns/:id/page`
+   *     response is omitted when the flag is off for the tenant; the
+   *     frontend shell falls back to the hardcoded "Foundation-ish"
+   *     layout in that case.
+   *   - Web: org-level picker on `/settings` (Phase 2, PR-3).
+   *   - Web: per-campaign picker on the campaign editor (Phase 2,
+   *     PR-3).
+   *   - Web: every archetype's lazy-loaded slot bundle is excluded
+   *     from the chunk graph when the flag is off — the shell
+   *     short-circuits before the dynamic `import()` (ADR-030).
+   *
+   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`
+   * if the Back Office is unavailable.
+   */
+  DONATION_PUBLIC_PAGE_STYLES: "donation.public_page_styles",
+
+  /**
    * Gates the Feature flags Phase 2 work itself (Epic #365 / PR #366).
    *
    * Even flag-administration tooling gets a flag — the new tenant-
@@ -145,6 +192,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     label: "Bulk emails to constituents",
     description:
       "Lets operators send one email to several constituents at once from the Constituents page. Off by default — Givernance staff will turn it on for your organisation once your email-deliverability setup is verified so messages don't land in donors' spam folders.",
+    scope: "tenant",
+    tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.DONATION_PUBLIC_PAGE_STYLES,
+    defaultEnabled: false,
+    label: "Visual style picker for the public donation page",
+    description:
+      "Lets your organisation pick from several visual styles for the public donation page that donors see — from a restrained institutional layout to bold activist designs. Off by default: existing campaigns keep their current look until you choose a different style from the Settings menu. Givernance staff turn this on for your organisation after a brief walk-through of the picker.",
     scope: "tenant",
     tenantOverrideAllowed: false,
     public: true,
