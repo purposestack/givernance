@@ -1,7 +1,11 @@
 /** Public donation routes — unauthenticated endpoints for embeddable donation pages */
 
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
-import { CampaignPublicPageSchema, PublicPageStyleSchema } from "@givernance/shared/validators";
+import {
+  CampaignPublicPageSchema,
+  PublicPageStyleSchema,
+  TenantStyleDefaultSchema,
+} from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireFlag } from "../../lib/flags/flag-guard.js";
@@ -384,14 +388,13 @@ export async function publicDonationRoutes(app: FastifyInstance) {
         publicPageStyle?: string | null;
       };
 
-      // Field-level flag gate (Epic #362). Reject the PUT if the
-      // operator sent `publicPageStyle` while the flag is off for this
-      // tenant — *not* with a silent drop, because that would mask a
-      // misconfigured client and leave the UI claiming "saved" while
-      // the value never landed. 400 with a clear reason is the
-      // honest answer; the picker UI never sends the field in the
-      // first place because its `requireFlag` SSR-fetch hides the
-      // picker entirely (see PR-3).
+      // Field-level flag gate (Epic #362). Silent-drop is rejected —
+      // it would let a misconfigured client see "saved" while the
+      // value never landed. The reply carries the `field` discriminator
+      // so the picker UI can map the rejection back to the input
+      // (precedent: bank-accounts/routes.ts), and never leaks the
+      // literal flag key to the operator-facing string (PR-2 review,
+      // security #1 + API contract I2).
       if (body.publicPageStyle !== undefined) {
         const flagsService = request.flagService;
         const enabled = await flagsService.isEnabled(
@@ -404,8 +407,9 @@ export async function publicDonationRoutes(app: FastifyInstance) {
             .send(
               problemDetail(
                 400,
-                "Style picker not enabled",
-                "The visual style picker is not enabled for this organisation. Contact Givernance staff to enable `donation.public_page_styles`.",
+                "Validation Error",
+                "The visual style picker is not available for your organisation.",
+                { field: "publicPageStyle", reason: "feature_not_available" },
               ),
             );
         }
@@ -432,33 +436,24 @@ export async function publicDonationRoutes(app: FastifyInstance) {
   );
 
   /**
-   * GET /v1/tenant/style-default — the org-level default archetype
-   * (Epic #362, picker UX).
+   * GET /v1/org/style-default — the org-level default archetype
+   * (Epic #362).
    *
-   * Returns the raw `tenants.default_public_page_style` value:
-   *   - one of the curated archetype keys, OR
-   *   - `null` when the operator hasn't picked one (picker UX renders
-   *     "inherits from Givernance default" in that case).
+   * URL convention matches `/v1/org/feature-flags` (Epic #365):
+   * caller-scoped, singular `org`, self-service. `/v1/tenants/:orgId/…`
+   * is reserved for platform-admin or tenant-id-scoped routes.
    *
-   * `requireFlag` is the FIRST preHandler so a tenant with the flag
-   * off gets a 404 without enumerating the org-admin guard underneath
-   * — defence-in-depth + scanner-resistant per `docs/18-feature-flags.md`.
-   *
-   * RBAC: `org_admin`. Campaign-owner role added in PR-3 when the
-   * per-campaign editor needs read access.
+   * `requireFlag` is the FIRST preHandler — anti-disclosure 404 when
+   * the flag is off (`docs/18-feature-flags.md`).
    */
   app.get(
-    "/tenant/style-default",
+    "/org/style-default",
     {
       preHandler: [requireFlag(FEATURE_FLAG_KEYS.DONATION_PUBLIC_PAGE_STYLES), requireOrgAdmin],
       schema: {
-        tags: ["Tenant Settings"],
+        tags: ["Org Settings"],
         response: {
-          200: DataResponse(
-            Type.Object({
-              defaultPublicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
-            }),
-          ),
+          200: DataResponse(TenantStyleDefaultSchema),
           ...ErrorResponses,
         },
       },
@@ -474,33 +469,22 @@ export async function publicDonationRoutes(app: FastifyInstance) {
   );
 
   /**
-   * PATCH /v1/tenant/style-default — set the org-level default
-   * archetype (Epic #362). Same flag gate as the GET; same RBAC
-   * (`org_admin` only).
+   * PATCH /v1/org/style-default — set the org-level default archetype
+   * (Epic #362). Same flag gate as the GET; same RBAC (`org_admin`).
    *
-   * The body is tri-state via the explicit `null` / archetype-key
-   * union: a missing field is rejected by the validator. Per-campaign
-   * overrides are unchanged by this write — the resolution at read
-   * time picks the campaign override first, then this default, then
-   * the hardcoded `foundation`. Invalidates the public-page cache
-   * for every campaign owned by this tenant so donors see the new
-   * style on the next pageload.
+   * Tri-state via `{ defaultPublicPageStyle: null | <key> }`. Bulk-
+   * invalidates every cached public-page entry for this tenant so
+   * donors see the new style on the next pageload.
    */
   app.patch(
-    "/tenant/style-default",
+    "/org/style-default",
     {
       preHandler: [requireFlag(FEATURE_FLAG_KEYS.DONATION_PUBLIC_PAGE_STYLES), requireOrgAdmin],
       schema: {
-        tags: ["Tenant Settings"],
-        body: Type.Object({
-          defaultPublicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
-        }),
+        tags: ["Org Settings"],
+        body: TenantStyleDefaultSchema,
         response: {
-          200: DataResponse(
-            Type.Object({
-              defaultPublicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
-            }),
-          ),
+          200: DataResponse(TenantStyleDefaultSchema),
           ...ErrorResponses,
         },
       },

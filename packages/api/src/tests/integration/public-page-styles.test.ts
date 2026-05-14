@@ -23,7 +23,7 @@
  *      gate is field-level (`publicPageStyle in body && flag off → 400`).
  *      Non-style PUT bodies are unaffected.
  *
- *   4. **Tenant default routes** — `GET / PATCH /v1/tenant/style-default`
+ *   4. **Tenant default routes** — `GET / PATCH /v1/org/style-default`
  *      are gated by `requireFlag(...)` as their FIRST preHandler. With
  *      the flag off both return 404 (anti-disclosure). With the flag on,
  *      they obey the existing `requireOrgAdmin` posture (404 for
@@ -48,7 +48,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { db } from "../../lib/db.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { createServer } from "../../server.js";
-import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
+import {
+  authHeader,
+  ensureTestTenants,
+  ORG_A,
+  ORG_B,
+  signToken,
+  signTokenB,
+} from "../helpers/auth.js";
 
 let app: FastifyInstance;
 
@@ -70,6 +77,7 @@ afterAll(async () => {
   await db.execute(sql`DELETE FROM campaign_public_pages WHERE org_id = ${ORG_A}`);
   await db.execute(sql`DELETE FROM campaigns WHERE org_id = ${ORG_A} AND name LIKE 'Style Test%'`);
   await db.execute(sql`UPDATE tenants SET default_public_page_style = NULL WHERE id = ${ORG_A}`);
+  await db.execute(sql`UPDATE tenants SET default_public_page_style = NULL WHERE id = ${ORG_B}`);
   // Leave the flag in its seeded state so subsequent suites see a
   // deterministic starting point.
   await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, FLAG_KEY));
@@ -78,9 +86,12 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // Each test starts with the flag OFF and tenant-default cleared.
+  // Each test starts with the flag OFF and BOTH tenants' defaults
+  // cleared. Includes org-B so the cross-tenant defence test
+  // observes a clean precondition.
   await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, FLAG_KEY));
   await db.execute(sql`UPDATE tenants SET default_public_page_style = NULL WHERE id = ${ORG_A}`);
+  await db.execute(sql`UPDATE tenants SET default_public_page_style = NULL WHERE id = ${ORG_B}`);
   await flagService.invalidate();
 });
 
@@ -219,9 +230,24 @@ describe("PUT /v1/campaigns/:id/public-page — publicPageStyle field gate", () 
       },
     });
     expect(res.statusCode).toBe(400);
-    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    // PR-2 review: assert on the `field` discriminator (RFC 9457
+    // extension, precedent in bank-accounts/routes.ts) rather than the
+    // user-facing title copy — copy can change without breaking the
+    // contract this test locks in. Also: the response MUST NOT leak
+    // the literal flag key in any operator-facing string.
+    const body = res.json<{
+      type: string;
+      title: string;
+      status: number;
+      detail: string;
+      field?: string;
+      reason?: string;
+    }>();
     expect(body.status).toBe(400);
-    expect(body.title).toContain("Style picker not enabled");
+    expect(body.field).toBe("publicPageStyle");
+    expect(body.reason).toBe("feature_not_available");
+    expect(body.detail).not.toContain("donation.public_page_styles");
+    expect(body.title).not.toContain("donation.public_page_styles");
   });
 
   it("accepts publicPageStyle when the flag is ON; persists it on the campaign row", async () => {
@@ -335,12 +361,12 @@ describe("PUT /v1/campaigns/:id/public-page — publicPageStyle field gate", () 
 
 // ─── 4. Tenant default routes ────────────────────────────────────────
 
-describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", () => {
+describe("GET / PATCH /v1/org/style-default — flag-gated, org-admin-only", () => {
   it("GET returns 404 when the flag is OFF (anti-disclosure)", async () => {
     const token = signToken(app);
     const res = await app.inject({
       method: "GET",
-      url: "/v1/tenant/style-default",
+      url: "/v1/org/style-default",
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(404);
@@ -350,7 +376,7 @@ describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", 
     const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
-      url: "/v1/tenant/style-default",
+      url: "/v1/org/style-default",
       headers: authHeader(token),
       payload: { defaultPublicPageStyle: "activist" },
     });
@@ -365,7 +391,7 @@ describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", 
     const token = signToken(app);
     const res = await app.inject({
       method: "GET",
-      url: "/v1/tenant/style-default",
+      url: "/v1/org/style-default",
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(200);
@@ -378,7 +404,7 @@ describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", 
     const token = signToken(app);
     const res = await app.inject({
       method: "GET",
-      url: "/v1/tenant/style-default",
+      url: "/v1/org/style-default",
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(200);
@@ -391,7 +417,7 @@ describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", 
     const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
-      url: "/v1/tenant/style-default",
+      url: "/v1/org/style-default",
       headers: authHeader(token),
       payload: { defaultPublicPageStyle: "cosmic-gradient" },
     });
@@ -402,7 +428,7 @@ describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", 
     // Round-trip via GET.
     const getRes = await app.inject({
       method: "GET",
-      url: "/v1/tenant/style-default",
+      url: "/v1/org/style-default",
       headers: authHeader(token),
     });
     const getBody = getRes.json<{ data: { defaultPublicPageStyle: string | null } }>();
@@ -417,7 +443,7 @@ describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", 
     const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
-      url: "/v1/tenant/style-default",
+      url: "/v1/org/style-default",
       headers: authHeader(token),
       payload: { defaultPublicPageStyle: null },
     });
@@ -431,7 +457,7 @@ describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", 
     const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
-      url: "/v1/tenant/style-default",
+      url: "/v1/org/style-default",
       headers: authHeader(token),
       payload: { defaultPublicPageStyle: "definitely-not-a-style" },
     });
@@ -443,7 +469,7 @@ describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", 
     const token = signToken(app, { role: "user" });
     const res = await app.inject({
       method: "PATCH",
-      url: "/v1/tenant/style-default",
+      url: "/v1/org/style-default",
       headers: authHeader(token),
       payload: { defaultPublicPageStyle: "minimal-checkout" },
     });
@@ -453,5 +479,84 @@ describe("GET / PATCH /v1/tenant/style-default — flag-gated, org-admin-only", 
     // anti-disclosure 404 only applies when the *route itself* should
     // appear not to exist (flag off).
     expect(res.statusCode).toBe(403);
+  });
+});
+
+// ─── 5. Closed-set contract assertions ───────────────────────────────
+
+describe("Response contract — publicPageStyle values are closed set", () => {
+  it("returned values are always one of PUBLIC_PAGE_STYLE_KEYS (or null)", async () => {
+    const campaign = await createCampaign("Style Test Closed Set");
+    await publishPage(campaign.id);
+    await db.execute(
+      sql`UPDATE campaigns SET public_page_style = 'cosmic-gradient' WHERE id = ${campaign.id}`,
+    );
+    await flipFlagOn();
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/public/campaigns/${campaign.id}/page`,
+    });
+    const body = res.json<{ data: { publicPageStyle: string | null } }>();
+    // A regression that emitted (e.g.) "cosmic-gradient-v2" would
+    // satisfy every per-case `toBe(...)` test if the DB carried it.
+    // This pins the wire shape to the curated registry.
+    expect(body.data.publicPageStyle).not.toBeNull();
+    expect(PUBLIC_PAGE_STYLE_KEYS as readonly string[]).toContain(
+      body.data.publicPageStyle as string,
+    );
+  });
+});
+
+// ─── 6. Cross-tenant defence ─────────────────────────────────────────
+
+describe("Cross-tenant defence — org A cannot mutate org B's tenant default", () => {
+  it("org-A's PATCH carries org-A's JWT orgId; org-B's tenants row is untouched", async () => {
+    // Even though `tenants` is owner-only at the SQL grant level
+    // (mig 0005 grants UPDATE to `givernance_app` on every table),
+    // the route's `request.auth.orgId` is the JWT-derived value and
+    // the service-layer `WHERE id = orgId` predicate scopes the
+    // UPDATE to that tenant. This test pins the invariant: org-A
+    // cannot reach org-B's row even when the JWT orgId IS org-A.
+    // A future refactor that drops the predicate would surface here.
+    await flipFlagOn();
+
+    // Pre-state: org-B has its own default.
+    await db.execute(
+      sql`UPDATE tenants SET default_public_page_style = 'editorial-story' WHERE id = ${ORG_B}`,
+    );
+
+    // Org-A operator PATCHes their own default.
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/org/style-default",
+      headers: authHeader(tokenA),
+      payload: { defaultPublicPageStyle: "minimal-checkout" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    // Org-B's value MUST be unchanged.
+    const orgBResult = await db.execute<{ default_public_page_style: string | null }>(
+      sql`SELECT default_public_page_style FROM tenants WHERE id = ${ORG_B}`,
+    );
+    expect(orgBResult.rows[0]?.default_public_page_style).toBe("editorial-story");
+
+    // Org-A's value MUST be the new one.
+    const orgAResult = await db.execute<{ default_public_page_style: string | null }>(
+      sql`SELECT default_public_page_style FROM tenants WHERE id = ${ORG_A}`,
+    );
+    expect(orgAResult.rows[0]?.default_public_page_style).toBe("minimal-checkout");
+
+    // And org-B's own GET sees their unchanged value through the API.
+    const tokenB = signTokenB(app);
+    const getRes = await app.inject({
+      method: "GET",
+      url: "/v1/org/style-default",
+      headers: authHeader(tokenB),
+    });
+    expect(getRes.statusCode).toBe(200);
+    const getBody = getRes.json<{ data: { defaultPublicPageStyle: string | null } }>();
+    expect(getBody.data.defaultPublicPageStyle).toBe("editorial-story");
   });
 });
