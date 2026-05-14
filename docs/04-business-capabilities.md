@@ -377,7 +377,8 @@ Inputs (resources, funding) → Activities (programs) → Outputs (service deliv
 | `/v1/finance/batches` | GET, POST | |
 | `/v1/reports/{report_id}` | GET | Parameterised standard reports |
 | `/v1/exports` | POST | Async bulk export |
-| `/v1/imports` | POST | Async bulk import |
+| `/v1/imports` | POST | Async bulk import (forward-looking generic endpoint — not shipped yet) |
+| `/v1/constituents/bulk-import` | POST, GET | Phase-1 constituent-specific bulk import (Epic #373, PR #385). CSV/XLSX upload, BullMQ worker, dedupe, per-row results. Sub-routes: `GET /:id`, `GET /:id/results`, `GET /:id/download`, `GET /template`. Gated by `requireFlag(constituents.bulk_import)`. See `docs/26-bulk-import.md` for the full spec. |
 | `/v1/webhooks` | GET, POST, DELETE | Outbound webhook registrations |
 | `/v1/admin/users` | GET, POST | Org user management |
 | `/v1/admin/custom-fields` | GET, POST | Custom field schema management |

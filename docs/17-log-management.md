@@ -232,6 +232,7 @@ Several JSONB columns across the schema require special GDPR handling because th
 | Security | rate_limit_hit, cors_violation, invalid_jwt, ip_blocklist | Yes | Yes (warn) |
 | AI actions | ai.suggestion_generated, ai.action_executed, ai.action_blocked, ai.guard_denied | Yes | Yes (info for generated/executed, warn for blocked/denied) |
 | Migration | migration.started, migration.batch_loaded, migration.validation_error, migration.completed | Yes | Yes |
+| Bulk import (Epic #373) | constituents.bulk_import.requested, .row_processed, .completed, .partial, .failed | Yes (one lifecycle row per job in `audit_logs`; per-row outcomes live in `bulk_import_results`, not in `audit_logs`) | Yes (info for requested/completed/partial; **warn** for failed; the `process-bulk-import.ts` worker emits `bulk-import: file fetch failed` / `dispatch failed` at error level with `audit: true`) |
 | Impersonation (issue #24) | impersonation.started, impersonation.ended_by_admin, impersonation.revoked, impersonation.expired, impersonation.denied, impersonation.write_blocked | Yes (lifecycle) | Yes (warn for started/revoked/denied/write_blocked, info for ended_by_admin/expired) |
 | Step-up MFA (issue #250) | impersonation.step_up_denied, impersonation.step_up_lockout, impersonation.lockout_hit | No (Pino-only — pre-session, no `audit_logs` row) | Yes (warn for step_up_denied + lockout_hit, **error** for step_up_lockout — SOC pages on the threshold flip from "operator typo'd a few times" to "operator can't retry") |
 

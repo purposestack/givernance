@@ -12,7 +12,7 @@ Phase 1 (PR #352) shipped the global-flag subset; Phase 2 (PR #366 / Epic #365) 
 |---|---|---|
 | `feature_flags` table | ✅ shipped (`0047` + `0051`) | Phase 2 added `scope` (enum platform/tenant), `tenant_override_allowed` boolean, `public` boolean. Partial index on `WHERE public = TRUE` for the hot projection path. |
 | `tenant_flag_overrides` table | ✅ shipped (`0051`) | Per-org overrides. RLS forced via `tenant_id = app_current_organization_id()`. `UNIQUE (tenant_id, flag_key)`. `reason` free-text + `set_by SET NULL ON DELETE`. `expires_at` reserved (UI deferred). |
-| `FEATURE_FLAG_REGISTRY` const (`packages/shared/src/constants/feature-flags.ts`) | ✅ shipped | Typed `FeatureFlagKey` union; entries now declare `scope` + `tenantOverrideAllowed` + `public`. Keys: `communication.bulk_email`, `admin.feature_flags_phase2`. |
+| `FEATURE_FLAG_REGISTRY` const (`packages/shared/src/constants/feature-flags.ts`) | ✅ shipped | Typed `FeatureFlagKey` union; entries now declare `scope` + `tenantOverrideAllowed` + `public`. Keys: `communication.bulk_email`, `admin.feature_flags_phase2`, `constituents.bulk_import` (the first key shipped with `scope='tenant'` AND `tenant_override_allowed=true`, driving the first real row on the org-admin `/settings/feature-flags` page — Epic #373, PR #385). |
 | `flagService.isEnabled(key, ctx?)` + Redis cache | ✅ shipped (Phase 2) | `ctx.orgId` activates tenant overrides for `scope='tenant'` flags. Caches: `flags:global:v2` (Map<key, {enabled, scope}>) + per-tenant `flags:tenant:{orgId}:v1`. TTL 60 s. v2 because Phase-1 shape was `Record<key, boolean>` and the evaluator now needs `scope`. |
 | Precedence algorithm | ✅ shipped (Phase 2) | unknown key → false; `scope='platform'` → platform default (overrides ignored even if rows exist); `scope='tenant'` + orgId → override row if present else default; `scope='tenant'` + no orgId → default (worker / platform path). Section 5 below is the live spec. |
 | `requireFlag(key)` preHandler | ✅ shipped | 404 on disabled, runs FIRST in the preHandler chain so a scanner can't enumerate role requirements. Now passes `request.auth.orgId` so tenant-scoped flags evaluate against the caller's org (backward-compatible: public/unauthenticated routes get a null orgId and fall back to platform default, identical to the Phase-1 no-context call). |
@@ -22,7 +22,7 @@ Phase 1 (PR #352) shipped the global-flag subset; Phase 2 (PR #366 / Epic #365) 
 | `GET /v1/admin/tenants/:tenantId/feature-flags` | ✅ shipped (Phase 2) | Super-admin tenant-detail tab. Returns each flag with platform default + effective value + override row (if any). `scope='platform'` flags surface as read-only context. |
 | `PUT /v1/admin/tenants/:tenantId/feature-flags/:key` | ✅ shipped (Phase 2) | Super-admin upsert override. 404 on missing flag (anti-disclosure), 422 on `scope='platform'` attempt (operator picked the wrong tool). Idempotent — re-PUT with same payload refreshes `set_by` / `reason` / `updated_at`. |
 | `DELETE /v1/admin/tenants/:tenantId/feature-flags/:key` | ✅ shipped (Phase 2) | Super-admin remove override (revert to platform default). 204 regardless of prior state. |
-| `GET /v1/org/feature-flags` | ✅ shipped (Phase 2) | Org-admin self-service list. Filtered to `scope='tenant' AND tenant_override_allowed=true`. Day-one registry has zero such flags — page renders an explanatory empty state. |
+| `GET /v1/org/feature-flags` | ✅ shipped (Phase 2) | Org-admin self-service list. Filtered to `scope='tenant' AND tenant_override_allowed=true`. As of PR #385 the registry has one such row (`constituents.bulk_import`); the page now renders that toggle instead of the original empty state. |
 | `PATCH /v1/org/feature-flags/:key` | ✅ shipped (Phase 2) | Org-admin self-service toggle. 404 (anti-disclosure) for every rejection — platform-scoped flags, admin-gated flags, missing keys all look identical to the caller. |
 | `GET /v1/feature-flags` (public projection) | ✅ shipped (Phase 2) | Now filtered by `public=true` — unreleased flag names no longer leak via DevTools. Evaluator overlays the caller's tenant overrides on each value. Resolves the public-projection caveat from prior § 0. |
 | Audit trail | ✅ shipped | The existing `audit-plugin` (`packages/api/src/plugins/audit.ts`) auto-records every mutating request including the new override CRUD. `action` (e.g. `PUT:/v1/admin/tenants/:tenantId/feature-flags/:key`), `org_id`, `actor_id`, `resource_type`, `resource_id`, impersonation context — all captured. Satisfies § 4.3 with zero new audit code. |
@@ -80,7 +80,7 @@ To see the Phase-2 UI end-to-end:
    psql "postgresql://givernance:givernance_dev@localhost:5432/givernance" \
      -c "SELECT key, enabled, scope, tenant_override_allowed, public FROM feature_flags;"
    ```
-   Two rows are expected: `communication.bulk_email` and `admin.feature_flags_phase2`, both `enabled=false`.
+   Three rows are expected: `communication.bulk_email` (scope=tenant, override=false), `admin.feature_flags_phase2` (scope=platform), and `constituents.bulk_import` (scope=tenant, override=true) — all `enabled=false` at first deploy.
 
 3. **Flip the self-flag on**. Either toggle it from the Back Office (`/admin/feature-flags`), or via SQL:
    ```bash
@@ -92,7 +92,7 @@ To see the Phase-2 UI end-to-end:
 4. **Reload + observe**:
    - **Super-admin** `/admin/feature-flags` — `Platform-wide` / `Per-organisation` scope badges per row + plain-language scope hint; "Organisations overriding the default" line renders (zeros until overrides exist).
    - **Super-admin** `/admin/tenants/[id]` — new **Feature flags** tab to the right of Audit. `scope='platform'` flags render read-only with a "use the global page" hint.
-   - **Org-admin** `/settings/feature-flags` — page renders, with an explanatory empty state because no flag in the production registry is `scope='tenant' AND tenant_override_allowed=true` yet.
+   - **Org-admin** `/settings/feature-flags` — page renders with a row for `constituents.bulk_import` (scope='tenant', override-allowed) — the first registry entry of that shape. Toggling it on activates the "Bulk import" button on the constituents page.
 
 5. **To see the real override controls** (the per-tenant toggle on the super-admin tenant tab + the toggle row on the org-admin page), insert a demo flag that's actually tenant-overridable. This is **local-only**; do not seed it in a shipped migration:
    ```bash
