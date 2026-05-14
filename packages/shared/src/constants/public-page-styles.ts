@@ -1,32 +1,17 @@
 /**
  * Public donation page archetype registry (Epic #362).
  *
- * Single source of truth for the set of visual archetypes the operator can
- * pick from for `/p/[id]`. Two surfaces care about these values:
+ * Single source of truth for the set of visual archetypes — kept in
+ * lockstep with the Postgres enum (migration 0054) and the frontend
+ * `ARCHETYPES` closed map (ADR-030 § Decision). The integration parity
+ * test asserts both halves match.
  *
- *   - **Backend** (`packages/api`): the Postgres enum
- *     `public_page_style` (migration 0054) is kept in lockstep with this
- *     array, so adding or removing an archetype is a one-place change in
- *     code that any new migration mirrors.
- *   - **Frontend** (`packages/web`): the closed `ARCHETYPES` registry
- *     (ADR-030, § Decision) is keyed by these identifiers. The lazy
- *     dynamic import resolves through that registry, so an unknown value
- *     fails the type check before reaching the loader — there is no
- *     attacker-controllable template-literal `import()` anywhere.
+ * **Ordering** is operator-facing — picker tile order. `Foundation`
+ * first as the institutional default; remaining keys grouped by voice
+ * quadrant. Don't sort alphabetically.
  *
- * Ordering: the literal order of `PUBLIC_PAGE_STYLE_KEYS` is the order the
- * picker UI surfaces them (`Foundation` first as the institutional
- * default, then in voice-quadrant order). Don't sort alphabetically.
- *
- * Naming: dotted-namespace-free, kebab-case, archetype-keyed (NOT
- * domain-keyed). Each key is the operator-facing identifier used in the
- * style picker UI; it never carries a `donation.` prefix because the
- * column lives on `campaigns` / `tenants` and the context is already
- * scoped. The closest analog is `campaign_type` enum values
- * (`nominative_postal`, `door_drop`, …) — same dialect.
- *
- * The picker shows the operator-facing **label** (from
- * `PUBLIC_PAGE_STYLE_REGISTRY` below), never the bare key.
+ * **Naming** is bare kebab-case, no `donation.` prefix — the column
+ * lives on `campaigns` / `tenants` and the context is already scoped.
  */
 
 /**
@@ -61,21 +46,10 @@ export type PublicPageStyleKey = (typeof PUBLIC_PAGE_STYLE_KEYS)[number];
 export const DEFAULT_PUBLIC_PAGE_STYLE: PublicPageStyleKey = "foundation";
 
 /**
- * Operator-facing copy + brief-line for each archetype. Powers the
- * picker UI's grid cards and the campaign-editor selector. Voice +
- * typography hints kept brief — the long-form archetype briefs live
- * in `docs/ideas/public-page-styles-teardown.md` (and the future
- * `docs/26-public-page-styles.md`).
- *
- * Text-field convention (mirrors `FEATURE_FLAG_REGISTRY` in
- * `feature-flags.ts`):
- *   - `label` and `tagline` are operator-facing, plain language,
- *     no jargon, no issue numbers. Read by non-technical
- *     fundraising managers.
- *   - Engineering notes (slot constraints, motion policy, bundle
- *     considerations) live in the per-archetype README under
- *     `packages/web/src/archetypes/<key>/README.md` — invisible to
- *     operators, visible to engineers.
+ * Operator-facing copy for each archetype. `label` + `tagline` are
+ * read by non-technical fundraising managers in the picker — plain
+ * language, no jargon, no issue numbers. Engineering notes live in
+ * the per-archetype README under `packages/web/src/archetypes/<key>/`.
  */
 export interface PublicPageStyleDescriptor {
   key: PublicPageStyleKey;

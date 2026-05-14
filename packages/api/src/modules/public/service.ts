@@ -128,34 +128,65 @@ export async function getPublicPage(campaignId: string) {
     return null;
   }
 
-  // Cache hit — return the snapshot. We cache the full payload (config +
-  // aggregates) since the donate flow is the only consumer and 30s
-  // staleness on either piece is acceptable. `null` is cached as the
-  // string "404" to distinguish "we know there's no page" from a cache
-  // miss; saves DB hits on a scraper hammering unknown campaign ids.
+  // Cache hit — return the snapshot. The cached payload carries the
+  // *raw* per-campaign + per-tenant style columns (not the flag-
+  // resolved `publicPageStyle`); flag evaluation and the three-layer
+  // fallback resolution happen below, AFTER the cache read. This is
+  // the load-bearing fix for the flag-flip residual: a super-admin
+  // flipping `donation.public_page_styles` mid-cache window is picked
+  // up on the very next read instead of being shadowed by a stale
+  // cache entry for up to 30 s (PR-2 multi-agent review, security #4
+  // + backend I4). The flag service has its own Redis → PG cache so
+  // the extra check is sub-millisecond in steady state.
   const cacheKey = `${PUBLIC_PAGE_CACHE_PREFIX}${campaignId}`;
   const cached = await redis.get(cacheKey);
   if (cached === "404") return null;
+
+  let raw: Awaited<ReturnType<typeof loadPublicPage>> = null;
   if (cached !== null) {
     try {
-      return JSON.parse(cached) as Awaited<ReturnType<typeof loadPublicPage>>;
+      raw = JSON.parse(cached) as Awaited<ReturnType<typeof loadPublicPage>>;
     } catch {
       // Bad JSON — fall through to a fresh fetch + overwrite.
+      raw = null;
     }
   }
-
-  const fresh = await loadPublicPage(campaignId);
-  if (fresh === null) {
-    await redis.set(cacheKey, "404", "EX", PUBLIC_PAGE_CACHE_TTL_SECONDS);
-  } else {
-    await redis.set(cacheKey, JSON.stringify(fresh), "EX", PUBLIC_PAGE_CACHE_TTL_SECONDS);
+  if (raw === null) {
+    raw = await loadPublicPage(campaignId);
+    if (raw === null) {
+      await redis.set(cacheKey, "404", "EX", PUBLIC_PAGE_CACHE_TTL_SECONDS);
+      return null;
+    }
+    await redis.set(cacheKey, JSON.stringify(raw), "EX", PUBLIC_PAGE_CACHE_TTL_SECONDS);
   }
-  return fresh;
+
+  // Resolve the donor-facing `publicPageStyle` outside the cached
+  // payload — flagService.isEnabled is Redis-cached so this is a
+  // sub-millisecond hop. With the flag off the field is null and the
+  // donor-page shell falls back to today's hardcoded layout. With
+  // the flag on, the three-layer fallback (campaign override → tenant
+  // default → "foundation") runs against the cached raw columns.
+  const styleEnabled = await flagService.isEnabled(FEATURE_FLAG_KEYS.DONATION_PUBLIC_PAGE_STYLES, {
+    orgId: raw.orgIdForStyleResolution,
+  });
+  const {
+    orgIdForStyleResolution: _,
+    campaignPublicPageStyle,
+    tenantDefaultPublicPageStyle,
+    ...rest
+  } = raw;
+  return {
+    ...rest,
+    publicPageStyle: styleEnabled
+      ? resolvePublicPageStyle(campaignPublicPageStyle, tenantDefaultPublicPageStyle)
+      : null,
+  };
 }
 
 async function loadPublicPage(campaignId: string) {
-  // Find the page without RLS to get the orgId.
-  // campaign_public_pages does not enforce RLS for reads.
+  // campaign_public_pages does not enforce RLS for reads — we
+  // resolve `orgId` first, then enter `withTenantContext` for the
+  // joins on tables that DO enforce RLS.
   const [basicPage] = await db
     .select({ orgId: campaignPublicPages.orgId })
     .from(campaignPublicPages)
@@ -169,13 +200,6 @@ async function loadPublicPage(campaignId: string) {
   if (!basicPage) {
     return null;
   }
-
-  // Resolve the donor's archetype out-of-line so the per-tenant flag
-  // check (Epic #362) doesn't add a column to the cache payload. The
-  // public-page cache key (`PUBLIC_PAGE_CACHE_PREFIX`) doesn't include
-  // the flag state, so we evaluate the flag AFTER the cache read to
-  // avoid a 30 s window of stale flag posture leaking to donors.
-  const styleResolved = await resolveDonorFacingStyle(basicPage.orgId);
 
   // Query with tenant context to allow joining with campaigns (which has strict RLS)
   return withTenantContext(basicPage.orgId, async (tx) => {
@@ -262,55 +286,24 @@ async function loadPublicPage(campaignId: string) {
       .from(donations)
       .where(and(eq(donations.campaignId, campaignId), eq(donations.status, "cleared")));
 
-    // Strip the internal `logoVariants` + raw `bankAccountId` + the two
-    // raw style columns from the returned shape. The public response
-    // only ships:
-    //   - the resolved logo URL (never the raw S3 variant manifest),
-    //   - a boolean `hasSwissQrBill` flag (never the internal bank-
-    //     account id),
-    //   - the resolved `publicPageStyle` derived from the three-layer
-    //     fallback, ONLY when the `donation.public_page_styles` flag is
-    //     on for this tenant. With the flag off, the field is omitted so
-    //     the donor-facing shell falls back to today's hardcoded layout.
-    const {
-      logoVariants: _logoVariants,
-      bankAccountId: _ba,
-      campaignPublicPageStyle,
-      tenantDefaultPublicPageStyle,
-      ...rest
-    } = page;
+    // Strip the internal `logoVariants` + raw `bankAccountId` from
+    // the cached shape. The two raw style columns survive into the
+    // cache untouched — `getPublicPage` resolves them against the
+    // current flag state at the read boundary, so a flag flip is
+    // visible to donors on the next request rather than after the
+    // 30 s cache TTL.
+    const { logoVariants: _logoVariants, bankAccountId: _ba, ...rest } = page;
     return {
       ...rest,
       raisedCents: stats?.raisedCents ?? 0,
       donorCount: stats?.donorCount ?? 0,
       organisationLogoUrl,
       hasSwissQrBill: page.bankAccountId !== null,
-      publicPageStyle: styleResolved.enabled
-        ? resolvePublicPageStyle(campaignPublicPageStyle, tenantDefaultPublicPageStyle)
-        : null,
+      // `getPublicPage` needs this to evaluate the per-tenant flag at
+      // the boundary; stripped from the donor-facing response there.
+      orgIdForStyleResolution: basicPage.orgId,
     };
   });
-}
-
-/**
- * Evaluate the `donation.public_page_styles` flag for the tenant that
- * owns this campaign (Epic #362). Returns a small struct rather than a
- * raw boolean so the call-site documents intent ("on or off") cleanly.
- *
- * Read directly from `flagService` rather than going through
- * `request.flagService` because this code path is reached from both:
- *   - the Fastify route (where `request.flagService` would be
- *     available), AND
- *   - the cache miss inside `getPublicPage` (no request context).
- *
- * The flag service caches Redis → PG, so the additional check is a
- * sub-millisecond hop in steady state.
- */
-async function resolveDonorFacingStyle(orgId: string): Promise<{ enabled: boolean }> {
-  const enabled = await flagService.isEnabled(FEATURE_FLAG_KEYS.DONATION_PUBLIC_PAGE_STYLES, {
-    orgId,
-  });
-  return { enabled };
 }
 
 /** Fetch the current public page configuration by campaign ID (admin) */
@@ -381,7 +374,7 @@ export async function createDonationIntent(
   if (!publicPage) return null;
 
   return withTenantContext(publicPage.orgId, async (tx) => {
-    // Look up the campaign to find the default currency (requires RLS context)
+    // Requires RLS context — campaigns is FORCE ROW LEVEL SECURITY.
     const [campaign] = await tx
       .select({
         id: campaigns.id,
@@ -393,7 +386,6 @@ export async function createDonationIntent(
 
     if (!campaign) return null;
 
-    // Look up the tenant's Stripe account
     const [tenant] = await tx
       .select({ id: tenants.id, stripeAccountId: tenants.stripeAccountId })
       .from(tenants)
@@ -536,7 +528,6 @@ export async function upsertPublicPage(
   }
 
   return withTenantContext(orgId, async (tx) => {
-    // Verify campaign belongs to this org
     const [campaign] = await tx
       .select({ id: campaigns.id })
       .from(campaigns)
@@ -565,7 +556,6 @@ export async function upsertPublicPage(
       await redis.del(`${PUBLIC_PAGE_CACHE_PREFIX}${campaignId}`);
     }
 
-    // Check for existing page
     const [existing] = await tx
       .select({ id: campaignPublicPages.id })
       .from(campaignPublicPages)
@@ -679,10 +669,17 @@ export async function setTenantDefaultPublicPageStyle(
 
 /**
  * Best-effort cache invalidation for every cached public-page entry
- * belonging to `orgId`. Read the campaign list (RLS-scoped) and DEL
- * the matching keys. Not transactional with the DB write — a donor
- * who lands during the ~50 ms gap sees the previous style for one
- * page-load, which is acceptable for a settings change.
+ * belonging to `orgId`. Read the campaign list (RLS-scoped, indexed
+ * on `org_id`), then issue a single variadic `redis.del(...keys)` —
+ * ioredis pipelines it as one variadic DEL which Redis processes in
+ * O(N) but in a single round-trip, so even a tenant with thousands
+ * of campaigns clears in sub-10 ms on a LAN. Not transactional with
+ * the DB write — a donor who lands during the ~50 ms gap sees the
+ * previous style for one page-load, which is acceptable for a
+ * settings change. Since PR-2's review, flag flips don't go through
+ * here at all: the donor-facing flag-resolution moved out of the
+ * cached payload (see `getPublicPage`), so a flag toggle is picked
+ * up on the very next request regardless of cache state.
  */
 async function invalidateTenantPublicPageCache(orgId: string): Promise<void> {
   const rows = await withTenantContext(orgId, async (tx) =>

@@ -255,17 +255,27 @@ export const CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES = [
 export type CampaignPublicPageColor = (typeof CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES)[number];
 
 /**
- * Closed union of public-page archetype identifiers (Epic #362).
+ * Closed enum of public-page archetype identifiers (Epic #362).
  * Kept in lockstep with `PUBLIC_PAGE_STYLE_KEYS` in
  * `@givernance/shared/constants` — the single source of truth — so
  * the validator, the Drizzle enum, the Postgres enum (migration 0054),
  * and the frontend `ARCHETYPES` map all share the same alphabet. Any
- * value outside this union is rejected by the request validator before
+ * value outside this set is rejected by the request validator before
  * reaching the service layer.
+ *
+ * `Type.Unsafe<PublicPageStyleKey>({ type: "string", enum: […] })`:
+ * emits a canonical JSON-Schema `enum:` keyword (OpenAPI 3.1 consumers
+ * render this as a single enum dropdown rather than 10 separate
+ * single-value string types — PR-2 review, API contract N2) while
+ * keeping the inferred `Static<>` type narrowed to the literal union
+ * — `Type.String({ enum })` widens to `string`, which would defeat
+ * compile-time exhaustiveness in the service layer.
  */
-export const PublicPageStyleSchema = Type.Union(
-  PUBLIC_PAGE_STYLE_KEYS.map((value) => Type.Literal(value)),
-);
+export const PublicPageStyleSchema = Type.Unsafe<(typeof PUBLIC_PAGE_STYLE_KEYS)[number]>({
+  type: "string",
+  enum: [...PUBLIC_PAGE_STYLE_KEYS],
+  $id: "PublicPageStyle",
+});
 
 /** Schema for creating or updating a campaign public page */
 export const CampaignPublicPageSchema = Type.Object({
@@ -309,6 +319,17 @@ export type CampaignCreate = Static<typeof CampaignCreateSchema>;
 export type CampaignUpdate = Static<typeof CampaignUpdateSchema>;
 export type CampaignPublicPage = Static<typeof CampaignPublicPageSchema>;
 export type PublicPageStyle = Static<typeof PublicPageStyleSchema>;
+
+/**
+ * Body + response shape for `GET / PATCH /v1/org/style-default`
+ * (Epic #362). Single-field schema today; lives next to
+ * `PublicPageStyleSchema` so the picker UI gets one named schema in
+ * the OpenAPI emit rather than three anonymous inline objects.
+ */
+export const TenantStyleDefaultSchema = Type.Object({
+  defaultPublicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
+});
+export type TenantStyleDefault = Static<typeof TenantStyleDefaultSchema>;
 export type PaginationQuery = Static<typeof PaginationQuerySchema>;
 
 /** Validate, coerce, and apply defaults — throws on failure */
