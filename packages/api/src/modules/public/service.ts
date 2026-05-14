@@ -1,6 +1,12 @@
 /** Public donations service — unauthenticated campaign page lookups and Stripe intent creation */
 
 import {
+  DEFAULT_PUBLIC_PAGE_STYLE,
+  FEATURE_FLAG_KEYS,
+  isPublicPageStyleKey,
+  type PublicPageStyleKey,
+} from "@givernance/shared/constants";
+import {
   type BrandingAssetVariants,
   campaignPublicPages,
   campaignQrCodes,
@@ -11,10 +17,31 @@ import {
 } from "@givernance/shared/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, systemDb, withTenantContext } from "../../lib/db.js";
+import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
 import { brandingPublicUrl } from "../../lib/s3.js";
 import { isUuid } from "../../lib/schemas.js";
 import { getStripe } from "../payments/service.js";
+
+/**
+ * Three-layer resolution of the donor-facing archetype (Epic #362).
+ *
+ *   campaign-level override ?? tenant-level default ?? "foundation"
+ *
+ * `isPublicPageStyleKey` defends against a stale DB value surviving a
+ * removed-archetype migration (defence-in-depth — the validator already
+ * rejects unknown values on write, but a soft-deleted archetype could
+ * leave a dangling row). An unrecognised value falls all the way back
+ * to the platform default rather than 404-ing the donor's page.
+ */
+function resolvePublicPageStyle(
+  campaignStyle: string | null | undefined,
+  tenantDefault: string | null | undefined,
+): PublicPageStyleKey {
+  if (isPublicPageStyleKey(campaignStyle)) return campaignStyle;
+  if (isPublicPageStyleKey(tenantDefault)) return tenantDefault;
+  return DEFAULT_PUBLIC_PAGE_STYLE;
+}
 
 /**
  * 30s Redis cache for the public-page payload (issue #193 review,
@@ -143,6 +170,13 @@ async function loadPublicPage(campaignId: string) {
     return null;
   }
 
+  // Resolve the donor's archetype out-of-line so the per-tenant flag
+  // check (Epic #362) doesn't add a column to the cache payload. The
+  // public-page cache key (`PUBLIC_PAGE_CACHE_PREFIX`) doesn't include
+  // the flag state, so we evaluate the flag AFTER the cache read to
+  // avoid a 30 s window of stale flag posture leaking to donors.
+  const styleResolved = await resolveDonorFacingStyle(basicPage.orgId);
+
   // Query with tenant context to allow joining with campaigns (which has strict RLS)
   return withTenantContext(basicPage.orgId, async (tx) => {
     const [page] = await tx
@@ -154,6 +188,13 @@ async function loadPublicPage(campaignId: string) {
         colorPrimary: campaignPublicPages.colorPrimary,
         goalAmountCents: campaignPublicPages.goalAmountCents,
         defaultCurrency: campaigns.defaultCurrency,
+        /**
+         * Per-campaign style override + tenant default (Epic #362).
+         * Both are nullable on the schema; the three-layer resolution
+         * happens in `resolveDonorFacingStyle` after the join.
+         */
+        campaignPublicPageStyle: campaigns.publicPageStyle,
+        tenantDefaultPublicPageStyle: tenants.defaultPublicPageStyle,
         // Connect direct-charge requires the browser SDK to bind to the
         // connected account — exposed on this public endpoint so the donor
         // page can both (a) initialise Stripe.js and (b) handle 3DS
@@ -221,19 +262,55 @@ async function loadPublicPage(campaignId: string) {
       .from(donations)
       .where(and(eq(donations.campaignId, campaignId), eq(donations.status, "cleared")));
 
-    // Strip the internal `logoVariants` + raw `bankAccountId` from the
-    // returned shape. The public response only ships the resolved logo
-    // URL (never the raw S3 variant manifest) and a boolean
-    // `hasSwissQrBill` flag (never the internal bank-account id).
-    const { logoVariants: _logoVariants, bankAccountId: _ba, ...rest } = page;
+    // Strip the internal `logoVariants` + raw `bankAccountId` + the two
+    // raw style columns from the returned shape. The public response
+    // only ships:
+    //   - the resolved logo URL (never the raw S3 variant manifest),
+    //   - a boolean `hasSwissQrBill` flag (never the internal bank-
+    //     account id),
+    //   - the resolved `publicPageStyle` derived from the three-layer
+    //     fallback, ONLY when the `donation.public_page_styles` flag is
+    //     on for this tenant. With the flag off, the field is omitted so
+    //     the donor-facing shell falls back to today's hardcoded layout.
+    const {
+      logoVariants: _logoVariants,
+      bankAccountId: _ba,
+      campaignPublicPageStyle,
+      tenantDefaultPublicPageStyle,
+      ...rest
+    } = page;
     return {
       ...rest,
       raisedCents: stats?.raisedCents ?? 0,
       donorCount: stats?.donorCount ?? 0,
       organisationLogoUrl,
       hasSwissQrBill: page.bankAccountId !== null,
+      publicPageStyle: styleResolved.enabled
+        ? resolvePublicPageStyle(campaignPublicPageStyle, tenantDefaultPublicPageStyle)
+        : null,
     };
   });
+}
+
+/**
+ * Evaluate the `donation.public_page_styles` flag for the tenant that
+ * owns this campaign (Epic #362). Returns a small struct rather than a
+ * raw boolean so the call-site documents intent ("on or off") cleanly.
+ *
+ * Read directly from `flagService` rather than going through
+ * `request.flagService` because this code path is reached from both:
+ *   - the Fastify route (where `request.flagService` would be
+ *     available), AND
+ *   - the cache miss inside `getPublicPage` (no request context).
+ *
+ * The flag service caches Redis → PG, so the additional check is a
+ * sub-millisecond hop in steady state.
+ */
+async function resolveDonorFacingStyle(orgId: string): Promise<{ enabled: boolean }> {
+  const enabled = await flagService.isEnabled(FEATURE_FLAG_KEYS.DONATION_PUBLIC_PAGE_STYLES, {
+    orgId,
+  });
+  return { enabled };
 }
 
 /** Fetch the current public page configuration by campaign ID (admin) */
@@ -244,7 +321,13 @@ export async function getAdminPublicPage(orgId: string, campaignId: string) {
 
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
-      .select({ id: campaigns.id })
+      .select({
+        id: campaigns.id,
+        // Per-campaign archetype override (Epic #362). The admin view
+        // sees the raw value (NULL = "inherits from tenant"); the
+        // donor-facing endpoint resolves the three-layer fallback.
+        publicPageStyle: campaigns.publicPageStyle,
+      })
       .from(campaigns)
       .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
 
@@ -255,7 +338,13 @@ export async function getAdminPublicPage(orgId: string, campaignId: string) {
       .from(campaignPublicPages)
       .where(eq(campaignPublicPages.campaignId, campaignId));
 
-    return page ?? null;
+    if (!page) return null;
+
+    // Merge the campaign-level style override into the admin response
+    // so the editor can render it in the picker without a second
+    // round-trip. Distinct from the donor-facing endpoint, which
+    // resolves the three-layer fallback before responding.
+    return { ...page, publicPageStyle: campaign.publicPageStyle ?? null };
   });
 }
 
@@ -427,6 +516,19 @@ export async function upsertPublicPage(
     colorPrimary?: string | null;
     goalAmountCents?: number | null;
     status?: "draft" | "published";
+    /**
+     * Per-campaign archetype override (Epic #362). Tri-state:
+     *   - `undefined` → leave the column untouched (the PUT only sent
+     *     the public-page fields and didn't intend to clobber style).
+     *   - `null` → explicitly clear the override, inherit from tenant.
+     *   - one of `PUBLIC_PAGE_STYLE_KEYS` → set the override.
+     *
+     * The validator (`CampaignPublicPageSchema`) rejects any other
+     * value before it reaches this service. The route adds the
+     * `requireFlag(DONATION_PUBLIC_PAGE_STYLES)` preHandler so a
+     * caller with the flag off gets 404 before the body is parsed.
+     */
+    publicPageStyle?: PublicPageStyleKey | null;
   },
 ) {
   if (!isUuid(campaignId)) {
@@ -442,12 +544,34 @@ export async function upsertPublicPage(
 
     if (!campaign) return null;
 
+    // Per-campaign style lives on `campaigns`, not on
+    // `campaign_public_pages`, because the operator can pick a style
+    // before publishing (and continue editing the draft after). Update
+    // the campaign row only when the caller actually sent the field
+    // — `undefined` means "leave untouched"; `null` means "clear
+    // override, inherit from tenant default."
+    if (body.publicPageStyle !== undefined) {
+      await tx
+        .update(campaigns)
+        .set({
+          publicPageStyle: body.publicPageStyle,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+
+      // Bust the public-page Redis cache so the donor view picks up
+      // the new style on the next pageload (same 30 s window as colour
+      // / goal / description edits — see `PUBLIC_PAGE_CACHE_TTL_SECONDS`).
+      await redis.del(`${PUBLIC_PAGE_CACHE_PREFIX}${campaignId}`);
+    }
+
     // Check for existing page
     const [existing] = await tx
       .select({ id: campaignPublicPages.id })
       .from(campaignPublicPages)
       .where(eq(campaignPublicPages.campaignId, campaignId));
 
+    let saved: typeof campaignPublicPages.$inferSelect | undefined;
     if (existing) {
       const [updated] = await tx
         .update(campaignPublicPages)
@@ -461,23 +585,110 @@ export async function upsertPublicPage(
         })
         .where(eq(campaignPublicPages.id, existing.id))
         .returning();
-
-      return updated;
+      saved = updated;
+    } else {
+      const [created] = await tx
+        .insert(campaignPublicPages)
+        .values({
+          orgId,
+          campaignId,
+          title: body.title,
+          description: body.description ?? null,
+          colorPrimary: body.colorPrimary ?? null,
+          goalAmountCents: body.goalAmountCents ?? null,
+          status: body.status ?? "draft",
+        })
+        .returning();
+      saved = created;
     }
 
-    const [created] = await tx
-      .insert(campaignPublicPages)
-      .values({
-        orgId,
-        campaignId,
-        title: body.title,
-        description: body.description ?? null,
-        colorPrimary: body.colorPrimary ?? null,
-        goalAmountCents: body.goalAmountCents ?? null,
-        status: body.status ?? "draft",
-      })
-      .returning();
+    // Drizzle's `.returning()` is typed as `T[]`; `[updated]` could be
+    // undefined if the UPDATE matched zero rows (concurrent DELETE
+    // beats this transaction). RLS already guarantees the row exists
+    // under the tenant context, so this is a true should-never-happen.
+    if (!saved) {
+      throw new Error(`Upsert returned no row for campaign ${campaignId} — RLS / row mismatch`);
+    }
 
-    return created;
+    // Re-read the campaign-side style so the admin response is in
+    // sync with what was just written (the caller may have explicitly
+    // set it to null; the editor needs that value back to render).
+    const [campaignAfter] = await tx
+      .select({ publicPageStyle: campaigns.publicPageStyle })
+      .from(campaigns)
+      .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+
+    return { ...saved, publicPageStyle: campaignAfter?.publicPageStyle ?? null };
   });
+}
+
+/**
+ * Fetch the tenant's org-level default archetype (Epic #362, PR-3
+ * picker UX). Routed under `/v1/tenant/style-default` so the picker
+ * doesn't have to know about the broader tenant settings endpoint
+ * (which exists but is a denser PATCH payload).
+ *
+ * Returns `null` for tenants that haven't picked a default yet —
+ * the picker UI surfaces "inherits from Givernance default" in that
+ * case rather than implicitly stamping `foundation` on a fresh tenant.
+ */
+export async function getTenantDefaultPublicPageStyle(
+  orgId: string,
+): Promise<PublicPageStyleKey | null> {
+  return withTenantContext(orgId, async (tx) => {
+    const [row] = await tx
+      .select({ defaultPublicPageStyle: tenants.defaultPublicPageStyle })
+      .from(tenants)
+      .where(eq(tenants.id, orgId));
+    const value = row?.defaultPublicPageStyle ?? null;
+    // Defence-in-depth: the validator rejects unknown values on
+    // write, but a soft-deleted archetype could leave a dangling
+    // value. Strip anything not in the current registry so the
+    // picker doesn't render a deprecated chip.
+    return isPublicPageStyleKey(value) ? value : null;
+  });
+}
+
+/**
+ * Update the tenant's org-level default archetype (Epic #362). Same
+ * tri-state contract as the campaign override: `null` clears it,
+ * a key sets it, omitting the field is rejected by the validator.
+ */
+export async function setTenantDefaultPublicPageStyle(
+  orgId: string,
+  value: PublicPageStyleKey | null,
+): Promise<PublicPageStyleKey | null> {
+  await withTenantContext(orgId, async (tx) => {
+    await tx
+      .update(tenants)
+      .set({ defaultPublicPageStyle: value, updatedAt: new Date() })
+      .where(eq(tenants.id, orgId));
+  });
+
+  // Bust every public-page cache entry for this tenant's campaigns —
+  // changing the org-level default shifts the resolved style for
+  // every campaign that didn't have its own override. Scan via the
+  // existing prefix; the cache is small (30 s TTL) so the SCAN cost
+  // is bounded even on a tenant with hundreds of campaigns. Doing
+  // this here keeps the cache contract local to the service layer
+  // rather than leaking it into the route handler.
+  await invalidateTenantPublicPageCache(orgId);
+
+  return value;
+}
+
+/**
+ * Best-effort cache invalidation for every cached public-page entry
+ * belonging to `orgId`. Read the campaign list (RLS-scoped) and DEL
+ * the matching keys. Not transactional with the DB write — a donor
+ * who lands during the ~50 ms gap sees the previous style for one
+ * page-load, which is acceptable for a settings change.
+ */
+async function invalidateTenantPublicPageCache(orgId: string): Promise<void> {
+  const rows = await withTenantContext(orgId, async (tx) =>
+    tx.select({ id: campaigns.id }).from(campaigns).where(eq(campaigns.orgId, orgId)),
+  );
+  if (rows.length === 0) return;
+  const keys = rows.map((row) => `${PUBLIC_PAGE_CACHE_PREFIX}${row.id}`);
+  await redis.del(...keys);
 }

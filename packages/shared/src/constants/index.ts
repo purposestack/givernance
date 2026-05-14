@@ -23,5 +23,13 @@ export { assertSafeOrgAttributes, SAFE_ORG_ATTRIBUTES } from "./keycloak-org-att
 export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "./password";
 export { isPersonalEmailDomain, PERSONAL_EMAIL_DOMAINS } from "./personal-email-domains";
 export { PINO_REDACT_PATHS } from "./pino-redact";
+export {
+  DEFAULT_PUBLIC_PAGE_STYLE,
+  isPublicPageStyleKey,
+  PUBLIC_PAGE_STYLE_KEYS,
+  PUBLIC_PAGE_STYLE_REGISTRY,
+  type PublicPageStyleDescriptor,
+  type PublicPageStyleKey,
+} from "./public-page-styles";
 export { isReservedSlug, RESERVED_SLUGS } from "./reserved-slugs";
 export { DOMAIN_PATTERN, validateTenantDomain } from "./tenant-domain";
