@@ -23,6 +23,18 @@
  * via the `ArchetypeLoader` in `../app/(public)/p/[id]/page.tsx`
  * (PR-4 follow-up wiring) so the donor page never renders broken
  * even if a tenant manages to pick an un-implemented archetype.
+ *
+ * **Operator-experience foot-gun** (PR-4 review): an unimplemented
+ * archetype silently downgrades to Foundation. URL doesn't change,
+ * no banner appears, no operator-side signal. The picker UI in PR-3
+ * (`PublicPageStylePicker`) currently lets the operator pick any of
+ * the 10 archetypes; PR-4b must add either:
+ *   (a) a "Coming soon — currently renders as Foundation" label on
+ *       un-shipped tiles in the picker, OR
+ *   (b) a per-tile feature-flag (`donation.public_page_styles.<key>`)
+ *       that hides un-shipped tiles entirely.
+ * The current posture is acceptable as a defence-in-depth fallback
+ * but operator-confusing if it's the ONLY signal.
  */
 
 import type { PublicPageStyleKey } from "@givernance/shared/constants";

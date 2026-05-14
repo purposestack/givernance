@@ -52,6 +52,14 @@ export interface ArchetypePageData {
 export interface HeroSlotProps {
   data: ArchetypePageData;
 }
+/**
+ * Returning `null` from a `Progress` slot is a valid output — used by
+ * `emergency-appeal` (counter merged into Hero, per ADR-030 § Slot
+ * Inventory) and by archetypes that just hide progress when no goal
+ * is configured. The shell expects a `ReactNode | null` from this
+ * slot; rendering nothing is the explicit affordance for "this
+ * archetype owns its own counter elsewhere."
+ */
 export interface ProgressSlotProps {
   data: ArchetypePageData;
 }
