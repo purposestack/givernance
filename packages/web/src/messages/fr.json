@@ -1008,6 +1008,30 @@
         "error": "Impossible d'enregistrer votre modification. Veuillez réessayer."
       }
     },
+    "publicPageStyle": {
+      "title": "Style de la page de don",
+      "description": "Choisissez l'archétype visuel que les donateurs voient en arrivant sur la page publique d'une campagne. Chaque style préserve votre couleur de marque et votre logo — seules la structure, la typographie et l'animation changent.",
+      "clear": "Utiliser le style Givernance par défaut",
+      "footnote": "C'est le style par défaut pour toute votre organisation. Chaque campagne peut le remplacer depuis l'éditeur de campagne.",
+      "status": {
+        "inherits": "Style Givernance par défaut",
+        "custom": "Style personnalisé choisi",
+        "active": "Style actif :",
+        "inheritedDefault": "Par défaut Givernance"
+      },
+      "voice": {
+        "institutional": "Institutionnel",
+        "expressive": "Expressif",
+        "editorial": "Éditorial",
+        "minimal": "Minimal",
+        "civic": "Civique"
+      },
+      "toast": {
+        "changed": "Style de la page de don défini sur {label}.",
+        "cleared": "Retour au style Givernance par défaut.",
+        "error": "Impossible de mettre à jour le style. Veuillez réessayer."
+      }
+    },
     "branding": {
       "title": "Logo de l'organisation",
       "description": "Téléversez un logo pour personnaliser la barre latérale, les pages de don publiques et les reçus. Toutes les variantes sont générées à partir d'un seul fichier.",
