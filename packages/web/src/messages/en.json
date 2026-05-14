@@ -1746,6 +1746,7 @@
       "type": "Type",
       "email": "Email",
       "lastDonation": "Last donation",
+      "createdAt": "Added on",
       "actions": "Actions",
       "tags": "Tags",
       "selectAll": "Select all on this page",
