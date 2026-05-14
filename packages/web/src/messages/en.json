@@ -1029,6 +1029,8 @@
       "toast": {
         "changed": "Donation page style set to {label}.",
         "cleared": "Reverted to the Givernance default.",
+        "featureUnavailable": "The style picker is no longer available for your organisation. Please reload the page.",
+        "sessionExpired": "Your session has expired. Please sign in again.",
         "error": "Couldn't update the style. Please try again."
       }
     },

@@ -1014,10 +1014,10 @@
       "clear": "Utiliser le style Givernance par défaut",
       "footnote": "C'est le style par défaut pour toute votre organisation. Chaque campagne peut le remplacer depuis l'éditeur de campagne.",
       "status": {
-        "inherits": "Style Givernance par défaut",
+        "inherits": "Style par défaut Givernance",
         "custom": "Style personnalisé choisi",
         "active": "Style actif :",
-        "inheritedDefault": "Par défaut Givernance"
+        "inheritedDefault": "Style par défaut Givernance"
       },
       "voice": {
         "institutional": "Institutionnel",
@@ -1029,6 +1029,8 @@
       "toast": {
         "changed": "Style de la page de don défini sur {label}.",
         "cleared": "Retour au style Givernance par défaut.",
+        "featureUnavailable": "Le sélecteur de style n'est plus disponible pour votre organisation. Veuillez recharger la page.",
+        "sessionExpired": "Votre session a expiré. Veuillez vous reconnecter.",
         "error": "Impossible de mettre à jour le style. Veuillez réessayer."
       }
     },

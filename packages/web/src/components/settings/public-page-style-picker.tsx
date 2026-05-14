@@ -7,7 +7,7 @@ import {
 } from "@givernance/shared/constants";
 import { Check, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,11 @@ export function PublicPageStylePicker({ initialValue }: PublicPageStylePickerPro
   const t = useTranslations("settings.publicPageStyle");
   const [value, setValue] = useState<PublicPageStyleKey | null>(initialValue);
   const [busyKey, setBusyKey] = useState<PublicPageStyleKey | "__clear__" | null>(null);
+  // Stable refs keyed by archetype identifier so a successful "clear"
+  // PATCH can return focus to the inherits-default tile after the
+  // clear button unmounts — keyboard users were dropping to <body>
+  // otherwise (PR-3 review, I3).
+  const tileRefs = useRef<Map<PublicPageStyleKey, HTMLButtonElement | null>>(new Map());
 
   const handlePick = async (next: PublicPageStyleKey | null) => {
     if (next === value) return; // no-op: already selected
@@ -71,13 +76,15 @@ export function PublicPageStylePicker({ initialValue }: PublicPageStylePickerPro
               label: PUBLIC_PAGE_STYLE_REGISTRY.find((entry) => entry.key === next)?.label ?? next,
             }),
       );
+      // Clear-button case: the button just unmounted (gated by
+      // !inherits). Restore focus to the inherits-default tile so
+      // keyboard users don't fall through to <body>.
+      if (next === null) {
+        tileRefs.current.get(DEFAULT_PUBLIC_PAGE_STYLE)?.focus();
+      }
     } catch (err) {
       setValue(previous); // revert
-      const message =
-        err instanceof ApiProblem
-          ? (err.detail ?? err.title ?? t("toast.error"))
-          : t("toast.error");
-      toast.error(message);
+      toast.error(mapErrorToToast(err, t));
     } finally {
       setBusyKey(null);
     }
@@ -136,10 +143,13 @@ export function PublicPageStylePicker({ initialValue }: PublicPageStylePickerPro
           const isBusy = busyKey === entry.key;
           const isInheritedDefault = entry.key === DEFAULT_PUBLIC_PAGE_STYLE && inherits;
           return (
-            <li key={entry.key}>
+            <li key={entry.key} aria-busy={isBusy}>
               <button
                 type="button"
                 aria-pressed={isActive}
+                ref={(el) => {
+                  tileRefs.current.set(entry.key, el);
+                }}
                 disabled={busyKey !== null}
                 onClick={() => handlePick(entry.key)}
                 className={[
@@ -179,4 +189,21 @@ export function PublicPageStylePicker({ initialValue }: PublicPageStylePickerPro
       <p className="text-xs text-on-surface-variant">{t("footnote")}</p>
     </section>
   );
+}
+
+type ToastTranslator = ReturnType<typeof useTranslations<"settings.publicPageStyle">>;
+
+/**
+ * Map a PATCH-side error to an operator-readable toast key. The
+ * picker should only see 401 (session expired), 404 (flag flipped
+ * off mid-session — PR-2's `requireFlag` gate), or generic 5xx;
+ * the field-level 400 from PR-2 lives on the *campaign-level* PUT,
+ * not this route. Extracted out of `handlePick` to keep its cognitive
+ * complexity inside Biome's threshold (PR-3 review).
+ */
+function mapErrorToToast(err: unknown, t: ToastTranslator): string {
+  if (!(err instanceof ApiProblem)) return t("toast.error");
+  if (err.status === 404) return t("toast.featureUnavailable");
+  if (err.status === 401) return t("toast.sessionExpired");
+  return err.detail ?? err.title ?? t("toast.error");
 }
