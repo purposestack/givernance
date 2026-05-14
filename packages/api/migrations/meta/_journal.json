@@ -393,6 +393,20 @@
       "when": 1778090000000,
       "tag": "0055_notifications_center",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1778100000000,
+      "tag": "0056_bulk_import_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1778110000000,
+      "tag": "0057_bulk_import_feature_flag",
+      "breakpoints": true
     }
   ]
 }
