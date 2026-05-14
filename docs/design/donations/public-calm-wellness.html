@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public donation — Calm Wellness · Givernance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /*
+     * CALM WELLNESS archetype (Epic #362).
+     *
+     * Voice: soft, hopeful, breath-paced. Pastel washes, lowercase
+     * headlines, gentle. Quicksand for the display only; Inter for
+     * body (Quicksand body has known readability issues below 16 px,
+     * and this archetype's audience trends older + SR users).
+     *
+     * motion.ambient = "reduced-ok" — the hero gradient morphs at
+     * ≤ 0.1 Hz, gated by `prefers-reduced-motion`. WCAG 2.2.2 safe
+     * (motion < 5 s in a single cycle = no pause-control required).
+     *
+     * Easter egg: click the headline 5 times → falling leaves /
+     * snow (season-dependent in user's locale).
+     */
+    :root {
+      --brand-primary: #8a6bb1;
+      --brand-primary-deep: #654988;
+      --brand-on-primary: #fffefa;
+      --ink: #2a2438;
+      --ink-soft: #6b6580;
+      --paper: #fef9f3;
+      --pastel-pink: #fbe1e8;
+      --pastel-mint: #d6f0e4;
+      --pastel-cream: #faecc8;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    :focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; border-radius: 12px; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Inter', sans-serif; font-variant-numeric: tabular-nums lining-nums; line-height: 1.6; }
+    .skip-link { position: absolute; left: -9999px; }
+    .skip-link:focus { left: 16px; top: 16px; background: var(--ink); color: var(--paper); padding: 12px 16px; border-radius: 999px; z-index: 100; }
+
+    .topbar { max-width: 960px; margin: 0 auto; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; }
+    .badge { background: var(--pastel-mint); color: var(--brand-primary-deep); padding: 8px 16px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .lang-switch a { padding: 4px 10px; color: var(--ink-soft); text-decoration: none; font-size: 13px; }
+    .lang-switch a[aria-current="page"] { background: var(--pastel-cream); color: var(--ink); border-radius: 999px; }
+
+    main { max-width: 960px; margin: 0 auto; padding: 0 32px 80px; }
+    @media (max-width: 720px) { main { padding: 0 16px 48px; } }
+
+    /* Hero — soft animated gradient (ambient motion) */
+    .hero { position: relative; padding: 80px 48px; border-radius: 32px; overflow: hidden; background: linear-gradient(135deg, var(--pastel-pink) 0%, var(--pastel-cream) 50%, var(--pastel-mint) 100%); background-size: 200% 200%; animation: drift 24s ease-in-out infinite; text-align: center; }
+    @media (max-width: 720px) { .hero { padding: 48px 24px; border-radius: 24px; } }
+    @keyframes drift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+    .eyebrow { font-family: 'Quicksand', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 0.18em; text-transform: lowercase; color: var(--brand-primary-deep); margin: 0; }
+    h1 { font-family: 'Quicksand', sans-serif; font-weight: 600; font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.15; letter-spacing: -0.01em; margin: 16px 0 0; text-transform: lowercase; max-width: 24ch; margin-inline: auto; text-wrap: balance; color: var(--ink); }
+    .lede { font-size: 1.05rem; margin: 24px auto 0; max-width: 48ch; color: var(--ink-soft); }
+
+    /* Progress — softer, no hard counter */
+    .progress { margin: 32px auto 0; padding: 0; max-width: 480px; }
+    .progress-bar { height: 8px; background: rgba(138,107,177,0.12); border-radius: 999px; overflow: hidden; }
+    .progress-bar > span { display: block; height: 100%; background: var(--brand-primary); border-radius: 999px; }
+    .progress-meta { display: flex; justify-content: center; gap: 24px; font-size: 13px; color: var(--ink-soft); margin: 12px 0 0; flex-wrap: wrap; }
+    .progress-meta strong { color: var(--ink); font-weight: 600; }
+
+    /* Donate form */
+    .form { margin: 48px auto 0; padding: 36px 32px; background: var(--brand-on-primary); border-radius: 24px; max-width: 520px; box-shadow: 0 12px 48px rgba(138,107,177,0.12); }
+    .form h2 { font-family: 'Quicksand', sans-serif; font-weight: 600; font-size: 1.6rem; margin: 0 0 6px; text-transform: lowercase; }
+    .form .subhead { font-size: 14px; color: var(--ink-soft); margin: 0 0 24px; }
+    .freq { display: grid; grid-template-columns: 1fr 1fr; background: var(--paper); border-radius: 999px; padding: 4px; gap: 4px; margin: 0 0 24px; }
+    .freq button { background: transparent; border: 0; padding: 10px; border-radius: 999px; font-family: 'Quicksand', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--ink-soft); text-transform: lowercase; }
+    .freq button.active { background: var(--brand-primary); color: var(--brand-on-primary); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; border: 0; padding: 0; }
+    .grid input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+    .grid label { display: block; cursor: pointer; }
+    .grid .chip { padding: 16px 6px; border: 2px solid transparent; border-radius: 999px; background: var(--paper); text-align: center; font-family: 'Quicksand', sans-serif; font-weight: 600; font-size: 1.05rem; transition: border-color 0.18s, background 0.18s; font-variant-numeric: tabular-nums lining-nums; }
+    .grid input[type="radio"]:checked + .chip { border-color: var(--brand-primary); background: rgba(138,107,177,0.08); color: var(--brand-primary-deep); }
+    .grid input[type="radio"]:focus-visible + .chip { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
+    .write { width: 100%; padding: 14px 18px; border: 2px solid transparent; border-radius: 999px; background: var(--paper); font-family: 'Quicksand', sans-serif; font-weight: 600; font-size: 1.05rem; margin: 0 0 20px; font-variant-numeric: tabular-nums; }
+    .write:focus { outline: none; border-color: var(--brand-primary); }
+    .donor { display: grid; gap: 10px; margin: 0 0 20px; }
+    .donor input { padding: 12px 18px; border: 1px solid var(--pastel-cream); border-radius: 999px; background: var(--paper); font-family: 'Inter', sans-serif; font-size: 14px; }
+    .donor .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .cta { width: 100%; padding: 16px; border: 0; border-radius: 999px; background: var(--brand-primary); color: var(--brand-on-primary); font-family: 'Quicksand', sans-serif; font-weight: 600; font-size: 15px; cursor: pointer; transition: background 0.18s; }
+    .cta:hover { background: var(--brand-primary-deep); }
+    .reassure { font-size: 12px; color: var(--ink-soft); margin: 14px 0 0; text-align: center; }
+
+    footer { max-width: 960px; margin: 48px auto 0; padding: 24px 32px; text-align: center; font-size: 12px; color: var(--ink-soft); }
+    footer a { color: var(--brand-primary-deep); }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#donate">skip to donation form</a>
+  <header class="topbar">
+    <span class="badge">✦ a gentle ask</span>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="?lang=en" aria-current="page" lang="en">EN</a>
+      <a href="?lang=fr" hreflang="fr" lang="fr">FR</a>
+    </nav>
+  </header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">respire · printemps 2026</p>
+      <h1>twelve weeks of free therapy for women who can't afford one.</h1>
+      <p class="lede">respire pairs women in housing crisis with licensed therapists for twelve weekly sessions. €60 covers one session. €720 covers a full course.</p>
+      <div class="progress" aria-label="Campaign progress">
+        <div class="progress-bar" role="progressbar" aria-valuenow="71" aria-valuemin="0" aria-valuemax="100" aria-valuetext="71 percent funded">
+          <span style="width: 71%;"></span>
+        </div>
+        <div class="progress-meta">
+          <span><strong>€42&#8239;800</strong> raised</span>
+          <span><strong>71 %</strong> of goal</span>
+          <span><strong>114</strong> supporters</span>
+        </div>
+      </div>
+    </section>
+    <section class="form" id="donate" aria-labelledby="donate-heading">
+      <h2 id="donate-heading">give a session, or many</h2>
+      <p class="subhead">Stripe-secured · cancel any time · tax-receipt eligible</p>
+      <div class="freq" role="tablist" aria-label="Frequency">
+        <button class="active" role="tab" aria-selected="true" type="button">one-time</button>
+        <button role="tab" aria-selected="false" type="button">monthly</button>
+      </div>
+      <fieldset class="grid">
+        <legend style="position:absolute;left:-9999px;">Suggested amounts</legend>
+        <label><input type="radio" name="amount" value="20"><span class="chip">€20</span></label>
+        <label><input type="radio" name="amount" value="60" checked><span class="chip">€60</span></label>
+        <label><input type="radio" name="amount" value="120"><span class="chip">€120</span></label>
+        <label><input type="radio" name="amount" value="240"><span class="chip">€240</span></label>
+        <label><input type="radio" name="amount" value="480"><span class="chip">€480</span></label>
+        <label><input type="radio" name="amount" value="720"><span class="chip">€720</span></label>
+      </fieldset>
+      <input class="write" type="number" min="1" placeholder="or another amount" aria-label="Custom amount in euros">
+      <div class="donor">
+        <input type="email" placeholder="email" aria-label="Email" autocomplete="email">
+        <div class="row">
+          <input type="text" placeholder="first name" aria-label="First name" autocomplete="given-name">
+          <input type="text" placeholder="last name" aria-label="Last name" autocomplete="family-name">
+        </div>
+      </div>
+      <button class="cta" type="submit">give €60 · one session</button>
+      <p class="reassure">no high-pressure follow-ups · we promise</p>
+    </section>
+  </main>
+  <footer>respire · <span lang="fr">association loi 1901</span> · <a href="#">givernance</a></footer>
+</body>
+</html>

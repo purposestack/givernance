@@ -2335,6 +2335,9 @@
       "trust": "Paiement",
       "trustValue": "Sécurisé par Stripe"
     },
+    "footer": {
+      "institutionalSignature": "Cette campagne est animée par <org></org>. En donnant, vous acceptez les conditions de don affichées à l'étape de paiement."
+    },
     "form": {
       "eyebrow": "Don en ligne",
       "title": "Faire un don",
