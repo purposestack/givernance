@@ -165,6 +165,23 @@ export interface SignupResendJob {
   };
 }
 
+/**
+ * Bulk-import processor input (Epic #373).
+ *
+ * Outbox payload only carries the `bulkImportJobId`. The worker re-reads
+ * the `bulk_import_jobs` row + downloads the uploaded file from S3 under
+ * its own RLS context; PII never lives in Redis nor in the BullMQ job
+ * payload.
+ */
+export interface ProcessBulkImportJob {
+  name: "process-bulk-import";
+  data: {
+    orgId: string;
+    bulkImportJobId: string;
+    traceparent?: string;
+  };
+}
+
 /** Union of all job types */
 export type JobDefinition =
   | GenerateReceiptJob
@@ -178,7 +195,8 @@ export type JobDefinition =
   | BrandingActivateLogoJob
   | BrandingGcAssetJob
   | KeycloakSyncOrgLogoJob
-  | SignupResendJob;
+  | SignupResendJob
+  | ProcessBulkImportJob;
 
 /** Queue names */
 export const QUEUE_NAMES = {
@@ -216,6 +234,14 @@ export const QUEUE_NAMES = {
    * relay if a large tenant joins.
    */
   NOTIFICATIONS_DIGEST: "notifications_digest",
+  /**
+   * Bulk-import constituents (Epic #373). One job per upload; the worker
+   * downloads the file from S3, parses CSV/XLSX, and inserts constituents
+   * in batches of 50 under the worker's RLS context. Concurrency 1 per
+   * worker process — the parser holds a buffer + the duplicate-detection
+   * trigram query is CPU-bound; scale by adding pods.
+   */
+  BULK_IMPORT: "bulk_import",
 } as const;
 
 /** Job names inside the NOTIFICATIONS_DIGEST queue. */

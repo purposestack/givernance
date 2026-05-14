@@ -24,6 +24,7 @@ import { processNotificationsEmailDigest } from "./processors/notifications-emai
 import { fanoutNotifications } from "./processors/notifications-fanout.js";
 import { processPlatformAdminInviteEmail } from "./processors/platform-admin-invite-email.js";
 import { processGeneratePostalExport } from "./processors/postal-export.js";
+import { processBulkImport } from "./processors/process-bulk-import.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import { processSignupVerificationEmail } from "./processors/signup-email.js";
 import { processSignupResend } from "./processors/signup-resend.js";
@@ -66,6 +67,7 @@ const notificationsDigestQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS_DIGEST, {
     removeOnFail: { count: 50 },
   },
 });
+const bulkImportQueue = new Queue(QUEUE_NAMES.BULK_IMPORT, { connection: queueConnection });
 
 /**
  * Register the nightly provisional-admin expire job.
@@ -311,6 +313,28 @@ async function processDomainEvent(job: Job): Promise<void> {
       return;
     }
 
+    case "bulk-import": {
+      // Epic #373 — outbox payload carries only the bulk_import_jobs row
+      // id. The worker re-reads the row + downloads the file under
+      // tenant RLS; PII never lives in Redis.
+      await bulkImportQueue.add(
+        "process-bulk-import",
+        {
+          orgId: decision.orgId,
+          bulkImportJobId: decision.bulkImportJobId,
+          traceparent: decision.traceparent,
+        },
+        // Per-payload job id so a transactional retry of the outbox row
+        // doesn't fan-out into duplicate imports.
+        { jobId: `bulk-import-${decision.outboxId}` },
+      );
+      log.info(
+        { outboxId: decision.outboxId, bulkImportJobId: decision.bulkImportJobId },
+        "Enqueued bulk import job",
+      );
+      return;
+    }
+
     case "unhandled":
       log.warn({ eventType: decision.type }, "Unhandled event type");
       return;
@@ -442,6 +466,24 @@ function startWorkers() {
     },
   );
 
+  // ── Bulk-import queue (Epic #373) ────────────────────────────────────
+  // Concurrency 1 per pod: each job buffers a sub-10 MB file in memory
+  // and walks rows sequentially under one Drizzle txn per batch. The
+  // CPU floor is the trigram duplicate-detection query — scale by adding
+  // pods, not concurrency.
+  const bulkImportWorker = new Worker(
+    QUEUE_NAMES.BULK_IMPORT,
+    (job) =>
+      processBulkImport(
+        job as Job<{ orgId: string; bulkImportJobId: string; traceparent?: string }>,
+      ),
+    {
+      connection: createRedisConnection(),
+      concurrency: 1,
+      ...defaultJobOpts,
+    },
+  );
+
   const keycloakSyncWorker = new Worker(
     QUEUE_NAMES.KEYCLOAK_SYNC,
     async (job: Job) => {
@@ -489,6 +531,7 @@ function startWorkers() {
     brandingWorker,
     keycloakSyncWorker,
     notificationsDigestWorker,
+    bulkImportWorker,
   ];
 
   for (const w of workers) {
