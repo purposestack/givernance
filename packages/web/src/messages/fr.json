@@ -1842,6 +1842,99 @@
     },
     "errors": {
       "deleteGeneric": "Impossible de supprimer ce constituant. Veuillez réessayer."
+    },
+    "bulkImport": {
+      "action": "Import CSV",
+      "title": "Import de constituants",
+      "description": "Importez vos constituants depuis un fichier CSV ou Excel.",
+      "steps": {
+        "template": "Télécharger le modèle",
+        "upload": "Charger le fichier",
+        "progress": "Progression"
+      },
+      "template": {
+        "title": "Étape 1 — Télécharger le modèle",
+        "body": "Téléchargez le modèle CSV pour préparer vos données. Conservez l'en-tête tel quel — il indique au serveur quel champ va où.",
+        "download": "Télécharger le modèle CSV",
+        "next": "J'ai mon fichier, continuer",
+        "downloadError": "Impossible de télécharger le modèle. Veuillez réessayer."
+      },
+      "upload": {
+        "title": "Étape 2 — Charger le fichier",
+        "dropzone": "Glissez votre fichier ici ou cliquez pour parcourir",
+        "browse": "Parcourir vos fichiers",
+        "hint": "Formats acceptés : .csv, .xlsx, .xls · Taille max. : 10 Mo",
+        "selectedFile": "Fichier sélectionné",
+        "remove": "Supprimer le fichier",
+        "force": "Ignorer la détection de doublons",
+        "forceHint": "Crée toutes les lignes même si un doublon est détecté.",
+        "back": "Retour",
+        "submit": "Lancer l'import",
+        "submitting": "Envoi en cours…",
+        "errors": {
+          "tooLarge": "Fichier trop volumineux. La taille maximale est de 10 Mo.",
+          "badType": "Format non pris en charge. Utilisez un fichier .csv, .xlsx ou .xls.",
+          "generic": "Impossible d'envoyer le fichier. Veuillez réessayer."
+        }
+      },
+      "progress": {
+        "title": "Étape 3 — Import en cours",
+        "subtitle": "Vous pouvez fermer cette fenêtre — l'import continue en arrière-plan.",
+        "rows": "{processed} sur {total} lignes traitées",
+        "viewResults": "Voir les résultats détaillés",
+        "close": "Fermer",
+        "kpis": {
+          "created": "Créés",
+          "duplicates": "Doublons",
+          "failed": "Erreurs",
+          "addresses": "Adresses complètes",
+          "emails": "Emails renseignés"
+        }
+      },
+      "status": {
+        "pending": "En file",
+        "processing": "En cours",
+        "completed": "Terminé",
+        "partial": "Partiel",
+        "failed": "Échec"
+      },
+      "history": {
+        "title": "Historique des imports",
+        "breadcrumb": "Historique",
+        "subtitle": "Suivez vos imports précédents et téléchargez les fichiers d'origine.",
+        "empty": "Aucun import pour l'instant.",
+        "columns": {
+          "createdAt": "Date",
+          "fileName": "Fichier",
+          "status": "Statut",
+          "rows": "Lignes",
+          "results": "Résultats",
+          "actions": "Actions"
+        },
+        "results": "{created} créés · {duplicates} doublons · {failed} erreurs",
+        "downloadOriginal": "Télécharger le fichier",
+        "viewResults": "Voir les résultats",
+        "loadError": "Impossible de charger l'historique. Veuillez réessayer."
+      },
+      "results": {
+        "title": "Résultats de l'import",
+        "tabs": {
+          "all": "Toutes",
+          "created": "Créées",
+          "duplicates": "Doublons",
+          "failed": "Erreurs"
+        },
+        "empty": "Aucune ligne dans cette catégorie.",
+        "columns": {
+          "row": "Ligne",
+          "status": "Statut",
+          "firstName": "Prénom",
+          "lastName": "Nom",
+          "email": "Email",
+          "error": "Erreur"
+        },
+        "loadError": "Impossible de charger les résultats. Veuillez réessayer."
+      }
     }
   },
   "campaigns": {

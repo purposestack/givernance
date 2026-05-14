@@ -3,6 +3,7 @@ import { Plus, Users } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { BulkImportTrigger } from "@/components/constituents/bulk-import-trigger";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -93,11 +94,14 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
   // (safest posture — if we can't confirm the feature is on, don't
   // render it).
   let bulkEmailEnabled = false;
+  let bulkImportEnabled = false;
   try {
     const flags = await FeatureFlagsService.listPublic(client);
     bulkEmailEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL);
+    bulkImportEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_BULK_IMPORT);
   } catch {
     bulkEmailEnabled = false;
+    bulkImportEnabled = false;
   }
 
   let result: ConstituentListResponse;
@@ -133,12 +137,15 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
         breadcrumbs={[{ label: t("breadcrumbRoot"), href: "/dashboard" }, { label: t("title") }]}
         actions={
           canWrite ? (
-            <Button asChild variant="primary" size="sm">
-              <Link href="/constituents/new">
-                <Plus size={16} aria-hidden="true" />
-                {t("actions.new")}
-              </Link>
-            </Button>
+            <>
+              {bulkImportEnabled ? <BulkImportTrigger /> : null}
+              <Button asChild variant="primary" size="sm">
+                <Link href="/constituents/new">
+                  <Plus size={16} aria-hidden="true" />
+                  {t("actions.new")}
+                </Link>
+              </Button>
+            </>
           ) : null
         }
       />
