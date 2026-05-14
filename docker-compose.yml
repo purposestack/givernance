@@ -113,6 +113,12 @@ services:
       # Org-branding bucket (Epic #286) — public-read for donor-facing
       # surfaces (Keycloak login template, donation page hero).
       S3_BRANDING_BUCKET: ${S3_BRANDING_BUCKET:-branding}
+      # Bulk-import upload bucket (Epic #373) — **private**. Holds
+      # operator-uploaded CSV/Excel files with PII (donor names,
+      # emails, addresses). Served back through the API only; no
+      # presigned URLs, no public-read. 90-day lifecycle matches the
+      # row_data retention in `bulk_import_results` (see docs/26 §5).
+      S3_BULK_IMPORT_BUCKET: ${S3_BULK_IMPORT_BUCKET:-bulk-imports}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -121,6 +127,7 @@ services:
         mc mb --ignore-existing "local/$$S3_RECEIPTS_BUCKET"
         mc mb --ignore-existing "local/$$S3_CAMPAIGNS_BUCKET"
         mc mb --ignore-existing "local/$$S3_BRANDING_BUCKET"
+        mc mb --ignore-existing "local/$$S3_BULK_IMPORT_BUCKET"
         # GC orphan multipart parts after 1 day. The postal-export worker
         # streams a ZIP into S3 via @aws-sdk/lib-storage's multipart Upload;
         # if the source stream is destroyed mid-upload (worker crash, S3
@@ -133,6 +140,12 @@ services:
         mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_CAMPAIGNS_BUCKET" || true
         mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_RECEIPTS_BUCKET" || true
         mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_BRANDING_BUCKET" || true
+        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_BULK_IMPORT_BUCKET" || true
+        # Bulk-import bucket — 90-day retention to match the row_data
+        # snapshot retention in `bulk_import_results`. Operators can
+        # re-download files within the window for audit; older files
+        # are auto-pruned. Mirror this on the prod Scaleway bucket.
+        mc ilm rule add --expire-days 90 "local/$$S3_BULK_IMPORT_BUCKET" || true
         # Branding bucket is public-read at the bucket level — donor-facing
         # surfaces (Keycloak login template, donation page) hit object
         # URLs directly with `Cache-Control: public, max-age=31536000,
@@ -140,7 +153,12 @@ services:
         # contamination impossible. This MUST be matched in prod via the
         # Scaleway Object Storage bucket policy.
         mc anonymous set download "local/$$S3_BRANDING_BUCKET" || true
-        echo "MinIO buckets ready (with abort-incomplete-multipart lifecycle): $$S3_RECEIPTS_BUCKET, $$S3_CAMPAIGNS_BUCKET, $$S3_BRANDING_BUCKET"
+        # Bulk-import bucket is private — explicitly deny anonymous
+        # access. This matches the prod Scaleway policy and prevents an
+        # accidental `mc anonymous set` from a copy-pasted command from
+        # exposing PII-laden CSVs.
+        mc anonymous set none "local/$$S3_BULK_IMPORT_BUCKET" || true
+        echo "MinIO buckets ready (with abort-incomplete-multipart lifecycle): $$S3_RECEIPTS_BUCKET, $$S3_CAMPAIGNS_BUCKET, $$S3_BRANDING_BUCKET, $$S3_BULK_IMPORT_BUCKET"
     restart: "no"
 
   mailpit:
