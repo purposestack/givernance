@@ -37,10 +37,7 @@
 --   * `public = TRUE` — the settings layout + the campaign editor
 --     SSR-fetch `/v1/feature-flags` to decide whether to render the
 --     "Page style" picker. A private value here would unconditionally
---     hide the entry and defeat the Epic. The flag name is intentionally
---     descriptive (`donation.public_page_styles`) so the public-
---     projection caveat from `docs/18-feature-flags.md` §0 doesn't
---     tease an unannounced surprise.
+--     hide the entry and defeat the Epic.
 --
 -- Idempotent — `ON CONFLICT (key) DO NOTHING` so a redeploy preserves
 -- any super-admin-toggled value. Migrations are immutable once

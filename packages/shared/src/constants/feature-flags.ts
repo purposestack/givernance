@@ -83,9 +83,7 @@ export const FEATURE_FLAG_KEYS = {
    * `public=true`: SSR-fetch in the settings layout + the campaign
    * editor decides whether to render the "Page style" picker; a
    * private value would unconditionally hide the entry and defeat
-   * the Epic. The flag *name itself* (`donation.public_page_styles`)
-   * is intentionally descriptive — no tease of an unannounced
-   * surprise.
+   * the Epic.
    *
    * Surfaces gated by this key:
    *   - API: GET / PATCH on `publicPageStyle` field of campaigns and

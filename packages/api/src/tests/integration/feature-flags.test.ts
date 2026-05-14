@@ -384,15 +384,33 @@ describe("Feature flag CHECK against DB drift between schema + seed", () => {
   // two halves of the same source-of-truth. Editing one and forgetting
   // the other leaves the Back Office UI with a label/description that
   // doesn't match a fresh-DB seed. This test catches the drift in CI.
-  it("FEATURE_FLAG_REGISTRY matches the seeded DB rows (label + description + key parity)", async () => {
+  it("FEATURE_FLAG_REGISTRY matches the seeded DB rows (label + description + scope + tenant_override_allowed + public parity)", async () => {
+    // PR #386 Plat-IMPORTANT (Epic #362 spike review): the prior parity
+    // assertion only covered label + description, leaving scope /
+    // tenant_override_allowed / public uncovered. Migration headers
+    // (0051, 0053, …) and `docs/18-feature-flags.md` § 0 promise CI
+    // catches drift on those three columns — extending the assertion
+    // closes the gap so the next flag we add doesn't quietly ship with
+    // the wrong scope or public-projection bit.
     for (const entry of FEATURE_FLAG_REGISTRY) {
       const [dbRow] = await db
-        .select({ label: featureFlags.label, description: featureFlags.description })
+        .select({
+          label: featureFlags.label,
+          description: featureFlags.description,
+          scope: featureFlags.scope,
+          tenantOverrideAllowed: featureFlags.tenantOverrideAllowed,
+          public: featureFlags.public,
+        })
         .from(featureFlags)
         .where(eq(featureFlags.key, entry.key));
       expect(dbRow, `Missing seed row for ${entry.key}`).toBeDefined();
       expect(dbRow?.label, `Label drift for ${entry.key}`).toBe(entry.label);
       expect(dbRow?.description, `Description drift for ${entry.key}`).toBe(entry.description);
+      expect(dbRow?.scope, `Scope drift for ${entry.key}`).toBe(entry.scope);
+      expect(dbRow?.tenantOverrideAllowed, `tenantOverrideAllowed drift for ${entry.key}`).toBe(
+        entry.tenantOverrideAllowed,
+      );
+      expect(dbRow?.public, `public-projection drift for ${entry.key}`).toBe(entry.public);
     }
   });
 
