@@ -1382,6 +1382,160 @@ export const bulkEmailJobs = pgTable(
   ],
 );
 
+// ─── Bulk Import Constituents (Epic #373) ──────────────────────────────────
+
+export const BULK_IMPORT_JOB_STATUS_VALUES = [
+  "pending",
+  "processing",
+  "completed",
+  "partial",
+  "failed",
+] as const;
+export type BulkImportJobStatus = (typeof BULK_IMPORT_JOB_STATUS_VALUES)[number];
+
+export const bulkImportJobStatusEnum = pgEnum("bulk_import_job_status", [
+  ...BULK_IMPORT_JOB_STATUS_VALUES,
+]);
+
+export const BULK_IMPORT_RESULT_STATUS_VALUES = ["created", "duplicate", "failed"] as const;
+export type BulkImportResultStatus = (typeof BULK_IMPORT_RESULT_STATUS_VALUES)[number];
+
+/**
+ * Bulk-import file row — the S3 object reference + audit metadata for an
+ * uploaded CSV / Excel template. One row per upload, regardless of
+ * whether the parsing job completed. Kept for audit / re-download.
+ *
+ * Storage trade-off vs. GDPR Art. 5(1)(e):
+ *   - The file itself sits in S3 (bucket `S3_BULK_IMPORT_BUCKET`,
+ *     private, key prefix `{org_id}/bulk-imports/{job_id}/…`) and is
+ *     subject to the bucket's retention policy (90 days, see
+ *     `docs/26-bulk-import.md` §6). This row only carries the pointer.
+ *   - On constituent erasure the file is NOT auto-purged — the row
+ *     still has audit value (who-uploaded-what-when). The bucket
+ *     lifecycle policy is the GDPR retention boundary.
+ */
+export const bulkImportFiles = pgTable(
+  "bulk_import_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** S3 key: `{org_id}/bulk-imports/{job_id}/{sanitised_filename}`. */
+    s3Key: varchar("s3_key", { length: 500 }).notNull(),
+    /** Bucket the object landed in — captured at write time so a future env-var change doesn't break older rows. */
+    s3Bucket: varchar("s3_bucket", { length: 100 }).notNull(),
+    /** Sanitised original filename (basename only — no path components). */
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    fileSize: integer("file_size").notNull(),
+    mimeType: varchar("mime_type", { length: 100 }).notNull(),
+    /** Template version used (for future compatibility). */
+    templateVersion: varchar("template_version", { length: 20 }).notNull().default("1.0"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("bulk_import_files_org_idx").on(table.orgId),
+    index("bulk_import_files_created_at_idx").on(table.createdAt),
+  ],
+);
+
+/**
+ * Bulk-import job — orchestration row for one upload. The HTTP handler
+ * uploads the file to S3, inserts the `bulk_import_files` row, inserts
+ * THIS row plus a `constituents.bulk_import_requested` outbox event in
+ * one transaction. The outbox relay forwards to BullMQ; the worker
+ * reads the row, re-parses the file under tenant context, and
+ * increments `processed_rows` / `created_count` / `duplicate_count` /
+ * `failed_count` per row.
+ *
+ * The defense-in-depth CHECK constraint ensures the counters never
+ * disagree with `processed_rows`. The worker bumps `updated_at` on
+ * every batch so the UI's 2 s poll always sees fresh progress even
+ * during long imports.
+ */
+export const bulkImportJobs = pgTable(
+  "bulk_import_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    status: bulkImportJobStatusEnum("status").notNull().default("pending"),
+    totalRows: integer("total_rows").notNull().default(0),
+    processedRows: integer("processed_rows").notNull().default(0),
+    createdCount: integer("created_count").notNull().default(0),
+    duplicateCount: integer("duplicate_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    /** Rows that landed with addressLine1 + postalCode + city + countryCode all filled. */
+    completeAddressCount: integer("complete_address_count").notNull().default(0),
+    /** Rows that landed with a non-empty email. */
+    emailCount: integer("email_count").notNull().default(0),
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => bulkImportFiles.id, { onDelete: "cascade" }),
+    /** SET NULL on user purge so GDPR erasure doesn't FK-block the audit row. */
+    requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+    /** Terminal failure message. NULL until status flips to `failed`. */
+    error: text("error"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("bulk_import_jobs_org_idx").on(table.orgId),
+    index("bulk_import_jobs_created_at_idx").on(table.createdAt),
+    index("bulk_import_jobs_status_idx").on(table.status),
+  ],
+);
+
+/**
+ * Per-row result of a bulk-import job. One row per source row, regardless
+ * of outcome (`created`, `duplicate`, `failed`). Carries enough context
+ * for the operator to remediate (the original row data, the error code
+ * and message, and the FK to the constituent that was created OR that
+ * the row was deduped against).
+ *
+ * GDPR posture: `rowData` is a JSONB snapshot of the user-uploaded row
+ * (PII). It is purged by the bucket lifecycle policy on the source file
+ * (90 days), and additionally truncated by the `bulk_import_files`
+ * soft-delete cascade. See `docs/26-bulk-import.md` §6 for the full
+ * retention table.
+ */
+export const bulkImportResults = pgTable(
+  "bulk_import_results",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => bulkImportJobs.id, { onDelete: "cascade" }),
+    rowNumber: integer("row_number").notNull(),
+    /** Snapshot of the original row as parsed (PII). 90-day retention. */
+    rowData: jsonb("row_data").notNull(),
+    status: varchar("status", { length: 20 }).notNull(),
+    constituentId: uuid("constituent_id").references((): AnyPgColumn => constituents.id, {
+      onDelete: "set null",
+    }),
+    duplicateOfId: uuid("duplicate_of_id").references((): AnyPgColumn => constituents.id, {
+      onDelete: "set null",
+    }),
+    duplicateScore: numeric("duplicate_score", { precision: 3, scale: 2 }),
+    errorCode: varchar("error_code", { length: 50 }),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("bulk_import_results_job_idx").on(table.jobId),
+    index("bulk_import_results_org_idx").on(table.orgId),
+    index("bulk_import_results_status_idx").on(table.status),
+  ],
+);
+
 // ─── Feature Flags (doc 18 — global-only MVP) ──────────────────────────────
 
 /**
