@@ -407,12 +407,18 @@ jobs:
       # level (ADR-023) — donor-facing surfaces hit object URLs directly,
       # so we apply `mc anonymous set download` here too, matching the
       # docker-compose sidecar.
+      #
+      # The `bulk-imports` bucket (Epic #373) is **private** (PII-laden
+      # CSV/Excel uploads). Explicit `mc anonymous set none` plus a
+      # 90-day expiry lifecycle to match the row_data retention in
+      # `bulk_import_results` (docs/26 §5).
       - name: Ensure MinIO buckets exist
         env:
           MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD || 'staging_minio_123' }}
           S3_RECEIPTS_BUCKET: ${{ secrets.S3_RECEIPTS_BUCKET || 'receipts' }}
           S3_CAMPAIGNS_BUCKET: ${{ secrets.S3_CAMPAIGNS_BUCKET || 'campaigns' }}
           S3_BRANDING_BUCKET: ${{ secrets.S3_BRANDING_BUCKET || 'branding' }}
+          S3_BULK_IMPORT_BUCKET: ${{ secrets.S3_BULK_IMPORT_BUCKET || 'bulk-imports' }}
         run: |
           # Build the remote command in a variable so the password expansion
           # happens here on the runner, not on the VPS shell parsing.
@@ -429,8 +435,11 @@ jobs:
                 && mc mb --ignore-existing local/${S3_RECEIPTS_BUCKET} \
                 && mc mb --ignore-existing local/${S3_CAMPAIGNS_BUCKET} \
                 && mc mb --ignore-existing local/${S3_BRANDING_BUCKET} \
+                && mc mb --ignore-existing local/${S3_BULK_IMPORT_BUCKET} \
                 && mc anonymous set download local/${S3_BRANDING_BUCKET} \
-                && echo MinIO buckets ready: ${S3_RECEIPTS_BUCKET}, ${S3_CAMPAIGNS_BUCKET}, ${S3_BRANDING_BUCKET}'"
+                && mc anonymous set none local/${S3_BULK_IMPORT_BUCKET} \
+                && mc ilm rule add --expire-days 90 local/${S3_BULK_IMPORT_BUCKET} || true \
+                && echo MinIO buckets ready: ${S3_RECEIPTS_BUCKET}, ${S3_CAMPAIGNS_BUCKET}, ${S3_BRANDING_BUCKET}, ${S3_BULK_IMPORT_BUCKET}'"
           bundle exec kamal server exec -c config/deploy-staging.yml "$REMOTE_CMD"
 
       # The sync script reconciles the live realm (mappers, scopes, role
