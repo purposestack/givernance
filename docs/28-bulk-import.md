@@ -168,7 +168,7 @@ A flatter "one row per job, every result inline in a JSONB array" shape would ha
 |---|---|---|
 | File upload + sanitisation + magic-byte sniff | `packages/api/src/modules/constituents/bulk-import/routes.ts` → `service.ts` | **Sync** under the HTTP request |
 | Transactional outbox emission | API service (`db.transaction(...)`) | **Sync** — the file row + job row + `outbox_events` row commit atomically |
-| Per-row parse + validate + dedupe + insert | `packages/worker/src/processors/bulk-import.ts` (consumes the `constituents.bulk_import_requested` outbox event) | **Async** — runs under `withTenantContext(orgId, …)` |
+| Per-row parse + validate + dedupe + insert | `packages/worker/src/processors/process-bulk-import.ts` (consumes the `constituents.bulk_import_requested` outbox event via the `bulk_import` BullMQ queue) | **Async** — runs under `withTenantContext(orgId, …)` |
 | Live progress polling | API `GET /v1/constituents/bulk-import/:id` | Sync, 2 s cadence from the SPA |
 | Results detail | API `GET /v1/constituents/bulk-import/:id/results` | Sync |
 | File re-download (operator-driven) | API `GET /v1/constituents/bulk-import/:id/download` — streams from S3 through the API, **no signed URL handed to the browser** | Sync |
@@ -208,7 +208,7 @@ The upload endpoint (`POST /v1/constituents/bulk-import`) is a `multipart/form-d
 
 `requireWrite` is the standard write-role gate (`org_admin` or `user`, never `viewer`). `requireFlag(...)` runs **before** `requireAuth` so a request hitting the route while the flag is off gets a 404 (looks like a typo'd URL), not a "Forbidden" that would leak the existence of the feature. This matches the convention established by [`docs/18-feature-flags.md`](18-feature-flags.md) §16.
 
-The worker has its own defence-in-depth gate: `processBulkImportRequested` calls `isFlagEnabled` at job pickup, so a flag flipped off between API enqueue and worker dispatch drops the job silently — the tracking row stays at `pending`, the operator's UI shows the dispatch in the "Recent imports" panel, and re-enabling + a manual re-upload picks up where they left off (no resume; the original file is still in S3 within the 90-day window).
+The worker has its own defence-in-depth gate: `processBulkImport` calls `isFlagEnabled` at job pickup, so a flag flipped off between API enqueue and worker dispatch drops the job silently — the tracking row stays at `pending`, the operator's UI shows the dispatch in the "Recent imports" panel, and re-enabling + a manual re-upload picks up where they left off (no resume; the original file is still in S3 within the 90-day window).
 
 ## 5. Privacy / GDPR posture
 
@@ -241,7 +241,7 @@ Bulk import is a contractual feature (Art. 6(1)(b)) — the operator is using th
 | **Cross-tenant access** (operator A reads operator B's job) | (a) Every new table is `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` with a `tenant_isolation` policy on `org_id`. (b) Every worker DB call runs inside `withTenantContext`. (c) S3 keys are prefixed `{org_id}/…` and the download endpoint re-asserts `org_id` from `request.auth` before constructing the GetObject key. Four independent walls. | DB migration 0053 + worker + API |
 | **DB error leak** (raw Postgres exception bleeding `pg_hba.conf` or table names into the operator's browser) | Service maps every DB error to a stable `errorCode` (e.g. `db_constraint_violation`, `db_unreachable`) + a generic `error_message`. The full error goes to pino at `error` level with `audit: true`. | API + worker |
 | **Multipart CSRF** | ADR-011 double-submit token on every `multipart/form-data` POST. The CSRF check runs before the multipart parser. | `packages/api/src/plugins/csrf.ts` |
-| **Worker job replay** (BullMQ retries after a partial-fan-out crash) | The worker is idempotent on `(job_id, row_number)` — the per-row INSERT into `bulk_import_results` is wrapped in a "skip if already exists" check, and `processed_rows` is recomputed from `bulk_import_results` rather than blind-incremented. A retry resumes from the next un-recorded row. | Worker `processBulkImportRequested` |
+| **Worker job replay** (BullMQ retries after a partial-fan-out crash) | The worker is idempotent on `(job_id, row_number)` — the per-row INSERT into `bulk_import_results` is wrapped in a "skip if already exists" check, and `processed_rows` is recomputed from `bulk_import_results` rather than blind-incremented. A retry resumes from the next un-recorded row. | Worker `processBulkImport` |
 
 ## 7. Future work explicitly out of scope
 

@@ -48,7 +48,7 @@ flowchart TD
     APP --> CONST["/constituents"]
     CONST --> CLIST["/constituents — Liste"]
     CONST --> CNEW["/constituents/new"]
-    CONST --> CIMPORT["/constituents/import"]
+    CONST --> CIMPORT["/constituents/bulk-import"]
     CONST --> CIND["/:id — Fiche individu"]
     CONST --> CORG["/constituents/organizations/:id"]
     CONST --> CHORGS["/constituents/organizations — Liste orgs"]
@@ -524,21 +524,21 @@ flowchart TD
 
 ---
 
-### CON-008 — Import CSV constituants
+### CON-008 — Import en masse constituants (CSV / Excel)
 
 | Champ | Valeur |
 |---|---|
 | **ID** | CON-008 |
 | **Module** | Constituants |
-| **Nom de l'écran** | Import de constituants (CSV) |
-| **URL pattern** | `/constituents/import` |
-| **Description** | Assistant en 3 étapes : (1) Upload du fichier CSV, (2) Mapping des colonnes vers les champs Givernance, (3) Validation et confirmation avant import. Aperçu des données, erreurs détectées (emails invalides, doublons), et rapport post-import. |
-| **États** | Step1/Upload, Step2/Mapping, Step3/Validation, Loading (traitement), Error (fichier invalide), Success (import terminé) |
-| **Actions principales** | 1. Uploader le fichier · 2. Mapper les colonnes · 3. Valider et importer · 4. Télécharger le rapport d'erreurs · 5. Annuler |
-| **Données affichées** | Aperçu des 5 premières lignes, mapping colonnes CSV → champs Givernance, compteurs (valides, erreurs, doublons), rapport post-import (importés, ignorés, erreurs) |
-| **Rôles autorisés** | `org_admin`, `fundraiser` |
-| **Composants clés** | `FileUpload`, `ColumnMapper`, `DataPreviewTable`, `ImportSummary`, `ProgressBar`, `Button`, `Alert` |
-| **Interactions IA** | Mapping automatique des colonnes par reconnaissance de nom (ex: "First Name" → `first_name`) |
+| **Nom de l'écran** | Import en masse de constituants (CSV / Excel) |
+| **URL pattern** | `/constituents/bulk-import` (historique) · `/constituents/bulk-import/[id]` (détail résultats) · dialog ouvert depuis la liste constituants |
+| **Description** | Phase 1 MVP (Epic #373, PR #385) : template à en-têtes fixes — pas de mapping de colonnes. Assistant en 3 étapes : (1) Télécharger le template CSV (10 lignes d'exemple incluses), (2) Upload du fichier rempli (CSV ou XLSX, max 10 MB) avec case « ignorer la détection de doublons » optionnelle, (3) Progression en temps réel via polling 2 s avec KPI (créés, doublons, échecs, adresses complètes, emails). Page historique des imports passés + détail des résultats par ligne (onglets Tous / Créés / Doublons / Échecs). |
+| **États** | Step1/Template, Step2/Upload (drop zone), Step3/Progress (pending → processing → completed | partial | failed), Loading (transitions), Error (fichier invalide, > 10 MB, MIME spoofé, colonne requise manquante), Success (import terminé) |
+| **Actions principales** | 1. Télécharger le template · 2. Uploader le fichier rempli · 3. Suivre la progression · 4. Voir les résultats détaillés · 5. Re-télécharger le fichier original pour audit · 6. Annuler |
+| **Données affichées** | KPI cards (`createdCount`, `duplicateCount`, `failedCount`, `completeAddressCount`, `emailCount`), barre de progression `processedRows / totalRows`, badge de statut, table des résultats par ligne avec `errorCode` + `errorMessage` pour les échecs |
+| **Rôles autorisés** | `org_admin`, `user` (`requireWrite`). Lecture seule pour `viewer`. Toutes les routes sont aussi gatées par le feature flag `constituents.bulk_import` (scope tenant, override autorisé, off par défaut). |
+| **Composants clés** | `Dialog`, `Tabs`, `Table`, `Badge`, `Progress`, `Button`, `Input[type=file]`, KPI cards shadcn, `Skeleton` pour les états de chargement |
+| **Interactions IA** | **Aucune dans cette phase.** AI normalisation (inférer pays depuis « France »/« FR », parser adresses libres, splitter nom complet) est explicitement **hors scope MVP** — cf. `docs/26-bulk-import.md` §7. |
 | **Priorité** | MUST |
 
 ---
@@ -1681,7 +1681,7 @@ flowchart TD
 | CON-005 | Constituants | Fiche ménage | `/constituents/households/:id` | MUST |
 | CON-006 | Constituants | Liste ménages | `/constituents/households` | MUST |
 | CON-007 | Constituants | Nouveau constituant | `/constituents/new` | MUST |
-| CON-008 | Constituants | Import CSV | `/constituents/import` | MUST |
+| CON-008 | Constituants | Import en masse (CSV / Excel) | `/constituents/bulk-import` · `/constituents/bulk-import/[id]` | MUST |
 | DON-001 | Dons | Liste des dons | `/donations` | MUST |
 | DON-002 | Dons | Nouveau don | `/donations/new` | MUST |
 | DON-003 | Dons | Détail don | `/donations/:id` | MUST |

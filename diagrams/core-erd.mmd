@@ -62,6 +62,7 @@ erDiagram
     string file_name "sanitised basename"
     int file_size "≤ 10 MB hard cap"
     string mime_type "from magic-byte sniff"
+    string template_version "default 1.0; future template revisions add new values"
     timestamp deleted_at "soft-delete sweep at 90 d"
   }
   bulk_import_jobs {
@@ -73,6 +74,8 @@ erDiagram
     int created_count
     int duplicate_count
     int failed_count
+    int complete_address_count "rows landed with full postal address"
+    int email_count "rows landed with non-empty email"
     uuid file_id FK
     uuid requested_by FK "users.id, SET NULL on user purge"
     text error "terminal-failure message"
