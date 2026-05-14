@@ -124,10 +124,7 @@
     <aside class="form" id="donate" aria-labelledby="donate-heading">
       <h2 id="donate-heading">Stand with us.<br>Every month.</h2>
       <p class="subhead">Recurring giving lets us plan the next action without the funding cliff.</p>
-      <div class="freq" role="tablist" aria-label="Donation frequency">
-        <button class="active" role="tab" aria-selected="true" type="button">★ MONTHLY</button>
-        <button role="tab" aria-selected="false" type="button">One-time</button>
-      </div>
+      <div class="freq" role="group" aria-label="Donation frequency"><button class="active" type="button" aria-pressed="true" aria-label="MONTHLY donations">★ MONTHLY</button><button type="button" aria-pressed="false" aria-label="One-time donations">One-time</button></div>
       <fieldset class="grid">
         <legend class="sr-only" style="position:absolute;left:-9999px;">Monthly amount</legend>
         <label><input type="radio" name="amount" value="5"><span class="chip">€5<small>Every month</small></span></label>

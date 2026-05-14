@@ -120,10 +120,7 @@
     <section class="form" id="donate" aria-labelledby="donate-heading">
       <h2 id="donate-heading">give a session, or many</h2>
       <p class="subhead">Stripe-secured · cancel any time · tax-receipt eligible</p>
-      <div class="freq" role="tablist" aria-label="Frequency">
-        <button class="active" role="tab" aria-selected="true" type="button">one-time</button>
-        <button role="tab" aria-selected="false" type="button">monthly</button>
-      </div>
+      <div class="freq" role="group" aria-label="Frequency"><button class="active" type="button" aria-pressed="true" aria-label="one-time donations">one-time</button><button type="button" aria-pressed="false" aria-label="monthly donations">monthly</button></div>
       <fieldset class="grid">
         <legend style="position:absolute;left:-9999px;">Suggested amounts</legend>
         <label><input type="radio" name="amount" value="20"><span class="chip">€20</span></label>

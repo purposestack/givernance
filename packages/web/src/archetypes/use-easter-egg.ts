@@ -67,11 +67,16 @@ export function useEasterEgg(spec: EasterEggSpec | null): EasterEggResult {
     const isMotionReduced = () =>
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const isDataReduced = () =>
-      typeof window !== "undefined" &&
-      (window.matchMedia("(prefers-reduced-data: reduce)").matches ||
-        // biome-ignore lint/suspicious/noExplicitAny: navigator.connection is non-standard but widely supported in EU mobile browsers
-        (navigator as any).connection?.saveData === true);
+    const isDataReduced = () => {
+      if (typeof window === "undefined") return false;
+      if (window.matchMedia("(prefers-reduced-data: reduce)").matches) return true;
+      // `navigator.connection` is the non-standard WICG Network
+      // Information API — widely supported in EU mobile browsers
+      // (Chrome on Android, Samsung Internet, Free Mobile FR). Typed
+      // shim avoids `any` per CLAUDE.md memory `feedback_warnings_become_errors`.
+      const nav = navigator as Navigator & { connection?: { saveData?: boolean } };
+      return nav.connection?.saveData === true;
+    };
     const isMuted = () => isMotionReduced() || isDataReduced();
 
     const fire = (x: number, y: number) => {
@@ -159,21 +164,37 @@ export function useEasterEgg(spec: EasterEggSpec | null): EasterEggResult {
     }
 
     if (spec.trigger.kind === "hover-and-hold") {
+      // `mouseover`/`mouseout` bubble, so naively re-arming on every
+      // descendant crossing both leaks timers AND cancels the in-
+      // flight hold the moment the pointer crosses any internal
+      // boundary (PR-4 review, IMPORTANT race-condition). Fix:
+      //   - ignore re-arms while a timer is already armed
+      //   - on mouseout, only cancel if the pointer actually left
+      //     the target subtree (relatedTarget outside `.targetClass`)
       const { durationMs } = spec.trigger;
       let holdTimer: ReturnType<typeof setTimeout> | null = null;
-      const onMouseEnter = (e: MouseEvent) => {
+      const onMouseOver = (e: MouseEvent) => {
         const target = e.target as Element | null;
         if (!target?.closest(`.${targetClass}`)) return;
-        holdTimer = setTimeout(() => fire(e.clientX, e.clientY), durationMs);
+        if (holdTimer) return; // already arming, suppress bubble re-fires
+        holdTimer = setTimeout(() => {
+          fire(e.clientX, e.clientY);
+          holdTimer = null;
+        }, durationMs);
       };
-      const onMouseLeave = () => {
-        if (holdTimer) clearTimeout(holdTimer);
+      const onMouseOut = (e: MouseEvent) => {
+        if (!holdTimer) return;
+        const related = e.relatedTarget as Element | null;
+        // Pointer still inside the target subtree → not a real leave.
+        if (related?.closest(`.${targetClass}`)) return;
+        clearTimeout(holdTimer);
+        holdTimer = null;
       };
-      document.addEventListener("mouseover", onMouseEnter);
-      document.addEventListener("mouseout", onMouseLeave);
+      document.addEventListener("mouseover", onMouseOver);
+      document.addEventListener("mouseout", onMouseOut);
       return () => {
-        document.removeEventListener("mouseover", onMouseEnter);
-        document.removeEventListener("mouseout", onMouseLeave);
+        document.removeEventListener("mouseover", onMouseOver);
+        document.removeEventListener("mouseout", onMouseOut);
         if (holdTimer) clearTimeout(holdTimer);
       };
     }

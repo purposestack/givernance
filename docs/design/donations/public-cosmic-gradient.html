@@ -59,8 +59,9 @@
       radial-gradient(at 30% 70%, #f59e0b 0%, transparent 40%); filter: blur(40px); opacity: 0.55; animation: mesh-drift 18s ease-in-out infinite; }
     @keyframes mesh-drift { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(2%, -3%) scale(1.05); } 66% { transform: translate(-2%, 3%) scale(0.98); } }
 
-    main { max-width: 1280px; margin: 0 auto; padding: 0 32px 80px; }
-    @media (max-width: 720px) { main { padding: 0 16px 48px; } .hero-wrap { padding: 32px 16px 64px; } }
+    main, .hero-inner { max-width: 1280px; margin: 0 auto; padding: 0 32px 80px; }
+    .hero-inner { padding-bottom: 0; }
+    @media (max-width: 720px) { main, .hero-inner { padding: 0 16px 48px; } .hero-wrap { padding: 32px 16px 64px; } .hero-inner { padding-bottom: 0; } }
 
     .hero-content { position: relative; z-index: 1; max-width: 880px; }
     .eyebrow { font-family: 'Geist', sans-serif; font-weight: 500; font-size: 12px; letter-spacing: 0.24em; text-transform: uppercase; color: rgba(255,255,255,0.85); margin: 0; }
@@ -118,13 +119,13 @@
         <a href="?lang=fr" hreflang="fr" lang="fr">FR</a>
       </nav>
     </header>
-    <main>
+    <div class="hero-inner">
       <div class="hero-content">
         <p class="eyebrow">2026 · Direct air capture · Open hardware</p>
         <h1>Build the next generation of carbon-removal hardware. In the open.</h1>
         <p class="lede">Every cent funds open-source DAC research. Every machine, schematic, and operating-cost model is published the day it's built. Carbon removal cannot stay behind paywalls. Help us keep it open.</p>
       </div>
-    </main>
+    </div>
   </div>
   <main>
     <section class="progress" aria-label="Campaign progress">
@@ -139,10 +140,7 @@
     <section class="form" id="donate" aria-labelledby="donate-heading">
       <h2 id="donate-heading">Join the build</h2>
       <p class="subhead">Stripe-secured · cancel any time · 100 % to open research</p>
-      <div class="freq" role="tablist" aria-label="Frequency">
-        <button class="active" role="tab" aria-selected="true" type="button">Monthly</button>
-        <button role="tab" aria-selected="false" type="button">One-time</button>
-      </div>
+      <div class="freq" role="group" aria-label="Frequency"><button class="active" type="button" aria-pressed="true" aria-label="Monthly donations">Monthly</button><button type="button" aria-pressed="false" aria-label="One-time donations">One-time</button></div>
       <fieldset class="grid">
         <legend style="position:absolute;left:-9999px;">Suggested amounts</legend>
         <label><input type="radio" name="amount" value="10"><span class="chip">€10</span></label>

@@ -123,10 +123,7 @@
     <section class="form" id="donate" aria-labelledby="donate-heading">
       <h2 id="donate-heading">Give Aïssata's clinic a year.</h2>
       <p class="subhead">A monthly gift opens the door. A one-time gift keeps it open today.</p>
-      <div class="freq" role="tablist" aria-label="Donation frequency">
-        <button class="active" role="tab" aria-selected="true" type="button">Monthly</button>
-        <button role="tab" aria-selected="false" type="button">One-time</button>
-      </div>
+      <div class="freq" role="group" aria-label="Donation frequency"><button class="active" type="button" aria-pressed="true" aria-label="Monthly donations">Monthly</button><button type="button" aria-pressed="false" aria-label="One-time donations">One-time</button></div>
       <fieldset class="grid">
         <legend style="position:absolute;left:-9999px;">Monthly amount</legend>
         <label><input type="radio" name="amount" value="8"><span class="chip">€8</span></label>

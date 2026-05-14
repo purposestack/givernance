@@ -9,6 +9,12 @@ import type { HeroSlotProps } from "../types";
  */
 export function FoundationHero({ data }: HeroSlotProps) {
   return (
+    // PR-4b will move the `--brand-primary` CSS variable to the shell
+    // root per ADR-030 § How the hybrid composes ("The shell sets
+    // style={{ '--brand-primary': colorPrimary, … }} on the root
+    // <main>"). Today the shell wiring isn't in place yet so the Hero
+    // sets the var locally; Progress + Footer read `data.colorPrimary`
+    // directly, so this temporary local pin doesn't leak elsewhere.
     <div
       className="overflow-hidden rounded-[32px] border border-outline-variant bg-surface-container-lowest shadow-card"
       style={
