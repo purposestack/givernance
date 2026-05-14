@@ -1,8 +1,10 @@
 /** Public donation routes — unauthenticated endpoints for embeddable donation pages */
 
-import { CampaignPublicPageSchema } from "@givernance/shared/validators";
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import { CampaignPublicPageSchema, PublicPageStyleSchema } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { requireOrgAdmin } from "../../lib/guards.js";
 import {
   DataResponse,
@@ -15,7 +17,9 @@ import {
   createDonationIntent,
   getAdminPublicPage,
   getPublicPage,
+  getTenantDefaultPublicPageStyle,
   resolveCampaignQrCode,
+  setTenantDefaultPublicPageStyle,
   upsertPublicPage,
 } from "./service.js";
 
@@ -91,6 +95,18 @@ const PublicPageResponse = Type.Object({
    * public page. Boolean only — never the internal bank_account_id.
    */
   hasSwissQrBill: Type.Boolean(),
+  /**
+   * Epic #362 — donor-facing archetype after the three-layer
+   * resolution (campaign override → tenant default → platform
+   * default). `null` when the `donation.public_page_styles` feature
+   * flag is OFF for this campaign's tenant; the donor-page shell
+   * falls back to today's hardcoded layout in that case, so existing
+   * tenants see no change until super-admin flips the flag on. The
+   * value, when non-null, is always one of `PUBLIC_PAGE_STYLE_KEYS`
+   * — defence-in-depth filter in the service strips any stale DB
+   * value that survived a removed-archetype migration.
+   */
+  publicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
 });
 
 const DonateBody = Type.Object({
@@ -138,6 +154,15 @@ const PublicPageAdminResponse = Type.Object({
   description: Type.Union([Type.String(), Type.Null()]),
   colorPrimary: Type.Union([Type.String(), Type.Null()]),
   goalAmountCents: Type.Union([Type.Integer(), Type.Null()]),
+  /**
+   * Per-campaign archetype override (Epic #362). `null` means
+   * "inherit the tenant default (or the platform default if that's
+   * also null)". The admin response always carries the raw column
+   * value — the picker UX renders the inheritance breadcrumb when
+   * this is `null`. The donor-facing endpoint resolves the three-
+   * layer fallback before responding.
+   */
+  publicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
   createdAt: Type.String({ format: "date-time" }),
   updatedAt: Type.String({ format: "date-time" }),
 });
@@ -351,14 +376,145 @@ export async function publicDonationRoutes(app: FastifyInstance) {
         colorPrimary?: string | null;
         goalAmountCents?: number | null;
         status?: "draft" | "published";
+        // Epic #362 — per-campaign archetype override. The full route
+        // isn't behind `requireFlag` because the existing PUT predates
+        // the Epic and shipping with the flag off must keep colour /
+        // title / goal edits working. The style field is gated by a
+        // field-level check below — flag off + style in body → 400.
+        publicPageStyle?: string | null;
       };
 
-      const page = await upsertPublicPage(orgId, id, body);
+      // Field-level flag gate (Epic #362). Reject the PUT if the
+      // operator sent `publicPageStyle` while the flag is off for this
+      // tenant — *not* with a silent drop, because that would mask a
+      // misconfigured client and leave the UI claiming "saved" while
+      // the value never landed. 400 with a clear reason is the
+      // honest answer; the picker UI never sends the field in the
+      // first place because its `requireFlag` SSR-fetch hides the
+      // picker entirely (see PR-3).
+      if (body.publicPageStyle !== undefined) {
+        const flagsService = request.flagService;
+        const enabled = await flagsService.isEnabled(
+          FEATURE_FLAG_KEYS.DONATION_PUBLIC_PAGE_STYLES,
+          { orgId },
+        );
+        if (!enabled) {
+          return reply
+            .status(400)
+            .send(
+              problemDetail(
+                400,
+                "Style picker not enabled",
+                "The visual style picker is not enabled for this organisation. Contact Givernance staff to enable `donation.public_page_styles`.",
+              ),
+            );
+        }
+      }
+
+      // Cast tightens the `string | null | undefined` from the wire
+      // to the validator-checked `PublicPageStyleKey | null | undefined`
+      // because the request body has already been validated against
+      // `CampaignPublicPageSchema` (PublicPageStyleSchema union) by
+      // Fastify's preHandler ahead of this handler.
+      const page = await upsertPublicPage(orgId, id, {
+        ...body,
+        publicPageStyle: body.publicPageStyle as
+          | import("@givernance/shared/constants").PublicPageStyleKey
+          | null
+          | undefined,
+      });
       if (!page) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
 
       return { data: page };
+    },
+  );
+
+  /**
+   * GET /v1/tenant/style-default — the org-level default archetype
+   * (Epic #362, picker UX).
+   *
+   * Returns the raw `tenants.default_public_page_style` value:
+   *   - one of the curated archetype keys, OR
+   *   - `null` when the operator hasn't picked one (picker UX renders
+   *     "inherits from Givernance default" in that case).
+   *
+   * `requireFlag` is the FIRST preHandler so a tenant with the flag
+   * off gets a 404 without enumerating the org-admin guard underneath
+   * — defence-in-depth + scanner-resistant per `docs/18-feature-flags.md`.
+   *
+   * RBAC: `org_admin`. Campaign-owner role added in PR-3 when the
+   * per-campaign editor needs read access.
+   */
+  app.get(
+    "/tenant/style-default",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.DONATION_PUBLIC_PAGE_STYLES), requireOrgAdmin],
+      schema: {
+        tags: ["Tenant Settings"],
+        response: {
+          200: DataResponse(
+            Type.Object({
+              defaultPublicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
+            }),
+          ),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const value = await getTenantDefaultPublicPageStyle(orgId);
+      return { data: { defaultPublicPageStyle: value } };
+    },
+  );
+
+  /**
+   * PATCH /v1/tenant/style-default — set the org-level default
+   * archetype (Epic #362). Same flag gate as the GET; same RBAC
+   * (`org_admin` only).
+   *
+   * The body is tri-state via the explicit `null` / archetype-key
+   * union: a missing field is rejected by the validator. Per-campaign
+   * overrides are unchanged by this write — the resolution at read
+   * time picks the campaign override first, then this default, then
+   * the hardcoded `foundation`. Invalidates the public-page cache
+   * for every campaign owned by this tenant so donors see the new
+   * style on the next pageload.
+   */
+  app.patch(
+    "/tenant/style-default",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.DONATION_PUBLIC_PAGE_STYLES), requireOrgAdmin],
+      schema: {
+        tags: ["Tenant Settings"],
+        body: Type.Object({
+          defaultPublicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
+        }),
+        response: {
+          200: DataResponse(
+            Type.Object({
+              defaultPublicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
+            }),
+          ),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const body = request.body as {
+        defaultPublicPageStyle: import("@givernance/shared/constants").PublicPageStyleKey | null;
+      };
+      const value = await setTenantDefaultPublicPageStyle(orgId, body.defaultPublicPageStyle);
+      return { data: { defaultPublicPageStyle: value } };
     },
   );
 }
