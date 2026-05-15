@@ -53,6 +53,17 @@ interface PublicDonationFormProps {
    * and constituent. Undefined for organic visits to the donation page.
    */
   qrCode?: string;
+  /**
+   * Drop the form's own white-card chrome (background, border, shadow,
+   * outer padding). Set to `true` when the form is rendered INSIDE an
+   * Epic-#362 archetype slot — each archetype's AmountPicker already
+   * provides its own card (warm-paper for Activist, soft pastel for
+   * Calm, glass-blur for Cosmic), so the default Givernance chrome
+   * would stack a second card on top and visibly clash with the
+   * archetype's voice. The form's inner content (eyebrow, title,
+   * description, fields, CTA) still renders.
+   */
+  chromeless?: boolean;
 }
 
 interface PublicDonationFormValues {
@@ -115,6 +126,7 @@ export function PublicDonationForm({
   publishableKey,
   tenantStripeAccountId,
   qrCode,
+  chromeless = false,
 }: PublicDonationFormProps) {
   const t = useTranslations("publicDonationPage.form");
   const tPayment = useTranslations("publicDonationPage.payment");
@@ -207,8 +219,29 @@ export function PublicDonationForm({
     }
   }
 
+  // When rendered inside an archetype slot, drop the white-card chrome
+  // so the archetype's own AmountPicker wrapper (warm paper / glass /
+  // pastel) is the only card the donor sees. Inner content (eyebrow,
+  // title, fields, CTA) renders identically in both modes.
+  const shellClassName = chromeless
+    ? "text-current"
+    : "rounded-[28px] border border-outline-variant bg-surface-container-lowest p-6 shadow-card sm:p-7";
+
+  // The design-token text classes (`text-on-surface`, `text-on-
+  // surface-variant`) are calibrated for a LIGHT surface. When the
+  // form is chromeless and the archetype paints a dark surface
+  // underneath it (e.g. Cosmic Gradient's glass-blur on a near-black
+  // mesh), those classes paint dark text on a dark background and the
+  // donor can't read the field labels. Use `text-current` + opacity
+  // for chromeless so the text inherits the archetype's foreground
+  // colour (which is explicitly readable against the archetype's own
+  // surface), preserving WCAG AA without per-archetype tuning. Inputs
+  // keep their own bg + dark text — those are self-contained surfaces.
+  const primaryText = chromeless ? "text-current" : "text-on-surface";
+  const variantText = chromeless ? "text-current opacity-80" : "text-on-surface-variant";
+
   return (
-    <section className="rounded-[28px] border border-outline-variant bg-surface-container-lowest p-6 shadow-card sm:p-7">
+    <section className={shellClassName}>
       <div className="flex items-center gap-3">
         <div
           className="flex h-11 w-11 items-center justify-center rounded-2xl"
@@ -217,14 +250,14 @@ export function PublicDonationForm({
           <HeartHandshake size={20} aria-hidden="true" style={{ color: colorPrimary }} />
         </div>
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.14em] text-on-surface-variant">
+          <p className={`text-xs font-medium uppercase tracking-[0.14em] ${variantText}`}>
             {t("eyebrow")}
           </p>
-          <h2 className="font-heading text-2xl text-on-surface">{t("title")}</h2>
+          <h2 className={`font-heading text-2xl ${primaryText}`}>{t("title")}</h2>
         </div>
       </div>
 
-      <p className="mt-3 text-sm leading-6 text-on-surface-variant">{t("description")}</p>
+      <p className={`mt-3 text-sm leading-6 ${variantText}`}>{t("description")}</p>
 
       {/*
         Render priority:
@@ -278,6 +311,7 @@ export function PublicDonationForm({
           onValuesChange={setValues}
           onErrorsChange={setErrors}
           onSubmit={handleSubmit}
+          chromeless={chromeless}
         />
       )}
     </section>
@@ -295,6 +329,7 @@ function DonorDetailsForm({
   onValuesChange,
   onErrorsChange,
   onSubmit,
+  chromeless,
 }: {
   values: PublicDonationFormValues;
   errors: FormErrors;
@@ -306,11 +341,21 @@ function DonorDetailsForm({
   onValuesChange: (next: (current: PublicDonationFormValues) => PublicDonationFormValues) => void;
   onErrorsChange: (next: (current: FormErrors) => FormErrors) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  /** Mirrors the outer `PublicDonationForm.chromeless` — see that
+   *  prop's JSDoc. Used here to flip the label + descriptive-text
+   *  classes between design-token (light surface) and inheriting
+   *  (archetype-aware) variants. */
+  chromeless: boolean;
 }) {
   // Re-bind locally so next-intl's typed lookups stay specialised — passing
   // a hoisted `t` as a prop loses the namespace generic and triggers
   // TS2589 (`Type instantiation is excessively deep`).
   const t = useTranslations("publicDonationPage.form");
+  // See PublicDonationForm for the rationale — duplicate here so the
+  // label colour for fields rendered by this child component also
+  // inherits the archetype's foreground when chromeless.
+  const primaryText = chromeless ? "text-current" : "text-on-surface";
+  const variantText = chromeless ? "text-current opacity-80" : "text-on-surface-variant";
   return (
     <>
       {/*
@@ -356,7 +401,7 @@ function DonorDetailsForm({
       </div>
 
       {goalAmountCents !== null ? (
-        <p className="mt-4 text-sm text-on-surface-variant">
+        <p className={`mt-4 text-sm ${variantText}`}>
           {t("goal", { amount: formatCurrency(goalAmountCents, locale, defaultCurrency) })}
         </p>
       ) : null}
@@ -369,6 +414,7 @@ function DonorDetailsForm({
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
+            labelClassName={primaryText}
             inputId="public-donation-first-name"
             label={t("fields.firstName")}
             error={errors.firstName}
@@ -388,6 +434,7 @@ function DonorDetailsForm({
             }
           />
           <Field
+            labelClassName={primaryText}
             inputId="public-donation-last-name"
             label={t("fields.lastName")}
             error={errors.lastName}
@@ -409,6 +456,7 @@ function DonorDetailsForm({
         </div>
 
         <Field
+          labelClassName={primaryText}
           inputId="public-donation-email"
           label={t("fields.email")}
           error={errors.email}
@@ -430,6 +478,7 @@ function DonorDetailsForm({
         />
 
         <Field
+          labelClassName={primaryText}
           inputId="public-donation-amount"
           label={t("fields.amount")}
           error={errors.amount}
@@ -459,6 +508,7 @@ function DonorDetailsForm({
         />
 
         <Field
+          labelClassName={primaryText}
           inputId="public-donation-currency"
           label={t("fields.currency")}
           input={
@@ -501,7 +551,7 @@ function DonorDetailsForm({
           )}
         </Button>
 
-        <p className="text-center text-xs leading-5 text-on-surface-variant sm:text-left">
+        <p className={`text-center text-xs leading-5 sm:text-left ${variantText}`}>
           {t("footnote")}
         </p>
       </form>
@@ -526,16 +576,27 @@ function Field({
   error,
   required,
   input,
+  labelClassName,
 }: {
   inputId?: string;
   label: string;
   error?: string;
   required?: boolean;
   input: ReactNode;
+  /**
+   * Override for the label's text-colour class. The parent form
+   * passes `text-current` in chromeless mode (archetype-rendered)
+   * so the label inherits the archetype's foreground and stays
+   * readable on dark surfaces (e.g. Cosmic Gradient).
+   */
+  labelClassName?: string;
 }) {
   return (
     <div className="block space-y-2">
-      <label htmlFor={inputId} className="text-sm font-medium text-on-surface">
+      <label
+        htmlFor={inputId}
+        className={`text-sm font-medium ${labelClassName ?? "text-on-surface"}`}
+      >
         {label}
         {required ? <span className="ml-1 text-error">*</span> : null}
       </label>

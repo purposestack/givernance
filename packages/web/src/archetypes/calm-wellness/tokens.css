@@ -32,8 +32,28 @@
 @container (min-width: 1024px) {
   [data-archetype="calm-wellness"] {
     padding: 32px 40px;
-    max-width: 880px;
+    max-width: 1152px;
     margin: 0 auto;
+    /* Desktop two-column: hero/progress left, form right (sticky).
+       Matches Foundation's split. Donor sees the form without
+       scrolling, hero+progress still own the visual narrative. */
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(340px, 440px);
+    gap: 32px;
+    align-items: start;
+  }
+  [data-archetype="calm-wellness"] > :first-child,
+  [data-archetype="calm-wellness"] > :nth-child(2) {
+    grid-column: 1;
+  }
+  [data-archetype="calm-wellness"] > :nth-child(3) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    position: sticky;
+    top: 24px;
+  }
+  [data-archetype="calm-wellness"] > :last-child {
+    grid-column: 1 / -1;
   }
 }
 

@@ -2197,6 +2197,7 @@
       "actions": {
         "back": "Retour à la campagne",
         "viewLive": "Voir la page publique",
+        "viewLiveDirtyTooltip": "Enregistrez d'abord vos modifications — la page publique affiche encore la dernière version sauvegardée.",
         "copyLink": "Copier le lien",
         "save": "Enregistrer la page",
         "submitting": "Enregistrement…"
@@ -2326,7 +2327,8 @@
       "trustValue": "Sécurisé par Stripe"
     },
     "footer": {
-      "institutionalSignature": "Cette campagne est animée par <org></org>. En donnant, vous acceptez les conditions de don affichées à l'étape de paiement."
+      "institutionalSignature": "Cette campagne est animée par <org></org>. En donnant, vous acceptez les conditions de don affichées à l'étape de paiement.",
+      "termsOnly": "En donnant, vous acceptez les conditions de don affichées à l'étape de paiement."
     },
     "form": {
       "eyebrow": "Don en ligne",

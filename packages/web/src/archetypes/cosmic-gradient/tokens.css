@@ -34,6 +34,26 @@
     padding: 32px 40px;
     max-width: 1280px;
     margin: 0 auto;
+    /* Desktop two-column: hero+progress on the left, glass donate form
+       sticky on the right. Uses CSS grid `align-items: start` so the
+       sticky form column starts at the top of the grid track. */
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(360px, 440px);
+    gap: 32px;
+    align-items: start;
+  }
+  [data-archetype="cosmic-gradient"] > :first-child,
+  [data-archetype="cosmic-gradient"] > :nth-child(2) {
+    grid-column: 1;
+  }
+  [data-archetype="cosmic-gradient"] > :nth-child(3) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    position: sticky;
+    top: 24px;
+  }
+  [data-archetype="cosmic-gradient"] > :last-child {
+    grid-column: 1 / -1;
   }
 }
 

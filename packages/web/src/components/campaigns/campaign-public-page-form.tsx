@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatCurrency } from "@/lib/format";
@@ -128,13 +129,28 @@ export function CampaignPublicPageForm({
   async function onSubmit(values: CampaignPublicPageFormValues) {
     form.clearErrors("root");
 
+    // `publicPageStyle` is intentionally not in the resolver's output
+    // (see the buildResolver note about `Type.Unsafe`), so pull it from
+    // the live form state to be sure it reaches the API payload.
+    const submitValues: CampaignPublicPageFormValues = {
+      ...values,
+      publicPageStyle: form.getValues("publicPageStyle"),
+    };
+
     try {
       await CampaignPublicPageService.upsertCampaignPublicPage(
         createClientApiClient(),
         campaign.id,
-        toApiPayload(values, publicPageStylesEnabled),
+        toApiPayload(submitValues, publicPageStylesEnabled),
       );
       toast.success(values.status === "published" ? t("success.published") : t("success.saved"));
+      // Re-baseline the form so `isDirty` flips back to false — without
+      // this, the "View public page" tooltip-guard stays disabled after
+      // a successful save (react-hook-form keeps `isDirty` true until
+      // the defaults match the current values). Use `submitValues` so
+      // the freshly-saved `publicPageStyle` becomes part of the new
+      // baseline — otherwise the picker would remain "dirty" after save.
+      form.reset(submitValues, { keepValues: true });
       router.refresh();
     } catch (err) {
       if (err instanceof ApiProblem) {
@@ -330,6 +346,7 @@ export function CampaignPublicPageForm({
               <PublicPageShareActions
                 campaignId={campaign.id}
                 initialStatus={initialPage?.status ?? "draft"}
+                hasUnsavedChanges={form.formState.isDirty}
               />
               <Button asChild variant="ghost">
                 <Link href={`/campaigns/${campaign.id}`}>{t("actions.back")}</Link>
@@ -581,9 +598,18 @@ function PreviewMetric({ label, value, icon }: { label: string; value: string; i
 function PublicPageShareActions({
   campaignId,
   initialStatus,
+  hasUnsavedChanges,
 }: {
   campaignId: string;
   initialStatus: PublicPageStatus;
+  /**
+   * `react-hook-form`'s `isDirty` for the editor. When true, the live
+   * public page still serves the *last saved* version — so opening
+   * `/p/[id]` would show the donor a stale render and mislead the
+   * operator into thinking their picker change didn't take effect.
+   * We disable "View public page" with a tooltip explaining why.
+   */
+  hasUnsavedChanges: boolean;
 }) {
   const t = useTranslations("campaigns.publicPage");
   const publicPath = `/p/${campaignId}`;
@@ -603,12 +629,31 @@ function PublicPageShareActions({
 
   return (
     <>
-      <Button asChild variant="secondary">
-        <Link href={publicPath} target="_blank" rel="noreferrer">
-          <ExternalLink size={16} aria-hidden="true" />
-          {t("actions.viewLive")}
-        </Link>
-      </Button>
+      {hasUnsavedChanges ? (
+        <TooltipProvider delayDuration={150}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {/* Wrapper span lets the tooltip stay reachable even
+                  while the button is disabled (pointer-events: none on
+                  a disabled <button> would swallow the hover/focus). */}
+              <span className="inline-flex">
+                <Button type="button" variant="secondary" disabled aria-disabled="true">
+                  <ExternalLink size={16} aria-hidden="true" />
+                  {t("actions.viewLive")}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top">{t("actions.viewLiveDirtyTooltip")}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        <Button asChild variant="secondary">
+          <Link href={publicPath} target="_blank" rel="noreferrer">
+            <ExternalLink size={16} aria-hidden="true" />
+            {t("actions.viewLive")}
+          </Link>
+        </Button>
+      )}
       <Button type="button" variant="ghost" onClick={copyPublicLink}>
         <Copy size={16} aria-hidden="true" />
         {t("actions.copyLink")}
@@ -695,6 +740,14 @@ function buildResolver(messages: ResolverMessages): Resolver<CampaignPublicPageF
       colorPrimary: normalizedColor,
       status: values.status,
     };
+    // NOTE on `publicPageStyle`: we deliberately do NOT pass it through
+    // the inner TypeBox resolver. The schema uses `Type.Unsafe` for
+    // the enum, which @hookform/resolvers/typebox's compiler doesn't
+    // recognise and throws "Unknown type" on. The field is read
+    // directly from `form.getValues()` inside `onSubmit` instead — its
+    // value is already constrained by the picker UI to one of
+    // `PUBLIC_PAGE_STYLE_KEYS` (or null), so re-validating it client-
+    // side adds no safety. The server still validates on receipt.
 
     if (values.description && values.description.trim() !== "") {
       cleaned.description = values.description.trim();
