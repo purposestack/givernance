@@ -1008,32 +1008,6 @@
         "error": "Impossible d'enregistrer votre modification. Veuillez réessayer."
       }
     },
-    "publicPageStyle": {
-      "title": "Style de la page de don",
-      "description": "Choisissez l'archétype visuel que les donateurs voient en arrivant sur la page publique d'une campagne. Chaque style préserve votre couleur de marque et votre logo — seules la structure, la typographie et l'animation changent.",
-      "clear": "Utiliser le style Givernance par défaut",
-      "footnote": "C'est le style par défaut pour toute votre organisation. Chaque campagne peut le remplacer depuis l'éditeur de campagne.",
-      "status": {
-        "inherits": "Style par défaut Givernance",
-        "custom": "Style personnalisé choisi",
-        "active": "Style actif :",
-        "inheritedDefault": "Style par défaut Givernance"
-      },
-      "voice": {
-        "institutional": "Institutionnel",
-        "expressive": "Expressif",
-        "editorial": "Éditorial",
-        "minimal": "Minimal",
-        "civic": "Civique"
-      },
-      "toast": {
-        "changed": "Style de la page de don défini sur {label}.",
-        "cleared": "Retour au style Givernance par défaut.",
-        "featureUnavailable": "Le sélecteur de style n'est plus disponible pour votre organisation. Veuillez recharger la page.",
-        "sessionExpired": "Votre session a expiré. Veuillez vous reconnecter.",
-        "error": "Impossible de mettre à jour le style. Veuillez réessayer."
-      }
-    },
     "branding": {
       "title": "Logo de l'organisation",
       "description": "Téléversez un logo pour personnaliser la barre latérale, les pages de don publiques et les reçus. Toutes les variantes sont générées à partir d'un seul fichier.",
@@ -2176,6 +2150,22 @@
         "presentation": {
           "title": "Présentation",
           "description": "État de publication, objectif mis en avant et couleur d'accent."
+        }
+      },
+      "styleSection": {
+        "title": "Style de la page de don",
+        "description": "Choisissez l'archétype visuel que les donateurs voient sur la page publique de cette campagne. Votre couleur de marque et votre logo restent intacts — seules la structure, la typographie et l'animation changent. L'aperçu en direct ci-dessous se met à jour à chaque sélection.",
+        "clear": "Effacer la sélection (les donateurs voient Foundation)",
+        "previewTitle": "Aperçu en direct",
+        "previewHint": "Ce que les donateurs verront sur /p/{id} — se rafraîchit à chaque sélection.",
+        "inheritsBadge": "Par défaut donateur",
+        "comingSoonBadge": "Bientôt disponible",
+        "voice": {
+          "institutional": "Institutionnel",
+          "expressive": "Expressif",
+          "editorial": "Éditorial",
+          "minimal": "Minimal",
+          "civic": "Civique"
         }
       },
       "fields": {

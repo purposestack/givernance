@@ -1008,32 +1008,6 @@
         "error": "Could not save your change. Please try again."
       }
     },
-    "publicPageStyle": {
-      "title": "Donation page style",
-      "description": "Pick the visual archetype donors see when they land on a campaign's public donation page. Each style keeps your brand colour and logo intact — only the structure, typography, and motion change.",
-      "clear": "Use Givernance default",
-      "footnote": "This is your organisation-wide default. Each campaign can override it from the campaign editor.",
-      "status": {
-        "inherits": "Using Givernance default",
-        "custom": "Custom style picked",
-        "active": "Active style:",
-        "inheritedDefault": "Givernance default"
-      },
-      "voice": {
-        "institutional": "Institutional",
-        "expressive": "Expressive",
-        "editorial": "Editorial",
-        "minimal": "Minimal",
-        "civic": "Civic"
-      },
-      "toast": {
-        "changed": "Donation page style set to {label}.",
-        "cleared": "Reverted to the Givernance default.",
-        "featureUnavailable": "The style picker is no longer available for your organisation. Please reload the page.",
-        "sessionExpired": "Your session has expired. Please sign in again.",
-        "error": "Couldn't update the style. Please try again."
-      }
-    },
     "branding": {
       "title": "Organisation logo",
       "description": "Upload a logo to brand your sidebar, public donation pages, and donor receipts. We generate every variant from a single upload.",
@@ -2176,6 +2150,22 @@
         "presentation": {
           "title": "Presentation",
           "description": "Publishing state, highlighted goal, and brand accent color."
+        }
+      },
+      "styleSection": {
+        "title": "Donation page style",
+        "description": "Pick the visual archetype donors see on this campaign's public page. Your brand colour and logo stay intact — only the structure, typography, and motion change. The live preview below updates as you pick.",
+        "clear": "Clear selection (donor sees Foundation)",
+        "previewTitle": "Live preview",
+        "previewHint": "What donors will see on /p/{id} — refreshes when you pick another tile.",
+        "inheritsBadge": "Donor default",
+        "comingSoonBadge": "Coming soon",
+        "voice": {
+          "institutional": "Institutional",
+          "expressive": "Expressive",
+          "editorial": "Editorial",
+          "minimal": "Minimal",
+          "civic": "Civic"
         }
       },
       "fields": {

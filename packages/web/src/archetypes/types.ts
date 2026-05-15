@@ -15,7 +15,7 @@
  */
 
 import type { PublicPageStyleKey } from "@givernance/shared/constants";
-import type { ComponentType, ReactElement } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 /**
  * Donor-facing payload shape the public-page endpoint returns to the
@@ -66,13 +66,17 @@ export interface ProgressSlotProps {
 export interface AmountSlotProps {
   data: ArchetypePageData;
   /**
-   * Render the shared `<PublicDonationForm>` client island here. The
-   * shell injects this so the archetype owns the *picker UI* (chip
-   * grid layout, recurring-first vs one-time-first ordering, write-in
-   * placement) but the Stripe Elements + 3DS handling stays in the
-   * shell.
+   * The shared `<PublicDonationForm>` client island, pre-built by the
+   * shell so the archetype owns the *picker UI* (chip grid layout,
+   * recurring-first vs one-time-first ordering, write-in placement)
+   * but the Stripe Elements + 3DS handling stays in the shell.
+   *
+   * `ReactNode` (not a `() => …` callback) because Next.js RSC
+   * cannot serialize functions across the server→client boundary —
+   * but it CAN serialize a `ReactNode`. The archetype just embeds
+   * `{formNode}` wherever its picker UI calls for the form.
    */
-  renderForm: () => ReactElement;
+  formNode: ReactNode;
 }
 export interface FooterSlotProps {
   data: ArchetypePageData;

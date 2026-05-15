@@ -41,22 +41,34 @@ import type { PublicPageStyleKey } from "@givernance/shared/constants";
 import type { ArchetypeModule } from "./types";
 
 export const ARCHETYPES: Record<PublicPageStyleKey, () => Promise<ArchetypeModule>> = {
-  // Implemented in PR-4 — see `./foundation/index.ts`.
-  foundation: () => import("./foundation/index.js").then((m) => m.default),
+  // ─── Implemented (PR-4 + PR-6) ─────────────────────────────────────────
+  foundation: () => import("./foundation").then((m) => m.default),
+  activist: () => import("./activist").then((m) => m.default),
+  "calm-wellness": () => import("./calm-wellness").then((m) => m.default),
+  "cosmic-gradient": () => import("./cosmic-gradient").then((m) => m.default),
 
-  // TODO(PR-4-followup): the 9 remaining archetypes are scaffolded in
-  // the docs/design/donations/*.html mockups + ADR-030's Slot
-  // Inventory + the teardown's per-archetype briefs. PR-4 follow-ups
-  // implement them one by one against the SAME slot contract; each
-  // import below flips from `() => import("./foundation/...")` to
-  // the matching archetype folder.
-  activist: () => import("./foundation/index.js").then((m) => m.default),
-  "editorial-story": () => import("./foundation/index.js").then((m) => m.default),
-  "minimal-checkout": () => import("./foundation/index.js").then((m) => m.default),
-  "emergency-appeal": () => import("./foundation/index.js").then((m) => m.default),
-  "neo-brutalist": () => import("./foundation/index.js").then((m) => m.default),
-  "calm-wellness": () => import("./foundation/index.js").then((m) => m.default),
-  "civic-modern": () => import("./foundation/index.js").then((m) => m.default),
-  "retro-print": () => import("./foundation/index.js").then((m) => m.default),
-  "cosmic-gradient": () => import("./foundation/index.js").then((m) => m.default),
+  // ─── Awaiting implementation — falls back to Foundation ────────────────
+  // The PR-4 review's "silent-downgrade foot-gun" applies here. The
+  // picker UI marks these "Coming soon" via `IMPLEMENTED_ARCHETYPE_KEYS`
+  // below so the operator-side signal is clear.
+  "editorial-story": () => import("./foundation").then((m) => m.default),
+  "minimal-checkout": () => import("./foundation").then((m) => m.default),
+  "emergency-appeal": () => import("./foundation").then((m) => m.default),
+  "neo-brutalist": () => import("./foundation").then((m) => m.default),
+  "civic-modern": () => import("./foundation").then((m) => m.default),
+  "retro-print": () => import("./foundation").then((m) => m.default),
 };
+
+/**
+ * The subset of `PUBLIC_PAGE_STYLE_KEYS` with a real React
+ * implementation today. The campaign-editor picker reads this to
+ * render "Coming soon" badges on un-implemented tiles — no donor
+ * surprises, no operator confusion when their pick renders as
+ * Foundation.
+ */
+export const IMPLEMENTED_ARCHETYPE_KEYS: ReadonlySet<PublicPageStyleKey> = new Set([
+  "foundation",
+  "activist",
+  "calm-wellness",
+  "cosmic-gradient",
+]);

@@ -1,3 +1,4 @@
+import type { PublicPageStyleKey } from "@givernance/shared/constants";
 import type { CampaignPublicPageColor } from "@givernance/shared/validators";
 
 export type PublicPageStatus = "draft" | "published";
@@ -12,6 +13,15 @@ export interface CampaignPublicPage {
   description: string | null;
   colorPrimary: CampaignPublicPageColor | null;
   goalAmountCents: number | null;
+  /**
+   * Epic #362 — per-campaign archetype override. `null` means "inherit
+   * from `tenants.default_public_page_style`, falling back to
+   * `foundation` if that's also null." The admin GET returns the raw
+   * column value so the campaign editor's picker can render the
+   * inheritance breadcrumb; the donor-facing endpoint resolves the
+   * three-layer fallback before responding.
+   */
+  publicPageStyle: PublicPageStyleKey | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -69,6 +79,14 @@ export interface PublishedCampaignPublicPage {
    * over the public surface.
    */
   hasSwissQrBill?: boolean;
+  /**
+   * Epic #362 — donor-facing archetype after the API's three-layer
+   * resolution. `null` when `donation.public_page_styles` is OFF for
+   * this campaign's tenant; the shell falls back to today's hardcoded
+   * layout in that case. The shell may also override with a URL
+   * `?style=…` preview param (operator workflow).
+   */
+  publicPageStyle?: PublicPageStyleKey | null;
 }
 
 export interface PublishedCampaignPublicPageResponse {
@@ -81,6 +99,13 @@ export interface CampaignPublicPageInput {
   colorPrimary?: CampaignPublicPageColor | null;
   goalAmountCents?: number | null;
   status?: PublicPageStatus;
+  /**
+   * Epic #362 — tri-state per the PR-2 service contract:
+   *   - `undefined` → leave the column untouched
+   *   - `null` → explicitly clear (inherit tenant default / platform default)
+   *   - `<key>` → set to that archetype
+   */
+  publicPageStyle?: PublicPageStyleKey | null;
 }
 
 export interface PublicDonationIntentInput {

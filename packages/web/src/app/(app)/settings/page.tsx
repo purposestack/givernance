@@ -1,6 +1,4 @@
-import type { PublicPageStyleKey } from "@givernance/shared/constants";
 import { getTranslations } from "next-intl/server";
-import { PublicPageStylePicker } from "@/components/settings/public-page-style-picker";
 import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { SettingsSnapshotPanel } from "@/components/settings/settings-snapshot-panel";
 import { StripeConnectPanel } from "@/components/settings/stripe-connect-panel";
@@ -8,8 +6,7 @@ import { TenantSettingsForm } from "@/components/settings/tenant-settings-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
-import { isFeatureFlagsPhase2Enabled, isPublicPageStylesEnabled } from "@/lib/feature-flags/server";
-import { TenantStyleDefaultService } from "@/services/TenantStyleDefaultService";
+import { isFeatureFlagsPhase2Enabled } from "@/lib/feature-flags/server";
 
 /**
  * Settings page — protected, requires authentication.
@@ -20,6 +17,15 @@ import { TenantStyleDefaultService } from "@/services/TenantStyleDefaultService"
  * Organisation card via `TenantSettingsForm`'s embedded variant — it
  * sits at the top of the card, alongside currency / locale / mission,
  * not as a separate hero above the settings sub-navigation.
+ *
+ * Epic #362 update: the public-donation-page **style picker** does NOT
+ * live here. It lives per-campaign inside the campaign-public-page
+ * editor at `/campaigns/[id]/public-page` — one style per campaign is
+ * the right scope (operator feedback). The `/v1/org/style-default`
+ * API endpoint + `tenants.default_public_page_style` column stay in
+ * place as a deliberate-no-op fallback layer in the three-tier
+ * resolution; bringing the org-level UI back is a UI-only change if
+ * we ever want an org-wide default again.
  */
 export default async function SettingsPage() {
   const auth = await requireAuth();
@@ -42,25 +48,6 @@ export default async function SettingsPage() {
   // the self-flag is on. Fail-closed (off) on projection errors.
   const showFeatureFlags = await isFeatureFlagsPhase2Enabled();
 
-  // Epic #362 — only surface the public-page-style picker when the
-  // flag is on for this tenant AND the caller is org_admin. The
-  // picker writes via PATCH /v1/org/style-default which independently
-  // requires both — this is the SSR mirror that hides the surface.
-  const isOrgAdmin = auth.roles.includes("org_admin");
-  const showStylePicker = isOrgAdmin && (await isPublicPageStylesEnabled());
-  let initialPublicPageStyle: PublicPageStyleKey | null = null;
-  if (showStylePicker) {
-    try {
-      const api = await createServerApiClient();
-      const value = await TenantStyleDefaultService.getDefault(api);
-      initialPublicPageStyle = value.defaultPublicPageStyle;
-    } catch {
-      // Non-fatal — the picker renders with the inherits-default
-      // state and the operator can pick anyway. Toast surfaces any
-      // PATCH error.
-    }
-  }
-
   return (
     <div className="space-y-8">
       <PageHeader
@@ -75,7 +62,6 @@ export default async function SettingsPage() {
         orgName={orgName}
         canManageBranding={canManageBranding}
       />
-      {showStylePicker ? <PublicPageStylePicker initialValue={initialPublicPageStyle} /> : null}
       <StripeConnectPanel canManageTenant={auth.roles.includes("org_admin")} />
       <SettingsSnapshotPanel orgId={auth.orgId} canExport={auth.roles.includes("org_admin")} />
     </div>

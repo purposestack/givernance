@@ -17,6 +17,8 @@ import { FoundationFooter } from "./footer";
 import { FoundationHero } from "./hero";
 import { FoundationProgress } from "./progress";
 
+import "./tokens.css";
+
 const foundation: ArchetypeModule = {
   key: "foundation",
   layout: "side-by-side",

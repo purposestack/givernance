@@ -1,0 +1,304 @@
+/*
+ * Cosmic Gradient archetype tokens (Epic #362).
+ *
+ * Mobile-first: animated gradient mesh works smoothly at every
+ * width by sitting in the natural document flow (not an absolutely-
+ * positioned overflow trick). Gates on `prefers-reduced-motion`.
+ * Click-burst easter egg fires from the click point.
+ *
+ * Layout layers up at `min-width: 1024px` to a scroll-reveal split.
+ */
+
+[data-archetype="cosmic-gradient"] {
+  --cosmic-ink: #0e0a1a;
+  --cosmic-on: #faf7ff;
+  --cosmic-glass: rgba(255, 255, 255, 0.06);
+  --cosmic-border: rgba(255, 255, 255, 0.12);
+  --brand-primary: #7c3aed;
+
+  container-type: inline-size;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: var(--cosmic-ink);
+  color: var(--cosmic-on);
+  padding: 12px;
+}
+
+@container (min-width: 768px) {
+  [data-archetype="cosmic-gradient"] {
+    padding: 24px;
+  }
+}
+
+@container (min-width: 1024px) {
+  [data-archetype="cosmic-gradient"] {
+    padding: 32px 40px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+}
+
+/* ── Hero — animated mesh ──────────────────────────────────────────────────── */
+
+.cosmic-hero {
+  position: relative;
+  padding: 28px 16px 40px;
+  overflow: hidden;
+  border-radius: 20px;
+  /* Mobile-first: bake the mesh into the hero's own background.
+     Avoids the absolutely-positioned `inset: -20%` trick which
+     overflowed/clipped on narrow viewports. */
+  background:
+    radial-gradient(at 20% 20%, var(--brand-primary, #7c3aed) 0%, transparent 50%),
+    radial-gradient(at 80% 30%, #ec4899 0%, transparent 50%),
+    radial-gradient(at 50% 90%, #06b6d4 0%, transparent 50%),
+    radial-gradient(at 30% 70%, #f59e0b 0%, transparent 40%),
+    var(--cosmic-ink);
+  background-size: 200% 200%;
+  background-position: 0% 0%;
+  animation: cosmic-hero-drift 18s ease-in-out infinite;
+  margin-bottom: 16px;
+}
+
+@container (min-width: 768px) {
+  .cosmic-hero {
+    padding: 48px 28px 64px;
+    border-radius: 28px;
+    margin-bottom: 24px;
+  }
+}
+
+@container (min-width: 1024px) {
+  .cosmic-hero {
+    padding: 64px 32px 96px;
+    border-radius: 32px;
+  }
+}
+
+@keyframes cosmic-hero-drift {
+  0%,
+  100% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cosmic-hero {
+    animation: none;
+  }
+}
+
+.cosmic-hero__mesh {
+  /* Click-egg target — the whole hero is hot, sized via the hero itself. */
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  z-index: 0;
+}
+
+.cosmic-hero__content {
+  position: relative;
+  z-index: 1;
+  max-width: 880px;
+  pointer-events: none;
+}
+
+.cosmic-hero__eyebrow {
+  font-family: "Geist", "Inter", system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0;
+}
+
+@container (min-width: 768px) {
+  .cosmic-hero__eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.24em;
+  }
+}
+
+.cosmic-hero__title {
+  font-family: "Geist", "Inter", system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.6rem, 7cqi, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  margin: 12px 0 0;
+  max-width: 20ch;
+  text-wrap: balance;
+  word-break: break-word;
+  hyphens: auto;
+  background: linear-gradient(90deg, #ffffff 0%, #c4b5fd 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.cosmic-hero__lede {
+  font-size: 0.95rem;
+  margin: 14px 0 0;
+  max-width: 56ch;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.55;
+}
+
+@container (min-width: 768px) {
+  .cosmic-hero__lede {
+    margin-top: 20px;
+    font-size: 1.05rem;
+  }
+}
+
+/* ── Progress — glass card ─────────────────────────────────────────────────── */
+
+.cosmic-progress {
+  /* Baseline: positive margin so narrow containers (editor preview ~380px)
+     don't overlap the hero. Overlap-the-hero intent is preserved above
+     480px via container queries below. */
+  margin: 12px auto 0;
+  padding: 16px 18px;
+  background: var(--cosmic-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--cosmic-border);
+  border-radius: 16px;
+  position: relative;
+  z-index: 2;
+  color: var(--cosmic-on);
+  max-width: 880px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@container (min-width: 480px) {
+  .cosmic-progress {
+    grid-template-columns: auto 1fr;
+    gap: 20px;
+    align-items: center;
+    padding: 20px 24px;
+    border-radius: 20px;
+    margin-top: -24px;
+  }
+}
+
+@container (min-width: 768px) {
+  .cosmic-progress {
+    margin-top: -36px;
+    padding: 24px 28px;
+    border-radius: 24px;
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+}
+
+.cosmic-progress__amount {
+  font-family: "Geist", "Inter", system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.3rem, 5cqi, 2rem);
+  line-height: 1;
+  margin: 0;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.cosmic-progress__bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.cosmic-progress__bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand-primary, #7c3aed), #ec4899);
+  border-radius: 999px;
+}
+
+.cosmic-progress__meta {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.cosmic-progress__meta strong {
+  color: var(--cosmic-on);
+  font-weight: 600;
+}
+
+/* ── Donate form chrome ────────────────────────────────────────────────────── */
+
+.cosmic-form {
+  margin: 16px auto 0;
+  padding: 20px 16px;
+  background: var(--cosmic-glass);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--cosmic-border);
+  border-radius: 20px;
+  color: var(--cosmic-on);
+  max-width: 560px;
+}
+
+@container (min-width: 768px) {
+  .cosmic-form {
+    margin-top: 32px;
+    padding: 32px 28px;
+    border-radius: 28px;
+  }
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.cosmic-footer {
+  margin-top: 32px;
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+@container (min-width: 768px) {
+  .cosmic-footer {
+    margin-top: 48px;
+    padding: 20px 24px;
+  }
+}
+
+/* ── Particle burst (easter egg) ──────────────────────────────────────────── */
+
+.cosmic-particle-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.cosmic-particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand-primary, #7c3aed), #ec4899);
+  box-shadow: 0 0 8px var(--brand-primary, #7c3aed);
+  animation: cosmic-particle-fly cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+@keyframes cosmic-particle-fly {
+  from {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 1;
+  }
+  to {
+    transform: translate(calc(var(--dx) - 50%), calc(var(--dy) - 50%)) scale(0.2);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cosmic-particle-overlay {
+    display: none;
+  }
+}

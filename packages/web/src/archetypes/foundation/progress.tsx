@@ -1,20 +1,25 @@
+"use client";
+
 import { useTranslations } from "next-intl";
 import { formatCurrency } from "@/lib/format";
 import type { ProgressSlotProps } from "../types";
 
 /**
- * Foundation `Progress` slot — inline below hero. Shows raised /
- * goal in tabular-nums (slot-contract requirement) + a horizontal
- * progress bar. Mirrors the production `<Progress>` block.
+ * Foundation `Progress` slot — inline below hero. Shows the campaign
+ * goal as a target whenever one is set (raised total, goal, progress
+ * bar). On a fresh campaign with no donations yet, the bar is empty
+ * (0%) but the goal stays visible so the donor knows the target.
+ * Returns `null` only when no goal has been configured for the
+ * campaign — preserves the trust-strip fallback in that branch.
  */
 export function FoundationProgress({ data }: ProgressSlotProps) {
   const t = useTranslations("publicDonationPage");
   const hasGoal = data.goalAmountCents !== null && data.goalAmountCents > 0;
+  if (!hasGoal) return null;
+
   const goalCents = data.goalAmountCents ?? 0;
   const progressPercent =
-    hasGoal && goalCents > 0 ? Math.min(100, Math.round((data.raisedCents / goalCents) * 100)) : 0;
-
-  if (!hasGoal || data.raisedCents === 0) return null;
+    goalCents > 0 ? Math.min(100, Math.round((data.raisedCents / goalCents) * 100)) : 0;
 
   return (
     <div className="border-t border-outline-variant px-5 py-5 sm:px-8 sm:py-6 lg:px-10 lg:py-8">
