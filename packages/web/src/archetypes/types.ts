@@ -27,9 +27,10 @@ export interface ArchetypePageData {
   campaignId: string;
   title: string;
   description: string | null;
-  /** Operator-picked brand colour (Epic #286). The shell pre-sets
-   *  `--brand-primary` from this; archetypes opt in via the tokens
-   *  CSS rather than re-reading the value at the component level. */
+  /** Operator-picked brand colour (Epic #286). The renderer wrapper
+   *  sets `--brand-primary` from this once on the `<div data-archetype>`,
+   *  so every descendant CSS rule inherits it via `var(--brand-primary)`
+   *  without each slot threading the value through props. */
   colorPrimary: string;
   /** Tax-deductible-on-this-currency amount; locale-formatted via the
    *  archetype's tokens or `Intl.NumberFormat` at render. */
@@ -40,7 +41,6 @@ export interface ArchetypePageData {
   organisationName: string;
   organisationMission: string | null;
   organisationLogoUrl: string | null;
-  hasSwissQrBill: boolean;
   /** The resolved archetype after the API's three-layer fallback
    *  (campaign override → tenant default → "foundation"). Never null
    *  when the shell reaches an archetype slot — the shell falls back
@@ -82,50 +82,6 @@ export interface FooterSlotProps {
   data: ArchetypePageData;
 }
 
-/**
- * Layout strategy — shell-controlled grid template. Adding a value
- * here is a slot-contract change (see ADR-030 § Revisit if).
- *
- *   - `side-by-side`: hero + form on a desktop split, stacked on
- *     mobile. (foundation, activist, neo-brutalist, civic-modern,
- *     retro-print, calm-wellness)
- *   - `stacked`: hero on top, form below, single column. (emergency-
- *     appeal, minimal-checkout)
- *   - `scroll-reveal`: hero spans the viewport; the form anchors
- *     after the story and reveals on scroll. (editorial-story,
- *     cosmic-gradient)
- */
-export type ArchetypeLayout = "side-by-side" | "stacked" | "scroll-reveal";
-
-/**
- * Ambient motion declaration. Conflating this with the easter-egg
- * hook was rejected in PR-1 review (ADR-030 § Motion policy).
- *
- *   - `none`: archetype CSS contains no `@keyframes` or `animation:`.
- *     Lint-enforced via Stylelint on the archetype CSS file.
- *   - `reduced-ok`: low-amplitude motion that no-ops under
- *     `prefers-reduced-motion: reduce`. The archetype CSS gates its
- *     `@keyframes` on a `[data-motion="reduced"]` attribute the
- *     shell injects.
- *   - `requires-pause-control`: motion >5 s loop (WCAG 2.2.2 level A).
- *     The shell renders a visible "Pause" toggle. NO archetype in
- *     the initial 10-shipset uses this — it exists in the type so
- *     future proposals go through review.
- */
-export type AmbientMotion = "none" | "reduced-ok" | "requires-pause-control";
-
-export interface MotionSpec {
-  ambient: AmbientMotion;
-  /**
-   * Optional easter-egg config. `null` for archetypes that intentionally
-   * carry no egg (foundation, editorial-story, minimal-checkout,
-   * emergency-appeal, civic-modern). The hook short-circuits to no-op
-   * under `prefers-reduced-motion`, `prefers-reduced-data`, or
-   * `navigator.connection.saveData`.
-   */
-  easterEgg: EasterEggSpec | null;
-}
-
 export interface EasterEggSpec {
   /** Operator-friendly description for QA + the CSM onboarding deck. */
   description: string;
@@ -158,10 +114,8 @@ export interface EasterEggSpec {
  */
 export interface ArchetypeModule {
   key: PublicPageStyleKey;
-  layout: ArchetypeLayout;
   Hero: ComponentType<HeroSlotProps>;
   Progress: ComponentType<ProgressSlotProps>;
   AmountPicker: ComponentType<AmountSlotProps>;
   Footer: ComponentType<FooterSlotProps>;
-  motion: MotionSpec;
 }

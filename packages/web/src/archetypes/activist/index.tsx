@@ -4,17 +4,15 @@
  *
  * Visual reference: `docs/design/donations/public-activist.html`.
  *
- * `layout = side-by-side`, `ambient motion = none`, easter egg =
- * Konami code → confetti rain in the brand colour for 4 s. The
- * easter egg respects `prefers-reduced-motion` / `prefers-reduced-
- * data` / `saveData` via the shared `useEasterEgg` hook.
+ * Easter egg: Konami code → confetti rain in the brand colour for 4 s.
+ * Declared in-place inside the Hero via `useEasterEgg`; respects
+ * `prefers-reduced-motion` / `prefers-reduced-data` / `saveData`.
  */
 
 import type { ArchetypeModule } from "../types";
 import { ActivistAmountPicker } from "./amount-picker";
 import { ActivistFooter } from "./footer";
 import { ActivistHero } from "./hero";
-import { ConfettiOverlay } from "./konami-overlay";
 import { ActivistProgress } from "./progress";
 
 // Tokens load with the archetype's chunk; the file lives next to the
@@ -24,19 +22,10 @@ import "./tokens.css";
 
 const activist: ArchetypeModule = {
   key: "activist",
-  layout: "side-by-side",
   Hero: ActivistHero,
   Progress: ActivistProgress,
   AmountPicker: ActivistAmountPicker,
   Footer: ActivistFooter,
-  motion: {
-    ambient: "none",
-    easterEgg: {
-      description: "Konami code → confetti rain in brand colour for 4 s",
-      trigger: { kind: "konami" },
-      Render: ConfettiOverlay,
-    },
-  },
 };
 
 export default activist;

@@ -21,12 +21,10 @@ import "./tokens.css";
 
 const foundation: ArchetypeModule = {
   key: "foundation",
-  layout: "side-by-side",
   Hero: FoundationHero,
   Progress: FoundationProgress,
   AmountPicker: FoundationAmountPicker,
   Footer: FoundationFooter,
-  motion: { ambient: "none", easterEgg: null },
 };
 
 export default foundation;

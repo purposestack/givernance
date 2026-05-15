@@ -1,9 +1,9 @@
 "use client";
 
 import { isPublicPageStyleKey, type PublicPageStyleKey } from "@givernance/shared/constants";
-import { type ReactNode, useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 
-import { ARCHETYPES } from "@/archetypes/registry";
+import { loadArchetype } from "@/archetypes/registry";
 import type { ArchetypeModule, ArchetypePageData } from "@/archetypes/types";
 
 /**
@@ -68,7 +68,7 @@ export function ArchetypeRenderer({
       return;
     }
     let cancelled = false;
-    ARCHETYPES[styleKey]()
+    loadArchetype(styleKey)
       .then((mod) => {
         if (!cancelled) {
           setArchetype(mod);
@@ -98,8 +98,7 @@ export function ArchetypeRenderer({
     return <>{fallback}</>;
   }
 
-  const { Hero, Progress, AmountPicker, Footer, layout } = archetype;
-  const motionAttr = archetype.motion.ambient;
+  const { Hero, Progress, AmountPicker, Footer } = archetype;
 
   // Outer wrapper owns the container-query context so each archetype's
   // CSS can use `@container (min-width: ...)` instead of viewport-
@@ -117,9 +116,16 @@ export function ArchetypeRenderer({
   // The renderer is a `<div>` rather than a `<main>` so the caller
   // (which may itself be inside a campaign-editor preview pane)
   // doesn't end up with nested-main landmarks.
+  //
+  // `--brand-primary` is set once on the archetype wrapper so every
+  // descendant CSS rule can read it via `var(--brand-primary)` without
+  // each slot threading `data.colorPrimary` through inline styles.
   return (
     <div style={{ containerType: "inline-size" }}>
-      <div data-archetype={styleKey} data-layout={layout} data-motion={motionAttr}>
+      <div
+        data-archetype={styleKey}
+        style={{ "--brand-primary": data.colorPrimary } as CSSProperties}
+      >
         <Hero data={data} />
         <Progress data={data} />
         <AmountPicker data={data} formNode={formNode} />
