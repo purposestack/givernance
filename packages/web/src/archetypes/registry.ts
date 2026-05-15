@@ -13,12 +13,10 @@
  * before reaching the loader. The Rejected alternatives table in
  * ADR-030 spells out why.
  *
- * Only implemented archetypes are listed; everything else falls back
- * to Foundation via `loadArchetype()` below. The picker UI reads
- * `IMPLEMENTED_ARCHETYPE_KEYS` (derived from the registry's keys, so
- * there's a single source of truth) to mark unshipped tiles "Coming
- * soon" — operator-side signal that the pick will render as
- * Foundation until the dedicated implementation lands.
+ * Every implementation is listed; the `Partial<Record>` shape is kept
+ * so a future archetype removal doesn't require a registry rewrite.
+ * `IMPLEMENTED_ARCHETYPE_KEYS` is derived from the keys here so the
+ * picker UI and the registry can't drift.
  */
 
 import type { PublicPageStyleKey } from "@givernance/shared/constants";
@@ -31,6 +29,12 @@ const ARCHETYPES: Partial<Record<PublicPageStyleKey, () => Promise<ArchetypeModu
   activist: () => import("./activist").then((m) => m.default),
   "calm-wellness": () => import("./calm-wellness").then((m) => m.default),
   "cosmic-gradient": () => import("./cosmic-gradient").then((m) => m.default),
+  "editorial-story": () => import("./editorial-story").then((m) => m.default),
+  "minimal-checkout": () => import("./minimal-checkout").then((m) => m.default),
+  "emergency-appeal": () => import("./emergency-appeal").then((m) => m.default),
+  "neo-brutalist": () => import("./neo-brutalist").then((m) => m.default),
+  "civic-modern": () => import("./civic-modern").then((m) => m.default),
+  "retro-print": () => import("./retro-print").then((m) => m.default),
 };
 
 /**

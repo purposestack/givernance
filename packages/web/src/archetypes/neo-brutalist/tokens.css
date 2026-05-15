@@ -1,0 +1,201 @@
+/*
+ * Neo-Brutalist archetype tokens (Epic #362).
+ *
+ * Voice: mono type, hard 4px borders, deliberate rotations, neon
+ * accents. For arts orgs, indie civic groups, anything where
+ * "polished" reads as suspect.
+ *
+ * Layout + slot placement inherited from `_shell.css`; this file
+ * holds only voice tokens and the glitch keyframes.
+ */
+
+[data-archetype="neo-brutalist"] {
+  --nb-ink: #0a0a0a;
+  --nb-paper: #f0eee6;
+  --nb-pink: #ff007a;
+  --brand-primary: #00ff85;
+  /* Voice override: tighter form column so the rotated cards don't
+     fight the layout grid. */
+  --shell-form-min: 320px;
+
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  background: var(--nb-paper);
+  color: var(--nb-ink);
+}
+
+/* ── Hero — bordered slab, slight CCW rotation, marker accent ──────────────── */
+
+.neo-hero {
+  border: 4px solid var(--nb-ink);
+  background: var(--nb-paper);
+  padding: 28px 20px;
+  transform: rotate(-0.4deg);
+  position: relative;
+}
+
+.neo-hero::after {
+  content: "▶";
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 1.6rem;
+  color: var(--brand-primary);
+}
+
+@container (min-width: 768px) {
+  .neo-hero {
+    padding: 40px 32px;
+  }
+}
+
+.neo-hero__eyebrow {
+  font-family: "Playfair Display", Georgia, serif;
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1rem;
+  margin: 0 0 12px;
+  color: var(--nb-pink);
+}
+
+.neo-hero__title {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-weight: 800;
+  font-size: clamp(1.6rem, 5.5cqi, 2.8rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.neo-hero__lede {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 16px 0 0;
+  max-width: 56ch;
+}
+
+/* ── Progress — dark slab, neon bar ────────────────────────────────────────── */
+
+.neo-progress {
+  border: 4px solid var(--nb-ink);
+  border-top: 0;
+  background: var(--nb-ink);
+  color: var(--brand-primary);
+  padding: 20px 24px;
+  transform: rotate(-0.4deg);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@container (min-width: 480px) {
+  .neo-progress {
+    grid-template-columns: auto 1fr;
+    gap: 24px;
+    align-items: center;
+  }
+}
+
+.neo-progress__amount {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-weight: 800;
+  font-size: clamp(1.4rem, 4.5cqi, 2rem);
+  line-height: 1;
+  margin: 0;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.neo-progress__bar {
+  height: 10px;
+  background: rgba(0, 255, 133, 0.15);
+  border: 1px solid var(--brand-primary);
+}
+
+.neo-progress__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--brand-primary);
+}
+
+.neo-progress__meta {
+  font-size: 12px;
+  margin: 8px 0 0;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ── Donate form chrome ────────────────────────────────────────────────────── */
+
+.neo-form {
+  border: 4px solid var(--nb-ink);
+  background: var(--nb-paper);
+  padding: 24px 18px;
+  transform: rotate(0.5deg);
+}
+
+@container (min-width: 768px) {
+  .neo-form {
+    padding: 32px 24px;
+  }
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.neo-footer {
+  margin-top: 24px;
+  padding: 16px 0;
+  border-top: 4px solid var(--nb-ink);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Glitch overlay (easter egg) ───────────────────────────────────────────── */
+
+.neo-glitch-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: difference;
+  animation: neo-glitch 600ms steps(8, end) forwards;
+  background: linear-gradient(
+    90deg,
+    var(--nb-pink) 0 25%,
+    transparent 25% 50%,
+    var(--brand-primary) 50% 75%,
+    transparent 75% 100%
+  );
+}
+
+@keyframes neo-glitch {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0;
+  }
+  20% {
+    transform: translate3d(-6px, 2px, 0);
+    opacity: 0.6;
+  }
+  40% {
+    transform: translate3d(6px, -2px, 0);
+    opacity: 0.7;
+  }
+  60% {
+    transform: translate3d(-3px, 1px, 0);
+    opacity: 0.4;
+  }
+  80% {
+    transform: translate3d(3px, -1px, 0);
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-glitch-overlay {
+    display: none;
+  }
+}
