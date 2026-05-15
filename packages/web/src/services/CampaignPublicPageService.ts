@@ -107,6 +107,13 @@ function toRequestBody(input: CampaignPublicPageInput): CampaignPublicPagePayloa
   if (input.colorPrimary !== undefined) body.colorPrimary = input.colorPrimary;
   if (input.goalAmountCents !== undefined) body.goalAmountCents = input.goalAmountCents;
   if (input.status !== undefined) body.status = input.status;
+  // Epic #362 — tri-state on `publicPageStyle`. `undefined` leaves the
+  // column untouched; the caller passes `null` to explicitly clear or
+  // a `PublicPageStyleKey` to set. The API gates this field with a
+  // flag-aware 400 when `donation.public_page_styles` is off for the
+  // tenant (PR-2 review): the editor shouldn't reach here unless the
+  // SSR feature-flag check rendered the picker.
+  if (input.publicPageStyle !== undefined) body.publicPageStyle = input.publicPageStyle;
 
   return body;
 }

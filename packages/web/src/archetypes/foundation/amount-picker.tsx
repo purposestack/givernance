@@ -26,6 +26,10 @@ import type { AmountSlotProps } from "../types";
  * Wellness's pill chips) will land in PR-4b–d alongside the split.
  * See ADR-030 § Slot Inventory for the full per-archetype mapping.
  */
-export function FoundationAmountPicker({ renderForm }: AmountSlotProps) {
-  return <>{renderForm()}</>;
+export function FoundationAmountPicker({ formNode }: AmountSlotProps) {
+  return (
+    <div className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-5 text-on-surface shadow-card sm:rounded-3xl sm:p-6">
+      {formNode}
+    </div>
+  );
 }

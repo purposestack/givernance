@@ -1,5 +1,6 @@
 "use client";
 
+import type { PublicPageStyleKey } from "@givernance/shared/constants";
 import {
   CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES,
   CampaignPublicPageSchema,
@@ -17,6 +18,9 @@ import {
   useForm,
   useWatch,
 } from "react-hook-form";
+
+import { ArchetypeRenderer } from "@/components/campaigns/archetype-renderer";
+import { CampaignPublicPageStyleSection } from "@/components/campaigns/campaign-public-page-style-section";
 
 import { AmountInput } from "@/components/shared/amount-input";
 import {
@@ -51,6 +55,14 @@ import { CampaignPublicPageService } from "@/services/CampaignPublicPageService"
 interface CampaignPublicPageFormProps {
   campaign: Campaign;
   initialPage: CampaignPublicPage | null;
+  /**
+   * Whether `donation.public_page_styles` is enabled for this tenant.
+   * Resolved SSR-side from the public projection so the picker is
+   * hidden when the flag is off — matches the field-level PUT gate
+   * on the API. When `false`, the section is not rendered AND the
+   * submit payload omits `publicPageStyle` (the API would 400 it).
+   */
+  publicPageStylesEnabled: boolean;
 }
 
 interface CampaignPublicPageFormValues {
@@ -59,6 +71,14 @@ interface CampaignPublicPageFormValues {
   colorPrimary: ThemeColorValue;
   goalAmountCents: number | null;
   status: PublicPageStatus;
+  /**
+   * Per-campaign archetype override (Epic #362). `null` = inherit
+   * the tenant default (or platform default if that's also null).
+   * Tri-state on the wire (`undefined` = unchanged, `null` = clear,
+   * `<key>` = set) is enforced inside `toApiPayload` based on whether
+   * the picker is even shown.
+   */
+  publicPageStyle: PublicPageStyleKey | null;
 }
 
 type ThemeColorValue = (typeof CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES)[number];
@@ -74,11 +94,16 @@ const THEME_COLORS: Array<{ value: ThemeColorValue; labelKey: ThemeColorLabelKey
   { value: "#3F4943", labelKey: "slate" },
 ];
 
-export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublicPageFormProps) {
+export function CampaignPublicPageForm({
+  campaign,
+  initialPage,
+  publicPageStylesEnabled,
+}: CampaignPublicPageFormProps) {
   const router = useRouter();
   const locale = useLocale();
   const t = useTranslations("campaigns.publicPage");
   const tCampaigns = useTranslations("campaigns");
+  const tStyle = useTranslations("campaigns.publicPage.styleSection");
 
   const defaultValues: DefaultValues<CampaignPublicPageFormValues> = {
     title: initialPage?.title ?? campaign.name,
@@ -86,6 +111,7 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
     colorPrimary: normalizeThemeColor(initialPage?.colorPrimary),
     goalAmountCents: initialPage?.goalAmountCents ?? campaign.goalAmountCents ?? null,
     status: initialPage?.status ?? "draft",
+    publicPageStyle: initialPage?.publicPageStyle ?? null,
   };
 
   const form = useForm<CampaignPublicPageFormValues>({
@@ -106,7 +132,7 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
       await CampaignPublicPageService.upsertCampaignPublicPage(
         createClientApiClient(),
         campaign.id,
-        toApiPayload(values),
+        toApiPayload(values, publicPageStylesEnabled),
       );
       toast.success(values.status === "published" ? t("success.published") : t("success.saved"));
       router.refresh();
@@ -134,6 +160,37 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
           className="rounded-2xl bg-surface-container-lowest px-5 shadow-card sm:px-6"
           noValidate
         >
+          {publicPageStylesEnabled ? (
+            <FormField
+              control={form.control}
+              name="publicPageStyle"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <CampaignPublicPageStyleSection
+                      value={field.value}
+                      onChange={field.onChange}
+                      labels={{
+                        title: tStyle("title"),
+                        description: tStyle("description"),
+                        clear: tStyle("clear"),
+                        inheritsBadge: tStyle("inheritsBadge"),
+                        comingSoonBadge: tStyle("comingSoonBadge"),
+                        voice: {
+                          institutional: tStyle("voice.institutional"),
+                          expressive: tStyle("voice.expressive"),
+                          editorial: tStyle("voice.editorial"),
+                          minimal: tStyle("voice.minimal"),
+                          civic: tStyle("voice.civic"),
+                        },
+                      }}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          ) : null}
+
           <FormSection
             title={t("sections.content.title")}
             description={t("sections.content.description")}
@@ -296,6 +353,7 @@ export function CampaignPublicPageForm({ campaign, initialPage }: CampaignPublic
         goalAmountCents={normalizeGoalAmount(previewValues.goalAmountCents)}
         fallbackGoalAmountCents={campaign.goalAmountCents}
         fallbackTypeLabel={tCampaigns(`types.${campaign.type}`)}
+        publicPageStyle={publicPageStylesEnabled ? (previewValues.publicPageStyle ?? null) : null}
       />
     </div>
   );
@@ -311,6 +369,13 @@ interface CampaignPublicPagePreviewProps {
   goalAmountCents: number | null;
   fallbackGoalAmountCents: number | null;
   fallbackTypeLabel: string;
+  /**
+   * Epic #362 — when set, the preview swaps its hand-built mockup
+   * out for the **actual archetype** rendered via `<ArchetypeRenderer>`
+   * with form-derived `ArchetypePageData`. `null` keeps the original
+   * static preview (the donor today sees the hardcoded layout).
+   */
+  publicPageStyle: PublicPageStyleKey | null;
 }
 
 function CampaignPublicPagePreview({
@@ -323,11 +388,94 @@ function CampaignPublicPagePreview({
   goalAmountCents,
   fallbackGoalAmountCents,
   fallbackTypeLabel,
+  publicPageStyle,
 }: CampaignPublicPagePreviewProps) {
   const t = useTranslations("campaigns.publicPage.preview");
   const effectiveGoal = goalAmountCents ?? fallbackGoalAmountCents;
   const safeColor = normalizeThemeColor(colorPrimary);
   const onColor = getReadableTextColor(safeColor);
+
+  // Live archetype branch — render the operator's picked style with
+  // form-derived data so changes to the title / colour / goal flow
+  // through immediately. The Stripe form is replaced by a minimal
+  // mockup since the preview shouldn't load Stripe Elements (no
+  // tenant onboarding, no PaymentIntents, and donor-only side-
+  // effects shouldn't fire from inside an editor preview).
+  if (publicPageStyle !== null) {
+    return (
+      <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+        <section className="rounded-2xl bg-surface-container-lowest p-3 shadow-card">
+          <div className="mb-3 flex items-center justify-between gap-3 px-2">
+            <h2 className="font-heading text-base text-on-surface">{t("title")}</h2>
+            <Badge variant={status === "published" ? "success" : "neutral"}>
+              {status === "published" ? t("published") : t("draft")}
+            </Badge>
+          </div>
+          <div className="archetype-preview overflow-hidden rounded-xl border border-outline-variant bg-surface">
+            <ArchetypeRenderer
+              styleKey={publicPageStyle}
+              data={{
+                campaignId: campaign.id,
+                title: title || campaign.name,
+                description: description || null,
+                colorPrimary: safeColor,
+                goalAmountCents: effectiveGoal,
+                raisedCents: 0,
+                donorCount: 0,
+                defaultCurrency: campaign.defaultCurrency as "EUR" | "GBP" | "CHF",
+                // Preview-side has no access to the real tenant org name —
+                // empty string is the donor-page convention (matches the
+                // `page.organisationName ?? ""` fallback in `/p/[id]`), and
+                // the archetype slots truthy-check it to skip avatar +
+                // eyebrow. Avoids the "campaign name shown 3×" preview bug.
+                organisationName: "",
+                organisationMission: null,
+                organisationLogoUrl: null,
+                hasSwissQrBill: false,
+                publicPageStyle,
+              }}
+              formNode={
+                // Card chrome lives in each archetype's `AmountPicker`
+                // slot (e.g. `.calm-form`, `.activist-form`). The
+                // formNode is content-only so the archetype's chrome
+                // isn't doubled by a nested generic card.
+                <>
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] opacity-80">
+                    {t("donationCardLabel")}
+                  </p>
+                  <p className="mt-2 text-sm opacity-90">{t("donationCardBody")}</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {[25, 50, 100].map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        className="rounded-xl border border-current/20 bg-current/5 px-3 py-2 text-center text-base font-semibold"
+                        disabled
+                      >
+                        {new Intl.NumberFormat(locale, {
+                          style: "currency",
+                          currency: "EUR",
+                          maximumFractionDigits: 0,
+                        }).format(amount)}
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    className="mt-3 w-full"
+                    style={{ backgroundColor: safeColor, color: onColor }}
+                    disabled
+                  >
+                    {t("cta")}
+                  </Button>
+                </>
+              }
+            />
+          </div>
+          <p className="mt-2 px-2 text-xs text-on-surface-variant">{t("description")}</p>
+        </section>
+      </aside>
+    );
+  }
 
   return (
     <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
@@ -478,14 +626,28 @@ function getReadableTextColor(hex: string): "#FFFFFF" | "#111827" {
   return luminance > 0.6 ? "#111827" : "#FFFFFF";
 }
 
-function toApiPayload(values: CampaignPublicPageFormValues) {
-  return {
+function toApiPayload(values: CampaignPublicPageFormValues, publicPageStylesEnabled: boolean) {
+  const base: {
+    title: string;
+    description: string | null;
+    colorPrimary: ThemeColorValue;
+    goalAmountCents: number | null;
+    status: PublicPageStatus;
+    publicPageStyle?: PublicPageStyleKey | null;
+  } = {
     title: values.title?.trim() ?? "",
     description: values.description?.trim() || null,
     colorPrimary: values.colorPrimary,
     goalAmountCents: sanitizeGoalAmount(values.goalAmountCents),
     status: values.status,
   };
+  // Tri-state on `publicPageStyle`:
+  //   - flag off → omit (the API would 400 it anyway; field-level gate)
+  //   - flag on → include, even when null (explicit clear)
+  if (publicPageStylesEnabled) {
+    base.publicPageStyle = values.publicPageStyle;
+  }
+  return base;
 }
 
 type TypeboxSchema = Parameters<typeof typeboxResolver>[0];

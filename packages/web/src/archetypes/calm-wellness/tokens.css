@@ -1,0 +1,257 @@
+/*
+ * Calm Wellness archetype tokens (Epic #362).
+ *
+ * Mobile-first: the donor page is mostly mobile. Soft pastel mesh
+ * hero, lowercase headlines, breath-paced spacing. Ambient motion
+ * is gated by `prefers-reduced-motion: reduce`. Layout layers up
+ * at `min-width: 768px` (tablet) and `min-width: 1024px` (desktop).
+ */
+
+[data-archetype="calm-wellness"] {
+  --calm-paper: #fef9f3;
+  --calm-ink: #2a2438;
+  --calm-ink-soft: #6b6580;
+  --calm-pastel-pink: #fbe1e8;
+  --calm-pastel-mint: #d6f0e4;
+  --calm-pastel-cream: #faecc8;
+  --brand-primary: #8a6bb1;
+
+  container-type: inline-size;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: var(--calm-paper);
+  color: var(--calm-ink);
+  padding: 12px;
+}
+
+@container (min-width: 768px) {
+  [data-archetype="calm-wellness"] {
+    padding: 24px;
+  }
+}
+
+@container (min-width: 1024px) {
+  [data-archetype="calm-wellness"] {
+    padding: 32px 40px;
+    max-width: 880px;
+    margin: 0 auto;
+  }
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────────── */
+
+.calm-hero {
+  position: relative;
+  padding: 32px 20px;
+  border-radius: 20px;
+  overflow: hidden;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+@container (min-width: 480px) {
+  .calm-hero {
+    padding: 40px 24px;
+    border-radius: 24px;
+  }
+}
+
+@container (min-width: 768px) {
+  .calm-hero {
+    padding: 56px 36px;
+    border-radius: 28px;
+    margin-bottom: 24px;
+  }
+}
+
+.calm-hero__mesh {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    var(--calm-pastel-pink) 0%,
+    var(--calm-pastel-cream) 50%,
+    var(--calm-pastel-mint) 100%
+  );
+  background-size: 200% 200%;
+  animation: calm-drift 24s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes calm-drift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calm-hero__mesh {
+    animation: none;
+  }
+}
+
+.calm-hero__content {
+  position: relative;
+  z-index: 1;
+}
+
+.calm-hero__eyebrow {
+  font-family: "Quicksand", "Inter", system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: lowercase;
+  color: var(--calm-ink-soft);
+  margin: 0;
+}
+
+@container (min-width: 768px) {
+  .calm-hero__eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+  }
+}
+
+.calm-hero__title {
+  font-family: "Quicksand", "Inter", system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.6rem, 6cqi, 3.2rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 10px auto 0;
+  text-transform: lowercase;
+  max-width: 22ch;
+  text-wrap: balance;
+  color: var(--calm-ink);
+  cursor: pointer;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.calm-hero__lede {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.95rem;
+  margin: 14px auto 0;
+  max-width: 48ch;
+  color: var(--calm-ink-soft);
+  line-height: 1.55;
+}
+
+@container (min-width: 768px) {
+  .calm-hero__lede {
+    margin-top: 20px;
+    font-size: 1rem;
+  }
+}
+
+/* ── Progress ──────────────────────────────────────────────────────────────── */
+
+.calm-progress {
+  margin: 0 auto;
+  max-width: 480px;
+  padding: 12px 4px 16px;
+}
+
+.calm-progress__bar {
+  height: 8px;
+  background: rgba(138, 107, 177, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.calm-progress__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--brand-primary, #8a6bb1);
+  border-radius: 999px;
+}
+
+.calm-progress__meta {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--calm-ink-soft);
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: 1.5;
+}
+
+/* ── Donate form chrome ────────────────────────────────────────────────────── */
+
+.calm-form {
+  background: #fffefa;
+  border-radius: 20px;
+  padding: 20px 16px;
+  box-shadow: 0 8px 32px rgba(138, 107, 177, 0.08);
+  margin: 0 auto;
+  max-width: 520px;
+}
+
+@container (min-width: 768px) {
+  .calm-form {
+    border-radius: 24px;
+    padding: 28px 24px;
+    box-shadow: 0 12px 48px rgba(138, 107, 177, 0.12);
+  }
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.calm-footer {
+  text-align: center;
+  padding: 20px 12px;
+  margin-top: 16px;
+  font-family: "Quicksand", "Inter", system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--calm-ink-soft);
+  text-transform: lowercase;
+}
+
+@container (min-width: 768px) {
+  .calm-footer {
+    padding: 28px 16px;
+    margin-top: 24px;
+  }
+}
+
+/* ── Falling-leaves overlay (easter egg) ───────────────────────────────────── */
+
+.calm-leaves {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.calm-leaf {
+  position: absolute;
+  top: -10px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50% 0;
+  animation: calm-leaf-fall linear forwards;
+}
+
+.calm-leaf--v0 { background: #c084a8; }
+.calm-leaf--v1 { background: #9bcfa4; }
+.calm-leaf--v2 { background: #e8c97a; }
+
+@keyframes calm-leaf-fall {
+  from {
+    transform: translate3d(0, -10vh, 0) rotate(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(var(--sway), 110vh, 0) rotate(var(--rotate));
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calm-leaves {
+    display: none;
+  }
+}

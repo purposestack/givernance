@@ -1,0 +1,315 @@
+/*
+ * Activist archetype tokens (Epic #362).
+ *
+ * Mobile-first: the donor page is mostly mobile. Base styles target
+ * narrow containers (~360px) — type-size, padding, and spacing all
+ * sized for thumb-reach. Container-query breakpoints layer in
+ * tablet (`min-width: 768px`) and desktop (`min-width: 1024px`)
+ * layouts when the *container* — not the viewport — is wide enough.
+ * This keeps the editor-preview pane (~380px inside a wide viewport)
+ * on the mobile layout instead of collapsing the hero into a
+ * 0px-wide grid column.
+ *
+ * No motion library, no SVG animations, no JS layout. CSS @keyframes
+ * + system fonts (Archivo Black falls back to system-ui).
+ */
+
+[data-archetype="activist"] {
+  --activist-ink: #0c0f14;
+  --activist-paper: #fffcf6;
+  --activist-paper-warm: #ffeed1;
+  --activist-on-brand: #fff7f1;
+  --brand-primary: #ff2e63;
+
+  font-family: "Archivo", system-ui, -apple-system, sans-serif;
+  background: var(--activist-paper);
+  color: var(--activist-ink);
+  padding: 12px;
+}
+
+@container (min-width: 768px) {
+  [data-archetype="activist"] {
+    padding: 24px;
+  }
+}
+
+@container (min-width: 1024px) {
+  [data-archetype="activist"] {
+    padding: 32px 40px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(360px, 440px);
+    gap: 32px;
+    align-items: start;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  [data-archetype="activist"] .activist-hero,
+  [data-archetype="activist"] .activist-progress {
+    grid-column: 1;
+  }
+  [data-archetype="activist"] .activist-progress {
+    margin-bottom: 0;
+  }
+  [data-archetype="activist"] .activist-form-wrap {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    position: sticky;
+    top: 24px;
+  }
+  [data-archetype="activist"] .activist-footer {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────────── */
+
+.activist-hero {
+  border: 2px solid var(--activist-ink);
+  margin-bottom: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.activist-hero__panel {
+  padding: 24px 20px;
+  /* Solid brand colour comes via inline `backgroundColor` from the
+     archetype's JSX (operator-controlled). The on-brand text colour
+     is fixed: the warm-white reads cleanly on every brand colour the
+     operator can pick (only colorPrimary in the curated set matters
+     here — the warm-white passes WCAG AA on each one). */
+  color: #fff7f1;
+}
+
+@container (min-width: 480px) {
+  .activist-hero__panel {
+    padding: 32px 28px;
+  }
+}
+
+@container (min-width: 768px) {
+  .activist-hero {
+    border-width: 3px;
+    margin-bottom: 16px;
+  }
+  .activist-hero__panel {
+    padding: 48px 36px;
+  }
+}
+
+.activist-hero__eyebrow {
+  font-family: "Archivo Black", "Archivo", system-ui, sans-serif;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+@container (min-width: 768px) {
+  .activist-hero__eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    margin-bottom: 16px;
+  }
+}
+
+.activist-hero__title {
+  font-family: "Archivo Black", "Archivo", system-ui, sans-serif;
+  font-weight: 900;
+  /* Mobile baseline: 1.8rem; scales smoothly up to 3.5rem on wider
+     viewports. clamp() keeps the title legible on a 320px phone and
+     punchy on a desktop without writing 4 media queries. */
+  font-size: clamp(1.6rem, 7cqi, 3.5rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin: 0;
+  max-width: 18ch;
+  text-wrap: balance;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.activist-hero__lede {
+  margin: 14px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  max-width: 52ch;
+  opacity: 0.95;
+}
+
+@container (min-width: 768px) {
+  .activist-hero__lede {
+    margin-top: 20px;
+    font-size: 1.05rem;
+  }
+}
+
+/* ── Progress strip ────────────────────────────────────────────────────────── */
+
+.activist-progress {
+  background: var(--activist-ink);
+  color: var(--activist-on-brand);
+  padding: 16px 18px;
+  border: 2px solid var(--activist-ink);
+  border-top: 0;
+  margin-bottom: 12px;
+}
+
+@container (min-width: 768px) {
+  .activist-progress {
+    padding: 24px 32px;
+    border-width: 3px;
+    margin-bottom: 16px;
+  }
+}
+
+.activist-progress__row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+@container (min-width: 480px) {
+  .activist-progress__row {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+}
+
+.activist-progress__label {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  margin: 0;
+  color: var(--brand-primary);
+  text-transform: uppercase;
+}
+
+@container (min-width: 768px) {
+  .activist-progress__label {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+  }
+}
+
+.activist-progress__value {
+  font-family: "Archivo Black", "Archivo", system-ui, sans-serif;
+  font-weight: 900;
+  font-size: clamp(1rem, 3.5cqi, 1.8rem);
+  line-height: 1.1;
+  margin: 2px 0 0;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.activist-progress__bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.activist-progress__bar > span {
+  display: block;
+  height: 100%;
+}
+
+/* ── Donate form chrome ────────────────────────────────────────────────────── */
+
+.activist-form {
+  background: var(--activist-paper-warm);
+  border: 2px solid var(--activist-ink);
+  padding: 16px 14px;
+}
+
+@container (min-width: 768px) {
+  .activist-form {
+    border-width: 3px;
+    padding: 20px 18px;
+  }
+}
+
+.activist-form__eyebrow {
+  font-family: "Archivo Black", "Archivo", system-ui, sans-serif;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+  color: var(--activist-ink);
+}
+
+@container (min-width: 768px) {
+  .activist-form__eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.24em;
+    margin-bottom: 14px;
+  }
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.activist-footer {
+  border-top: 2px solid var(--activist-ink);
+  padding: 16px 0 4px;
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: "Archivo Black", "Archivo", system-ui, sans-serif;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--activist-ink);
+}
+
+@container (min-width: 480px) {
+  .activist-footer {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
+
+@container (min-width: 768px) {
+  .activist-footer {
+    border-top-width: 3px;
+    letter-spacing: 0.16em;
+  }
+}
+
+/* ── Confetti overlay (easter egg) ─────────────────────────────────────────── */
+
+.confetti-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.confetti-overlay__particle {
+  position: absolute;
+  top: -10px;
+  width: 8px;
+  height: 12px;
+  background: var(--brand-primary, #ff2e63);
+  animation: confetti-fall linear forwards;
+  transform-origin: center;
+}
+
+@keyframes confetti-fall {
+  from {
+    transform: translateY(-20vh) rotate(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(110vh) rotate(var(--rotate, 720deg));
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confetti-overlay {
+    display: none;
+  }
+}

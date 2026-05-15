@@ -39,11 +39,11 @@ export async function isFeatureFlagsPhase2Enabled(): Promise<boolean> {
 
 /**
  * Returns `true` iff `donation.public_page_styles` is on for the
- * caller's tenant (Epic #362). Drives whether the "Donation page
- * style" picker renders in `/settings` and whether the per-campaign
- * style selector renders in the campaign editor. Fail-closed on
- * projection errors — better to hide the picker than render it
- * pointing at a 404 backend.
+ * caller's tenant (Epic #362). Drives whether the per-campaign style
+ * selector renders inside the campaign public-page editor and
+ * whether the public-page shell lazy-loads archetype slot bundles.
+ * Fail-closed on projection errors — better to hide the picker than
+ * render it pointing at a 404 backend.
  */
 export async function isPublicPageStylesEnabled(): Promise<boolean> {
   try {

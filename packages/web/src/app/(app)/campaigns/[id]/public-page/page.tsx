@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireOrgAdmin } from "@/lib/auth/guards";
+import { isPublicPageStylesEnabled } from "@/lib/feature-flags/server";
 import type { Campaign } from "@/models/campaign";
 import type { CampaignPublicPage } from "@/models/public-page";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
@@ -48,11 +49,16 @@ export default async function CampaignPublicPageEditorPage({
   await requireOrgAdmin();
   const { id } = await params;
 
-  const [campaign, initialPage, t, tCampaigns] = await Promise.all([
+  const [campaign, initialPage, t, tCampaigns, publicPageStylesEnabled] = await Promise.all([
     fetchCampaignOrNotFound(id),
     fetchPublicPageOrNull(id),
     getTranslations("campaigns.publicPage"),
     getTranslations("campaigns"),
+    // Epic #362 — the style picker section only renders when the
+    // donor-facing flag is on for this tenant. Matches the API's
+    // field-level PUT gate (PR-2 review) so a flag-off client can't
+    // accidentally send a `publicPageStyle` and trigger a 400.
+    isPublicPageStylesEnabled(),
   ]);
 
   return (
@@ -76,7 +82,11 @@ export default async function CampaignPublicPageEditorPage({
         }
       />
 
-      <CampaignPublicPageForm campaign={campaign} initialPage={initialPage} />
+      <CampaignPublicPageForm
+        campaign={campaign}
+        initialPage={initialPage}
+        publicPageStylesEnabled={publicPageStylesEnabled}
+      />
     </>
   );
 }
