@@ -6,6 +6,11 @@ import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { loadArchetype } from "@/archetypes/registry";
 import type { ArchetypeModule, ArchetypePageData } from "@/archetypes/types";
 
+// Shared shell — layout + padding ramp common to every archetype.
+// Loaded eagerly via the renderer (not lazily with each archetype
+// chunk) so the layout is in place before the archetype JS lands.
+import "@/archetypes/_shell.css";
+
 /**
  * Donor-side renderer that lazy-loads an archetype slot bundle and
  * stitches its `Hero` / `Progress` / `AmountPicker` / `Footer` into
@@ -86,9 +91,9 @@ export function ArchetypeRenderer({
   if (loadError) {
     // Hard fail — slot bundle couldn't load. Fall through to the
     // shell's hardcoded layout (the `fallback` prop) so the donor
-    // can still complete a donation. Logging telemetry on this event
-    // is a PR-6 follow-up; the shell-level fallback is the immediate
-    // donor-protection mechanism.
+    // can still complete a donation. The shell-level fallback is the
+    // immediate donor-protection mechanism; telemetry on this event
+    // is not yet wired.
     return <>{fallback}</>;
   }
 

@@ -367,7 +367,7 @@ export function CampaignPublicPageForm({
         title={(previewValues.title || campaign.name).trim()}
         description={previewValues.description?.trim() || ""}
         colorPrimary={normalizeThemeColor(previewValues.colorPrimary)}
-        goalAmountCents={normalizeGoalAmount(previewValues.goalAmountCents)}
+        goalAmountCents={sanitizeGoalAmount(previewValues.goalAmountCents)}
         fallbackGoalAmountCents={campaign.goalAmountCents}
         fallbackTypeLabel={tCampaigns(`types.${campaign.type}`)}
         publicPageStyle={publicPageStylesEnabled ? (previewValues.publicPageStyle ?? null) : null}
@@ -696,6 +696,20 @@ function toApiPayload(values: CampaignPublicPageFormValues, publicPageStylesEnab
 
 type TypeboxSchema = Parameters<typeof typeboxResolver>[0];
 
+/**
+ * Shape passed to the inner TypeBox resolver — explicitly excludes
+ * `publicPageStyle`. Re-adding the field is a TS error rather than a
+ * silent regression. See the `// We deliberately do NOT pass…` note
+ * in `buildResolver` below.
+ */
+interface ResolverCleaned {
+  title: string;
+  colorPrimary: ThemeColorValue;
+  status: PublicPageStatus;
+  description?: string;
+  goalAmountCents?: number;
+}
+
 interface ResolverMessages {
   goalAmountInvalid: string;
   colorInvalid: string;
@@ -734,19 +748,22 @@ function buildResolver(messages: ResolverMessages): Resolver<CampaignPublicPageF
       };
     }
 
-    const cleaned: Record<string, unknown> = {
+    // We deliberately do NOT pass `publicPageStyle` through the inner
+    // TypeBox resolver. The schema uses `Type.Unsafe` for the enum,
+    // which @hookform/resolvers/typebox's compiler doesn't recognise
+    // and throws "Unknown type" on. The picker UI already constrains
+    // the value to one of `PUBLIC_PAGE_STYLE_KEYS` (or null), and the
+    // server re-validates on receipt — so it's read directly from
+    // `form.getValues("publicPageStyle")` inside `onSubmit`.
+    //
+    // The TS-level guard: `ResolverCleaned` explicitly omits
+    // `publicPageStyle`. Re-adding the field here is a compile-time
+    // error, not a silent runtime regression.
+    const cleaned: ResolverCleaned = {
       title: values.title?.trim() ?? "",
       colorPrimary: normalizedColor,
       status: values.status,
     };
-    // NOTE on `publicPageStyle`: we deliberately do NOT pass it through
-    // the inner TypeBox resolver. The schema uses `Type.Unsafe` for
-    // the enum, which @hookform/resolvers/typebox's compiler doesn't
-    // recognise and throws "Unknown type" on. The field is read
-    // directly from `form.getValues()` inside `onSubmit` instead — its
-    // value is already constrained by the picker UI to one of
-    // `PUBLIC_PAGE_STYLE_KEYS` (or null), so re-validating it client-
-    // side adds no safety. The server still validates on receipt.
 
     if (values.description && values.description.trim() !== "") {
       cleaned.description = values.description.trim();
@@ -756,7 +773,7 @@ function buildResolver(messages: ResolverMessages): Resolver<CampaignPublicPageF
     }
 
     const result = await innerResolver(
-      cleaned,
+      cleaned as unknown as Record<string, unknown>,
       context,
       options as unknown as Parameters<typeof innerResolver>[2],
     );
@@ -772,10 +789,6 @@ function normalizeThemeColor(value: string | null | undefined): ThemeColorValue 
   }
 
   return DEFAULT_THEME_COLOR;
-}
-
-function normalizeGoalAmount(value: number | null | undefined): number | null {
-  return sanitizeGoalAmount(value);
 }
 
 function sanitizeGoalAmount(value: number | null | undefined): number | null {

@@ -1,30 +1,16 @@
 import type { AmountSlotProps } from "../types";
 
 /**
- * Foundation `AmountPicker` slot — institutional default.
+ * Foundation `AmountPicker` slot — institutional white-card chrome
+ * wrapping the shared `<PublicDonationForm>`. Mirrors the chrome the
+ * pre-Epic-362 hardcoded layout uses on the donor page.
  *
- * **Temporary degenerate state** (PR-4 review): the existing
- * `<PublicDonationForm>` client island bundles the chip-grid UI AND
- * the Stripe Elements + 3DS + idempotency-key handling in one
- * component. The slot contract's intent (per `types.ts` →
- * `AmountSlotProps`) is for the archetype to own the **picker UI**
- * (chip grid layout, recurring-first vs one-time-first ordering,
- * write-in placement, impact labels), with the shell injecting only
- * the donor fields + Stripe Elements via `renderForm()`.
- *
- * That split lands in **PR-4b** as a separate refactor of
- * `<PublicDonationForm>` into `<DonationFormChipGrid>` (archetype-
- * owned) + `<DonationFormCheckout>` (shell-owned, Stripe-bearing).
- * Until then, this slot is degenerate — it renders the entire
- * pre-split form. Foundation's chip grid (€25 / €50 / €100 / €250 /
- * €500 / €1 000 with impact labels) lives in the HTML mockup
- * `docs/design/donations/public-foundation.html` lines 551–577 and
- * will move to a `chip-grid.tsx` sibling once the split lands.
- *
- * Archetype-specific picker variants (Activist's 4-chip recurring-
- * first grid, Emergency Appeal's one-time-first ordering, Calm
- * Wellness's pill chips) will land in PR-4b–d alongside the split.
- * See ADR-030 § Slot Inventory for the full per-archetype mapping.
+ * Today the form is monolithic (chip grid + Stripe Elements + 3DS
+ * baked together); the slot just provides the outer surface. When
+ * the form is split into archetype-owned chip-grid + shell-owned
+ * checkout, this slot becomes the place Foundation's specific chip
+ * grid lands — see ADR-030 § Slot Inventory for the per-archetype
+ * picker variants.
  */
 export function FoundationAmountPicker({ formNode }: AmountSlotProps) {
   return (

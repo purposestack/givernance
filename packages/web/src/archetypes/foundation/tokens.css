@@ -1,52 +1,28 @@
 /*
- * Foundation archetype — layout only.
+ * Foundation archetype — minimal voice tokens.
  *
- * The slot components use Tailwind utilities for their own styling
- * (Givernance design system); this file only owns the *layout* of
- * the archetype's four slots. Mobile-first single column, side-by-
- * side when the *container* (not the viewport) reaches 1024px.
+ * The slot components use Tailwind utilities for their own visual
+ * styling (Givernance design system); layout + slot placement are
+ * inherited from `_shell.css` via the shared `[data-archetype]`
+ * selector. This file just adds the inter-slot `gap` Foundation
+ * needs (other archetypes use per-block margins instead).
  *
- * Container queries (not media queries) so the renderer's editor-
- * preview pane (~380px wide inside a wide viewport) keeps the
- * single-column mobile layout instead of collapsing the hero into
- * a 0px-wide grid column.
+ * Override the shell tokens if Foundation grows different proportions
+ * — e.g. `--shell-form-min: 320px;` to allow a narrower form column.
  */
 
 [data-archetype="foundation"] {
-  display: flex;
-  flex-direction: column;
   gap: 16px;
-  padding: 12px;
 }
 
 @container (min-width: 768px) {
   [data-archetype="foundation"] {
-    padding: 20px;
     gap: 20px;
   }
 }
 
 @container (min-width: 1024px) {
   [data-archetype="foundation"] {
-    padding: 32px 40px;
-    max-width: 1152px;
-    margin: 0 auto;
-    display: grid;
-    grid-template-columns: minmax(0, 1.1fr) minmax(320px, 420px);
-    gap: 32px;
-    align-items: start;
-  }
-  [data-archetype="foundation"] > :first-child,
-  [data-archetype="foundation"] > :nth-child(2) {
-    grid-column: 1;
-  }
-  [data-archetype="foundation"] > :nth-child(3) {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    position: sticky;
-    top: 24px;
-  }
-  [data-archetype="foundation"] > :last-child {
-    grid-column: 1 / -1;
+    --shell-form-min: 320px;
   }
 }

@@ -1,10 +1,10 @@
 /*
  * Calm Wellness archetype tokens (Epic #362).
  *
- * Mobile-first: the donor page is mostly mobile. Soft pastel mesh
- * hero, lowercase headlines, breath-paced spacing. Ambient motion
- * is gated by `prefers-reduced-motion: reduce`. Layout layers up
- * at `min-width: 768px` (tablet) and `min-width: 1024px` (desktop).
+ * Voice: soft pastel mesh hero, lowercase headlines, breath-paced
+ * spacing. Ambient motion is gated by `prefers-reduced-motion`.
+ * Layout + slot placement inherited from `_shell.css`; this file
+ * just adds the form column's `--shell-form-max` override.
  */
 
 [data-archetype="calm-wellness"] {
@@ -15,46 +15,11 @@
   --calm-pastel-mint: #d6f0e4;
   --calm-pastel-cream: #faecc8;
   --brand-primary: #8a6bb1;
+  --shell-form-max: 440px;
 
-  container-type: inline-size;
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   background: var(--calm-paper);
   color: var(--calm-ink);
-  padding: 12px;
-}
-
-@container (min-width: 768px) {
-  [data-archetype="calm-wellness"] {
-    padding: 24px;
-  }
-}
-
-@container (min-width: 1024px) {
-  [data-archetype="calm-wellness"] {
-    padding: 32px 40px;
-    max-width: 1152px;
-    margin: 0 auto;
-    /* Desktop two-column: hero/progress left, form right (sticky).
-       Matches Foundation's split. Donor sees the form without
-       scrolling, hero+progress still own the visual narrative. */
-    display: grid;
-    grid-template-columns: minmax(0, 1.1fr) minmax(340px, 440px);
-    gap: 32px;
-    align-items: start;
-  }
-  [data-archetype="calm-wellness"] > :first-child,
-  [data-archetype="calm-wellness"] > :nth-child(2) {
-    grid-column: 1;
-  }
-  [data-archetype="calm-wellness"] > :nth-child(3) {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    position: sticky;
-    top: 24px;
-  }
-  [data-archetype="calm-wellness"] > :last-child {
-    grid-column: 1 / -1;
-  }
 }
 
 /* ── Hero ──────────────────────────────────────────────────────────────────── */

@@ -1,14 +1,10 @@
 /*
  * Activist archetype tokens (Epic #362).
  *
- * Mobile-first: the donor page is mostly mobile. Base styles target
- * narrow containers (~360px) — type-size, padding, and spacing all
- * sized for thumb-reach. Container-query breakpoints layer in
- * tablet (`min-width: 768px`) and desktop (`min-width: 1024px`)
- * layouts when the *container* — not the viewport — is wide enough.
- * This keeps the editor-preview pane (~380px inside a wide viewport)
- * on the mobile layout instead of collapsing the hero into a
- * 0px-wide grid column.
+ * Voice: bold colour saturation, oversized headlines, thick black
+ * borders, propaganda-poster typography. Layout + slot placement
+ * come from `_shell.css`; this file overrides the shell tokens to
+ * give Activist its wider desktop cap + chunkier form column.
  *
  * No motion library, no SVG animations, no JS layout. CSS @keyframes
  * + system fonts (Archivo Black falls back to system-ui).
@@ -20,44 +16,20 @@
   --activist-paper-warm: #ffeed1;
   --activist-on-brand: #fff7f1;
   --brand-primary: #ff2e63;
+  /* Shell-token overrides — wider canvas, chunkier form column. */
+  --shell-max-w: 1280px;
+  --shell-hero-fr: 1.3fr;
+  --shell-form-min: 360px;
+  --shell-form-max: 440px;
 
   font-family: "Archivo", system-ui, -apple-system, sans-serif;
   background: var(--activist-paper);
   color: var(--activist-ink);
-  padding: 12px;
-}
-
-@container (min-width: 768px) {
-  [data-archetype="activist"] {
-    padding: 24px;
-  }
 }
 
 @container (min-width: 1024px) {
-  [data-archetype="activist"] {
-    padding: 32px 40px;
-    display: grid;
-    grid-template-columns: minmax(0, 1.3fr) minmax(360px, 440px);
-    gap: 32px;
-    align-items: start;
-    max-width: 1280px;
-    margin: 0 auto;
-  }
-  [data-archetype="activist"] .activist-hero,
-  [data-archetype="activist"] .activist-progress {
-    grid-column: 1;
-  }
   [data-archetype="activist"] .activist-progress {
     margin-bottom: 0;
-  }
-  [data-archetype="activist"] .activist-form-wrap {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    position: sticky;
-    top: 24px;
-  }
-  [data-archetype="activist"] .activist-footer {
-    grid-column: 1 / -1;
   }
 }
 

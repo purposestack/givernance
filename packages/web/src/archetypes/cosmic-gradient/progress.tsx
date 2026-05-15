@@ -28,8 +28,8 @@ export function CosmicProgress({ data }: ProgressSlotProps) {
         </div>
         <p className="cosmic-progress__meta">
           of <strong>{formatCurrency(goalCents, "en")}</strong> goal ·{" "}
-          {data.donorCount.toLocaleString("en")} backers ·{" "}
-          <strong>{progressPercent} %</strong> funded
+          {data.donorCount.toLocaleString("en")} backers · <strong>{progressPercent} %</strong>{" "}
+          funded
         </p>
       </div>
     </section>
