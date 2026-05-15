@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public donation — Emergency Appeal · Givernance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    /*
+     * EMERGENCY APPEAL archetype (Epic #362).
+     *
+     * Voice: urgent, counter-led, ONE-TIME-FIRST (distinguishes from
+     * activist, which is recurring-mobilisation). Counter IS the
+     * hero — layout = "stacked", `Progress` slot is hero-replacement
+     * per ADR-030's Slot Inventory. Time-since-launch line; banner;
+     * no easter egg (the Epic explicitly excludes one — emergency
+     * fundraisers should not have a "fun" moment).
+     */
+    :root {
+      --brand-primary: #ff3a2c;
+      --brand-primary-deep: #c41a0d;
+      --brand-on-primary: #ffffff;
+      --ink: #16191d;
+      --ink-soft: #4a4f57;
+      --surface: #fafaf7;
+      --warning: #ffe6a0;
+      --warning-deep: #b07900;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    :focus-visible { outline: 3px solid var(--brand-primary); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+    body { margin: 0; background: var(--surface); color: var(--ink); font-family: 'Inter', sans-serif; font-variant-numeric: tabular-nums lining-nums; }
+    .skip-link { position: absolute; left: -9999px; }
+    .skip-link:focus { left: 16px; top: 16px; background: var(--ink); color: var(--surface); padding: 12px 16px; z-index: 100; }
+
+    .banner { background: var(--warning); color: var(--warning-deep); padding: 10px 24px; text-align: center; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border-bottom: 2px solid var(--warning-deep); }
+    .banner strong { color: var(--ink); }
+
+    .topbar { max-width: 720px; margin: 0 auto; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .org { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+    .org .logo { width: 32px; height: 32px; background: var(--ink); color: var(--surface); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; }
+    .lang-switch { font-size: 12px; }
+    .lang-switch a { color: var(--ink-soft); text-decoration: none; padding: 0 6px; }
+    .lang-switch a[aria-current="page"] { color: var(--ink); font-weight: 700; }
+
+    main { max-width: 720px; margin: 0 auto; padding: 0 24px 64px; text-align: center; }
+    .eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--brand-primary); margin: 12px 0 0; }
+
+    /* Counter as hero */
+    .counter-hero { padding: 24px 0 32px; }
+    .raised-label { font-size: 12px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); margin: 0; }
+    .raised-amount { font-family: 'Bebas Neue', sans-serif; font-size: clamp(4rem, 14vw, 8rem); line-height: 0.9; letter-spacing: -0.01em; margin: 8px 0 4px; color: var(--ink); font-variant-numeric: tabular-nums lining-nums; }
+    .raised-amount span.currency { color: var(--brand-primary); }
+    .goal-line { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--ink-soft); margin: 0 0 16px; }
+    .goal-line strong { color: var(--ink); }
+    .bar { height: 14px; background: rgba(255,58,44,0.12); position: relative; overflow: hidden; margin: 0 0 12px; }
+    .bar > span { display: block; height: 100%; background: var(--brand-primary); }
+    .meta-row { display: flex; justify-content: center; gap: 24px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-soft); flex-wrap: wrap; }
+    .meta-row strong { color: var(--ink); }
+
+    h1 { font-family: 'Bebas Neue', sans-serif; font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1; letter-spacing: -0.005em; margin: 24px 0 12px; }
+    .lede { font-size: 1.1rem; line-height: 1.55; max-width: 56ch; margin: 0 auto 32px; color: var(--ink-soft); }
+    .lede strong { color: var(--ink); }
+
+    /* Donate form — full-width below the counter */
+    .form { background: var(--ink); color: var(--brand-on-primary); padding: 32px 28px; max-width: 520px; margin: 0 auto; text-align: left; border-radius: 4px; }
+    .form h2 { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; line-height: 1; letter-spacing: -0.005em; margin: 0 0 16px; text-align: center; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; border: 0; padding: 0; }
+    .grid input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+    .grid label { display: block; cursor: pointer; }
+    .grid .chip { padding: 14px 6px; border: 2px solid var(--brand-on-primary); text-align: center; font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; transition: background 0.12s; font-variant-numeric: tabular-nums lining-nums; }
+    .grid input[type="radio"]:checked + .chip { background: var(--brand-primary); border-color: var(--brand-primary); }
+    .grid input[type="radio"]:focus-visible + .chip { outline: 3px solid var(--brand-primary); outline-offset: 2px; }
+    .write { width: 100%; padding: 12px 14px; border: 2px solid var(--brand-on-primary); background: transparent; color: var(--brand-on-primary); font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; margin: 0 0 16px; font-variant-numeric: tabular-nums; }
+    .write::placeholder { color: rgba(255,255,255,0.5); }
+    .donor { display: grid; gap: 10px; margin-bottom: 16px; }
+    .donor input { padding: 12px 14px; border: 2px solid var(--brand-on-primary); background: transparent; color: var(--brand-on-primary); font-family: inherit; font-size: 14px; }
+    .donor input::placeholder { color: rgba(255,255,255,0.6); }
+    .donor .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .recurring-aside { font-size: 12px; color: rgba(255,255,255,0.7); margin: 0 0 12px; text-align: center; }
+    .recurring-aside a { color: var(--brand-on-primary); text-decoration: underline; }
+    .cta { width: 100%; padding: 16px; border: 0; background: var(--brand-primary); color: var(--brand-on-primary); font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.02em; cursor: pointer; transition: background 0.12s; }
+    .cta:hover { background: var(--brand-primary-deep); }
+    .reassure { font-size: 12px; color: rgba(255,255,255,0.6); margin: 12px 0 0; text-align: center; }
+
+    footer { max-width: 720px; margin: 32px auto 0; padding: 24px; text-align: center; font-size: 11px; color: var(--ink-soft); }
+    footer a { color: var(--ink-soft); text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#donate">Skip to donation form</a>
+  <p class="banner">🇲🇦 EARTHQUAKE · ATLAS MOUNTAINS · <strong>Launched 14 May, 06:42 UTC</strong></p>
+  <header class="topbar">
+    <span class="org"><span class="logo" aria-hidden="true">U</span><span lang="fr">Urgence Maghreb</span></span>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="?lang=en" aria-current="page" lang="en">EN</a> · <a href="?lang=fr" hreflang="fr" lang="fr">FR</a>
+    </nav>
+  </header>
+  <main>
+    <p class="eyebrow">Raised in last 48 hours</p>
+    <section class="counter-hero" aria-label="Campaign counter">
+      <p class="raised-label">Cleared donations</p>
+      <p class="raised-amount"><span class="currency">€</span>247&#8239;820</p>
+      <p class="goal-line">of <strong>€500&#8239;000</strong> emergency target</p>
+      <div class="bar" role="progressbar" aria-valuenow="49" aria-valuemin="0" aria-valuemax="100" aria-valuetext="49 percent funded — 247,820 of 500,000 euros raised">
+        <span style="width: 49%;"></span>
+      </div>
+      <div class="meta-row">
+        <span><strong>4 218</strong> donors</span>
+        <span><strong>42h</strong> since launch</span>
+        <span><strong>49 %</strong> funded</span>
+      </div>
+    </section>
+    <h1>Field teams arrive in 6 hours. Your gift gets there first.</h1>
+    <p class="lede">Three hospitals collapsed. The first 72 hours are when survival rates triple if shelter, water, and trauma kits reach the valley. <strong>€50 buys one trauma kit. €120 buys clean water for a family of six for two weeks.</strong></p>
+    <section class="form" id="donate" aria-labelledby="donate-heading">
+      <h2 id="donate-heading">Give now</h2>
+      <fieldset class="grid">
+        <legend style="position:absolute;left:-9999px;">Suggested amounts</legend>
+        <label><input type="radio" name="amount" value="25"><span class="chip">€25</span></label>
+        <label><input type="radio" name="amount" value="50" checked><span class="chip">€50</span></label>
+        <label><input type="radio" name="amount" value="120"><span class="chip">€120</span></label>
+        <label><input type="radio" name="amount" value="250"><span class="chip">€250</span></label>
+        <label><input type="radio" name="amount" value="500"><span class="chip">€500</span></label>
+        <label><input type="radio" name="amount" value="1000"><span class="chip">€1&#8239;000</span></label>
+      </fieldset>
+      <input class="write" type="number" min="1" placeholder="OTHER" aria-label="Custom amount in euros">
+      <div class="donor">
+        <input type="email" placeholder="Email" aria-label="Email" autocomplete="email">
+        <div class="row">
+          <input type="text" placeholder="First name" aria-label="First name" autocomplete="given-name">
+          <input type="text" placeholder="Last name" aria-label="Last name" autocomplete="family-name">
+        </div>
+      </div>
+      <p class="recurring-aside">Or commit <a href="#">monthly for ongoing relief →</a></p>
+      <button class="cta" type="submit">SEND €50 NOW</button>
+      <p class="reassure">Stripe-secured · 100 % to field teams</p>
+    </section>
+  </main>
+  <footer><span lang="fr">Urgence Maghreb</span> · Article 200 CGI · <a href="#">Givernance</a></footer>
+</body>
+</html>

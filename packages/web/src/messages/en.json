@@ -1008,6 +1008,32 @@
         "error": "Could not save your change. Please try again."
       }
     },
+    "publicPageStyle": {
+      "title": "Donation page style",
+      "description": "Pick the visual archetype donors see when they land on a campaign's public donation page. Each style keeps your brand colour and logo intact — only the structure, typography, and motion change.",
+      "clear": "Use Givernance default",
+      "footnote": "This is your organisation-wide default. Each campaign can override it from the campaign editor.",
+      "status": {
+        "inherits": "Using Givernance default",
+        "custom": "Custom style picked",
+        "active": "Active style:",
+        "inheritedDefault": "Givernance default"
+      },
+      "voice": {
+        "institutional": "Institutional",
+        "expressive": "Expressive",
+        "editorial": "Editorial",
+        "minimal": "Minimal",
+        "civic": "Civic"
+      },
+      "toast": {
+        "changed": "Donation page style set to {label}.",
+        "cleared": "Reverted to the Givernance default.",
+        "featureUnavailable": "The style picker is no longer available for your organisation. Please reload the page.",
+        "sessionExpired": "Your session has expired. Please sign in again.",
+        "error": "Couldn't update the style. Please try again."
+      }
+    },
     "branding": {
       "title": "Organisation logo",
       "description": "Upload a logo to brand your sidebar, public donation pages, and donor receipts. We generate every variant from a single upload.",
@@ -2308,6 +2334,9 @@
       "donors": "{count, plural, =0 {No donors yet} one {# donor} other {# donors}}",
       "trust": "Payment",
       "trustValue": "Secured by Stripe"
+    },
+    "footer": {
+      "institutionalSignature": "This campaign is operated by <org></org>. By giving, you accept the donor terms displayed at the payment step."
     },
     "form": {
       "eyebrow": "Online donation",

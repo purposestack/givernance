@@ -19,6 +19,7 @@ import { createServerApiClient } from "@/lib/api/client-server";
 import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 const PHASE2_KEY = "admin.feature_flags_phase2";
+const PUBLIC_PAGE_STYLES_KEY = "donation.public_page_styles";
 
 /**
  * Returns `true` iff `admin.feature_flags_phase2` is on for the
@@ -31,6 +32,24 @@ export async function isFeatureFlagsPhase2Enabled(): Promise<boolean> {
     const api = await createServerApiClient();
     const flags = await FeatureFlagsService.listPublic(api);
     return isFlagEnabled(flags, PHASE2_KEY);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns `true` iff `donation.public_page_styles` is on for the
+ * caller's tenant (Epic #362). Drives whether the "Donation page
+ * style" picker renders in `/settings` and whether the per-campaign
+ * style selector renders in the campaign editor. Fail-closed on
+ * projection errors — better to hide the picker than render it
+ * pointing at a 404 backend.
+ */
+export async function isPublicPageStylesEnabled(): Promise<boolean> {
+  try {
+    const api = await createServerApiClient();
+    const flags = await FeatureFlagsService.listPublic(api);
+    return isFlagEnabled(flags, PUBLIC_PAGE_STYLES_KEY);
   } catch {
     return false;
   }

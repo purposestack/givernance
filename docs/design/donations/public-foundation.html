@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<!--
+  NOTE for implementers: the real page renders `<html lang={await getLocale()}>`
+  via next-intl server-side. `lang="en"` here is mockup-only so it renders
+  standalone for design review; the slot contract requires locale-driven
+  `<html lang>` in production.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public donation page — Foundation archetype · Givernance</title>
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400..600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /*
+     * Reference mockup for the FOUNDATION archetype (Epic #362, spike).
+     *
+     * This is the *institutional default* — the closest match to today's
+     * live page (`packages/web/src/app/(public)/p/[id]/page.tsx`). Picking it
+     * as the spike commitment lets us validate the hybrid shell + slots
+     * architecture (ADR-030) against a layout we already know works in
+     * production.
+     *
+     * What this mockup proves:
+     *   - the shell owns the form + skip-link + branding logo block
+     *   - the archetype's "Hero", "AmountPicker", and "Footer" slots
+     *     consume CSS custom properties for brand colour (Epic #286)
+     *   - typography is the archetype's primary identity lever
+     *     (Source Serif display + Inter body for Foundation)
+     *   - the page is two-column desktop, single-column mobile, with
+     *     the donation form sticking to the right rail
+     *
+     * No JS — this is a static visual spec.
+     */
+
+    :root {
+      /* These values are injected at runtime by the shell from
+         `PublishedCampaignPublicPage.colorPrimary` (Epic #286). For the
+         mockup we hard-code Givernance brand green. */
+      --brand-primary: #0c6443;
+      --brand-primary-deep: #064027;
+      --brand-on-primary: #f4faf6;
+
+      /* Foundation archetype's typography contract */
+      --font-display: 'Source Serif 4', Georgia, serif;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+      /* Foundation surface tokens */
+      --surface: #fdfcf9;
+      --surface-elevated: #ffffff;
+      --surface-muted: #f4f1ea;
+      --ink-primary: #1a1d1c;
+      --ink-secondary: #5e605e;
+      --ink-tertiary: #8a8c89;
+      --border-subtle: #e8e4db;
+
+      --radius-card: 24px;
+      --radius-control: 14px;
+      --shadow-card: 0 1px 2px rgba(13, 24, 19, 0.04), 0 8px 24px rgba(13, 24, 19, 0.06);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    /* ── WCAG 2.4.11 focus-not-obscured + 2.4.7 focus-visible ───────── */
+    :focus-visible {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: 2px;
+      border-radius: 8px;
+    }
+    /* Reset UA default outlines that compete with our :focus-visible
+       rule (notably on `<button>` hover-then-focus paths in Safari). */
+    :focus:not(:focus-visible) { outline: none; }
+
+    /* ── WCAG 2.3.3 — reduced-motion guard ──────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    /* SR-only utility */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      color: var(--ink-primary);
+      background: var(--surface);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.5;
+    }
+
+    /* ── Skip link (shell-owned a11y scaffolding) ───────────────────── */
+    .skip-link {
+      position: absolute; left: -9999px; top: -9999px;
+      background: var(--ink-primary); color: var(--surface);
+      padding: 12px 16px; border-radius: 8px; z-index: 100;
+      font-weight: 600; text-decoration: none;
+    }
+    .skip-link:focus { left: 16px; top: 16px; }
+
+    /* ── Top bar (shell-owned) ──────────────────────────────────────── */
+    .topbar {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 32px 0;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 999px;
+      background: rgba(12, 100, 67, 0.08); color: var(--brand-primary-deep);
+      font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    }
+    .lang-switch {
+      display: inline-flex; gap: 4px;
+      background: var(--surface-muted); border-radius: 999px; padding: 4px;
+      font-size: 12px;
+    }
+    .lang-switch a {
+      padding: 4px 12px;
+      border-radius: 999px; color: var(--ink-secondary);
+      font-weight: 500; text-decoration: none;
+    }
+    .lang-switch a[aria-current="page"] {
+      background: var(--surface-elevated); color: var(--ink-primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    }
+
+    /* ── Main grid ──────────────────────────────────────────────────── */
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 32px 64px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(340px, 440px);
+      gap: 36px;
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      main { grid-template-columns: 1fr; padding: 16px 16px 32px; gap: 20px; }
+      .topbar { padding: 16px 16px 0; }
+    }
+
+    /* ── Hero slot (archetype-owned) ─────────────────────────────────── */
+    .hero-card {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+    }
+    .hero {
+      position: relative;
+      padding: 40px 44px 36px;
+      background:
+        radial-gradient(circle at 85% 12%, rgba(255,255,255,0.18), transparent 45%),
+        linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-deep) 100%);
+      color: var(--brand-on-primary);
+    }
+    @media (max-width: 720px) { .hero { padding: 28px 24px 24px; } }
+    .org-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.14);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 999px; padding: 6px 14px;
+      font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+      font-weight: 500;
+    }
+    .org-pill .logo-tile {
+      width: 22px; height: 22px; border-radius: 6px;
+      background: var(--surface-elevated); color: var(--brand-primary-deep);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: var(--font-display); font-weight: 700; font-size: 14px;
+      letter-spacing: 0;
+    }
+    .hero h1 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: clamp(2rem, 4.5vw, 3.25rem);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      margin: 24px 0 0;
+      /* 28ch (not 22ch) — FR translations of the same headline are
+         ~30% longer and the tighter cap forced awkward wraps. Slot
+         contract: archetypes targeting EU markets MUST use a
+         locale-tolerant max-width. */
+      max-width: 28ch;
+      text-wrap: balance;
+    }
+    .hero p.lede {
+      margin: 18px 0 0;
+      font-size: 1.05rem;
+      line-height: 1.6;
+      max-width: 52ch;
+      opacity: 0.9;
+    }
+    .hero p.mission {
+      margin: 14px 0 0;
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: 0.95rem;
+      line-height: 1.55;
+      opacity: 0.78;
+      max-width: 52ch;
+    }
+
+    /* Progress + counts strip (archetype-owned) */
+    .progress {
+      padding: 28px 44px 30px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    @media (max-width: 720px) { .progress { padding: 22px 24px 24px; } }
+    .progress-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--ink-tertiary); font-weight: 600;
+    }
+    .progress-amount {
+      font-family: var(--font-display);
+      font-size: 2.1rem; font-weight: 600;
+      margin: 8px 0 14px;
+      color: var(--ink-primary);
+      /* tabular-nums keeps the counter from jittering when the
+         live campaign total ticks. Required across every archetype
+         (slot contract — see ADR-030 § Decision). */
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+    .progress-amount .goal {
+      font-family: var(--font-body);
+      font-size: 0.95rem; font-weight: 400;
+      color: var(--ink-tertiary);
+      margin-left: 4px;
+    }
+    .progress-bar {
+      height: 10px; background: var(--surface-muted);
+      border-radius: 999px; overflow: hidden;
+    }
+    .progress-bar > span {
+      display: block; height: 100%;
+      background: linear-gradient(90deg, var(--brand-primary), var(--brand-primary-deep));
+      border-radius: 999px;
+      transition: width 0.6s ease;
+    }
+    .progress-meta {
+      margin-top: 14px;
+      font-size: 13px; color: var(--ink-secondary);
+      display: flex; gap: 18px; flex-wrap: wrap;
+    }
+    .progress-meta strong { color: var(--ink-primary); font-weight: 600; }
+
+    /* Trust strip — Foundation's institutional credibility band */
+    .trust {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--surface-muted);
+    }
+    @media (max-width: 540px) { .trust { grid-template-columns: 1fr; } }
+    .trust div {
+      padding: 22px 28px;
+      border-right: 1px solid var(--border-subtle);
+    }
+    .trust div:last-child { border-right: 0; }
+    @media (max-width: 540px) {
+      .trust div { border-right: 0; border-bottom: 1px solid var(--border-subtle); }
+      .trust div:last-child { border-bottom: 0; }
+    }
+    .trust dt {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--ink-tertiary); font-weight: 600;
+    }
+    .trust dd {
+      margin: 6px 0 0;
+      font-family: var(--font-display); font-weight: 500;
+      font-size: 1.1rem; color: var(--ink-primary);
+    }
+
+    /* ── Donation form slot (shell-owned — same across archetypes) ──── */
+    .form-card {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow-card);
+      padding: 28px 28px 24px;
+      position: sticky; top: 24px;
+    }
+    @media (max-width: 960px) { .form-card { position: static; } }
+    .form-card h2 {
+      font-family: var(--font-display);
+      font-weight: 600; font-size: 1.4rem;
+      margin: 0 0 4px;
+      letter-spacing: -0.01em;
+    }
+    .form-card .subhead {
+      color: var(--ink-secondary); font-size: 14px; margin: 0 0 22px;
+    }
+
+    .freq-toggle {
+      display: grid; grid-template-columns: 1fr 1fr;
+      background: var(--surface-muted); border-radius: var(--radius-control);
+      padding: 4px; gap: 4px; margin-bottom: 20px;
+    }
+    .freq-toggle button {
+      background: transparent; border: 0;
+      padding: 10px 12px; border-radius: 10px;
+      font-weight: 600; font-size: 13px; cursor: pointer;
+      color: var(--ink-secondary);
+    }
+    .freq-toggle button.active {
+      background: var(--surface-elevated); color: var(--ink-primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+
+    /* AmountPicker slot (archetype-owned) — Foundation: inline chips + write-in */
+    .label-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 10px;
+    }
+    .label-row label {
+      font-size: 13px; font-weight: 600; color: var(--ink-primary);
+    }
+    .label-row .help {
+      font-size: 12px; color: var(--ink-tertiary);
+    }
+    .amount-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+      margin-bottom: 10px;
+      border: 0; padding: 0;
+    }
+    .amount-chip-label {
+      position: relative; display: block; margin: 0;
+    }
+    .amount-grid input[type="radio"] {
+      position: absolute; opacity: 0; pointer-events: none;
+      width: 1px; height: 1px;
+    }
+    .amount-chip {
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 14px 8px; border-radius: var(--radius-control);
+      border: 1.5px solid var(--border-subtle);
+      background: var(--surface-elevated);
+      font-family: var(--font-display);
+      font-size: 1.15rem; font-weight: 600;
+      color: var(--ink-primary);
+      cursor: pointer; text-align: center;
+      transition: border-color 0.15s, background 0.15s, transform 0.06s;
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+    .amount-grid input[type="radio"]:focus-visible + .amount-chip {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: 2px;
+    }
+    .amount-grid input[type="radio"]:checked + .amount-chip {
+      border-color: var(--brand-primary);
+      background: rgba(12, 100, 67, 0.06);
+      color: var(--brand-primary-deep);
+    }
+    .amount-chip:hover { border-color: var(--brand-primary); }
+    .amount-chip:active { transform: scale(0.98); }
+    .amount-chip small {
+      display: block; margin-top: 4px;
+      font-family: var(--font-body); font-weight: 500;
+      font-size: 11px; color: var(--ink-tertiary);
+      letter-spacing: 0.02em;
+    }
+
+    .amount-write {
+      width: 100%; padding: 14px 16px;
+      border: 1.5px solid var(--border-subtle);
+      border-radius: var(--radius-control);
+      font-family: var(--font-display); font-size: 1.1rem; font-weight: 600;
+      color: var(--ink-primary);
+      background: var(--surface-elevated);
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+    .amount-write::placeholder { color: var(--ink-tertiary); font-weight: 500; }
+    .amount-write:focus {
+      outline: none; border-color: var(--brand-primary);
+      box-shadow: 0 0 0 3px rgba(12, 100, 67, 0.12);
+    }
+
+    .donor-fields {
+      margin-top: 22px; display: grid; gap: 12px;
+    }
+    .donor-fields input {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--border-subtle);
+      border-radius: 10px;
+      font-family: var(--font-body); font-size: 14px;
+      background: var(--surface-elevated);
+    }
+    .donor-fields input:focus {
+      outline: none; border-color: var(--brand-primary);
+      box-shadow: 0 0 0 3px rgba(12, 100, 67, 0.12);
+    }
+    .donor-fields .field-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+
+    .cta {
+      width: 100%; margin-top: 18px;
+      padding: 16px 20px; border: 0;
+      border-radius: var(--radius-control);
+      background: var(--brand-primary);
+      color: var(--brand-on-primary);
+      font-family: var(--font-body); font-weight: 600; font-size: 15px;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(12, 100, 67, 0.22);
+      transition: transform 0.06s, box-shadow 0.15s;
+    }
+    .cta:hover {
+      box-shadow: 0 8px 24px rgba(12, 100, 67, 0.32);
+    }
+    .cta:active { transform: scale(0.99); }
+
+    .reassurance {
+      margin: 14px 0 0;
+      font-size: 12px; color: var(--ink-tertiary);
+      text-align: center; line-height: 1.5;
+    }
+    .reassurance strong { color: var(--ink-secondary); }
+
+    /* ── Footer slot (archetype-owned — Foundation: institutional sig) ── */
+    footer {
+      margin-top: 36px;
+      padding-top: 26px;
+      border-top: 1px solid var(--border-subtle);
+      color: var(--ink-tertiary);
+      font-size: 12px; line-height: 1.6;
+      display: flex; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+    footer a { color: var(--ink-secondary); text-decoration: none; }
+    footer a:hover { color: var(--ink-primary); }
+    footer .sig {
+      font-family: var(--font-display); font-style: italic;
+      max-width: 56ch;
+    }
+    footer .by-givernance {
+      font-size: 11px; letter-spacing: 0.04em;
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#donate">Skip to donation form</a>
+
+  <header class="topbar">
+    <span class="badge">● Secure giving</span>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="?lang=en" aria-current="page" lang="en">EN</a>
+      <a href="?lang=fr" hreflang="fr" lang="fr">FR</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ───── Hero slot ───── -->
+    <section class="hero-card" aria-labelledby="campaign-title">
+      <div class="hero">
+        <span class="org-pill">
+          <span class="logo-tile" aria-hidden="true">M</span>
+          <span lang="fr">Maison des Solidarités</span>
+        </span>
+        <h1 id="campaign-title">Winter shelter campaign 2026 — help us keep 240 beds open.</h1>
+        <p class="lede">Every winter <span lang="fr">Maison des Solidarités</span> opens 240 emergency-shelter beds across Lyon and Saint-Étienne. This year we need <span class="amount">€58&#8239;000</span> to keep them running through March.</p>
+        <p class="mission" lang="fr">«&#8239;Accueillir, accompagner, reconstruire un chemin — sans condition, sans papiers.&#8239;»</p>
+      </div>
+
+      <div class="progress" aria-label="Campaign progress">
+        <div class="progress-head">
+          <span>Raised so far</span>
+          <span>★ 142 supporters</span>
+        </div>
+        <p class="progress-amount">
+          €37&#8239;420 <span class="goal">of €58&#8239;000 goal</span>
+        </p>
+        <div
+          class="progress-bar"
+          role="progressbar"
+          aria-valuenow="64"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuetext="64 percent funded — 37,420 of 58,000 euros raised"
+        >
+          <span style="width: 64%;"></span>
+        </div>
+        <div class="progress-meta">
+          <span><strong>64 %</strong> funded</span>
+          <span><strong>17 days</strong> remaining</span>
+          <span><strong>Tax-receipt eligible</strong> (<span lang="fr">Loi Coluche</span>, FR)</span>
+        </div>
+      </div>
+
+      <dl class="trust" aria-label="Operational transparency">
+        <div>
+          <dt>Programmes</dt>
+          <dd>82 % of gifts</dd>
+        </div>
+        <div>
+          <dt>Support &amp; admin</dt>
+          <dd>11 %</dd>
+        </div>
+        <div>
+          <dt>Fundraising</dt>
+          <dd>7 %</dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- ───── Donation form (shell-owned) + AmountPicker slot ───── -->
+    <!--
+      Real form is `<form>` with action=POST; the mockup uses <section>
+      to demonstrate landmark semantics (an <aside> would be skipped
+      by screen-reader landmark navigation, hiding the conversion-
+      critical surface — fixed per PR #386 review).
+    -->
+    <section class="form-card" id="donate" aria-labelledby="donate-heading">
+      <h2 id="donate-heading" tabindex="-1">Give to the winter shelter</h2>
+      <p class="subhead">Your gift opens beds tonight.</p>
+
+      <div class="freq-toggle" role="group" aria-label="Donation frequency"><button class="active" type="button" aria-pressed="true" aria-label="One-time donations">One-time</button><button type="button" aria-pressed="false" aria-label="Monthly donations">Monthly</button></div>
+
+      <div class="label-row">
+        <span id="amount-label">Amount</span>
+        <span class="help" aria-hidden="true">€ EUR</span>
+      </div>
+
+      <!--
+        Real <input type="radio"> with visually-hidden inputs lets the
+        chips be a true single-tab-stop radio group with native arrow-
+        key navigation; `:checked + .amount-chip` carries the visual
+        state. ARIA-radiogroup-on-buttons (the prior mockup) was wrong
+        semantics — radio means one tab stop + arrow keys, buttons
+        carrying `aria-pressed` is a toggle pattern.
+      -->
+      <fieldset class="amount-grid" aria-labelledby="amount-label">
+        <legend class="sr-only">Suggested amounts</legend>
+        <label class="amount-chip-label">
+          <input type="radio" name="amount" value="25">
+          <span class="amount-chip">€25<small>One night, one bed</small></span>
+        </label>
+        <label class="amount-chip-label">
+          <input type="radio" name="amount" value="50" checked>
+          <span class="amount-chip">€50<small>Bed + meal</small></span>
+        </label>
+        <label class="amount-chip-label">
+          <input type="radio" name="amount" value="100">
+          <span class="amount-chip">€100<small>A week&apos;s groceries</small></span>
+        </label>
+        <label class="amount-chip-label">
+          <input type="radio" name="amount" value="250">
+          <span class="amount-chip">€250<small>Casework support</small></span>
+        </label>
+        <label class="amount-chip-label">
+          <input type="radio" name="amount" value="500">
+          <span class="amount-chip">€500<small>Sponsor a family</small></span>
+        </label>
+        <label class="amount-chip-label">
+          <input type="radio" name="amount" value="1000">
+          <span class="amount-chip">€1&#8239;000<small>Anonymous matching</small></span>
+        </label>
+      </fieldset>
+
+      <input
+        class="amount-write"
+        type="number"
+        min="1"
+        placeholder="Or write your own amount"
+        aria-label="Custom amount in euros"
+      >
+
+      <div class="donor-fields">
+        <input type="email" placeholder="Email" aria-label="Email" autocomplete="email">
+        <div class="field-row">
+          <input type="text" placeholder="First name" aria-label="First name" autocomplete="given-name">
+          <input type="text" placeholder="Last name" aria-label="Last name" autocomplete="family-name">
+        </div>
+      </div>
+
+      <button class="cta" type="submit">Give €50 securely</button>
+      <p class="reassurance">
+        <strong>Stripe-secured.</strong> No card data ever touches our servers. 100 % of your gift reaches the campaign — Givernance charges no commission to donors.
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="sig">
+      <span lang="fr">Maison des Solidarités</span> is a French association under the 1901 law, registered in Lyon under SIRET 803&#8239;410&#8239;922&#8239;00018, recognised of general interest (<span lang="fr">Article 200 CGI</span>).
+    </div>
+    <div class="by-givernance">
+      Powered by <a href="#">Givernance</a> · Hosted in the EU · GDPR-native
+    </div>
+  </footer>
+</body>
+</html>
