@@ -1,0 +1,142 @@
+/*
+ * Minimal Checkout archetype tokens (Epic #362).
+ *
+ * Voice: Stripe-Payment-Link grade. No pitch, no animation, no
+ * decoration. For orgs whose donors already trust them (recurring
+ * donors topping up, alumni who clicked from a known list).
+ *
+ * Layout + slot placement inherited from `_shell.css`; this file
+ * holds only voice tokens.
+ */
+
+[data-archetype="minimal-checkout"] {
+  --min-ink: #1a1f36;
+  --min-ink-soft: #697386;
+  --min-surface: #ffffff;
+  --min-surface-tint: #f6f9fc;
+  --min-border: #e5e9ef;
+  --brand-primary: #635bff;
+
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: var(--min-surface-tint);
+  color: var(--min-ink);
+}
+
+/* ── Hero — quiet meta + tight headline ─────────────────────────────────────── */
+
+.minimal-hero {
+  background: var(--min-surface);
+  border: 1px solid var(--min-border);
+  border-radius: 12px;
+  padding: 24px 20px;
+  box-shadow: 0 1px 2px rgba(50, 50, 93, 0.04);
+}
+
+@container (min-width: 768px) {
+  .minimal-hero {
+    padding: 32px 28px;
+  }
+}
+
+.minimal-hero__eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--min-ink-soft);
+  margin: 0 0 6px;
+}
+
+.minimal-hero__title {
+  font-family: "Inter", sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.4rem, 4.5cqi, 2rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+  max-width: 32ch;
+}
+
+.minimal-hero__lede {
+  font-size: 0.95rem;
+  color: var(--min-ink-soft);
+  line-height: 1.55;
+  max-width: 56ch;
+  margin: 0;
+}
+
+/* ── Progress — single-line, no celebration ────────────────────────────────── */
+
+.minimal-progress {
+  background: var(--min-surface);
+  border: 1px solid var(--min-border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.minimal-progress__label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--min-ink-soft);
+  margin: 0 0 4px;
+}
+
+.minimal-progress__amount {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin: 0;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.minimal-progress__pct {
+  font-size: 13px;
+  color: var(--min-ink-soft);
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: right;
+}
+
+.minimal-progress__bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  background: var(--min-surface-tint);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.minimal-progress__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--brand-primary);
+}
+
+/* ── Donate form chrome ────────────────────────────────────────────────────── */
+
+.minimal-form {
+  background: var(--min-surface);
+  border: 1px solid var(--min-border);
+  border-radius: 12px;
+  padding: 24px 20px;
+  box-shadow: 0 1px 2px rgba(50, 50, 93, 0.04);
+}
+
+@container (min-width: 768px) {
+  .minimal-form {
+    padding: 32px 28px;
+  }
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.minimal-footer {
+  margin-top: 24px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--min-border);
+  font-size: 12px;
+  color: var(--min-ink-soft);
+}

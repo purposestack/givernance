@@ -1,0 +1,158 @@
+/*
+ * Civic Modern archetype tokens (Epic #362).
+ *
+ * Voice: public-sector neutral. IBM Plex Sans/Mono. Transparency
+ * stats foreground; donor reads facts before pitch. For public
+ * universities, museums, libraries, transit-adjacent NPOs.
+ *
+ * Layout + slot placement inherited from `_shell.css`; this file
+ * holds only voice tokens.
+ */
+
+[data-archetype="civic-modern"] {
+  --civic-ink: #14171f;
+  --civic-ink-soft: #586075;
+  --civic-paper: #ffffff;
+  --civic-surface: #f4f6f9;
+  --civic-border: #d4dae3;
+  --civic-accent: #c1272d;
+  --brand-primary: #0d3675;
+
+  font-family: "IBM Plex Sans", "Inter", system-ui, sans-serif;
+  background: var(--civic-surface);
+  color: var(--civic-ink);
+}
+
+/* ── Hero — bordered white card, monospace eyebrow ─────────────────────────── */
+
+.civic-hero {
+  background: var(--civic-paper);
+  border: 1px solid var(--civic-border);
+  border-top: 4px solid var(--brand-primary);
+  padding: 28px 20px;
+}
+
+@container (min-width: 768px) {
+  .civic-hero {
+    padding: 36px 32px;
+  }
+}
+
+.civic-hero__eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--civic-ink-soft);
+  margin: 0 0 8px;
+}
+
+.civic-hero__title {
+  font-family: "IBM Plex Sans", "Inter", sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.6rem, 5cqi, 2.6rem);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  margin: 0 0 16px;
+  max-width: 28ch;
+  text-wrap: balance;
+}
+
+.civic-hero__lede {
+  font-family: "IBM Plex Sans", "Inter", sans-serif;
+  font-size: 1rem;
+  color: var(--civic-ink-soft);
+  max-width: 56ch;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ── Progress — stats table grid ───────────────────────────────────────────── */
+
+.civic-progress {
+  background: var(--civic-paper);
+  border: 1px solid var(--civic-border);
+  padding: 20px 18px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+@container (min-width: 480px) {
+  .civic-progress {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    padding: 24px 28px;
+  }
+}
+
+.civic-progress__cell {
+  border-left: 2px solid var(--civic-border);
+  padding-left: 12px;
+}
+
+.civic-progress__cell:first-child {
+  border-left-color: var(--civic-accent);
+}
+
+.civic-progress__label {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--civic-ink-soft);
+  margin: 0;
+}
+
+.civic-progress__value {
+  font-family: "IBM Plex Sans", "Inter", sans-serif;
+  font-weight: 600;
+  font-size: clamp(1.05rem, 3.5cqi, 1.5rem);
+  line-height: 1.1;
+  margin: 4px 0 0;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.civic-progress__bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  background: var(--civic-surface);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.civic-progress__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--brand-primary);
+}
+
+/* ── Donate form chrome ────────────────────────────────────────────────────── */
+
+.civic-form {
+  background: var(--civic-paper);
+  border: 1px solid var(--civic-border);
+  border-top: 4px solid var(--civic-accent);
+  padding: 24px 20px;
+}
+
+@container (min-width: 768px) {
+  .civic-form {
+    padding: 32px 28px;
+  }
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.civic-footer {
+  margin-top: 24px;
+  padding: 16px 0;
+  border-top: 1px solid var(--civic-border);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--civic-ink-soft);
+  letter-spacing: 0.06em;
+}

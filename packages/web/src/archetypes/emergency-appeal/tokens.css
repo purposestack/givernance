@@ -1,0 +1,161 @@
+/*
+ * Emergency Appeal archetype tokens (Epic #362).
+ *
+ * Voice: urgent, counter-led, one-time-first. Big raised-amount
+ * display, warning banner, monospace eyebrows. For time-bound
+ * appeals — disasters, medical campaigns, deadline-driven asks.
+ *
+ * Layout + slot placement inherited from `_shell.css`; this file
+ * holds only voice tokens.
+ */
+
+[data-archetype="emergency-appeal"] {
+  --eg-ink: #16191d;
+  --eg-ink-soft: #4a4f57;
+  --eg-surface: #fafaf7;
+  --eg-warning: #ffe6a0;
+  --eg-warning-deep: #b07900;
+  --brand-primary: #ff3a2c;
+
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: var(--eg-surface);
+  color: var(--eg-ink);
+}
+
+/* ── Hero — banner above, oversized counter inside ─────────────────────────── */
+
+.emergency-hero {
+  position: relative;
+}
+
+.emergency-hero__banner {
+  background: var(--eg-warning);
+  color: var(--eg-warning-deep);
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--eg-warning-deep);
+  margin: 0 -12px 16px;
+}
+
+.emergency-hero__eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+  margin: 0 0 8px;
+}
+
+.emergency-hero__title {
+  font-family: "Inter", sans-serif;
+  font-weight: 800;
+  font-size: clamp(1.8rem, 6cqi, 3.4rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+  max-width: 22ch;
+  text-wrap: balance;
+}
+
+.emergency-hero__lede {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--eg-ink-soft);
+  max-width: 56ch;
+  margin: 0;
+}
+
+/* ── Progress — Bebas-Neue counter, brand-coloured currency mark ───────────── */
+
+.emergency-progress {
+  background: var(--eg-ink);
+  color: var(--eg-surface);
+  padding: 20px 18px;
+  border: 2px solid var(--eg-ink);
+  margin-top: 16px;
+}
+
+@container (min-width: 768px) {
+  .emergency-progress {
+    padding: 28px 28px;
+    border-width: 3px;
+  }
+}
+
+.emergency-progress__label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+  margin: 0;
+}
+
+.emergency-progress__amount {
+  font-family: "Bebas Neue", "Impact", sans-serif;
+  font-size: clamp(2.8rem, 12cqi, 5rem);
+  line-height: 0.9;
+  letter-spacing: -0.01em;
+  margin: 8px 0 4px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.emergency-progress__amount .currency {
+  color: var(--brand-primary);
+}
+
+.emergency-progress__goal {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--eg-warning);
+  margin: 0 0 14px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.emergency-progress__bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.emergency-progress__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--brand-primary);
+}
+
+/* ── Donate form chrome — paper-warm card with red rule ─────────────────────── */
+
+.emergency-form {
+  background: var(--eg-surface);
+  border: 2px solid var(--eg-ink);
+  border-top: 6px solid var(--brand-primary);
+  padding: 20px 16px;
+}
+
+@container (min-width: 768px) {
+  .emergency-form {
+    border-width: 3px;
+    border-top-width: 8px;
+    padding: 24px 20px;
+  }
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.emergency-footer {
+  margin-top: 24px;
+  padding: 16px 0;
+  border-top: 2px solid var(--eg-ink);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--eg-ink-soft);
+}

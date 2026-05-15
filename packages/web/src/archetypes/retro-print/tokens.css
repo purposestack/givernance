@@ -1,0 +1,208 @@
+/*
+ * Retro Print archetype tokens (Epic #362).
+ *
+ * Voice: riso-printed two-colour energy, halftone-dot paper texture,
+ * slight stamp rotations, Bitter serif. For heritage orgs and alumni
+ * associations — a print-shop aesthetic that signals "we've been
+ * around".
+ *
+ * Layout + slot placement inherited from `_shell.css`; this file
+ * holds only voice tokens and the ink-bloom keyframes.
+ */
+
+[data-archetype="retro-print"] {
+  --rp-ink: #2a2a25;
+  --rp-ink-soft: #5b594e;
+  --rp-paper: #f3eddc;
+  --rp-paper-deep: #e6dcc4;
+  --rp-rule: #c8bea6;
+  --rp-blue: #284b8a;
+  --brand-primary: #d44a3a;
+
+  font-family: "Source Sans 3", "Inter", system-ui, sans-serif;
+  background: var(--rp-paper);
+  background-image: radial-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+  background-size: 3px 3px;
+  color: var(--rp-ink);
+}
+
+/* ── Hero — riso-red slab with tilted blue stamp ───────────────────────────── */
+
+.retro-hero {
+  padding: 28px 20px 32px;
+  background: var(--brand-primary);
+  color: var(--rp-paper);
+  position: relative;
+  overflow: hidden;
+}
+
+.retro-hero__stamp {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: var(--rp-blue);
+  color: var(--rp-paper);
+  padding: 4px 10px;
+  font-family: "Bitter", Georgia, serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transform: rotate(2deg);
+}
+
+@container (min-width: 768px) {
+  .retro-hero {
+    padding: 36px 36px 40px;
+  }
+}
+
+.retro-hero__eyebrow {
+  font-family: "Bitter", Georgia, serif;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.retro-hero__title {
+  font-family: "Bitter", Georgia, serif;
+  font-weight: 700;
+  font-size: clamp(1.7rem, 5.5cqi, 3rem);
+  line-height: 1.05;
+  letter-spacing: -0.005em;
+  margin: 12px 0 16px;
+  max-width: 22ch;
+  text-wrap: balance;
+}
+
+.retro-hero__lede {
+  font-family: "Source Sans 3", "Inter", sans-serif;
+  font-size: 1rem;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 52ch;
+  opacity: 0.95;
+}
+
+/* ── Progress — dashed blue rule, deep paper bg ─────────────────────────────── */
+
+.retro-progress {
+  background: var(--rp-paper-deep);
+  border: 2px dashed var(--rp-blue);
+  padding: 16px 18px;
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@container (min-width: 480px) {
+  .retro-progress {
+    grid-template-columns: auto 1fr auto;
+    gap: 24px;
+    align-items: center;
+    padding: 18px 28px;
+  }
+}
+
+.retro-progress__amount {
+  font-family: "Bitter", Georgia, serif;
+  font-weight: 700;
+  font-size: clamp(1.2rem, 4cqi, 1.6rem);
+  line-height: 1;
+  margin: 0;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--brand-primary);
+}
+
+.retro-progress__bar {
+  height: 6px;
+  background: var(--rp-paper);
+  border: 1px solid var(--rp-blue);
+}
+
+.retro-progress__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--brand-primary);
+}
+
+.retro-progress__meta {
+  font-family: "Source Sans 3", "Inter", sans-serif;
+  font-size: 13px;
+  color: var(--rp-ink-soft);
+  margin: 0;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ── Donate form chrome — slight tilt, paper-stock card ─────────────────────── */
+
+.retro-form {
+  background: var(--rp-paper);
+  border: 2px solid var(--rp-ink);
+  padding: 20px 16px;
+  transform: rotate(-0.3deg);
+  box-shadow: 4px 4px 0 0 var(--rp-blue);
+}
+
+@container (min-width: 768px) {
+  .retro-form {
+    padding: 28px 22px;
+    box-shadow: 6px 6px 0 0 var(--rp-blue);
+  }
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.retro-footer {
+  margin-top: 24px;
+  padding: 16px 0;
+  border-top: 2px dashed var(--rp-rule);
+  font-family: "Bitter", Georgia, serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--rp-blue);
+}
+
+/* ── Ink-bloom overlay (easter egg) ─────────────────────────────────────────── */
+
+.retro-bloom-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: radial-gradient(
+    circle at var(--bloom-x, 50%) var(--bloom-y, 50%),
+    color-mix(in srgb, var(--brand-primary) 50%, transparent) 0%,
+    color-mix(in srgb, var(--rp-blue) 40%, transparent) 30%,
+    transparent 55%
+  );
+  mix-blend-mode: multiply;
+  animation: retro-bloom 900ms ease-out forwards;
+}
+
+@keyframes retro-bloom {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  60% {
+    opacity: 0.9;
+    transform: scale(1.4);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retro-bloom-overlay {
+    display: none;
+  }
+}
