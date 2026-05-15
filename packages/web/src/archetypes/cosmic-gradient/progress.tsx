@@ -1,5 +1,6 @@
 import { formatCurrency } from "@/lib/format";
 import type { ProgressSlotProps } from "../types";
+import { useProgressModel } from "../use-progress-model";
 
 /**
  * Cosmic Gradient `Progress` — glass card with a thin gradient bar
@@ -7,19 +8,12 @@ import type { ProgressSlotProps } from "../types";
  * layout.
  */
 export function CosmicProgress({ data }: ProgressSlotProps) {
-  const hasGoal = data.goalAmountCents !== null && data.goalAmountCents > 0;
-  // Render whenever a goal is set — donors see the target on day 1.
-  if (!hasGoal) return null;
-
-  const goal = data.goalAmountCents ?? 0;
-  const pct = goal > 0 ? Math.min(100, Math.round((data.raisedCents / goal) * 100)) : 0;
+  const model = useProgressModel(data);
+  if (!model) return null;
+  const { goalCents, progressPercent, ariaValueText } = model;
 
   return (
-    <section
-      className="cosmic-progress"
-      style={{ "--brand-primary": data.colorPrimary } as React.CSSProperties}
-      aria-label="Campaign progress"
-    >
+    <section className="cosmic-progress" aria-label="Campaign progress">
       <p className="cosmic-progress__amount">{formatCurrency(data.raisedCents, "en")}</p>
       <div>
         <div
@@ -27,14 +21,15 @@ export function CosmicProgress({ data }: ProgressSlotProps) {
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuenow={pct}
-          aria-valuetext={`${pct} percent funded — ${data.raisedCents / 100} of ${goal / 100} ${data.defaultCurrency}`}
+          aria-valuenow={progressPercent}
+          aria-valuetext={ariaValueText}
         >
-          <span style={{ width: `${pct}%` }} />
+          <span style={{ width: `${progressPercent}%` }} />
         </div>
         <p className="cosmic-progress__meta">
-          of <strong>{formatCurrency(goal, "en")}</strong> goal ·{" "}
-          {data.donorCount.toLocaleString("en")} backers · <strong>{pct} %</strong> funded
+          of <strong>{formatCurrency(goalCents, "en")}</strong> goal ·{" "}
+          {data.donorCount.toLocaleString("en")} backers ·{" "}
+          <strong>{progressPercent} %</strong> funded
         </p>
       </div>
     </section>

@@ -107,7 +107,6 @@ function renderArchetype(args: {
     organisationName: page.organisationName ?? "",
     organisationMission: page.organisationMission ?? null,
     organisationLogoUrl: page.organisationLogoUrl ?? null,
-    hasSwissQrBill: page.hasSwissQrBill ?? false,
     publicPageStyle: styleKey,
   };
   const donationForm = (

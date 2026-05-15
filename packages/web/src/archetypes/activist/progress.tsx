@@ -1,32 +1,24 @@
 import { formatCurrency } from "@/lib/format";
 import type { ProgressSlotProps } from "../types";
+import { useProgressModel } from "../use-progress-model";
 
 /**
  * Activist `Progress` — black counter strip with brand-coloured
  * eyebrow labels. Tabular-nums on every figure per slot contract.
  */
 export function ActivistProgress({ data }: ProgressSlotProps) {
-  const hasGoal = data.goalAmountCents !== null && data.goalAmountCents > 0;
-  // Render the counter strip whenever a goal is set — donors need to
-  // see the target on day 1 even before the first donation.
-  if (!hasGoal) return null;
-
-  const goal = data.goalAmountCents ?? 0;
-  const pct = goal > 0 ? Math.min(100, Math.round((data.raisedCents / goal) * 100)) : 0;
+  const model = useProgressModel(data);
+  if (!model) return null;
+  const { goalCents, progressPercent, ariaValueText } = model;
 
   return (
     <div
       className="activist-progress"
-      style={
-        {
-          "--brand-primary": data.colorPrimary,
-        } as React.CSSProperties
-      }
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={pct}
-      aria-valuetext={`${pct} percent funded — ${data.raisedCents / 100} of ${goal / 100} ${data.defaultCurrency}`}
+      aria-valuenow={progressPercent}
+      aria-valuetext={ariaValueText}
     >
       <div className="activist-progress__row">
         <div className="activist-progress__cell">
@@ -35,7 +27,7 @@ export function ActivistProgress({ data }: ProgressSlotProps) {
         </div>
         <div className="activist-progress__cell">
           <p className="activist-progress__label">GOAL</p>
-          <p className="activist-progress__value">{formatCurrency(goal, "en")}</p>
+          <p className="activist-progress__value">{formatCurrency(goalCents, "en")}</p>
         </div>
         <div className="activist-progress__cell">
           <p className="activist-progress__label">SUPPORTERS</p>
@@ -43,11 +35,11 @@ export function ActivistProgress({ data }: ProgressSlotProps) {
         </div>
         <div className="activist-progress__cell">
           <p className="activist-progress__label">% FUNDED</p>
-          <p className="activist-progress__value">{pct}%</p>
+          <p className="activist-progress__value">{progressPercent}%</p>
         </div>
       </div>
       <div className="activist-progress__bar">
-        <span style={{ width: `${pct}%`, backgroundColor: data.colorPrimary }} />
+        <span style={{ width: `${progressPercent}%`, background: "var(--brand-primary)" }} />
       </div>
     </div>
   );

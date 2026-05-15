@@ -72,11 +72,12 @@
 
 .activist-hero__panel {
   padding: 24px 20px;
-  /* Solid brand colour comes via inline `backgroundColor` from the
-     archetype's JSX (operator-controlled). The on-brand text colour
-     is fixed: the warm-white reads cleanly on every brand colour the
-     operator can pick (only colorPrimary in the curated set matters
-     here — the warm-white passes WCAG AA on each one). */
+  /* Brand colour flows via `--brand-primary` set once on the renderer
+     wrapper (archetype-renderer.tsx). The on-brand text colour is
+     fixed: the warm-white reads cleanly on every brand colour in the
+     curated `CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES` set (each passes WCAG
+     AA against this warm-white). */
+  background: var(--brand-primary);
   color: #fff7f1;
 }
 

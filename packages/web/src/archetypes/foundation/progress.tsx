@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { formatCurrency } from "@/lib/format";
 import type { ProgressSlotProps } from "../types";
+import { useProgressModel } from "../use-progress-model";
 
 /**
  * Foundation `Progress` slot — inline below hero. Shows the campaign
@@ -14,12 +15,9 @@ import type { ProgressSlotProps } from "../types";
  */
 export function FoundationProgress({ data }: ProgressSlotProps) {
   const t = useTranslations("publicDonationPage");
-  const hasGoal = data.goalAmountCents !== null && data.goalAmountCents > 0;
-  if (!hasGoal) return null;
-
-  const goalCents = data.goalAmountCents ?? 0;
-  const progressPercent =
-    goalCents > 0 ? Math.min(100, Math.round((data.raisedCents / goalCents) * 100)) : 0;
+  const model = useProgressModel(data);
+  if (!model) return null;
+  const { goalCents, progressPercent, ariaValueText } = model;
 
   return (
     <div className="border-t border-outline-variant px-5 py-5 sm:px-8 sm:py-6 lg:px-10 lg:py-8">
@@ -42,13 +40,13 @@ export function FoundationProgress({ data }: ProgressSlotProps) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={progressPercent}
-        aria-valuetext={`${progressPercent} percent funded`}
+        aria-valuetext={ariaValueText}
         aria-label={t("metrics.raised")}
         className="mt-3 h-2.5 overflow-hidden rounded-full bg-surface-container"
       >
         <div
           className="h-full rounded-full transition-[width] duration-slow"
-          style={{ width: `${progressPercent}%`, backgroundColor: data.colorPrimary }}
+          style={{ width: `${progressPercent}%`, background: "var(--brand-primary)" }}
         />
       </div>
     </div>

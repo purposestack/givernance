@@ -448,7 +448,6 @@ function CampaignPublicPagePreview({
                 organisationName: "",
                 organisationMission: null,
                 organisationLogoUrl: null,
-                hasSwissQrBill: false,
                 publicPageStyle,
               }}
               formNode={
