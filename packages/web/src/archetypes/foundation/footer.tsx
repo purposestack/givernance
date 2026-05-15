@@ -15,12 +15,17 @@ import type { FooterSlotProps } from "../types";
  */
 export function FoundationFooter({ data }: FooterSlotProps) {
   const t = useTranslations("publicDonationPage");
+  const hasOrgName = data.organisationName.trim().length > 0;
   return (
     <footer className="mt-9 border-t border-outline-variant pt-6 text-xs leading-relaxed text-on-surface-variant">
       <p className="max-w-prose">
-        {t.rich("footer.institutionalSignature", {
-          org: () => <span className="font-medium text-on-surface">{data.organisationName}</span>,
-        })}
+        {hasOrgName
+          ? t.rich("footer.institutionalSignature", {
+              org: () => (
+                <span className="font-medium text-on-surface">{data.organisationName}</span>
+              ),
+            })
+          : t("footer.termsOnly")}
       </p>
     </footer>
   );

@@ -2197,6 +2197,7 @@
       "actions": {
         "back": "Back to campaign",
         "viewLive": "View public page",
+        "viewLiveDirtyTooltip": "Save your changes first — the public page still shows the last saved version.",
         "copyLink": "Copy link",
         "save": "Save public page",
         "submitting": "Saving…"
@@ -2326,7 +2327,8 @@
       "trustValue": "Secured by Stripe"
     },
     "footer": {
-      "institutionalSignature": "This campaign is operated by <org></org>. By giving, you accept the donor terms displayed at the payment step."
+      "institutionalSignature": "This campaign is operated by <org></org>. By giving, you accept the donor terms displayed at the payment step.",
+      "termsOnly": "By giving, you accept the donor terms displayed at the payment step."
     },
     "form": {
       "eyebrow": "Online donation",

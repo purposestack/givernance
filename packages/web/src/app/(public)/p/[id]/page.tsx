@@ -120,6 +120,11 @@ function renderArchetype(args: {
       publishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null}
       tenantStripeAccountId={page.stripeAccountId}
       qrCode={qrCode}
+      // Each archetype's AmountPicker provides its own card chrome
+      // (Activist warm paper, Calm pastel, Cosmic glass) — without
+      // this flag the form would render its own white card inside
+      // those wrappers and the donor would see two stacked cards.
+      chromeless
     />
   );
   return <ArchetypeRenderer styleKey={styleKey} data={archetypeData} formNode={donationForm} />;
