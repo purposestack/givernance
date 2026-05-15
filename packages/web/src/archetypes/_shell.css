@@ -1,0 +1,68 @@
+/*
+ * Shared layout shell for every archetype (Epic #362, ADR-030).
+ *
+ * Mobile-first single-column flex; tablet padding bump at ≥768px;
+ * desktop 2-column grid at ≥1024px with hero+progress on the left
+ * and the form (AmountPicker slot) sticky on the right. Footer
+ * spans both columns.
+ *
+ * Each archetype's `tokens.css` provides its visual character
+ * (background, fonts, borders, colors, keyframes) and may override
+ * any of these 4 shell tokens to tune the desktop layout:
+ *
+ *   --shell-max-w     max-width at desktop (default 1152px)
+ *   --shell-hero-fr   hero column fr ratio (default 1.1)
+ *   --shell-form-min  min form-column width (default 340px)
+ *   --shell-form-max  max form-column width (default 420px)
+ *
+ * Adding a new archetype: ship a tokens.css that sets the voice and,
+ * if needed, overrides 1-4 of these tokens. The layout structure +
+ * slot placement is inherited from this file — no per-archetype
+ * `@container` grid block, no `:nth-child` placement to copy-paste.
+ *
+ * Why container queries (not media): the renderer is used in both
+ * full-viewport (donor page) and narrow-pane (campaign-editor
+ * preview) contexts. Viewport-based @media fired the desktop grid
+ * inside the narrow preview pane on a wide viewport, squeezing the
+ * hero column to ~0px. @container responds to the wrapper's own
+ * width and keeps both contexts honest.
+ */
+
+[data-archetype] {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+@container (min-width: 768px) {
+  [data-archetype] {
+    padding: 24px;
+  }
+}
+
+@container (min-width: 1024px) {
+  [data-archetype] {
+    padding: 32px 40px;
+    max-width: var(--shell-max-w, 1152px);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns:
+      minmax(0, var(--shell-hero-fr, 1.1fr))
+      minmax(var(--shell-form-min, 340px), var(--shell-form-max, 420px));
+    gap: 32px;
+    align-items: start;
+  }
+  [data-archetype] > :first-child,
+  [data-archetype] > :nth-child(2) {
+    grid-column: 1;
+  }
+  [data-archetype] > :nth-child(3) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    position: sticky;
+    top: 24px;
+  }
+  [data-archetype] > :last-child {
+    grid-column: 1 / -1;
+  }
+}

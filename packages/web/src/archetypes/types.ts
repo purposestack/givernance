@@ -3,11 +3,12 @@
  * (Epic #362, ADR-030 § Decision).
  *
  * Every archetype exports four React components — `Hero`, `Progress`,
- * `AmountPicker`, `Footer` — plus a `tokens` CSS module + a `motion`
- * spec. The shell (`packages/web/src/app/(public)/p/[id]/page.tsx` in
- * PR-4 follow-up wiring) lazy-imports the archetype's module bundle
- * keyed by `publicPageStyle` and renders the four slots into a
- * shared layout grid.
+ * `AmountPicker`, `Footer` — plus a `tokens` CSS module. The donor-
+ * page shell (`packages/web/src/app/(public)/p/[id]/page.tsx`) and
+ * the editor-preview shell (`campaign-public-page-form.tsx`) both
+ * lazy-import the archetype's module bundle via `<ArchetypeRenderer>`
+ * keyed by `publicPageStyle` and render the four slots into the
+ * shared layout grid defined by `_shell.css`.
  *
  * The interface is the **breaking-change surface** — adding a fifth
  * slot is a slot-contract amendment that goes through ADR-030's
