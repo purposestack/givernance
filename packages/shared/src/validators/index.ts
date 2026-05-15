@@ -2,6 +2,7 @@
 
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { PUBLIC_PAGE_STYLE_KEYS } from "../constants/public-page-styles";
 import { isReservedSlug } from "../constants/reserved-slugs";
 
 export {
@@ -253,6 +254,29 @@ export const CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES = [
 
 export type CampaignPublicPageColor = (typeof CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES)[number];
 
+/**
+ * Closed enum of public-page archetype identifiers (Epic #362).
+ * Kept in lockstep with `PUBLIC_PAGE_STYLE_KEYS` in
+ * `@givernance/shared/constants` — the single source of truth — so
+ * the validator, the Drizzle enum, the Postgres enum (migration 0054),
+ * and the frontend `ARCHETYPES` map all share the same alphabet. Any
+ * value outside this set is rejected by the request validator before
+ * reaching the service layer.
+ *
+ * `Type.Unsafe<PublicPageStyleKey>({ type: "string", enum: […] })`:
+ * emits a canonical JSON-Schema `enum:` keyword (OpenAPI 3.1 consumers
+ * render this as a single enum dropdown rather than 10 separate
+ * single-value string types — PR-2 review, API contract N2) while
+ * keeping the inferred `Static<>` type narrowed to the literal union
+ * — `Type.String({ enum })` widens to `string`, which would defeat
+ * compile-time exhaustiveness in the service layer.
+ */
+export const PublicPageStyleSchema = Type.Unsafe<(typeof PUBLIC_PAGE_STYLE_KEYS)[number]>({
+  type: "string",
+  enum: [...PUBLIC_PAGE_STYLE_KEYS],
+  $id: "PublicPageStyle",
+});
+
 /** Schema for creating or updating a campaign public page */
 export const CampaignPublicPageSchema = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 255 }),
@@ -265,6 +289,17 @@ export const CampaignPublicPageSchema = Type.Object({
   ),
   goalAmountCents: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
   status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("published")])),
+  /**
+   * Per-campaign archetype override (Epic #362). `null` clears the
+   * override and falls back to the tenant default (or the platform
+   * default). Omitting the field in a PUT body leaves the prior value
+   * untouched — distinct from `null`, which explicitly clears it.
+   *
+   * Behind the `donation.public_page_styles` feature flag: the route
+   * gates on `requireFlag(...)` as its FIRST preHandler, so with the
+   * flag off the PUT returns 404 and the field can't be set.
+   */
+  publicPageStyle: Type.Optional(Type.Union([PublicPageStyleSchema, Type.Null()])),
 });
 
 /** Schema for list query parameters */
@@ -283,6 +318,18 @@ export type DonationAllocation = Static<typeof DonationAllocationSchema>;
 export type CampaignCreate = Static<typeof CampaignCreateSchema>;
 export type CampaignUpdate = Static<typeof CampaignUpdateSchema>;
 export type CampaignPublicPage = Static<typeof CampaignPublicPageSchema>;
+export type PublicPageStyle = Static<typeof PublicPageStyleSchema>;
+
+/**
+ * Body + response shape for `GET / PATCH /v1/org/style-default`
+ * (Epic #362). Single-field schema today; lives next to
+ * `PublicPageStyleSchema` so the picker UI gets one named schema in
+ * the OpenAPI emit rather than three anonymous inline objects.
+ */
+export const TenantStyleDefaultSchema = Type.Object({
+  defaultPublicPageStyle: Type.Union([PublicPageStyleSchema, Type.Null()]),
+});
+export type TenantStyleDefault = Static<typeof TenantStyleDefaultSchema>;
 export type PaginationQuery = Static<typeof PaginationQuerySchema>;
 
 /** Validate, coerce, and apply defaults — throws on failure */

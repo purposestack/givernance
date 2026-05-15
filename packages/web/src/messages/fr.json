@@ -1008,6 +1008,32 @@
         "error": "Impossible d'enregistrer votre modification. Veuillez réessayer."
       }
     },
+    "publicPageStyle": {
+      "title": "Style de la page de don",
+      "description": "Choisissez l'archétype visuel que les donateurs voient en arrivant sur la page publique d'une campagne. Chaque style préserve votre couleur de marque et votre logo — seules la structure, la typographie et l'animation changent.",
+      "clear": "Utiliser le style Givernance par défaut",
+      "footnote": "C'est le style par défaut pour toute votre organisation. Chaque campagne peut le remplacer depuis l'éditeur de campagne.",
+      "status": {
+        "inherits": "Style par défaut Givernance",
+        "custom": "Style personnalisé choisi",
+        "active": "Style actif :",
+        "inheritedDefault": "Style par défaut Givernance"
+      },
+      "voice": {
+        "institutional": "Institutionnel",
+        "expressive": "Expressif",
+        "editorial": "Éditorial",
+        "minimal": "Minimal",
+        "civic": "Civique"
+      },
+      "toast": {
+        "changed": "Style de la page de don défini sur {label}.",
+        "cleared": "Retour au style Givernance par défaut.",
+        "featureUnavailable": "Le sélecteur de style n'est plus disponible pour votre organisation. Veuillez recharger la page.",
+        "sessionExpired": "Votre session a expiré. Veuillez vous reconnecter.",
+        "error": "Impossible de mettre à jour le style. Veuillez réessayer."
+      }
+    },
     "branding": {
       "title": "Logo de l'organisation",
       "description": "Téléversez un logo pour personnaliser la barre latérale, les pages de don publiques et les reçus. Toutes les variantes sont générées à partir d'un seul fichier.",
@@ -2308,6 +2334,9 @@
       "donors": "{count, plural, =0 {Aucun donateur pour l'instant} one {# donateur} other {# donateurs}}",
       "trust": "Paiement",
       "trustValue": "Sécurisé par Stripe"
+    },
+    "footer": {
+      "institutionalSignature": "Cette campagne est animée par <org></org>. En donnant, vous acceptez les conditions de don affichées à l'étape de paiement."
     },
     "form": {
       "eyebrow": "Don en ligne",

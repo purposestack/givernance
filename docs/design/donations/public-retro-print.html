@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public donation — Retro Print · Givernance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;700&family=Source+Sans+3:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    /*
+     * RETRO PRINT archetype (Epic #362).
+     *
+     * Voice: Riso-printed-poster energy. Two-colour duotone, paper
+     * grain, vintage feel. Slab serif (Bitter) display + thin
+     * humanist (Source Sans) for body. For heritage NPOs, museums,
+     * alumni associations, vintage-feeling brands.
+     *
+     * motion.ambient = "none". Easter egg: triple-click the logo →
+     * the page flickers and the duotone briefly mis-registers, like
+     * a Riso paper-jam.
+     */
+    :root {
+      --brand-primary: #d44a3a; /* duotone red */
+      --brand-secondary: #284b8a; /* duotone blue */
+      --ink: #2a2a25;
+      --ink-soft: #5b594e;
+      --paper: #f3eddc;
+      --paper-deep: #e6dcc4;
+      --rule: #c8bea6;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    :focus-visible { outline: 2px dashed var(--brand-primary); outline-offset: 4px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Source Sans 3', sans-serif; font-variant-numeric: tabular-nums lining-nums; line-height: 1.55; background-image: radial-gradient(rgba(0,0,0,0.04) 1px, transparent 1px); background-size: 3px 3px; }
+    .skip-link { position: absolute; left: -9999px; }
+    .skip-link:focus { left: 16px; top: 16px; background: var(--ink); color: var(--paper); padding: 12px 16px; z-index: 100; }
+
+    .topbar { max-width: 1080px; margin: 0 auto; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px dashed var(--rule); }
+    .stamp { font-family: 'Bitter', serif; font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--brand-secondary); }
+    .lang-switch a { font-size: 12px; padding: 2px 8px; color: var(--ink-soft); text-decoration: none; letter-spacing: 0.04em; }
+    .lang-switch a[aria-current="page"] { color: var(--brand-primary); border-bottom: 1px solid var(--brand-primary); }
+
+    main { max-width: 1080px; margin: 0 auto; padding: 40px 32px 64px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(360px, 440px); gap: 40px; align-items: start; }
+    @media (max-width: 960px) { main { grid-template-columns: 1fr; padding: 24px 16px 32px; gap: 24px; } }
+
+    /* Hero — duotone block */
+    .hero { padding: 36px 36px 40px; background: var(--brand-primary); color: var(--paper); position: relative; overflow: hidden; }
+    .hero::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,0.12) 1.5px, transparent 1.5px); background-size: 6px 6px; mix-blend-mode: overlay; pointer-events: none; }
+    .hero::after { content: ""; position: absolute; top: 16px; right: 24px; background: var(--brand-secondary); color: var(--paper); padding: 6px 10px; font-family: 'Bitter', serif; font-weight: 700; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; transform: rotate(2deg); }
+    .hero::after { content: "Printed 14·05·2026"; }
+    .duotone-tile { width: 72px; height: 72px; background: var(--brand-secondary); border: 3px solid var(--paper); display: inline-flex; align-items: center; justify-content: center; font-family: 'Bitter', serif; font-weight: 700; font-size: 2rem; color: var(--paper); margin: 0 0 24px; transform: rotate(-2deg); position: relative; z-index: 1; }
+    .eyebrow { font-family: 'Bitter', serif; font-weight: 700; font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; margin: 0; opacity: 0.85; }
+    h1 { font-family: 'Bitter', serif; font-weight: 700; font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.05; letter-spacing: -0.005em; margin: 12px 0 16px; max-width: 22ch; text-wrap: balance; }
+    .lede { font-size: 1.05rem; margin: 0; max-width: 56ch; line-height: 1.55; opacity: 0.95; }
+
+    /* Progress as a postage strip */
+    .progress { background: var(--paper-deep); border: 2px dashed var(--brand-secondary); padding: 18px 28px; margin: 24px 0 0; display: grid; grid-template-columns: auto 1fr auto; gap: 24px; align-items: center; }
+    .progress-amount { font-family: 'Bitter', serif; font-weight: 700; font-size: 1.5rem; line-height: 1; font-variant-numeric: tabular-nums lining-nums; }
+    .progress-bar { height: 8px; background: var(--paper); border: 1px solid var(--brand-secondary); }
+    .progress-bar > span { display: block; height: 100%; background: var(--brand-primary); }
+    .progress-meta { font-family: 'Bitter', serif; font-weight: 700; font-size: 14px; color: var(--brand-secondary); }
+
+    /* Form — like a mail-order coupon */
+    .form { background: var(--paper); border: 3px solid var(--ink); padding: 28px 24px; position: sticky; top: 24px; background-image: radial-gradient(rgba(0,0,0,0.03) 1px, transparent 1px); background-size: 4px 4px; }
+    @media (max-width: 960px) { .form { position: static; } }
+    .form .ticket { display: inline-block; background: var(--brand-secondary); color: var(--paper); padding: 4px 10px; font-family: 'Bitter', serif; font-weight: 700; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; margin: 0 0 12px; transform: rotate(-1.5deg); }
+    .form h2 { font-family: 'Bitter', serif; font-weight: 700; font-size: 1.4rem; line-height: 1.1; margin: 0 0 16px; }
+    .freq { display: grid; grid-template-columns: 1fr 1fr; border: 2px dashed var(--ink); margin: 0 0 18px; }
+    .freq button { background: transparent; border: 0; padding: 10px; font-family: 'Bitter', serif; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; color: var(--ink-soft); }
+    .freq button.active { background: var(--ink); color: var(--paper); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 12px; border: 0; padding: 0; }
+    .grid input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+    .grid label { display: block; cursor: pointer; }
+    .grid .chip { padding: 14px 6px; border: 2px solid var(--ink); background: var(--paper); text-align: center; font-family: 'Bitter', serif; font-weight: 700; font-size: 1.1rem; font-variant-numeric: tabular-nums lining-nums; transition: transform 0.1s; }
+    .grid .chip:hover { transform: rotate(-1deg); }
+    .grid input[type="radio"]:checked + .chip { background: var(--brand-primary); color: var(--paper); transform: rotate(-2deg); }
+    .grid input[type="radio"]:focus-visible + .chip { outline: 2px dashed var(--brand-secondary); outline-offset: 2px; }
+    .write { width: 100%; padding: 12px 14px; border: 2px solid var(--ink); background: var(--paper); font-family: 'Bitter', serif; font-weight: 700; font-size: 1rem; margin: 0 0 16px; font-variant-numeric: tabular-nums; }
+    .donor { display: grid; gap: 8px; margin: 0 0 16px; }
+    .donor input { padding: 10px 12px; border: 1px solid var(--ink); background: var(--paper); font-family: inherit; font-size: 14px; }
+    .donor .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .cta { width: 100%; padding: 14px; border: 3px solid var(--ink); background: var(--brand-primary); color: var(--paper); font-family: 'Bitter', serif; font-weight: 700; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+    .cta:hover { background: var(--brand-secondary); }
+    .reassure { font-size: 11px; color: var(--ink-soft); margin: 12px 0 0; text-align: center; font-style: italic; }
+
+    footer { max-width: 1080px; margin: 32px auto 0; padding: 24px 32px; border-top: 2px dashed var(--rule); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; font-family: 'Bitter', serif; font-size: 12px; color: var(--ink-soft); }
+    footer a { color: var(--brand-primary); }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#donate">Skip to donation form</a>
+  <header class="topbar">
+    <span class="stamp" lang="fr">★ Musée Carnavalet · Les Amis du Musée</span>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="?lang=en" aria-current="page" lang="en">EN</a> · <a href="?lang=fr" hreflang="fr" lang="fr">FR</a>
+    </nav>
+  </header>
+  <main>
+    <article>
+      <section class="hero">
+        <span class="duotone-tile" aria-hidden="true">M</span>
+        <p class="eyebrow">Spring drive · Issue no. 47</p>
+        <h1>Restore the 1789 fan collection. Eighty-two pieces, every one fading.</h1>
+        <p class="lede">Eighty-two illustrated fans from the Revolution. Each needs paper conservation, pigment stabilisation, archival housing. €240 per fan. Six conservators, eighteen months. Your name in the printed catalogue, if you'd like.</p>
+      </section>
+      <div class="progress">
+        <p class="progress-amount">€11&#8239;520</p>
+        <div class="progress-bar" role="progressbar" aria-valuenow="58" aria-valuemin="0" aria-valuemax="100" aria-valuetext="58 percent funded — 48 fans of 82 funded">
+          <span style="width: 58%;"></span>
+        </div>
+        <p class="progress-meta">48 of 82 fans</p>
+      </div>
+    </article>
+    <aside class="form" id="donate" aria-labelledby="donate-heading">
+      <span class="ticket">Cut along the dashed line</span>
+      <h2 id="donate-heading">Sponsor a fan</h2>
+      <div class="freq" role="group" aria-label="Frequency"><button class="active" type="button" aria-pressed="true" aria-label="One-time donations">One-time</button><button type="button" aria-pressed="false" aria-label="Annual donations">Annual</button></div>
+      <fieldset class="grid">
+        <legend style="position:absolute;left:-9999px;">Suggested amounts</legend>
+        <label><input type="radio" name="amount" value="60"><span class="chip">€60</span></label>
+        <label><input type="radio" name="amount" value="120"><span class="chip">€120</span></label>
+        <label><input type="radio" name="amount" value="240" checked><span class="chip">€240</span></label>
+        <label><input type="radio" name="amount" value="500"><span class="chip">€500</span></label>
+        <label><input type="radio" name="amount" value="1000"><span class="chip">€1&#8239;k</span></label>
+        <label><input type="radio" name="amount" value="2400"><span class="chip">€2.4k</span></label>
+      </fieldset>
+      <input class="write" type="number" min="1" placeholder="Or other" aria-label="Custom amount in euros">
+      <div class="donor">
+        <input type="email" placeholder="Email" aria-label="Email" autocomplete="email">
+        <div class="row">
+          <input type="text" placeholder="First name" aria-label="First name" autocomplete="given-name">
+          <input type="text" placeholder="Last name" aria-label="Last name" autocomplete="family-name">
+        </div>
+      </div>
+      <button class="cta" type="submit">★ Sponsor 1 fan · €240</button>
+      <p class="reassure">Stripe · Catalogue mailed in autumn 2026</p>
+    </aside>
+  </main>
+  <footer>
+    <span lang="fr">Les Amis du Musée Carnavalet · 1901 · SIRET 432 117 080</span>
+    <span>Stamped by <a href="#">Givernance</a> · EU · GDPR</span>
+  </footer>
+</body>
+</html>

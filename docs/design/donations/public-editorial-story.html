@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public donation page — Editorial Story archetype · Givernance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /*
+     * EDITORIAL STORY archetype (Epic #362).
+     *
+     * Voice: long-form photo essay, beneficiary-driven, magazine
+     * feature. Spectral display + Inter body. The donation form
+     * reveals AFTER the story — layout = "scroll-reveal" per the
+     * Slot Inventory table in ADR-030.
+     *
+     * Donor-side photography degrades to a CSS-art treatment when
+     * no hero image is configured (operator hasn't uploaded one yet);
+     * never breaks the layout.
+     */
+    :root {
+      --brand-primary: #1f4734;
+      --brand-primary-deep: #0e2820;
+      --brand-on-primary: #f8f5ee;
+      --ink: #181613;
+      --ink-soft: #5a574f;
+      --paper: #fbf8f1;
+      --rule: #e5dfd0;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    :focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; border-radius: 2px; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+    }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Inter', sans-serif; font-variant-numeric: tabular-nums lining-nums; line-height: 1.55; }
+    .skip-link { position: absolute; left: -9999px; }
+    .skip-link:focus { left: 16px; top: 16px; background: var(--ink); color: var(--paper); padding: 12px 16px; z-index: 100; }
+
+    .topbar { max-width: 880px; margin: 0 auto; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+    .masthead { font-family: 'Spectral', serif; font-style: italic; color: var(--ink-soft); }
+    .lang-switch a { color: var(--ink-soft); text-decoration: none; padding: 0 6px; }
+    .lang-switch a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+
+    article { max-width: 760px; margin: 0 auto; padding: 32px; }
+    .hero-photo { width: 100%; height: 480px; background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.4) 100%), linear-gradient(135deg, #6b8a78, #2d4b3e); position: relative; margin-bottom: 32px; }
+    @media (max-width: 720px) { .hero-photo { height: 360px; } }
+    .hero-photo::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px); background-size: 4px 4px; opacity: 0.5; }
+    .photo-caption { font-family: 'Spectral', serif; font-style: italic; font-size: 12px; color: var(--ink-soft); margin: -20px 0 32px; letter-spacing: 0.02em; }
+
+    .eyebrow { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; color: var(--brand-primary); margin: 0 0 12px; }
+    .title { font-family: 'Spectral', serif; font-weight: 400; font-size: clamp(2.2rem, 5vw, 3.6rem); line-height: 1.1; letter-spacing: -0.015em; margin: 0 0 16px; max-width: 22ch; }
+    .byline { font-family: 'Spectral', serif; font-style: italic; color: var(--ink-soft); font-size: 0.95rem; margin: 0 0 32px; }
+
+    .lede { font-family: 'Spectral', serif; font-size: 1.25rem; line-height: 1.55; color: var(--ink); margin: 0 0 24px; }
+    .lede::first-letter { font-family: 'Spectral', serif; font-weight: 500; font-size: 4rem; float: left; line-height: 0.92; margin: 4px 8px -4px 0; color: var(--brand-primary); }
+
+    .body p { font-size: 1.05rem; line-height: 1.7; margin: 0 0 18px; max-width: 65ch; }
+    .body p.aside { background: var(--brand-on-primary); border-left: 3px solid var(--brand-primary); padding: 14px 20px; font-family: 'Spectral', serif; font-style: italic; color: var(--ink-soft); }
+
+    .progress { margin: 40px 0; padding: 24px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); display: flex; justify-content: space-between; align-items: baseline; gap: 24px; flex-wrap: wrap; }
+    .progress-label { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); margin: 0; }
+    .progress-amount { font-family: 'Spectral', serif; font-size: 1.8rem; margin: 6px 0 0; font-variant-numeric: tabular-nums lining-nums; }
+    .progress-bar { flex: 1; min-width: 200px; height: 4px; background: var(--rule); position: relative; }
+    .progress-bar > span { display: block; height: 100%; background: var(--brand-primary); }
+
+    /* Donate form — reveals after the story */
+    .form { margin: 56px auto 0; padding: 32px; background: var(--brand-on-primary); border: 1px solid var(--rule); max-width: 560px; }
+    .form h2 { font-family: 'Spectral', serif; font-weight: 500; font-size: 1.75rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+    .form .subhead { color: var(--ink-soft); margin: 0 0 24px; font-style: italic; font-family: 'Spectral', serif; }
+    .freq { display: grid; grid-template-columns: 1fr 1fr; background: var(--paper); margin-bottom: 20px; border: 1px solid var(--rule); }
+    .freq button { background: transparent; border: 0; padding: 12px; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--ink-soft); }
+    .freq button.active { background: var(--ink); color: var(--paper); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; border: 0; padding: 0; }
+    .grid input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+    .grid label { display: block; cursor: pointer; }
+    .grid .chip { padding: 14px 8px; border: 1px solid var(--rule); background: var(--paper); text-align: center; font-family: 'Spectral', serif; font-size: 1.1rem; transition: border-color 0.15s; font-variant-numeric: tabular-nums lining-nums; }
+    .grid input[type="radio"]:checked + .chip { border-color: var(--brand-primary); background: var(--brand-on-primary); color: var(--brand-primary); }
+    .grid input[type="radio"]:focus-visible + .chip { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+    .write { width: 100%; padding: 12px 14px; border: 1px solid var(--rule); background: var(--paper); font-family: 'Spectral', serif; font-size: 1rem; margin-bottom: 16px; font-variant-numeric: tabular-nums; }
+    .donor { display: grid; gap: 10px; margin-bottom: 16px; }
+    .donor input { padding: 12px 14px; border: 1px solid var(--rule); background: var(--paper); font-family: 'Inter', sans-serif; font-size: 14px; }
+    .donor .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .cta { width: 100%; padding: 16px; border: 0; background: var(--brand-primary); color: var(--brand-on-primary); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 15px; cursor: pointer; letter-spacing: 0.01em; }
+    .cta:hover { background: var(--brand-primary-deep); }
+    .reassure { font-size: 12px; color: var(--ink-soft); margin: 12px 0 0; text-align: center; font-style: italic; font-family: 'Spectral', serif; }
+
+    footer { max-width: 760px; margin: 64px auto 0; padding: 32px; border-top: 1px solid var(--rule); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; font-size: 11px; color: var(--ink-soft); font-style: italic; font-family: 'Spectral', serif; }
+    footer a { color: var(--ink); font-style: normal; text-decoration: underline; font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#donate">Skip to donation form</a>
+  <header class="topbar">
+    <span class="masthead">No. 17 · Spring 2026 dossier</span>
+    <nav class="lang-switch" aria-label="Language">
+      <a href="?lang=en" aria-current="page" lang="en">EN</a> · <a href="?lang=fr" hreflang="fr" lang="fr">FR</a>
+    </nav>
+  </header>
+  <article>
+    <div class="hero-photo" role="img" aria-label="A field clinic in the Sahel — beneficiary photography placeholder"></div>
+    <p class="photo-caption">A field clinic at dawn, Niger · Photo by <span lang="fr">Médecins Sans Frontières</span>, March 2026</p>
+    <p class="eyebrow">Field dispatch</p>
+    <h1 class="title">The clinic that runs on €8 / hour, and the donors who keep it open.</h1>
+    <p class="byline">A dispatch from <span lang="fr">Médecins Sans Frontières</span>, written by Camille Larroque · 9 min read</p>
+    <p class="lede">Every morning before the heat sets in, Aïssata walks two hours to reach the clinic. By the time she arrives, twenty-three people are already waiting. The clinic runs nine hours a day, six days a week, on €432 — roughly the cost of a domestic flight for two.</p>
+    <div class="body">
+      <p>This is not a story about scarcity. It is a story about what costs nothing to imagine and €432 a day to keep alive. The clinic was opened in 2018 after a measles outbreak swept the eastern Sahel; its operating budget has been donor-funded ever since, because the regional health authority cannot stretch its allocation that far.</p>
+      <p>In 2025 the clinic treated 14 200 patients. In 2026 it will need to treat 19 000. The donor base that funds it shrank by 11 % last winter.</p>
+      <p class="aside">"We have stopped asking for emergency funds. What we ask for is presence — a small, recurring gift that lets us plan the next year." — Dr. Mariem D., field coordinator</p>
+      <p>That recurring presence is what funds the difference between fourteen and nineteen thousand patients. It is what lets the clinic order vaccines in February instead of August. It is what keeps Aïssata's grandson alive next month.</p>
+    </div>
+    <div class="progress" aria-label="Campaign progress">
+      <div>
+        <p class="progress-label">Raised toward 2026 operating costs</p>
+        <p class="progress-amount">€87&#8239;420 <span style="font-size:0.95rem;color:var(--ink-soft);">of €157&#8239;680 goal</span></p>
+      </div>
+      <div class="progress-bar" role="progressbar" aria-valuenow="55" aria-valuemin="0" aria-valuemax="100" aria-valuetext="55 percent funded">
+        <span style="width: 55%;"></span>
+      </div>
+    </div>
+    <section class="form" id="donate" aria-labelledby="donate-heading">
+      <h2 id="donate-heading">Give Aïssata's clinic a year.</h2>
+      <p class="subhead">A monthly gift opens the door. A one-time gift keeps it open today.</p>
+      <div class="freq" role="group" aria-label="Donation frequency"><button class="active" type="button" aria-pressed="true" aria-label="Monthly donations">Monthly</button><button type="button" aria-pressed="false" aria-label="One-time donations">One-time</button></div>
+      <fieldset class="grid">
+        <legend style="position:absolute;left:-9999px;">Monthly amount</legend>
+        <label><input type="radio" name="amount" value="8"><span class="chip">€8</span></label>
+        <label><input type="radio" name="amount" value="18" checked><span class="chip">€18</span></label>
+        <label><input type="radio" name="amount" value="35"><span class="chip">€35</span></label>
+        <label><input type="radio" name="amount" value="75"><span class="chip">€75</span></label>
+        <label><input type="radio" name="amount" value="150"><span class="chip">€150</span></label>
+        <label><input type="radio" name="amount" value="300"><span class="chip">€300</span></label>
+      </fieldset>
+      <input class="write" type="number" min="1" placeholder="Or write your own amount" aria-label="Custom monthly amount">
+      <div class="donor">
+        <input type="email" placeholder="Email" aria-label="Email" autocomplete="email">
+        <div class="row">
+          <input type="text" placeholder="First name" aria-label="First name" autocomplete="given-name">
+          <input type="text" placeholder="Last name" aria-label="Last name" autocomplete="family-name">
+        </div>
+      </div>
+      <button class="cta" type="submit">Give €18 monthly</button>
+      <p class="reassure">Stripe-secured · cancel any time · 100 % to the clinic</p>
+    </section>
+  </article>
+  <footer>
+    <span><span lang="fr">Médecins Sans Frontières</span> — Section française · SIRET 775 695 086</span>
+    <span>Powered by <a href="#">Givernance</a> · GDPR · EU-hosted</span>
+  </footer>
+</body>
+</html>

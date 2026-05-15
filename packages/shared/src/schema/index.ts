@@ -40,6 +40,20 @@ export type CampaignStatus = (typeof CAMPAIGN_STATUS_VALUES)[number];
 
 export const campaignStatusEnum = pgEnum("campaign_status", [...CAMPAIGN_STATUS_VALUES]);
 
+/**
+ * Public donation page visual archetypes (Epic #362, migration 0054).
+ *
+ * Re-exported from the operator-facing source of truth in
+ * `@givernance/shared/constants` (`PUBLIC_PAGE_STYLE_KEYS`). Keep the
+ * two in lockstep — adding an archetype is a one-place change in the
+ * constants file; this schema and the migration mirror it. The
+ * integration parity test in
+ * `packages/api/src/tests/integration/public-page-styles.test.ts`
+ * fails CI on drift.
+ */
+import { PUBLIC_PAGE_STYLE_KEYS } from "../constants/public-page-styles";
+export const publicPageStyleEnum = pgEnum("public_page_style", [...PUBLIC_PAGE_STYLE_KEYS]);
+
 export const campaignDocumentStatusEnum = pgEnum("campaign_document_status", [
   "pending",
   "generated",
@@ -194,6 +208,24 @@ export const tenants = pgTable(
      * UI surfaces fall back to the Givernance default + org name.
      */
     logoAssetId: uuid("logo_asset_id"),
+    /**
+     * Default public donation page archetype for this org (Epic #362).
+     * NULL = "inherit the hardcoded platform default (`foundation`)".
+     * `org_admin` writes this from /settings; the campaign editor
+     * inherits from it on first publish unless the campaign owner
+     * explicitly overrides via `campaigns.public_page_style`. The
+     * three-layer resolution at read time is:
+     *
+     *   campaigns.public_page_style       (per-campaign override)
+     *   ?? tenants.default_public_page_style (org-level default)
+     *   ?? "foundation"                     (platform default)
+     *
+     * The donor-facing API only returns a non-null value when the
+     * `donation.public_page_styles` flag is on for this tenant; with
+     * the flag off, the shell falls back to today's hardcoded layout
+     * regardless of what's stored here.
+     */
+    defaultPublicPageStyle: publicPageStyleEnum("default_public_page_style"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1011,6 +1043,16 @@ export const campaigns = pgTable(
      * `bankAccountId IS NULL`.
      */
     qrReferenceMode: campaignQrReferenceModeEnum("qr_reference_mode").notNull().default("auto"),
+    /**
+     * Per-campaign override of the public-page archetype (Epic #362).
+     * NULL = "inherit `tenants.default_public_page_style`, falling
+     * back to ''foundation'' if that's also NULL." Donor-facing API
+     * only emits this through to the public response when the
+     * `donation.public_page_styles` feature flag is on for the
+     * owning tenant; with the flag off, the field is omitted and
+     * the donor page falls back to today's hardcoded layout.
+     */
+    publicPageStyle: publicPageStyleEnum("public_page_style"),
     operationalCostCents: bigint("operational_cost_cents", { mode: "number" }),
     platformFeesCents: bigint("platform_fees_cents", { mode: "number" }).notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
