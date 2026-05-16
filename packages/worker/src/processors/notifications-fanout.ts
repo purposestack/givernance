@@ -17,23 +17,33 @@
  * the same outbox event may fan out to multiple recipients (every
  * org_admin of the tenant), and the producer doesn't have that list.
  *
- * Per-user opt-out is enforced at WRITE time: if a user has a
- * `notification_preferences` row with `in_app=false` for the type,
- * we skip the INSERT. Users without a row inherit the per-type
- * default from `NOTIFICATION_TYPE_REGISTRY`. Either way we never
- * write a row the user explicitly opted out of.
+ * Per-user opt-out semantics — **WRITE-time suppression**. A user
+ * with `notification_preferences.in_app = false` for the type does
+ * NOT receive a notification row. Re-enabling the channel later
+ * affects FUTURE events only — historical alerts the user opted out
+ * of are gone. Reviewed by the Worker SRE agent (PR #393 CRIT-2 fix);
+ * the schema doc is kept in sync with this contract.
+ *
+ * Idempotency — every row carries `outbox_event_id` and the table has
+ * a UNIQUE (outbox_event_id, user_id, type) constraint. An outbox
+ * redelivery (relay retry, worker crash mid-fanout) hits
+ * `ON CONFLICT DO NOTHING` and silently no-ops rather than producing
+ * a duplicate row per recipient.
  *
  * Feature-flag-first: every call gates on
  * `communication.notifications_center` per `feedback_feature_flag_first`.
  * Defence in depth — even if a request slipped past the API gate the
  * worker is the second wall.
  *
+ * Critical-path budget — the fanout runs inside the existing
+ * `processDomainEvent` switch, ahead of receipt-PDF and postal-export
+ * routing. We wrap the work in a 2 s `Promise.race` budget so a slow
+ * PG doesn't propagate latency to those downstream side-effects.
+ *
  * Soft errors only — a fanout failure is logged but never thrown back
  * up. The existing routing decision (donation → receipt, branding →
  * activate, etc.) is the hard contract; notifications are best-effort
- * UX. A future Phase will move fanout to a dedicated queue with retry,
- * but until then we'd rather lose a notification row than fail to
- * generate a receipt PDF on the same event.
+ * UX. A future Phase moves fanout to a dedicated retry-bearing queue.
  */
 
 import {
@@ -48,7 +58,7 @@ import {
   notifications,
   users,
 } from "@givernance/shared/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
 import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
@@ -187,15 +197,29 @@ export function planFanout(input: FanoutInput): FanoutPlanEntry[] {
  * returns instead so the caller's existing routing decision is not
  * blocked.
  */
+/**
+ * Critical-path budget for the fanout work (ms). The fanout runs
+ * inline ahead of receipt-PDF + postal-export routing in
+ * `processDomainEvent`; a slow PG must not propagate latency to
+ * those downstream side-effects. Reviewed by Worker SRE (HIGH-1).
+ */
+const FANOUT_TIMEOUT_MS = 2_000;
+
 export async function fanoutNotifications(input: FanoutInput): Promise<void> {
   const log = jobLogger({ tenantId: input.tenantId, jobId: input.outboxId });
 
   // Feature-flag-first per `feedback_feature_flag_first`. Cheap query,
   // run before any tenant-scoped DB work so the cost of a flagged-off
-  // tenant is minimised.
+  // tenant is minimised. `isFlagEnabled` reads the platform default —
+  // correct today because the flag has `tenant_override_allowed=false`.
+  // When tenant overrides land, swap to the tenant-aware evaluator
+  // (PR #393 Security M3 follow-up).
   const enabled = await isFlagEnabled(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER);
   if (!enabled) {
-    log.debug({ eventType: input.type }, "Notifications flag off — skipping fanout");
+    log.info(
+      { event: "notifications.fanout_skipped_flag_off", eventType: input.type },
+      "Notifications flag off — skipping fanout",
+    );
     return;
   }
 
@@ -205,32 +229,17 @@ export async function fanoutNotifications(input: FanoutInput): Promise<void> {
   }
 
   try {
-    await withWorkerContext(input.tenantId, async (tx) => {
-      for (const entry of plan) {
-        const recipientUserIds = await resolveRecipients(tx, entry.recipients);
-        if (recipientUserIds.length === 0) continue;
+    await Promise.race([
+      runFanoutPlan(input, plan),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Fanout timeout after ${FANOUT_TIMEOUT_MS} ms`)),
+          FANOUT_TIMEOUT_MS,
+        ),
+      ),
+    ]);
 
-        // Honour per-user preferences. Users with `in_app=false` for
-        // this type are silently dropped at write time so the worker
-        // doesn't pile rows onto a user who opted out of the channel.
-        const enabledRecipients = await filterByPreferences(tx, recipientUserIds, entry.type);
-        if (enabledRecipients.length === 0) continue;
-
-        const rows: NewNotification[] = enabledRecipients.map((userId) => ({
-          orgId: input.tenantId,
-          userId,
-          type: entry.type,
-          titleKey: entry.titleKey,
-          bodyKey: entry.bodyKey,
-          params: entry.params,
-          linkUrl: entry.linkUrl,
-        }));
-
-        await tx.insert(notifications).values(rows);
-      }
-    });
-
-    log.info({ eventType: input.type, planSize: plan.length }, "Notification fanout completed");
+    log.debug({ eventType: input.type, planSize: plan.length }, "Notification fanout completed");
   } catch (err) {
     // Soft-fail — see file header. Notifications are UX, not contract.
     log.error(
@@ -238,6 +247,37 @@ export async function fanoutNotifications(input: FanoutInput): Promise<void> {
       "Notification fanout failed — continuing with existing routing",
     );
   }
+}
+
+async function runFanoutPlan(input: FanoutInput, plan: FanoutPlanEntry[]): Promise<void> {
+  await withWorkerContext(input.tenantId, async (tx) => {
+    for (const entry of plan) {
+      const recipientUserIds = await resolveRecipients(tx, entry.recipients);
+      if (recipientUserIds.length === 0) continue;
+
+      // Honour per-user preferences. Users with `in_app=false` for
+      // this type are silently dropped at write time so the worker
+      // doesn't pile rows onto a user who opted out of the channel.
+      const enabledRecipients = await filterByPreferences(tx, recipientUserIds, entry.type);
+      if (enabledRecipients.length === 0) continue;
+
+      const rows: NewNotification[] = enabledRecipients.map((userId) => ({
+        orgId: input.tenantId,
+        outboxEventId: input.outboxId,
+        userId,
+        type: entry.type,
+        titleKey: entry.titleKey,
+        bodyKey: entry.bodyKey,
+        params: entry.params,
+        linkUrl: entry.linkUrl,
+      }));
+
+      // `ON CONFLICT DO NOTHING` — the natural unique key
+      // (outbox_event_id, user_id, type) catches outbox redeliveries
+      // so a retry doesn't produce a second row per recipient.
+      await tx.insert(notifications).values(rows).onConflictDoNothing();
+    }
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -272,12 +312,20 @@ async function filterByPreferences(
   type: NotificationType,
 ): Promise<string[]> {
   if (userIds.length === 0) return [];
-  // Pull every preference row for these users + this type. A missing
-  // row falls back to the per-type default in the registry.
+  // Pull preference rows for the (recipient set, type) pair only.
+  // Earlier revisions scanned every preference row for the type
+  // (scaling with tenant headcount); Data review H2 flagged the
+  // scope mismatch. The new `inArray(userId, userIds)` clause hits
+  // `notification_preferences_user_idx` directly.
   const rows = await tx
     .select({ userId: notificationPreferences.userId, inApp: notificationPreferences.inApp })
     .from(notificationPreferences)
-    .where(eq(notificationPreferences.type, type));
+    .where(
+      and(
+        eq(notificationPreferences.type, type),
+        inArray(notificationPreferences.userId, userIds),
+      ),
+    );
 
   const defaultInApp = getNotificationDescriptor(type).defaultInApp;
   const explicit = new Map<string, boolean>();

@@ -85,6 +85,17 @@ CREATE TABLE IF NOT EXISTS notifications (
   id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   -- Tenant boundary — RLS policy keys on this column.
   org_id       UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  -- Originating outbox event id. Natural idempotency key — the
+  -- (outbox_event_id, user_id, type) unique constraint below means
+  -- an outbox redelivery (relay retry, worker crash mid-fanout) does
+  -- NOT produce a second row for the same recipient. The fanout
+  -- worker passes the event id from BullMQ's job.data; same defence
+  -- pattern as bulk-email's `bulk-email-${outboxId}` jobId
+  -- (`packages/worker/src/worker.ts:198`). FK omitted by design — the
+  -- outbox row is `completed` once relayed and may be GC'd by a
+  -- future retention sweep, but the notification's audit trail keys
+  -- on the id string itself.
+  outbox_event_id UUID      NOT NULL,
   -- Recipient. SET NULL on user purge so a GDPR-erased account doesn't
   -- FK-block historical notifications. The orphaned rows are then
   -- garbage-collected by the universal soft-delete sweep (out of scope
@@ -122,8 +133,26 @@ CREATE TABLE IF NOT EXISTS notifications (
 
   CONSTRAINT notifications_type_chk
     CHECK (type ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'),
+  -- `link_url` must be a relative path. The `LIKE '/%'` part rejects
+  -- absolute URLs (`https://evil…`) but a single-slash CHECK alone
+  -- accepts `//evil.example/path` — browsers resolve protocol-
+  -- relative URLs against the page's scheme, so `${APP_URL}//evil…`
+  -- would navigate to the attacker's host. Tighten with
+  -- `NOT LIKE '//%' AND NOT LIKE '/\\%'` so neither protocol-relative
+  -- nor Windows-style alternate roots can slip through. Reviewed by
+  -- the Security + Data architect agents (PR #393 cross-confirmed).
   CONSTRAINT notifications_link_url_chk
-    CHECK (link_url IS NULL OR link_url LIKE '/%')
+    CHECK (
+      link_url IS NULL
+      OR (
+        link_url LIKE '/%'
+        AND link_url NOT LIKE '//%'
+        AND link_url NOT LIKE '/\%' ESCAPE '\'
+      )
+    ),
+  -- Natural idempotency key — see `outbox_event_id` column comment.
+  CONSTRAINT notifications_outbox_recipient_type_unique
+    UNIQUE (outbox_event_id, user_id, type)
 );
 
 -- Per-user, time-ordered listing (panel + email digest).
@@ -132,10 +161,14 @@ CREATE INDEX IF NOT EXISTS notifications_user_created_idx
   WHERE deleted_at IS NULL;
 
 -- Bell-badge unread-count query — narrow partial index so the count
--- doesn't scan archived/read rows on a noisy tenant.
+-- doesn't scan archived/read rows on a noisy tenant. Predicate
+-- mirrors `getUnreadCount` in `notifications/service.ts` exactly
+-- (`read_at IS NULL AND deleted_at IS NULL AND archived_at IS NULL`)
+-- so the planner can use an index-only scan rather than residual-
+-- filtering archived rows out at heap time.
 CREATE INDEX IF NOT EXISTS notifications_user_unread_idx
   ON notifications (user_id)
-  WHERE read_at IS NULL AND deleted_at IS NULL;
+  WHERE read_at IS NULL AND deleted_at IS NULL AND archived_at IS NULL;
 
 -- Tenant-level admin / debug queries (Back Office "view all rows for
 -- tenant X"). Filters by org_id then orders by created_at.
