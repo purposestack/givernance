@@ -1,3 +1,4 @@
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { cache } from "react";
 import { AppShell } from "@/components/layout";
 import { Toaster } from "@/components/ui/toast";
@@ -6,6 +7,7 @@ import { createServerApiClient } from "@/lib/api/client-server";
 import { AuthProvider } from "@/lib/auth";
 import { requireAuth } from "@/lib/auth/guards";
 import type { OrgLogo } from "@/models/branding";
+import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 /**
  * Authenticated app layout — wraps all protected routes with:
@@ -76,16 +78,38 @@ const fetchOrgLogo = cache(async (orgId: string | undefined): Promise<OrgLogo | 
   }
 });
 
+/**
+ * Resolve the tenant-public feature-flag projection server-side so the
+ * topbar can render the notifications bell (Epic #363) on first paint
+ * without a hydration flash. Soft-fails to an empty list — every
+ * downstream `isFlagEnabled` call falls back to `false` (doc 18 §5)
+ * which is the safe default for a brand-new feature.
+ */
+const fetchPublicFlags = cache(async () => {
+  try {
+    const api = await createServerApiClient();
+    return await FeatureFlagsService.listPublic(api);
+  } catch {
+    return [];
+  }
+});
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const auth = await requireAuth();
   const isSuperAdmin = auth.roles.includes("super_admin");
 
   const userName = auth.firstName ? `${auth.firstName} ${auth.lastName ?? ""}`.trim() : auth.email;
 
-  const [{ me, membershipCount }, orgLogo] = await Promise.all([
+  const [{ me, membershipCount }, orgLogo, publicFlags] = await Promise.all([
     fetchMeWithMembership(),
     fetchOrgLogo(auth.orgId),
+    fetchPublicFlags(),
   ]);
+
+  const notificationsEnabled = isFlagEnabled(
+    publicFlags,
+    FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER,
+  );
 
   // Broken state: a non-super-admin reached the authenticated layout but
   // we couldn't resolve their tenant memberships. Two failure modes:
@@ -132,6 +156,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         orgId={auth.orgId}
         canManageBranding={auth.roles.includes("org_admin")}
         orgLogo={orgLogo}
+        notificationsEnabled={notificationsEnabled}
       >
         {children}
       </AppShell>

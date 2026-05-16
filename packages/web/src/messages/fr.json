@@ -2533,5 +2533,87 @@
     "densityLabel": "Densité des lignes",
     "densityComfortable": "Lignes confortables",
     "densityCompact": "Lignes compactes"
+  },
+  "notifications": {
+    "bell": {
+      "trigger": "Ouvrir les notifications",
+      "triggerWithUnread": "Ouvrir les notifications ({count} non lues)"
+    },
+    "panel": {
+      "ariaLabel": "Panneau de notifications",
+      "title": "Notifications",
+      "close": "Fermer les notifications",
+      "dismissBackdrop": "Fermer le panneau de notifications",
+      "markAllRead": "Tout marquer comme lu",
+      "filtersLabel": "Filtrer les notifications par catégorie",
+      "filters": {
+        "all": "Toutes",
+        "donation": "Dons",
+        "team": "Équipe",
+        "system": "Système"
+      },
+      "emptyTitle": "Rien de nouveau",
+      "emptyBody": "Vous n'avez aucune nouvelle notification. Toute activité apparaîtra ici automatiquement.",
+      "open": "Ouvrir",
+      "markRead": "Marquer comme lu",
+      "delete": "Ignorer",
+      "loading": "Chargement…",
+      "loadMore": "Charger plus",
+      "preferences": "Préférences de notification",
+      "liveOn": "Notifications en direct actives",
+      "liveOff": "Notifications en direct en pause — repli sur le sondage périodique",
+      "unreadDot": "Non lue"
+    },
+    "preferencesPage": {
+      "title": "Préférences de notification",
+      "subtitle": "Choisissez quelles alertes apparaissent dans la cloche et lesquelles arrivent dans votre résumé quotidien par email.",
+      "breadcrumbRoot": "Tableau de bord",
+      "breadcrumbProfile": "Profil",
+      "sectionTitle": "Types de notification",
+      "sectionSubtitle": "Chaque ligne est enregistrée dès que vous la modifiez.",
+      "inApp": "Dans l'application",
+      "inAppHint": "Afficher dans la cloche et le panneau de notifications",
+      "emailDigest": "Résumé par email",
+      "emailDigestHint": "Inclure dans le résumé quotidien envoyé à 09 h 00 UTC",
+      "defaultBadge": "Par défaut"
+    },
+    "types": {
+      "donation_received": {
+        "label": "Don reçu",
+        "description": "Me prévenir quand un donateur finalise un don.",
+        "title": "Nouveau don reçu",
+        "body": "Un donateur vient d'effectuer un versement."
+      },
+      "invitation_created": {
+        "label": "Invitation d'équipe envoyée",
+        "description": "Me prévenir quand un admin invite une nouvelle personne.",
+        "title": "Invitation d'équipe envoyée",
+        "body": "Une nouvelle invitation d'équipe a été émise."
+      },
+      "invitation_resent": {
+        "label": "Invitation d'équipe renvoyée",
+        "description": "Me prévenir quand un admin renvoie une invitation.",
+        "title": "Invitation d'équipe renvoyée",
+        "body": "Une invitation d'équipe a été renvoyée."
+      },
+      "branding_logo_synced": {
+        "label": "Logo de l'organisation mis à jour",
+        "description": "Me prévenir quand un nouveau logo est activé.",
+        "title": "Logo de l'organisation mis à jour",
+        "body": "Votre logo d'organisation a été mis à jour et est désormais visible des donateurs."
+      },
+      "postal_export_queued": {
+        "label": "Export postal prêt",
+        "description": "Me prévenir quand un export de mailing postal se termine.",
+        "title": "Export postal mis en file d'attente",
+        "body": "Votre export de mailing postal est en préparation et sera bientôt disponible."
+      },
+      "bulk_email_queued": {
+        "label": "Envoi groupé démarré",
+        "description": "Me prévenir quand un envoi groupé d'emails démarre.",
+        "title": "Envoi groupé d'emails en file d'attente",
+        "body": "Votre envoi groupé d'emails a commencé à être distribué aux destinataires."
+      }
+    }
   }
 }

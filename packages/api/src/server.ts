@@ -28,6 +28,7 @@ import { donationRoutes } from "./modules/donations/routes.js";
 import { fundRoutes } from "./modules/funds/routes.js";
 import { healthRoutes } from "./modules/health/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
+import { notificationRoutes } from "./modules/notifications/routes.js";
 import { paymentRoutes, stripeWebhookRoute } from "./modules/payments/routes.js";
 import { pledgeRoutes } from "./modules/pledges/routes.js";
 import { publicDonationRoutes } from "./modules/public/routes.js";
@@ -188,6 +189,7 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(tenantRoutes, { prefix: "/v1" });
   await app.register(userRoutes, { prefix: "/v1" });
   await app.register(invitationRoutes, { prefix: "/v1" });
+  await app.register(notificationRoutes, { prefix: "/v1" });
   await app.register(auditRoutes, { prefix: "/v1" });
   await app.register(brandingRoutes, { prefix: "/v1" });
   await app.register(donationRoutes, { prefix: "/v1" });

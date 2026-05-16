@@ -36,6 +36,13 @@ interface AppShellProps {
   /** Whether the current user can act on the "Add your logo" CTA (Epic #286). */
   canManageBranding?: boolean;
   /**
+   * Whether the `communication.notifications_center` feature flag is
+   * on for this tenant (Epic #363). Resolved SSR so the bell icon
+   * doesn't flash in/out on hydration. Defaults to `false` — off-state
+   * QA per `feedback_feature_flag_first`.
+   */
+  notificationsEnabled?: boolean;
+  /**
    * Server-resolved org logo (Epic #286 / PR #287 review, major 4).
    * Threaded down to `Sidebar` and `AddLogoBanner` so they don't each
    * re-fetch `/v1/branding/org-logo` on every navigation. `null` means
@@ -69,6 +76,7 @@ export function AppShell({
   orgId,
   canManageBranding = false,
   orgLogo = null,
+  notificationsEnabled = false,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
@@ -110,6 +118,7 @@ export function AppShell({
           onMenuToggle={handleMenuToggle}
           sidebarOpen={sidebarOpen}
           hamburgerRef={hamburgerRef}
+          notificationsEnabled={notificationsEnabled}
         />
 
         <main

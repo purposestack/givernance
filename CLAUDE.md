@@ -57,7 +57,8 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 24-branding-assets.md       — Organisation branding (Epic #286): logo upload, sharp variants, bucket topology, Keycloak sync, PDF embedding
 │   ├── 25-swiss-qr-bill.md         — Swiss QR-bill (BVR) generation + camt.053 reconciliation (Epic #318): bank accounts, per-letter QRR/SCOR, ISO 20022 ingestion
 │   ├── 26-public-page-styles.md    — Public donation page archetype catalogue (Epic #362): 10 archetypes, schema, three-layer resolution, picker UX, easter-egg policy
-│   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary, ADR-027 Swiss QR-bill, ADR-028 camt.053 ingestion, ADR-029 Keycloak session revocation, ADR-030 public-page archetype slots — hybrid shell + slot components per Epic #362)
+│   ├── 27-notifications.md         — In-app notification centre (Epic #363, GLO-004): bell + side panel + per-user preferences + SSE delivery + opt-in email digest + outbox-fanout producer
+│   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary, ADR-027 Swiss QR-bill, ADR-028 camt.053 ingestion, ADR-029 Keycloak session revocation, ADR-030 public-page archetype slots — hybrid shell + slot components per Epic #362, ADR-031 notification delivery + outbox fanout — SSE with polling fallback per Epic #363)
 │   ├── runbooks/                   — Operator-driven one-shot ops (e.g. migrate-staging-keycloak-db.md for issue #283; launch-prod.md for the production-environment launch — issue #344); each file is plan + live journal + post-mortem. Also: bulk-email-stalled-job.md (recurring SRE triage flow for issue #326's Stalled / Partial bulk-email recovery), feature-flag-rollback.md (emergency psql + redis-cli flip when the Back Office page is unavailable), and keycloak-backchannel-logout-cutover.md (per-env override of `backchannel.logout.url` after each realm sync — issue #76)
 │   ├── dev/
 │   │   └── staging-secrets-setup.md — Reference for fork developers + the prod-launch runbook: every GH-Environment secret the deploy needs, how to generate it, how to rotate it (#343)
@@ -74,7 +75,8 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── branding-upload-flow.mmd — Logo upload → process → activate → donor render (companion to docs/24)
 │   ├── swiss-qr-bill-flow.mmd — Swiss QR-bill issuance: operator → donor → bank (companion to docs/25)
 │   ├── camt053-reconciliation-flow.mmd — camt.053 import + match algorithm (companion to docs/25)
-│   └── public-page-styles-flow.mmd — Operator picks archetype → donor sees archetype (Epic #362, companion to docs/26)
+│   ├── public-page-styles-flow.mmd — Operator picks archetype → donor sees archetype (Epic #362, companion to docs/26)
+│   └── notifications-flow.mmd     — Outbox event → worker fanout → SSE delivery → panel + email digest (Epic #363, companion to docs/27)
 └── .claude/agents/        — 12 specialized Claude agents
 ```
 

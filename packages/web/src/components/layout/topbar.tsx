@@ -1,12 +1,13 @@
 "use client";
 
 import { LOCALE_NATIVE_NAMES, type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
-import { Bell, Check, LogOut, Menu, Search, User } from "lucide-react";
+import { Check, LogOut, Menu, Search, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { type RefObject, useCallback, useTransition } from "react";
 
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,12 +28,26 @@ interface TopbarProps {
   onMenuToggle: () => void;
   sidebarOpen: boolean;
   hamburgerRef: RefObject<HTMLButtonElement | null>;
+  /**
+   * Whether the `communication.notifications_center` flag is on for this
+   * tenant (Epic #363). When `false` the bell button is completely
+   * absent — off-state QA per `feedback_feature_flag_first`.
+   * Resolved server-side in `(app)/layout.tsx` so the bell doesn't
+   * flash in then out on hydration.
+   */
+  notificationsEnabled?: boolean;
 }
 
 const avatarTriggerClasses =
   "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary outline-none transition-shadow duration-normal ease-out hover:shadow-[0_0_0_4px_rgba(9,100,71,0.10)] data-[state=open]:shadow-[0_0_0_4px_rgba(9,100,71,0.15)] focus-visible:shadow-ring";
 
-export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: TopbarProps) {
+export function Topbar({
+  title,
+  onMenuToggle,
+  sidebarOpen,
+  hamburgerRef,
+  notificationsEnabled = false,
+}: TopbarProps) {
   const { user, logout } = useAuth();
   const t = useTranslations("appShell.topbar");
   const tMenu = useTranslations("appShell.topbar.accountMenu");
@@ -127,17 +142,12 @@ export function Topbar({ title, onMenuToggle, sidebarOpen, hamburgerRef }: Topba
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          className="relative flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-text focus-visible:outline-none focus-visible:shadow-ring"
-          aria-label={t("notifications")}
-        >
-          <Bell size={18} aria-hidden="true" />
-          <span
-            className="absolute top-2 right-2 h-2 w-2 rounded-full border-2 border-surface-container-lowest bg-tertiary"
-            aria-hidden="true"
-          />
-        </button>
+        {/*
+          NotificationsBell is feature-flag-gated (Epic #363). When the
+          flag is off the button is completely absent — off-state QA per
+          `feedback_feature_flag_first` / docs/18 § 5.
+        */}
+        {notificationsEnabled ? <NotificationsBell /> : null}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

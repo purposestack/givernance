@@ -1,0 +1,69 @@
+---
+title: In-app notification centre — end-to-end flow (Epic #363)
+---
+sequenceDiagram
+  autonumber
+  actor User as Operator / org admin
+  participant API as Fastify API
+  participant DB as Postgres (RLS)
+  participant Relay as Outbox relay
+  participant Worker as BullMQ worker
+  participant Digest as Daily digest job
+  participant SMTP as Email sender
+  participant Bell as Topbar bell
+  participant Panel as Notifications panel
+
+  Note over User,DB: 1. Producer side — same tx as the business mutation
+  User->>API: POST /v1/donations (or invite / postal-export / bulk-email)
+  API->>DB: INSERT donation + INSERT outbox_events (same tx)
+  API-->>User: 201 Created
+
+  Note over Relay,Worker: 2. Outbox → BullMQ enqueue
+  Relay->>DB: SELECT pending outbox_events FOR UPDATE SKIP LOCKED
+  Relay->>Worker: enqueue job (givernance_events queue)
+
+  Note over Worker,DB: 3. Notification fanout — runs alongside existing routing
+  Worker->>Worker: fanoutNotifications(event)
+  Worker->>Worker: isFlagEnabled(communication.notifications_center)?
+  alt flag off
+    Worker-->>Worker: silently skip — log debug
+  else flag on
+    Worker->>DB: SELECT users WHERE org_id = tenant<br/>AND role = 'org_admin' (or specific user)
+    Worker->>DB: SELECT notification_preferences<br/>(skip users with in_app=false)
+    Worker->>DB: INSERT notifications (one row per recipient)
+  end
+  Worker->>Worker: routeDomainEvent → existing receipt / postal / branding job
+
+  Note over Bell,API: 4. Delivery — SSE primary, polling fallback
+  Bell->>API: EventSource GET /v1/notifications/stream<br/>Cookie: session
+  API->>API: requireFlag(...) + requireAuth(...)
+  API-->>Bell: event: ready
+  loop polling generator
+    API->>DB: SELECT FROM notifications WHERE created_at > cursor
+    DB-->>API: new rows (if any)
+    API-->>Bell: event: notification\nid: <ISO>\ndata: <json>
+  end
+  Bell-->>Bell: re-render badge + prepend row in panel
+
+  Note over Bell,API: 5. Polling fallback when SSE errors
+  alt SSE error / EventSource unavailable
+    Bell->>API: GET /v1/notifications/unread-count (every 30s, focused tab only)
+    API-->>Bell: { data: { unread: N } }
+  end
+
+  Note over User,API: 6. User actions on the panel
+  User->>Panel: click row (link)
+  Panel->>API: PATCH /v1/notifications/:id/read
+  API->>DB: UPDATE read_at = NOW() WHERE id = ? AND user_id = ?
+  User->>Panel: click "Mark all read"
+  Panel->>API: POST /v1/notifications/read-all
+  User->>Panel: click "Dismiss"
+  Panel->>API: DELETE /v1/notifications/:id
+  API->>DB: UPDATE deleted_at = NOW() (soft-delete)
+
+  Note over Digest,SMTP: 7. Email digest — daily at 09:00 UTC, opt-in
+  Digest->>Digest: isFlagEnabled(...)? (else exit)
+  loop each tenant
+    Digest->>DB: SELECT unread notifications<br/>WHERE EXISTS preferences.email_digest=TRUE<br/>AND created_at > since
+    Digest->>SMTP: send one batched email per recipient
+  end

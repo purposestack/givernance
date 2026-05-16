@@ -386,6 +386,13 @@
       "when": 1778080000000,
       "tag": "0054_public_page_style_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1778090000000,
+      "tag": "0055_notifications_center",
+      "breakpoints": true
     }
   ]
 }
