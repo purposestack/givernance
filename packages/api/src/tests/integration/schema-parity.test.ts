@@ -238,6 +238,25 @@ describe("Drizzle ↔ SQL schema parity (issue #261)", () => {
               "ADR-021 + issue #326 — non-terminal status, not deleted_at, is the right gate for resume uniqueness",
           },
         ],
+        [
+          // Epic #363 / migration 0055: the (outbox_event_id, user_id,
+          // type) natural key intentionally spans soft-deleted rows.
+          // Semantic: once a user dismisses (soft-deletes) a
+          // notification, a later outbox redelivery must NOT resurrect
+          // a new row for the same recipient — they've explicitly
+          // chosen not to see this event again. Adding `WHERE
+          // deleted_at IS NULL` would turn dismissal into a backdoor
+          // that lets the same event reappear in the panel on every
+          // relay retry.
+          "notifications_outbox_recipient_type_unique",
+          {
+            // Match the column list rather than a predicate — this
+            // index intentionally has NO `WHERE` clause.
+            predicate: "(outbox_event_id, user_id, type)",
+            reason:
+              "Epic #363 — idempotency key spans active + dismissed rows so an outbox redelivery doesn't resurrect a dismissed notification (PR #393 Worker SRE CRIT-1 fix)",
+          },
+        ],
       ]);
 
       const offenders: string[] = [];

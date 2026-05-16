@@ -31,8 +31,8 @@ import {
   Clock,
   ExternalLink,
   FileText,
-  type LucideIcon,
   Image,
+  type LucideIcon,
   Mail,
   UserPlus,
   X,
@@ -164,25 +164,8 @@ export function NotificationsPanel({
         handleClose();
         return;
       }
-      if (event.key !== "Tab") return;
-      const root = panelRef.current;
-      if (!root) return;
-      const focusable = root.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (!first || !last) return;
-      const active = document.activeElement as HTMLElement | null;
-      if (event.shiftKey) {
-        if (active === first || !root.contains(active)) {
-          event.preventDefault();
-          last.focus();
-        }
-      } else if (active === last) {
-        event.preventDefault();
-        first.focus();
+      if (event.key === "Tab" && panelRef.current) {
+        trapTabFocus(event, panelRef.current);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -477,4 +460,30 @@ function formatRelativeTimeShort(iso: string, locale: string): string {
     }
   }
   return iso;
+}
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Focus-trap helper for the dialog Tab handler — cycles focus from
+ * last → first (Tab off the last) and first → last (Shift-Tab off
+ * the first or from outside the panel). Extracted out of the
+ * useEffect callback to keep the latter under biome's cognitive-
+ * complexity ceiling (`feedback_warnings_become_errors`).
+ */
+function trapTabFocus(event: KeyboardEvent, root: HTMLElement): void {
+  const focusable = root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (!first || !last) return;
+  const active = document.activeElement as HTMLElement | null;
+  if (event.shiftKey && (active === first || !root.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }

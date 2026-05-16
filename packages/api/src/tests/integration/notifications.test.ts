@@ -77,21 +77,44 @@ async function seedNotification(opts: {
   type?: string;
   readAt?: Date | null;
   deletedAt?: Date | null;
+  /** Override the `created_at` for cursor-pagination tests. */
+  createdAt?: Date;
 }): Promise<string> {
   // Use owner-pool insert so we can set arbitrary org_id without RLS.
+  // `outbox_event_id` is the natural idempotency key — each seed
+  // gets a unique UUID so the (outbox, user, type) UNIQUE doesn't
+  // collide across test cases.
   const id = crypto.randomUUID();
+  const outboxId = crypto.randomUUID();
+  const createdAt = opts.createdAt ?? new Date();
   await db.execute(sql`
     INSERT INTO notifications
-      (id, org_id, user_id, type, title_key, body_key, params, link_url, read_at, deleted_at)
+      (id, org_id, outbox_event_id, user_id, type, title_key, body_key, params, link_url, read_at, deleted_at, created_at)
     VALUES
-      (${id}, ${opts.orgId}, ${opts.userId}, ${opts.type ?? "donation.received"},
+      (${id}, ${opts.orgId}, ${outboxId}, ${opts.userId}, ${opts.type ?? "donation.received"},
        'notifications.types.donation_received.title',
        'notifications.types.donation_received.body',
        '{"donationId":"00000000-0000-0000-0000-000000000aaa"}'::jsonb,
        '/donations/00000000-0000-0000-0000-000000000aaa',
-       ${opts.readAt ?? null}, ${opts.deletedAt ?? null})
+       ${opts.readAt ?? null}, ${opts.deletedAt ?? null}, ${createdAt})
   `);
   return id;
+}
+
+/**
+ * Seed a second user inside the SAME tenant — required for the
+ * intra-tenant recipient-isolation tests (USER_A1 vs USER_A2 within
+ * ORG_A). Returns the synthetic user id; idempotent across re-runs.
+ */
+const USER_A2 = "00000000-0000-0000-0000-000000000077";
+
+async function seedSecondUserInTenantA(): Promise<string> {
+  await db.execute(sql`
+    INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
+    VALUES (${USER_A2}, ${ORG_A}, ${USER_A2}, 'user-a2@example.org', 'Test', 'UserA2', 'user')
+    ON CONFLICT (id) DO NOTHING
+  `);
+  return USER_A2;
 }
 
 // ─── 1. Off-state flag — every gated route is 404 ─────────────────────
@@ -106,6 +129,9 @@ describe("Notifications — off-state flag (anti-disclosure)", () => {
   }> = [
     { method: "GET", url: "/v1/notifications" },
     { method: "GET", url: "/v1/notifications/unread-count" },
+    // SSE endpoint — `app.inject` resolves the response before any
+    // streaming, so this exercises the flag gate (QA H1).
+    { method: "GET", url: "/v1/notifications/stream" },
     {
       method: "PATCH",
       url: "/v1/notifications/00000000-0000-0000-0000-000000000001/read",
@@ -146,6 +172,24 @@ describe("Notifications — off-state flag (anti-disclosure)", () => {
       expect(res.statusCode).toBe(404);
     });
   }
+
+  // Pin RFC 9457 body shape on at least one off-state 404 per
+  // `feedback_lock_rfc9457_body_in_tests`. The flag gate returns a
+  // problem+json body via `problemDetail()` — assert the well-known
+  // members rather than a plain-string body.
+  it("off-state 404 body conforms to RFC 9457 (status + title members)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/notifications",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+    const body = res.json<{ status?: number; title?: string }>();
+    expect(body.status).toBe(404);
+    expect(typeof body.title).toBe("string");
+    expect(body.title?.length ?? 0).toBeGreaterThan(0);
+  });
 });
 
 // ─── 2. On-state flag — happy paths + RFC 9457 ─────────────────────────
@@ -274,6 +318,97 @@ describe("Notifications — list + mark + delete (flag on)", () => {
     const body = list.json<{ data: Array<{ id: string }> }>();
     expect(body.data.find((r) => r.id === id)).toBeUndefined();
   });
+
+  // QA M2 — mark-read / DELETE on a soft-deleted row must 404.
+  it("PATCH /:id/read on a soft-deleted row returns 404", async () => {
+    const id = await seedNotification({
+      orgId: ORG_A,
+      userId: USER_A,
+      deletedAt: new Date(),
+    });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/notifications/${id}/read`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("DELETE /:id on an already-soft-deleted row returns 404", async () => {
+    const id = await seedNotification({
+      orgId: ORG_A,
+      userId: USER_A,
+      deletedAt: new Date(),
+    });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/notifications/${id}`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  // QA M3 — cursor pagination must hand out a `nextCursor` and the
+  // follow-up GET must pick up where the first page ended.
+  it("cursor pagination round-trips correctly (21 rows → 2 pages)", async () => {
+    // Seed 21 rows with monotonically-decreasing timestamps so the
+    // DESC ordering produces a stable sequence.
+    const baseTime = Date.now();
+    for (let i = 0; i < 21; i++) {
+      await seedNotification({
+        orgId: ORG_A,
+        userId: USER_A,
+        createdAt: new Date(baseTime - i * 1000),
+      });
+    }
+    const token = signToken(app);
+
+    const first = await app.inject({
+      method: "GET",
+      url: "/v1/notifications",
+      headers: authHeader(token),
+    });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json<{
+      data: Array<{ id: string; createdAt: string }>;
+      nextCursor: string | null;
+    }>();
+    expect(firstBody.data.length).toBe(20);
+    expect(firstBody.nextCursor).not.toBeNull();
+
+    const second = await app.inject({
+      method: "GET",
+      url: `/v1/notifications?cursor=${encodeURIComponent(firstBody.nextCursor!)}`,
+      headers: authHeader(token),
+    });
+    expect(second.statusCode).toBe(200);
+    const secondBody = second.json<{
+      data: Array<{ id: string }>;
+      nextCursor: string | null;
+    }>();
+    expect(secondBody.data.length).toBe(1);
+    expect(secondBody.nextCursor).toBeNull();
+    // Pages don't overlap.
+    const firstIds = new Set(firstBody.data.map((r) => r.id));
+    expect(firstIds.has(secondBody.data[0]!.id)).toBe(false);
+  });
+
+  // QA L1 — viewer-role positive bound. The routes.ts header
+  // promises every authenticated role gets the panel; pin that.
+  it("viewer-role token gets 200 on GET /v1/notifications", async () => {
+    const token = signToken(app, {
+      role: "viewer",
+      realm_access: { roles: ["app-viewer"] },
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/notifications",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+  });
 });
 
 // ─── 3. RLS / cross-tenant + cross-user isolation ──────────────────────
@@ -321,6 +456,101 @@ describe("Notifications — isolation (RLS + recipient)", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: Array<{ id: string }> }>();
     expect(body.data.find((r) => r.id === tenantBId)).toBeDefined();
+  });
+
+  // QA H3 — cross-tenant DELETE must be a 404, not a silent 200 over
+  // another tenant's row.
+  it("Tenant A cannot DELETE a Tenant B row (404)", async () => {
+    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B });
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/notifications/${tenantBId}`,
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  // QA H3 — cross-tenant unread-count must not leak the integer.
+  it("Tenant A unread-count never includes Tenant B unread rows", async () => {
+    await seedNotification({ orgId: ORG_B, userId: USER_B }); // B has 1 unread
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/notifications/unread-count",
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { unread: number } }>().data.unread).toBe(0);
+  });
+
+  // QA H3 — cross-tenant read-all must not touch the other tenant.
+  it("Tenant A read-all does NOT mark Tenant B rows as read", async () => {
+    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B });
+    const tokenA = signToken(app);
+    await app.inject({
+      method: "POST",
+      url: "/v1/notifications/read-all",
+      headers: authHeader(tokenA),
+    });
+    // Verify B's row is still unread via DB read.
+    const [row] = await db
+      .select({ readAt: notifications.readAt })
+      .from(notifications)
+      .where(eq(notifications.id, tenantBId));
+    expect(row?.readAt).toBeNull();
+  });
+
+  // QA H2 — same-tenant recipient isolation. USER_A1 must NOT see
+  // USER_A2's rows even though both live in ORG_A. The service-layer
+  // `user_id = currentUserId` filter is the only boundary keeping
+  // them apart (no RLS on the column); positive proof matters.
+  it("USER_A1 cannot see USER_A2 rows in the SAME tenant (list)", async () => {
+    const user2 = await seedSecondUserInTenantA();
+    const user2RowId = await seedNotification({ orgId: ORG_A, userId: user2 });
+
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/notifications",
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ id: string }> }>();
+    expect(body.data.find((r) => r.id === user2RowId)).toBeUndefined();
+  });
+
+  it("USER_A1 cannot mark-read or DELETE USER_A2 rows in the SAME tenant (404)", async () => {
+    const user2 = await seedSecondUserInTenantA();
+    const user2RowId = await seedNotification({ orgId: ORG_A, userId: user2 });
+    const tokenA = signToken(app);
+
+    const patchRes = await app.inject({
+      method: "PATCH",
+      url: `/v1/notifications/${user2RowId}/read`,
+      headers: authHeader(tokenA),
+    });
+    expect(patchRes.statusCode).toBe(404);
+
+    const deleteRes = await app.inject({
+      method: "DELETE",
+      url: `/v1/notifications/${user2RowId}`,
+      headers: authHeader(tokenA),
+    });
+    expect(deleteRes.statusCode).toBe(404);
+  });
+
+  it("USER_A1 unread-count is scoped to their own rows (not user A2)", async () => {
+    const user2 = await seedSecondUserInTenantA();
+    await seedNotification({ orgId: ORG_A, userId: user2 }); // A2 has 1 unread
+    const tokenA = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/notifications/unread-count",
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { unread: number } }>().data.unread).toBe(0);
   });
 });
 
@@ -381,6 +611,11 @@ describe("Notifications — preferences", () => {
     });
   });
 
+  // QA L2 — pin to 400 (not `[400, 404]`). The route's params schema
+  // is the closed union of `NOTIFICATION_TYPE_VALUES` literals, so
+  // Fastify rejects with 400 BEFORE the handler. Accepting both
+  // hides a future regression where a schema bump silently routes to
+  // the handler-side 404 path.
   it("PATCH on unknown type returns 400 (Fastify schema validation rejects unknown literal)", async () => {
     const token = signToken(app);
     const res = await app.inject({
@@ -389,9 +624,7 @@ describe("Notifications — preferences", () => {
       headers: authHeader(token),
       payload: { inApp: true, emailDigest: true },
     });
-    // Schema validation rejects before the handler runs (the route's
-    // params schema is the union of NOTIFICATION_TYPE_VALUES literals).
-    expect([400, 404]).toContain(res.statusCode);
+    expect(res.statusCode).toBe(400);
   });
 });
 
