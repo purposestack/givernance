@@ -15,7 +15,7 @@
 import type { NotificationFilterKey } from "@givernance/shared/constants";
 import { Bell } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { NotificationsPanel } from "./notifications-panel";
 import { formatBadgeCount, useNotificationsLive } from "./use-notifications-live";
@@ -24,6 +24,9 @@ export function NotificationsBell() {
   const t = useTranslations("notifications.bell");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<NotificationFilterKey>("all");
+  // Trigger ref — the panel restores focus here on close (Frontend
+  // H1 / WCAG 2.4.3).
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const {
     unread,
@@ -65,6 +68,7 @@ export function NotificationsBell() {
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={handleToggle}
         aria-label={unread > 0 ? t("triggerWithUnread", { count: unread }) : t("trigger")}
@@ -83,9 +87,20 @@ export function NotificationsBell() {
           </span>
         ) : null}
       </button>
+      {/*
+        Top-level aria-live region — when a notification arrives in the
+        background, the badge count changes silently for screen readers
+        (the in-panel `aria-live` region is unmounted with the panel).
+        Announce the new count here so SR users know to open the panel.
+        (Frontend H2 fix.)
+      */}
+      <span className="sr-only" aria-live="polite" aria-atomic="true">
+        {unread > 0 ? t("triggerWithUnread", { count: unread }) : ""}
+      </span>
       <NotificationsPanel
         open={open}
         onClose={handleClose}
+        triggerRef={triggerRef}
         rows={rows}
         unread={unread}
         nextCursor={nextCursor}
