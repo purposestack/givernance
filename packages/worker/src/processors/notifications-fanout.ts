@@ -321,10 +321,7 @@ async function filterByPreferences(
     .select({ userId: notificationPreferences.userId, inApp: notificationPreferences.inApp })
     .from(notificationPreferences)
     .where(
-      and(
-        eq(notificationPreferences.type, type),
-        inArray(notificationPreferences.userId, userIds),
-      ),
+      and(eq(notificationPreferences.type, type), inArray(notificationPreferences.userId, userIds)),
     );
 
   const defaultInApp = getNotificationDescriptor(type).defaultInApp;
