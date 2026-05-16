@@ -51,6 +51,17 @@ export const notifications = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     /**
+     * Originating outbox event id. Natural idempotency key paired
+     * with `user_id` + `type` — an outbox redelivery (relay retry,
+     * worker crash mid-fanout) does NOT produce a second row for the
+     * same recipient. The fanout worker passes the event id from
+     * BullMQ's `job.data`. Same defence pattern as bulk-email's
+     * `bulk-email-${outboxId}` jobId in `worker.ts`. No FK to the
+     * outbox table — the row may be GC'd by a future retention
+     * sweep, but our audit trail keys on the id string itself.
+     */
+    outboxEventId: uuid("outbox_event_id").notNull(),
+    /**
      * Recipient. `SET NULL` on user purge so a GDPR-erased account
      * doesn't FK-block historical notifications — the orphaned rows
      * are then garbage-collected by the universal soft-delete sweep
@@ -109,6 +120,12 @@ export const notifications = pgTable(
      * `pgTable`). Migration 0055 is the source of truth.
      */
     orgCreatedIdx: index("notifications_org_created_idx").on(table.orgId, table.createdAt),
+    /** Natural idempotency key — see `outboxEventId` column comment. */
+    outboxRecipientTypeUnique: unique("notifications_outbox_recipient_type_unique").on(
+      table.outboxEventId,
+      table.userId,
+      table.type,
+    ),
   }),
 );
 
@@ -132,10 +149,13 @@ export const notificationPreferences = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     type: varchar("type", { length: 64 }).notNull(),
     /**
-     * `false` hides the type from the panel and excludes it from the
-     * bell badge — but the row is still WRITTEN. Suppression happens
-     * at READ time so a user re-enabling the channel sees their
-     * historical alerts.
+     * `false` suppresses the type at WRITE time — the fanout worker
+     * does not insert a `notifications` row for a user whose
+     * preference for this type is off. Re-enabling the channel later
+     * affects FUTURE events only; historical events the user opted
+     * out of are gone. This is the simpler contract: storage stays
+     * lean and the unread count never lags an opt-out decision.
+     * (Reviewed by Worker SRE — PR #393 CRIT-2 fix.)
      */
     inApp: boolean("in_app").notNull().default(true),
     /**

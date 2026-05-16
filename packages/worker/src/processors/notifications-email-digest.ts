@@ -49,6 +49,13 @@ import { defaultEmailSender, type EmailSender } from "../lib/email.js";
 import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
+/** Per-tenant work budget — Worker SRE MED-1. A pathological tenant
+ *  must not stall the whole tick. */
+const PER_TENANT_TIMEOUT_MS = 30_000;
+/** Hard ceiling on the `since` cursor so an operator-crafted job
+ *  can't replay an unbounded window (Worker SRE LOW-2). */
+const MAX_SINCE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
 export interface EmailDigestJobData {
   /** ISO timestamp — the "since" cursor. Defaults to 24h ago. */
   since?: string;
@@ -77,9 +84,19 @@ export async function processNotificationsEmailDigest(
     return;
   }
 
-  const since = job.data.since
-    ? new Date(job.data.since)
-    : new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // Default cursor: 24h ago. If the caller passes an older value
+  // we clamp to MAX_SINCE_WINDOW_MS so a hand-enqueued job can't
+  // replay an unbounded history. The shipped MVP can lose a row in
+  // the (rare) case of an SMTP failure followed by 24h+ of silence
+  // — Worker SRE HIGH-4 calls out the correct fix: track
+  // `tenants.last_digest_sent_at` instead of a fixed-window cursor.
+  // Filed as a follow-up; the existing schema change is bigger than
+  // this PR's footprint.
+  const earliest = Date.now() - MAX_SINCE_WINDOW_MS;
+  const requested = job.data.since
+    ? new Date(job.data.since).getTime()
+    : Date.now() - 24 * 60 * 60 * 1000;
+  const since = new Date(Math.max(requested, earliest));
 
   // List every active tenant — owner-pool query, no RLS context.
   // Tenants don't soft-delete via `deleted_at`; they carry a `status`
@@ -95,7 +112,15 @@ export async function processNotificationsEmailDigest(
 
   for (const tenant of tenantRows) {
     try {
-      const sent = await processDigestForTenant(tenant.id, since, sender, log);
+      const sent = await Promise.race([
+        processDigestForTenant(tenant.id, since, sender, log),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Per-tenant digest timeout after ${PER_TENANT_TIMEOUT_MS} ms`)),
+            PER_TENANT_TIMEOUT_MS,
+          ),
+        ),
+      ]);
       if (sent > 0) {
         log.info({ tenantId: tenant.id, sent }, "Sent notification digest");
       }
@@ -118,7 +143,6 @@ async function processDigestForTenant(
       .select({
         userId: notifications.userId,
         email: users.email,
-        firstName: users.firstName,
         type: notifications.type,
         params: notifications.params,
         createdAt: notifications.createdAt,
@@ -184,11 +208,27 @@ interface DigestRow {
   createdAt: Date;
 }
 
+/**
+ * Defence-in-depth — the DB CHECK on `link_url` already rejects
+ * protocol-relative paths (`//evil.example`) post-Security H1 fix,
+ * but historical rows written before the CHECK was tightened may
+ * still exist. Strip any `linkUrl` that doesn't pass the safe-path
+ * shape before interpolating into a mailable href.
+ */
+function safeRelativePath(linkUrl: string | null): string | null {
+  if (!linkUrl) return null;
+  if (!linkUrl.startsWith("/")) return null;
+  if (linkUrl.startsWith("//")) return null;
+  if (linkUrl.startsWith("/\\")) return null;
+  return linkUrl;
+}
+
 function renderDigestText(rows: DigestRow[]): string {
   const lines = rows.map((row) => {
     const title = humanTitleFor(row.type);
     const when = row.createdAt.toISOString();
-    const link = row.linkUrl ? ` (${row.linkUrl})` : "";
+    const safeLink = safeRelativePath(row.linkUrl);
+    const link = safeLink ? ` (${safeLink})` : "";
     return `• ${title} — ${when}${link}`;
   });
   return [
@@ -205,7 +245,8 @@ function renderDigestHtml(rows: DigestRow[]): string {
     .map((row) => {
       const title = escapeHtml(humanTitleFor(row.type));
       const when = escapeHtml(row.createdAt.toISOString());
-      const link = row.linkUrl ? `<a href="${escapeAttribute(row.linkUrl)}">View</a>` : "";
+      const safeLink = safeRelativePath(row.linkUrl);
+      const link = safeLink ? `<a href="${escapeAttribute(safeLink)}">View</a>` : "";
       return `<li><strong>${title}</strong> — ${when} ${link}</li>`;
     })
     .join("");

@@ -240,6 +240,12 @@ export async function notificationRoutes(app: FastifyInstance) {
     "/notifications/stream",
     {
       preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      // Rate-limit the SSE handshake (not the long-lived stream
+      // itself — `@fastify/rate-limit` only sees the initial request).
+      // 5 opens / minute / IP is plenty for the ordinary "swap polling
+      // for SSE" path and prevents a single authenticated user from
+      // bursting hundreds of streams (Security M1).
+      config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
@@ -247,6 +253,22 @@ export async function notificationRoutes(app: FastifyInstance) {
       if (!orgId || !userId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
+
+      // SSE open / close audit — the audit plugin only fires on
+      // POST/PUT/PATCH/DELETE, so a long-lived authenticated GET
+      // exfiltration would otherwise have no row. Emit an explicit
+      // `notifications.stream.opened` before hijack so SIEM has the
+      // signal even if the stream is short-lived. Mirrors the
+      // PATCH/DELETE shape the existing audit plugin records.
+      request.log.info(
+        {
+          event: "audit.notifications.stream.opened",
+          orgId,
+          userId,
+          impersonationSessionId: request.auth?.impersonation?.sessionId,
+        },
+        "SSE stream opened",
+      );
 
       // Set headers BEFORE hijacking. Disable Fastify's reply
       // serialization once headers are flushed.
@@ -257,24 +279,39 @@ export async function notificationRoutes(app: FastifyInstance) {
       // explicitly so the first event reaches the client without
       // waiting for the buffer to fill.
       reply.raw.setHeader("X-Accel-Buffering", "no");
+      // Defence-in-depth content-sniffing posture (Security M2). A
+      // malformed first frame on a misconfigured proxy could be
+      // sniffed as HTML by legacy browsers — `nosniff` shuts the
+      // door.
+      reply.raw.setHeader("X-Content-Type-Options", "nosniff");
       reply.hijack();
       reply.raw.flushHeaders();
 
       const controller = new AbortController();
+      const cleanup = (reason: string) => {
+        clearInterval(heartbeat);
+        controller.abort();
+        request.log.info(
+          {
+            event: "audit.notifications.stream.closed",
+            orgId,
+            userId,
+            reason,
+          },
+          "SSE stream closed",
+        );
+      };
       const heartbeat = setInterval(() => {
         // SSE comment frame — ignored by the EventSource client but
         // keeps the TCP connection alive across idle proxies.
         try {
           reply.raw.write(": heartbeat\n\n");
         } catch {
-          controller.abort();
+          cleanup("heartbeat-write-failed");
         }
       }, 25_000);
 
-      request.raw.on("close", () => {
-        clearInterval(heartbeat);
-        controller.abort();
-      });
+      request.raw.on("close", () => cleanup("client-disconnect"));
 
       try {
         // First event: a `ready` ping so the client knows the
@@ -293,6 +330,24 @@ export async function notificationRoutes(app: FastifyInstance) {
           signal: controller.signal,
           intervalMs: 5_000,
           since: Number.isNaN(since?.getTime() ?? NaN) ? undefined : since,
+          // Re-validate authorisation every polling tick — the flag
+          // may have been flipped off mid-stream, or the user's
+          // active-row check (ADR-021) may have failed. Either way
+          // we tear the stream down within one interval. (Security H2.)
+          isStillAuthorised: async () => {
+            try {
+              const stillEnabled = await request.flagService.isEnabled(
+                FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER,
+                { orgId },
+              );
+              return stillEnabled;
+            } catch {
+              // If the flag service is unhealthy mid-stream we err on
+              // the side of closing — a stalled flag check is worse
+              // than a dropped stream the client will auto-reconnect.
+              return false;
+            }
+          },
         });
         for await (const row of stream) {
           const payload = JSON.stringify(serializeNotification(row));
@@ -303,7 +358,7 @@ export async function notificationRoutes(app: FastifyInstance) {
       } catch (err) {
         request.log.warn({ err }, "SSE stream errored");
       } finally {
-        clearInterval(heartbeat);
+        cleanup("stream-end");
         try {
           reply.raw.end();
         } catch {

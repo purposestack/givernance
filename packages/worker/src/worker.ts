@@ -52,6 +52,19 @@ const brandingQueue = new Queue(QUEUE_NAMES.BRANDING, { connection: queueConnect
 const keycloakSyncQueue = new Queue(QUEUE_NAMES.KEYCLOAK_SYNC, { connection: queueConnection });
 const notificationsDigestQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS_DIGEST, {
   connection: queueConnection,
+  // BullMQ Worker constructors don't honour `attempts/backoff` — those
+  // settings live on `Queue` `defaultJobOptions` (and per-`add()`
+  // overrides). Wiring them here so a transient SMTP / PG flake at
+  // 09:00 UTC retries with exponential backoff instead of silently
+  // losing the entire day's digest. Also bounds completed/failed job
+  // retention so the BullMQ keyspace doesn't grow indefinitely.
+  // (PR #393 Worker SRE HIGH-3 / MED for repeatable GC.)
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 60_000 },
+    removeOnComplete: { count: 10 },
+    removeOnFail: { count: 50 },
+  },
 });
 
 /**

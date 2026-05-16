@@ -315,6 +315,12 @@ export async function updatePreference(
  * `intervalMs` and yields rows created after `since`. Stops when the
  * caller's AbortSignal fires (the route closes the connection).
  *
+ * `isStillAuthorised` is called every iteration so a flag flip /
+ * user revocation mid-stream tears down the connection within one
+ * polling interval (Security H2). The caller passes a closure that
+ * re-validates against the flag service + active-row check; we keep
+ * the check at the boundary so the service stays DB-only.
+ *
  * Polling-over-LISTEN was chosen for the spike — see ADR-031. The
  * loop here is intentionally simple; a future migration to PG
  * LISTEN/NOTIFY drops in behind the same yield contract.
@@ -322,10 +328,20 @@ export async function updatePreference(
 export async function* streamNotifications(
   orgId: string,
   userId: string,
-  options: { signal: AbortSignal; intervalMs: number; since?: Date },
+  options: {
+    signal: AbortSignal;
+    intervalMs: number;
+    since?: Date;
+    /** Returning `false` aborts the stream — see header. */
+    isStillAuthorised?: () => Promise<boolean>;
+  },
 ): AsyncGenerator<Notification, void, unknown> {
   let cursor = options.since ?? new Date();
   while (!options.signal.aborted) {
+    if (options.isStillAuthorised) {
+      const ok = await options.isStillAuthorised();
+      if (!ok) break;
+    }
     const fresh = await withTenantContext(orgId, async (tx) => {
       return tx
         .select()
@@ -370,6 +386,8 @@ interface DecodedCursor {
   id: string;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function encodeCursor(createdAt: Date, id: string): string {
   return Buffer.from(`${createdAt.toISOString()}|${id}`, "utf8").toString("base64url");
 }
@@ -382,6 +400,12 @@ export function decodeCursor(value: string | undefined): DecodedCursor | null {
     if (!iso || !id) return null;
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return null;
+    // Validate `id` as a UUID — a forged cursor with a 10 k-char `id`
+    // would otherwise ship to PG (Security M4 / Data L1). The cursor
+    // can't bypass `user_id = currentUserId` regardless (WHERE clause
+    // is unconditional), but rejecting nonsense at the boundary saves
+    // a round-trip on tampering attempts.
+    if (!UUID_RE.test(id)) return null;
     return { createdAt: date, id };
   } catch {
     return null;
