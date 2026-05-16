@@ -1,6 +1,11 @@
 /** BullMQ Worker entry point — registers all job processors */
 
-import { BRANDING_EVENT_TYPES, QUEUE_NAMES, TENANT_LIFECYCLE_JOBS } from "@givernance/shared/jobs";
+import {
+  BRANDING_EVENT_TYPES,
+  NOTIFICATIONS_DIGEST_JOBS,
+  QUEUE_NAMES,
+  TENANT_LIFECYCLE_JOBS,
+} from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
@@ -15,6 +20,8 @@ import { processGenerateCampaignDocuments } from "./processors/campaign-document
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processKeycloakSyncOrgLogo } from "./processors/keycloak-sync-org-logo.js";
+import { processNotificationsEmailDigest } from "./processors/notifications-email-digest.js";
+import { fanoutNotifications } from "./processors/notifications-fanout.js";
 import { processPlatformAdminInviteEmail } from "./processors/platform-admin-invite-email.js";
 import { processGeneratePostalExport } from "./processors/postal-export.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
@@ -43,6 +50,9 @@ const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
 });
 const brandingQueue = new Queue(QUEUE_NAMES.BRANDING, { connection: queueConnection });
 const keycloakSyncQueue = new Queue(QUEUE_NAMES.KEYCLOAK_SYNC, { connection: queueConnection });
+const notificationsDigestQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS_DIGEST, {
+  connection: queueConnection,
+});
 
 /**
  * Register the nightly provisional-admin expire job.
@@ -58,6 +68,22 @@ async function scheduleRepeatableJobs() {
     {
       jobId: "tenant-provisional-admin-expire-daily",
       repeat: { pattern: "15 3 * * *", tz: "UTC" },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+
+  // Notifications email digest (Epic #363, Phase 5). Daily at 09:00
+  // UTC — early enough to be the operator's morning catch-up email,
+  // late enough to capture an overnight donation burst. `jobId` is
+  // fixed so re-registering across worker restarts doesn't fan out
+  // to duplicate repeatable schedules.
+  await notificationsDigestQueue.add(
+    NOTIFICATIONS_DIGEST_JOBS.DAILY,
+    {},
+    {
+      jobId: "notifications-digest-daily",
+      repeat: { pattern: "0 9 * * *", tz: "UTC" },
       removeOnComplete: { count: 10 },
       removeOnFail: { count: 50 },
     },
@@ -91,6 +117,14 @@ async function processDomainEvent(job: Job): Promise<void> {
   const log = jobLogger({ tenantId, jobId: job.id, traceId });
 
   log.info({ eventType: type }, "Processing domain event");
+
+  // Notification fanout (Epic #363, GLO-004) runs alongside the
+  // existing routing decision. The helper is feature-flag-gated and
+  // never throws — see `processors/notifications-fanout.ts` header. We
+  // await so a slow PG roundtrip doesn't accumulate orphan promises,
+  // but the existing receipt/email/branding routing below is not
+  // blocked by a fanout failure (the helper logs and returns).
+  await fanoutNotifications({ outboxId: id, tenantId, type, payload, traceparent });
 
   const decision = routeDomainEvent({ id, tenantId, type, payload, traceparent });
 
@@ -416,6 +450,20 @@ function startWorkers() {
     },
   );
 
+  // Notifications email digest (Epic #363, Phase 5).
+  const notificationsDigestWorker = new Worker(
+    QUEUE_NAMES.NOTIFICATIONS_DIGEST,
+    async (job: Job) => processNotificationsEmailDigest(job),
+    {
+      connection: createRedisConnection(),
+      // Concurrency 1: opt-in distribution is small and we'd rather
+      // not flood the SMTP relay. Scale by adding worker pods if a
+      // large tenant ever opts every member into the digest.
+      concurrency: 1,
+      ...defaultJobOpts,
+    },
+  );
+
   const workers = [
     receiptsWorker,
     emailsWorker,
@@ -427,6 +475,7 @@ function startWorkers() {
     tenantLifecycleWorker,
     brandingWorker,
     keycloakSyncWorker,
+    notificationsDigestWorker,
   ];
 
   for (const w of workers) {

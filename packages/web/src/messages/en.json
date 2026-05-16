@@ -2533,5 +2533,87 @@
     "densityLabel": "Row density",
     "densityComfortable": "Comfortable rows",
     "densityCompact": "Compact rows"
+  },
+  "notifications": {
+    "bell": {
+      "trigger": "Open notifications",
+      "triggerWithUnread": "Open notifications ({count} unread)"
+    },
+    "panel": {
+      "ariaLabel": "Notifications panel",
+      "title": "Notifications",
+      "close": "Close notifications",
+      "dismissBackdrop": "Dismiss notifications panel",
+      "markAllRead": "Mark all read",
+      "filtersLabel": "Filter notifications by category",
+      "filters": {
+        "all": "All",
+        "donation": "Donations",
+        "team": "Team",
+        "system": "System"
+      },
+      "emptyTitle": "All caught up",
+      "emptyBody": "You have no new notifications. New activity will appear here automatically.",
+      "open": "Open",
+      "markRead": "Mark as read",
+      "delete": "Dismiss",
+      "loading": "Loading…",
+      "loadMore": "Load more",
+      "preferences": "Notification preferences",
+      "liveOn": "Live notifications active",
+      "liveOff": "Live notifications paused — falling back to polling",
+      "unreadDot": "Unread"
+    },
+    "preferencesPage": {
+      "title": "Notification preferences",
+      "subtitle": "Choose which alerts appear in the bell icon and which arrive in your daily email digest.",
+      "breadcrumbRoot": "Dashboard",
+      "breadcrumbProfile": "Profile",
+      "sectionTitle": "Notification types",
+      "sectionSubtitle": "Each row is saved as soon as you change it.",
+      "inApp": "In-app",
+      "inAppHint": "Show in the bell and notifications panel",
+      "emailDigest": "Email digest",
+      "emailDigestHint": "Include in the daily digest email at 09:00 UTC",
+      "defaultBadge": "Default"
+    },
+    "types": {
+      "donation_received": {
+        "label": "Donation received",
+        "description": "Alert me when a donor completes a gift.",
+        "title": "New donation received",
+        "body": "A donor just contributed."
+      },
+      "invitation_created": {
+        "label": "Team invitation sent",
+        "description": "Alert me when an admin invites someone new to the workspace.",
+        "title": "Team invitation sent",
+        "body": "A new team invitation was issued."
+      },
+      "invitation_resent": {
+        "label": "Team invitation re-sent",
+        "description": "Alert me when an admin re-sends a team invitation.",
+        "title": "Team invitation re-sent",
+        "body": "A team invitation was re-sent."
+      },
+      "branding_logo_synced": {
+        "label": "Organisation logo updated",
+        "description": "Alert me when a new logo is activated for the organisation.",
+        "title": "Organisation logo updated",
+        "body": "Your organisation logo has been updated and is now visible to donors."
+      },
+      "postal_export_queued": {
+        "label": "Postal export ready",
+        "description": "Alert me when a postal mailing export finishes.",
+        "title": "Postal export queued",
+        "body": "Your postal-mailing export is being prepared and will be available shortly."
+      },
+      "bulk_email_queued": {
+        "label": "Bulk email started",
+        "description": "Alert me when a bulk email I started begins sending.",
+        "title": "Bulk email queued",
+        "body": "Your bulk email has started sending to the recipient list."
+      }
+    }
   }
 }

@@ -207,6 +207,20 @@ export const QUEUE_NAMES = {
   BRANDING: "branding",
   /** Keycloak org-attribute syncs (logo_url, theme_primary_color, …). */
   KEYCLOAK_SYNC: "keycloak_sync",
+  /**
+   * Notification email digest (Epic #363, GLO-004 — Phase 5). One
+   * recurring job at 09:00 UTC daily; the processor iterates every
+   * tenant with an opted-in user and sends one batched email per
+   * recipient. Concurrency-1 — opt-in distribution is small enough
+   * not to need parallelism, and we'd rather not flood the SMTP
+   * relay if a large tenant joins.
+   */
+  NOTIFICATIONS_DIGEST: "notifications_digest",
+} as const;
+
+/** Job names inside the NOTIFICATIONS_DIGEST queue. */
+export const NOTIFICATIONS_DIGEST_JOBS = {
+  DAILY: "notifications.digest_daily",
 } as const;
 
 /** Repeatable job names inside TENANT_LIFECYCLE queue. */

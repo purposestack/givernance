@@ -20,6 +20,17 @@ export {
 } from "./impersonation";
 export { KEYCLOAK_DEFAULT_CLIENT_ID } from "./keycloak";
 export { assertSafeOrgAttributes, SAFE_ORG_ATTRIBUTES } from "./keycloak-org-attributes";
+export {
+  getNotificationDescriptor,
+  isNotificationType,
+  NOTIFICATION_FILTER_KEYS,
+  NOTIFICATION_TYPE_REGISTRY,
+  NOTIFICATION_TYPE_VALUES,
+  type NotificationFilterKey,
+  type NotificationType,
+  type NotificationTypeDescriptor,
+  notificationFilterFor,
+} from "./notifications";
 export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "./password";
 export { isPersonalEmailDomain, PERSONAL_EMAIL_DOMAINS } from "./personal-email-domains";
 export { PINO_REDACT_PATHS } from "./pino-redact";

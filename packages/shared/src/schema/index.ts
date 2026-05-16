@@ -619,6 +619,17 @@ export {
   orgBrandingAssets,
 } from "./branding";
 
+// ─── Notification centre (Epic #363) ──────────────────────────────────────────
+
+export {
+  type NewNotification,
+  type NewNotificationPreference,
+  type Notification,
+  type NotificationPreference,
+  notificationPreferences,
+  notifications,
+} from "./notifications";
+
 // ─── Swiss QR-bill foundation (Epic #318) ────────────────────────────────────
 //
 // The cross-table FKs `campaigns.bank_account_id`, `donations.swiss_qr_reference_id`,

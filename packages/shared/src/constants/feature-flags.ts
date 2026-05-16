@@ -106,6 +106,47 @@ export const FEATURE_FLAG_KEYS = {
   DONATION_PUBLIC_PAGE_STYLES: "donation.public_page_styles",
 
   /**
+   * Gates the in-app notification centre (Epic #363, GLO-004).
+   *
+   * The Epic ships the bell icon + side-panel + per-user preferences
+   * page + outbox-fanout producer + SSE stream + email-digest worker.
+   * With the flag OFF the topbar has no bell at all, the gated routes
+   * (`/v1/notifications/*`, `/v1/notification-preferences*`) return
+   * 404 not 403, the outbox-fanout worker silently no-ops, and the
+   * digest worker skips its tick. End result: a tenant with the flag
+   * off is indistinguishable from one before the Epic shipped.
+   *
+   * `scope='tenant'`: every NPO is independent. A noisy fundraising
+   * team that wants notifications shouldn't force a quiet operational
+   * team to turn them on too.
+   *
+   * `tenant_override_allowed=false` for the initial rollout: super-
+   * admin keeps the gate per tenant until the UX is verified end-to-
+   * end on staging. Flips to `true` in a follow-up once preferences
+   * + SSE prove stable (no policy reason to keep org-admins out
+   * beyond "let's see how the panel lands first").
+   *
+   * `public=true`: the appShell layout SSR-fetches `/v1/feature-flags`
+   * to decide whether to render the bell icon in the topbar AND
+   * whether to mount the polling/SSE client. A private value would
+   * unconditionally hide the entry and defeat the Epic.
+   *
+   * Surfaces gated by this key:
+   *   - API: GET / POST / PATCH / DELETE on `/v1/notifications*`
+   *   - API: GET / PATCH on `/v1/notification-preferences*`
+   *   - API: GET /v1/notifications/stream (SSE)
+   *   - Worker: outbox-event fanout into notification rows silently
+   *     no-ops (defence in depth — second wall behind the API gate).
+   *   - Worker: weekly email-digest BullMQ tick skips if off.
+   *   - Web: bell icon + panel + filter chips + `/settings/notifications`
+   *     page + sidebar entry + polling/SSE client all hidden.
+   *
+   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`
+   * if the Back Office is unavailable.
+   */
+  COMMUNICATION_NOTIFICATIONS_CENTER: "communication.notifications_center",
+
+  /**
    * Gates the Feature flags Phase 2 work itself (Epic #365 / PR #366).
    *
    * Even flag-administration tooling gets a flag — the new tenant-
@@ -211,6 +252,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     description:
       "Lets Givernance staff turn features on or off for one organisation at a time, and lets each organisation's admin manage their own feature settings from the Settings menu. Off by default until the new pages have been verified end-to-end.",
     scope: "platform",
+    tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER,
+    defaultEnabled: false,
+    label: "In-app notification centre",
+    description:
+      "Adds a bell icon to the top bar with a panel that lists what happened in your organisation — new donations, postal-export downloads, team invitations, and more. Each member can choose which alerts they want from the Settings menu. Off by default until Givernance staff confirm the bell, panel, and per-member preferences for your organisation.",
+    scope: "tenant",
     tenantOverrideAllowed: false,
     public: true,
   },
