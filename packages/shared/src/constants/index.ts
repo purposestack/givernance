@@ -27,8 +27,10 @@ export {
   NOTIFICATION_TYPE_REGISTRY,
   NOTIFICATION_TYPE_VALUES,
   type NotificationFilterKey,
+  type NotificationIconKey,
   type NotificationType,
   type NotificationTypeDescriptor,
+  type NotificationVisual,
   notificationFilterFor,
 } from "./notifications";
 export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "./password";

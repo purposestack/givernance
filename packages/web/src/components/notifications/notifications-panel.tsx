@@ -22,11 +22,24 @@
 import {
   getNotificationDescriptor,
   type NotificationFilterKey,
+  type NotificationIconKey,
 } from "@givernance/shared/constants";
-import { Bell, Check, ExternalLink, X } from "lucide-react";
+import {
+  Bell,
+  Check,
+  CircleDollarSign,
+  Clock,
+  ExternalLink,
+  FileText,
+  type LucideIcon,
+  Image,
+  Mail,
+  UserPlus,
+  X,
+} from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
-import { useEffect, useRef } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { type RefObject, useCallback, useEffect, useRef } from "react";
 
 import type { NotificationDto } from "@/services/NotificationsService";
 
@@ -64,23 +77,50 @@ interface NotificationsPanelProps {
   onMarkAllRead: () => void;
   onDelete: (id: string) => void;
   onLoadMore: () => void;
+  /**
+   * Element to return focus to when the panel closes. Required by the
+   * dialog a11y pattern (WCAG 2.4.3) — without it focus lands on
+   * `<body>` after Esc / close-button.
+   */
+  triggerRef: RefObject<HTMLButtonElement | null>;
 }
 
 const FILTER_KEYS: NotificationFilterKey[] = ["all", "donation", "team", "system"];
 
+/**
+ * Accent bar colour by visual category — matches
+ * `docs/design/global/notifications.html` and `docs/27-notifications.md` § 1.
+ * Indigo (not tertiary/amber) for the `team` category — the previous
+ * mapping shipped amber, which conflicted with the reserved
+ * `attention` slot (Frontend C1).
+ */
 const ACCENT_BY_VISUAL = {
   donation: "border-l-primary",
-  team: "border-l-tertiary",
-  system: "border-l-info",
-  attention: "border-l-warning",
+  team: "border-l-indigo",
+  system: "border-l-sky",
+  attention: "border-l-amber",
 } as const;
 
 const ICON_BG_BY_VISUAL = {
   donation: "bg-primary-fixed text-on-primary-fixed",
-  team: "bg-tertiary-container text-on-tertiary-container",
-  system: "bg-info-light text-info",
-  attention: "bg-warning-light text-warning",
+  team: "bg-indigo-light text-indigo",
+  system: "bg-sky-light text-sky",
+  attention: "bg-amber-light text-amber",
 } as const;
+
+/**
+ * Lucide icon per `NotificationIconKey` (Frontend C2). The shared
+ * registry stores a string slug so `@givernance/shared/constants`
+ * stays lucide-free (ADR-013 type boundary).
+ */
+const ICON_COMPONENT: Record<NotificationIconKey, LucideIcon> = {
+  donation: CircleDollarSign,
+  invitation: UserPlus,
+  branding: Image,
+  postal_export: FileText,
+  bulk_email: Mail,
+  deadline: Clock,
+};
 
 export function NotificationsPanel({
   open,
@@ -97,16 +137,53 @@ export function NotificationsPanel({
   onMarkAllRead,
   onDelete,
   onLoadMore,
+  triggerRef,
 }: NotificationsPanelProps) {
   const t = useTranslations("notifications.panel");
   const tTypes = useTranslations("notifications.types");
-  const panelRef = useRef<HTMLDivElement>(null);
+  const locale = useLocale();
+  const panelRef = useRef<HTMLElement>(null);
 
-  // Esc closes; click-outside closes (delegated via the overlay).
+  // Wrap onClose so we always return focus to the trigger (Frontend
+  // H1 — WCAG 2.4.3). The trigger ref is owned by the bell.
+  const handleClose = useCallback(() => {
+    onClose();
+    // Use a microtask so React unmounts the panel before the focus
+    // returns; otherwise focus-restore races with the unmount path.
+    queueMicrotask(() => triggerRef.current?.focus());
+  }, [onClose, triggerRef]);
+
+  // Esc closes; Tab is trapped inside the panel so the user can't
+  // tab-out into the underlying page (dialog pattern). Click-outside
+  // is delegated via the overlay button.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const root = panelRef.current;
+      if (!root) return;
+      const focusable = root.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey) {
+        if (active === first || !root.contains(active)) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
     // Initial focus on the panel container — a screen reader user
@@ -114,7 +191,7 @@ export function NotificationsPanel({
     // Esc immediately.
     panelRef.current?.focus();
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, handleClose]);
 
   if (!open) return null;
 
@@ -130,7 +207,7 @@ export function NotificationsPanel({
         type="button"
         className="fixed inset-0 z-[var(--z-overlay)] cursor-default bg-transparent"
         aria-label={t("dismissBackdrop")}
-        onClick={onClose}
+        onClick={handleClose}
         tabIndex={-1}
       />
       <aside
@@ -143,7 +220,9 @@ export function NotificationsPanel({
         {/* Header */}
         <header className="flex items-start justify-between gap-3 border-b border-border px-5 pt-5 pb-4">
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold text-text">{t("title")}</h2>
+            {/* Mockup specifies the title in heading-serif regular,
+                not the body sans semibold (Frontend M1). */}
+            <h2 className="font-heading text-xl font-normal text-text">{t("title")}</h2>
             {unread > 0 ? (
               <span
                 aria-live="polite"
@@ -179,7 +258,7 @@ export function NotificationsPanel({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               aria-label={t("close")}
               className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-container-low hover:text-text focus-visible:outline-none focus-visible:shadow-ring"
             >
@@ -258,7 +337,10 @@ export function NotificationsPanel({
                   aria-hidden="true"
                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${iconBg}`}
                 >
-                  <Bell size={16} />
+                  {(() => {
+                    const Icon = ICON_COMPONENT[descriptor.icon];
+                    return <Icon size={16} />;
+                  })()}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
@@ -291,7 +373,7 @@ export function NotificationsPanel({
                     })}
                   </p>
                   <p className="mt-1.5 text-xs text-text-muted">
-                    {formatRelativeTimeShort(row.createdAt)}
+                    {formatRelativeTimeShort(row.createdAt, locale)}
                   </p>
                   <div className="mt-2 flex items-center gap-3">
                     {row.linkUrl ? (
@@ -382,15 +464,13 @@ const RELATIVE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
   ["second", 1],
 ];
 
-function formatRelativeTimeShort(iso: string): string {
+function formatRelativeTimeShort(iso: string, locale: string): string {
   const date = new Date(iso);
   const diff = (Date.now() - date.getTime()) / 1000;
-  // Use the system locale — the panel itself is rendered inside the
-  // NextIntl provider so the consumer's locale flows down. For relative
-  // formatting we still need the runtime API; pinning "en" for the
-  // shipped MVP keeps tests deterministic. Per-locale formatting is a
-  // small follow-up.
-  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  // Honour the consumer's locale (`useLocale()` from next-intl). A
+  // French operator sees "il y a 2 heures"; an English one sees
+  // "2 hours ago". Frontend M2 fix.
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   for (const [unit, seconds] of RELATIVE_UNITS) {
     if (Math.abs(diff) >= seconds || unit === "second") {
       return formatter.format(-Math.round(diff / seconds), unit);

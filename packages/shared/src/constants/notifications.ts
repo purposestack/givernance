@@ -40,6 +40,43 @@ export const NOTIFICATION_TYPE_VALUES = [
 
 export type NotificationType = (typeof NOTIFICATION_TYPE_VALUES)[number];
 
+/**
+ * Visual category — drives the panel's accent bar + icon colour.
+ *
+ *   - `donation` → green (mockup `.accent-green`)
+ *   - `team`     → indigo (mockup `.accent-indigo`)
+ *   - `system`   → sky (mockup `.accent-sky`)
+ *
+ * The `attention` (amber) variant from the mockup is reserved for a
+ * future grant-deadline / overdue-task type — not used by any shipped
+ * descriptor yet. We list it in the union so adding a producer is a
+ * one-line registry change rather than a panel refactor; the panel's
+ * lookup maps include the slot.
+ */
+export type NotificationVisual = "donation" | "team" | "system" | "attention";
+
+/**
+ * Lucide icon name shown in the panel row's circular icon slot.
+ * Picked to match the mockup's Material Symbols per category:
+ *   - `donation.received`       → CircleDollarSign
+ *   - `invitation.created/.resent` → UserPlus
+ *   - `branding.logo_synced`    → Image
+ *   - `postal_export.queued`    → FileText
+ *   - `bulk_email.queued`       → Mail
+ *
+ * Keep this as a string literal union so the consumer can map to its
+ * preferred icon library without depending on `lucide-react` at the
+ * shared-package boundary (ADR-013 type boundary — shared/ stays
+ * lucide-free).
+ */
+export type NotificationIconKey =
+  | "donation"
+  | "invitation"
+  | "branding"
+  | "postal_export"
+  | "bulk_email"
+  | "deadline";
+
 export interface NotificationTypeDescriptor {
   key: NotificationType;
   defaultInApp: boolean;
@@ -52,13 +89,9 @@ export interface NotificationTypeDescriptor {
   labelKey: string;
   /** i18n key for the preferences-page row helper text. */
   descriptionKey: string;
-  /**
-   * Visual category used by the panel for icon + accent-bar colour.
-   * `donation`/`success` → green, `team` → indigo, `system` → sky,
-   * `attention` → amber. Maps to the mockup's
-   * `.accent-{green,indigo,sky,amber}` classes.
-   */
-  visual: "donation" | "team" | "system" | "attention";
+  visual: NotificationVisual;
+  /** Icon slug — maps to a lucide icon in the panel. See `NotificationIconKey`. */
+  icon: NotificationIconKey;
 }
 
 export const NOTIFICATION_TYPE_REGISTRY: ReadonlyArray<NotificationTypeDescriptor> = [
@@ -71,6 +104,7 @@ export const NOTIFICATION_TYPE_REGISTRY: ReadonlyArray<NotificationTypeDescripto
     labelKey: "notifications.types.donation_received.label",
     descriptionKey: "notifications.types.donation_received.description",
     visual: "donation",
+    icon: "donation",
   },
   {
     key: "invitation.created",
@@ -81,6 +115,7 @@ export const NOTIFICATION_TYPE_REGISTRY: ReadonlyArray<NotificationTypeDescripto
     labelKey: "notifications.types.invitation_created.label",
     descriptionKey: "notifications.types.invitation_created.description",
     visual: "team",
+    icon: "invitation",
   },
   {
     key: "invitation.resent",
@@ -91,6 +126,7 @@ export const NOTIFICATION_TYPE_REGISTRY: ReadonlyArray<NotificationTypeDescripto
     labelKey: "notifications.types.invitation_resent.label",
     descriptionKey: "notifications.types.invitation_resent.description",
     visual: "team",
+    icon: "invitation",
   },
   {
     key: "branding.logo_synced",
@@ -101,6 +137,7 @@ export const NOTIFICATION_TYPE_REGISTRY: ReadonlyArray<NotificationTypeDescripto
     labelKey: "notifications.types.branding_logo_synced.label",
     descriptionKey: "notifications.types.branding_logo_synced.description",
     visual: "system",
+    icon: "branding",
   },
   {
     key: "postal_export.queued",
@@ -111,6 +148,7 @@ export const NOTIFICATION_TYPE_REGISTRY: ReadonlyArray<NotificationTypeDescripto
     labelKey: "notifications.types.postal_export_queued.label",
     descriptionKey: "notifications.types.postal_export_queued.description",
     visual: "system",
+    icon: "postal_export",
   },
   {
     key: "bulk_email.queued",
@@ -121,6 +159,7 @@ export const NOTIFICATION_TYPE_REGISTRY: ReadonlyArray<NotificationTypeDescripto
     labelKey: "notifications.types.bulk_email_queued.label",
     descriptionKey: "notifications.types.bulk_email_queued.description",
     visual: "team",
+    icon: "bulk_email",
   },
 ];
 

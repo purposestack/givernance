@@ -84,21 +84,25 @@ export function NotificationPreferencesForm({ initial }: NotificationPreferences
 
   const toggle = useCallback(
     async (type: NotificationType, field: "inApp" | "emailDigest", next: boolean) => {
-      // Optimistic — update the local state first so the toggle
-      // doesn't lag behind the user's click. On error we roll back.
-      const previous = rows.find((row) => row.type === type);
-      if (!previous) return;
+      // Snapshot the row state INSIDE the functional setter so two
+      // rapid toggles don't roll back to a stale value (Frontend M4).
+      // The functional setter runs against the latest committed state
+      // — capturing `previous` via `rows.find` from closure would read
+      // pre-first-click state on the second double-click.
+      let previous: RowState | null = null;
       setRows((current) =>
-        current.map((row) =>
-          row.type === type
-            ? { ...row, [field]: next, isDefault: false, saving: true, error: null }
-            : row,
-        ),
+        current.map((row) => {
+          if (row.type !== type) return row;
+          previous = row;
+          return { ...row, [field]: next, isDefault: false, saving: true, error: null };
+        }),
       );
+      if (!previous) return;
+      const previousRow: RowState = previous;
 
       const payload = {
-        inApp: field === "inApp" ? next : previous.inApp,
-        emailDigest: field === "emailDigest" ? next : previous.emailDigest,
+        inApp: field === "inApp" ? next : previousRow.inApp,
+        emailDigest: field === "emailDigest" ? next : previousRow.emailDigest,
       };
 
       try {
@@ -123,9 +127,9 @@ export function NotificationPreferencesForm({ initial }: NotificationPreferences
             row.type === type
               ? {
                   ...row,
-                  inApp: previous.inApp,
-                  emailDigest: previous.emailDigest,
-                  isDefault: previous.isDefault,
+                  inApp: previousRow.inApp,
+                  emailDigest: previousRow.emailDigest,
+                  isDefault: previousRow.isDefault,
                   saving: false,
                   error: err instanceof Error ? err.message : "Update failed",
                 }
@@ -134,7 +138,7 @@ export function NotificationPreferencesForm({ initial }: NotificationPreferences
         );
       }
     },
-    [client, rows],
+    [client],
   );
 
   return (
