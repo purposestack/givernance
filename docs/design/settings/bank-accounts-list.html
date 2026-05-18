@@ -1,140 +1,209 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Givernance — Settings — Bank accounts (list)</title>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Paramètres &mdash; Comptes bancaires</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <style>
     /* ── Settings → Bank accounts list (Epic #318) ── */
-    .page { padding: var(--space-8) var(--space-6); max-width: 1100px; margin: 0 auto; }
-    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-6); }
-    .breadcrumb { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2); }
-    .breadcrumb a { color: var(--color-primary); text-decoration: none; }
-    h1 { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); margin: var(--space-1) 0; }
-    .subtitle { color: var(--color-text-secondary); font-size: var(--text-sm); max-width: 60ch; }
+    .settings-tabs { display: inline-flex; gap: var(--space-2); background: var(--color-surface-container); padding: var(--space-2); border-radius: var(--radius-2xl); margin-bottom: var(--space-6); overflow-x: auto; max-width: 100%; }
+    .settings-tab { padding: var(--space-2) var(--space-4); border-radius: var(--radius-lg); font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-on-surface-variant); cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .settings-tab.active { background: var(--color-surface-container-lowest); color: var(--color-on-surface); box-shadow: 0 0 0 1px rgba(190, 201, 193, 0.2); }
 
-    .btn-primary { background: var(--color-primary); color: var(--color-on-primary); border: none; height: 36px; padding: 0 var(--space-4); border-radius: var(--radius-button); font-weight: var(--weight-medium); cursor: pointer; }
-
-    .tabs { display: inline-flex; gap: var(--space-2); background: var(--color-surface-container); padding: var(--space-2); border-radius: var(--radius-lg); margin-bottom: var(--space-5); }
-    .tab { padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-text-secondary); cursor: pointer; }
-    .tab.active { background: var(--color-white); color: var(--color-text); box-shadow: var(--shadow-card); }
-
-    .card { background: var(--color-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); overflow: hidden; }
-
-    table.bank-accounts { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
-    table.bank-accounts thead th { text-align: left; background: var(--color-surface-container); color: var(--color-text-secondary); font-weight: var(--weight-medium); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
-    table.bank-accounts tbody td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-border); vertical-align: middle; }
-    table.bank-accounts tbody tr:last-child td { border-bottom: 0; }
-    table.bank-accounts tbody tr:hover { background: var(--color-surface-container); }
-    .iban { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); }
-    .bank-name { font-weight: var(--weight-semi); color: var(--color-text); }
-    .badge { display: inline-block; padding: 2px var(--space-2); border-radius: var(--radius-pill); font-size: 11px; font-weight: var(--weight-semi); }
-    .badge-qr { background: #DCFCE7; color: #166534; }
-    .badge-iban { background: #DBEAFE; color: #1E40AF; }
-
-    .row-actions { display: inline-flex; gap: var(--space-2); }
-    .row-actions button { background: transparent; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 4px 10px; font-size: var(--text-xs); cursor: pointer; color: var(--color-text-secondary); }
-    .row-actions button.danger { color: var(--color-danger); border-color: var(--color-danger-50, #FCA5A5); }
-
-    .empty { padding: var(--space-12) var(--space-6); text-align: center; }
-    .empty .icon { font-size: 36px; margin-bottom: var(--space-3); }
-    .empty h2 { font-size: var(--text-lg); color: var(--color-text); margin-bottom: var(--space-2); }
-    .empty p { color: var(--color-text-secondary); max-width: 50ch; margin: 0 auto var(--space-4); font-size: var(--text-sm); line-height: var(--leading-relaxed); }
-
-    .info-note { margin-top: var(--space-5); padding: var(--space-4); background: var(--color-primary-50, #ECFDF5); border-left: 3px solid var(--color-primary); border-radius: var(--radius-md); font-size: var(--text-sm); color: var(--color-text-secondary); }
+    .iban-mono { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .info-note { margin-top: var(--space-6); padding: var(--space-4); background: rgba(9, 100, 71, 0.06); border-left: 3px solid var(--color-primary); border-radius: var(--radius-md); font-size: var(--text-sm); color: var(--color-text-secondary); }
     .info-note strong { color: var(--color-text); }
   </style>
 </head>
 <body>
-  <main class="page">
-    <div class="page-header">
-      <div>
-        <div class="breadcrumb"><a href="#">Dashboard</a> &nbsp;/&nbsp; <a href="#">Settings</a> &nbsp;/&nbsp; Bank accounts</div>
-        <h1>Bank accounts</h1>
-        <p class="subtitle">Swiss operating accounts that back QR-bill issuance. Holder data prints on every BVR; the IBAN type (QR-IBAN vs regular) determines whether Givernance mints a QRR or a SCOR reference.</p>
+  <div class="app-layout">
+
+    <!-- ============================================================
+         SIDEBAR — org-operator (Settings is NOT a top-level nav item)
+         ============================================================ -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
       </div>
-      <button class="btn-primary">+ Add bank account</button>
-    </div>
-
-    <nav class="tabs" aria-label="Settings sections">
-      <div class="tab">Organisation</div>
-      <div class="tab">Members</div>
-      <div class="tab">Funds</div>
-      <div class="tab active">Bank accounts</div>
-    </nav>
-
-    <div class="card">
-      <table class="bank-accounts">
-        <thead>
-          <tr>
-            <th>Bank</th>
-            <th>IBAN</th>
-            <th>Type</th>
-            <th>Currency</th>
-            <th>Holder</th>
-            <th aria-label="Row actions"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="bank-name">PostFinance</td>
-            <td class="iban">CH44 3199 9123 0008 8901 2</td>
-            <td><span class="badge badge-qr">QR-IBAN</span></td>
-            <td>CHF</td>
-            <td>Association Demo</td>
-            <td>
-              <div class="row-actions">
-                <button>Edit</button>
-                <button class="danger">Archive</button>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="bank-name">UBS Switzerland AG</td>
-            <td class="iban">CH93 0076 2011 6238 5295 7</td>
-            <td><span class="badge badge-iban">Regular IBAN</span></td>
-            <td>CHF</td>
-            <td>Association Demo</td>
-            <td>
-              <div class="row-actions">
-                <button>Edit</button>
-                <button class="danger">Archive</button>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="bank-name">LLB</td>
-            <td class="iban">LI21 0881 0000 2324 013A A</td>
-            <td><span class="badge badge-iban">Regular IBAN</span></td>
-            <td>EUR</td>
-            <td>Association Demo — endowment account</td>
-            <td>
-              <div class="row-actions">
-                <button>Edit</button>
-                <button class="danger">Archive</button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="info-note">
-      <strong>Heads-up:</strong> EUR + QR-IBAN is illegal under IG QR-bill v2.4 (euroSIC discontinuation). Use a regular IBAN with EUR + SCOR for cross-border donors. Givernance enforces this server-side and surfaces an inline warning on the form.
-    </div>
-
-    <section class="card" style="margin-top: var(--space-6); padding: var(--space-6);">
-      <h2 style="font-size: var(--text-sm); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); margin-bottom: var(--space-3);">Empty state (no bank accounts yet)</h2>
-      <div class="empty">
-        <div class="icon">🏦</div>
-        <h2>No bank accounts yet</h2>
-        <p>Add your first Swiss operating account to mint Swiss QR-bills on postal mailings. CHF or EUR, regular IBAN or QR-IBAN — Givernance derives the reference type automatically.</p>
-        <button class="btn-primary">+ Add bank account</button>
+      <nav class="sidebar-nav" aria-label="Navigation principale">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">dashboard</span>
+          <span class="nav-item-label">Dashboard</span>
+        </a>
+        <a href="../constituents/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">groups</span>
+          <span class="nav-item-label">Constituants</span>
+        </a>
+        <a href="../campaigns/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">campaign</span>
+          <span class="nav-item-label">Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">volunteer_activism</span>
+          <span class="nav-item-label">Dons</span>
+        </a>
+        <div class="sidebar-section">Bientôt</div>
+        <span class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">account_balance</span>
+          <span class="nav-item-label">Subventions</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </span>
+        <span class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">layers</span>
+          <span class="nav-item-label">Programmes</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </span>
+        <span class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">front_hand</span>
+          <span class="nav-item-label">Bénévoles</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </span>
+        <span class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">monitoring</span>
+          <span class="nav-item-label">Impact</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </span>
+        <span class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">forum</span>
+          <span class="nav-item-label">Communications</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </span>
+        <span class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">assessment</span>
+          <span class="nav-item-label">Rapports</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </span>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar">CM</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Claire Martin</div>
+            <div class="sidebar-footer-role">Association Démo</div>
+          </div>
+        </div>
       </div>
-    </section>
-  </main>
+    </aside>
+
+    <!-- ============================================================
+         MAIN WRAPPER
+         ============================================================ -->
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-breadcrumb">
+          <a href="../dashboard.html">Dashboard</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <a href="../settings/feature-flags.html">Paramètres</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Comptes bancaires</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
+            <span class="material-symbols-outlined">notifications</span>
+          </button>
+          <div class="topbar-avatar" title="Claire Martin">CM</div>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Comptes bancaires</h1>
+            <p class="page-subtitle">Comptes suisses utilisés pour l'émission des QR-bills. Les données du titulaire impriment sur chaque BVR ; le type d'IBAN (QR-IBAN vs IBAN régulier) détermine si Givernance génère une référence QRR ou SCOR.</p>
+          </div>
+          <div class="page-header-actions">
+            <a href="bank-accounts-form.html" class="btn btn-primary">
+              <span class="material-symbols-outlined">add</span>
+              Nouveau compte
+            </a>
+          </div>
+        </div>
+
+        <!-- Settings sub-nav (mirrors components/settings/settings-navigation.tsx) -->
+        <nav class="settings-tabs" aria-label="Sections des paramètres">
+          <a href="#" class="settings-tab">Organisation</a>
+          <a href="#" class="settings-tab">Membres</a>
+          <a href="#" class="settings-tab">Fonds</a>
+          <a href="bank-accounts-list.html" class="settings-tab active" aria-current="page">Comptes bancaires</a>
+          <a href="feature-flags.html" class="settings-tab">Feature flags</a>
+        </nav>
+
+        <div class="data-table-wrapper">
+          <table class="data-table" aria-label="Liste des comptes bancaires">
+            <thead>
+              <tr>
+                <th>Banque</th>
+                <th>IBAN</th>
+                <th>Type</th>
+                <th>Devise</th>
+                <th>Titulaire</th>
+                <th aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="cell-name">PostFinance</td>
+                <td class="iban-mono">CH44 3199 9123 0008 8901 2</td>
+                <td><span class="badge badge-success">QR-IBAN</span></td>
+                <td class="text-mono">CHF</td>
+                <td>Association Démo</td>
+                <td class="text-right">
+                  <a href="bank-accounts-form.html" class="btn btn-ghost btn-sm">Modifier</a>
+                </td>
+              </tr>
+              <tr>
+                <td class="cell-name">UBS Switzerland AG</td>
+                <td class="iban-mono">CH93 0076 2011 6238 5295 7</td>
+                <td><span class="badge badge-info">IBAN régulier</span></td>
+                <td class="text-mono">CHF</td>
+                <td>Association Démo</td>
+                <td class="text-right">
+                  <a href="bank-accounts-form.html" class="btn btn-ghost btn-sm">Modifier</a>
+                </td>
+              </tr>
+              <tr>
+                <td class="cell-name">LLB</td>
+                <td class="iban-mono">LI21 0881 0000 2324 013A A</td>
+                <td><span class="badge badge-info">IBAN régulier</span></td>
+                <td class="text-mono">EUR</td>
+                <td>Association Démo — fonds de dotation</td>
+                <td class="text-right">
+                  <a href="bank-accounts-form.html" class="btn btn-ghost btn-sm">Modifier</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="info-note">
+          <strong>À noter :</strong> EUR + QR-IBAN est interdit par l'IG QR-bill v2.4 (discontinuation d'euroSIC). Utilisez un IBAN régulier avec EUR + SCOR pour les donateurs transfrontaliers. Givernance applique cette règle côté serveur et affiche un avertissement inline sur le formulaire.
+        </div>
+
+        <!-- Empty state preview (state when no bank accounts exist) -->
+        <section style="margin-top: var(--space-8);">
+          <div class="card card--flat">
+            <div class="empty-state">
+              <div class="empty-state-icon"><span class="material-symbols-outlined" style="font-size:48px;">account_balance</span></div>
+              <h2 class="empty-state-title">Aucun compte bancaire</h2>
+              <p class="empty-state-text">Ajoutez votre premier compte d'exploitation suisse pour émettre des QR-bills sur les envois postaux. CHF ou EUR, IBAN régulier ou QR-IBAN — Givernance dérive automatiquement le type de référence.</p>
+              <a href="bank-accounts-form.html" class="btn btn-primary">
+                <span class="material-symbols-outlined">add</span>
+                Ajouter un compte bancaire
+              </a>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+<script src="../shared/mobile.js"></script>
 </body>
 </html>

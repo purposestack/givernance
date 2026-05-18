@@ -1,78 +1,131 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Givernance &mdash; Admin &mdash; New Tenant</title>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="../../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Back office &mdash; Nouveau tenant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <link rel="stylesheet" href="../../shared/tokens.css">
   <link rel="stylesheet" href="../../shared/base.css">
   <style>
-    .admin-page { padding: var(--space-8) var(--space-6); max-width: 640px; margin: 0 auto; }
-    .admin-page a.back { font-size: var(--text-xs); color: var(--color-primary); text-decoration: none; }
-    .admin-page h1 { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); margin: var(--space-2) 0; }
-    .admin-page .subtitle { color: var(--color-text-secondary); margin-bottom: var(--space-6); }
-
-    .form-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-6); }
-    .form-row { margin-bottom: var(--space-4); }
-    .form-row label { display: block; font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-text); margin-bottom: var(--space-1); }
-    .form-row input, .form-row select { width: 100%; height: var(--input-height); border: 1px solid var(--color-border); border-radius: var(--radius-input); padding: 0 var(--space-3); font-size: var(--text-base); background: var(--color-white); }
-    .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--color-primary); }
-    .form-row .help { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1); }
+    .switch-link { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin: 0 var(--space-3) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-on-surface-variant); border: 1px solid var(--color-outline-variant); text-decoration: none; }
     .slug-preview { display: flex; align-items: center; gap: var(--space-2); }
-    .slug-preview .prefix { color: var(--color-text-muted); font-size: var(--text-sm); }
-    .actions { display: flex; gap: var(--space-3); margin-top: var(--space-6); }
-    .actions button { height: var(--btn-height-md); padding: 0 var(--space-5); border-radius: var(--radius-button); font-weight: var(--weight-medium); border: none; cursor: pointer; }
-    .actions .primary { background: var(--color-primary); color: var(--color-on-primary); }
-    .actions .secondary { background: var(--color-surface-container-low); color: var(--color-text); }
-
-    .next-steps { margin-top: var(--space-6); padding: var(--space-5); background: var(--color-primary-50); border-radius: var(--radius-lg); }
-    .next-steps h2 { font-size: var(--text-sm); font-weight: var(--weight-semi); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-primary); margin-bottom: var(--space-3); }
-    .next-steps ol { margin-left: var(--space-5); color: var(--color-text-secondary); font-size: var(--text-sm); line-height: var(--leading-relaxed); }
+    .slug-preview .prefix { color: var(--color-on-surface-variant); font-family: var(--font-mono); font-size: var(--text-sm); white-space: nowrap; }
+    .next-steps { margin-top: var(--space-6); padding: var(--space-6); background: rgba(9, 100, 71, 0.04); border-radius: var(--radius-2xl); border: 1px solid var(--color-outline-variant); }
+    .next-steps h2 { font-size: var(--text-xs); font-weight: var(--weight-semi); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-primary); margin-bottom: var(--space-3); }
+    .next-steps ol { padding-left: var(--space-5); color: var(--color-on-surface-variant); font-size: var(--text-sm); line-height: var(--leading-relaxed); }
+    .next-steps li { margin-bottom: var(--space-2); }
   </style>
 </head>
 <body>
-  <main class="admin-page">
-    <a class="back" href="list.html">← Back to tenants</a>
-    <h1>New enterprise tenant</h1>
-    <p class="subtitle">Provisions the tenant row + Keycloak Organization. IdP and first-admin invite land next.</p>
+  <div class="app-layout">
 
-    <form class="form-card">
-      <div class="form-row">
-        <label for="name">Organisation name</label>
-        <input id="name" type="text" placeholder="Croix-Rouge Française" required>
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
       </div>
-      <div class="form-row">
-        <label for="slug">Workspace URL</label>
-        <div class="slug-preview">
-          <span class="prefix">givernance.app/</span>
-          <input id="slug" type="text" placeholder="croix-rouge" pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$" required>
+      <a href="../../dashboard.html" class="switch-link">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Retour à l'organisation
+      </a>
+      <nav class="sidebar-nav" aria-label="Navigation Back office">
+        <div class="sidebar-section">Super admin</div>
+        <a href="list.html" class="nav-item nav-item--active"><span class="material-symbols-outlined nav-item-icon">business</span><span class="nav-item-label">Locataires</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">shield</span><span class="nav-item-label">Litiges</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">person_search</span><span class="nav-item-label">Usurpation</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">admin_panel_settings</span><span class="nav-item-label">Admins plateforme</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">flag</span><span class="nav-item-label">Feature flags</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar" style="background: var(--color-indigo);">SA</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Sam Admin</div>
+            <div class="sidebar-footer-role">Super admin</div>
+          </div>
         </div>
-        <p class="help">Lowercase, alphanumeric and dashes; 2–50 characters; cannot be a reserved platform slug.</p>
       </div>
-      <div class="form-row">
-        <label for="plan">Plan</label>
-        <select id="plan">
-          <option value="starter">Starter</option>
-          <option value="pro">Pro</option>
-          <option value="enterprise" selected>Enterprise</option>
-        </select>
-      </div>
+    </aside>
 
-      <div class="actions">
-        <button class="primary" type="submit">Create tenant</button>
-        <button class="secondary" type="button">Cancel</button>
-      </div>
-    </form>
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-breadcrumb">
+          <a href="../index.html">Back office</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <a href="list.html">Locataires</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Nouveau</span>
+        </div>
+        <div class="topbar-actions">
+          <div class="topbar-avatar" title="Sam Admin" style="background: var(--color-indigo);">SA</div>
+        </div>
+      </header>
 
-    <div class="next-steps">
-      <h2>After creation</h2>
-      <ol>
-        <li>Claim a domain and share the DNS TXT value with the NPO's IT team.</li>
-        <li>Provision the OIDC or SAML identity provider once DNS is verified.</li>
-        <li>Invite the first admin — they complete onboarding via Keycloak.</li>
-      </ol>
+      <main class="main-content main-content--form">
+        <a href="list.html" class="text-mono" style="font-size: var(--text-xs); color: var(--color-primary);">← Retour à la liste</a>
+
+        <div class="page-header" style="margin-top: var(--space-3);">
+          <div class="page-header-left">
+            <h1 class="page-title">Nouveau tenant enterprise</h1>
+            <p class="page-subtitle">Provisionne la ligne tenant + l'Organization Keycloak. L'IdP et l'invitation du premier admin arrivent ensuite.</p>
+          </div>
+        </div>
+
+        <form class="card">
+          <div class="form-group">
+            <label class="form-label form-label-required" for="name">Nom de l'organisation</label>
+            <input id="name" type="text" class="form-input" placeholder="Croix-Rouge Française" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label form-label-required" for="slug">URL du workspace</label>
+            <div class="slug-preview">
+              <span class="prefix">givernance.app/</span>
+              <input id="slug" type="text" class="form-input" placeholder="croix-rouge" pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$" required>
+            </div>
+            <p class="form-hint">Minuscules, alphanumérique et tirets ; 2–50 caractères ; pas un slug plateforme réservé.</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label form-label-required" for="plan">Plan</label>
+            <select id="plan" class="form-select">
+              <option value="starter">Starter</option>
+              <option value="pro">Pro</option>
+              <option value="enterprise" selected>Enterprise</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="default-locale">Locale par défaut</label>
+            <select id="default-locale" class="form-select">
+              <option value="fr" selected>Français</option>
+              <option value="en">English</option>
+              <option value="de">Deutsch</option>
+            </select>
+          </div>
+
+          <div class="card-footer">
+            <a href="list.html" class="btn btn-ghost">Annuler</a>
+            <button type="submit" class="btn btn-primary">Créer le tenant</button>
+          </div>
+        </form>
+
+        <div class="next-steps">
+          <h2>Après la création</h2>
+          <ol>
+            <li>Revendiquer un domaine et partager la valeur DNS TXT avec l'équipe IT de la NPO.</li>
+            <li>Provisionner l'identity provider OIDC ou SAML une fois le DNS vérifié.</li>
+            <li>Inviter le premier admin — il complète son onboarding via Keycloak.</li>
+          </ol>
+        </div>
+      </main>
     </div>
-  </main>
+  </div>
+<script src="../../shared/mobile.js"></script>
 </body>
 </html>

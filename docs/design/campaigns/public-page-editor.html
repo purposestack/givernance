@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-icon.png">
-  <title>Givernance &mdash; Page publique de don</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Page publique &mdash; Campagnes &mdash; Givernance</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,462 +12,275 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <style>
-    /* ── Page-specific styles for public-page-editor ── */
+    /* ── Campaign public-page editor (Epic #362 style picker + live preview) ── */
 
-    .two-col {
+    .editor-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
       gap: var(--space-6);
-      align-items: start;
+      align-items: flex-start;
     }
 
-    /* ── Actions row ── */
-    .actions-row {
-      display: flex;
-      align-items: center;
-      gap: var(--space-4);
-      flex-wrap: wrap;
+    @media (max-width: 1100px) {
+      .editor-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
-    /* ── Toggle switch ── */
-    .toggle-group {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      font-size: var(--text-sm);
-      font-weight: var(--weight-medium);
-      color: var(--color-text);
+    .form-card {
+      background: var(--color-surface);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-card);
+      padding: 0 var(--space-6);
     }
 
-    .toggle-switch {
-      position: relative;
-      width: 44px;
-      height: 24px;
-      background: var(--color-outline-variant);
-      border-radius: var(--radius-pill);
-      cursor: pointer;
-      transition: background var(--duration-normal) var(--ease-out);
+    .form-section {
+      padding: var(--space-6) 0;
+      border-bottom: 1px solid var(--color-border-light);
     }
 
-    .toggle-switch.active {
-      background: var(--color-primary);
+    .form-section:last-of-type {
+      border-bottom: none;
     }
 
-    .toggle-switch::after {
-      content: '';
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      width: 20px;
-      height: 20px;
-      background: var(--color-white);
-      border-radius: var(--radius-full);
-      transition: transform var(--duration-normal) var(--ease-out);
-      box-shadow: var(--shadow-xs);
+    .form-section-header {
+      margin-bottom: var(--space-4);
     }
 
-    .toggle-switch.active::after {
-      transform: translateX(20px);
-    }
-
-    /* ── Live preview simulation ── */
-    .preview-frame {
-      background: var(--color-white);
-      border-radius: var(--radius-lg);
-      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-      padding: var(--space-8);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-5);
-      max-width: 420px;
-      margin: 0 auto;
-    }
-
-    .preview-logo-placeholder {
-      width: 56px;
-      height: 56px;
-      border-radius: var(--radius-full);
-      background: var(--color-surface-container);
-      border: 2px dashed var(--color-outline-variant);
-    }
-
-    .preview-title {
-      font-family: var(--font-heading);
-      font-size: var(--text-xl);
-      font-weight: var(--weight-medium);
-      text-align: center;
-      color: var(--color-text);
-    }
-
-    .preview-desc {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      text-align: center;
-      line-height: var(--leading-relaxed);
-    }
-
-    .preview-progress-section {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-
-    .preview-progress-text {
-      font-size: var(--text-sm);
-      font-weight: var(--weight-semi);
-      color: var(--color-text);
-    }
-
-    .preview-progress-bar {
-      width: 100%;
-      height: 8px;
-      background: var(--color-surface-container);
-      border-radius: var(--radius-pill);
-      overflow: hidden;
-    }
-
-    .preview-progress-fill {
-      height: 100%;
-      width: 31%;
-      background: var(--color-primary);
-      border-radius: var(--radius-pill);
-      transition: width var(--duration-slow) var(--ease-out);
-    }
-
-    .preview-donors {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-    }
-
-    /* ── Amount pills ── */
-    .amount-pills {
-      display: flex;
-      gap: var(--space-2);
-      flex-wrap: wrap;
-      justify-content: center;
-      width: 100%;
-    }
-
-    .amount-pill {
-      padding: var(--space-2) var(--space-4);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-pill);
-      font-size: var(--text-sm);
-      font-weight: var(--weight-medium);
-      color: var(--color-text);
-      background: var(--color-white);
-      cursor: pointer;
-      transition: var(--transition-base);
-    }
-
-    .amount-pill:hover {
-      border-color: var(--color-primary);
-      color: var(--color-primary);
-    }
-
-    .amount-pill.selected {
-      background: var(--color-primary);
-      color: var(--color-on-primary);
-      border-color: var(--color-primary);
-    }
-
-    /* ── Frequency toggle ── */
-    .freq-toggle {
-      display: flex;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-pill);
-      overflow: hidden;
-    }
-
-    .freq-toggle-btn {
-      padding: var(--space-2) var(--space-5);
-      font-size: var(--text-sm);
-      font-weight: var(--weight-medium);
-      color: var(--color-text-secondary);
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      transition: var(--transition-base);
-    }
-
-    .freq-toggle-btn.selected {
-      background: var(--color-primary);
-      color: var(--color-on-primary);
-    }
-
-    /* ── Preview form fields ── */
-    .preview-fields {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-3);
-    }
-
-    .preview-input {
-      width: 100%;
-      height: 36px;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-input);
-      padding: 0 var(--space-3);
-      font-size: var(--text-sm);
-      color: var(--color-text-muted);
-      background: var(--color-white);
-      font-family: var(--font-body);
-    }
-
-    .preview-submit {
-      width: 100%;
-      height: 44px;
-      background: var(--color-primary);
-      color: var(--color-on-primary);
-      border: none;
-      border-radius: var(--radius-button);
-      font-size: var(--text-md);
-      font-weight: var(--weight-semi);
-      font-family: var(--font-body);
-      cursor: pointer;
-    }
-
-    .preview-secure {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-1);
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-    }
-
-    /* ── Config panel ── */
-    .config-stack {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-6);
-    }
-
-    .card-title-sm {
+    .form-section-title {
       font-family: var(--font-heading);
       font-size: var(--text-lg);
-      font-weight: var(--weight-medium);
-      color: var(--color-text);
-      margin-bottom: var(--space-4);
+      color: var(--color-on-surface);
+      margin-bottom: var(--space-1);
     }
 
-    .form-group {
+    .form-section-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .form-actions {
       display: flex;
-      flex-direction: column;
-      gap: var(--space-1-5);
-      margin-bottom: var(--space-4);
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-3);
+      padding: var(--space-5) 0;
+      border-top: 1px solid var(--color-border-light);
     }
 
-    .form-group:last-child {
-      margin-bottom: 0;
+    /* Archetype style picker (Epic #362) */
+    .style-picker {
+      background: var(--color-surface-container-lowest);
+      border: 1px solid var(--color-outline-variant);
+      border-radius: var(--radius-2xl);
+      padding: var(--space-5);
+      margin-bottom: var(--space-6);
     }
 
-    .form-label {
+    .style-picker-clear {
+      display: inline-block;
+      margin-top: var(--space-3);
       font-size: var(--text-sm);
       font-weight: var(--weight-medium);
-      color: var(--color-text);
+      color: var(--color-primary);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
     }
 
-    .form-input {
-      height: var(--input-height);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-input);
-      padding: 0 var(--space-3);
-      font-size: var(--text-base);
-      font-family: var(--font-body);
-      color: var(--color-text);
-      background: var(--color-white);
-      transition: var(--transition-base);
+    .style-picker-clear:hover {
+      text-decoration: underline;
     }
 
-    .form-input:focus {
-      outline: none;
-      border-color: var(--color-primary);
-      box-shadow: var(--shadow-ring);
+    .style-grid {
+      margin-top: var(--space-4);
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-3);
     }
 
-    .form-textarea {
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-input);
-      padding: var(--space-3);
-      font-size: var(--text-base);
-      font-family: var(--font-body);
-      color: var(--color-text);
-      background: var(--color-white);
-      resize: vertical;
-      min-height: 80px;
-      line-height: var(--leading-normal);
-      transition: var(--transition-base);
+    @media (max-width: 800px) {
+      .style-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
 
-    .form-textarea:focus {
-      outline: none;
-      border-color: var(--color-primary);
-      box-shadow: var(--shadow-ring);
+    @media (max-width: 500px) {
+      .style-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
-    .upload-area {
-      border: 2px dashed var(--color-border);
-      border-radius: var(--radius-md);
-      padding: var(--space-6);
+    .style-tile {
+      position: relative;
       display: flex;
       flex-direction: column;
+      gap: var(--space-2);
+      padding: var(--space-4);
+      background: var(--color-surface);
+      border: 1px solid var(--color-outline-variant);
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      text-align: left;
+      transition: all var(--duration-normal) var(--ease-out);
+    }
+
+    .style-tile:hover {
+      border-color: var(--color-primary);
+      box-shadow: var(--shadow-card);
+    }
+
+    .style-tile--active {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 2px var(--color-primary-50);
+      background: var(--color-primary-50);
+    }
+
+    .style-tile-name {
+      font-weight: var(--weight-semi);
+      color: var(--color-on-surface);
+      display: flex;
       align-items: center;
       gap: var(--space-2);
-      color: var(--color-text-muted);
-      font-size: var(--text-sm);
-      cursor: pointer;
-      transition: var(--transition-base);
     }
 
-    .upload-area:hover {
-      border-color: var(--color-primary);
+    .style-tile-tagline {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-snug);
+    }
+
+    .style-tile-voice {
+      font-size: 10px;
+      letter-spacing: var(--tracking-wide);
+      text-transform: uppercase;
+      font-weight: var(--weight-semi);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    .style-tile-check {
+      position: absolute;
+      top: var(--space-2);
+      right: var(--space-2);
       color: var(--color-primary);
     }
 
-    /* ── Amounts row ── */
-    .amounts-row {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: var(--space-3);
-      margin-bottom: var(--space-4);
+    .style-tile-coming {
+      font-size: 10px;
+      letter-spacing: var(--tracking-wide);
+      text-transform: uppercase;
+      font-weight: var(--weight-semi);
+      background: var(--color-surface-container-high);
+      color: var(--color-text-secondary);
+      padding: 2px 6px;
+      border-radius: var(--radius-pill);
     }
 
-    .amount-input {
-      height: var(--input-height);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-input);
-      padding: 0 var(--space-3);
-      font-size: var(--text-base);
-      font-family: var(--font-body);
-      color: var(--color-text);
-      background: var(--color-white);
-      text-align: center;
+    /* Preview pane */
+    .preview-pane {
+      position: sticky;
+      top: var(--space-6);
+      background: var(--color-surface);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-card);
+      padding: var(--space-3);
     }
 
-    /* ── Checkbox rows ── */
-    .checkbox-row {
+    .preview-pane-header {
       display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-2) 0;
-      font-size: var(--text-sm);
-      color: var(--color-text);
-    }
-
-    .checkbox-row input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      accent-color: var(--color-primary);
-      cursor: pointer;
-    }
-
-    /* ── Field toggles ── */
-    .field-toggle-list {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-1);
-    }
-
-    .field-toggle {
-      display: flex;
-      align-items: center;
       justify-content: space-between;
-      padding: var(--space-2) var(--space-3);
-      border-radius: var(--radius-md);
-      transition: var(--transition-base);
+      align-items: center;
+      gap: var(--space-3);
+      padding: 0 var(--space-2);
+      margin-bottom: var(--space-3);
     }
 
-    .field-toggle:hover {
+    .preview-pane-title {
+      font-family: var(--font-heading);
+      font-size: var(--text-base);
+      color: var(--color-on-surface);
+      margin: 0;
+    }
+
+    .preview-frame {
+      overflow: hidden;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--color-outline-variant);
+      background: var(--color-surface);
+    }
+
+    .preview-hero {
+      padding: var(--space-5);
+      background: linear-gradient(135deg, #096447, #053929);
+      color: var(--color-white);
+    }
+
+    .preview-hero h3 {
+      font-family: var(--font-heading);
+      font-size: var(--text-2xl);
+      color: var(--color-white);
+      margin-top: var(--space-3);
+      line-height: var(--leading-tight);
+    }
+
+    .preview-hero p {
+      font-size: var(--text-sm);
+      opacity: 0.9;
+      margin-top: var(--space-2);
+    }
+
+    .preview-live-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 2px 8px;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      font-weight: var(--weight-bold);
+    }
+
+    .preview-body {
+      padding: var(--space-4) var(--space-5) var(--space-5);
+    }
+
+    .preview-form-card {
+      padding: var(--space-4);
+      border: 1px solid var(--color-outline-variant);
+      border-radius: var(--radius-xl);
       background: var(--color-surface-container-low);
     }
 
-    .field-toggle-left {
-      display: flex;
-      align-items: center;
+    .preview-amount-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
       gap: var(--space-2);
-    }
-
-    .field-toggle-name {
-      font-size: var(--text-sm);
-      color: var(--color-text);
-    }
-
-    .field-toggle-req {
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      font-style: italic;
-    }
-
-    .field-toggle input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      accent-color: var(--color-primary);
-      cursor: pointer;
-    }
-
-    /* ── Stripe status ── */
-    .stripe-status {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-3);
-    }
-
-    .stripe-status-row {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    .stripe-account {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-    }
-
-    .stripe-mode {
-      display: flex;
-      align-items: center;
-      gap: var(--space-1-5);
-      font-size: var(--text-sm);
-      color: var(--color-text);
-    }
-
-    .green-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: var(--radius-full);
-      background: var(--color-green);
-      display: inline-block;
-    }
-
-    /* ── Code snippet ── */
-    .code-box {
-      background: var(--color-inverse-surface);
-      color: var(--color-inverse-on-surface);
-      border-radius: var(--radius-md);
-      padding: var(--space-4);
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-      line-height: var(--leading-relaxed);
-      overflow-x: auto;
-      position: relative;
-      word-break: break-all;
-      white-space: pre-wrap;
-    }
-
-    .code-box-actions {
-      display: flex;
-      justify-content: flex-end;
       margin-top: var(--space-3);
     }
 
-    @media (max-width: 1024px) {
-      .two-col {
-        grid-template-columns: 1fr;
-      }
+    .preview-amount-btn {
+      padding: var(--space-3);
+      border: 1px solid var(--color-outline-variant);
+      border-radius: var(--radius-md);
+      background: var(--color-surface);
+      font-weight: var(--weight-semi);
+      text-align: center;
+    }
+
+    .preview-cta {
+      width: 100%;
+      padding: var(--space-3);
+      margin-top: var(--space-3);
+      background: #096447;
+      color: var(--color-white);
+      border: none;
+      border-radius: var(--radius-md);
+      font-weight: var(--weight-semi);
+      cursor: pointer;
     }
   </style>
 </head>
@@ -475,76 +288,80 @@
 
   <div class="app-layout">
 
-    <!-- ============================== -->
-    <!--           Sidebar               -->
-    <!-- ============================== -->
+    <!-- Sidebar -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-icon.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="../constituents/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_balance</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">layers</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>B&eacute;n&eacute;voles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">bar_chart</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="../admin/index.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Param&egrave;tres</span>
-    </a>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">dashboard</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="../constituents/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">groups</span>
+          <span>Constituants</span>
+        </a>
+        <a href="list.html" class="nav-item nav-item--active">
+          <span class="material-symbols-outlined nav-icon">campaign</span>
+          <span>Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+          <span>Dons</span>
+        </a>
+        <div class="sidebar-section">Bient&ocirc;t</div>
+        <a href="../grants/kanban.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">account_balance</span>
+          <span>Subventions</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../programs/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">layers</span>
+          <span>Programmes</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../volunteers/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">front_hand</span>
+          <span>B&eacute;n&eacute;voles</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../impact/dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">monitoring</span>
+          <span>Impact</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../communications/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">forum</span>
+          <span>Communications</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../reports/library.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">assessment</span>
+          <span>Rapports</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
+        <div class="sidebar-footer-user">
+          <div class="sidebar-footer-avatar">CM</div>
+          <span class="sidebar-footer-name">Claire Martin</span>
+        </div>
+      </div>
+    </aside>
 
-    <!-- ============================== -->
-    <!--         Main Wrapper            -->
-    <!-- ============================== -->
+    <!-- Main wrapper -->
     <div class="main-wrapper">
 
-      <!-- Topbar -->
       <header class="topbar">
         <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
-          <a href="../donations/list.html">Dons &amp; Campagnes</a>
+          <a href="../dashboard.html">Tableau de bord</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
           <a href="list.html">Campagnes</a>
+          <span class="topbar-breadcrumb-sep">&#8250;</span>
+          <a href="detail.html">Appel aux dons Hiver 2026</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
           <span class="topbar-breadcrumb-current">Page publique</span>
         </nav>
@@ -553,258 +370,223 @@
           <input
             class="topbar-search-input"
             type="search"
-            placeholder="Rechercher..."
+            placeholder="Rechercher&hellip;"
             aria-label="Recherche globale"
           >
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html" class="topbar-icon-btn" type="button" aria-label="Notifications">
+          <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
             <span class="material-symbols-outlined" style="font-size:20px">notifications</span>
             <span class="notification-dot"></span>
           </a>
-          <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Martin">CM</a>
+          <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
         </div>
       </header>
 
-      <!-- Main Content -->
       <main class="main-content">
 
-        <!-- ============================================================
-             PAGE HEADER
-             ============================================================ -->
         <div class="page-header">
           <div class="page-header-left">
             <h1 class="page-title">Page publique de don</h1>
-            <p class="page-subtitle">Urgence M&eacute;diterran&eacute;e</p>
+            <p class="page-subtitle">Choisissez l'archetype visuel et personnalisez le contenu&nbsp;: aper&ccedil;u en direct &agrave; droite.</p>
           </div>
-          <div class="actions-row">
-            <div class="toggle-group">
-              <span class="toggle-switch active" role="switch" aria-checked="true" tabindex="0" aria-label="Page active"></span>
-              <span>Page active</span>
-            </div>
-            <button class="btn btn-secondary" type="button">
-              <span class="material-symbols-outlined" style="font-size:16px">link</span>
-              Copier le lien
-            </button>
-            <button class="btn btn-ghost" type="button">
-              <span class="material-symbols-outlined" style="font-size:16px">open_in_new</span>
-              Pr&eacute;visualiser
-            </button>
+          <div class="page-header-actions">
+            <a href="detail.html" class="btn btn-ghost btn-sm"><span class="material-symbols-outlined" style="font-size:16px">arrow_back</span> Retour</a>
           </div>
         </div>
 
-        <!-- ============================================================
-             TWO-COLUMN LAYOUT
-             ============================================================ -->
-        <div class="two-col">
+        <div class="editor-grid">
 
-          <!-- ──────────────────────────────────────────────── -->
-          <!-- LEFT: Live Preview                               -->
-          <!-- ──────────────────────────────────────────────── -->
-          <div class="card">
-            <div class="card-title-sm">Aper&ccedil;u</div>
+          <!-- Form column -->
+          <form class="form-card" action="#" method="post" novalidate>
+
+            <!-- Style picker (Epic #362) -->
+            <section class="style-picker" aria-label="Archetype visuel">
+              <header>
+                <h2 class="form-section-title" style="margin-bottom:var(--space-1);">Style de la page de don</h2>
+                <p class="form-section-desc">
+                  Choisissez l'archetype visuel que les donateurs verront sur la page publique de cette campagne. Votre couleur de marque et votre logo sont conserv&eacute;s &mdash; seuls la structure, la typographie et l'animation changent.
+                </p>
+                <button type="button" class="style-picker-clear">&#x21A9; Effacer la s&eacute;lection (les donateurs verront Foundation)</button>
+              </header>
+
+              <ul class="style-grid" role="listbox" aria-label="Archetype">
+
+                <li class="style-tile style-tile--active" role="option" aria-selected="true">
+                  <span class="style-tile-check"><span class="material-symbols-outlined" style="font-size:18px">check_circle</span></span>
+                  <div class="style-tile-name">Foundation</div>
+                  <div class="style-tile-tagline">Aspect institutionnel sobre. Le donateur lit le titre d'abord, la marque ensuite.</div>
+                  <div class="style-tile-voice">Institutionnel</div>
+                </li>
+
+                <li class="style-tile" role="option" aria-selected="false">
+                  <div class="style-tile-name">Activist</div>
+                  <div class="style-tile-tagline">Mobilisation soutenue. R&eacute;current d'abord. Grandes couleurs, grand format, grosse demande.</div>
+                  <div class="style-tile-voice">Expressif</div>
+                </li>
+
+                <li class="style-tile" role="option" aria-selected="false">
+                  <div class="style-tile-name">Editorial Story</div>
+                  <div class="style-tile-tagline">Essai photo long format. Le formulaire de don appara&icirc;t apr&egrave;s le r&eacute;cit.</div>
+                  <div class="style-tile-voice">&Eacute;ditorial</div>
+                </li>
+
+                <li class="style-tile" role="option" aria-selected="false">
+                  <div class="style-tile-name">Minimal Checkout</div>
+                  <div class="style-tile-tagline">Style Stripe Payment Link. Aucun pitch &mdash; le donateur vous fait d&eacute;j&agrave; confiance.</div>
+                  <div class="style-tile-voice">Minimal</div>
+                </li>
+
+                <li class="style-tile" role="option" aria-selected="false">
+                  <div class="style-tile-name">Emergency Appeal</div>
+                  <div class="style-tile-tagline">Compteur en tête, don ponctuel privil&eacute;gi&eacute;. Pour catastrophes et appels limit&eacute;s.</div>
+                  <div class="style-tile-voice">Expressif</div>
+                </li>
+
+                <li class="style-tile" role="option" aria-selected="false">
+                  <div class="style-tile-name">Neo-Brutalist</div>
+                  <div class="style-tile-tagline">Typographie monospace, bordures dures, rugosit&eacute; assum&eacute;e. Pour les arts et les ONG civiques.</div>
+                  <div class="style-tile-voice">Expressif</div>
+                </li>
+
+                <li class="style-tile" role="option" aria-selected="false">
+                  <div class="style-tile-name">Calm Wellness</div>
+                  <div class="style-tile-tagline">Lavis pastel doux, rythme respir&eacute;. Pour la sant&eacute; mentale et les ONG de pleine conscience.</div>
+                  <div class="style-tile-voice">Expressif</div>
+                </li>
+
+                <li class="style-tile" role="option" aria-selected="false">
+                  <div class="style-tile-name">Civic Modern</div>
+                  <div class="style-tile-tagline">Neutralit&eacute; secteur public. Statistiques de transparence mises en avant.</div>
+                  <div class="style-tile-voice">Civique</div>
+                </li>
+
+                <li class="style-tile" role="option" aria-selected="false">
+                  <div class="style-tile-name">
+                    Retro Print
+                    <span class="style-tile-coming">Bient&ocirc;t</span>
+                  </div>
+                  <div class="style-tile-tagline">&Eacute;nergie d'impression Riso, duotone bicolore. Pour le patrimoine et les alumni.</div>
+                  <div class="style-tile-voice">&Eacute;ditorial</div>
+                </li>
+
+                <li class="style-tile" role="option" aria-selected="false">
+                  <div class="style-tile-name">
+                    Cosmic Gradient
+                    <span class="style-tile-coming">Bient&ocirc;t</span>
+                  </div>
+                  <div class="style-tile-tagline">Mesh anim&eacute;, optimiste, tourn&eacute; vers l'avenir. Pour climat-tech et arts.</div>
+                  <div class="style-tile-voice">Expressif</div>
+                </li>
+
+              </ul>
+            </section>
+
+            <!-- Content section -->
+            <section class="form-section" style="border-top:1px solid var(--color-border-light);">
+              <div class="form-section-header">
+                <h3 class="form-section-title">Contenu</h3>
+                <p class="form-section-desc">Titre et description vus par les donateurs sur la page publique.</p>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label form-label-required" for="title">Titre</label>
+                <input class="form-input" type="text" id="title" name="title" maxlength="255" value="Soutenez l'aide alimentaire d'urgence" required>
+                <span class="form-hint">Texte affich&eacute; en grand sur la page&nbsp;: action concr&egrave;te &gt; objectif financier.</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="description">Description</label>
+                <textarea class="form-textarea" id="description" name="description" rows="6" maxlength="5000">Chaque hiver, plus de 200 familles m&eacute;diterran&eacute;ennes sollicitent notre programme d'aide alimentaire. Votre don permet de continuer.</textarea>
+                <span class="form-hint">5 000 caract&egrave;res maximum. Mise en page conserv&eacute;e (saut de ligne &rarr; paragraphe).</span>
+              </div>
+            </section>
+
+            <!-- Presentation section -->
+            <section class="form-section">
+              <div class="form-section-header">
+                <h3 class="form-section-title">Pr&eacute;sentation</h3>
+                <p class="form-section-desc">Objectif, statut de publication et couleur primaire.</p>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label" for="goalAmount">Objectif</label>
+                  <input class="form-input" type="number" id="goalAmount" name="goalAmount" placeholder="15000" step="0.01" value="15000">
+                  <span class="form-hint">Affich&eacute; sous forme de barre de progression. Laissez vide pour ne pas montrer d'objectif.</span>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label form-label-required" for="status">Statut de la page</label>
+                  <select class="form-select" id="status" name="status" required>
+                    <option value="published" selected>Publi&eacute;e</option>
+                    <option value="draft">Brouillon</option>
+                  </select>
+                  <span class="form-hint">En brouillon, la page renvoie un 404 pour les donateurs.</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="colorPrimary">Couleur primaire</label>
+                <select class="form-select" id="colorPrimary" name="colorPrimary">
+                  <option value="#096447" selected>Primaire (vert profond)</option>
+                  <option value="#006C48">Secondaire (vert)</option>
+                  <option value="#864700">Tertiaire (ocre)</option>
+                  <option value="#005138">&Eacute;meraude</option>
+                  <option value="#3F4943">Ardoise</option>
+                </select>
+                <span class="form-hint">Couleur du bouton de don et des accents visuels. Le contraste du texte est ajust&eacute; automatiquement.</span>
+              </div>
+            </section>
+
+            <div class="form-actions">
+              <a href="detail.html" class="btn btn-secondary"><span class="material-symbols-outlined" style="font-size:16px">open_in_new</span> Voir en ligne</a>
+              <button class="btn btn-ghost" type="button"><span class="material-symbols-outlined" style="font-size:16px">link</span> Copier le lien</button>
+              <a href="detail.html" class="btn btn-ghost">Annuler</a>
+              <button class="btn btn-primary" type="submit"><span class="material-symbols-outlined" style="font-size:16px">save</span> Enregistrer</button>
+            </div>
+
+          </form>
+
+          <!-- Live preview pane -->
+          <aside class="preview-pane" aria-label="Aper&ccedil;u de la page publique">
+            <div class="preview-pane-header">
+              <h2 class="preview-pane-title">Aper&ccedil;u</h2>
+              <span class="badge badge-success">Publi&eacute;e</span>
+            </div>
 
             <div class="preview-frame">
-              <!-- Logo placeholder -->
-              <div class="preview-logo-placeholder"></div>
-
-              <!-- Campaign name -->
-              <div class="preview-title">Urgence M&eacute;diterran&eacute;e</div>
-
-              <!-- Description -->
-              <div class="preview-desc">
-                Aidez-nous &agrave; fournir une aide m&eacute;dicale d&rsquo;urgence aux communaut&eacute;s c&ocirc;ti&egrave;res touch&eacute;es par la crise.
+              <div class="preview-hero">
+                <span class="preview-live-pill"><span class="material-symbols-outlined" style="font-size:12px">public</span> EN LIGNE</span>
+                <h3>Soutenez l'aide alimentaire d'urgence</h3>
+                <p>Chaque hiver, plus de 200 familles m&eacute;diterran&eacute;ennes sollicitent notre programme d'aide alimentaire. Votre don permet de continuer.</p>
               </div>
 
-              <!-- Progress -->
-              <div class="preview-progress-section">
-                <div class="preview-progress-text">&euro;3&nbsp;100 collect&eacute;s sur &euro;10&nbsp;000</div>
-                <div class="preview-progress-bar">
-                  <div class="preview-progress-fill"></div>
-                </div>
-                <div class="preview-donors">18 donateurs</div>
-              </div>
-
-              <!-- Suggested amounts -->
-              <div class="amount-pills">
-                <span class="amount-pill">&euro;25</span>
-                <span class="amount-pill selected">&euro;50</span>
-                <span class="amount-pill">&euro;100</span>
-                <span class="amount-pill">&euro;250</span>
-                <span class="amount-pill">Autre</span>
-              </div>
-
-              <!-- Frequency toggle -->
-              <div class="freq-toggle">
-                <button class="freq-toggle-btn selected" type="button">Ponctuel</button>
-                <button class="freq-toggle-btn" type="button">Mensuel</button>
-              </div>
-
-              <!-- Form fields -->
-              <div class="preview-fields">
-                <input class="preview-input" type="text" placeholder="Pr&eacute;nom" disabled>
-                <input class="preview-input" type="text" placeholder="Nom" disabled>
-                <input class="preview-input" type="email" placeholder="Email" disabled>
-              </div>
-
-              <!-- Submit -->
-              <button class="preview-submit" type="button">Faire un don</button>
-
-              <!-- Secure notice -->
-              <div class="preview-secure">
-                <span class="material-symbols-outlined" style="font-size:14px">lock</span>
-                Paiement s&eacute;curis&eacute; par Stripe
-              </div>
-            </div>
-          </div>
-
-          <!-- ──────────────────────────────────────────────── -->
-          <!-- RIGHT: Configuration Panel                       -->
-          <!-- ──────────────────────────────────────────────── -->
-          <div class="config-stack">
-
-            <!-- Card: Param&egrave;tres de la page -->
-            <div class="card">
-              <div class="card-title-sm">Param&egrave;tres de la page</div>
-
-              <div class="form-group">
-                <label class="form-label">Titre de la campagne</label>
-                <input class="form-input" type="text" value="Urgence M&eacute;diterran&eacute;e">
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Description</label>
-                <textarea class="form-textarea" rows="3">Aidez-nous &agrave; fournir une aide m&eacute;dicale d'urgence aux communaut&eacute;s c&ocirc;ti&egrave;res touch&eacute;es par la crise.</textarea>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Objectif (&euro;)</label>
-                <input class="form-input" type="text" value="10 000">
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Image de couverture</label>
-                <div class="upload-area">
-                  <span class="material-symbols-outlined" style="font-size:28px">cloud_upload</span>
-                  <span>Glissez une image ou cliquez pour parcourir</span>
+              <div class="preview-body">
+                <div class="preview-form-card">
+                  <p class="form-hint" style="margin:0;">FAITES UN DON</p>
+                  <p style="font-size:var(--text-sm);color:var(--color-text-secondary);margin-top:var(--space-2);">Choisissez un montant pour soutenir cette campagne.</p>
+                  <div class="preview-amount-row">
+                    <div class="preview-amount-btn">&euro;25</div>
+                    <div class="preview-amount-btn">&euro;50</div>
+                    <div class="preview-amount-btn">&euro;100</div>
+                  </div>
+                  <button class="preview-cta" type="button" disabled>Donner maintenant</button>
                 </div>
               </div>
             </div>
 
-            <!-- Card: Montants sugg&eacute;r&eacute;s -->
-            <div class="card">
-              <div class="card-title-sm">Montants sugg&eacute;r&eacute;s</div>
-
-              <div class="amounts-row">
-                <input class="amount-input" type="text" value="25">
-                <input class="amount-input" type="text" value="50">
-                <input class="amount-input" type="text" value="100">
-                <input class="amount-input" type="text" value="250">
-              </div>
-
-              <div class="checkbox-row">
-                <input type="checkbox" id="free-amount" checked>
-                <label for="free-amount">Autoriser un montant libre</label>
-              </div>
-              <div class="checkbox-row">
-                <input type="checkbox" id="monthly" checked>
-                <label for="monthly">Proposer le don mensuel</label>
-              </div>
-            </div>
-
-            <!-- Card: Champs collect&eacute;s -->
-            <div class="card">
-              <div class="card-title-sm">Champs collect&eacute;s</div>
-
-              <div class="field-toggle-list">
-                <div class="field-toggle">
-                  <div class="field-toggle-left">
-                    <input type="checkbox" checked disabled>
-                    <span class="field-toggle-name">Pr&eacute;nom</span>
-                    <span class="field-toggle-req">obligatoire</span>
-                  </div>
-                </div>
-                <div class="field-toggle">
-                  <div class="field-toggle-left">
-                    <input type="checkbox" checked disabled>
-                    <span class="field-toggle-name">Nom</span>
-                    <span class="field-toggle-req">obligatoire</span>
-                  </div>
-                </div>
-                <div class="field-toggle">
-                  <div class="field-toggle-left">
-                    <input type="checkbox" checked disabled>
-                    <span class="field-toggle-name">Email</span>
-                    <span class="field-toggle-req">obligatoire</span>
-                  </div>
-                </div>
-                <div class="field-toggle">
-                  <div class="field-toggle-left">
-                    <input type="checkbox">
-                    <span class="field-toggle-name">T&eacute;l&eacute;phone</span>
-                  </div>
-                </div>
-                <div class="field-toggle">
-                  <div class="field-toggle-left">
-                    <input type="checkbox">
-                    <span class="field-toggle-name">Adresse postale</span>
-                  </div>
-                </div>
-                <div class="field-toggle">
-                  <div class="field-toggle-left">
-                    <input type="checkbox" checked>
-                    <span class="field-toggle-name">Message du donateur</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Card: Stripe Connect -->
-            <div class="card">
-              <div class="card-title-sm">Stripe Connect</div>
-
-              <div class="stripe-status">
-                <div class="stripe-status-row">
-                  <span class="badge badge-success">Connect&eacute;</span>
-                  <span style="font-size:var(--text-sm);font-weight:var(--weight-medium);color:var(--color-text)">Stripe Connect</span>
-                </div>
-                <div class="stripe-account">Association Solidarit&eacute; M&eacute;d. &mdash; acct_1234567</div>
-                <div class="stripe-mode">
-                  <span class="green-dot"></span>
-                  Mode : Production
-                </div>
-                <a href="../admin/stripe-connect.html" style="font-size:var(--text-sm)">G&eacute;rer dans Param&egrave;tres &rarr;</a>
-              </div>
-            </div>
-
-            <!-- Card: Code d'int&eacute;gration -->
-            <div class="card">
-              <div class="card-title-sm">Code d&rsquo;int&eacute;gration</div>
-
-              <div class="code-box">&lt;iframe src="https://app.givernance.org/donate/cf-2026-003" width="100%" height="800" frameborder="0"&gt;&lt;/iframe&gt;</div>
-
-              <div class="code-box-actions">
-                <button class="btn btn-secondary btn-sm" type="button">
-                  <span class="material-symbols-outlined" style="font-size:14px">content_copy</span>
-                  Copier
-                </button>
-              </div>
-            </div>
-
-          </div>
-          <!-- end config-stack -->
+            <p class="form-hint" style="margin:var(--space-3) var(--space-2) 0;">L'aper&ccedil;u reproduit l'archetype s&eacute;lectionn&eacute; avec les valeurs courantes du formulaire. Les modifications sont visibles instantan&eacute;ment, mais ne sont publi&eacute;es qu'apr&egrave;s enregistrement.</p>
+          </aside>
 
         </div>
-        <!-- end two-col -->
 
       </main>
 
     </div>
-    <!-- end .main-wrapper -->
 
   </div>
-  <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
 </body>

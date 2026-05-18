@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Givernance — Campagnes</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Campagnes &mdash; Givernance</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,246 +12,196 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <style>
-    /* ── Campaign List Page Styles ── */
-    .campaign-cards-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: var(--space-4);
-    }
+    /* ── Campaigns list (mirrors the MVP table) ── */
 
-    @media (max-width: 1200px) {
-      .campaign-cards-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    @media (max-width: 768px) {
-      .campaign-cards-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .campaign-card {
-      background: var(--color-surface);
-      border-radius: var(--radius-md);
-      box-shadow: var(--shadow-card);
-      padding: var(--space-5);
+    .filters-row {
       display: flex;
-      flex-direction: column;
       gap: var(--space-3);
-      transition: box-shadow var(--duration-normal) var(--ease-out);
-      cursor: pointer;
-    }
-
-    .campaign-card:hover {
-      box-shadow: var(--shadow-card-hover);
-    }
-
-    .campaign-card-header {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-
-    .campaign-card-badges {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
+      margin-bottom: var(--space-4);
       flex-wrap: wrap;
-    }
-
-    .campaign-card-title {
-      font-size: var(--text-md);
-      font-weight: var(--weight-semi);
-      color: var(--color-text);
-      line-height: var(--leading-tight);
-    }
-
-    .campaign-card-dates {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-    }
-
-    .campaign-card-progress {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-1);
-    }
-
-    .campaign-card-progress-header {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-    }
-
-    .campaign-card-progress-amounts {
-      font-family: var(--font-mono);
-      font-size: var(--text-sm);
-      font-weight: var(--weight-semi);
-      color: var(--color-text);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .campaign-card-progress-pct {
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-      font-weight: var(--weight-semi);
-      color: var(--color-text-secondary);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .campaign-card-stats {
-      display: flex;
       align-items: center;
-      gap: var(--space-3);
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
     }
 
-    .campaign-card-stats-sep {
-      color: var(--color-neutral-300);
+    .filters-row .search-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 240px;
     }
 
-    .campaign-card-footer {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      padding-top: var(--space-3);
-      border-top: 1px solid var(--color-neutral-100);
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-    }
-
-    .campaign-card-footer .avatar {
-      font-size: 9px;
-    }
-
-    /* ── AI card full-width ── */
-    .ai-card-fullwidth {
-      max-width: 100%;
-    }
-
-    /* ── Topbar search shortcut ── */
-    .search-shortcut {
+    .filters-row .search-wrap .material-symbols-outlined {
       position: absolute;
-      right: 10px;
+      left: 12px;
       top: 50%;
       transform: translateY(-50%);
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      background: var(--color-neutral-100);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      padding: 1px 6px;
-      font-family: var(--font-mono);
+      color: var(--color-text-secondary);
+      opacity: 0.6;
+      font-size: 18px;
       pointer-events: none;
     }
 
-    .topbar-search {
-      position: relative;
+    .filters-row .form-input {
+      padding-left: 36px;
     }
 
-    /* ── Sidebar org logo ── */
-    .sidebar-footer-org-logo {
-      width: 32px;
-      height: 32px;
-      background: rgba(255,255,255,0.15);
-      border-radius: var(--radius-md);
+    .filters-row .form-select {
+      min-width: 180px;
+    }
+
+    .progress-cell {
+      min-width: 11rem;
+    }
+
+    .progress-cell-header {
       display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-3);
+      font-size: var(--text-sm);
+    }
+
+    .progress-cell-raised {
+      font-family: var(--font-mono);
+      font-weight: var(--weight-semi);
+      color: var(--color-on-surface);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .progress-cell-pct {
+      margin-left: var(--space-2);
+      font-size: var(--text-xs);
+      font-weight: var(--weight-regular);
+      color: var(--color-text-secondary);
+    }
+
+    .progress-cell-goal {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .progress-cell-bar {
+      margin-top: var(--space-2);
+      height: 6px;
+      overflow: hidden;
+      border-radius: var(--radius-md);
+      background: var(--color-surface-container);
+    }
+
+    .progress-cell-bar-fill {
+      height: 100%;
+      background: var(--color-primary);
+      border-radius: var(--radius-md);
+    }
+
+    .row-actions-btn {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: var(--text-xs);
-      font-weight: var(--weight-bold);
-      flex-shrink: 0;
+      border: none;
+      background: transparent;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+    }
+
+    .row-actions-btn:hover {
+      background: var(--color-neutral-100);
+      color: var(--color-text);
     }
   </style>
 </head>
 <body>
+
   <div class="app-layout">
 
-    <!-- ============================================================
-         SIDEBAR
-         ============================================================ -->
+    <!-- Sidebar -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="../constituents/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">layers</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>Bénévoles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">monitoring</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="../admin/index.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Paramètres</span>
-    </a>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">dashboard</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="../constituents/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">groups</span>
+          <span>Constituants</span>
+        </a>
+        <a href="list.html" class="nav-item nav-item--active">
+          <span class="material-symbols-outlined nav-icon">campaign</span>
+          <span>Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+          <span>Dons</span>
+        </a>
+        <div class="sidebar-section">Bient&ocirc;t</div>
+        <a href="../grants/kanban.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">account_balance</span>
+          <span>Subventions</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../programs/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">layers</span>
+          <span>Programmes</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../volunteers/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">front_hand</span>
+          <span>B&eacute;n&eacute;voles</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../impact/dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">monitoring</span>
+          <span>Impact</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../communications/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">forum</span>
+          <span>Communications</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../reports/library.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">assessment</span>
+          <span>Rapports</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
+        <div class="sidebar-footer-user">
+          <div class="sidebar-footer-avatar">CM</div>
+          <span class="sidebar-footer-name">Claire Martin</span>
+        </div>
+      </div>
+    </aside>
 
-    <!-- ============================================================
-         MAIN WRAPPER
-         ============================================================ -->
+    <!-- Main wrapper -->
     <div class="main-wrapper">
 
-      <!-- ── Topbar ── -->
       <header class="topbar">
-        <div class="topbar-breadcrumb">
-          <a href="../donations/list.html">Dons &amp; Campagnes</a>
+        <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
+          <a href="../dashboard.html">Tableau de bord</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
           <span class="topbar-breadcrumb-current">Campagnes</span>
-        </div>
+        </nav>
 
         <a href="../global/command-palette.html" class="topbar-search">
           <input
-            type="text"
             class="topbar-search-input"
-            placeholder="Rechercher..."
+            type="search"
+            placeholder="Rechercher&hellip;"
+            aria-label="Recherche globale"
           >
-          <span class="search-shortcut">&#8984;K</span>
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html" class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
+          <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
             <span class="material-symbols-outlined" style="font-size:20px">notifications</span>
             <span class="notification-dot"></span>
           </a>
@@ -259,244 +209,185 @@
         </div>
       </header>
 
-      <!-- ── Main Content ── -->
       <main class="main-content">
 
-        <!-- Page Header -->
+        <!-- Page header -->
         <div class="page-header">
           <div class="page-header-left">
             <h1 class="page-title">Campagnes</h1>
             <p class="page-subtitle">12 campagnes</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-secondary"><span class="material-symbols-outlined" style="font-size:16px">calendar_today</span> Calendrier</button>
-            <div style="position:relative;display:inline-block;" class="dropdown-wrapper">
-              <button class="btn btn-primary" onclick="this.nextElementSibling.classList.toggle('show')" type="button"><span class="material-symbols-outlined" style="font-size:16px">add</span> Nouvelle campagne <span class="material-symbols-outlined" style="font-size:16px">expand_more</span></button>
-              <div class="dropdown-menu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-card-hover);min-width:220px;z-index:10;padding:var(--space-1) 0;">
-                <a href="new.html" style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);font-size:var(--text-sm);color:var(--color-text);text-decoration:none;transition:background 0.15s;" onmouseover="this.style.background='var(--color-surface-container-low)'" onmouseout="this.style.background='transparent'"><span class="material-symbols-outlined" style="font-size:16px">campaign</span> Campagne standard</a>
-                <a href="postal-wizard.html" style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);font-size:var(--text-sm);color:var(--color-text);text-decoration:none;transition:background 0.15s;" onmouseover="this.style.background='var(--color-surface-container-low)'" onmouseout="this.style.background='transparent'"><span class="material-symbols-outlined" style="font-size:16px">mail</span> Campagne postale</a>
-                <a href="door-drop.html" style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);font-size:var(--text-sm);color:var(--color-text);text-decoration:none;transition:background 0.15s;" onmouseover="this.style.background='var(--color-surface-container-low)'" onmouseout="this.style.background='transparent'"><span class="material-symbols-outlined" style="font-size:16px">location_on</span> Door-drop</a>
-              </div>
-            </div>
-            <script>document.addEventListener('click',function(e){document.querySelectorAll('.dropdown-menu.show').forEach(function(m){if(!m.parentElement.contains(e.target))m.classList.remove('show')});});document.querySelectorAll('.dropdown-menu').forEach(function(m){m.classList.contains('show')?m.style.display='block':new MutationObserver(function(){m.style.display=m.classList.contains('show')?'block':'none'}).observe(m,{attributes:true,attributeFilter:['class']})});</script>
+            <a href="new.html" class="btn btn-primary"><span class="material-symbols-outlined" style="font-size:16px">add</span> Nouvelle campagne</a>
           </div>
         </div>
 
-        <!-- Filter Chips -->
-        <div class="filter-bar mb-6">
-          <span class="filter-chip">Toutes</span>
-          <span class="filter-chip active">Actives</span>
-          <span class="filter-chip">Termin&#233;es</span>
-          <span class="filter-chip">Planifi&#233;es</span>
+        <!-- Filters: search + status -->
+        <div class="filters-row">
+          <div class="search-wrap">
+            <span class="material-symbols-outlined">search</span>
+            <input class="form-input" type="search" placeholder="Rechercher une campagne&hellip;" aria-label="Rechercher une campagne">
+          </div>
+          <select class="form-select" aria-label="Statut">
+            <option selected>Tous les statuts</option>
+            <option>Brouillon</option>
+            <option>Active</option>
+            <option>Cl&ocirc;tur&eacute;e</option>
+          </select>
         </div>
 
-        <!-- ============================================================
-             CAMPAIGN CARDS GRID
-             ============================================================ -->
-        <div class="campaign-cards-grid">
+        <!-- Campaigns table -->
+        <div class="card">
+          <div class="data-table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th data-sortable>Nom</th>
+                  <th data-sortable>Type</th>
+                  <th data-sortable>Statut</th>
+                  <th data-sortable>Progression</th>
+                  <th data-sortable>Date</th>
+                  <th aria-label="Actions"></th>
+                </tr>
+              </thead>
+              <tbody>
 
-          <!-- ── Card 1: Appel aux dons Hiver 2026 ── -->
-          <a href="detail.html" class="campaign-card" style="text-decoration:none;color:inherit;">
-            <div class="campaign-card-header">
-              <div class="campaign-card-badges">
-                <span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:12px">check</span> Active</span>
-                <span class="badge badge-neutral">Email</span>
-              </div>
-              <div class="campaign-card-title">Appel aux dons Hiver 2026</div>
-              <div class="campaign-card-dates">15 nov. 2025 &mdash; 28 f&#233;v. 2026</div>
-            </div>
-            <div class="campaign-card-progress">
-              <div class="campaign-card-progress-header">
-                <span class="campaign-card-progress-amounts">&euro;8&nbsp;200 / &euro;15&nbsp;000</span>
-                <span class="campaign-card-progress-pct">55%</span>
-              </div>
-              <div class="progress">
-                <div class="progress-fill" style="width: 55%;"></div>
-              </div>
-            </div>
-            <div class="campaign-card-stats">
-              <span>47 donateurs</span>
-              <span class="campaign-card-stats-sep">&middot;</span>
-              <span>Don moyen : &euro;174</span>
-            </div>
-            <div class="campaign-card-footer">
-              <span class="avatar avatar-sm avatar-green">CD</span>
-              <span>Claire Dubois</span>
-            </div>
-          </a>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <a href="detail.html" class="cell-name" style="font-weight:var(--weight-medium);color:var(--color-on-surface);">Appel aux dons Hiver 2026</a>
+                  </td>
+                  <td><span class="badge badge-info">Postal nominatif</span></td>
+                  <td><span class="badge badge-success">Active</span></td>
+                  <td>
+                    <div class="progress-cell">
+                      <div class="progress-cell-header">
+                        <span class="progress-cell-raised">&euro;8&nbsp;200 <span class="progress-cell-pct">55&nbsp;%</span></span>
+                        <span class="progress-cell-goal">&euro;15&nbsp;000</span>
+                      </div>
+                      <div class="progress-cell-bar" role="progressbar" aria-valuenow="55" aria-valuemin="0" aria-valuemax="100" aria-label="&euro;8 200 collect&eacute;s sur &euro;15 000">
+                        <div class="progress-cell-bar-fill" style="width:55%;"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="cell-secondary">15/11/2025</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Appel aux dons Hiver 2026"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
+                </tr>
 
-          <!-- ── Card 2: Gala Annuel 2026 ── -->
-          <a href="detail.html" class="campaign-card" style="text-decoration:none;color:inherit;">
-            <div class="campaign-card-header">
-              <div class="campaign-card-badges">
-                <span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:12px">check</span> Active</span>
-                <span class="badge badge-neutral">&#201;v&#233;nement</span>
-              </div>
-              <div class="campaign-card-title">Gala Annuel 2026</div>
-              <div class="campaign-card-dates">1 jan. 2026 &mdash; 30 avr. 2026</div>
-            </div>
-            <div class="campaign-card-progress">
-              <div class="campaign-card-progress-header">
-                <span class="campaign-card-progress-amounts">&euro;45&nbsp;000 / &euro;50&nbsp;000</span>
-                <span class="campaign-card-progress-pct">90%</span>
-              </div>
-              <div class="progress">
-                <div class="progress-fill" style="width: 90%;"></div>
-              </div>
-            </div>
-            <div class="campaign-card-stats">
-              <span>23 donateurs</span>
-              <span class="campaign-card-stats-sep">&middot;</span>
-              <span>Don moyen : &euro;1&nbsp;957</span>
-            </div>
-            <div class="campaign-card-footer">
-              <span class="avatar avatar-sm avatar-sky">MB</span>
-              <span>Marc Benali</span>
-            </div>
-          </a>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <a href="detail.html" class="cell-name" style="font-weight:var(--weight-medium);color:var(--color-on-surface);">Gala Annuel 2026</a>
+                  </td>
+                  <td><span class="badge badge-success">Digital</span></td>
+                  <td><span class="badge badge-success">Active</span></td>
+                  <td>
+                    <div class="progress-cell">
+                      <div class="progress-cell-header">
+                        <span class="progress-cell-raised">&euro;45&nbsp;000 <span class="progress-cell-pct">90&nbsp;%</span></span>
+                        <span class="progress-cell-goal">&euro;50&nbsp;000</span>
+                      </div>
+                      <div class="progress-cell-bar" role="progressbar" aria-valuenow="90" aria-valuemin="0" aria-valuemax="100" aria-label="&euro;45 000 collect&eacute;s sur &euro;50 000">
+                        <div class="progress-cell-bar-fill" style="width:90%;"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="cell-secondary">01/01/2026</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Gala Annuel 2026"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
+                </tr>
 
-          <!-- ── Card 3: Urgence Mediterranee ── -->
-          <a href="detail.html" class="campaign-card" style="text-decoration:none;color:inherit;">
-            <div class="campaign-card-header">
-              <div class="campaign-card-badges">
-                <span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:12px">check</span> Active</span>
-                <span class="badge badge-neutral">Digital</span>
-              </div>
-              <div class="campaign-card-title">Urgence M&#233;diterran&#233;e</div>
-              <div class="campaign-card-dates">1 f&#233;v. 2026 &mdash; 30 avr. 2026</div>
-            </div>
-            <div class="campaign-card-progress">
-              <div class="campaign-card-progress-header">
-                <span class="campaign-card-progress-amounts">&euro;3&nbsp;100 / &euro;10&nbsp;000</span>
-                <span class="campaign-card-progress-pct">31%</span>
-              </div>
-              <div class="progress">
-                <div class="progress-fill progress-fill--amber" style="width: 31%;"></div>
-              </div>
-            </div>
-            <div class="campaign-card-stats">
-              <span>18 donateurs</span>
-              <span class="campaign-card-stats-sep">&middot;</span>
-              <span>Don moyen : &euro;172</span>
-            </div>
-            <div class="campaign-card-footer">
-              <span class="avatar avatar-sm avatar-green">CD</span>
-              <span>Claire Dubois</span>
-            </div>
-          </a>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <a href="detail.html" class="cell-name" style="font-weight:var(--weight-medium);color:var(--color-on-surface);">Urgence M&eacute;diterran&eacute;e</a>
+                  </td>
+                  <td><span class="badge badge-success">Digital</span></td>
+                  <td><span class="badge badge-success">Active</span></td>
+                  <td>
+                    <div class="progress-cell">
+                      <div class="progress-cell-header">
+                        <span class="progress-cell-raised">&euro;3&nbsp;100 <span class="progress-cell-pct">31&nbsp;%</span></span>
+                        <span class="progress-cell-goal">&euro;10&nbsp;000</span>
+                      </div>
+                      <div class="progress-cell-bar" role="progressbar" aria-valuenow="31" aria-valuemin="0" aria-valuemax="100" aria-label="&euro;3 100 collect&eacute;s sur &euro;10 000">
+                        <div class="progress-cell-bar-fill" style="width:31%;"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="cell-secondary">01/02/2026</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Urgence M&eacute;diterran&eacute;e"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
+                </tr>
 
-          <!-- ── Card 4: Collecte de rentree 2025 ── -->
-          <a href="detail.html" class="campaign-card" style="text-decoration:none;color:inherit;">
-            <div class="campaign-card-header">
-              <div class="campaign-card-badges">
-                <span class="badge badge-neutral">Termin&#233;e</span>
-                <span class="badge badge-neutral">Courrier</span>
-              </div>
-              <div class="campaign-card-title">Collecte de rentr&#233;e 2025</div>
-              <div class="campaign-card-dates">1 sep. 2025 &mdash; 31 oct. 2025</div>
-            </div>
-            <div class="campaign-card-progress">
-              <div class="campaign-card-progress-header">
-                <span class="campaign-card-progress-amounts">&euro;12&nbsp;000 / &euro;12&nbsp;000</span>
-                <span class="campaign-card-progress-pct">100%</span>
-              </div>
-              <div class="progress">
-                <div class="progress-fill" style="width: 100%;"></div>
-              </div>
-            </div>
-            <div class="campaign-card-stats">
-              <span>89 donateurs</span>
-              <span class="campaign-card-stats-sep">&middot;</span>
-              <span>Don moyen : &euro;135</span>
-            </div>
-            <div class="campaign-card-footer">
-              <span class="avatar avatar-sm avatar-green">CD</span>
-              <span>Claire Dubois</span>
-            </div>
-          </a>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <a href="detail.html" class="cell-name" style="font-weight:var(--weight-medium);color:var(--color-on-surface);">Collecte de rentr&eacute;e 2025</a>
+                  </td>
+                  <td><span class="badge badge-info">Postal nominatif</span></td>
+                  <td><span class="badge badge-neutral">Cl&ocirc;tur&eacute;e</span></td>
+                  <td>
+                    <div class="progress-cell">
+                      <div class="progress-cell-header">
+                        <span class="progress-cell-raised">&euro;12&nbsp;000 <span class="progress-cell-pct">100&nbsp;%</span></span>
+                        <span class="progress-cell-goal">&euro;12&nbsp;000</span>
+                      </div>
+                      <div class="progress-cell-bar" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="&euro;12 000 collect&eacute;s sur &euro;12 000">
+                        <div class="progress-cell-bar-fill" style="width:100%;"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="cell-secondary">01/09/2025</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Collecte de rentr&eacute;e 2025"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
+                </tr>
 
-          <!-- ── Card 5: Campagne Ete 2026 ── -->
-          <a href="detail.html" class="campaign-card" style="text-decoration:none;color:inherit;">
-            <div class="campaign-card-header">
-              <div class="campaign-card-badges">
-                <span class="badge badge-info">Planifi&#233;e</span>
-                <span class="badge badge-neutral">Email</span>
-              </div>
-              <div class="campaign-card-title">Campagne &#201;t&#233; 2026</div>
-              <div class="campaign-card-dates">1 juin 2026 &mdash; 31 ao&#251;t 2026</div>
-            </div>
-            <div class="campaign-card-progress">
-              <div class="campaign-card-progress-header">
-                <span class="campaign-card-progress-amounts">&euro;0 / &euro;20&nbsp;000</span>
-                <span class="campaign-card-progress-pct">0%</span>
-              </div>
-              <div class="progress">
-                <div class="progress-fill" style="width: 0%;"></div>
-              </div>
-            </div>
-            <div class="campaign-card-stats">
-              <span>0 donateurs</span>
-            </div>
-            <div class="campaign-card-footer">
-              <span class="avatar avatar-sm avatar-sky">MB</span>
-              <span>Marc Benali</span>
-            </div>
-          </a>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <a href="detail.html" class="cell-name" style="font-weight:var(--weight-medium);color:var(--color-on-surface);">Campagne &Eacute;t&eacute; 2026</a>
+                  </td>
+                  <td><span class="badge badge-warning">Bo&icirc;tage</span></td>
+                  <td><span class="badge badge-neutral">Brouillon</span></td>
+                  <td>
+                    <div class="progress-cell">
+                      <div class="progress-cell-header">
+                        <span class="progress-cell-raised">&euro;0 <span class="progress-cell-pct">0&nbsp;%</span></span>
+                        <span class="progress-cell-goal">&euro;20&nbsp;000</span>
+                      </div>
+                      <div class="progress-cell-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="&euro;0 collect&eacute;s sur &euro;20 000">
+                        <div class="progress-cell-bar-fill" style="width:0%;"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="cell-secondary">12/05/2026</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Campagne &Eacute;t&eacute; 2026"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
+                </tr>
 
-          <!-- ── Card 6: Journee des benevoles 2026 ── -->
-          <a href="detail.html" class="campaign-card" style="text-decoration:none;color:inherit;">
-            <div class="campaign-card-header">
-              <div class="campaign-card-badges">
-                <span class="badge badge-info">Planifi&#233;e</span>
-                <span class="badge badge-neutral">&#201;v&#233;nement</span>
-              </div>
-              <div class="campaign-card-title">Journ&#233;e des b&#233;n&#233;voles 2026</div>
-              <div class="campaign-card-dates">15 mai 2026</div>
-            </div>
-            <div class="campaign-card-progress">
-              <div class="campaign-card-progress-header">
-                <span class="campaign-card-progress-amounts">&euro;0 / &euro;5&nbsp;000</span>
-                <span class="campaign-card-progress-pct">0%</span>
-              </div>
-              <div class="progress">
-                <div class="progress-fill" style="width: 0%;"></div>
-              </div>
-            </div>
-            <div class="campaign-card-stats">
-              <span>0 donateurs</span>
-            </div>
-            <div class="campaign-card-footer">
-              <span class="avatar avatar-sm avatar-amber">FA</span>
-              <span>Fatima El Amrani</span>
-            </div>
-          </a>
-
-        </div>
-        <!-- END CAMPAIGN CARDS GRID -->
-
-        <!-- ============================================================
-             AI SUGGESTION CARD
-             ============================================================ -->
-        <div class="ai-card ai-card-fullwidth mt-6">
-          <div class="ai-card-header">
-            <span class="ai-card-icon"><span class="material-symbols-outlined" style="font-size:16px">auto_awesome</span></span>
-            <span class="ai-card-label">Suggestion IA</span>
+              </tbody>
+            </table>
           </div>
-          <p class="ai-card-text">
-            La campagne &laquo;&nbsp;Appel aux dons Hiver 2026&nbsp;&raquo; est &#224; 55% de son objectif &#224; 1 jour de la fin &mdash; voulez-vous relancer les 312 donateurs qui n'ont pas encore r&#233;pondu ?
-          </p>
-          <div class="ai-card-actions">
-            <button class="btn btn-primary btn-sm">Appliquer</button>
-            <button class="btn btn-ghost btn-sm">Ignorer</button>
+
+          <div class="pagination">
+            <span class="pagination-info">Affichage 1&ndash;20 sur 12</span>
+            <div class="pagination-controls">
+              <button class="pagination-btn" disabled aria-label="Page pr&eacute;c&eacute;dente"><span class="material-symbols-outlined" style="font-size:16px">chevron_left</span></button>
+              <button class="pagination-btn active" type="button">1</button>
+              <button class="pagination-btn" aria-label="Page suivante"><span class="material-symbols-outlined" style="font-size:16px">chevron_right</span></button>
+            </div>
           </div>
+
         </div>
 
       </main>
+
     </div>
-    <!-- END MAIN WRAPPER -->
 
   </div>
-  <!-- END APP LAYOUT -->
+
 <script src="../shared/mobile.js"></script>
 </body>
 </html>

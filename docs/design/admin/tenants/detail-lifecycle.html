@@ -1,84 +1,133 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Givernance &mdash; Admin &mdash; Tenant / Lifecycle</title>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="../../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Back office &mdash; Tenant / Cycle de vie</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <link rel="stylesheet" href="../../shared/tokens.css">
   <link rel="stylesheet" href="../../shared/base.css">
   <style>
-    .tenant-detail { padding: var(--space-8) var(--space-6); max-width: 1200px; margin: 0 auto; }
-    .tenant-detail a.back { font-size: var(--text-xs); color: var(--color-primary); text-decoration: none; }
-    .tenant-detail header.hero { display: flex; align-items: flex-start; justify-content: space-between; margin: var(--space-2) 0 var(--space-4); }
-    .hero-left h1 { font-family: var(--font-heading); font-size: var(--text-3xl); margin-bottom: var(--space-1); }
-    .hero-left .slug { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-sm); }
-    .status-badge { display: inline-flex; padding: 2px 10px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: var(--weight-medium); background: var(--color-primary-50); color: var(--color-primary); }
-    .tenant-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--color-border); margin-bottom: var(--space-6); }
-    .tenant-tabs a { padding: var(--space-3) var(--space-4); color: var(--color-text-secondary); text-decoration: none; font-size: var(--text-sm); font-weight: var(--weight-medium); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-    .tenant-tabs a.tab--active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
-    .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-5); margin-bottom: var(--space-4); }
-    .panel h2 { font-size: var(--text-sm); font-weight: var(--weight-semi); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-secondary); margin-bottom: var(--space-3); }
-
-    .lifecycle-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-4); }
-    .lifecycle-card { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); background: var(--color-white); }
-    .lifecycle-card h3 { font-size: var(--text-base); font-weight: var(--weight-medium); margin-bottom: var(--space-1); }
-    .lifecycle-card p { font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3); line-height: var(--leading-relaxed); }
-    .lifecycle-card button { width: 100%; height: var(--btn-height-md); border-radius: var(--radius-button); border: 1px solid var(--color-border); background: var(--color-white); font-weight: var(--weight-medium); cursor: pointer; font-size: var(--text-sm); }
-    .lifecycle-card.suspend button { color: var(--color-amber-text); border-color: var(--color-amber-border); }
-    .lifecycle-card.archive button { color: var(--color-red); border-color: var(--color-red); }
-    .lifecycle-card.activate button { color: var(--color-primary); border-color: var(--color-primary); }
-    .lifecycle-card.disabled { opacity: 0.5; pointer-events: none; }
-
-    .warn-banner { padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-amber-light); color: var(--color-amber-text); font-size: var(--text-sm); margin-bottom: var(--space-4); }
+    .switch-link { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin: 0 var(--space-3) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-on-surface-variant); border: 1px solid var(--color-outline-variant); text-decoration: none; }
+    .tenant-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-6); flex-wrap: wrap; }
+    .slug-mono { color: var(--color-on-surface-variant); font-family: var(--font-mono); font-size: var(--text-sm); }
+    .lifecycle-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-4); }
+    .lifecycle-card { border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); padding: var(--space-5); background: var(--color-surface-container-lowest); }
+    .lifecycle-card h3 { font-size: var(--text-base); font-weight: var(--weight-medium); margin-bottom: var(--space-2); }
+    .lifecycle-card p { font-size: var(--text-sm); color: var(--color-on-surface-variant); margin-bottom: var(--space-4); line-height: var(--leading-relaxed); }
+    .lifecycle-card button { width: 100%; }
+    .lifecycle-card.disabled { opacity: 0.5; }
+    .lifecycle-card.disabled button { cursor: not-allowed; }
   </style>
 </head>
 <body>
-  <main class="tenant-detail">
-    <a class="back" href="list.html">← Back to tenants</a>
-    <header class="hero">
-      <div class="hero-left">
-        <h1>Croix-Rouge Française</h1>
-        <span class="slug">croix-rouge</span>
-      </div>
-      <span class="status-badge">Active</span>
-    </header>
-    <nav class="tenant-tabs">
-      <a href="detail-overview.html">Overview</a>
-      <a href="detail-domains.html">Domains</a>
-      <a href="detail-idp.html">Identity providers</a>
-      <a href="detail-users.html">Users</a>
-      <a href="detail-lifecycle.html" class="tab--active">Lifecycle</a>
-    </nav>
+  <div class="app-layout">
 
-    <div class="warn-banner">
-      <strong>Soft transitions only.</strong> Suspension is reversible. Archived tenants are hidden from the org picker but retained for 90 days for GDPR exports before hard-delete becomes available (MVP: never automatic).
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <a href="../../dashboard.html" class="switch-link">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Retour à l'organisation
+      </a>
+      <nav class="sidebar-nav" aria-label="Navigation Back office">
+        <div class="sidebar-section">Super admin</div>
+        <a href="list.html" class="nav-item nav-item--active"><span class="material-symbols-outlined nav-item-icon">business</span><span class="nav-item-label">Locataires</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">shield</span><span class="nav-item-label">Litiges</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">person_search</span><span class="nav-item-label">Usurpation</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">admin_panel_settings</span><span class="nav-item-label">Admins plateforme</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">flag</span><span class="nav-item-label">Feature flags</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar" style="background: var(--color-indigo);">SA</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Sam Admin</div>
+            <div class="sidebar-footer-role">Super admin</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-breadcrumb">
+          <a href="../index.html">Back office</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <a href="list.html">Locataires</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Croix-Rouge Française</span>
+        </div>
+        <div class="topbar-actions">
+          <div class="topbar-avatar" title="Sam Admin" style="background: var(--color-indigo);">SA</div>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <a href="list.html" style="font-size: var(--text-xs); color: var(--color-primary); text-decoration: none;">← Retour à la liste</a>
+
+        <header class="tenant-hero" style="margin-top: var(--space-3);">
+          <div>
+            <h1 class="page-title">Croix-Rouge Française</h1>
+            <span class="slug-mono">croix-rouge</span>
+          </div>
+          <span class="badge badge-success">Actif</span>
+        </header>
+
+        <nav class="tabs" aria-label="Sections de la fiche tenant">
+          <a href="detail-overview.html" class="tab" style="text-decoration:none;">Vue d'ensemble</a>
+          <a href="detail-domains.html" class="tab" style="text-decoration:none;">Domaines</a>
+          <a href="detail-idp.html" class="tab" style="text-decoration:none;">Identity providers</a>
+          <a href="detail-users.html" class="tab" style="text-decoration:none;">Utilisateurs</a>
+          <a href="detail-feature-flags.html" class="tab" style="text-decoration:none;">Feature flags</a>
+          <button class="tab active" type="button">Cycle de vie</button>
+        </nav>
+
+        <div class="alert alert-warning mb-6">
+          <span class="alert-icon material-symbols-outlined">info</span>
+          <div class="alert-content">
+            <strong>Transitions soft uniquement.</strong> La suspension est réversible. Les tenants archivés sont masqués du sélecteur d'organisation mais conservés 90 jours pour les exports GDPR avant que le hard-delete soit possible (MVP : jamais automatique).
+          </div>
+        </div>
+
+        <section class="card mb-6">
+          <h3 class="form-section-title">Actions sur le cycle de vie</h3>
+          <div class="lifecycle-grid">
+            <div class="lifecycle-card">
+              <h3>Suspendre</h3>
+              <p>Verrouille immédiatement tous les membres. Les données sont conservées. Réversible via <em>Activer</em>.</p>
+              <button type="button" class="btn btn-secondary">Suspendre le tenant…</button>
+            </div>
+            <div class="lifecycle-card disabled">
+              <h3>Activer</h3>
+              <p>Déjà actif. Utilisez ce bouton pour restaurer un tenant suspendu.</p>
+              <button type="button" class="btn btn-secondary" disabled>Activer le tenant</button>
+            </div>
+            <div class="lifecycle-card">
+              <h3>Archiver</h3>
+              <p>Masque le tenant du sélecteur d'organisation de façon permanente. Données conservées 90 jours pour obligations GDPR.</p>
+              <button type="button" class="btn btn-destructive">Archiver le tenant…</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h3 class="form-section-title">Raison (requise pour l'audit)</h3>
+          <textarea class="form-textarea" placeholder="ex. Suspension échec de paiement — délai de grâce 30j déclenché le 2026-04-10"></textarea>
+          <div class="card-footer">
+            <button type="button" class="btn btn-ghost">Annuler</button>
+            <button type="submit" class="btn btn-primary">Enregistrer la transition</button>
+          </div>
+        </section>
+      </main>
     </div>
-
-    <section class="panel">
-      <h2>Lifecycle actions</h2>
-      <div class="lifecycle-actions">
-        <div class="lifecycle-card suspend">
-          <h3>Suspend</h3>
-          <p>Locks all members out immediately. Tenant data is retained. Reversible via <em>Activate</em>.</p>
-          <button type="button">Suspend tenant…</button>
-        </div>
-        <div class="lifecycle-card activate disabled">
-          <h3>Activate</h3>
-          <p>Already active. Use this to restore a suspended tenant.</p>
-          <button type="button" disabled>Activate tenant</button>
-        </div>
-        <div class="lifecycle-card archive">
-          <h3>Archive</h3>
-          <p>Hides the tenant from the org picker permanently. Data retained 90 days for GDPR obligations.</p>
-          <button type="button">Archive tenant…</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Reason (required for audit)</h2>
-      <textarea style="width: 100%; min-height: 80px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3); font-family: inherit; font-size: var(--text-sm);" placeholder="e.g. Payment-failure suspension — 30-day grace triggered 2026-04-10"></textarea>
-    </section>
-  </main>
+  </div>
+<script src="../../shared/mobile.js"></script>
 </body>
 </html>

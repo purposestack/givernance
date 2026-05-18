@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Nouvelle campagne &mdash; Givernance NPO Platform</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Nouvelle campagne &mdash; Givernance</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,43 +12,78 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <style>
-    /* ── Page-specific styles for campaigns/new (CAMP-003) ── */
+    /* ── New campaign form (mirrors CampaignForm in the MVP) ── */
 
-    /* Currency input wrapper */
-    .currency-input-wrapper {
-      position: relative;
+    .form-card {
+      background: var(--color-surface);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-card);
+      padding: 0 var(--space-6);
     }
 
-    .currency-input-wrapper .form-input {
-      padding-left: var(--space-8);
-      font-family: var(--font-mono);
-      font-weight: var(--weight-semi);
+    .form-section {
+      padding: var(--space-6) 0;
+      border-bottom: 1px solid var(--color-border-light);
     }
 
-    .currency-prefix {
-      position: absolute;
-      left: var(--space-3);
-      top: 50%;
-      transform: translateY(-50%);
+    .form-section:last-of-type {
+      border-bottom: none;
+    }
+
+    .form-section-header {
+      margin-bottom: var(--space-4);
+    }
+
+    .form-section-title {
+      font-family: var(--font-heading);
+      font-size: var(--text-lg);
+      color: var(--color-on-surface);
+      margin-bottom: var(--space-1);
+    }
+
+    .form-section-desc {
+      font-size: var(--text-sm);
       color: var(--color-text-secondary);
-      font-size: var(--text-base);
-      font-weight: var(--weight-semi);
-      pointer-events: none;
     }
 
-    /* Form footer */
-    .form-footer {
+    .form-actions {
       display: flex;
       align-items: center;
       justify-content: flex-end;
       gap: var(--space-3);
-      padding-top: var(--space-6);
-      margin-top: var(--space-8);
-      border-top: 1px solid var(--color-border);
+      padding: var(--space-5) 0;
+      border-top: 1px solid var(--color-border-light);
     }
 
-    .form-footer-left {
-      margin-right: auto;
+    .funds-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-3);
+    }
+
+    .fund-tile {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+    }
+
+    .fund-tile input[type="checkbox"] {
+      margin-top: 2px;
+      accent-color: var(--color-primary);
+    }
+
+    .fund-tile-name {
+      font-weight: var(--weight-medium);
+      color: var(--color-on-surface);
+    }
+
+    .fund-tile-hint {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
     }
   </style>
 </head>
@@ -56,261 +91,253 @@
 
   <div class="app-layout">
 
-    <!-- ============================== -->
-    <!--           Sidebar               -->
-    <!-- ============================== -->
+    <!-- Sidebar -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="../constituents/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">layers</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>Bénévoles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">monitoring</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="../admin/index.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Paramètres</span>
-    </a>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">dashboard</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="../constituents/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">groups</span>
+          <span>Constituants</span>
+        </a>
+        <a href="list.html" class="nav-item nav-item--active">
+          <span class="material-symbols-outlined nav-icon">campaign</span>
+          <span>Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+          <span>Dons</span>
+        </a>
+        <div class="sidebar-section">Bient&ocirc;t</div>
+        <a href="../grants/kanban.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">account_balance</span>
+          <span>Subventions</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../programs/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">layers</span>
+          <span>Programmes</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../volunteers/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">front_hand</span>
+          <span>B&eacute;n&eacute;voles</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../impact/dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">monitoring</span>
+          <span>Impact</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../communications/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">forum</span>
+          <span>Communications</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../reports/library.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">assessment</span>
+          <span>Rapports</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
+        <div class="sidebar-footer-user">
+          <div class="sidebar-footer-avatar">CM</div>
+          <span class="sidebar-footer-name">Claire Martin</span>
+        </div>
+      </div>
+    </aside>
 
-    <!-- ============================== -->
-    <!--         Main Wrapper            -->
-    <!-- ============================== -->
+    <!-- Main wrapper -->
     <div class="main-wrapper">
 
-      <!-- Topbar -->
       <header class="topbar">
         <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
-          <a href="../donations/list.html">Dons &amp; Campagnes</a>
+          <a href="../dashboard.html">Tableau de bord</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
           <a href="list.html">Campagnes</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
-          <span class="topbar-breadcrumb-current">Nouvelle campagne</span>
+          <span class="topbar-breadcrumb-current">Nouveau</span>
         </nav>
 
         <a href="../global/command-palette.html" class="topbar-search">
           <input
             class="topbar-search-input"
             type="search"
-            placeholder="Rechercher..."
+            placeholder="Rechercher&hellip;"
             aria-label="Recherche globale"
           >
         </a>
 
         <div class="topbar-actions">
-          <a href="../global/notifications.html" class="topbar-icon-btn" type="button" aria-label="Notifications">
+          <a href="../global/notifications.html" class="topbar-icon-btn" aria-label="Notifications">
             <span class="material-symbols-outlined" style="font-size:20px">notifications</span>
             <span class="notification-dot"></span>
           </a>
-          <a href="../admin/users.html" class="topbar-avatar" aria-label="Profil Claire Dubois">CD</a>
+          <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
         </div>
       </header>
 
-      <!-- Main Content -->
       <main class="main-content main-content--form">
 
-        <!-- Page Header -->
         <div class="page-header">
           <div class="page-header-left">
             <h1 class="page-title">Nouvelle campagne</h1>
-            <p class="page-subtitle">Cr&eacute;ez une campagne de collecte de fonds</p>
+            <p class="page-subtitle">Cr&eacute;ez une campagne avec son type, son rattachement et son co&ucirc;t op&eacute;rationnel.</p>
           </div>
         </div>
 
-        <!-- Form -->
-        <form action="#" method="post" novalidate>
+        <form class="form-card" action="#" method="post" novalidate>
 
-          <!-- ============================== -->
-          <!--  Section 1: Informations g&eacute;n&eacute;rales -->
-          <!-- ============================== -->
-          <div class="form-section">
-            <h2 class="form-section-title">Informations g&eacute;n&eacute;rales</h2>
-
-            <!-- Nom de la campagne -->
-            <div class="form-group">
-              <label class="form-label form-label-required" for="camp-nom">Nom de la campagne</label>
-              <input
-                class="form-input"
-                type="text"
-                id="camp-nom"
-                placeholder="Ex : Appel aux dons Printemps 2026"
-                required
-              >
+          <!-- Identit&eacute; -->
+          <section class="form-section">
+            <div class="form-section-header">
+              <h3 class="form-section-title">Identit&eacute;</h3>
+              <p class="form-section-desc">Informations principales pour identifier et qualifier cette campagne.</p>
             </div>
 
-            <!-- Type de campagne -->
-            <div class="form-group">
-              <label class="form-label form-label-required" for="camp-type">Type de campagne</label>
-              <select class="form-select" id="camp-type" required>
-                <option value="" disabled selected>S&eacute;lectionnez un type</option>
-                <option value="email">Email</option>
-                <option value="courrier">Courrier postal</option>
-                <option value="evenement">&Eacute;v&eacute;nement</option>
-                <option value="digital">Digital (r&eacute;seaux sociaux)</option>
-                <option value="mixte">Mixte</option>
-              </select>
-            </div>
-
-            <!-- Campagne parente -->
-            <div class="form-group">
-              <label class="form-label" for="camp-parente">Campagne parente</label>
-              <select class="form-select" id="camp-parente">
-                <option value="" selected>Aucune (par d&eacute;faut)</option>
-                <option value="hiver-2026">Appel aux dons Hiver 2026</option>
-                <option value="gala-2026">Gala annuel 2026</option>
-              </select>
-              <p class="form-hint">S&eacute;lectionnez une campagne parente pour cr&eacute;er une sous-campagne</p>
-            </div>
-
-            <!-- Description -->
-            <div class="form-group">
-              <label class="form-label" for="camp-description">Description</label>
-              <textarea
-                class="form-textarea"
-                id="camp-description"
-                rows="4"
-                placeholder="D&eacute;crivez l'objectif et le contexte de cette campagne..."
-              ></textarea>
-            </div>
-          </div>
-
-          <!-- ============================== -->
-          <!--  Section 2: Objectifs et dates  -->
-          <!-- ============================== -->
-          <div class="form-section">
-            <h2 class="form-section-title">Objectifs et dates</h2>
-
-            <!-- Date de d&eacute;but + Date de fin -->
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label form-label-required" for="camp-date-debut">Date de d&eacute;but</label>
-                <input class="form-input" type="date" id="camp-date-debut" value="2026-04-01" required>
+                <label class="form-label form-label-required" for="name">Nom</label>
+                <input class="form-input" type="text" id="name" name="name" placeholder="Ex. Appel aux dons Hiver 2026" maxlength="255" required>
               </div>
               <div class="form-group">
-                <label class="form-label form-label-required" for="camp-date-fin">Date de fin</label>
-                <input class="form-input" type="date" id="camp-date-fin" value="2026-06-30" required>
-              </div>
-            </div>
-
-            <!-- Objectif financier + Fonds cible -->
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label form-label-required" for="camp-objectif">Objectif financier</label>
-                <div class="currency-input-wrapper">
-                  <span class="currency-prefix">&euro;</span>
-                  <input
-                    class="form-input"
-                    type="number"
-                    id="camp-objectif"
-                    placeholder="50 000"
-                    min="0"
-                    step="1"
-                    required
-                  >
-                </div>
-                <p class="form-hint">Montant en euros que vous souhaitez collecter</p>
-              </div>
-              <div class="form-group">
-                <label class="form-label form-label-required" for="camp-fonds">Fonds cible</label>
-                <select class="form-select" id="camp-fonds" required>
-                  <option value="" disabled selected>S&eacute;lectionnez un fonds</option>
-                  <option value="general">Fonds g&eacute;n&eacute;ral</option>
-                  <option value="alimentaire">Aide alimentaire</option>
-                  <option value="hebergement">H&eacute;bergement urgence</option>
-                  <option value="education">&Eacute;ducation</option>
+                <label class="form-label form-label-required" for="defaultCurrency">Devise par d&eacute;faut</label>
+                <select class="form-select" id="defaultCurrency" name="defaultCurrency" required>
+                  <option value="EUR" selected>EUR</option>
+                  <option value="GBP">GBP</option>
+                  <option value="CHF">CHF</option>
                 </select>
+                <span class="form-hint">Devise utilis&eacute;e pour l'objectif et les statistiques.</span>
               </div>
             </div>
-          </div>
 
-          <!-- ============================== -->
-          <!--  Section 3: Responsable et suivi -->
-          <!-- ============================== -->
-          <div class="form-section">
-            <h2 class="form-section-title">Responsable et suivi</h2>
-
-            <!-- Responsable -->
             <div class="form-group">
-              <label class="form-label" for="camp-responsable">Responsable</label>
-              <select class="form-select" id="camp-responsable">
-                <option value="claire" selected>Claire Dubois</option>
-                <option value="marc">Marc Benali</option>
-                <option value="sophie">Sophie Laurent</option>
+              <label class="form-label" for="description">Description</label>
+              <textarea class="form-textarea" id="description" name="description" rows="4" maxlength="2000" placeholder="Quel est l'objectif de cette campagne ? Cette description sert &eacute;galement de base au corps du courrier postal et &agrave; la page de don publique."></textarea>
+              <span class="form-hint">2 000 caract&egrave;res maximum. Utilis&eacute;e dans les communications postales et publiques.</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label form-label-required" for="type">Type</label>
+              <select class="form-select" id="type" name="type" required>
+                <option value="digital" selected>Digital</option>
+                <option value="nominative_postal">Postal nominatif</option>
+                <option value="door_drop">Bo&icirc;tage</option>
               </select>
             </div>
+          </section>
 
-            <!-- Code source -->
+          <!-- Structure -->
+          <section class="form-section">
+            <div class="form-section-header">
+              <h3 class="form-section-title">Structure</h3>
+              <p class="form-section-desc">Campagne parente et co&ucirc;t op&eacute;rationnel utilis&eacute;s pour le regroupement et le reporting ROI.</p>
+            </div>
+
             <div class="form-group">
-              <label class="form-label" for="camp-code">Code source</label>
-              <input
-                class="form-input"
-                type="text"
-                id="camp-code"
-                placeholder="Ex : PRINT-2026-S1"
-              >
-              <p class="form-hint">Code de suivi pour mesurer la performance de cette campagne</p>
+              <label class="form-label" for="parentId">Campagne parente</label>
+              <select class="form-select" id="parentId" name="parentId">
+                <option value="" selected>Aucune (campagne autonome)</option>
+                <option value="campaign-1">Annuelle 2026</option>
+                <option value="campaign-2">Programme M&eacute;diterran&eacute;e</option>
+              </select>
+              <span class="form-hint">Rattachez cette campagne &agrave; une campagne parente pour regrouper les statistiques.</span>
             </div>
 
-            <!-- Notes internes -->
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="operationalCost">Co&ucirc;t op&eacute;rationnel</label>
+                <input class="form-input" type="number" id="operationalCost" name="operationalCost" placeholder="1500" step="0.01">
+                <span class="form-hint">Co&ucirc;ts internes (impression, routage, &eacute;quipe) pour calculer le ROI.</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="goalAmount">Objectif</label>
+                <input class="form-input" type="number" id="goalAmount" name="goalAmount" placeholder="15000" step="0.01">
+                <span class="form-hint">Montant cible &agrave; atteindre, affich&eacute; sur la barre de progression.</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Funds -->
+          <section class="form-section">
+            <div class="form-section-header">
+              <h3 class="form-section-title">Fonds &eacute;ligibles</h3>
+              <p class="form-section-desc">Choisissez les affectations de fonds qui peuvent &ecirc;tre associ&eacute;es &agrave; cette campagne.</p>
+            </div>
+
+            <div class="funds-grid">
+              <label class="fund-tile">
+                <input type="checkbox" name="fundIds" value="fund-1" checked>
+                <div>
+                  <div class="fund-tile-name">Fonds g&eacute;n&eacute;ral</div>
+                  <div class="fund-tile-hint">Affectation libre, sans destination sp&eacute;cifique.</div>
+                </div>
+              </label>
+              <label class="fund-tile">
+                <input type="checkbox" name="fundIds" value="fund-2">
+                <div>
+                  <div class="fund-tile-name">Programme M&eacute;diterran&eacute;e</div>
+                  <div class="fund-tile-hint">Affect&eacute;&nbsp;: actions terrain &agrave; Marseille.</div>
+                </div>
+              </label>
+              <label class="fund-tile">
+                <input type="checkbox" name="fundIds" value="fund-3">
+                <div>
+                  <div class="fund-tile-name">Bourse d'&eacute;tudes</div>
+                  <div class="fund-tile-hint">Restreint&nbsp;: aide aux b&eacute;n&eacute;ficiaires en formation.</div>
+                </div>
+              </label>
+              <label class="fund-tile">
+                <input type="checkbox" name="fundIds" value="fund-4">
+                <div>
+                  <div class="fund-tile-name">Fonds d'urgence</div>
+                  <div class="fund-tile-hint">Affectation libre, mobilis&eacute; sur d&eacute;cision du conseil.</div>
+                </div>
+              </label>
+            </div>
+          </section>
+
+          <!-- Swiss QR-bill -->
+          <section class="form-section">
+            <div class="form-section-header">
+              <h3 class="form-section-title">&#127464;&#127469; BVR suisse (Swiss QR-bill)</h3>
+              <p class="form-section-desc">
+                Liez un compte bancaire suisse pour g&eacute;n&eacute;rer un BVR sur chaque lettre postale. Le donateur paie depuis son e-banking et la r&eacute;conciliation camt.053 cr&eacute;e automatiquement le don. Laissez vide pour conserver le mode postal standard (QR vers la page de don publique uniquement).
+              </p>
+            </div>
+
             <div class="form-group">
-              <label class="form-label" for="camp-notes">Notes internes</label>
-              <textarea
-                class="form-textarea"
-                id="camp-notes"
-                rows="3"
-                placeholder="Notes internes visibles uniquement par l'&eacute;quipe..."
-              ></textarea>
+              <label class="form-label" for="bankAccountId">Compte bancaire</label>
+              <select class="form-select" id="bankAccountId" name="bankAccountId">
+                <option value="__none__" selected>Aucun (mode postal standard)</option>
+                <option value="acct-1">UBS &middot; CH93&nbsp;0076&nbsp;2011&nbsp;6238&nbsp;5295&nbsp;7 &middot; CHF</option>
+                <option value="acct-2">PostFinance &middot; CH02&nbsp;0900&nbsp;0000&nbsp;3000&nbsp;0123&nbsp;6 &middot; CHF</option>
+              </select>
+              <span class="form-hint">Aucun compte&nbsp;: le QR code de la lettre redirige vers la page publique.</span>
             </div>
-          </div>
 
-          <!-- Form Footer -->
-          <div class="form-footer">
-            <div class="form-footer-left">
-              <a href="list.html" class="btn btn-secondary">Annuler</a>
+            <div class="form-group">
+              <label class="form-label" for="qrReferenceMode">Mode de r&eacute;f&eacute;rence QR</label>
+              <select class="form-select" id="qrReferenceMode" name="qrReferenceMode">
+                <option value="auto" selected>Automatique (selon le compte)</option>
+                <option value="qrr">QRR (compte QR-IBAN)</option>
+                <option value="scor">SCOR (compte IBAN standard)</option>
+              </select>
+              <span class="form-hint">Choisi automatiquement selon le type d'IBAN du compte. Override possible pour cas particulier.</span>
             </div>
-            <a href="detail.html" class="btn btn-primary"><span class="material-symbols-outlined" style="font-size:16px">check</span> Sauvegarder</a>
+          </section>
+
+          <div class="form-actions">
+            <a href="list.html" class="btn btn-ghost">Annuler</a>
+            <button class="btn btn-primary" type="submit">Cr&eacute;er la campagne</button>
           </div>
 
         </form>
@@ -318,10 +345,8 @@
       </main>
 
     </div>
-    <!-- end .main-wrapper -->
 
   </div>
-  <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
 </body>

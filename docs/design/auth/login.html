@@ -7,8 +7,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Connexion — Givernance NPO Platform</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Se connecter — Givernance</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <style>
@@ -151,19 +151,19 @@
       <!-- Logo -->
       <div class="auth-logo">
         <div class="auth-logo-mark">
-  <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" style="width:44px;height:44px;object-fit:contain;">
+  <img src="../shared/assets/givernance-logo.svg" alt="Givernance" style="width:44px;height:44px;object-fit:contain;">
 </div>
         <span class="auth-logo-text">Givernance</span>
       </div>
 
-      <!-- Organization detected via subdomain -->
+      <!-- Organization detected via subdomain (auth.login.orgBadge) -->
       <div class="auth-org">
         <span class="auth-org-dot"></span>
-        <span class="auth-org-name">Association Solidarit&eacute; M&eacute;diterran&eacute;e</span>
+        <span class="auth-org-name">Votre organisation</span>
       </div>
 
-      <!-- Title & subtitle -->
-      <h1 class="auth-title">Connexion</h1>
+      <!-- Title & subtitle — match auth.login.{title,subtitle} in fr.json -->
+      <h1 class="auth-title">Se connecter</h1>
       <p class="auth-subtitle">Vous serez redirig&eacute; vers votre fournisseur d'identit&eacute; pour vous authentifier en toute s&eacute;curit&eacute;.</p>
 
       <!-- Error alert (visible state example — shown after failed OIDC callback) -->
@@ -185,12 +185,17 @@
         <span>S&eacute;curis&eacute; via le fournisseur d'identit&eacute; de votre organisation</span>
       </div>
 
-      <!-- Request access -->
+      <!-- Self-serve signup (auth.login.noAccount) -->
       <div class="auth-register">
         <p class="auth-register-text">
-          Pas encore de compte ?
-          <a href="#" class="auth-link">Demander un acc&egrave;s</a>
+          Pas encore de compte&nbsp;?
+          <a href="onboarding-1.html" class="auth-link">S'inscrire</a>
         </p>
+      </div>
+
+      <!-- Forgot password — secondary link, mirrors MVP affordance -->
+      <div class="auth-register" style="margin-top: var(--space-3); padding-top: 0; border-top: none;">
+        <a href="forgot-password.html" class="auth-link">Mot de passe oubli&eacute;&nbsp;?</a>
       </div>
 
     </div>
@@ -198,9 +203,9 @@
 
     <!-- Footer -->
     <footer class="auth-footer">
-      <span class="auth-footer-brand">Givernance NPO Platform</span>
+      <span class="auth-footer-brand">Givernance</span>
       <span class="auth-footer-separator">&mdash;</span>
-      <span>Propuls&eacute; par des valeurs</span>
+      <span>CRM nonprofit, conforme RGPD, h&eacute;berg&eacute; en Europe</span>
     </footer>
 
   </div>

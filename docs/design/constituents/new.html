@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Nouveau constituant &mdash; Givernance NPO Platform</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Nouveau constituant &mdash; Givernance</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,9 +12,49 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <style>
-    /* ── Page-specific: CON-007 New constituent ── */
+    /* ── New constituent form (mirrors the MVP ConstituentForm) ── */
 
-    /* Duplicate detection inline warning */
+    .form-card {
+      background: var(--color-surface);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-card);
+      padding: 0 var(--space-6);
+    }
+
+    .form-section {
+      padding: var(--space-6) 0;
+      border-bottom: 1px solid var(--color-border-light);
+    }
+
+    .form-section:last-of-type {
+      border-bottom: none;
+    }
+
+    .form-section-header {
+      margin-bottom: var(--space-4);
+    }
+
+    .form-section-title {
+      font-family: var(--font-heading);
+      font-size: var(--text-lg);
+      color: var(--color-on-surface);
+      margin-bottom: var(--space-1);
+    }
+
+    .form-section-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .form-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-3);
+      padding: var(--space-5) 0;
+      border-top: 1px solid var(--color-border-light);
+    }
+
     .duplicate-alert {
       display: flex;
       align-items: flex-start;
@@ -27,13 +67,8 @@
     }
 
     .duplicate-alert-icon {
-      font-size: var(--text-lg);
-      flex-shrink: 0;
       color: var(--color-amber);
-    }
-
-    .duplicate-alert-content {
-      flex: 1;
+      flex-shrink: 0;
     }
 
     .duplicate-alert-title {
@@ -60,20 +95,6 @@
       margin-bottom: var(--space-2);
     }
 
-    .duplicate-match-avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: var(--radius-full);
-      background: var(--color-amber);
-      color: var(--color-white);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: var(--text-xs);
-      font-weight: var(--weight-semi);
-      flex-shrink: 0;
-    }
-
     .duplicate-match-info {
       flex: 1;
       min-width: 0;
@@ -89,175 +110,86 @@
       font-size: var(--text-xs);
       color: var(--color-text-secondary);
     }
-
-    .duplicate-match-confidence {
-      font-size: var(--text-xs);
-      font-weight: var(--weight-semi);
-      color: var(--color-amber);
-    }
-
-    .duplicate-match-actions {
-      display: flex;
-      gap: var(--space-2);
-      flex-shrink: 0;
-    }
-
-    /* Tags input */
-    .tags-input {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--space-1);
-      padding: var(--space-2) var(--space-3);
-      background: var(--color-white);
-      border: 1px solid var(--color-border);
-      border-radius: 6px;
-      min-height: 40px;
-      align-items: center;
-      cursor: text;
-    }
-
-    .tags-input:focus-within {
-      border-color: var(--color-primary);
-      box-shadow: 0 0 0 3px var(--color-primary-50);
-    }
-
-    .tag-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-1);
-      height: 24px;
-      padding: 0 var(--space-2);
-      background: var(--color-primary-50);
-      border: 1px solid var(--color-primary-100);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-xs);
-      color: var(--color-primary-dark);
-      white-space: nowrap;
-    }
-
-    .tag-chip-remove {
-      font-size: 10px;
-      cursor: pointer;
-      opacity: 0.7;
-      line-height: 1;
-    }
-
-    .tag-chip-remove:hover {
-      opacity: 1;
-    }
-
-    .tags-input-field {
-      border: none;
-      outline: none;
-      font-family: var(--font-body);
-      font-size: var(--text-base);
-      color: var(--color-text);
-      flex: 1;
-      min-width: 100px;
-      background: transparent;
-    }
-
-    .tags-input-field::placeholder {
-      color: var(--color-text-muted);
-    }
-
-    /* Form actions bar */
-    .form-actions {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding-top: var(--space-6);
-      border-top: 1px solid var(--color-border);
-      margin-top: var(--space-6);
-    }
-
-    .form-actions-right {
-      display: flex;
-      gap: var(--space-3);
-    }
-
-    /* AI card adjustments */
-    .ai-card--wide {
-      max-width: 100%;
-    }
   </style>
 </head>
 <body>
 
   <div class="app-layout">
 
-    <!-- ============================== -->
-    <!--            Sidebar              -->
-    <!-- ============================== -->
+    <!-- Sidebar -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="list.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">layers</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>B&eacute;n&eacute;voles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">monitoring</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="../admin/index.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Param&egrave;tres</span>
-    </a>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">dashboard</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="list.html" class="nav-item nav-item--active">
+          <span class="material-symbols-outlined nav-icon">groups</span>
+          <span>Constituants</span>
+        </a>
+        <a href="../campaigns/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">campaign</span>
+          <span>Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+          <span>Dons</span>
+        </a>
+        <div class="sidebar-section">Bient&ocirc;t</div>
+        <a href="../grants/kanban.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">account_balance</span>
+          <span>Subventions</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../programs/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">layers</span>
+          <span>Programmes</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../volunteers/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">front_hand</span>
+          <span>B&eacute;n&eacute;voles</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../impact/dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">monitoring</span>
+          <span>Impact</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../communications/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">forum</span>
+          <span>Communications</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../reports/library.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">assessment</span>
+          <span>Rapports</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
+        <div class="sidebar-footer-user">
+          <div class="sidebar-footer-avatar">CM</div>
+          <span class="sidebar-footer-name">Claire Martin</span>
+        </div>
+      </div>
+    </aside>
 
-    <!-- ============================== -->
-    <!--          Main wrapper           -->
-    <!-- ============================== -->
+    <!-- Main wrapper -->
     <div class="main-wrapper">
 
-      <!-- Topbar -->
       <header class="topbar">
         <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
-          <a href="../dashboard.html">Association Solidarit&eacute; M&eacute;diterran&eacute;e</a>
+          <a href="../dashboard.html">Tableau de bord</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
           <a href="list.html">Constituants</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
-          <span class="topbar-breadcrumb-current">Nouveau constituant</span>
+          <span class="topbar-breadcrumb-current">Nouveau</span>
         </nav>
 
         <a href="../global/command-palette.html" class="topbar-search">
@@ -278,195 +210,129 @@
         </div>
       </header>
 
-      <!-- Main Content -->
       <main class="main-content main-content--form">
 
-        <!-- Page Header -->
+        <!-- Page header -->
         <div class="page-header">
           <div class="page-header-left">
             <h1 class="page-title">Nouveau constituant</h1>
-            <p class="page-subtitle">Cr&eacute;er un nouveau constituant individuel</p>
+            <p class="page-subtitle">Ajoutez un donateur, b&eacute;n&eacute;vole, membre, b&eacute;n&eacute;ficiaire ou partenaire.</p>
           </div>
         </div>
 
-        <!-- ============================================================
-             DUPLICATE DETECTION WARNING (inline)
-             ============================================================ -->
-        <div class="duplicate-alert">
+        <!-- Duplicate-detection alert (shown when API returns 409) -->
+        <div class="duplicate-alert" role="alert">
           <span class="duplicate-alert-icon"><span class="material-symbols-outlined" style="font-size:20px">warning</span></span>
-          <div class="duplicate-alert-content">
+          <div style="flex:1;">
             <div class="duplicate-alert-title">Doublon potentiel d&eacute;tect&eacute;</div>
             <p class="duplicate-alert-text">
-              Un constituant existant correspond aux informations saisies. V&eacute;rifiez avant de continuer.
+              Un constituant existant correspond aux informations saisies. Ouvrez sa fiche pour v&eacute;rifier ou poursuivez la cr&eacute;ation.
             </p>
-
-            <!-- Matching record -->
             <div class="duplicate-match">
-              <div class="duplicate-match-avatar">MF</div>
+              <div class="profile-avatar" style="width:36px;height:36px;font-size:var(--text-xs);background:var(--color-amber);color:var(--color-white);border-radius:var(--radius-full);display:flex;align-items:center;justify-content:center;flex-shrink:0;">MF</div>
               <div class="duplicate-match-info">
                 <div class="duplicate-match-name">Marie-Claire Fontaine</div>
-                <div class="duplicate-match-detail">mc.fontaine@gmail.com &middot; 06 12 34 56 78</div>
+                <div class="duplicate-match-detail">mc.fontaine@gmail.com</div>
               </div>
-              <span class="duplicate-match-confidence">Confiance : 87%</span>
-              <div class="duplicate-match-actions">
-                <a href="detail.html" class="btn btn-secondary btn-sm">Voir la fiche</a>
-                <button class="btn btn-ghost btn-sm" type="button">Ignorer</button>
-              </div>
+              <a href="detail.html" class="btn btn-secondary btn-sm">Voir la fiche</a>
+            </div>
+            <div style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
+              <button class="btn btn-ghost btn-sm" type="button">Annuler</button>
+              <button class="btn btn-primary btn-sm" type="button">Cr&eacute;er quand m&ecirc;me</button>
             </div>
           </div>
         </div>
 
-        <!-- ============================================================
-             AI SUGGESTION
-             ============================================================ -->
-        <div class="ai-card ai-card--wide mb-6">
-          <div class="ai-card-header">
-            <span class="ai-card-icon"><span class="material-symbols-outlined" style="font-size:16px">auto_awesome</span></span>
-            <span class="ai-card-label">Suggestion IA</span>
-          </div>
-          <p class="ai-card-text">
-            Source d'acquisition d&eacute;tect&eacute;e : le nom &laquo;&nbsp;Fontaine&nbsp;&raquo; appara&icirc;t dans les participants du Gala 2025 &mdash; pr&eacute;-remplir la source ?
-          </p>
-          <div class="ai-card-actions">
-            <button class="btn btn-primary btn-sm" type="button">Appliquer</button>
-            <button class="btn btn-ghost btn-sm" type="button">Ignorer</button>
-          </div>
-        </div>
+        <!-- Constituent form -->
+        <form class="form-card" action="#" method="post" novalidate>
 
-        <!-- ============================================================
-             CREATION FORM
-             ============================================================ -->
-        <form action="#" method="post" novalidate>
-
-          <!-- Section: Identite -->
-          <div class="form-section">
-            <h3 class="form-section-title">Identit&eacute;</h3>
+          <!-- Section: Identit&eacute; (type + nom) -->
+          <section class="form-section">
+            <div class="form-section-header">
+              <h3 class="form-section-title">Identit&eacute;</h3>
+              <p class="form-section-desc">Type de constituant et nom complet.</p>
+            </div>
 
             <div class="form-group">
-              <label class="form-label" for="civilite">Civilit&eacute;</label>
-              <select class="form-select" id="civilite" name="civilite">
-                <option value="">S&eacute;lectionner&hellip;</option>
-                <option value="mme" selected>Mme</option>
-                <option value="m">M.</option>
-                <option value="mx">Mx</option>
+              <label class="form-label form-label-required" for="type">Type</label>
+              <select class="form-select" id="type" name="type" required>
+                <option value="donor" selected>Donateur</option>
+                <option value="volunteer">B&eacute;n&eacute;vole</option>
+                <option value="member">Membre</option>
+                <option value="beneficiary">B&eacute;n&eacute;ficiaire</option>
+                <option value="partner">Partenaire</option>
               </select>
             </div>
 
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label form-label-required" for="prenom">Pr&eacute;nom</label>
-                <input class="form-input" type="text" id="prenom" name="prenom" placeholder="Pr&eacute;nom" value="Marie-Claire" required>
+                <label class="form-label form-label-required" for="firstName">Pr&eacute;nom</label>
+                <input class="form-input" type="text" id="firstName" name="firstName" placeholder="Pr&eacute;nom" autocomplete="given-name" required>
               </div>
               <div class="form-group">
-                <label class="form-label form-label-required" for="nom">Nom</label>
-                <input class="form-input" type="text" id="nom" name="nom" placeholder="Nom de famille" value="Fontaine" required>
+                <label class="form-label form-label-required" for="lastName">Nom</label>
+                <input class="form-input" type="text" id="lastName" name="lastName" placeholder="Nom de famille" autocomplete="family-name" required>
               </div>
             </div>
-          </div>
+          </section>
 
-          <!-- Section: Coordonnees -->
-          <div class="form-section">
-            <h3 class="form-section-title">Coordonn&eacute;es</h3>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label form-label-required" for="email">Email</label>
-                <input class="form-input" type="email" id="email" name="email" placeholder="email@exemple.org" value="mc.fontaine@gmail.com" required>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="telephone">T&eacute;l&eacute;phone</label>
-                <input class="form-input" type="tel" id="telephone" name="telephone" placeholder="06 00 00 00 00" value="06 12 34 56 78">
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="adresse">Adresse</label>
-              <input class="form-input" type="text" id="adresse" name="adresse" placeholder="Num&eacute;ro et rue">
+          <!-- Section: Contact -->
+          <section class="form-section">
+            <div class="form-section-header">
+              <h3 class="form-section-title">Contact</h3>
+              <p class="form-section-desc">Email et t&eacute;l&eacute;phone &mdash; optionnels mais recommand&eacute;s pour les communications.</p>
             </div>
 
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label" for="code-postal">Code postal</label>
-                <input class="form-input" type="text" id="code-postal" name="code_postal" placeholder="13001">
+                <label class="form-label" for="email">Email</label>
+                <input class="form-input" type="email" id="email" name="email" placeholder="email@exemple.org" autocomplete="email">
               </div>
               <div class="form-group">
-                <label class="form-label" for="ville">Ville</label>
-                <input class="form-input" type="text" id="ville" name="ville" placeholder="Marseille">
+                <label class="form-label" for="phone">T&eacute;l&eacute;phone</label>
+                <input class="form-input" type="tel" id="phone" name="phone" placeholder="06 00 00 00 00" autocomplete="tel">
               </div>
             </div>
-          </div>
+          </section>
 
-          <!-- Section: Classification -->
-          <div class="form-section">
-            <h3 class="form-section-title">Classification</h3>
-
-            <div class="form-group">
-              <label class="form-label" for="tags">Tags</label>
-              <div class="tags-input">
-                <span class="tag-chip">Gala <span class="tag-chip-remove"><span class="material-symbols-outlined" style="font-size:10px">close</span></span></span>
-                <span class="tag-chip">Prospect <span class="tag-chip-remove"><span class="material-symbols-outlined" style="font-size:10px">close</span></span></span>
-                <input class="tags-input-field" type="text" placeholder="Ajouter un tag&hellip;">
-              </div>
-              <span class="form-hint">Appuyez sur Entr&eacute;e pour ajouter un tag</span>
+          <!-- Section: Adresse postale -->
+          <section class="form-section">
+            <div class="form-section-header">
+              <h3 class="form-section-title">Adresse postale</h3>
+              <p class="form-section-desc">N&eacute;cessaire pour les courriers nominatifs et les re&ccedil;us fiscaux. Tous les champs sont optionnels.</p>
             </div>
 
             <div class="form-group">
-              <label class="form-label" for="source">Source d'acquisition</label>
-              <select class="form-select" id="source" name="source">
-                <option value="">S&eacute;lectionner&hellip;</option>
-                <option value="site-web">Site web</option>
-                <option value="evenement">&#201;v&eacute;nement</option>
-                <option value="bouche-a-oreille">Bouche &agrave; oreille</option>
-                <option value="reseaux-sociaux">R&eacute;seaux sociaux</option>
-                <option value="partenaire">Partenaire</option>
-                <option value="campagne-email">Campagne email</option>
-                <option value="autre">Autre</option>
-              </select>
+              <label class="form-label" for="addressLine1">Adresse ligne 1</label>
+              <input class="form-input" type="text" id="addressLine1" name="addressLine1" placeholder="N&deg; et nom de rue" autocomplete="address-line1">
             </div>
 
             <div class="form-group">
-              <label class="form-label" for="notes">Notes initiales</label>
-              <textarea class="form-textarea" id="notes" name="notes" rows="3" placeholder="Informations compl&eacute;mentaires sur ce constituant&hellip;"></textarea>
+              <label class="form-label" for="addressLine2">Adresse ligne 2</label>
+              <input class="form-input" type="text" id="addressLine2" name="addressLine2" placeholder="Compl&eacute;ment d'adresse (appartement, b&acirc;timent&hellip;)" autocomplete="address-line2">
             </div>
-          </div>
-
-          <!-- Section: Relations (optional) -->
-          <div class="form-section">
-            <h3 class="form-section-title">Relations (optionnel)</h3>
 
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label" for="menage">M&eacute;nage</label>
-                <select class="form-select" id="menage" name="menage">
-                  <option value="">Aucun m&eacute;nage</option>
-                  <option value="fontaine-duval">Fontaine-Duval</option>
-                  <option value="benali">Benali</option>
-                  <option value="new">+ Cr&eacute;er un nouveau m&eacute;nage</option>
-                </select>
+                <label class="form-label" for="postalCode">Code postal</label>
+                <input class="form-input" type="text" id="postalCode" name="postalCode" placeholder="13001" autocomplete="postal-code">
               </div>
               <div class="form-group">
-                <label class="form-label" for="organisation">Organisation li&eacute;e</label>
-                <select class="form-select" id="organisation" name="organisation">
-                  <option value="">Aucune organisation</option>
-                  <option value="fondation-lumiere">Fondation Lumi&egrave;re Provence</option>
-                  <option value="mairie-marseille">Mairie de Marseille</option>
-                  <option value="croix-rouge">Croix-Rouge fran&ccedil;aise</option>
-                </select>
+                <label class="form-label" for="city">Ville</label>
+                <input class="form-input" type="text" id="city" name="city" placeholder="Marseille" autocomplete="address-level2">
               </div>
             </div>
-          </div>
 
-          <!-- Form Actions -->
+            <div class="form-group">
+              <label class="form-label" for="countryCode">Pays (ISO 3166-1 alpha-2)</label>
+              <input class="form-input" type="text" id="countryCode" name="countryCode" placeholder="FR" maxlength="2" value="FR" style="text-transform:uppercase;max-width:120px;" autocomplete="country">
+              <span class="form-hint">Code &agrave; deux lettres (FR, BE, CH, &hellip;). FR par d&eacute;faut.</span>
+            </div>
+          </section>
+
           <div class="form-actions">
-            <a href="list.html" class="btn btn-ghost"><span class="material-symbols-outlined" style="font-size:16px">arrow_back</span> Annuler</a>
-            <div class="form-actions-right">
-              <button class="btn btn-secondary" type="submit" name="action" value="save-and-add-donation">
-                Sauvegarder et ajouter un don
-              </button>
-              <a href="detail.html" class="btn btn-primary">
-                <span class="material-symbols-outlined" style="font-size:16px">check</span> Sauvegarder
-              </a>
-            </div>
+            <a href="list.html" class="btn btn-ghost">Annuler</a>
+            <button class="btn btn-primary" type="submit">Cr&eacute;er le constituant</button>
           </div>
 
         </form>

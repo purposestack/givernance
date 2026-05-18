@@ -1,86 +1,156 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Givernance &mdash; Admin &mdash; Tenant / Users</title>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="../../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Back office &mdash; Tenant / Utilisateurs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <link rel="stylesheet" href="../../shared/tokens.css">
   <link rel="stylesheet" href="../../shared/base.css">
   <style>
-    .tenant-detail { padding: var(--space-8) var(--space-6); max-width: 1200px; margin: 0 auto; }
-    .tenant-detail a.back { font-size: var(--text-xs); color: var(--color-primary); text-decoration: none; }
-    .tenant-detail header.hero { display: flex; align-items: flex-start; justify-content: space-between; margin: var(--space-2) 0 var(--space-4); }
-    .hero-left h1 { font-family: var(--font-heading); font-size: var(--text-3xl); margin-bottom: var(--space-1); }
-    .hero-left .slug { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-sm); }
-    .status-badge { display: inline-flex; padding: 2px 10px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: var(--weight-medium); background: var(--color-primary-50); color: var(--color-primary); }
-    .tenant-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--color-border); margin-bottom: var(--space-6); }
-    .tenant-tabs a { padding: var(--space-3) var(--space-4); color: var(--color-text-secondary); text-decoration: none; font-size: var(--text-sm); font-weight: var(--weight-medium); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-    .tenant-tabs a.tab--active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
-    .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-5); margin-bottom: var(--space-4); }
-    .panel h2 { font-size: var(--text-sm); font-weight: var(--weight-semi); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-secondary); margin-bottom: var(--space-3); display: flex; justify-content: space-between; align-items: center; }
-    .user-table { width: 100%; border-collapse: collapse; }
-    .user-table th, .user-table td { padding: var(--space-3) 0; text-align: left; font-size: var(--text-sm); border-bottom: 1px solid var(--color-border-light); }
-    .user-table th { font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
-    .role-badge { display: inline-flex; padding: 1px 8px; border-radius: var(--radius-pill); font-size: 11px; background: var(--color-surface-container-low); color: var(--color-text-secondary); }
-    .badge-first { background: var(--color-amber-light); color: var(--color-amber-text); }
-    .badge-provisional { background: var(--color-amber-light); color: var(--color-amber-text); }
-    .audit-link { font-size: var(--text-xs); color: var(--color-primary); text-decoration: none; }
+    .switch-link { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin: 0 var(--space-3) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-on-surface-variant); border: 1px solid var(--color-outline-variant); text-decoration: none; }
+    .tenant-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-6); flex-wrap: wrap; }
+    .slug-mono { color: var(--color-on-surface-variant); font-family: var(--font-mono); font-size: var(--text-sm); }
+    .first-admin-card { padding: var(--space-5); background: rgba(134, 71, 0, 0.06); border: 1px solid var(--color-tertiary); border-radius: var(--radius-lg); margin-bottom: var(--space-5); }
+    .first-admin-card h3 { font-size: var(--text-base); font-weight: var(--weight-medium); margin-bottom: var(--space-2); color: var(--color-tertiary); }
   </style>
 </head>
 <body>
-  <main class="tenant-detail">
-    <a class="back" href="list.html">← Back to tenants</a>
-    <header class="hero">
-      <div class="hero-left">
-        <h1>Emmaüs Solidarité</h1>
-        <span class="slug">emmaus-solidarite</span>
-      </div>
-      <span class="status-badge" style="background: var(--color-amber-light); color: var(--color-amber-text);">Provisional</span>
-    </header>
-    <nav class="tenant-tabs">
-      <a href="detail-overview.html">Overview</a>
-      <a href="detail-domains.html">Domains</a>
-      <a href="detail-idp.html">Identity providers</a>
-      <a href="detail-users.html" class="tab--active">Users</a>
-      <a href="detail-lifecycle.html">Lifecycle</a>
-    </nav>
+  <div class="app-layout">
 
-    <section class="panel">
-      <h2>Members</h2>
-      <table class="user-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Flags</th>
-            <th>Last visited</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Alice Martin</td>
-            <td style="color: var(--color-text-secondary);">alice.martin@emmaus-solidarite.org</td>
-            <td><span class="role-badge">org_admin</span></td>
-            <td>
-              <span class="role-badge badge-first">first_admin</span>
-              <span class="role-badge badge-provisional">Provisional · 6d left</span>
-            </td>
-            <td style="color: var(--color-text-secondary);">2 h ago</td>
-            <td style="text-align: right;"><a class="audit-link" href="detail-overview.html">View JIT audit →</a></td>
-          </tr>
-          <tr>
-            <td>Bruno Leclerc</td>
-            <td style="color: var(--color-text-secondary);">b.leclerc@emmaus-solidarite.org</td>
-            <td><span class="role-badge">user</span></td>
-            <td style="color: var(--color-text-muted); font-size: var(--text-xs);">—</td>
-            <td style="color: var(--color-text-secondary);">Yesterday</td>
-            <td></td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
-  </main>
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <a href="../../dashboard.html" class="switch-link">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Retour à l'organisation
+      </a>
+      <nav class="sidebar-nav" aria-label="Navigation Back office">
+        <div class="sidebar-section">Super admin</div>
+        <a href="list.html" class="nav-item nav-item--active"><span class="material-symbols-outlined nav-item-icon">business</span><span class="nav-item-label">Locataires</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">shield</span><span class="nav-item-label">Litiges</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">person_search</span><span class="nav-item-label">Usurpation</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">admin_panel_settings</span><span class="nav-item-label">Admins plateforme</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">flag</span><span class="nav-item-label">Feature flags</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar" style="background: var(--color-indigo);">SA</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Sam Admin</div>
+            <div class="sidebar-footer-role">Super admin</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-breadcrumb">
+          <a href="../index.html">Back office</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <a href="list.html">Locataires</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Emmaüs Solidarité</span>
+        </div>
+        <div class="topbar-actions">
+          <div class="topbar-avatar" title="Sam Admin" style="background: var(--color-indigo);">SA</div>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <a href="list.html" style="font-size: var(--text-xs); color: var(--color-primary); text-decoration: none;">← Retour à la liste</a>
+
+        <header class="tenant-hero" style="margin-top: var(--space-3);">
+          <div>
+            <h1 class="page-title">Emmaüs Solidarité</h1>
+            <span class="slug-mono">emmaus-solidarite</span>
+          </div>
+          <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+            <span class="badge badge-warning">Provisoire</span>
+            <span class="badge badge-warning">Propriété en attente</span>
+          </div>
+        </header>
+
+        <nav class="tabs" aria-label="Sections de la fiche tenant">
+          <a href="detail-overview.html" class="tab" style="text-decoration:none;">Vue d'ensemble</a>
+          <a href="detail-domains.html" class="tab" style="text-decoration:none;">Domaines</a>
+          <a href="detail-idp.html" class="tab" style="text-decoration:none;">Identity providers</a>
+          <button class="tab active" type="button">Utilisateurs</button>
+          <a href="detail-feature-flags.html" class="tab" style="text-decoration:none;">Feature flags</a>
+          <a href="detail-lifecycle.html" class="tab" style="text-decoration:none;">Cycle de vie</a>
+        </nav>
+
+        <!-- FirstAdminCard — visible when the tenant has no users yet -->
+        <div class="first-admin-card">
+          <h3>
+            <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle;">person_add</span>
+            Inviter le premier admin
+          </h3>
+          <p class="text-sm text-muted mb-4">Aucun membre n'a encore accédé à ce tenant. Générez une invitation pour le premier <code>org_admin</code> — elle expire après 7 jours.</p>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="first-email">Email</label>
+              <input id="first-email" type="email" class="form-input" placeholder="alice.martin@emmaus-solidarite.org">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="first-locale">Locale d'invitation</label>
+              <select id="first-locale" class="form-select">
+                <option value="fr" selected>Français</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex justify-between items-center mt-4">
+            <p class="text-xs text-muted">Le lien d'invitation est généré et stocké dans <code>sessionStorage</code>, jamais dans l'URL.</p>
+            <button type="button" class="btn btn-primary">Générer l'invitation</button>
+          </div>
+        </div>
+
+        <section class="card">
+          <h3 class="form-section-title">Membres</h3>
+          <div class="data-table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Email</th>
+                  <th>Rôle</th>
+                  <th>Indicateurs</th>
+                  <th>Dernière visite</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="cell-name">Alice Martin</td>
+                  <td class="text-muted">alice.martin@emmaus-solidarite.org</td>
+                  <td><span class="badge badge-info">org_admin</span></td>
+                  <td>
+                    <span class="badge badge-warning">first_admin</span>
+                    <span class="badge badge-warning">Provisoire · 6j restants</span>
+                  </td>
+                  <td class="text-muted">il y a 2 h</td>
+                </tr>
+                <tr>
+                  <td class="cell-name">Bruno Leclerc</td>
+                  <td class="text-muted">b.leclerc@emmaus-solidarite.org</td>
+                  <td><span class="badge badge-neutral">user</span></td>
+                  <td class="text-muted">—</td>
+                  <td class="text-muted">hier</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+<script src="../../shared/mobile.js"></script>
 </body>
 </html>

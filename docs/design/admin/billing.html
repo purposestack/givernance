@@ -1,524 +1,179 @@
+<!-- Roadmap: super-admin platform-wide billing surface not in MVP. The MVP has no platform-level billing UI — Stripe Connect status is per-tenant in (app)/settings, and per-tenant subscription billing is deferred. This mockup illustrates a future cross-tenant billing/invoice dashboard for Givernance staff. -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Givernance &mdash; Facturation</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Back office &mdash; Facturation plateforme</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <style>
-    /* ── ADM-005: Billing & Subscription page-specific styles ── */
+    .switch-link { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin: 0 var(--space-3) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-on-surface-variant); border: 1px solid var(--color-outline-variant); text-decoration: none; }
+    .roadmap-banner { padding: var(--space-3) var(--space-4); background: rgba(83, 86, 196, 0.08); border: 1px solid var(--color-indigo); border-radius: var(--radius-md); margin-bottom: var(--space-6); font-size: var(--text-sm); color: var(--color-text); }
 
-    /* ── Plan card: large plan name display ── */
-    .plan-card .plan-name {
-      font-family: var(--font-heading);
-      font-size: var(--text-2xl);
-      color: var(--color-text);
-      line-height: var(--leading-tight);
-      margin-bottom: var(--space-2);
-    }
-
-    /* ── Plan price: mono, big number ── */
-    .plan-price {
-      font-family: var(--font-mono);
-      font-size: var(--text-xl);
-      font-weight: var(--weight-bold);
-      color: var(--color-text);
-      margin-bottom: var(--space-4);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .plan-price .plan-price-period {
-      font-size: var(--text-sm);
-      font-weight: var(--weight-regular);
-      color: var(--color-text-secondary);
-    }
-
-    .plan-seats {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      margin-bottom: var(--space-2);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .plan-renewal {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      margin-top: var(--space-4);
-      margin-bottom: var(--space-4);
-    }
-
-    /* ── Credit card visual: styled box resembling a credit card ── */
-    .credit-card-visual {
-      background: linear-gradient(135deg, var(--color-neutral-800) 0%, var(--color-neutral-900) 100%);
-      border-radius: var(--radius-lg);
-      padding: var(--space-5) var(--space-6);
-      color: var(--color-white);
-      position: relative;
-      overflow: hidden;
-      max-width: 360px;
-      aspect-ratio: 1.586 / 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-
-    .credit-card-visual::before {
-      content: '';
-      position: absolute;
-      top: -30%;
-      right: -20%;
-      width: 200px;
-      height: 200px;
-      border-radius: var(--radius-full);
-      background: rgba(255,255,255,0.04);
-    }
-
-    .credit-card-visual::after {
-      content: '';
-      position: absolute;
-      bottom: -40%;
-      right: -10%;
-      width: 260px;
-      height: 260px;
-      border-radius: var(--radius-full);
-      background: rgba(255,255,255,0.03);
-    }
-
-    .credit-card-chip {
-      width: 36px;
-      height: 28px;
-      background: linear-gradient(135deg, #d4a853 0%, #c09a3e 50%, #d4a853 100%);
-      border-radius: var(--radius-sm);
-      margin-bottom: var(--space-4);
-      position: relative;
-    }
-
-    .credit-card-chip::after {
-      content: '';
-      position: absolute;
-      top: 4px;
-      left: 4px;
-      right: 4px;
-      bottom: 4px;
-      border: 1px solid rgba(0,0,0,0.15);
-      border-radius: 2px;
-    }
-
-    .credit-card-type {
-      position: absolute;
-      top: var(--space-5);
-      right: var(--space-6);
-      font-size: var(--text-xs);
-      font-weight: var(--weight-bold);
-      text-transform: uppercase;
-      letter-spacing: var(--tracking-wider);
-      background: rgba(255,255,255,0.15);
-      padding: 2px 8px;
-      border-radius: var(--radius-sm);
-    }
-
-    .credit-card-number {
-      font-family: var(--font-mono);
-      font-size: var(--text-md);
-      letter-spacing: 0.15em;
-      margin-bottom: var(--space-4);
-      position: relative;
-      z-index: 1;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .credit-card-bottom {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      position: relative;
-      z-index: 1;
-    }
-
-    .credit-card-label {
-      font-size: 9px;
-      text-transform: uppercase;
-      letter-spacing: var(--tracking-wider);
-      color: rgba(255,255,255,0.5);
-      margin-bottom: 2px;
-    }
-
-    .credit-card-holder {
-      font-size: var(--text-sm);
-      font-weight: var(--weight-medium);
-      letter-spacing: var(--tracking-wide);
-    }
-
-    .credit-card-expiry {
-      font-family: var(--font-mono);
-      font-size: var(--text-sm);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .payment-note {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-      margin-top: var(--space-4);
-    }
-
-    /* ── Invoice download link ── */
-    .invoice-download {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-1);
-      font-size: var(--text-xs);
-      font-weight: var(--weight-medium);
-      color: var(--color-sky);
-      cursor: pointer;
-      transition: color var(--duration-normal) var(--ease-out);
-    }
-
-    .invoice-download:hover {
-      color: var(--color-primary-dark);
-      text-decoration: underline;
-    }
-
-    .invoice-download-icon {
-      font-size: var(--text-sm);
-      line-height: 1;
-    }
-
-    .invoice-download-icon .material-symbols-outlined {
-      font-size: 16px;
-    }
-
-    /* ── Topbar search shortcut badge ── */
-    .search-shortcut {
-      position: absolute;
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      background: var(--color-neutral-100);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      padding: 1px 6px;
-      font-family: var(--font-mono);
-      pointer-events: none;
-    }
-
-    .topbar-search {
-      position: relative;
-    }
-
-    /* ── Sidebar org logo ── */
-    .sidebar-footer-org-logo {
-      width: 32px;
-      height: 32px;
-      background: rgba(255,255,255,0.15);
-      border-radius: var(--radius-md);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: var(--text-xs);
-      font-weight: var(--weight-bold);
-      flex-shrink: 0;
-    }
-
-    /* ── Responsive ── */
-    @media (max-width: 1024px) {
-      .grid-2 {
-        grid-template-columns: 1fr;
-      }
-    }
+    .plan-name { font-family: var(--font-heading); font-size: var(--text-2xl); color: var(--color-text); margin-bottom: var(--space-2); }
+    .plan-price { font-family: var(--font-mono); font-size: var(--text-xl); font-weight: var(--weight-bold); color: var(--color-text); margin-bottom: var(--space-4); font-variant-numeric: tabular-nums; }
+    .plan-price-period { font-size: var(--text-sm); font-weight: var(--weight-regular); color: var(--color-text-secondary); }
+    .plan-seats { font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2); }
+    .plan-renewal { font-size: var(--text-sm); color: var(--color-text-secondary); margin: var(--space-4) 0; }
+    .credit-card-visual { background: linear-gradient(135deg, #2c2c30 0%, #1a1a1d 100%); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6); color: var(--color-white); position: relative; overflow: hidden; max-width: 360px; aspect-ratio: 1.586 / 1; display: flex; flex-direction: column; justify-content: space-between; }
+    .credit-card-chip { width: 36px; height: 28px; background: linear-gradient(135deg, #d4a853 0%, #c09a3e 100%); border-radius: var(--radius-sm); margin-bottom: var(--space-4); }
+    .credit-card-number { font-family: var(--font-mono); font-size: var(--text-md); letter-spacing: 0.15em; margin-bottom: var(--space-4); }
+    .credit-card-bottom { display: flex; justify-content: space-between; align-items: flex-end; }
+    .credit-card-label { font-size: 9px; text-transform: uppercase; letter-spacing: var(--tracking-wider); color: rgba(255,255,255,0.5); margin-bottom: 2px; }
+    .credit-card-type { position: absolute; top: var(--space-5); right: var(--space-6); font-size: var(--text-xs); font-weight: var(--weight-bold); text-transform: uppercase; letter-spacing: var(--tracking-wider); background: rgba(255,255,255,0.15); padding: 2px 8px; border-radius: var(--radius-sm); }
   </style>
 </head>
 <body>
   <div class="app-layout">
 
-    <!-- ============================================================
-         SIDEBAR
-         ============================================================ -->
+    <!-- Super-admin sidebar -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="../constituents/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_balance</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>Bénévoles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">bar_chart</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="index.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Paramètres</span>
-    </a>
-        <div class="nav-sub">
-          <a href="organization.html" class="nav-sub-item">Organisation</a>
-          <a href="users.html" class="nav-sub-item">Utilisateurs</a>
-          <a href="roles.html" class="nav-sub-item">Rôles &amp; permissions</a>
-          <a href="integrations.html" class="nav-sub-item">Intégrations</a>
-          <a href="billing.html" class="nav-sub-item nav-sub-item--active">Facturation</a>
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <a href="../dashboard.html" class="switch-link">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Retour à l'organisation
+      </a>
+      <nav class="sidebar-nav" aria-label="Navigation Back office">
+        <div class="sidebar-section">Super admin</div>
+        <a href="tenants/list.html" class="nav-item"><span class="material-symbols-outlined nav-item-icon">business</span><span class="nav-item-label">Locataires</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">shield</span><span class="nav-item-label">Litiges</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">person_search</span><span class="nav-item-label">Usurpation</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">admin_panel_settings</span><span class="nav-item-label">Admins plateforme</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">flag</span><span class="nav-item-label">Feature flags</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar" style="background: var(--color-indigo);">SA</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Sam Admin</div>
+            <div class="sidebar-footer-role">Super admin</div>
+          </div>
         </div>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
+      </div>
+    </aside>
 
-    <!-- ============================================================
-         MAIN WRAPPER
-         ============================================================ -->
     <div class="main-wrapper">
-
-      <!-- ── Topbar ── -->
       <header class="topbar">
         <div class="topbar-breadcrumb">
-          <a href="index.html">Param&#232;tres</a>
-          <span class="topbar-breadcrumb-sep">&#8250;</span>
-          <span class="topbar-breadcrumb-current">Facturation</span>
+          <a href="index.html">Back office</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Facturation plateforme</span>
         </div>
-
-        <a href="../global/command-palette.html" class="topbar-search">
-          <input
-            type="text"
-            class="topbar-search-input"
-            placeholder="Rechercher..."
-          >
-          <span class="search-shortcut">&#8984;K</span>
-        </a>
-
         <div class="topbar-actions">
-          <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            <span class="material-symbols-outlined">notifications</span>
-            <span class="notification-dot"></span>
-          </button></a>
-          <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
+          <div class="topbar-avatar" title="Sam Admin" style="background: var(--color-indigo);">SA</div>
         </div>
       </header>
 
-      <!-- ── Main Content ── -->
       <main class="main-content">
-
-        <!-- Page Header -->
         <div class="page-header">
           <div class="page-header-left">
-            <h1 class="page-title">Facturation et abonnement</h1>
-            <p class="page-subtitle">G&#233;rez votre plan, vos moyens de paiement et consultez vos factures.</p>
+            <h1 class="page-title">Facturation plateforme</h1>
+            <p class="page-subtitle">Vue cross-tenant des plans, sièges et factures Givernance.</p>
           </div>
         </div>
 
-        <!-- ============================================================
-             TOP SECTION: Two cards side by side
-             ============================================================ -->
-        <div class="grid-2">
+        <div class="roadmap-banner">
+          <strong>Vision&nbsp;:</strong> aucune surface de facturation plateforme n'existe en MVP. Stripe Connect (statut, requirements, dashboard link) est géré par tenant dans <code>/settings</code> côté opérateur. L'agrégation multi-tenant ci-dessous est une vue projetée pour les opérations Givernance.
+        </div>
 
-          <!-- ── Card 1: Plan actuel ── -->
+        <div class="grid-2 mb-6">
           <div class="card plan-card">
             <div class="card-header">
-              <h3 class="card-title">Plan actuel</h3>
+              <h3 class="card-title">Plan tenant — exemple</h3>
               <button class="btn btn-ghost btn-sm">Changer de plan</button>
             </div>
             <div class="card-body">
               <div class="plan-name">Givernance Pro</div>
               <div class="plan-price">89&nbsp;&euro;<span class="plan-price-period">/mois</span></div>
-
-              <div class="plan-seats">5 / 10 si&#232;ges utilis&#233;s</div>
-              <div class="progress" style="margin-bottom: var(--space-1);">
-                <div class="progress-fill" style="width: 50%;"></div>
-              </div>
-
+              <div class="plan-seats">5 / 10 sièges utilisés</div>
+              <div class="progress mb-2"><div class="progress-fill" style="width: 50%;"></div></div>
               <div class="plan-renewal">Prochain renouvellement : 1er mars 2026</div>
-
-              <button class="btn btn-primary">Mettre &#224; niveau</button>
+              <button class="btn btn-primary">Mettre à niveau</button>
             </div>
           </div>
 
-          <!-- ── Card 2: Moyen de paiement ── -->
           <div class="card">
             <div class="card-header">
               <h3 class="card-title">Moyen de paiement</h3>
               <button class="btn btn-ghost btn-sm">Modifier</button>
             </div>
             <div class="card-body">
-
-              <!-- Credit card visual -->
               <div class="credit-card-visual">
                 <div>
-                  <div style="display: flex; align-items: flex-start; justify-content: space-between;">
-                    <div class="credit-card-chip"></div>
-                  </div>
+                  <div class="credit-card-chip"></div>
                   <div class="credit-card-type">Visa</div>
                 </div>
-                <div class="credit-card-number">&bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; 4242</div>
+                <div class="credit-card-number">•••• •••• •••• 4242</div>
                 <div class="credit-card-bottom">
                   <div>
                     <div class="credit-card-label">Titulaire</div>
-                    <div class="credit-card-holder">Claire Dubois</div>
+                    <div>Claire Dubois</div>
                   </div>
                   <div>
                     <div class="credit-card-label">Exp.</div>
-                    <div class="credit-card-expiry">12/2027</div>
+                    <div class="text-mono">12/2027</div>
                   </div>
                 </div>
               </div>
-
-              <div class="payment-note">Factur&#233; automatiquement chaque mois</div>
+              <p class="text-muted text-xs mt-4">Facturé automatiquement chaque mois</p>
             </div>
           </div>
-
         </div>
-        <!-- END TOP SECTION -->
 
-        <!-- ============================================================
-             BOTTOM SECTION: Invoices table
-             ============================================================ -->
-        <div class="card mt-6">
+        <div class="card">
           <div class="card-header">
             <h3 class="card-title">Historique des factures</h3>
-            <button class="btn btn-ghost btn-sm">T&#233;l&#233;charger tout</button>
+            <button class="btn btn-ghost btn-sm">Télécharger tout</button>
           </div>
-          <div class="card-body">
-            <div class="data-table-wrapper">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Num&#233;ro</th>
-                    <th class="text-right">Montant</th>
-                    <th>Statut</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <!-- Row 1 -->
-                  <tr>
-                    <td class="cell-name">1 f&#233;v. 2026</td>
-                    <td class="cell-mono">INV-2026-02</td>
-                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
-                    <td><span class="badge badge-success">Pay&#233;e</span></td>
-                    <td>
-                      <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon"><span class="material-symbols-outlined">download</span></span>
-                        T&#233;l&#233;charger
-                      </a>
-                    </td>
-                  </tr>
-                  <!-- Row 2 -->
-                  <tr>
-                    <td class="cell-name">1 jan. 2026</td>
-                    <td class="cell-mono">INV-2026-01</td>
-                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
-                    <td><span class="badge badge-success">Pay&#233;e</span></td>
-                    <td>
-                      <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon"><span class="material-symbols-outlined">download</span></span>
-                        T&#233;l&#233;charger
-                      </a>
-                    </td>
-                  </tr>
-                  <!-- Row 3 -->
-                  <tr>
-                    <td class="cell-name">1 d&#233;c. 2025</td>
-                    <td class="cell-mono">INV-2025-12</td>
-                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
-                    <td><span class="badge badge-success">Pay&#233;e</span></td>
-                    <td>
-                      <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon"><span class="material-symbols-outlined">download</span></span>
-                        T&#233;l&#233;charger
-                      </a>
-                    </td>
-                  </tr>
-                  <!-- Row 4 -->
-                  <tr>
-                    <td class="cell-name">1 nov. 2025</td>
-                    <td class="cell-mono">INV-2025-11</td>
-                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
-                    <td><span class="badge badge-success">Pay&#233;e</span></td>
-                    <td>
-                      <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon"><span class="material-symbols-outlined">download</span></span>
-                        T&#233;l&#233;charger
-                      </a>
-                    </td>
-                  </tr>
-                  <!-- Row 5 -->
-                  <tr>
-                    <td class="cell-name">1 oct. 2025</td>
-                    <td class="cell-mono">INV-2025-10</td>
-                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">89,00&nbsp;&euro;</td>
-                    <td><span class="badge badge-success">Pay&#233;e</span></td>
-                    <td>
-                      <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon"><span class="material-symbols-outlined">download</span></span>
-                        T&#233;l&#233;charger
-                      </a>
-                    </td>
-                  </tr>
-                  <!-- Row 6 -->
-                  <tr>
-                    <td class="cell-name">1 sept. 2025</td>
-                    <td class="cell-mono">INV-2025-09</td>
-                    <td class="cell-mono text-right" style="font-variant-numeric: tabular-nums">49,00&nbsp;&euro;</td>
-                    <td><span class="badge badge-success">Pay&#233;e</span></td>
-                    <td>
-                      <a href="#" class="invoice-download">
-                        <span class="invoice-download-icon"><span class="material-symbols-outlined">download</span></span>
-                        T&#233;l&#233;charger
-                      </a>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+          <div class="data-table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Numéro</th>
+                  <th class="text-right">Montant</th>
+                  <th>Statut</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1 fév. 2026</td>
+                  <td class="cell-mono">INV-2026-02</td>
+                  <td class="cell-mono text-right">89,00 €</td>
+                  <td><span class="badge badge-success">Payée</span></td>
+                  <td class="text-right"><a href="#" class="btn btn-ghost btn-sm">Télécharger</a></td>
+                </tr>
+                <tr>
+                  <td>1 jan. 2026</td>
+                  <td class="cell-mono">INV-2026-01</td>
+                  <td class="cell-mono text-right">89,00 €</td>
+                  <td><span class="badge badge-success">Payée</span></td>
+                  <td class="text-right"><a href="#" class="btn btn-ghost btn-sm">Télécharger</a></td>
+                </tr>
+                <tr>
+                  <td>1 déc. 2025</td>
+                  <td class="cell-mono">INV-2025-12</td>
+                  <td class="cell-mono text-right">89,00 €</td>
+                  <td><span class="badge badge-success">Payée</span></td>
+                  <td class="text-right"><a href="#" class="btn btn-ghost btn-sm">Télécharger</a></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
-        <!-- END INVOICES TABLE -->
-
       </main>
     </div>
-    <!-- END MAIN WRAPPER -->
-
   </div>
-  <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
 </body>
 </html>

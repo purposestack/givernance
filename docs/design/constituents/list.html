@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Constituants &mdash; Givernance NPO Platform</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Constituants &mdash; Givernance</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,21 +12,61 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <style>
-    /* ── Page-specific: CON-001 Constituents list ── */
+    /* ── Page-specific: Constituents list (mirrors the MVP table) ── */
 
-    .page-header-left .page-title {
+    .filters-row {
       display: flex;
-      align-items: baseline;
-      gap: var(--space-2);
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+      flex-wrap: wrap;
+      align-items: center;
     }
 
-    .page-title-thin {
-      font-weight: var(--weight-regular);
+    .filters-row .search-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .filters-row .search-wrap .material-symbols-outlined {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
       color: var(--color-text-secondary);
-      font-family: var(--font-heading);
+      opacity: 0.6;
+      font-size: 18px;
+      pointer-events: none;
     }
 
-    /* Tag chips inside table cells */
+    .filters-row .form-input {
+      padding-left: 36px;
+    }
+
+    .filters-row .form-select {
+      min-width: 180px;
+    }
+
+    .avatar-cell {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .avatar-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-full);
+      background: var(--color-primary-50);
+      color: var(--color-primary-dark);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semi);
+      flex-shrink: 0;
+    }
+
     .tag {
       display: inline-flex;
       align-items: center;
@@ -46,40 +86,24 @@
       gap: var(--space-1);
     }
 
-    /* Eye action button */
-    .action-icon {
+    .row-actions-btn {
       width: 28px;
       height: 28px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      border: 1px solid var(--color-border);
-      background: var(--color-white);
-      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
       color: var(--color-text-secondary);
       cursor: pointer;
-      font-size: var(--text-sm);
-      transition: all var(--duration-normal) var(--ease-out);
-      text-decoration: none;
+      border-radius: var(--radius-sm);
     }
 
-    .action-icon:hover {
-      background: var(--color-neutral-50);
-      border-color: var(--color-neutral-300);
+    .row-actions-btn:hover {
+      background: var(--color-neutral-100);
       color: var(--color-text);
-      text-decoration: none;
     }
 
-    .action-icon .material-symbols-outlined {
-      font-size: 16px;
-    }
-
-    /* Wider AI card for list context */
-    .ai-card--wide {
-      max-width: 100%;
-    }
-
-    /* Checkbox alignment */
     .data-table th:first-child,
     .data-table td:first-child {
       width: 40px;
@@ -96,75 +120,76 @@
 
   <div class="app-layout">
 
-    <!-- ============================== -->
-    <!--            Sidebar              -->
-    <!-- ============================== -->
+    <!-- Sidebar -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="list.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">layers</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>B&eacute;n&eacute;voles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">monitoring</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="../admin/index.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Param&egrave;tres</span>
-    </a>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
-    <!-- end .sidebar -->
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">dashboard</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="list.html" class="nav-item nav-item--active">
+          <span class="material-symbols-outlined nav-icon">groups</span>
+          <span>Constituants</span>
+        </a>
+        <a href="../campaigns/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">campaign</span>
+          <span>Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+          <span>Dons</span>
+        </a>
+        <div class="sidebar-section">Bient&ocirc;t</div>
+        <a href="../grants/kanban.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">account_balance</span>
+          <span>Subventions</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../programs/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">layers</span>
+          <span>Programmes</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../volunteers/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">front_hand</span>
+          <span>B&eacute;n&eacute;voles</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../impact/dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">monitoring</span>
+          <span>Impact</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../communications/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">forum</span>
+          <span>Communications</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../reports/library.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">assessment</span>
+          <span>Rapports</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
+        <div class="sidebar-footer-user">
+          <div class="sidebar-footer-avatar">CM</div>
+          <span class="sidebar-footer-name">Claire Martin</span>
+        </div>
+      </div>
+    </aside>
 
-    <!-- ============================== -->
-    <!--          Main wrapper           -->
-    <!-- ============================== -->
+    <!-- Main wrapper -->
     <div class="main-wrapper">
 
-      <!-- ── Topbar ── -->
       <header class="topbar">
         <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
-          <a href="../dashboard.html">Association Solidarit&eacute; M&eacute;diterran&eacute;e</a>
+          <a href="../dashboard.html">Tableau de bord</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
           <span class="topbar-breadcrumb-current">Constituants</span>
         </nav>
@@ -186,32 +211,35 @@
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
         </div>
       </header>
-      <!-- end .topbar -->
 
-      <!-- ── Main Content ── -->
       <main class="main-content">
 
         <!-- Page Header -->
         <div class="page-header">
           <div class="page-header-left">
-            <h1 class="page-title">
-              Constituants <span class="page-title-thin">&mdash; Individus</span>
-            </h1>
-            <p class="page-subtitle">1 247 constituants</p>
+            <h1 class="page-title">Constituants</h1>
+            <p class="page-subtitle">1&nbsp;247 constituants</p>
           </div>
           <div class="page-header-actions">
-            <a href="import.html" class="btn btn-secondary"><span class="material-symbols-outlined" style="font-size:16px">upload</span> Importer CSV</a>
             <a href="new.html" class="btn btn-primary"><span class="material-symbols-outlined" style="font-size:16px">add</span> Nouveau constituant</a>
           </div>
         </div>
 
-        <!-- Filter Bar -->
-        <div class="filter-bar mb-4">
-          <button class="filter-chip" type="button">Tous</button>
-          <button class="filter-chip active" type="button">Donateurs</button>
-          <button class="filter-chip" type="button">B&eacute;n&eacute;ficiaires</button>
-          <button class="filter-chip" type="button">B&eacute;n&eacute;voles</button>
-          <button class="filter-chip" type="button">Prospects</button>
+        <!-- Filters row: search · type · advanced filters -->
+        <div class="filters-row">
+          <div class="search-wrap">
+            <span class="material-symbols-outlined">search</span>
+            <input class="form-input" type="search" placeholder="Rechercher un contact&hellip;" aria-label="Rechercher un contact">
+          </div>
+          <select class="form-select" aria-label="Type">
+            <option selected>Tous les types</option>
+            <option>Donateur</option>
+            <option>B&eacute;n&eacute;vole</option>
+            <option>Membre</option>
+            <option>B&eacute;n&eacute;ficiaire</option>
+            <option>Partenaire</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" type="button"><span class="material-symbols-outlined" style="font-size:16px">tune</span> Plus de filtres</button>
         </div>
 
         <!-- Data Table -->
@@ -220,186 +248,196 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th><input type="checkbox" aria-label="S&eacute;lectionner tout"></th>
                   <th data-sortable>Nom</th>
-                  <th data-sortable>Email</th>
-                  <th>T&eacute;l&eacute;phone</th>
                   <th data-sortable>Type</th>
-                  <th data-sortable>Dernier don</th>
+                  <th>Email</th>
                   <th>Tags</th>
-                  <th>Actions</th>
+                  <th data-sortable>Dernier don</th>
+                  <th aria-label="Actions"></th>
                 </tr>
               </thead>
               <tbody>
 
-                <!-- Row 1 -->
-                <tr>
-                  <td><input type="checkbox" aria-label="S&eacute;lectionner Marie-Claire Fontaine"></td>
-                  <td class="cell-name">Marie-Claire Fontaine</td>
-                  <td>mc.fontaine@gmail.com</td>
-                  <td>06 12 34 56 78</td>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <div class="avatar-cell">
+                      <span class="avatar-circle">MF</span>
+                      <span class="cell-name">Marie-Claire Fontaine</span>
+                    </div>
+                  </td>
                   <td><span class="badge badge-success">Donatrice</span></td>
-                  <td class="cell-mono">&euro;500 <span class="cell-secondary">le 24/02/2026</span></td>
+                  <td class="cell-secondary">mc.fontaine@gmail.com</td>
                   <td>
                     <div class="tags-cell">
                       <span class="tag">Fid&egrave;le</span>
                       <span class="tag">Gala</span>
                     </div>
                   </td>
-                  <td><a href="detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Marie-Claire Fontaine"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
+                  <td class="cell-secondary">24/02/2026</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Marie-Claire Fontaine"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
                 </tr>
 
-                <!-- Row 2 -->
-                <tr>
-                  <td><input type="checkbox" aria-label="S&eacute;lectionner Ahmed Benali"></td>
-                  <td class="cell-name">Ahmed Benali</td>
-                  <td>a.benali@outlook.fr</td>
-                  <td>06 98 76 54 32</td>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <div class="avatar-cell">
+                      <span class="avatar-circle">AB</span>
+                      <span class="cell-name">Ahmed Benali</span>
+                    </div>
+                  </td>
                   <td><span class="badge badge-info">B&eacute;n&eacute;vole</span></td>
-                  <td class="cell-secondary">&mdash;</td>
+                  <td class="cell-secondary">a.benali@outlook.fr</td>
                   <td>
                     <div class="tags-cell">
                       <span class="tag">Cuisine</span>
                     </div>
                   </td>
-                  <td><a href="detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Ahmed Benali"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
+                  <td class="cell-secondary">&mdash;</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Ahmed Benali"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
                 </tr>
 
-                <!-- Row 3 -->
-                <tr>
-                  <td><input type="checkbox" aria-label="S&eacute;lectionner Sophie Martin"></td>
-                  <td class="cell-name">Sophie Martin</td>
-                  <td>s.martin@free.fr</td>
-                  <td>07 11 22 33 44</td>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <div class="avatar-cell">
+                      <span class="avatar-circle">SM</span>
+                      <span class="cell-name">Sophie Martin</span>
+                    </div>
+                  </td>
                   <td><span class="badge badge-success">Donatrice</span></td>
-                  <td class="cell-mono">&euro;150 <span class="cell-secondary">le 15/01/2026</span></td>
+                  <td class="cell-secondary">s.martin@free.fr</td>
                   <td>
                     <div class="tags-cell">
                       <span class="tag">R&eacute;current</span>
                     </div>
                   </td>
-                  <td><a href="detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Sophie Martin"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
+                  <td class="cell-secondary">15/01/2026</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Sophie Martin"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
                 </tr>
 
-                <!-- Row 4 -->
-                <tr>
-                  <td><input type="checkbox" aria-label="S&eacute;lectionner Jean-Pierre Rousseau"></td>
-                  <td class="cell-name">Jean-Pierre Rousseau</td>
-                  <td>jp.rousseau@orange.fr</td>
-                  <td>06 55 44 33 22</td>
-                  <td><span class="badge badge-neutral">Prospect</span></td>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <div class="avatar-cell">
+                      <span class="avatar-circle">JR</span>
+                      <span class="cell-name">Jean-Pierre Rousseau</span>
+                    </div>
+                  </td>
+                  <td><span class="badge badge-warning">Membre</span></td>
+                  <td class="cell-secondary">jp.rousseau@orange.fr</td>
                   <td class="cell-secondary">&mdash;</td>
-                  <td><span class="cell-secondary">&mdash;</span></td>
-                  <td><a href="detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Jean-Pierre Rousseau"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
+                  <td class="cell-secondary">&mdash;</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Jean-Pierre Rousseau"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
                 </tr>
 
-                <!-- Row 5 -->
-                <tr>
-                  <td><input type="checkbox" aria-label="S&eacute;lectionner Fatima El Amrani"></td>
-                  <td class="cell-name">Fatima El Amrani</td>
-                  <td>f.elamrani@yahoo.fr</td>
-                  <td>07 66 77 88 99</td>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <div class="avatar-cell">
+                      <span class="avatar-circle">FE</span>
+                      <span class="cell-name">Fatima El Amrani</span>
+                    </div>
+                  </td>
                   <td><span class="badge badge-warning">B&eacute;n&eacute;ficiaire</span></td>
-                  <td class="cell-secondary">&mdash;</td>
+                  <td class="cell-secondary">f.elamrani@yahoo.fr</td>
                   <td>
                     <div class="tags-cell">
                       <span class="tag">Programme Alpha</span>
                     </div>
                   </td>
-                  <td><a href="detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Fatima El Amrani"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
+                  <td class="cell-secondary">&mdash;</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Fatima El Amrani"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
                 </tr>
 
-                <!-- Row 6 -->
-                <tr>
-                  <td><input type="checkbox" aria-label="S&eacute;lectionner Pierre Lef&egrave;vre"></td>
-                  <td class="cell-name">Pierre Lef&egrave;vre</td>
-                  <td>p.lefevre@gmail.com</td>
-                  <td>06 44 55 66 77</td>
-                  <td><span class="badge badge-success">Donateur</span></td>
-                  <td class="cell-mono">&euro;2&nbsp;000 <span class="cell-secondary">le 10/02/2026</span></td>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <div class="avatar-cell">
+                      <span class="avatar-circle">PL</span>
+                      <span class="cell-name">Pierre Lef&egrave;vre</span>
+                    </div>
+                  </td>
+                  <td><span class="badge badge-neutral">Partenaire</span></td>
+                  <td class="cell-secondary">p.lefevre@gmail.com</td>
                   <td>
                     <div class="tags-cell">
                       <span class="tag">Majeur</span>
                       <span class="tag">Entreprise</span>
                     </div>
                   </td>
-                  <td><a href="detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Pierre Lef&egrave;vre"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
+                  <td class="cell-secondary">10/02/2026</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Pierre Lef&egrave;vre"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
                 </tr>
 
-                <!-- Row 7 -->
-                <tr>
-                  <td><input type="checkbox" aria-label="S&eacute;lectionner Nadia Berger"></td>
-                  <td class="cell-name">Nadia Berger</td>
-                  <td>n.berger@hotmail.fr</td>
-                  <td>07 22 33 44 55</td>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <div class="avatar-cell">
+                      <span class="avatar-circle">NB</span>
+                      <span class="cell-name">Nadia Berger</span>
+                    </div>
+                  </td>
                   <td><span class="badge badge-info">B&eacute;n&eacute;vole</span></td>
-                  <td class="cell-secondary">&mdash;</td>
+                  <td class="cell-secondary">n.berger@hotmail.fr</td>
                   <td>
                     <div class="tags-cell">
                       <span class="tag">Accueil</span>
                       <span class="tag">Langues</span>
                     </div>
                   </td>
-                  <td><a href="detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Nadia Berger"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
+                  <td class="cell-secondary">&mdash;</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Nadia Berger"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
                 </tr>
 
-                <!-- Row 8 -->
-                <tr>
-                  <td><input type="checkbox" aria-label="S&eacute;lectionner Fran&ccedil;ois Dupont"></td>
-                  <td class="cell-name">Fran&ccedil;ois Dupont</td>
-                  <td>f.dupont@wanadoo.fr</td>
-                  <td>06 88 99 00 11</td>
+                <tr onclick="window.location='detail.html'" style="cursor:pointer;">
+                  <td>
+                    <div class="avatar-cell">
+                      <span class="avatar-circle">FD</span>
+                      <span class="cell-name">Fran&ccedil;ois Dupont</span>
+                    </div>
+                  </td>
                   <td><span class="badge badge-success">Donateur</span></td>
-                  <td class="cell-mono">&euro;75 <span class="cell-secondary">le 28/01/2026</span></td>
-                  <td><span class="cell-secondary">&mdash;</span></td>
-                  <td><a href="detail.html" class="action-icon" title="Voir la fiche" aria-label="Voir Fran&ccedil;ois Dupont"><span class="material-symbols-outlined" style="font-size:16px">visibility</span></a></td>
+                  <td class="cell-secondary">f.dupont@wanadoo.fr</td>
+                  <td class="cell-secondary">&mdash;</td>
+                  <td class="cell-secondary">28/01/2026</td>
+                  <td>
+                    <button class="row-actions-btn" type="button" aria-label="Ouvrir les actions pour Fran&ccedil;ois Dupont"><span class="material-symbols-outlined" style="font-size:18px">more_horiz</span></button>
+                  </td>
                 </tr>
 
               </tbody>
             </table>
           </div>
-          <!-- end .data-table-wrapper -->
 
           <!-- Pagination -->
           <div class="pagination">
-            <span class="pagination-info">Affichage 1&ndash;25 sur 1&nbsp;247</span>
+            <span class="pagination-info">Affichage 1&ndash;20 sur 1&nbsp;247</span>
             <div class="pagination-controls">
               <button class="pagination-btn" disabled aria-label="Page pr&eacute;c&eacute;dente"><span class="material-symbols-outlined" style="font-size:16px">chevron_left</span></button>
-              <button class="pagination-btn active">1</button>
-              <button class="pagination-btn">2</button>
-              <button class="pagination-btn">3</button>
-              <button class="pagination-btn">4</button>
-              <button class="pagination-btn">5</button>
+              <button class="pagination-btn active" type="button">1</button>
+              <button class="pagination-btn" type="button">2</button>
+              <button class="pagination-btn" type="button">3</button>
+              <button class="pagination-btn" type="button">4</button>
+              <button class="pagination-btn" type="button">5</button>
               <button class="pagination-btn" aria-label="Page suivante"><span class="material-symbols-outlined" style="font-size:16px">chevron_right</span></button>
             </div>
           </div>
 
         </div>
-        <!-- end .card (table card) -->
-
-        <!-- AI Suggestion Card -->
-        <div class="ai-card ai-card--wide mt-6">
-          <div class="ai-card-header">
-            <span class="ai-card-icon"><span class="material-symbols-outlined" style="font-size:16px">auto_awesome</span></span>
-            <span class="ai-card-label">Suggestion IA</span>
-          </div>
-          <p class="ai-card-text">
-            23 donateurs correspondent au crit&egrave;re &laquo;&nbsp;dernier don &gt; 6 mois&nbsp;&raquo; &mdash; cr&eacute;er un segment de r&eacute;activation ?
-          </p>
-          <div class="ai-card-actions">
-            <button class="btn btn-primary btn-sm" type="button">Appliquer</button>
-            <button class="btn btn-ghost btn-sm" type="button">Ignorer</button>
-          </div>
-        </div>
 
       </main>
-      <!-- end .main-content -->
 
     </div>
-    <!-- end .main-wrapper -->
 
   </div>
-  <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
 </body>

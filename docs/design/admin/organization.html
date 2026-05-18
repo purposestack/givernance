@@ -1,373 +1,136 @@
+<!-- Roadmap: a super-admin "global Givernance organization" identity page does not exist in MVP. Tenant organization editing happens per-tenant inside /admin/tenants/[id] (super-admin) and /settings (org_admin). This mockup illustrates a future Givernance-platform-level brand / legal-entity surface. -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Givernance &mdash; Param&#232;tres de l'organisation</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Back office &mdash; Organisation plateforme</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <style>
-    /* ── ADM-001: Organization Settings page-specific styles ── */
+    .switch-link { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin: 0 var(--space-3) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-on-surface-variant); border: 1px solid var(--color-outline-variant); text-decoration: none; }
+    .roadmap-banner { padding: var(--space-3) var(--space-4); background: rgba(83, 86, 196, 0.08); border: 1px solid var(--color-indigo); border-radius: var(--radius-md); margin-bottom: var(--space-6); font-size: var(--text-sm); color: var(--color-text); }
 
-    /* ── Upload area ── */
-    .upload-area {
-      border: 2px dashed var(--color-neutral-300);
-      border-radius: var(--radius-md);
-      padding: var(--space-8) var(--space-6);
-      text-align: center;
-      cursor: pointer;
-      transition: border-color var(--duration-normal) var(--ease-out),
-                  background var(--duration-normal) var(--ease-out);
-    }
-
-    .upload-area:hover {
-      border-color: var(--color-primary);
-      background: var(--color-primary-50);
-    }
-
-    .upload-area-icon {
-      font-size: var(--text-3xl);
-      color: var(--color-text-muted);
-      margin-bottom: var(--space-3);
-    }
-
-    .upload-area-icon .material-symbols-outlined {
-      font-size: 36px;
-    }
-
-    .upload-area-text {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-    }
-
-    /* ── Form actions sticky bar ── */
-    .form-actions {
-      position: sticky;
-      bottom: 0;
-      background: var(--color-surface);
-      border-top: 1px solid var(--color-border);
-      padding: var(--space-4) var(--space-6);
-      margin: var(--space-8) calc(-1 * var(--space-6)) calc(-1 * var(--space-6));
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: var(--space-3);
-      z-index: var(--z-sticky);
-      border-radius: 0 0 var(--radius-md) var(--radius-md);
-    }
-
-    /* ── Topbar search shortcut badge ── */
-    .search-shortcut {
-      position: absolute;
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: var(--text-xs);
-      color: var(--color-text-muted);
-      background: var(--color-neutral-100);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      padding: 1px 6px;
-      font-family: var(--font-mono);
-      pointer-events: none;
-    }
-
-    .topbar-search {
-      position: relative;
-    }
-
-    /* ── Sidebar org logo ── */
-    .sidebar-footer-org-logo {
-      width: 32px;
-      height: 32px;
-      background: rgba(255,255,255,0.15);
-      border-radius: var(--radius-md);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: var(--text-xs);
-      font-weight: var(--weight-bold);
-      flex-shrink: 0;
-    }
+    .upload-area { border: 2px dashed var(--color-outline-variant); border-radius: var(--radius-md); padding: var(--space-8) var(--space-6); text-align: center; cursor: pointer; transition: all var(--duration-normal) var(--ease-out); }
+    .upload-area:hover { border-color: var(--color-primary); background: rgba(9, 100, 71, 0.04); }
+    .upload-area-icon { font-size: 36px; color: var(--color-on-surface-variant); margin-bottom: var(--space-3); }
+    .upload-area-text { font-size: var(--text-sm); color: var(--color-on-surface-variant); }
   </style>
 </head>
 <body>
   <div class="app-layout">
 
-    <!-- ============================================================
-         SIDEBAR
-         ============================================================ -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="../constituents/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_balance</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>Bénévoles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">bar_chart</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="index.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Paramètres</span>
-    </a>
-        <div class="nav-sub">
-          <a href="organization.html" class="nav-sub-item nav-sub-item--active">Organisation</a>
-          <a href="users.html" class="nav-sub-item">Utilisateurs</a>
-          <a href="roles.html" class="nav-sub-item">Rôles &amp; permissions</a>
-          <a href="integrations.html" class="nav-sub-item">Intégrations</a>
-          <a href="billing.html" class="nav-sub-item">Facturation</a>
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <a href="../dashboard.html" class="switch-link">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Retour à l'organisation
+      </a>
+      <nav class="sidebar-nav" aria-label="Navigation Back office">
+        <div class="sidebar-section">Super admin</div>
+        <a href="tenants/list.html" class="nav-item"><span class="material-symbols-outlined nav-item-icon">business</span><span class="nav-item-label">Locataires</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">shield</span><span class="nav-item-label">Litiges</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">person_search</span><span class="nav-item-label">Usurpation</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">admin_panel_settings</span><span class="nav-item-label">Admins plateforme</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">flag</span><span class="nav-item-label">Feature flags</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar" style="background: var(--color-indigo);">SA</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Sam Admin</div>
+            <div class="sidebar-footer-role">Super admin</div>
+          </div>
         </div>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
+      </div>
+    </aside>
 
-    <!-- ============================================================
-         MAIN WRAPPER
-         ============================================================ -->
     <div class="main-wrapper">
-
-      <!-- ── Topbar ── -->
       <header class="topbar">
         <div class="topbar-breadcrumb">
-          <a href="index.html">Param&#232;tres</a>
-          <span class="topbar-breadcrumb-sep">&#8250;</span>
-          <span class="topbar-breadcrumb-current">Organisation</span>
+          <a href="index.html">Back office</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Organisation plateforme</span>
         </div>
-
-        <a href="../global/command-palette.html" class="topbar-search">
-          <input
-            type="text"
-            class="topbar-search-input"
-            placeholder="Rechercher..."
-          >
-          <span class="search-shortcut">&#8984;K</span>
-        </a>
-
         <div class="topbar-actions">
-          <a href="../global/notifications.html"><button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
-            <span class="material-symbols-outlined">notifications</span>
-            <span class="notification-dot"></span>
-          </button></a>
-          <a href="../admin/users.html"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
+          <div class="topbar-avatar" title="Sam Admin" style="background: var(--color-indigo);">SA</div>
         </div>
       </header>
 
-      <!-- ── Main Content ── -->
       <main class="main-content main-content--form">
-
-        <!-- Page Header -->
         <div class="page-header">
           <div class="page-header-left">
-            <h1 class="page-title">Param&#232;tres de l'organisation</h1>
-            <p class="page-subtitle">Informations l&#233;gales, pr&#233;f&#233;rences fiscales et identit&#233; visuelle de votre organisation.</p>
+            <h1 class="page-title">Organisation plateforme</h1>
+            <p class="page-subtitle">Identité légale et présentation de Givernance — l'entreprise qui exploite la plateforme.</p>
           </div>
         </div>
 
-        <!-- ============================================================
-             FORM
-             ============================================================ -->
-        <form>
+        <div class="roadmap-banner">
+          <strong>Vision&nbsp;:</strong> en MVP, l'identité organisationnelle se gère <em>par tenant</em>. Les opérateurs de NPO modifient leur propre organisation dans <a href="../settings/bank-accounts-list.html">/settings</a> (formulaire <code>TenantSettingsForm</code>, logo via Epic #286). Cette page représente une vue future de l'entité Givernance elle-même (mentions légales, conditions de service, statut SaaS), distincte de l'édition tenant.
+        </div>
 
-          <!-- ── Section 1: Informations l&#233;gales ── -->
+        <form class="card">
           <div class="form-section">
-            <h3 class="form-section-title">Informations l&#233;gales</h3>
-
-            <div class="form-group">
-              <label class="form-label form-label-required" for="org-name">Nom l&#233;gal</label>
-              <input
-                type="text"
-                id="org-name"
-                class="form-input"
-                value="Association Solidarit&#233; M&#233;diterran&#233;e"
-                required
-              >
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="org-registration">Num&#233;ro d'enregistrement</label>
-              <input
-                type="text"
-                id="org-registration"
-                class="form-input"
-                value="W133025847"
-              >
-              <p class="form-hint">SIRET, RNA ou &#233;quivalent</p>
-            </div>
-
+            <h3 class="form-section-title">Identité légale</h3>
             <div class="form-row">
               <div class="form-group">
-                <label class="form-label" for="org-country">Pays</label>
-                <select id="org-country" class="form-select">
-                  <option value="FR" selected>France</option>
-                  <option value="BE">Belgique</option>
-                  <option value="CH">Suisse</option>
-                  <option value="CA">Canada</option>
-                  <option value="LU">Luxembourg</option>
-                </select>
+                <label class="form-label form-label-required" for="legal-name">Nom légal</label>
+                <input id="legal-name" type="text" class="form-input" value="Givernance SAS">
               </div>
               <div class="form-group">
-                <label class="form-label" for="org-currency">Devise</label>
-                <select id="org-currency" class="form-select">
-                  <option value="EUR" selected>EUR &mdash; Euro</option>
-                  <option value="CHF">CHF &mdash; Franc suisse</option>
-                  <option value="CAD">CAD &mdash; Dollar canadien</option>
-                  <option value="USD">USD &mdash; Dollar am&#233;ricain</option>
-                  <option value="GBP">GBP &mdash; Livre sterling</option>
-                </select>
+                <label class="form-label" for="reg-num">Numéro d'enregistrement</label>
+                <input id="reg-num" type="text" class="form-input" value="FR-123456789">
               </div>
             </div>
-
-            <div class="form-group">
-              <label class="form-label" for="org-timezone">Fuseau horaire</label>
-              <select id="org-timezone" class="form-select">
-                <option value="Europe/Paris" selected>Europe/Paris (UTC+1)</option>
-                <option value="Europe/Brussels">Europe/Brussels (UTC+1)</option>
-                <option value="Europe/Zurich">Europe/Zurich (UTC+1)</option>
-                <option value="America/Montreal">America/Montreal (UTC-5)</option>
-                <option value="Europe/London">Europe/London (UTC+0)</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- ── Section 2: Identit&#233; visuelle ── -->
-          <div class="form-section">
-            <h3 class="form-section-title">Identit&#233; visuelle</h3>
-
-            <div class="form-group">
-              <label class="form-label">Logo de l'organisation</label>
-              <div class="upload-area" role="button" tabindex="0" aria-label="D&#233;posez votre logo ici ou cliquez pour parcourir">
-                <div class="upload-area-icon"><span class="material-symbols-outlined">upload</span></div>
-                <div class="upload-area-text">D&#233;posez votre logo ici ou cliquez pour parcourir</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="vat">TVA intracommunautaire</label>
+                <input id="vat" type="text" class="form-input" value="FR12345678901">
               </div>
-              <p class="form-hint">PNG ou SVG, 400&#215;400px max, 2 Mo</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="receipt-header">En-t&#234;te des re&#231;us</label>
-              <textarea
-                id="receipt-header"
-                class="form-textarea"
-                rows="3"
-                placeholder="Texte affich&#233; en haut de chaque re&#231;u fiscal g&#233;n&#233;r&#233;..."
-              ></textarea>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="receipt-footer">Pied de page des re&#231;us</label>
-              <textarea
-                id="receipt-footer"
-                class="form-textarea"
-                rows="3"
-                placeholder="Texte affich&#233; en bas de chaque re&#231;u fiscal g&#233;n&#233;r&#233;..."
-              ></textarea>
+              <div class="form-group">
+                <label class="form-label" for="dpo">Email DPO</label>
+                <input id="dpo" type="email" class="form-input" value="dpo@givernance.app">
+              </div>
             </div>
           </div>
 
-          <!-- ── Section 3: Param&#232;tres fiscaux ── -->
           <div class="form-section">
-            <h3 class="form-section-title">Param&#232;tres fiscaux</h3>
-
-            <div class="form-group">
-              <label class="form-label" for="fiscal-year-start">Ann&#233;e fiscale &mdash; d&#233;but</label>
-              <select id="fiscal-year-start" class="form-select">
-                <option value="1" selected>Janvier</option>
-                <option value="2">F&#233;vrier</option>
-                <option value="3">Mars</option>
-                <option value="4">Avril</option>
-                <option value="5">Mai</option>
-                <option value="6">Juin</option>
-                <option value="7">Juillet</option>
-                <option value="8">Ao&#251;t</option>
-                <option value="9">Septembre</option>
-                <option value="10">Octobre</option>
-                <option value="11">Novembre</option>
-                <option value="12">D&#233;cembre</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="checkbox-label">
-                <input type="checkbox" checked>
-                &#201;mettre automatiquement les re&#231;us fiscaux
-              </label>
-            </div>
-
-            <div class="form-group">
-              <label class="checkbox-label">
-                <input type="checkbox" checked>
-                Activer la num&#233;rotation s&#233;quentielle des re&#231;us
-              </label>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="receipt-prefix">Pr&#233;fixe des re&#231;us</label>
-              <input
-                type="text"
-                id="receipt-prefix"
-                class="form-input"
-                value="RF-2026-"
-              >
-              <p class="form-hint">Sera suivi du num&#233;ro s&#233;quentiel</p>
+            <h3 class="form-section-title">Logo plateforme</h3>
+            <div class="upload-area">
+              <div class="upload-area-icon"><span class="material-symbols-outlined">upload_file</span></div>
+              <p class="upload-area-text">Déposez le SVG ici, ou cliquez pour parcourir</p>
+              <p class="form-hint mt-2">SVG préféré, PNG accepté. Aspect 1:1, min. 512×512.</p>
             </div>
           </div>
 
-          <!-- ── Form Actions (sticky bottom) ── -->
-          <div class="form-actions">
-            <button type="button" class="btn btn-secondary">Annuler</button>
-            <button type="submit" class="btn btn-primary">Enregistrer les modifications</button>
+          <div class="form-section">
+            <h3 class="form-section-title">Conditions de service</h3>
+            <div class="form-group">
+              <label class="form-label" for="tos-url">URL des CGU</label>
+              <input id="tos-url" type="url" class="form-input" value="https://givernance.app/terms">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="privacy-url">URL de la politique de confidentialité</label>
+              <input id="privacy-url" type="url" class="form-input" value="https://givernance.app/privacy">
+            </div>
           </div>
 
+          <div class="card-footer">
+            <button type="button" class="btn btn-ghost">Annuler</button>
+            <button type="submit" class="btn btn-primary">Enregistrer</button>
+          </div>
         </form>
-
       </main>
     </div>
-    <!-- END MAIN WRAPPER -->
-
   </div>
-  <!-- END APP LAYOUT -->
 <script src="../shared/mobile.js"></script>
 </body>
 </html>

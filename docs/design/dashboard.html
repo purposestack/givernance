@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="shared/assets/logo-pheonix-vert.png">
+  <link rel="icon" type="image/svg+xml" href="shared/assets/givernance-logo.svg">
   <title>Givernance — Tableau de bord</title>
   <link rel="stylesheet" href="shared/tokens.css">
   <link rel="stylesheet" href="shared/base.css">
@@ -15,7 +15,7 @@
     /* ── Dashboard-specific layout ── */
     .dashboard-grid {
       display: grid;
-      grid-template-columns: 2fr 1fr;
+      grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
       gap: var(--space-6);
       margin-top: var(--space-6);
     }
@@ -26,121 +26,177 @@
       gap: var(--space-6);
     }
 
-    /* ── Campaign row inside card ── */
-    .campaign-row {
+    /* ── Recent donation feed (matches dashboard/page.tsx DonationFeedItem) ── */
+    .donation-feed {
       display: flex;
+      flex-direction: column;
+    }
+
+    .donation-feed-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
-      gap: var(--space-4);
-      padding: var(--space-4) 0;
-      border-bottom: 1px solid var(--color-neutral-100);
+      gap: var(--space-2);
+      padding: var(--space-3) 0;
+      border-bottom: 1px solid var(--color-outline-variant);
+      text-decoration: none;
+      color: inherit;
+      transition: color var(--duration-normal) var(--ease-out);
     }
 
-    .campaign-row:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
-    }
+    .donation-feed-item:last-child { border-bottom: none; }
+    .donation-feed-item:hover { color: var(--color-primary); text-decoration: none; }
 
-    .campaign-row:first-child {
-      padding-top: 0;
-    }
-
-    .campaign-info {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .campaign-name {
+    .donation-feed-name {
       font-size: var(--text-sm);
       font-weight: var(--weight-medium);
-      color: var(--color-text);
-      margin-bottom: var(--space-1);
+      color: var(--color-on-surface);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .campaign-amounts {
+    .donation-feed-date {
       font-size: var(--text-xs);
-      color: var(--color-text-secondary);
+      color: var(--color-on-surface-variant);
+    }
+
+    .donation-feed-amount {
       font-family: var(--font-mono);
-      font-variant-numeric: tabular-nums;
-      margin-bottom: var(--space-2);
-    }
-
-    .campaign-progress-row {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-    }
-
-    .campaign-progress-bar {
-      flex: 1;
-    }
-
-    .campaign-pct {
-      font-size: var(--text-xs);
+      font-size: var(--text-sm);
       font-weight: var(--weight-semi);
-      color: var(--color-text-secondary);
-      min-width: 32px;
-      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-on-surface);
     }
 
-    .campaign-badge {
-      flex-shrink: 0;
+    /* ── Active campaign progress card (matches CampaignProgressItem) ── */
+    .campaign-progress-card {
+      border: 1px solid var(--color-outline-variant);
+      border-radius: var(--radius-2xl);
+      padding: var(--space-5);
     }
 
-    /* ── Deadline row ── */
-    .deadline-row {
+    .campaign-progress-card + .campaign-progress-card { margin-top: var(--space-4); }
+
+    .campaign-progress-head {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: var(--space-3);
-      padding: var(--space-3) 0;
-      border-bottom: 1px solid var(--color-neutral-100);
     }
 
-    .deadline-row:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
+    .campaign-progress-name {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semi);
+      color: var(--color-on-surface);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .deadline-row:first-child {
-      padding-top: 0;
+    .campaign-progress-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-xs);
+      color: var(--color-on-surface-variant);
+      margin-top: var(--space-1);
     }
 
-    .deadline-info {
-      flex: 1;
-      min-width: 0;
+    .campaign-progress-raised {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semi);
+      color: var(--color-on-surface);
     }
 
-    .deadline-title {
+    .campaign-progress-bar {
+      margin-top: var(--space-4);
+      height: 8px;
+      border-radius: var(--radius-md);
+      background: var(--color-surface-container);
+      overflow: hidden;
+    }
+
+    .campaign-progress-fill {
+      height: 100%;
+      border-radius: var(--radius-md);
+      background: var(--color-secondary);
+      transition: width var(--duration-slow) var(--ease-out);
+    }
+
+    .campaign-progress-footnote {
+      margin-top: var(--space-2);
+      font-size: var(--text-xs);
+      color: var(--color-on-surface-variant);
+    }
+
+    /* ── Quick action button (matches dashboard/page.tsx QuickAction) ── */
+    .quick-action {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-surface-container-highest);
+      color: var(--color-on-surface);
+      border-radius: var(--radius-md);
       font-size: var(--text-sm);
       font-weight: var(--weight-medium);
-      color: var(--color-text);
+      text-decoration: none;
+      transition: background var(--duration-normal) var(--ease-out);
     }
 
-    .deadline-org {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-      margin-top: var(--space-0-5);
+    .quick-action:hover {
+      background: var(--color-surface-dim);
+      color: var(--color-on-surface);
+      text-decoration: none;
     }
 
-    .deadline-right {
+    .quick-action-plus {
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: var(--space-1);
-      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 9999px;
+      background: var(--color-primary-50);
+      color: var(--color-primary);
+      transition: background var(--duration-normal) var(--ease-out), color var(--duration-normal) var(--ease-out);
     }
 
-    .deadline-date {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
+    .quick-action:hover .quick-action-plus {
+      background: var(--color-primary);
+      color: var(--color-white);
     }
 
-    /* ── AI card override for full-width in sidebar column ── */
-    .dashboard-col .ai-card {
-      max-width: 100%;
+    /* ── Onboarding checklist ── */
+    .ob-list { list-style: none; padding: 0; margin: var(--space-4) 0 0; display: flex; flex-direction: column; gap: var(--space-3); }
+    .ob-list-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      font-size: var(--text-sm);
+      color: var(--color-on-surface);
+    }
+    .ob-list-item .material-symbols-outlined { margin-top: 2px; flex-shrink: 0; }
+    .ob-list-item.is-complete .material-symbols-outlined { color: var(--color-primary); }
+    .ob-list-item.is-pending .material-symbols-outlined { color: var(--color-outline); }
+
+    /* ── Topbar local additions ── */
+    .topbar-breadcrumb-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: rgba(147, 246, 196, 0.30);
+      border: 1px solid rgba(147, 246, 196, 0.50);
+      color: var(--color-on-secondary-fixed-variant);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      box-shadow: var(--shadow-xs);
     }
 
-    /* ── Topbar search shortcut badge ── */
+    .topbar-search { position: relative; }
     .search-shortcut {
       position: absolute;
       right: 10px;
@@ -148,7 +204,7 @@
       transform: translateY(-50%);
       font-size: var(--text-xs);
       color: var(--color-text-muted);
-      background: var(--color-neutral-100);
+      background: var(--color-surface-container-low);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm);
       padding: 1px 6px;
@@ -156,29 +212,95 @@
       pointer-events: none;
     }
 
-    .topbar-search {
-      position: relative;
+    /* ── Sidebar org logo slot (Epic #286 mirror) ── */
+    .sidebar-org-logo {
+      display: flex;
+      justify-content: center;
+      padding: 0 24px 12px;
+    }
+    .sidebar-org-logo-img {
+      width: 128px;
+      height: 128px;
+      object-fit: contain;
     }
 
-    /* ── Sidebar org logo ── */
-    .sidebar-footer-org-logo {
-      width: 32px;
-      height: 32px;
-      background: rgba(255,255,255,0.15);
-      border-radius: var(--radius-md);
+    /* ── Sidebar workspace switcher (matches sidebar.tsx footer dropdown trigger) ── */
+    .sidebar-switcher {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      width: 100%;
+      padding: var(--space-3);
+      border-radius: var(--radius-xl);
+      border: 1px solid transparent;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+      transition: background var(--duration-normal) var(--ease-out);
+    }
+    .sidebar-switcher:hover { background: var(--color-surface-container-low); }
+    .sidebar-switcher-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 9999px;
+      background: var(--color-primary);
+      color: var(--color-white);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: var(--text-xs);
-      font-weight: var(--weight-bold);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semi);
       flex-shrink: 0;
+    }
+    .sidebar-switcher-text { flex: 1; min-width: 0; }
+    .sidebar-switcher-name {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--color-on-surface);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sidebar-switcher-org {
+      font-size: var(--text-xs);
+      color: var(--color-on-surface-variant);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sidebar-switcher-chev {
+      color: var(--color-on-surface-variant);
+      flex-shrink: 0;
+    }
+
+    /* ── AI suggestion card matches dashboard/page.tsx (rounded-2xl, primary-tint border) ── */
+    .ai-suggestion-card {
+      background: var(--color-ai-bg);
+      border: 1px solid var(--color-ai-border);
+      border-radius: var(--radius-2xl);
+      padding: var(--space-6);
+    }
+    .ai-suggestion-head {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--color-ai-text);
+    }
+    .ai-suggestion-title {
+      font-family: var(--font-heading);
+      font-size: var(--text-xl);
+      line-height: var(--leading-tight);
+    }
+    .ai-suggestion-body {
+      margin-top: var(--space-3);
+      font-size: var(--text-sm);
+      line-height: var(--leading-relaxed);
+      color: var(--color-on-surface);
     }
 
     /* ── Responsive ── */
     @media (max-width: 1024px) {
-      .dashboard-grid {
-        grid-template-columns: 1fr;
-      }
+      .dashboard-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -186,81 +308,103 @@
   <div class="app-layout">
 
     <!-- ============================================================
-         SIDEBAR
+         SIDEBAR — canonical MVP nav (matches packages/web/src/components/layout/sidebar.tsx)
+         Order: Dashboard / Constituants / Campagnes / Dons → divider "Bientôt" → vision items with .nav-item-soon pills
          ============================================================ -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="dashboard.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="constituents/list.html" class="nav-item">
-      <span class="material-symbols-outlined">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="donations/list.html" class="nav-item">
-      <span class="material-symbols-outlined">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined">account_balance</span>
-      <span>Subventions</span>
-    </a>
-    <a href="programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined">layers</span>
-      <span>Programmes</span>
-    </a>
-    <a href="volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined">front_hand</span>
-      <span>Bénévoles</span>
-    </a>
-    <a href="impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined">bar_chart</span>
-      <span>Impact</span>
-    </a>
-    <a href="communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="admin/index.html" class="nav-item">
-      <span class="material-symbols-outlined">settings</span>
-      <span>Paramètres</span>
-    </a>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
+      <div class="sidebar-brand">
+        <img src="shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:40px;height:40px;object-fit:contain;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <nav class="sidebar-nav" aria-label="Menu principal">
+
+        <!-- Shipped MVP routes -->
+        <a href="dashboard.html" class="nav-item nav-item--active" aria-current="page">
+          <span class="material-symbols-outlined nav-item-icon">dashboard</span>
+          <span class="nav-item-label">Dashboard</span>
+        </a>
+        <a href="constituents/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">groups</span>
+          <span class="nav-item-label">Constituants</span>
+        </a>
+        <a href="campaigns/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">campaign</span>
+          <span class="nav-item-label">Campagnes</span>
+        </a>
+        <a href="donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">volunteer_activism</span>
+          <span class="nav-item-label">Dons</span>
+        </a>
+
+        <!-- Roadmap section: vision routes flagged "Bientôt" -->
+        <div class="sidebar-section">Bientôt</div>
+        <a href="grants/kanban.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">account_balance</span>
+          <span class="nav-item-label">Subventions</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </a>
+        <a href="programs/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">layers</span>
+          <span class="nav-item-label">Programmes</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </a>
+        <a href="volunteers/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">front_hand</span>
+          <span class="nav-item-label">Bénévoles</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </a>
+        <a href="impact/dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">monitoring</span>
+          <span class="nav-item-label">Impact</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </a>
+        <a href="communications/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">forum</span>
+          <span class="nav-item-label">Communications</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </a>
+        <a href="reports/library.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">assessment</span>
+          <span class="nav-item-label">Rapports</span>
+          <span class="nav-item-soon">Bientôt</span>
+        </a>
+      </nav>
+
+      <!-- Org logo slot (Epic #286 — mirrors sidebar.tsx readyLogo render) -->
+      <div class="sidebar-org-logo">
+        <img src="shared/assets/givernance-logo.svg" alt="Association Solidarité Méd." class="sidebar-org-logo-img">
+      </div>
+
+      <!-- Workspace switcher (matches sidebar.tsx footer dropdown trigger) -->
+      <div class="sidebar-footer">
+        <button type="button" class="sidebar-switcher" aria-haspopup="menu" aria-expanded="false">
+          <div class="sidebar-switcher-avatar" aria-hidden="true">SC</div>
+          <div class="sidebar-switcher-text">
+            <div class="sidebar-switcher-name">Sofia Castellano</div>
+            <div class="sidebar-switcher-org">Association Solidarité Méd.</div>
+          </div>
+          <span class="material-symbols-outlined sidebar-switcher-chev" aria-hidden="true" style="font-size:16px;">unfold_more</span>
+        </button>
+      </div>
+    </aside>
 
     <!-- ============================================================
          MAIN WRAPPER
          ============================================================ -->
     <div class="main-wrapper">
 
-      <!-- ── Topbar ── -->
+      <!-- ── Topbar — mirrors packages/web/src/components/layout/topbar.tsx ── -->
       <header class="topbar">
-        <div class="topbar-breadcrumb">
-          <span class="topbar-breadcrumb-current">Tableau de bord</span>
+        <button class="topbar-hamburger" type="button" aria-label="Ouvrir le menu" aria-controls="sidebar-nav" aria-expanded="false">
+          <span class="material-symbols-outlined" style="font-size:20px;">menu</span>
+        </button>
+
+        <div class="topbar-breadcrumb" aria-label="Fil d'Ariane">
+          <span class="topbar-breadcrumb-pill">Tableau de bord</span>
         </div>
 
         <a href="global/command-palette.html" class="topbar-search" style="text-decoration:none;color:inherit;">
-          <input
-            type="text"
-            class="topbar-search-input"
-            placeholder="Rechercher..."
-          >
+          <input type="text" class="topbar-search-input" placeholder="Rechercher..." aria-label="Rechercher">
           <span class="search-shortcut">&#8984;K</span>
         </a>
 
@@ -269,194 +413,214 @@
             <span class="material-symbols-outlined" style="font-size:18px;">notifications</span>
             <span class="notification-dot"></span>
           </a>
-          <a href="admin/users.html" style="text-decoration:none;color:inherit;"><div class="topbar-avatar" title="Claire Dubois">CD</div></a>
+          <a href="shared/account-menu.html" style="text-decoration:none;color:inherit;" aria-label="Menu compte, Sofia Castellano">
+            <div class="topbar-avatar" title="Sofia Castellano">SC</div>
+          </a>
         </div>
       </header>
 
       <!-- ── Main Content ── -->
       <main class="main-content">
 
-        <!-- Page Header -->
+        <!-- Page Header — matches dashboard/page.tsx greeting -->
         <div class="page-header">
           <div class="page-header-left">
-            <h1 class="page-title">Bonjour, Claire</h1>
-            <p class="page-subtitle">Voici l'activit&#233; de votre organisation aujourd'hui.</p>
+            <h1 class="page-title">Bonjour, Sofia</h1>
+            <p class="page-subtitle">Voici l'activité de votre association aujourd'hui.</p>
           </div>
         </div>
 
         <!-- ============================================================
-             STAT WIDGETS (4 columns)
+             STAT CARDS (4 columns) — matches dashboard/page.tsx <StatCard>
              ============================================================ -->
         <div class="grid-4">
-          <!-- 1. Dons ce mois -->
-          <a href="donations/list.html" class="stat-widget" style="text-decoration:none;color:inherit;display:block;">
-            <div class="stat-widget-label">Dons ce mois</div>
-            <div class="stat-widget-value">&euro;12&nbsp;450</div>
-            <div class="stat-widget-trend stat-widget-trend--up">
-              <span class="material-symbols-outlined" style="font-size:14px;">trending_up</span> +18% vs N-1
-            </div>
-          </a>
 
-          <!-- 2. Constituants actifs -->
-          <a href="constituents/list.html" class="stat-widget" style="text-decoration:none;color:inherit;display:block;">
-            <div class="stat-widget-label">Constituants actifs</div>
-            <div class="stat-widget-value">1&nbsp;247</div>
-            <div class="stat-widget-trend stat-widget-trend--up">
-              <span class="material-symbols-outlined" style="font-size:14px;">trending_up</span> +23 ce mois
+          <!-- 1. Total levé -->
+          <article class="stat-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div class="stat-label">Total levé</div>
+              <div style="display:flex;align-items:center;gap:var(--space-2);">
+                <span class="stat-trend">+18%</span>
+                <div style="display:flex;width:40px;height:40px;align-items:center;justify-content:center;border-radius:var(--radius-lg);background:var(--color-primary-fixed);color:var(--color-on-primary-fixed-variant);">
+                  <span class="material-symbols-outlined" style="font-size:20px;">savings</span>
+                </div>
+              </div>
             </div>
-          </a>
+            <div class="stat-value font-mono" style="margin-top:var(--space-3);">€12 450</div>
+            <p style="margin-top:var(--space-2);font-size:var(--text-sm);color:var(--color-on-surface-variant);">Dons reçus sur la période en cours</p>
+          </article>
 
-          <!-- 3. Campagnes actives -->
-          <a href="campaigns/list.html" class="stat-widget" style="text-decoration:none;color:inherit;display:block;">
-            <div class="stat-widget-label">Campagnes actives</div>
-            <div class="stat-widget-value">3</div>
-            <div class="stat-widget-trend stat-widget-trend--up">
-              dont 1 &#224; 89% de l'objectif
+          <!-- 2. Campagnes actives -->
+          <article class="stat-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div class="stat-label">Campagnes actives</div>
+              <div style="display:flex;align-items:center;gap:var(--space-2);">
+                <span class="stat-trend">+1</span>
+                <div style="display:flex;width:40px;height:40px;align-items:center;justify-content:center;border-radius:var(--radius-lg);background:var(--color-secondary-fixed);color:var(--color-on-secondary-fixed-variant);">
+                  <span class="material-symbols-outlined" style="font-size:20px;">campaign</span>
+                </div>
+              </div>
             </div>
-          </a>
+            <div class="stat-value" style="margin-top:var(--space-3);">3</div>
+            <p style="margin-top:var(--space-2);font-size:var(--text-sm);color:var(--color-on-surface-variant);">Campagnes en cours ce mois</p>
+          </article>
 
-          <!-- 4. Echeances subventions -->
-          <a href="grants/kanban.html" class="stat-widget" style="text-decoration:none;color:inherit;display:block;">
-            <div class="stat-widget-label">&#201;ch&#233;ances subventions</div>
-            <div class="stat-widget-value">2</div>
-            <div class="stat-widget-trend stat-widget-trend--down">
-              <span class="material-symbols-outlined" style="font-size:14px;">warning</span> dans les 7 prochains jours
+          <!-- 3. Donateurs -->
+          <article class="stat-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div class="stat-label">Donateurs</div>
+              <div style="display:flex;align-items:center;gap:var(--space-2);">
+                <span class="stat-trend">+23</span>
+                <div style="display:flex;width:40px;height:40px;align-items:center;justify-content:center;border-radius:var(--radius-lg);background:var(--color-tertiary-fixed);color:var(--color-on-tertiary-fixed-variant);">
+                  <span class="material-symbols-outlined" style="font-size:20px;">groups</span>
+                </div>
+              </div>
             </div>
-          </a>
+            <div class="stat-value" style="margin-top:var(--space-3);">1 247</div>
+            <p style="margin-top:var(--space-2);font-size:var(--text-sm);color:var(--color-on-surface-variant);">23 nouveaux ce mois</p>
+          </article>
+
+          <!-- Roadmap widget: not in MVP — kept for prospect demos -->
+          <!-- Roadmap widget: not in MVP -->
+          <article class="stat-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div class="stat-label">Échéances subventions</div>
+              <div style="display:flex;align-items:center;gap:var(--space-2);">
+                <span class="nav-item-soon">Bientôt</span>
+                <div style="display:flex;width:40px;height:40px;align-items:center;justify-content:center;border-radius:var(--radius-lg);background:var(--color-amber-light);color:var(--color-amber-dark);">
+                  <span class="material-symbols-outlined" style="font-size:20px;">schedule</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-value" style="margin-top:var(--space-3);">—</div>
+            <p style="margin-top:var(--space-2);font-size:var(--text-sm);color:var(--color-on-surface-variant);">Suivi des prochains jalons (module à venir)</p>
+          </article>
         </div>
 
         <!-- ============================================================
-             TWO-COLUMN DASHBOARD GRID (2/3 + 1/3)
+             TWO-COLUMN DASHBOARD GRID — matches dashboard/page.tsx
+             Left: Recent donations + Active campaigns
+             Right: Quick actions, AI suggestion, Onboarding
              ============================================================ -->
         <div class="dashboard-grid">
 
           <!-- ──────────────────────────────────────────
-               LEFT COLUMN (2/3)
+               LEFT COLUMN (~2/3)
                ────────────────────────────────────────── -->
           <div class="dashboard-col">
 
-            <!-- Card: Campagnes en cours -->
+            <!-- Card: Dons récents (matches dashboard/page.tsx recentDonations section) -->
             <div class="card">
               <div class="card-header">
-                <h3 class="card-title">Campagnes en cours</h3>
+                <h2 class="card-title">Dons récents</h2>
+                <a href="donations/list.html" class="btn btn-ghost btn-sm">Tout voir &#8594;</a>
+              </div>
+              <div class="card-body">
+                <div class="donation-feed">
+
+                  <a href="donations/detail.html" class="donation-feed-item">
+                    <div>
+                      <div class="donation-feed-name">Marie-Claire Fontaine</div>
+                      <div class="donation-feed-date">12 mai 2026</div>
+                    </div>
+                    <span class="donation-feed-amount">€500,00</span>
+                  </a>
+
+                  <a href="donations/detail.html" class="donation-feed-item">
+                    <div>
+                      <div class="donation-feed-name">Ahmed Benali</div>
+                      <div class="donation-feed-date">11 mai 2026</div>
+                    </div>
+                    <span class="donation-feed-amount">€120,00</span>
+                  </a>
+
+                  <a href="donations/detail.html" class="donation-feed-item">
+                    <div>
+                      <div class="donation-feed-name">Don anonyme</div>
+                      <div class="donation-feed-date">10 mai 2026</div>
+                    </div>
+                    <span class="donation-feed-amount">€50,00</span>
+                  </a>
+
+                  <a href="donations/detail.html" class="donation-feed-item">
+                    <div>
+                      <div class="donation-feed-name">Fondation Lemaire</div>
+                      <div class="donation-feed-date">8 mai 2026</div>
+                    </div>
+                    <span class="donation-feed-amount">€2 000,00</span>
+                  </a>
+
+                  <a href="donations/detail.html" class="donation-feed-item">
+                    <div>
+                      <div class="donation-feed-name">Ophélie Renard</div>
+                      <div class="donation-feed-date">6 mai 2026</div>
+                    </div>
+                    <span class="donation-feed-amount">€75,00</span>
+                  </a>
+
+                </div>
+              </div>
+            </div>
+
+            <!-- Card: Campagnes actives (matches dashboard/page.tsx campaigns section) -->
+            <div class="card">
+              <div class="card-header">
+                <h2 class="card-title">Campagnes actives</h2>
                 <a href="campaigns/list.html" class="btn btn-ghost btn-sm">Tout voir &#8594;</a>
               </div>
               <div class="card-body">
 
-                <!-- Campaign 1 -->
-                <div class="campaign-row">
-                  <div class="campaign-info">
-                    <a href="campaigns/detail.html" style="text-decoration:none;color:inherit;"><div class="campaign-name">Appel aux dons Hiver 2026</div></a>
-                    <div class="campaign-amounts">&euro;8&nbsp;200 / &euro;15&nbsp;000</div>
-                    <div class="campaign-progress-row">
-                      <div class="campaign-progress-bar">
-                        <div class="progress">
-                          <div class="progress-fill" style="width: 55%;"></div>
-                        </div>
-                      </div>
-                      <span class="campaign-pct">55%</span>
+                <article class="campaign-progress-card">
+                  <div class="campaign-progress-head">
+                    <div style="min-width:0;">
+                      <h3 class="campaign-progress-name">Appel aux dons Hiver 2026</h3>
+                      <p class="campaign-progress-meta">
+                        <span class="material-symbols-outlined" style="font-size:14px;">event</span>
+                        Active depuis le 1 février 2026
+                      </p>
                     </div>
+                    <span class="campaign-progress-raised">€8 200</span>
                   </div>
-                  <div class="campaign-badge">
-                    <span class="badge badge-success">Active</span>
+                  <div class="campaign-progress-bar">
+                    <div class="campaign-progress-fill" style="width: 55%;"></div>
                   </div>
-                </div>
+                  <p class="campaign-progress-footnote">55 % de l'objectif (€15 000)</p>
+                </article>
 
-                <!-- Campaign 2 -->
-                <div class="campaign-row">
-                  <div class="campaign-info">
-                    <a href="campaigns/detail.html" style="text-decoration:none;color:inherit;"><div class="campaign-name">Gala annuel 2026</div></a>
-                    <div class="campaign-amounts">&euro;45&nbsp;000 / &euro;50&nbsp;000</div>
-                    <div class="campaign-progress-row">
-                      <div class="campaign-progress-bar">
-                        <div class="progress">
-                          <div class="progress-fill" style="width: 90%;"></div>
-                        </div>
-                      </div>
-                      <span class="campaign-pct">90%</span>
+                <article class="campaign-progress-card">
+                  <div class="campaign-progress-head">
+                    <div style="min-width:0;">
+                      <h3 class="campaign-progress-name">Gala annuel 2026</h3>
+                      <p class="campaign-progress-meta">
+                        <span class="material-symbols-outlined" style="font-size:14px;">event</span>
+                        Active depuis le 15 janvier 2026
+                      </p>
                     </div>
+                    <span class="campaign-progress-raised">€45 000</span>
                   </div>
-                  <div class="campaign-badge">
-                    <span class="badge badge-success">Active</span>
+                  <div class="campaign-progress-bar">
+                    <div class="campaign-progress-fill" style="width: 90%;"></div>
                   </div>
-                </div>
+                  <p class="campaign-progress-footnote">90 % de l'objectif (€50 000)</p>
+                </article>
 
-                <!-- Campaign 3 -->
-                <div class="campaign-row">
-                  <div class="campaign-info">
-                    <a href="campaigns/detail.html" style="text-decoration:none;color:inherit;"><div class="campaign-name">Urgence M&#233;diterran&#233;e</div></a>
-                    <div class="campaign-amounts">&euro;3&nbsp;100 / &euro;10&nbsp;000</div>
-                    <div class="campaign-progress-row">
-                      <div class="campaign-progress-bar">
-                        <div class="progress">
-                          <div class="progress-fill" style="width: 31%;"></div>
-                        </div>
-                      </div>
-                      <span class="campaign-pct">31%</span>
+                <article class="campaign-progress-card">
+                  <div class="campaign-progress-head">
+                    <div style="min-width:0;">
+                      <h3 class="campaign-progress-name">Urgence Méditerranée</h3>
+                      <p class="campaign-progress-meta">
+                        <span class="material-symbols-outlined" style="font-size:14px;">event</span>
+                        Active depuis le 5 mai 2026
+                      </p>
                     </div>
+                    <span class="campaign-progress-raised">€3 100</span>
                   </div>
-                  <div class="campaign-badge">
-                    <span class="badge badge-success">Active</span>
+                  <div class="campaign-progress-bar">
+                    <div class="campaign-progress-fill" style="width: 31%;"></div>
                   </div>
-                </div>
+                  <p class="campaign-progress-footnote">31 % de l'objectif (€10 000)</p>
+                </article>
 
-              </div>
-            </div>
-
-            <!-- Card: Activite recente -->
-            <div class="card">
-              <div class="card-header">
-                <h3 class="card-title">Activit&#233; r&#233;cente</h3>
-                <a href="donations/list.html" class="btn btn-ghost btn-sm">Tout voir &#8594;</a>
-              </div>
-              <div class="card-body">
-                <div class="timeline">
-
-                  <!-- Timeline: Don recu -->
-                  <div class="timeline-item">
-                    <div class="timeline-icon" style="background: var(--color-primary-50); color: var(--color-primary-dark);">
-                      <span class="material-symbols-outlined" style="font-size:16px;">favorite</span>
-                    </div>
-                    <div class="timeline-content">
-                      <a href="donations/detail.html" style="text-decoration:none;color:inherit;"><div class="timeline-title">Don de &euro;500 re&#231;u</div></a>
-                      <div class="timeline-meta">Marie-Claire Fontaine &middot; Il y a 2h</div>
-                    </div>
-                  </div>
-
-                  <!-- Timeline: Nouveau constituant -->
-                  <div class="timeline-item">
-                    <div class="timeline-icon" style="background: var(--color-sky-50); color: var(--color-sky);">
-                      <span class="material-symbols-outlined" style="font-size:16px;">person_add</span>
-                    </div>
-                    <div class="timeline-content">
-                      <a href="constituents/detail.html" style="text-decoration:none;color:inherit;"><div class="timeline-title">Nouveau constituant ajout&#233;</div></a>
-                      <div class="timeline-meta">Ahmed Benali &middot; Il y a 4h</div>
-                    </div>
-                  </div>
-
-                  <!-- Timeline: Rapport soumis -->
-                  <div class="timeline-item">
-                    <div class="timeline-icon" style="background: var(--color-amber-50); color: var(--color-amber);">
-                      <span class="material-symbols-outlined" style="font-size:16px;">task</span>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-title">Rapport soumis</div>
-                      <div class="timeline-meta">Subvention Fondation Rothschild &middot; Hier</div>
-                    </div>
-                  </div>
-
-                  <!-- Timeline: Campagne lancee -->
-                  <div class="timeline-item">
-                    <div class="timeline-icon" style="background: var(--color-primary-50); color: var(--color-primary-dark);">
-                      <span class="material-symbols-outlined" style="font-size:16px;">rocket_launch</span>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-title">Campagne lanc&#233;e</div>
-                      <div class="timeline-meta">Urgence M&#233;diterran&#233;e &middot; Hier</div>
-                    </div>
-                  </div>
-
-                </div>
               </div>
             </div>
 
@@ -464,90 +628,69 @@
           <!-- END LEFT COLUMN -->
 
           <!-- ──────────────────────────────────────────
-               RIGHT COLUMN (1/3)
+               RIGHT COLUMN (~1/3)
                ────────────────────────────────────────── -->
           <div class="dashboard-col">
 
-            <!-- AI Suggestion Card -->
-            <div class="ai-card">
-              <div class="ai-card-header">
-                <span class="ai-card-icon"><span class="material-symbols-outlined" style="font-size:16px;">auto_awesome</span></span>
-                <span class="ai-card-label">Suggestion IA</span>
+            <!-- Quick Actions (matches dashboard/page.tsx canWrite gate) -->
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">Actions rapides</h2>
+                  <p class="card-subtitle">Créer en un clic les enregistrements du quotidien.</p>
+                </div>
               </div>
-              <p class="ai-card-text">
-                3 donateurs majeurs n'ont pas donn&#233; depuis 12 mois &mdash; voir la liste et envoyer un email de r&#233;activation ?
+              <div class="card-body" style="display:flex;flex-direction:column;gap:var(--space-3);">
+                <a href="donations/new.html" class="quick-action">
+                  <span class="quick-action-plus"><span class="material-symbols-outlined" style="font-size:14px;">add</span></span>
+                  Nouveau don
+                </a>
+                <a href="constituents/new.html" class="quick-action">
+                  <span class="quick-action-plus"><span class="material-symbols-outlined" style="font-size:14px;">add</span></span>
+                  Nouveau constituant
+                </a>
+                <a href="campaigns/new.html" class="quick-action">
+                  <span class="quick-action-plus"><span class="material-symbols-outlined" style="font-size:14px;">add</span></span>
+                  Nouvelle campagne
+                </a>
+              </div>
+            </div>
+
+            <!-- Roadmap widget: not in MVP -->
+            <!-- AI Suggestion Card (matches dashboard/page.tsx aiSuggestion section, currently static copy) -->
+            <div class="ai-suggestion-card">
+              <div class="ai-suggestion-head">
+                <span class="material-symbols-outlined" style="font-size:18px;">lightbulb</span>
+                <h2 class="ai-suggestion-title">Suggestion</h2>
+              </div>
+              <p class="ai-suggestion-body">
+                3 donateurs majeurs n'ont pas donné depuis 12 mois — pensez à leur envoyer un message de réactivation cette semaine.
               </p>
-              <div class="ai-card-actions">
-                <a href="constituents/list.html" class="btn btn-primary btn-sm" style="text-decoration:none;">Appliquer</a>
-                <button class="btn btn-ghost btn-sm">Ignorer</button>
-              </div>
             </div>
 
-            <!-- Card: Echeances proches -->
+            <!-- Card: Bien démarrer (matches dashboard/page.tsx onboarding checklist) -->
             <div class="card">
               <div class="card-header">
-                <h3 class="card-title">&#201;ch&#233;ances proches</h3>
+                <div>
+                  <h2 class="card-title">Bien démarrer</h2>
+                  <p class="card-subtitle">Quelques étapes pour exploiter Givernance pleinement.</p>
+                </div>
               </div>
               <div class="card-body">
-
-                <!-- Deadline 1 -->
-                <a href="grants/detail.html" class="deadline-row" style="text-decoration:none;color:inherit;display:flex;">
-                  <div class="deadline-info">
-                    <div class="deadline-title">Rapport interm&#233;diaire</div>
-                    <div class="deadline-org">Fondation de France</div>
-                  </div>
-                  <div class="deadline-right">
-                    <span class="deadline-date">3 mars 2026</span>
-                    <span class="badge badge-warning">5 jours</span>
-                  </div>
-                </a>
-
-                <!-- Deadline 2 -->
-                <a href="grants/detail.html" class="deadline-row" style="text-decoration:none;color:inherit;display:flex;">
-                  <div class="deadline-info">
-                    <div class="deadline-title">Rapport financier</div>
-                    <div class="deadline-org">R&#233;gion Sud</div>
-                  </div>
-                  <div class="deadline-right">
-                    <span class="deadline-date">7 mars 2026</span>
-                    <span class="badge badge-info">9 jours</span>
-                  </div>
-                </a>
-
-              </div>
-            </div>
-
-            <!-- Card: Checklist de demarrage -->
-            <div class="card">
-              <div class="card-header">
-                <h3 class="card-title">Checklist de d&#233;marrage</h3>
-              </div>
-              <div class="card-body">
-
-                <!-- Completed: Organisation configuree -->
-                <div class="checklist-item completed">
-                  <div class="checklist-icon"><span class="material-symbols-outlined" style="font-size:14px;">check</span></div>
-                  <span class="checklist-text">Organisation configur&#233;e</span>
-                </div>
-
-                <!-- Completed: Equipe invitee -->
-                <div class="checklist-item completed">
-                  <div class="checklist-icon"><span class="material-symbols-outlined" style="font-size:14px;">check</span></div>
-                  <span class="checklist-text">&#201;quipe invit&#233;e</span>
-                </div>
-
-                <!-- Pending: Importer constituants -->
-                <a href="constituents/import.html" class="checklist-item" style="text-decoration:none;color:inherit;display:flex;">
-                  <div class="checklist-icon"><span class="material-symbols-outlined" style="font-size:14px;">radio_button_unchecked</span></div>
-                  <span class="checklist-text">Importer vos constituants</span>
-                </a>
-
-                <!-- Pending: Creer premiere campagne -->
-                <a href="campaigns/new.html" class="checklist-item" style="text-decoration:none;color:inherit;display:flex;">
-                  <div class="checklist-icon"><span class="material-symbols-outlined" style="font-size:14px;">radio_button_unchecked</span></div>
-                  <span class="checklist-text">Cr&#233;er votre premi&#232;re campagne</span>
-                </a>
-
+                <ul class="ob-list">
+                  <li class="ob-list-item is-complete">
+                    <span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>
+                    <span>Ajouter vos constituants</span>
+                  </li>
+                  <li class="ob-list-item is-complete">
+                    <span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>
+                    <span>Enregistrer un premier don</span>
+                  </li>
+                  <li class="ob-list-item is-pending">
+                    <span class="material-symbols-outlined" style="font-size:18px;">radio_button_unchecked</span>
+                    <span>Lancer votre première campagne</span>
+                  </li>
+                </ul>
               </div>
             </div>
 

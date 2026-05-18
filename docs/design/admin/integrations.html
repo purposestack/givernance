@@ -1,357 +1,168 @@
+<!-- Roadmap: super-admin integrations marketplace not in MVP. The MVP ships only Stripe Connect (per-tenant, inside /settings) and Keycloak IdP (per-tenant under /admin/tenants/[id]). A cross-tenant integrations catalogue (Xero, Mailchimp, Google Workspace, Sage) is deferred. -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Givernance &mdash; Int&eacute;grations</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Back office &mdash; Intégrations</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <style>
-    /* ── Page-specific styles for admin/integrations (ADM-004) ── */
+    .switch-link { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin: 0 var(--space-3) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-on-surface-variant); border: 1px solid var(--color-outline-variant); text-decoration: none; }
+    .roadmap-banner { padding: var(--space-3) var(--space-4); background: rgba(83, 86, 196, 0.08); border: 1px solid var(--color-indigo); border-radius: var(--radius-md); margin-bottom: var(--space-6); font-size: var(--text-sm); color: var(--color-text); }
 
-    .integration-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: var(--space-4);
-    }
-
-    @media (max-width: 1024px) {
-      .integration-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    @media (max-width: 640px) {
-      .integration-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .integration-card {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-4);
-    }
-
-    .integration-card-header {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-    }
-
-    .integration-logo {
-      width: 48px;
-      height: 48px;
-      border-radius: var(--radius-lg);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: var(--text-lg);
-      font-weight: var(--weight-bold);
-      color: var(--color-white);
-      flex-shrink: 0;
-    }
-
-    .integration-logo--indigo {
-      background: var(--color-indigo);
-    }
-
-    .integration-logo--amber {
-      background: var(--color-amber);
-    }
-
-    .integration-logo--sky {
-      background: var(--color-sky);
-    }
-
-    .integration-logo--green {
-      background: var(--color-primary);
-    }
-
-    .integration-card-name {
-      font-size: var(--text-md);
-      font-weight: var(--weight-semi);
-      color: var(--color-text);
-    }
-
-    .integration-meta {
-      flex: 1;
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      line-height: var(--leading-normal);
-    }
-
-    .integration-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding-top: var(--space-4);
-      border-top: 1px solid var(--color-neutral-100);
-      margin-top: auto;
-    }
-
-    .integration-footer .badge .material-symbols-outlined {
-      font-size: 14px;
-      vertical-align: middle;
-      margin-right: 2px;
-    }
+    .integration-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-4); }
+    .integration-card { display: flex; flex-direction: column; gap: var(--space-4); }
+    .integration-card-header { display: flex; align-items: center; gap: var(--space-3); }
+    .integration-logo { width: 48px; height: 48px; border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--color-white); flex-shrink: 0; }
+    .integration-logo--indigo { background: var(--color-indigo); }
+    .integration-logo--amber { background: var(--color-tertiary); }
+    .integration-logo--sky { background: var(--color-sky); }
+    .integration-logo--green { background: var(--color-primary); }
+    .integration-card-name { font-size: var(--text-md); font-weight: var(--weight-semi); color: var(--color-text); }
+    .integration-meta { flex: 1; font-size: var(--text-sm); color: var(--color-text-secondary); line-height: var(--leading-normal); }
+    .integration-footer { display: flex; align-items: center; justify-content: space-between; padding-top: var(--space-4); border-top: 1px solid var(--color-outline-variant); margin-top: auto; }
   </style>
 </head>
 <body>
-
   <div class="app-layout">
 
-    <!-- ============================== -->
-    <!--           Sidebar               -->
-    <!-- ============================== -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="../constituents/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_balance</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>Bénévoles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">bar_chart</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="index.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Paramètres</span>
-    </a>
-        <div class="nav-sub">
-          <a href="organization.html" class="nav-sub-item">Organisation</a>
-          <a href="users.html" class="nav-sub-item">Utilisateurs</a>
-          <a href="roles.html" class="nav-sub-item">Rôles &amp; permissions</a>
-          <a href="integrations.html" class="nav-sub-item nav-sub-item--active">Intégrations</a>
-          <a href="billing.html" class="nav-sub-item">Facturation</a>
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <a href="../dashboard.html" class="switch-link">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Retour à l'organisation
+      </a>
+      <nav class="sidebar-nav" aria-label="Navigation Back office">
+        <div class="sidebar-section">Super admin</div>
+        <a href="tenants/list.html" class="nav-item"><span class="material-symbols-outlined nav-item-icon">business</span><span class="nav-item-label">Locataires</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">shield</span><span class="nav-item-label">Litiges</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">person_search</span><span class="nav-item-label">Usurpation</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">admin_panel_settings</span><span class="nav-item-label">Admins plateforme</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">flag</span><span class="nav-item-label">Feature flags</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar" style="background: var(--color-indigo);">SA</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Sam Admin</div>
+            <div class="sidebar-footer-role">Super admin</div>
+          </div>
         </div>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
+      </div>
+    </aside>
 
-    <!-- ============================== -->
-    <!--         Main Wrapper            -->
-    <!-- ============================== -->
     <div class="main-wrapper">
-
       <header class="topbar">
-        <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
-          <a href="index.html">Param&egrave;tres</a>
-          <span class="topbar-breadcrumb-sep">&#8250;</span>
-          <span class="topbar-breadcrumb-current">Int&eacute;grations</span>
-        </nav>
-
-        <a href="../global/command-palette.html" class="topbar-search">
-          <input class="topbar-search-input" type="search" placeholder="Rechercher...  &#8984;K" aria-label="Recherche globale">
-        </a>
-
+        <div class="topbar-breadcrumb">
+          <a href="index.html">Back office</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Intégrations</span>
+        </div>
         <div class="topbar-actions">
-          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            <span class="material-symbols-outlined">notifications</span>
-            <span class="notification-dot"></span>
-          </button></a>
-          <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil">CD</div></a>
+          <div class="topbar-avatar" title="Sam Admin" style="background: var(--color-indigo);">SA</div>
         </div>
       </header>
 
       <main class="main-content">
-
-        <!-- Page Header -->
         <div class="page-header">
           <div class="page-header-left">
-            <h1 class="page-title">Int&eacute;grations</h1>
-            <p class="page-subtitle">Connectez vos outils pr&eacute;f&eacute;r&eacute;s pour automatiser vos flux de travail.</p>
+            <h1 class="page-title">Intégrations</h1>
+            <p class="page-subtitle">Catalogue plateforme — services tiers disponibles à l'activation pour les tenants.</p>
           </div>
         </div>
 
-        <!-- Filter Tabs -->
-        <div class="tabs">
-          <button class="tab active" type="button">Toutes</button>
-          <button class="tab" type="button">Paiement</button>
-          <button class="tab" type="button">Comptabilit&eacute;</button>
-          <button class="tab" type="button">Communication</button>
-          <button class="tab" type="button">Productivit&eacute;</button>
+        <div class="roadmap-banner">
+          <strong>Vision&nbsp;:</strong> en MVP, seule l'intégration Stripe Connect est livrée (par tenant, dans <a href="../settings/feature-flags.html">/settings</a>). Keycloak IdP est géré par tenant dans <a href="tenants/detail-idp.html">/admin/tenants/[id]</a>. Ce catalogue cross-tenant (Xero, Sage, Mailchimp, Google Workspace…) est planifié post-MVP.
         </div>
 
-        <!-- Integration Cards Grid -->
         <div class="integration-grid">
-
-          <!-- 1. Stripe -->
-          <a href="stripe-connect.html" class="card integration-card" style="text-decoration:none;color:inherit;">
+          <div class="card integration-card">
             <div class="integration-card-header">
-              <div class="integration-logo integration-logo--indigo">S</div>
+              <div class="integration-logo integration-logo--indigo">St</div>
               <div>
                 <div class="integration-card-name">Stripe Connect</div>
-                <span class="badge badge-info">Paiement</span>
+                <div class="text-xs text-muted">Paiements donateurs</div>
               </div>
             </div>
-            <p class="integration-meta">Acceptez les dons par carte bancaire, g&eacute;rez les pr&eacute;l&egrave;vements r&eacute;currents et le compte Stripe Connect de votre ONG.</p>
+            <p class="integration-meta">Encaissement carte + SEPA via comptes Connect par tenant. Statut, requirements et dashboard link visibles dans <code>/settings</code>.</p>
             <div class="integration-footer">
-              <span class="badge badge-success"><span class="material-symbols-outlined">check</span> Connect&eacute;</span>
-              <span style="font-size:var(--text-sm);font-weight:var(--weight-medium);color:var(--color-primary);">Configurer &rarr;</span>
-            </div>
-          </a>
-
-          <!-- 2. Mollie -->
-          <div class="card integration-card">
-            <div class="integration-card-header">
-              <div class="integration-logo integration-logo--amber">M</div>
-              <div>
-                <div class="integration-card-name">Mollie</div>
-                <span class="badge badge-info">Paiement</span>
-              </div>
-            </div>
-            <p class="integration-meta">Solution de paiement europ&eacute;enne : iDEAL, Bancontact, SEPA.</p>
-            <div class="integration-footer">
-              <span class="badge badge-neutral">Non connect&eacute;</span>
-              <button class="btn btn-primary btn-sm" type="button">Connecter</button>
+              <span class="badge badge-success">Disponible</span>
+              <a href="stripe-connect.html" class="btn btn-ghost btn-sm">Configurer</a>
             </div>
           </div>
 
-          <!-- 3. Xero -->
           <div class="card integration-card">
             <div class="integration-card-header">
-              <div class="integration-logo integration-logo--sky">X</div>
+              <div class="integration-logo integration-logo--sky">K</div>
               <div>
-                <div class="integration-card-name">Xero</div>
-                <span class="badge badge-warning">Comptabilit&eacute;</span>
+                <div class="integration-card-name">Keycloak (OIDC / SAML)</div>
+                <div class="text-xs text-muted">Identité & SSO</div>
               </div>
             </div>
-            <p class="integration-meta">Synchronisez vos dons et d&eacute;penses avec votre comptabilit&eacute; Xero.</p>
+            <p class="integration-meta">Provisionne l'IdP du tenant via discovery URL + client ID/secret. Géré dans la fiche tenant.</p>
             <div class="integration-footer">
-              <span class="badge badge-success"><span class="material-symbols-outlined">check</span> Connect&eacute;</span>
-              <button class="btn btn-secondary btn-sm" type="button">Configurer</button>
+              <span class="badge badge-success">Disponible</span>
+              <a href="tenants/detail-idp.html" class="btn btn-ghost btn-sm">Configurer</a>
             </div>
           </div>
 
-          <!-- 4. QuickBooks -->
           <div class="card integration-card">
             <div class="integration-card-header">
-              <div class="integration-logo integration-logo--green">Q</div>
-              <div>
-                <div class="integration-card-name">QuickBooks</div>
-                <span class="badge badge-warning">Comptabilit&eacute;</span>
-              </div>
-            </div>
-            <p class="integration-meta">Export automatique des &eacute;critures comptables vers QuickBooks.</p>
-            <div class="integration-footer">
-              <span class="badge badge-neutral">Non connect&eacute;</span>
-              <button class="btn btn-primary btn-sm" type="button">Connecter</button>
-            </div>
-          </div>
-
-          <!-- 5. Mailchimp -->
-          <div class="card integration-card">
-            <div class="integration-card-header">
-              <div class="integration-logo integration-logo--amber">MC</div>
+              <div class="integration-logo integration-logo--green">M</div>
               <div>
                 <div class="integration-card-name">Mailchimp</div>
-                <span class="badge badge-error">Communication</span>
+                <div class="text-xs text-muted">Email marketing</div>
               </div>
             </div>
-            <p class="integration-meta">Synchronisez vos constituants et segmentez vos campagnes email.</p>
+            <p class="integration-meta">Synchronisation des constituants vers des audiences Mailchimp. Webhooks de désabonnement.</p>
             <div class="integration-footer">
-              <span class="badge badge-success"><span class="material-symbols-outlined">check</span> Connect&eacute;</span>
-              <button class="btn btn-secondary btn-sm" type="button">Configurer</button>
+              <span class="badge badge-neutral">Roadmap</span>
+              <button class="btn btn-ghost btn-sm" disabled>Bientôt</button>
             </div>
           </div>
 
-          <!-- 6. Twilio -->
           <div class="card integration-card">
             <div class="integration-card-header">
-              <div class="integration-logo integration-logo--indigo">T</div>
+              <div class="integration-logo integration-logo--amber">X</div>
               <div>
-                <div class="integration-card-name">Twilio</div>
-                <span class="badge badge-error">Communication</span>
+                <div class="integration-card-name">Xero</div>
+                <div class="text-xs text-muted">Comptabilité</div>
               </div>
             </div>
-            <p class="integration-meta">Envoyez des SMS de remerciement et des rappels automatiques.</p>
+            <p class="integration-meta">Export des dons et reçus fiscaux vers Xero. Mapping comptes / fonds.</p>
             <div class="integration-footer">
-              <span class="badge badge-neutral">Non connect&eacute;</span>
-              <button class="btn btn-primary btn-sm" type="button">Connecter</button>
+              <span class="badge badge-neutral">Roadmap</span>
+              <button class="btn btn-ghost btn-sm" disabled>Bientôt</button>
             </div>
           </div>
 
-          <!-- 7. Google Workspace -->
           <div class="card integration-card">
             <div class="integration-card-header">
               <div class="integration-logo integration-logo--sky">G</div>
               <div>
                 <div class="integration-card-name">Google Workspace</div>
-                <span class="badge badge-neutral">Productivit&eacute;</span>
+                <div class="text-xs text-muted">Productivité</div>
               </div>
             </div>
-            <p class="integration-meta">Connectez votre calendrier, contacts et Google Drive.</p>
+            <p class="integration-meta">Calendrier événements, Drive pour pièces jointes campagnes.</p>
             <div class="integration-footer">
-              <span class="badge badge-neutral">Non connect&eacute;</span>
-              <button class="btn btn-primary btn-sm" type="button">Connecter</button>
+              <span class="badge badge-neutral">Roadmap</span>
+              <button class="btn btn-ghost btn-sm" disabled>Bientôt</button>
             </div>
           </div>
-
-          <!-- 8. Microsoft 365 -->
-          <div class="card integration-card">
-            <div class="integration-card-header">
-              <div class="integration-logo integration-logo--indigo">M</div>
-              <div>
-                <div class="integration-card-name">Microsoft 365</div>
-                <span class="badge badge-neutral">Productivit&eacute;</span>
-              </div>
-            </div>
-            <p class="integration-meta">Int&eacute;grez Outlook, OneDrive et Teams avec Givernance.</p>
-            <div class="integration-footer">
-              <span class="badge badge-neutral">Non connect&eacute;</span>
-              <button class="btn btn-primary btn-sm" type="button">Connecter</button>
-            </div>
-          </div>
-
-        </div><!-- /integration-grid -->
-
+        </div>
       </main>
     </div>
   </div>
-
 <script src="../shared/mobile.js"></script>
 </body>
 </html>
