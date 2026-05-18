@@ -1,557 +1,161 @@
+<!-- Note: this mockup represents the super-admin "Platform admins" management surface — the live page at /admin/platform-admins (issues #254/#255/#260). Tenant member management (org_admin / user) is per-tenant inside /admin/tenants/[id]/users tab and NOT shown here. -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Givernance &mdash; Gestion des utilisateurs</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Back office &mdash; Admins plateforme</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <style>
-    /* ── Page-specific styles for admin/users (ADM-002) ── */
+    .switch-link { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin: 0 var(--space-3) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-on-surface-variant); border: 1px solid var(--color-outline-variant); text-decoration: none; }
 
-    /* User cell: avatar + name/email stacked */
-    .user-cell {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-    }
-
-    .user-cell-avatar {
-      width: 32px;
-      height: 32px;
-      border-radius: var(--radius-full);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--color-white);
-      font-size: var(--text-xs);
-      font-weight: var(--weight-semi);
-      flex-shrink: 0;
-    }
-
-    .user-cell-avatar--green  { background: var(--color-primary); }
-    .user-cell-avatar--sky    { background: var(--color-sky); }
-    .user-cell-avatar--amber  { background: var(--color-amber); }
-    .user-cell-avatar--indigo { background: var(--color-indigo); }
-
-    .user-cell-info {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-
-    .user-cell-name {
-      font-weight: var(--weight-medium);
-      color: var(--color-text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .user-cell-email {
-      font-size: var(--text-xs);
-      color: var(--color-text-secondary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    /* Status dot inside badges */
-    .status-dot {
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: var(--radius-full);
-      margin-right: var(--space-1);
-    }
-
-    .status-dot--active {
-      background: var(--color-primary);
-    }
-
-    .status-dot--invited {
-      background: var(--color-amber);
-    }
-
-    .status-dot--disabled {
-      background: var(--color-indigo);
-    }
-
-    /* Action menu button (3-dot) */
-    .action-menu-btn {
-      width: 28px;
-      height: 28px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: none;
-      background: transparent;
-      color: var(--color-text-secondary);
-      cursor: pointer;
-      border-radius: var(--radius-sm);
-      font-size: var(--text-md);
-      transition: all var(--duration-normal) var(--ease-out);
-    }
-
-    .action-menu-btn:hover {
-      background: var(--color-neutral-100);
-      color: var(--color-text);
-    }
-
-    .action-menu-btn .material-symbols-outlined {
-      font-size: 20px;
-    }
-
-    /* Table search input */
-    .table-search {
-      width: 260px;
-      height: 32px;
-      background: var(--color-white);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      padding: 0 var(--space-3) 0 var(--space-8);
-      font-size: var(--text-xs);
-      color: var(--color-text);
-      font-family: var(--font-body);
-      transition: border-color var(--duration-normal) var(--ease-out);
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23A8A29E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: 10px center;
-    }
-
-    .table-search::placeholder {
-      color: var(--color-text-muted);
-    }
-
-    .table-search:focus {
-      outline: none;
-      border-color: var(--color-primary);
-      box-shadow: 0 0 0 3px var(--color-primary-50);
-    }
-
-    /* User count label */
-    .user-count {
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      white-space: nowrap;
-    }
-
-    /* ── Modal overlay ── */
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.45);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: var(--z-modal);
-      padding: var(--space-6);
-    }
-
-    .modal-card {
-      background: var(--color-surface);
-      border-radius: var(--radius-2xl);
-      box-shadow: var(--shadow-modal);
-      width: 100%;
-      max-width: 480px;
-      padding: var(--space-8);
-    }
-
-    .modal-title {
-      font-family: var(--font-heading);
-      font-size: var(--text-xl);
-      color: var(--color-text);
-      margin-bottom: var(--space-6);
-    }
-
-    .modal-actions {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: var(--space-3);
-      margin-top: var(--space-6);
-      padding-top: var(--space-5);
-      border-top: 1px solid var(--color-neutral-100);
-    }
+    .user-cell { display: flex; align-items: center; gap: var(--space-3); }
+    .user-cell-info { display: flex; flex-direction: column; min-width: 0; }
+    .user-cell-name { font-weight: var(--weight-medium); color: var(--color-text); }
+    .user-cell-email { font-size: var(--text-xs); color: var(--color-on-surface-variant); }
+    .filter-toolbar { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); padding: var(--space-4); background: var(--color-surface-container-lowest); border-radius: var(--radius-xl); box-shadow: 0 0 0 1px rgba(190, 201, 193, 0.1); }
+    .filter-toolbar input[type="search"] { flex: 1; min-width: 240px; }
   </style>
 </head>
 <body>
-
   <div class="app-layout">
 
-    <!-- ============================== -->
-    <!--           Sidebar               -->
-    <!-- ============================== -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="../constituents/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_balance</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>Bénévoles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">bar_chart</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="index.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Paramètres</span>
-    </a>
-        <div class="nav-sub">
-          <a href="organization.html" class="nav-sub-item">Organisation</a>
-          <a href="users.html" class="nav-sub-item nav-sub-item--active">Utilisateurs</a>
-          <a href="roles.html" class="nav-sub-item">Rôles &amp; permissions</a>
-          <a href="integrations.html" class="nav-sub-item">Intégrations</a>
-          <a href="billing.html" class="nav-sub-item">Facturation</a>
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <a href="../dashboard.html" class="switch-link">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Retour à l'organisation
+      </a>
+      <nav class="sidebar-nav" aria-label="Navigation Back office">
+        <div class="sidebar-section">Super admin</div>
+        <a href="tenants/list.html" class="nav-item"><span class="material-symbols-outlined nav-item-icon">business</span><span class="nav-item-label">Locataires</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">shield</span><span class="nav-item-label">Litiges</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">person_search</span><span class="nav-item-label">Usurpation</span></a>
+        <a href="users.html" class="nav-item nav-item--active"><span class="material-symbols-outlined nav-item-icon">admin_panel_settings</span><span class="nav-item-label">Admins plateforme</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">flag</span><span class="nav-item-label">Feature flags</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar" style="background: var(--color-indigo);">SA</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Sam Admin</div>
+            <div class="sidebar-footer-role">Super admin</div>
+          </div>
         </div>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarité Méd.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
+      </div>
+    </aside>
 
-    <!-- ============================== -->
-    <!--         Main Wrapper            -->
-    <!-- ============================== -->
     <div class="main-wrapper">
-
-      <!-- ── Topbar ── -->
       <header class="topbar">
-        <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
-          <a href="index.html">Param&egrave;tres</a>
-          <span class="topbar-breadcrumb-sep">&#8250;</span>
-          <span class="topbar-breadcrumb-current">Utilisateurs</span>
-        </nav>
-
-        <a href="../global/command-palette.html" class="topbar-search">
-          <input
-            class="topbar-search-input"
-            type="search"
-            placeholder="Rechercher&hellip;  &#8984;K"
-            aria-label="Recherche globale"
-          >
-        </a>
-
+        <div class="topbar-breadcrumb">
+          <a href="index.html">Back office</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Admins plateforme</span>
+        </div>
         <div class="topbar-actions">
-          <a href="../global/notifications.html"><button class="topbar-icon-btn" type="button" aria-label="Notifications">
-            <span class="material-symbols-outlined">notifications</span>
-            <span class="notification-dot"></span>
-          </button></a>
-          <a href="../admin/users.html"><div class="topbar-avatar" aria-label="Profil Claire Dubois">CD</div></a>
+          <div class="topbar-avatar" title="Sam Admin" style="background: var(--color-indigo);">SA</div>
         </div>
       </header>
-      <!-- end .topbar -->
 
-      <!-- ── Main Content ── -->
       <main class="main-content">
-
-        <!-- Page Header -->
         <div class="page-header">
           <div class="page-header-left">
-            <h1 class="page-title">Gestion des utilisateurs</h1>
-            <p class="page-subtitle">Invitez des membres, g&eacute;rez les r&ocirc;les et les acc&egrave;s.</p>
+            <h1 class="page-title">Admins plateforme</h1>
+            <p class="page-subtitle">Liste des super-admins Givernance — staff avec accès Back office. Distinct des membres d'un tenant.</p>
           </div>
           <div class="page-header-actions">
-            <button class="btn btn-primary" type="button"><span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;margin-right:4px;">add</span> Inviter un utilisateur</button>
+            <a href="#" class="btn btn-primary">
+              <span class="material-symbols-outlined">person_add</span>
+              Inviter un admin
+            </a>
           </div>
         </div>
 
-        <!-- Table Controls -->
-        <div class="table-controls">
-          <div class="table-controls-left">
-            <input
-              class="table-search"
-              type="search"
-              placeholder="Rechercher un utilisateur&hellip;"
-              aria-label="Rechercher un utilisateur"
-            >
-            <div class="filter-bar">
-              <button class="filter-chip active" type="button">Tous</button>
-              <button class="filter-chip" type="button">Actifs</button>
-              <button class="filter-chip" type="button">Invit&eacute;s</button>
-              <button class="filter-chip" type="button">D&eacute;sactiv&eacute;s</button>
-            </div>
-          </div>
-          <div class="table-controls-right">
-            <span class="user-count" style="font-variant-numeric: tabular-nums">8 utilisateurs</span>
-          </div>
+        <div class="filter-toolbar">
+          <input type="search" class="form-input" placeholder="Rechercher par nom ou email" aria-label="Rechercher">
+          <label class="checkbox-label" style="align-self: center;">
+            <input type="checkbox"> Inclure les comptes supprimés
+          </label>
         </div>
 
-        <!-- Data Table -->
         <div class="data-table-wrapper">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Utilisateur</th>
+                <th>Admin</th>
                 <th>Email</th>
-                <th>R&ocirc;le</th>
-                <th>Statut</th>
-                <th>Derni&egrave;re connexion</th>
-                <th class="text-center">Actions</th>
+                <th>Créé le</th>
+                <th>Dernière connexion</th>
+                <th class="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-
-              <!-- Row 1 — Claire Dubois -->
               <tr>
                 <td>
                   <div class="user-cell">
-                    <div class="user-cell-avatar user-cell-avatar--green">CD</div>
+                    <div class="avatar avatar-md avatar-indigo">SA</div>
                     <div class="user-cell-info">
-                      <span class="user-cell-name">Claire Dubois</span>
+                      <span class="user-cell-name">Sam Admin</span>
+                      <span class="user-cell-email">Super admin</span>
                     </div>
                   </div>
                 </td>
-                <td class="cell-secondary">claire@solidarite-med.org</td>
-                <td><span class="badge badge-info">Admin</span></td>
-                <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
-                <td class="cell-secondary">27 f&eacute;v. 2026</td>
-                <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Claire Dubois"><span class="material-symbols-outlined">more_horiz</span></button>
+                <td class="text-muted">sam@givernance.app</td>
+                <td>14 nov. 2025</td>
+                <td>il y a 2 min</td>
+                <td class="text-right">
+                  <a href="#" class="btn btn-ghost btn-sm">Modifier</a>
                 </td>
               </tr>
-
-              <!-- Row 2 — Marc Laurent -->
               <tr>
                 <td>
                   <div class="user-cell">
-                    <div class="user-cell-avatar user-cell-avatar--sky">ML</div>
+                    <div class="avatar avatar-md avatar-green">RH</div>
                     <div class="user-cell-info">
-                      <span class="user-cell-name">Marc Laurent</span>
+                      <span class="user-cell-name">Raphaël Henri</span>
+                      <span class="user-cell-email">Super admin</span>
                     </div>
                   </div>
                 </td>
-                <td class="cell-secondary">marc@solidarite-med.org</td>
-                <td><span class="badge badge-neutral">Collecteur</span></td>
-                <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
-                <td class="cell-secondary">26 f&eacute;v. 2026</td>
-                <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Marc Laurent"><span class="material-symbols-outlined">more_horiz</span></button>
+                <td class="text-muted">raphael@givernance.app</td>
+                <td>3 jan. 2026</td>
+                <td>hier</td>
+                <td class="text-right">
+                  <a href="#" class="btn btn-ghost btn-sm">Modifier</a>
                 </td>
               </tr>
-
-              <!-- Row 3 — Sophie Bertrand -->
               <tr>
                 <td>
                   <div class="user-cell">
-                    <div class="user-cell-avatar user-cell-avatar--amber">SB</div>
+                    <div class="avatar avatar-md avatar-amber">MC</div>
                     <div class="user-cell-info">
-                      <span class="user-cell-name">Sophie Bertrand</span>
+                      <span class="user-cell-name">Magino Cochet</span>
+                      <span class="user-cell-email">Super admin</span>
                     </div>
                   </div>
                 </td>
-                <td class="cell-secondary">sophie@solidarite-med.org</td>
-                <td><span class="badge badge-neutral">Gestionnaire</span></td>
-                <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
-                <td class="cell-secondary">25 f&eacute;v. 2026</td>
-                <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Sophie Bertrand"><span class="material-symbols-outlined">more_horiz</span></button>
+                <td class="text-muted">magino@givernance.app</td>
+                <td>10 nov. 2025</td>
+                <td>il y a 1 h</td>
+                <td class="text-right">
+                  <a href="#" class="btn btn-ghost btn-sm">Modifier</a>
                 </td>
               </tr>
-
-              <!-- Row 4 — Pierre Dupont -->
-              <tr>
-                <td>
-                  <div class="user-cell">
-                    <div class="user-cell-avatar user-cell-avatar--indigo">PD</div>
-                    <div class="user-cell-info">
-                      <span class="user-cell-name">Pierre Dupont</span>
-                    </div>
-                  </div>
-                </td>
-                <td class="cell-secondary">pierre@solidarite-med.org</td>
-                <td><span class="badge badge-neutral">Collecteur</span></td>
-                <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
-                <td class="cell-secondary">24 f&eacute;v. 2026</td>
-                <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Pierre Dupont"><span class="material-symbols-outlined">more_horiz</span></button>
-                </td>
-              </tr>
-
-              <!-- Row 5 — Amina Benali (Invited) -->
-              <tr>
-                <td>
-                  <div class="user-cell">
-                    <div class="user-cell-avatar user-cell-avatar--green">AB</div>
-                    <div class="user-cell-info">
-                      <span class="user-cell-name">Amina Benali</span>
-                    </div>
-                  </div>
-                </td>
-                <td class="cell-secondary">amina@solidarite-med.org</td>
-                <td><span class="badge badge-neutral">B&eacute;n&eacute;vole</span></td>
-                <td><span class="badge badge-warning"><span class="status-dot status-dot--invited"></span>Invit&eacute;</span></td>
-                <td class="cell-secondary">&mdash;</td>
-                <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Amina Benali"><span class="material-symbols-outlined">more_horiz</span></button>
-                </td>
-              </tr>
-
-              <!-- Row 6 — Jacques Renault (Disabled) -->
-              <tr>
-                <td>
-                  <div class="user-cell">
-                    <div class="user-cell-avatar user-cell-avatar--sky">JR</div>
-                    <div class="user-cell-info">
-                      <span class="user-cell-name">Jacques Renault</span>
-                    </div>
-                  </div>
-                </td>
-                <td class="cell-secondary">jacques@solidarite-med.org</td>
-                <td><span class="badge badge-neutral">Lecteur</span></td>
-                <td><span class="badge badge-error"><span class="status-dot status-dot--disabled"></span>D&eacute;sactiv&eacute;</span></td>
-                <td class="cell-secondary">10 jan. 2026</td>
-                <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Jacques Renault"><span class="material-symbols-outlined">more_horiz</span></button>
-                </td>
-              </tr>
-
-              <!-- Row 7 — Lina Moreau -->
-              <tr>
-                <td>
-                  <div class="user-cell">
-                    <div class="user-cell-avatar user-cell-avatar--amber">LM</div>
-                    <div class="user-cell-info">
-                      <span class="user-cell-name">Lina Moreau</span>
-                    </div>
-                  </div>
-                </td>
-                <td class="cell-secondary">lina@solidarite-med.org</td>
-                <td><span class="badge badge-neutral">Gestionnaire</span></td>
-                <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
-                <td class="cell-secondary">23 f&eacute;v. 2026</td>
-                <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Lina Moreau"><span class="material-symbols-outlined">more_horiz</span></button>
-                </td>
-              </tr>
-
-              <!-- Row 8 — Thomas Garcia -->
-              <tr>
-                <td>
-                  <div class="user-cell">
-                    <div class="user-cell-avatar user-cell-avatar--indigo">TG</div>
-                    <div class="user-cell-info">
-                      <span class="user-cell-name">Thomas Garcia</span>
-                    </div>
-                  </div>
-                </td>
-                <td class="cell-secondary">thomas@solidarite-med.org</td>
-                <td><span class="badge badge-neutral">Lecteur</span></td>
-                <td><span class="badge badge-success"><span class="status-dot status-dot--active"></span>Actif</span></td>
-                <td class="cell-secondary">22 f&eacute;v. 2026</td>
-                <td class="text-center">
-                  <button class="action-menu-btn" type="button" aria-label="Actions pour Thomas Garcia"><span class="material-symbols-outlined">more_horiz</span></button>
-                </td>
-              </tr>
-
             </tbody>
           </table>
         </div>
-        <!-- end .data-table-wrapper -->
-
       </main>
-      <!-- end .main-content -->
-
     </div>
-    <!-- end .main-wrapper -->
-
   </div>
-  <!-- end .app-layout -->
-
-  <!-- ============================== -->
-  <!--        Invite Modal             -->
-  <!-- ============================== -->
-  <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title-invite">
-
-    <div class="modal-card">
-      <h2 class="modal-title" id="modal-title-invite">Inviter un utilisateur</h2>
-
-      <form>
-        <!-- Email -->
-        <div class="form-group">
-          <label class="form-label form-label-required" for="invite-email">Email</label>
-          <input
-            class="form-input"
-            type="email"
-            id="invite-email"
-            placeholder="nom@exemple.org"
-            required
-          >
-        </div>
-
-        <!-- Role -->
-        <div class="form-group">
-          <label class="form-label" for="invite-role">R&ocirc;le</label>
-          <select class="form-select" id="invite-role">
-            <option value="collecteur">Collecteur</option>
-            <option value="gestionnaire">Gestionnaire</option>
-            <option value="benevole">B&eacute;n&eacute;vole</option>
-            <option value="lecteur">Lecteur</option>
-          </select>
-        </div>
-
-        <!-- Custom message -->
-        <div class="form-group">
-          <label class="form-label" for="invite-message">Message personnalis&eacute;</label>
-          <textarea
-            class="form-textarea"
-            id="invite-message"
-            rows="3"
-            placeholder="Ajoutez un message d'accueil (optionnel)&hellip;"
-          ></textarea>
-          <p class="form-hint">Ce message sera inclus dans l'email d'invitation.</p>
-        </div>
-
-        <!-- Actions -->
-        <div class="modal-actions">
-          <button class="btn btn-secondary" type="button">Annuler</button>
-          <button class="btn btn-primary" type="submit">Envoyer l'invitation</button>
-        </div>
-      </form>
-    </div>
-
-  </div>
-  <!-- end .modal-overlay -->
-
 <script src="../shared/mobile.js"></script>
 </body>
 </html>

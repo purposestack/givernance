@@ -1,128 +1,167 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="../../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Back office &mdash; Tenant / Feature flags</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../../shared/assets/logo-pheonix-vert.png">
-  <title>Givernance &mdash; Tenant Feature Flags</title>
   <link rel="stylesheet" href="../../shared/tokens.css">
   <link rel="stylesheet" href="../../shared/base.css">
   <style>
-    body { background: var(--color-background); font-family: 'Inter', sans-serif; padding: var(--space-6); color: var(--color-text); }
-    .page-wrap { max-width: 1080px; margin: 0 auto; }
-    h1 { font-family: 'Newsreader', serif; font-size: 28px; margin: 0 0 var(--space-2); }
-    h2 { font-family: 'Newsreader', serif; font-size: 18px; margin: 0 0 var(--space-2); color: var(--color-text); }
-    .subtitle { color: var(--color-text-secondary); font-size: 14px; margin-bottom: var(--space-6); }
-    .tabs { display: flex; gap: var(--space-2); padding: var(--space-2); background: var(--color-surface-container); border-radius: 16px; margin-bottom: var(--space-5); }
-    .tab { padding: 8px 16px; border-radius: 8px; font-size: 14px; color: var(--color-text-secondary); cursor: pointer; }
-    .tab.active { background: var(--color-surface); color: var(--color-text); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-    .flag-card { border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 16px; padding: var(--space-5); margin-bottom: var(--space-3); display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; }
-    .flag-meta { flex: 1; }
-    .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; align-items: center; }
-    .badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
-    .badge-on { background: #DCFCE7; color: #15803D; }
-    .badge-off { background: #F1F5F9; color: #64748B; }
-    .badge-warn { background: #FEF3C7; color: #B45309; }
-    .badge-neutral { background: #E2E8F0; color: #475569; }
-    .description { color: var(--color-text-secondary); font-size: 14px; margin: 6px 0; }
-    .meta-row { display: flex; gap: var(--space-4); font-size: 12px; color: var(--color-text-secondary); align-items: center; flex-wrap: wrap; }
-    .meta-row code { font-family: 'JetBrains Mono', monospace; }
-    .hint { font-size: 12px; color: var(--color-text-secondary); font-style: italic; margin-top: 4px; }
-    .source-default { font-size: 12px; color: var(--color-text-secondary); font-style: italic; }
-    .actions { display: flex; gap: 8px; flex-shrink: 0; }
-    .btn { padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 500; border: 0; cursor: pointer; }
-    .btn-primary { background: var(--color-primary); color: white; }
-    .btn-secondary { background: var(--color-surface-container); color: var(--color-text); }
-    .btn-ghost { background: transparent; color: var(--color-text-secondary); }
-    .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
-    .breadcrumb { font-size: 13px; color: var(--color-primary); text-decoration: none; margin-bottom: var(--space-4); display: inline-block; }
+    .switch-link { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin: 0 var(--space-3) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-on-surface-variant); border: 1px solid var(--color-outline-variant); text-decoration: none; }
+    .tenant-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-6); flex-wrap: wrap; }
+    .slug-mono { color: var(--color-on-surface-variant); font-family: var(--font-mono); font-size: var(--text-sm); }
+
+    .flag-card { background: var(--color-surface-container-lowest); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-2xl); padding: var(--space-5); margin-bottom: var(--space-3); display: flex; gap: var(--space-4); justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+    .flag-meta { flex: 1; min-width: 0; }
+    .flag-badges { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; margin-bottom: var(--space-2); }
+    .flag-title { font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--color-on-surface); margin: 0; }
+    .flag-description { color: var(--color-on-surface-variant); font-size: var(--text-sm); margin: var(--space-2) 0; }
+    .flag-key { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); }
+    .flag-source-default { font-size: var(--text-xs); color: var(--color-on-surface-variant); font-style: italic; }
+    .flag-meta-row { display: flex; gap: var(--space-3); font-size: var(--text-xs); color: var(--color-on-surface-variant); align-items: center; flex-wrap: wrap; }
+    .flag-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+    .hint { font-size: var(--text-xs); color: var(--color-on-surface-variant); font-style: italic; margin-top: 4px; }
   </style>
 </head>
 <body>
-  <div class="page-wrap">
-    <a href="#" class="breadcrumb">← Back to tenants</a>
-    <h1>Acme Foundation</h1>
-    <p class="subtitle">acme-foundation · Active · created via super-admin onboarding</p>
+  <div class="app-layout">
 
-    <nav class="tabs" aria-label="Tenant detail navigation">
-      <span class="tab">Overview</span>
-      <span class="tab">Domains</span>
-      <span class="tab">Users</span>
-      <span class="tab">Audit</span>
-      <span class="tab active">Feature flags</span>
-    </nav>
-
-    <header>
-      <h2>Feature flags for this organisation</h2>
-      <p class="subtitle">Turn features on or off for this organisation. Platform-wide features are shown for context but only Givernance staff can flip them at the platform level.</p>
-    </header>
-
-    <!-- Platform-scoped row — read-only, contextual -->
-    <article class="flag-card">
-      <div class="flag-meta">
-        <div class="badges">
-          <h3 style="margin:0;font-weight:500;font-size:15px;">Bulk emails to constituents</h3>
-          <span class="badge badge-off">Disabled</span>
-          <span class="badge badge-neutral">Platform-wide</span>
-          <span class="source-default">Using the platform default</span>
-        </div>
-        <p class="description">Lets operators send one email to several constituents at once from the Constituents page. Currently off — we'll turn it on once the email-deliverability setup is finished so messages don't land in donors' spam folders.</p>
-        <div class="meta-row">
-          <span>Platform default: <span class="badge badge-off">Disabled</span></span>
-          <span aria-hidden="true">·</span>
-          <code>communication.bulk_email</code>
-        </div>
-        <p class="hint">This is a platform-wide feature. Use the global Feature flags page to change it.</p>
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
       </div>
-    </article>
-
-    <!-- Tenant-scoped row with no override — operator can toggle on -->
-    <article class="flag-card">
-      <div class="flag-meta">
-        <div class="badges">
-          <h3 style="margin:0;font-weight:500;font-size:15px;">Notification centre digest</h3>
-          <span class="badge badge-off">Disabled</span>
-          <span class="badge badge-neutral">Per-organisation</span>
-          <span class="source-default">Using the platform default</span>
-        </div>
-        <p class="description">Sends a weekly summary of new donations, grant deadlines, and assigned tasks to each user.</p>
-        <div class="meta-row">
-          <span>Platform default: <span class="badge badge-off">Disabled</span></span>
-          <span aria-hidden="true">·</span>
-          <code>communication.notifications_digest</code>
+      <a href="../../dashboard.html" class="switch-link">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Retour à l'organisation
+      </a>
+      <nav class="sidebar-nav" aria-label="Navigation Back office">
+        <div class="sidebar-section">Super admin</div>
+        <a href="list.html" class="nav-item nav-item--active"><span class="material-symbols-outlined nav-item-icon">business</span><span class="nav-item-label">Locataires</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">shield</span><span class="nav-item-label">Litiges</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">person_search</span><span class="nav-item-label">Usurpation</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">admin_panel_settings</span><span class="nav-item-label">Admins plateforme</span></a>
+        <a href="#" class="nav-item"><span class="material-symbols-outlined nav-item-icon">flag</span><span class="nav-item-label">Feature flags</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar" style="background: var(--color-indigo);">SA</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Sam Admin</div>
+            <div class="sidebar-footer-role">Super admin</div>
+          </div>
         </div>
       </div>
-      <div class="actions">
-        <button class="btn btn-primary">Turn on for this organisation</button>
-      </div>
-    </article>
+    </aside>
 
-    <!-- Tenant-scoped row WITH an active override — both buttons -->
-    <article class="flag-card">
-      <div class="flag-meta">
-        <div class="badges">
-          <h3 style="margin:0;font-weight:500;font-size:15px;">Theory-of-change builder</h3>
-          <span class="badge badge-on">Enabled</span>
-          <span class="badge badge-neutral">Per-organisation</span>
-          <span class="badge badge-warn">Overridden for this organisation</span>
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-breadcrumb">
+          <a href="../index.html">Back office</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <a href="list.html">Locataires</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Acme Foundation</span>
         </div>
-        <p class="description">Visual builder for the Theory of Change diagram used in grant reports. Enabled here as part of the September beta cohort.</p>
-        <div class="meta-row">
-          <span>Platform default: <span class="badge badge-off">Disabled</span></span>
-          <span aria-hidden="true">·</span>
-          <code>impact.toc_builder</code>
+        <div class="topbar-actions">
+          <div class="topbar-avatar" title="Sam Admin" style="background: var(--color-indigo);">SA</div>
         </div>
-      </div>
-      <div class="actions">
-        <button class="btn btn-secondary">Turn off for this organisation</button>
-        <button class="btn btn-ghost">Use platform default</button>
-      </div>
-    </article>
+      </header>
 
+      <main class="main-content">
+        <a href="list.html" style="font-size: var(--text-xs); color: var(--color-primary); text-decoration: none;">← Retour à la liste</a>
+
+        <header class="tenant-hero" style="margin-top: var(--space-3);">
+          <div>
+            <h1 class="page-title">Acme Foundation</h1>
+            <span class="slug-mono">acme-foundation</span>
+          </div>
+          <span class="badge badge-success">Actif</span>
+        </header>
+
+        <nav class="tabs" aria-label="Sections de la fiche tenant">
+          <a href="detail-overview.html" class="tab" style="text-decoration:none;">Vue d'ensemble</a>
+          <a href="detail-domains.html" class="tab" style="text-decoration:none;">Domaines</a>
+          <a href="detail-idp.html" class="tab" style="text-decoration:none;">Identity providers</a>
+          <a href="detail-users.html" class="tab" style="text-decoration:none;">Utilisateurs</a>
+          <button class="tab active" type="button">Feature flags</button>
+          <a href="detail-lifecycle.html" class="tab" style="text-decoration:none;">Cycle de vie</a>
+        </nav>
+
+        <header style="margin-bottom: var(--space-5);">
+          <h2 class="font-headline" style="font-size: var(--text-xl);">Feature flags pour cette organisation</h2>
+          <p class="text-sm text-muted">Activez ou désactivez les fonctionnalités pour cette organisation. Les flags plateforme sont affichés en lecture seule — seul Givernance peut les basculer globalement.</p>
+        </header>
+
+        <!-- Platform-scoped (read-only context, dotted-domain naming per docs/18) -->
+        <article class="flag-card">
+          <div class="flag-meta">
+            <div class="flag-badges">
+              <h3 class="flag-title">Emails groupés vers les constituants</h3>
+              <span class="badge badge-neutral">Désactivé</span>
+              <span class="badge badge-info">Plateforme</span>
+              <span class="flag-source-default">Utilise la valeur plateforme par défaut</span>
+            </div>
+            <p class="flag-description">Permet aux opérateurs d'envoyer un email à plusieurs constituants à la fois. Actuellement off — en attente de la configuration DKIM/SPF côté infra.</p>
+            <div class="flag-meta-row">
+              <span>Par défaut plateforme : <span class="badge badge-neutral">Désactivé</span></span>
+              <span aria-hidden="true">·</span>
+              <code class="flag-key">communication.bulk_email</code>
+            </div>
+            <p class="hint">Flag plateforme — utiliser la page Feature flags globale pour le modifier.</p>
+          </div>
+        </article>
+
+        <!-- Tenant-scoped without override -->
+        <article class="flag-card">
+          <div class="flag-meta">
+            <div class="flag-badges">
+              <h3 class="flag-title">Résumé du centre de notifications</h3>
+              <span class="badge badge-neutral">Désactivé</span>
+              <span class="badge badge-info">Par organisation</span>
+              <span class="flag-source-default">Utilise la valeur plateforme par défaut</span>
+            </div>
+            <p class="flag-description">Envoie un résumé hebdomadaire des nouveaux dons, échéances de subventions et tâches assignées à chaque utilisateur.</p>
+            <div class="flag-meta-row">
+              <span>Par défaut plateforme : <span class="badge badge-neutral">Désactivé</span></span>
+              <span aria-hidden="true">·</span>
+              <code class="flag-key">communication.notifications_digest</code>
+            </div>
+          </div>
+          <div class="flag-actions">
+            <button class="btn btn-primary btn-sm" type="button">Activer pour cette organisation</button>
+          </div>
+        </article>
+
+        <!-- Tenant-scoped WITH an active override -->
+        <article class="flag-card">
+          <div class="flag-meta">
+            <div class="flag-badges">
+              <h3 class="flag-title">Constructeur Théorie du Changement</h3>
+              <span class="badge badge-success">Activé</span>
+              <span class="badge badge-info">Par organisation</span>
+              <span class="badge badge-warning">Override pour ce tenant</span>
+            </div>
+            <p class="flag-description">Constructeur visuel pour le diagramme de Théorie du Changement utilisé dans les rapports de subvention. Activé ici dans le cadre du cohort beta de septembre.</p>
+            <div class="flag-meta-row">
+              <span>Par défaut plateforme : <span class="badge badge-neutral">Désactivé</span></span>
+              <span aria-hidden="true">·</span>
+              <code class="flag-key">impact.toc_builder</code>
+            </div>
+          </div>
+          <div class="flag-actions">
+            <button class="btn btn-secondary btn-sm" type="button">Désactiver pour cette organisation</button>
+            <button class="btn btn-ghost btn-sm" type="button">Utiliser la valeur plateforme</button>
+          </div>
+        </article>
+      </main>
+    </div>
   </div>
+<script src="../../shared/mobile.js"></script>
 </body>
 </html>

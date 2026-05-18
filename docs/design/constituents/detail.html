@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Marie-Claire Fontaine &mdash; Constituants &mdash; Givernance NPO Platform</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Marie-Claire Fontaine &mdash; Constituants &mdash; Givernance</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,14 +12,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <style>
-    /* ── Page-specific: CON-002 Constituent detail ── */
+    /* ── Constituent detail (mirrors the MVP page) ── */
 
-    /* Profile header with avatar + info */
-    .profile-header {
+    .profile-card {
       display: flex;
       align-items: flex-start;
       gap: var(--space-5);
+      padding: var(--space-6);
+      background: var(--color-surface);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-card);
       margin-bottom: var(--space-6);
+      flex-wrap: wrap;
     }
 
     .profile-avatar {
@@ -36,72 +40,61 @@
       flex-shrink: 0;
     }
 
-    .profile-info {
+    .profile-body {
       flex: 1;
       min-width: 0;
     }
 
     .profile-name {
       font-family: var(--font-heading);
-      font-size: var(--text-2xl);
-      color: var(--color-text);
-      margin-bottom: var(--space-1);
+      font-size: var(--text-3xl);
+      color: var(--color-on-surface);
+      margin-bottom: var(--space-2);
       line-height: var(--leading-tight);
     }
 
     .profile-badges {
       display: flex;
-      align-items: center;
+      flex-wrap: wrap;
       gap: var(--space-2);
-      margin-bottom: var(--space-1);
+      margin-bottom: var(--space-2);
     }
 
-    .profile-subtitle {
+    .profile-meta {
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
+      margin-bottom: var(--space-4);
+    }
+
+    .profile-contact {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-2) var(--space-6);
+      font-size: var(--text-sm);
+    }
+
+    .profile-contact-row {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-3);
+    }
+
+    .profile-contact-label {
+      width: 64px;
+      flex-shrink: 0;
+      font-weight: var(--weight-medium);
+      color: var(--color-text-secondary);
+    }
+
+    .profile-contact-value a {
+      color: var(--color-sky);
     }
 
     .profile-actions {
       display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      flex-shrink: 0;
-    }
-
-    /* Detail info rows inside cards */
-    .detail-row {
-      display: flex;
-      align-items: baseline;
-      padding: var(--space-2) 0;
-      border-bottom: 1px solid var(--color-neutral-100);
-      font-size: var(--text-sm);
-    }
-
-    .detail-row:last-child {
-      border-bottom: none;
-    }
-
-    .detail-label {
-      width: 140px;
-      flex-shrink: 0;
-      color: var(--color-text-secondary);
-      font-weight: var(--weight-medium);
-    }
-
-    .detail-value {
-      flex: 1;
-      color: var(--color-text);
-    }
-
-    .detail-value a {
-      color: var(--color-sky);
-    }
-
-    /* Tags inside detail card */
-    .detail-tags {
-      display: flex;
       flex-wrap: wrap;
-      gap: var(--space-1);
+      gap: var(--space-2);
+      flex-shrink: 0;
     }
 
     .tag {
@@ -114,41 +107,39 @@
       border-radius: var(--radius-sm);
       font-size: var(--text-xs);
       color: var(--color-text-secondary);
-      white-space: nowrap;
     }
 
-    /* Summary stats grid */
-    .summary-grid {
+    .stats-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: var(--space-4);
     }
 
-    .summary-stat-label {
+    .stat-block {
+      padding: var(--space-3);
+      background: var(--color-surface-container);
+      border-radius: var(--radius-md);
+    }
+
+    .stat-label {
       font-size: var(--text-xs);
       color: var(--color-text-secondary);
       font-weight: var(--weight-medium);
       margin-bottom: var(--space-1);
     }
 
-    .summary-stat-value {
+    .stat-value {
       font-family: var(--font-mono);
       font-size: var(--text-xl);
       font-weight: var(--weight-bold);
-      color: var(--color-text);
+      color: var(--color-on-surface);
       font-variant-numeric: tabular-nums;
     }
 
-    .summary-stat-value--sm {
+    .stat-value--sm {
       font-size: var(--text-lg);
     }
 
-    /* AI card wider for detail context */
-    .ai-card--wide {
-      max-width: 100%;
-    }
-
-    /* Timeline icon colours */
     .timeline-icon--green {
       background: var(--color-primary-50);
       color: var(--color-primary);
@@ -158,86 +149,82 @@
       background: var(--color-sky-50);
       color: var(--color-sky);
     }
-
-    .timeline-icon--amber {
-      background: var(--color-amber-50);
-      color: var(--color-amber);
-    }
   </style>
 </head>
 <body>
 
   <div class="app-layout">
 
-    <!-- ============================== -->
-    <!--            Sidebar              -->
-    <!-- ============================== -->
+    <!-- Sidebar -->
     <aside class="sidebar">
-  <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
-    <span class="sidebar-brand-text">Givernance</span>
-  </div>
-  <nav class="sidebar-nav">
-    <a href="../dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">dashboard</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="list.html" class="nav-item nav-item--active">
-      <span class="material-symbols-outlined nav-icon">groups</span>
-      <span>Constituants</span>
-    </a>
-    <a href="../donations/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
-    </a>
-    <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
-      <span>Subventions</span>
-    </a>
-    <a href="../programs/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">layers</span>
-      <span>Programmes</span>
-    </a>
-    <a href="../volunteers/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">front_hand</span>
-      <span>B&eacute;n&eacute;voles</span>
-    </a>
-    <a href="../impact/dashboard.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">monitoring</span>
-      <span>Impact</span>
-    </a>
-    <a href="../communications/list.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">forum</span>
-      <span>Communications</span>
-    </a>
-    <a href="../reports/library.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">assessment</span>
-      <span>Rapports</span>
-    </a>
-    <a href="../admin/index.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Param&egrave;tres</span>
-    </a>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
-    <div class="sidebar-footer-user">
-      <div class="sidebar-footer-avatar">CM</div>
-      <span class="sidebar-footer-name">Claire Martin</span>
-    </div>
-  </div>
-</aside>
-    <!-- end .sidebar -->
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">dashboard</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="list.html" class="nav-item nav-item--active">
+          <span class="material-symbols-outlined nav-icon">groups</span>
+          <span>Constituants</span>
+        </a>
+        <a href="../campaigns/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">campaign</span>
+          <span>Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+          <span>Dons</span>
+        </a>
+        <div class="sidebar-section">Bient&ocirc;t</div>
+        <a href="../grants/kanban.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">account_balance</span>
+          <span>Subventions</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../programs/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">layers</span>
+          <span>Programmes</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../volunteers/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">front_hand</span>
+          <span>B&eacute;n&eacute;voles</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../impact/dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">monitoring</span>
+          <span>Impact</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../communications/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">forum</span>
+          <span>Communications</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+        <a href="../reports/library.html" class="nav-item">
+          <span class="material-symbols-outlined nav-icon">assessment</span>
+          <span>Rapports</span>
+          <span class="nav-item-soon">Bient&ocirc;t</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-org">Association Solidarit&eacute; M&eacute;d.</div>
+        <div class="sidebar-footer-user">
+          <div class="sidebar-footer-avatar">CM</div>
+          <span class="sidebar-footer-name">Claire Martin</span>
+        </div>
+      </div>
+    </aside>
 
-    <!-- ============================== -->
-    <!--          Main wrapper           -->
-    <!-- ============================== -->
+    <!-- Main wrapper -->
     <div class="main-wrapper">
 
-      <!-- ── Topbar ── -->
       <header class="topbar">
         <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
-          <a href="../dashboard.html">Association Solidarit&eacute; M&eacute;diterran&eacute;e</a>
+          <a href="../dashboard.html">Tableau de bord</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
           <a href="list.html">Constituants</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
@@ -261,223 +248,117 @@
           <a href="../admin/users.html" class="topbar-avatar" title="Claire Dubois">CD</a>
         </div>
       </header>
-      <!-- end .topbar -->
 
-      <!-- ── Main Content ── -->
       <main class="main-content">
 
-        <!-- ============================== -->
-        <!--        Profile Header           -->
-        <!-- ============================== -->
-        <div class="profile-header">
-          <div class="profile-avatar">MF</div>
-          <div class="profile-info">
+        <!-- Profile card -->
+        <section class="profile-card" aria-label="Profil du constituant">
+          <div class="profile-avatar" aria-hidden="true">MF</div>
+
+          <div class="profile-body">
             <h1 class="profile-name">Marie-Claire Fontaine</h1>
             <div class="profile-badges">
               <span class="badge badge-success">Donatrice</span>
-              <span class="badge badge-info">B&eacute;n&eacute;vole</span>
+              <span class="tag">Fid&egrave;le</span>
+              <span class="tag">Gala</span>
             </div>
-            <p class="profile-subtitle">Membre depuis janvier 2019</p>
+            <p class="profile-meta">Membre depuis le 12 janvier 2019</p>
+            <dl class="profile-contact">
+              <div class="profile-contact-row">
+                <dt class="profile-contact-label">Email</dt>
+                <dd class="profile-contact-value"><a href="mailto:mc.fontaine@gmail.com">mc.fontaine@gmail.com</a></dd>
+              </div>
+              <div class="profile-contact-row">
+                <dt class="profile-contact-label">T&eacute;l&eacute;phone</dt>
+                <dd class="profile-contact-value"><a href="tel:+33612345678">06 12 34 56 78</a></dd>
+              </div>
+            </dl>
           </div>
+
           <div class="profile-actions">
-            <a href="../donations/new.html" class="btn btn-primary"><span class="material-symbols-outlined" style="font-size:16px">volunteer_activism</span> Enregistrer un don</a>
-            <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px">description</span> Ajouter une note</button>
-            <a href="../communications/compose.html" class="btn btn-secondary"><span class="material-symbols-outlined" style="font-size:16px">mail</span> Envoyer un email</a>
+            <button class="btn btn-primary btn-sm" type="button"><span class="material-symbols-outlined" style="font-size:16px">edit</span> Modifier</button>
+            <button class="btn btn-secondary btn-sm" type="button" disabled><span class="material-symbols-outlined" style="font-size:16px">merge</span> Fusionner</button>
+            <button class="btn btn-secondary btn-sm" type="button" disabled><span class="material-symbols-outlined" style="font-size:16px">download</span> Export RGPD</button>
+            <button class="btn btn-destructive btn-sm" type="button" disabled><span class="material-symbols-outlined" style="font-size:16px">delete</span> Supprimer</button>
           </div>
-        </div>
+        </section>
 
-        <!-- ============================== -->
-        <!--              Tabs               -->
-        <!-- ============================== -->
-        <div class="tabs">
-          <button class="tab active" type="button">Informations</button>
-          <button class="tab" type="button">Activit&eacute;</button>
-          <button class="tab" type="button">Dons</button>
-          <button class="tab" type="button">Programmes</button>
-          <button class="tab" type="button">Communications</button>
-          <button class="tab" type="button">RGPD</button>
-        </div>
-
-        <!-- ============================== -->
-        <!--     Informations Tab Content    -->
-        <!-- ============================== -->
-
-        <!-- Two-column layout: Coordonnees + Relations -->
-        <div class="grid-2 mb-6">
-
-          <!-- Left card: Coordonnees -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">Coordonn&eacute;es</h3>
-            </div>
-            <div class="card-body">
-              <div class="detail-row">
-                <span class="detail-label">Civilit&eacute;</span>
-                <span class="detail-value">Mme</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Pr&eacute;nom</span>
-                <span class="detail-value">Marie-Claire</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Nom</span>
-                <span class="detail-value">Fontaine</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Email</span>
-                <span class="detail-value"><a href="mailto:mc.fontaine@gmail.com">mc.fontaine@gmail.com</a></span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">T&eacute;l&eacute;phone</span>
-                <span class="detail-value">06 12 34 56 78</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Adresse</span>
-                <span class="detail-value">24 Rue de la R&eacute;publique, 13001 Marseille</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Date de naissance</span>
-                <span class="detail-value">15/03/1978</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right card: Relations -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">Relations</h3>
-            </div>
-            <div class="card-body">
-              <div class="detail-row">
-                <span class="detail-label">M&eacute;nage</span>
-                <span class="detail-value"><a href="household-detail.html">Fontaine-Duval</a></span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Organisation</span>
-                <span class="detail-value"><a href="organization-detail.html">Fondation Lumi&egrave;re Provence</a></span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Tags</span>
-                <span class="detail-value">
-                  <div class="detail-tags">
-                    <span class="tag">Fid&egrave;le</span>
-                    <span class="tag">Gala</span>
-                    <span class="tag">Major Donor</span>
-                  </div>
-                </span>
-              </div>
-            </div>
-          </div>
-
-        </div>
-        <!-- end .grid-2 -->
-
-        <!-- ============================== -->
-        <!--       Donation Summary          -->
-        <!-- ============================== -->
-        <div class="card mb-6">
-          <div class="card-header">
-            <h3 class="card-title">R&eacute;sum&eacute; des dons</h3>
-          </div>
-          <div class="card-body">
-            <div class="summary-grid">
-              <div>
-                <div class="summary-stat-label">Total dons</div>
-                <div class="summary-stat-value">&euro;8&nbsp;750</div>
-              </div>
-              <div>
-                <div class="summary-stat-label">Nombre de dons</div>
-                <div class="summary-stat-value summary-stat-value--sm">14</div>
-              </div>
-              <div>
-                <div class="summary-stat-label">Don moyen</div>
-                <div class="summary-stat-value">&euro;625</div>
-              </div>
-              <div>
-                <div class="summary-stat-label">Dernier don</div>
-                <div class="summary-stat-value summary-stat-value--sm">24/02/2026</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ============================== -->
-        <!--       AI Suggestion Card        -->
-        <!-- ============================== -->
-        <div class="ai-card ai-card--wide mb-6">
+        <!-- AI suggestion card -->
+        <section class="ai-card mb-6" aria-label="Suggestion IA">
           <div class="ai-card-header">
             <span class="ai-card-icon"><span class="material-symbols-outlined" style="font-size:16px">auto_awesome</span></span>
             <span class="ai-card-label">Suggestion IA</span>
           </div>
           <p class="ai-card-text">
-            Ce donateur n'a pas &eacute;t&eacute; contact&eacute; depuis 14 mois &mdash; sugg&eacute;rer un email de r&eacute;activation ?
+            Marie-Claire est &agrave; risque d'attrition&nbsp;: aucun don depuis 14 mois alors qu'elle donnait tous les semestres. Sugg&eacute;rer un email de r&eacute;activation cibl&eacute;&nbsp;?
           </p>
           <div class="ai-card-actions">
-            <button class="btn btn-primary btn-sm" type="button">Appliquer</button>
-            <button class="btn btn-ghost btn-sm" type="button">Ignorer</button>
+            <button class="btn btn-primary btn-sm" type="button" disabled>Appliquer</button>
+            <button class="btn btn-ghost btn-sm" type="button" disabled>Ignorer</button>
           </div>
+        </section>
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" type="button">Vue d'ensemble</button>
+          <button class="tab" type="button">Dons</button>
+          <button class="tab" type="button">Activit&eacute;</button>
         </div>
 
-        <!-- ============================== -->
-        <!--       Activity Timeline         -->
-        <!-- ============================== -->
-        <div class="card">
+        <!-- Overview tab content -->
+        <section class="card mb-6" aria-label="Vue d'ensemble">
           <div class="card-header">
-            <h3 class="card-title">Activit&eacute; r&eacute;cente</h3>
+            <h2 class="card-title">Vue d'ensemble</h2>
           </div>
           <div class="card-body">
-            <div class="timeline">
+            <div class="stats-grid">
+              <div class="stat-block">
+                <div class="stat-label">Total des dons</div>
+                <div class="stat-value">&euro;8&nbsp;750</div>
+              </div>
+              <div class="stat-block">
+                <div class="stat-label">Nombre de dons</div>
+                <div class="stat-value">14</div>
+              </div>
+              <div class="stat-block">
+                <div class="stat-label">Derni&egrave;re activit&eacute;</div>
+                <div class="stat-value stat-value--sm">24/02/2026</div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-              <!-- Timeline item 1 -->
-              <div class="timeline-item">
-                <div class="timeline-icon timeline-icon--green"><span class="material-symbols-outlined" style="font-size:16px">volunteer_activism</span></div>
+        <!-- Activity / Timeline tab content -->
+        <section class="card" aria-label="Activit&eacute;">
+          <div class="card-header">
+            <h2 class="card-title">Activit&eacute;</h2>
+          </div>
+          <div class="card-body">
+            <ol class="timeline">
+              <li class="timeline-item">
+                <div class="timeline-icon timeline-icon--green"><span class="material-symbols-outlined" style="font-size:16px">description</span></div>
                 <div class="timeline-content">
                   <div class="timeline-title">Don de &euro;500 re&ccedil;u</div>
-                  <div class="timeline-meta">Campagne Hiver 2026 &mdash; 24 f&eacute;v. 2026</div>
+                  <div class="timeline-meta">24 f&eacute;v. 2026</div>
                 </div>
-              </div>
-
-              <!-- Timeline item 2 -->
-              <div class="timeline-item">
+              </li>
+              <li class="timeline-item">
                 <div class="timeline-icon timeline-icon--sky"><span class="material-symbols-outlined" style="font-size:16px">mail</span></div>
                 <div class="timeline-content">
-                  <div class="timeline-title">Email envoy&eacute;</div>
-                  <div class="timeline-meta">Remerciement don &mdash; 25 f&eacute;v. 2026</div>
+                  <div class="timeline-title">Profil cr&eacute;&eacute;</div>
+                  <div class="timeline-meta">12 jan. 2019</div>
                 </div>
-              </div>
-
-              <!-- Timeline item 3 -->
-              <div class="timeline-item">
-                <div class="timeline-icon timeline-icon--amber"><span class="material-symbols-outlined" style="font-size:16px">description</span></div>
-                <div class="timeline-content">
-                  <div class="timeline-title">Note ajout&eacute;e</div>
-                  <div class="timeline-meta">&laquo;&nbsp;Int&eacute;ress&eacute;e par le gala annuel&nbsp;&raquo; &mdash; 20 jan. 2026</div>
-                </div>
-              </div>
-
-              <!-- Timeline item 4 -->
-              <div class="timeline-item">
-                <div class="timeline-icon timeline-icon--green"><span class="material-symbols-outlined" style="font-size:16px">volunteer_activism</span></div>
-                <div class="timeline-content">
-                  <div class="timeline-title">Don de &euro;250 re&ccedil;u</div>
-                  <div class="timeline-meta">Campagne &Eacute;t&eacute; 2025 &mdash; 15 juil. 2025</div>
-                </div>
-              </div>
-
-            </div>
-            <!-- end .timeline -->
+              </li>
+            </ol>
+            <p class="form-hint mt-4">L'historique d&eacute;taill&eacute; (emails, notes, &eacute;v&eacute;nements) sera enrichi dans les prochaines it&eacute;rations.</p>
           </div>
-        </div>
-        <!-- end activity card -->
+        </section>
 
       </main>
-      <!-- end .main-content -->
 
     </div>
-    <!-- end .main-wrapper -->
 
   </div>
-  <!-- end .app-layout -->
 
 <script src="../shared/mobile.js"></script>
 </body>

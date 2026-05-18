@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Givernance Design System</title>
-  <link rel="icon" type="image/png" href="shared/assets/logo-pheonix-vert.png">
+  <link rel="icon" type="image/svg+xml" href="shared/assets/givernance-logo.svg">
   <link rel="stylesheet" href="shared/tokens.css">
   <link rel="stylesheet" href="shared/base.css">
   <style>
@@ -810,9 +810,9 @@
          ============================================================ -->
     <header class="ds-hero">
       <h1 class="ds-hero-title">Givernance Design System</h1>
-      <p class="ds-hero-subtitle">Guide de reference des tokens et composants — v2.0 — Raffine pour un rendu world-class</p>
+      <p class="ds-hero-subtitle">Tokens et composants alignés sur l'app shell MVP — palette Material You warm, typo Newsreader + Inter.</p>
       <p class="ds-hero-meta">
-        Last updated <code>2026-03-17</code> &middot; v2.0 &middot; tokens.css + base.css
+        Source de vérité : <code>shared/tokens.css</code> + <code>shared/base.css</code> &middot; reflétés dans <code>packages/web/src/app/globals.css</code>.
       </p>
     </header>
 
@@ -855,50 +855,50 @@
          ============================================================ -->
     <!-- LOGO SECTION -->
     <section class="ds-section" id="logo">
-      <h2 class="ds-section-title">Logo &amp; Phoenix</h2>
-      <p class="ds-section-desc">The Givernance phoenix — resilience, transformation, growth. Three variants for every context.</p>
+      <h2 class="ds-section-title">Logo &amp; identité de marque</h2>
+      <p class="ds-section-desc">Le logo Givernance — un oiseau en plein vol évoquant élévation, mouvement et liberté retrouvée pour les associations. Trois variantes pour s'adapter à chaque contexte.</p>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-6);margin-top:var(--space-6);">
 
         <!-- Vert — fonds clairs -->
         <div style="background:var(--color-surface-container-high);border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);border:1px solid var(--color-border);">
-          <img src="shared/assets/logo-pheonix-vert.png" alt="Phoenix Vert" style="width:80px;height:80px;object-fit:contain;">
+          <img src="shared/assets/givernance-logo.svg" alt="Logo Givernance vert" style="width:80px;height:80px;object-fit:contain;">
           <div style="text-align:center;">
-            <div style="font-weight:var(--weight-semibold);font-size:var(--text-sm);color:var(--color-text);">Vert</div>
+            <div style="font-weight:var(--weight-semi);font-size:var(--text-sm);color:var(--color-text);">Vert</div>
             <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px;">Fonds clairs · Sidebar · Défaut</div>
-            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;">#096447</code>
+            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;">var(--color-primary)</code>
           </div>
         </div>
 
         <!-- Noir — fonds blancs -->
-        <div style="background:#ffffff;border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);border:1px solid var(--color-border);">
-          <img src="shared/assets/logo-pheonix-noir.png" alt="Phoenix Noir" style="width:80px;height:80px;object-fit:contain;">
+        <div style="background:var(--color-white);border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);border:1px solid var(--color-border);">
+          <img src="shared/assets/givernance-logo.svg" alt="Logo Givernance noir" style="width:80px;height:80px;object-fit:contain;filter:grayscale(100%) brightness(0.2);">
           <div style="text-align:center;">
-            <div style="font-weight:var(--weight-semibold);font-size:var(--text-sm);color:var(--color-text);">Noir</div>
-            <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px;">Fonds blancs · Print · Mono</div>
-            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;">#000000</code>
+            <div style="font-weight:var(--weight-semi);font-size:var(--text-sm);color:var(--color-text);">Noir</div>
+            <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px;">Print · Email mono · Documents</div>
+            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;">var(--color-on-surface)</code>
           </div>
         </div>
 
         <!-- Blanc — fonds sombres -->
         <div style="background:var(--color-primary);border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);">
-          <img src="shared/assets/logo-pheonix-blanc.png" alt="Phoenix Blanc" style="width:80px;height:80px;object-fit:contain;">
+          <img src="shared/assets/givernance-logo.svg" alt="Logo Givernance blanc" style="width:80px;height:80px;object-fit:contain;filter:brightness(0) invert(1);">
           <div style="text-align:center;">
-            <div style="font-weight:var(--weight-semibold);font-size:var(--text-sm);color:var(--color-on-primary);">Blanc</div>
-            <div style="font-size:var(--text-xs);color:rgba(255,255,255,0.7);margin-top:2px;">Fonds sombres · Email · Hero</div>
-            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;background:rgba(255,255,255,0.15);color:var(--color-on-primary);border-color:rgba(255,255,255,0.3);">#FFFFFF</code>
+            <div style="font-weight:var(--weight-semi);font-size:var(--text-sm);color:var(--color-on-primary);">Blanc</div>
+            <div style="font-size:var(--text-xs);color:rgba(255,255,255,0.7);margin-top:2px;">Fonds sombres · Hero · Splash</div>
+            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;background:rgba(255,255,255,0.15);color:var(--color-on-primary);border-color:rgba(255,255,255,0.3);">var(--color-on-primary)</code>
           </div>
         </div>
 
       </div>
 
-      <h3 class="ds-section-subtitle" style="margin-top:var(--space-10);">Usage guidelines</h3>
+      <h3 class="ds-section-subtitle" style="margin-top:var(--space-10);">Règles d'usage</h3>
       <ul style="font-size:var(--text-sm);color:var(--color-text-secondary);line-height:1.8;padding-left:var(--space-5);">
-        <li>Toujours utiliser la version <strong>vert</strong> sur fond clair (sidebar, cards, favicon)</li>
-        <li>Utiliser la version <strong>noir</strong> pour print, email monochrome, ou contrastes élevés</li>
-        <li>Utiliser la version <strong>blanc</strong> sur fond primaire vert ou tout fond sombre</li>
-        <li>Ne jamais déformer, recadrer ou recolorer le phoenix manuellement</li>
-        <li>Taille minimale recommandée : <strong>32×32px</strong></li>
+        <li>Toujours utiliser la version <strong>vert</strong> sur fond clair (sidebar, cards, favicon, app shell).</li>
+        <li>Utiliser la version <strong>noir</strong> pour le print, les emails monochromes, ou tout document à fort contraste.</li>
+        <li>Utiliser la version <strong>blanc</strong> sur fond primaire vert ou sur tout fond sombre.</li>
+        <li>Ne jamais déformer, recadrer ou recolorer le logo manuellement — toujours partir du SVG source.</li>
+        <li>Taille minimale recommandée : <strong>32×32px</strong>. Marge de réserve : équivalente à la hauteur de l'oiseau.</li>
       </ul>
     </section>
 
@@ -2313,28 +2313,27 @@
       <p class="ds-section-desc">Sidebar-first navigation with collapsible sections. Active states use a white left accent bar. Topbar carries breadcrumbs, search, and actions.</p>
 
       <div class="ds-nav-demo">
-        <!-- Mini Sidebar -->
-        <div class="ds-mini-sidebar">
+        <!-- Mini Sidebar — mirrors the canonical MVP shell (sidebar.tsx) -->
+        <div class="ds-mini-sidebar" style="background: var(--color-sidebar-bg); color: var(--color-sidebar-text); border: 1px solid var(--color-border-light);">
           <div class="sidebar-brand" style="padding: var(--space-4);">
-            <img src="shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img">
+            <img src="shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:32px;height:32px;object-fit:contain;">
             <span class="sidebar-brand-text">Givernance</span>
           </div>
           <div style="padding: var(--space-2) 0;">
-            <div class="sidebar-section">Main</div>
-            <div class="nav-item"><span class="nav-item-icon">&#9633;</span><span class="nav-item-label">Dashboard</span></div>
-            <div class="nav-item nav-item--active"><span class="nav-item-icon">&#9829;</span><span class="nav-item-label">Donors</span><span class="nav-item-badge">127</span></div>
-            <div class="nav-item"><span class="nav-item-icon">&#9733;</span><span class="nav-item-label">Campaigns</span></div>
-            <div class="sidebar-section">Fundraising</div>
-            <div class="nav-item"><span class="nav-item-icon">&#8364;</span><span class="nav-item-label">Donations</span></div>
-            <div class="nav-item"><span class="nav-item-icon">&#9878;</span><span class="nav-item-label">Grants</span></div>
-            <div class="sidebar-section">Settings</div>
-            <div class="nav-item"><span class="nav-item-icon">&#9881;</span><span class="nav-item-label">Settings</span></div>
+            <div class="nav-item nav-item--active"><span class="material-symbols-outlined nav-item-icon">dashboard</span><span class="nav-item-label">Dashboard</span></div>
+            <div class="nav-item"><span class="material-symbols-outlined nav-item-icon">groups</span><span class="nav-item-label">Constituants</span></div>
+            <div class="nav-item"><span class="material-symbols-outlined nav-item-icon">campaign</span><span class="nav-item-label">Campagnes</span></div>
+            <div class="nav-item"><span class="material-symbols-outlined nav-item-icon">volunteer_activism</span><span class="nav-item-label">Dons</span></div>
+            <div class="sidebar-section">Bientôt</div>
+            <div class="nav-item"><span class="material-symbols-outlined nav-item-icon">account_balance</span><span class="nav-item-label">Subventions</span><span class="nav-item-soon">Bientôt</span></div>
+            <div class="nav-item"><span class="material-symbols-outlined nav-item-icon">layers</span><span class="nav-item-label">Programmes</span><span class="nav-item-soon">Bientôt</span></div>
+            <div class="nav-item"><span class="material-symbols-outlined nav-item-icon">monitoring</span><span class="nav-item-label">Impact</span><span class="nav-item-soon">Bientôt</span></div>
           </div>
-          <div class="sidebar-footer">
-            <div class="sidebar-footer-avatar">CL</div>
+          <div class="sidebar-footer" style="padding: var(--space-4);">
+            <div class="sidebar-footer-avatar">SC</div>
             <div class="sidebar-footer-info">
-              <div class="sidebar-footer-name">Claire Laurent</div>
-              <div class="sidebar-footer-role">Admin</div>
+              <div class="sidebar-footer-name">Sofia Castellano</div>
+              <div class="sidebar-footer-role">Association Solidarité Méd.</div>
             </div>
           </div>
         </div>

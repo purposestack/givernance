@@ -1,137 +1,195 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Givernance — Settings — Bank account (new / edit)</title>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Paramètres &mdash; Nouveau compte bancaire</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <style>
-    /* ── Settings → Bank accounts form (Epic #318) ── */
-    .page { padding: var(--space-8) var(--space-6); max-width: 920px; margin: 0 auto; }
-    .breadcrumb { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2); }
-    .breadcrumb a { color: var(--color-primary); text-decoration: none; }
-    h1 { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); margin: var(--space-1) 0; }
-    .subtitle { color: var(--color-text-secondary); font-size: var(--text-sm); max-width: 65ch; margin-bottom: var(--space-6); }
-
-    .form-card { background: var(--color-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-6); }
-    .form-section { margin-bottom: var(--space-6); padding-bottom: var(--space-5); border-bottom: 1px solid var(--color-border); }
-    .form-section:last-of-type { border-bottom: 0; padding-bottom: 0; }
-    .form-section h2 { font-size: var(--text-base); font-weight: var(--weight-semi); color: var(--color-text); margin-bottom: var(--space-1); }
-    .form-section .section-help { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-4); max-width: 60ch; }
-
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
-    .full { grid-column: 1 / -1; }
-    .form-row label { display: block; font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-text); margin-bottom: 4px; }
-    .form-row .required { color: var(--color-danger); margin-left: 4px; }
-    .form-row input, .form-row select { width: 100%; height: var(--input-height); border: 1px solid var(--color-border); border-radius: var(--radius-input); padding: 0 var(--space-3); font-size: var(--text-base); background: var(--color-white); }
-    .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--color-primary); }
-    .form-row .help { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 4px; }
-    .form-row .help.ok { color: var(--color-primary); }
-    .form-row .help.warn { color: var(--color-danger); }
-
-    .actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-6); }
-    .actions .btn-cancel { background: transparent; border: none; height: 36px; padding: 0 var(--space-4); font-weight: var(--weight-medium); color: var(--color-text-secondary); cursor: pointer; }
-    .actions .btn-primary { background: var(--color-primary); color: var(--color-on-primary); border: none; height: 36px; padding: 0 var(--space-5); border-radius: var(--radius-button); font-weight: var(--weight-medium); cursor: pointer; }
-    .actions .btn-primary:disabled { background: var(--color-border); cursor: not-allowed; }
-
-    .iban-preview { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); background: var(--color-surface-container); border-radius: var(--radius-md); margin-top: var(--space-3); font-size: var(--text-xs); }
-    .iban-preview .label { color: var(--color-text-muted); text-transform: uppercase; letter-spacing: var(--tracking-wide); font-weight: var(--weight-semi); }
-    .iban-preview .value { font-family: var(--font-mono); color: var(--color-text); }
+    /* ── Settings → Bank accounts form (Epic #318, mirrors bank-account-form.tsx) ── */
+    .iban-hint { font-family: var(--font-mono); color: var(--color-primary); }
+    .iban-hint--warn { color: var(--color-error); }
+    .preview-card { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4); background: var(--color-surface-container); border-radius: var(--radius-md); margin-top: var(--space-4); font-size: var(--text-xs); }
+    .preview-card .label { color: var(--color-on-surface-variant); text-transform: uppercase; letter-spacing: var(--tracking-wide); font-weight: var(--weight-semi); margin-bottom: 4px; }
+    .preview-card .value { font-family: var(--font-mono); color: var(--color-text); }
   </style>
 </head>
 <body>
-  <main class="page">
-    <div class="breadcrumb"><a href="#">Dashboard</a> / <a href="#">Settings</a> / <a href="bank-accounts-list.html">Bank accounts</a> / New</div>
-    <h1>New bank account</h1>
-    <p class="subtitle">IBAN holder data prints on every QR-bill. The IG QR-bill v2.4 <em>structured address (S)</em> shape is used — combined-address forms are no longer supported (mandatory from 2026-09-30).</p>
+  <div class="app-layout">
 
-    <form class="form-card" novalidate>
-      <section class="form-section">
-        <h2>Account details</h2>
-        <p class="section-help">IBAN, bank name and currency. The IBAN kind (QR-IBAN vs regular IBAN) is derived automatically from the IID range.</p>
-
-        <div class="grid-2">
-          <div class="form-row">
-            <label for="iban">IBAN<span class="required">*</span></label>
-            <input id="iban" type="text" placeholder="CH93 0076 2011 6238 5295 7" value="CH44 3199 9123 0008 8901 2" maxlength="42">
-            <p class="help ok">Detected: <strong>QR-IBAN</strong> — Swiss QR-bills will use a 27-digit QRR reference (mod-10).</p>
-          </div>
-          <div class="form-row">
-            <label for="bank">Bank name<span class="required">*</span></label>
-            <input id="bank" type="text" placeholder="PostFinance, UBS Switzerland AG…" value="PostFinance" maxlength="100">
-          </div>
-          <div class="form-row">
-            <label for="bic">BIC / SWIFT (optional)</label>
-            <input id="bic" type="text" placeholder="POFICHBE" value="POFICHBEXXX" maxlength="13">
-            <p class="help">8 or 11 characters per ISO 9362. Optional — most Swiss e-banking flows don't require it for QR-bill payments.</p>
-          </div>
-          <div class="form-row">
-            <label for="currency">Currency<span class="required">*</span></label>
-            <select id="currency">
-              <option value="CHF" selected>CHF</option>
-              <option value="EUR">EUR</option>
-            </select>
-            <p class="help">CHF or EUR. EUR + QR-IBAN is illegal under IG QR-bill v2.4 — use a regular IBAN with SCOR for EUR donations.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="form-section">
-        <h2>Holder address</h2>
-        <p class="section-help">Printed on the QR-bill in the IG structured-address shape: street + building number + postal code + town + country. Restricted to CH or LI per IG QR-bill v2.4.</p>
-
-        <div class="grid-2">
-          <div class="form-row full">
-            <label for="holderName">Holder name<span class="required">*</span></label>
-            <input id="holderName" type="text" value="Association Givernance Demo" maxlength="70">
-            <p class="help">Printed at the top of the QR-bill. Up to 70 characters.</p>
-          </div>
-          <div class="form-row">
-            <label for="street">Street<span class="required">*</span></label>
-            <input id="street" type="text" value="Rue de la Paix" maxlength="70">
-          </div>
-          <div class="form-row">
-            <label for="building">Building number</label>
-            <input id="building" type="text" value="12" maxlength="16">
-            <p class="help">Optional. Up to 16 characters (e.g. "12" or "12b").</p>
-          </div>
-          <div class="form-row">
-            <label for="zip">Postal code<span class="required">*</span></label>
-            <input id="zip" type="text" value="1003" maxlength="16">
-          </div>
-          <div class="form-row">
-            <label for="town">Town / City<span class="required">*</span></label>
-            <input id="town" type="text" value="Lausanne" maxlength="35">
-          </div>
-          <div class="form-row">
-            <label for="country">Country<span class="required">*</span></label>
-            <select id="country">
-              <option value="CH" selected>CH</option>
-              <option value="LI">LI</option>
-            </select>
-            <p class="help">CH or LI only — IG QR-bill applies to those two jurisdictions.</p>
-          </div>
-        </div>
-
-        <div class="iban-preview" role="note">
-          <div>
-            <div class="label">QR-bill preview reference</div>
-            <div class="value">21 00000 00003 13947 14300 09017</div>
-          </div>
-          <div style="margin-left:auto;">
-            <div class="label">Currency / Amount</div>
-            <div class="value">CHF · donor-fills</div>
-          </div>
-        </div>
-      </section>
-
-      <div class="actions">
-        <button type="button" class="btn-cancel">Cancel</button>
-        <button type="submit" class="btn-primary">Create bank account</button>
+    <!-- Sidebar — org-operator -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
       </div>
-    </form>
-  </main>
+      <nav class="sidebar-nav" aria-label="Navigation principale">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">dashboard</span>
+          <span class="nav-item-label">Dashboard</span>
+        </a>
+        <a href="../constituents/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">groups</span>
+          <span class="nav-item-label">Constituants</span>
+        </a>
+        <a href="../campaigns/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">campaign</span>
+          <span class="nav-item-label">Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">volunteer_activism</span>
+          <span class="nav-item-label">Dons</span>
+        </a>
+        <div class="sidebar-section">Bientôt</div>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">account_balance</span><span class="nav-item-label">Subventions</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">layers</span><span class="nav-item-label">Programmes</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">front_hand</span><span class="nav-item-label">Bénévoles</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">monitoring</span><span class="nav-item-label">Impact</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">forum</span><span class="nav-item-label">Communications</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">assessment</span><span class="nav-item-label">Rapports</span><span class="nav-item-soon">Bientôt</span></span>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar">CM</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Claire Martin</div>
+            <div class="sidebar-footer-role">Association Démo</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-breadcrumb">
+          <a href="../dashboard.html">Dashboard</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <a href="../settings/feature-flags.html">Paramètres</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <a href="bank-accounts-list.html">Comptes bancaires</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Nouveau</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
+            <span class="material-symbols-outlined">notifications</span>
+          </button>
+          <div class="topbar-avatar" title="Claire Martin">CM</div>
+        </div>
+      </header>
+
+      <main class="main-content main-content--form">
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Nouveau compte bancaire</h1>
+            <p class="page-subtitle">Les données du titulaire impriment sur chaque QR-bill. Givernance utilise la forme <em>adresse structurée (S)</em> de l'IG QR-bill v2.4 — les adresses combinées ne sont plus supportées (obligatoire à partir du 2026-09-30).</p>
+          </div>
+        </div>
+
+        <form class="card">
+          <!-- Section 1: Détails du compte (matches sections.account in bank-account-form.tsx) -->
+          <div class="form-section">
+            <h3 class="form-section-title">Détails du compte</h3>
+            <p class="form-hint" style="margin-bottom: var(--space-4);">IBAN, nom de la banque, devise. Le type d'IBAN (QR-IBAN vs régulier) est dérivé automatiquement de la plage IID.</p>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="iban" class="form-label form-label-required">IBAN</label>
+                <input id="iban" type="text" class="form-input" placeholder="CH93 0076 2011 6238 5295 7" value="CH44 3199 9123 0008 8901 2" maxlength="42">
+                <p class="form-hint">Détecté : <span class="iban-hint">QR-IBAN</span> — les QR-bills utiliseront une référence QRR à 27 chiffres (mod-10).</p>
+              </div>
+              <div class="form-group">
+                <label for="bank-name" class="form-label form-label-required">Nom de la banque</label>
+                <input id="bank-name" type="text" class="form-input" placeholder="PostFinance, UBS Switzerland AG…" value="PostFinance" maxlength="100">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="bic" class="form-label">BIC / SWIFT</label>
+                <input id="bic" type="text" class="form-input" placeholder="POFICHBE" value="POFICHBEXXX" maxlength="13">
+                <p class="form-hint">8 ou 11 caractères (ISO 9362). Optionnel — la plupart des flux e-banking suisses n'en ont pas besoin pour les paiements QR-bill.</p>
+              </div>
+              <div class="form-group">
+                <label for="currency" class="form-label form-label-required">Devise</label>
+                <select id="currency" class="form-select">
+                  <option value="CHF" selected>CHF</option>
+                  <option value="EUR">EUR</option>
+                </select>
+                <p class="form-hint">CHF ou EUR. EUR + QR-IBAN est interdit par l'IG QR-bill v2.4 — utilisez un IBAN régulier avec SCOR pour les dons en EUR.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 2: Adresse du titulaire (matches sections.holder in bank-account-form.tsx) -->
+          <div class="form-section">
+            <h3 class="form-section-title">Adresse du titulaire</h3>
+            <p class="form-hint" style="margin-bottom: var(--space-4);">Imprimée sur le QR-bill au format adresse structurée IG : rue + numéro + code postal + ville + pays. Restreint à CH ou LI par l'IG QR-bill v2.4.</p>
+
+            <div class="form-group">
+              <label for="holder-name" class="form-label form-label-required">Nom du titulaire</label>
+              <input id="holder-name" type="text" class="form-input" value="Association Givernance Démo" maxlength="70">
+              <p class="form-hint">Imprimé en haut du QR-bill. Jusqu'à 70 caractères.</p>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="street" class="form-label form-label-required">Rue</label>
+                <input id="street" type="text" class="form-input" value="Rue de la Paix" maxlength="70">
+              </div>
+              <div class="form-group">
+                <label for="building" class="form-label">Numéro de bâtiment</label>
+                <input id="building" type="text" class="form-input" value="12" maxlength="16">
+                <p class="form-hint">Optionnel. Jusqu'à 16 caractères (ex. « 12 » ou « 12b »).</p>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="zip" class="form-label form-label-required">Code postal</label>
+                <input id="zip" type="text" class="form-input" value="1003" maxlength="16">
+              </div>
+              <div class="form-group">
+                <label for="town" class="form-label form-label-required">Ville</label>
+                <input id="town" type="text" class="form-input" value="Lausanne" maxlength="35">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="country" class="form-label form-label-required">Pays</label>
+              <select id="country" class="form-select">
+                <option value="CH" selected>CH</option>
+                <option value="LI">LI</option>
+              </select>
+              <p class="form-hint">CH ou LI uniquement — l'IG QR-bill s'applique à ces deux juridictions.</p>
+            </div>
+
+            <div class="preview-card" role="note">
+              <div>
+                <div class="label">Référence QR-bill (aperçu)</div>
+                <div class="value">21 00000 00003 13947 14300 09017</div>
+              </div>
+              <div style="margin-left:auto;">
+                <div class="label">Devise / Montant</div>
+                <div class="value">CHF · saisi par le donateur</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <a href="bank-accounts-list.html" class="btn btn-ghost">Annuler</a>
+            <button type="submit" class="btn btn-primary">Créer le compte bancaire</button>
+          </div>
+        </form>
+      </main>
+    </div>
+  </div>
+<script src="../shared/mobile.js"></script>
 </body>
 </html>

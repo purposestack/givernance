@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+<!-- Roadmap: not yet in MVP — see /signup for shipped flow.
+     The MVP self-serve signup is a single-page form (org name, slug, first/last
+     name, email, country, locale, legal type, consent) followed by an email
+     verification step at /signup/verify. This 5-step wizard is the future
+     richer onboarding (logo upload, currency, team invites, data import,
+     RGPD configuration, success checklist) — preserved as vision intent. -->
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -7,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
   <title>Givernance — Onboarding : Votre organisation</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
@@ -63,7 +69,7 @@
       <!-- Logo -->
       <a href="login.html" class="onboarding-logo" style="text-decoration:none;color:inherit;">
         <div class="auth-logo-mark">
-  <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" style="width:44px;height:44px;object-fit:contain;">
+  <img src="../shared/assets/givernance-logo.svg" alt="Givernance" style="width:44px;height:44px;object-fit:contain;">
 </div>
         <span class="auth-logo-text">Givernance</span>
       </a>
@@ -93,6 +99,16 @@
         <div class="wizard-step">
           <div class="wizard-step-dot">5</div>
           <span class="wizard-step-label">Pret !</span>
+        </div>
+      </div>
+
+      <!-- Roadmap banner — this richer wizard is not yet in the MVP -->
+      <div class="alert alert-info" style="margin-bottom: var(--space-6);">
+        <span class="alert-icon">
+          <span class="material-symbols-outlined" style="font-size:18px;">map</span>
+        </span>
+        <div class="alert-content">
+          <strong>Roadmap</strong> &mdash; Le MVP propose un formulaire d'inscription unique (nom, slug, email, pays, langue) puis une v&eacute;rification par e-mail. Ce parcours en 5 &eacute;tapes est la vision &eacute;tendue, pas encore livr&eacute;e.
         </div>
       </div>
 

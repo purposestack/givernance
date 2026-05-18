@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="assets/logo-pheonix-vert.png">
+  <link rel="icon" type="image/svg+xml" href="assets/givernance-logo.svg">
   <title>Givernance — Menu compte (mockup)</title>
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="base.css">
@@ -580,19 +580,19 @@
 
     <!-- Header -->
     <div class="mockup-header">
-      <img src="assets/logo-pheonix-vert.png" alt="Givernance" class="mockup-header-logo">
+      <img src="assets/givernance-logo.svg" alt="Givernance" class="mockup-header-logo">
       <div>
         <h1>Menu compte</h1>
-        <div class="mockup-header-subtitle">SHARED-001 · Dropdown du topbar — déclenché par l'avatar utilisateur</div>
+        <div class="mockup-header-subtitle">GLO-005 · Dropdown du topbar — déclenché par l'avatar utilisateur (issue #76, livré PR #360)</div>
       </div>
     </div>
     <div class="mockup-divider"></div>
 
     <!-- Intro -->
     <p class="mockup-intro">
-      <strong>Contexte.</strong> Le PR #73 a posé un bouton <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">LogOut</code> temporaire dans le pied de la sidebar parce qu'aucune maquette ne couvrait un menu compte. Cette maquette définit le menu déroulant ancré sur l'avatar du topbar : identité, accès rapide aux paramètres personnels, sélecteur de langue, déconnexion. Une fois implémenté, le bouton temporaire de la sidebar est retiré.
+      <strong>Implémenté.</strong> Le menu compte est désormais le point de sortie unique de l'application (issue #76, PR #360). Il s'ouvre depuis l'avatar du topbar et contient : un en-tête identité (avatar + nom + email), un lien <em>Mon compte</em>, un sélecteur de langue radio (FR / EN), et l'action destructive <em>Se déconnecter</em>. Cette maquette reste la référence visuelle pour les états : repos, survol, ouvert, focus clavier.
       <br><br>
-      <strong>Issue de référence.</strong> <a href="https://github.com/purposestack/givernance/issues/76" style="color:var(--color-primary-dark);">#76 — Account menu UX + back-channel logout</a> · PR-1 Step 1.
+      <strong>Source de vérité.</strong> <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">packages/web/src/components/layout/topbar.tsx</code> — le menu utilise <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">DropdownMenuRadioGroup</code> de Radix (rôle <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">menuitemradio</code> + <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-container);padding:1px 6px;border-radius:var(--radius-sm);">aria-checked</code>).
     </p>
 
     <!-- ============================================================

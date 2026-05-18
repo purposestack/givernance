@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
   <title>D&eacute;tail du don DON-2026-0142 &mdash; Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
@@ -129,7 +129,7 @@
     <!-- ============================== -->
     <aside class="sidebar">
   <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+    <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
     <span class="sidebar-brand-text">Givernance</span>
   </div>
   <nav class="sidebar-nav">
@@ -141,37 +141,44 @@
       <span class="material-symbols-outlined nav-icon">groups</span>
       <span>Constituants</span>
     </a>
+    <a href="../campaigns/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">campaign</span>
+      <span>Campagnes</span>
+    </a>
     <a href="list.html" class="nav-item nav-item--active">
       <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
+      <span>Dons</span>
     </a>
+    <div class="sidebar-section">Bientôt</div>
     <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
+      <span class="material-symbols-outlined nav-icon">account_balance</span>
       <span>Subventions</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../programs/list.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">layers</span>
       <span>Programmes</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../volunteers/list.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">front_hand</span>
       <span>Bénévoles</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">monitoring</span>
       <span>Impact</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../communications/list.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">forum</span>
       <span>Communications</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../reports/library.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">assessment</span>
       <span>Rapports</span>
-    </a>
-    <a href="../admin/index.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Paramètres</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
   </nav>
   <div class="sidebar-footer">
@@ -191,11 +198,11 @@
       <!-- Topbar -->
       <header class="topbar">
         <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
-          <a href="list.html">Dons &amp; Campagnes</a>
+          <a href="../dashboard.html">Tableau de bord</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
           <a href="list.html">Dons</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
-          <span class="topbar-breadcrumb-current">DON-2026-0142</span>
+          <span class="topbar-breadcrumb-current">€500,00</span>
         </nav>
 
         <a href="../global/command-palette.html" class="topbar-search">
@@ -220,24 +227,38 @@
       <main class="main-content">
 
         <!-- Page Header -->
+        <!--
+          Implementation: packages/web/src/app/(app)/donations/[id]/page.tsx
+          Title uses formatted amount; donor name in description.
+          Action buttons: Retour aux dons (ghost) · Modifier (write) ·
+          Aperçu du reçu (always) · Rembourser (admin + Stripe-only) ·
+          Supprimer (admin).
+        -->
         <div class="page-header">
           <div class="page-header-left">
             <div class="page-header-title-row">
-              <h1 class="page-title">D&eacute;tail du don &mdash; DON-2026-0142</h1>
+              <h1 class="page-title">Don &mdash; &euro;500,00</h1>
               <span class="badge badge-success"><span class="material-symbols-outlined" style="font-size:12px">check</span> Confirm&eacute;</span>
             </div>
+            <p class="page-subtitle">Marie-Claire Fontaine</p>
           </div>
           <div class="page-header-actions">
+            <a href="list.html"><button class="btn btn-ghost" type="button"><span class="material-symbols-outlined" style="font-size:16px">arrow_back</span> Retour aux dons</button></a>
             <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px">edit</span> Modifier</button>
-            <a href="receipt.html"><button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px">receipt_long</span> G&eacute;n&eacute;rer re&ccedil;u</button></a>
-            <button class="btn btn-destructive" type="button"><span class="material-symbols-outlined" style="font-size:16px">close</span> Annuler le don</button>
+            <a href="receipt.html"><button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px">receipt_long</span> Aper&ccedil;u du re&ccedil;u</button></a>
+            <button class="btn btn-secondary" type="button"><span class="material-symbols-outlined" style="font-size:16px">undo</span> Rembourser</button>
+            <button class="btn btn-destructive" type="button"><span class="material-symbols-outlined" style="font-size:16px">delete</span> Supprimer</button>
           </div>
         </div>
 
         <!-- Two-column layout -->
         <div class="grid-2 mb-6">
 
-          <!-- Left card: Informations du don -->
+          <!--
+            Mirrors InfoCard in packages/web/src/app/(app)/donations/[id]/page.tsx —
+            row order: Donateur, Date, Montant, Moyen de paiement, Référence,
+            Campagne, Année fiscale, Enregistré.
+          -->
           <div class="card">
             <div class="card-header">
               <h2 class="card-title">Informations du don</h2>
@@ -257,15 +278,11 @@
                   <span class="detail-value cell-mono">&euro;500,00</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Type</span>
-                  <span class="detail-value"><span class="badge badge-info">Ponctuel</span></span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">Mode de paiement</span>
+                  <span class="detail-label">Moyen de paiement</span>
                   <span class="detail-value">Virement bancaire</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">R&eacute;f&eacute;rence bancaire</span>
+                  <span class="detail-label">R&eacute;f&eacute;rence</span>
                   <span class="detail-value"><span class="cell-mono">VIR-2026-8834</span></span>
                 </div>
                 <div class="detail-row">
@@ -273,12 +290,12 @@
                   <span class="detail-value"><a href="../campaigns/detail.html">Appel aux dons Hiver 2026</a></span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Re&ccedil;u fiscal</span>
-                  <span class="detail-value"><a href="receipt.html">RF-2026-0142 &mdash; G&eacute;n&eacute;r&eacute;</a></span>
+                  <span class="detail-label">Ann&eacute;e fiscale</span>
+                  <span class="detail-value">2026</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Export comptable</span>
-                  <span class="detail-value"><span class="badge badge-warning"><span class="material-symbols-outlined" style="font-size:12px">warning</span> Non export&eacute;</span></span>
+                  <span class="detail-label">Enregistr&eacute;</span>
+                  <span class="detail-value">24 f&eacute;vrier 2026 &agrave; 14:32</span>
                 </div>
               </div>
             </div>
@@ -321,53 +338,9 @@
 
         </div>
 
-        <!-- Audit log card -->
-        <div class="card">
-          <div class="card-header">
-            <h2 class="card-title">Historique des modifications</h2>
-          </div>
-          <div class="card-body">
-            <div class="timeline">
-
-              <!-- Entry 1 -->
-              <div class="timeline-item">
-                <div class="timeline-icon"><span class="material-symbols-outlined" style="font-size:14px">edit</span></div>
-                <div class="timeline-content">
-                  <div class="timeline-title">Don enregistr&eacute; &mdash; Montant : &euro;500,00</div>
-                  <div class="timeline-meta">24/02/2026 14:32 &mdash; Claire Dubois</div>
-                </div>
-              </div>
-
-              <!-- Entry 2 -->
-              <div class="timeline-item">
-                <div class="timeline-icon"><span class="material-symbols-outlined" style="font-size:14px">description</span></div>
-                <div class="timeline-content">
-                  <div class="timeline-title">Re&ccedil;u fiscal g&eacute;n&eacute;r&eacute; &mdash; R&eacute;f : RF-2026-0142</div>
-                  <div class="timeline-meta">24/02/2026 14:33 &mdash; Claire Dubois</div>
-                </div>
-              </div>
-
-              <!-- Entry 3 -->
-              <div class="timeline-item">
-                <div class="timeline-icon"><span class="material-symbols-outlined" style="font-size:14px">check_circle</span></div>
-                <div class="timeline-content">
-                  <div class="timeline-title">Confirmation de paiement re&ccedil;ue &mdash; Virement bancaire v&eacute;rifi&eacute;</div>
-                  <div class="timeline-meta">24/02/2026 14:35 &mdash; Syst&egrave;me</div>
-                </div>
-              </div>
-
-              <!-- Entry 4 -->
-              <div class="timeline-item">
-                <div class="timeline-icon"><span class="material-symbols-outlined" style="font-size:14px">settings</span></div>
-                <div class="timeline-content">
-                  <div class="timeline-title">Allocation fonds modifi&eacute;e &mdash; Ajout aide alimentaire (&euro;200)</div>
-                  <div class="timeline-meta">25/02/2026 09:10 &mdash; Marc Benali</div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
+        <!-- Roadmap: audit-log timeline not in MVP — the InfoCard + AllocationsCard
+             above are the only two cards rendered today. Timeline retained in
+             the design system as a future enhancement (see docs/17-log-management.md). -->
 
       </main>
 

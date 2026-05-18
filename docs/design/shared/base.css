@@ -100,13 +100,14 @@ h4 { font-size: var(--text-lg); line-height: var(--leading-heading-lg, 1.25); }
   left: 0;
   width: var(--sidebar-width);
   height: 100vh;
-  background: var(--color-surface-container-high);
-  color: var(--color-on-surface);
+  background: var(--color-sidebar-bg);
+  color: var(--color-sidebar-text);
   display: flex;
   flex-direction: column;
   z-index: var(--z-sticky);
   overflow-y: auto;
   overflow-x: hidden;
+  border-right: 1px solid var(--color-border-light);
 }
 
 .sidebar-brand {
@@ -179,16 +180,32 @@ h4 { font-size: var(--text-lg); line-height: var(--leading-heading-lg, 1.25); }
 }
 
 .nav-item:hover {
-  background: var(--color-surface-container-low);
+  background: var(--color-sidebar-item-active-bg);
   color: var(--color-on-surface);
   text-decoration: none;
 }
 
 .nav-item.active,
 .nav-item--active {
-  background: var(--color-surface-container);
-  color: var(--color-primary);
+  background: var(--color-sidebar-item-active-bg);
+  color: var(--color-sidebar-text-active);
   font-weight: var(--weight-medium);
+}
+
+/* "Bientôt" / "Soon" pill on sidebar nav items not yet shipped in the MVP.
+   Honest roadmap signaling — keep the nav forward-looking while making
+   clear which modules a user can actually open today. */
+.nav-item-soon {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  font-weight: var(--weight-semi);
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-container-high);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  line-height: 1;
 }
 
 .nav-item-icon {
@@ -310,10 +327,10 @@ h4 { font-size: var(--text-lg); line-height: var(--leading-heading-lg, 1.25); }
   position: sticky;
   top: 0;
   height: var(--topbar-height);
-  background: rgba(255, 248, 240, 0.8);
+  background: var(--topbar-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(190, 201, 193, 0.1);
+  border-bottom: 1px solid var(--topbar-border);
   display: flex;
   align-items: center;
   padding: 0 var(--content-padding);

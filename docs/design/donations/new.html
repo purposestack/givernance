@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
   <title>Nouveau don — Givernance NPO Platform</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
@@ -188,7 +188,7 @@
     <!-- ============================== -->
     <aside class="sidebar">
   <div class="sidebar-brand">
-    <img src="../shared/assets/logo-pheonix-vert.png" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+    <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
     <span class="sidebar-brand-text">Givernance</span>
   </div>
   <nav class="sidebar-nav">
@@ -200,37 +200,44 @@
       <span class="material-symbols-outlined nav-icon">groups</span>
       <span>Constituants</span>
     </a>
+    <a href="../campaigns/list.html" class="nav-item">
+      <span class="material-symbols-outlined nav-icon">campaign</span>
+      <span>Campagnes</span>
+    </a>
     <a href="list.html" class="nav-item nav-item--active">
       <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
-      <span>Dons &amp; Campagnes</span>
+      <span>Dons</span>
     </a>
+    <div class="sidebar-section">Bientôt</div>
     <a href="../grants/kanban.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">account_tree</span>
+      <span class="material-symbols-outlined nav-icon">account_balance</span>
       <span>Subventions</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../programs/list.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">layers</span>
       <span>Programmes</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../volunteers/list.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">front_hand</span>
       <span>Bénévoles</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../impact/dashboard.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">monitoring</span>
       <span>Impact</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../communications/list.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">forum</span>
       <span>Communications</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
     <a href="../reports/library.html" class="nav-item">
       <span class="material-symbols-outlined nav-icon">assessment</span>
       <span>Rapports</span>
-    </a>
-    <a href="../admin/index.html" class="nav-item">
-      <span class="material-symbols-outlined nav-icon">settings</span>
-      <span>Paramètres</span>
+      <span class="nav-item-soon">Bientôt</span>
     </a>
   </nav>
   <div class="sidebar-footer">
@@ -250,7 +257,7 @@
       <!-- Topbar -->
       <header class="topbar">
         <nav class="topbar-breadcrumb" aria-label="Fil d'Ariane">
-          <a href="list.html">Dons &amp; Campagnes</a>
+          <a href="../dashboard.html">Tableau de bord</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
           <a href="list.html">Dons</a>
           <span class="topbar-breadcrumb-sep">&#8250;</span>
@@ -279,13 +286,26 @@
       <main class="main-content main-content--form">
 
         <!-- Page Header -->
+        <!--
+          Mirrors packages/web/src/app/(app)/donations/new/page.tsx:
+          title = "Enregistrer un don", subtitle = MVP description copy.
+        -->
         <div class="page-header">
           <div class="page-header-left">
             <h1 class="page-title">Enregistrer un don</h1>
+            <p class="page-subtitle">Ajoutez manuellement un don &mdash; ch&egrave;que, virement, esp&egrave;ces ou carte.</p>
           </div>
         </div>
 
-        <!-- Form -->
+        <!--
+          Form mirrors DonationForm (packages/web/src/components/donations/donation-form.tsx).
+          Three FormSections: Donateur · Informations du don · Attribution.
+          Fields per section follow `donations.form.fields.*` in fr.json.
+          Hidden in MVP (kept out of mockup): "Type de don" (Ponctuel/Récurrent),
+          "Générer un reçu" checkbox (receipts auto-generate server-side),
+          "Notes internes" (no internal-notes field shipped yet),
+          "Sauvegarder et ajouter un autre" (MVP has only single-save).
+        -->
         <form action="#" method="post" novalidate>
 
           <!-- ============================== -->
@@ -293,6 +313,7 @@
           <!-- ============================== -->
           <div class="form-section">
             <h2 class="form-section-title">Donateur</h2>
+            <p class="form-hint" style="margin-top:calc(-1 * var(--space-3));margin-bottom:var(--space-4);">Qui a effectu&eacute; ce don ?</p>
 
             <div class="form-group">
               <label class="form-label form-label-required" for="donor-search">Constituant</label>
@@ -303,16 +324,16 @@
                   type="text"
                   id="donor-search"
                   value="Marie-Claire Fontaine"
-                  placeholder="Rechercher un constituant..."
+                  placeholder="Rechercher un donateur&hellip;"
                   autocomplete="off"
                 >
               </div>
-              <!-- Donor preview card (pre-filled state) -->
+              <!-- Donor preview card (selected state from ConstituentPicker) -->
               <div class="donor-preview">
                 <div class="donor-preview-avatar">MF</div>
                 <div class="donor-preview-info">
                   <div class="donor-preview-name"><a href="../constituents/detail.html">Marie-Claire Fontaine</a></div>
-                  <div class="donor-preview-meta">m.fontaine@email.fr &mdash; 12 dons pr&eacute;c&eacute;dents &mdash; Total : &euro;7 500</div>
+                  <div class="donor-preview-meta">m.fontaine@email.fr</div>
                 </div>
                 <button class="donor-preview-close" type="button" aria-label="Retirer le donateur"><span class="material-symbols-outlined" style="font-size:16px">close</span></button>
               </div>
@@ -324,60 +345,57 @@
           <!-- ============================== -->
           <div class="form-section">
             <h2 class="form-section-title">Informations du don</h2>
+            <p class="form-hint" style="margin-top:calc(-1 * var(--space-3));margin-bottom:var(--space-4);">Montant, moyen de paiement et r&eacute;f&eacute;rence.</p>
 
-            <!-- Type + Date row -->
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label form-label-required" for="don-type">Type de don</label>
-                <select class="form-select" id="don-type">
-                  <option value="ponctuel" selected>Ponctuel</option>
-                  <option value="recurrent">R&eacute;current</option>
-                  <option value="nature">En nature</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label form-label-required" for="don-date">Date</label>
-                <input class="form-input" type="date" id="don-date" value="2026-02-27">
-              </div>
-            </div>
-
-            <!-- Montant + Devise row -->
+            <!-- Montant + Devise row (mirrors AmountInput + Select) -->
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label form-label-required" for="don-montant">Montant</label>
                 <div class="currency-input-wrapper">
                   <span class="currency-prefix">&euro;</span>
-                  <input class="form-input" type="number" id="don-montant" value="500" min="0" step="0.01">
+                  <input class="form-input" type="number" id="don-montant" value="500" min="0" step="0.01" placeholder="0,00">
                 </div>
               </div>
               <div class="form-group">
                 <label class="form-label" for="don-devise">Devise</label>
                 <select class="form-select" id="don-devise">
-                  <option value="EUR" selected>EUR &mdash; Euro</option>
-                  <option value="USD">USD &mdash; Dollar US</option>
-                  <option value="GBP">GBP &mdash; Livre sterling</option>
-                  <option value="CHF">CHF &mdash; Franc suisse</option>
+                  <option value="EUR" selected>EUR</option>
+                  <option value="GBP">GBP</option>
+                  <option value="CHF">CHF</option>
+                  <option value="SEK">SEK</option>
+                  <option value="NOK">NOK</option>
+                  <option value="DKK">DKK</option>
+                  <option value="PLN">PLN</option>
+                  <option value="CZK">CZK</option>
                 </select>
               </div>
             </div>
 
-            <!-- Mode de paiement -->
-            <div class="form-group">
-              <label class="form-label form-label-required" for="don-paiement">Mode de paiement</label>
-              <select class="form-select" id="don-paiement">
-                <option value="virement" selected>Virement bancaire</option>
-                <option value="cheque">Ch&egrave;que</option>
-                <option value="cb">Carte bancaire</option>
-                <option value="sepa">Pr&eacute;l&egrave;vement SEPA</option>
-                <option value="especes">Esp&egrave;ces</option>
-              </select>
+            <!-- Date + Moyen de paiement row -->
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="don-date">Date du don</label>
+                <input class="form-input" type="date" id="don-date" value="2026-02-27">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="don-paiement">Moyen de paiement</label>
+                <select class="form-select" id="don-paiement">
+                  <option value="" selected>Choisissez un moyen de paiement</option>
+                  <option value="wire">Virement bancaire</option>
+                  <option value="cheque">Ch&egrave;que</option>
+                  <option value="card">Carte bancaire</option>
+                  <option value="sepa">Pr&eacute;l&egrave;vement SEPA</option>
+                  <option value="cash">Esp&egrave;ces</option>
+                  <option value="other">Autre</option>
+                </select>
+              </div>
             </div>
 
             <!-- R&eacute;f&eacute;rence externe -->
             <div class="form-group">
               <label class="form-label" for="don-reference">R&eacute;f&eacute;rence externe</label>
-              <input class="form-input" type="text" id="don-reference" placeholder="Ex. : VIR-2026-0342 (optionnel)">
-              <p class="form-hint">Num&eacute;ro de r&eacute;f&eacute;rence bancaire, num&eacute;ro de ch&egrave;que, etc.</p>
+              <input class="form-input" type="text" id="don-reference" placeholder="Ex. : VIR-2026-0342">
+              <p class="form-hint">R&eacute;f&eacute;rence bancaire, num&eacute;ro de ch&egrave;que, etc.</p>
             </div>
           </div>
 
@@ -386,95 +404,76 @@
           <!-- ============================== -->
           <div class="form-section">
             <h2 class="form-section-title">Attribution</h2>
+            <p class="form-hint" style="margin-top:calc(-1 * var(--space-3));margin-bottom:var(--space-4);">Campagne et r&eacute;partition des fonds (optionnel).</p>
 
             <!-- Campagne -->
             <div class="form-group">
               <label class="form-label" for="don-campagne">Campagne</label>
               <select class="form-select" id="don-campagne">
-                <option value="">Aucune campagne</option>
+                <option value="__none__">Aucune campagne</option>
                 <option value="hiver-2026" selected>Appel aux dons Hiver 2026</option>
                 <option value="gala-2026">Gala annuel 2026</option>
                 <option value="urgence-med">Urgence M&eacute;diterran&eacute;e</option>
               </select>
             </div>
 
-            <!-- Fonds avec table d'allocation -->
+            <!-- R&eacute;partition des fonds (dynamic useFieldArray rows) -->
             <div class="form-group">
-              <label class="form-label" for="don-fonds">R&eacute;partition des fonds</label>
-              <select class="form-select" id="don-fonds">
-                <option value="mixte" selected>R&eacute;partition mixte</option>
-                <option value="general">Fonds g&eacute;n&eacute;ral uniquement</option>
-                <option value="restreint">Fonds restreint uniquement</option>
-              </select>
+              <label class="form-label">R&eacute;partition des fonds</label>
+              <p class="form-hint">Les r&eacute;partitions doivent totaliser le montant du don. Laissez vide pour un don non-allou&eacute;.</p>
 
               <table class="allocation-table">
                 <thead>
                   <tr>
                     <th>Fonds</th>
-                    <th class="text-right">R&eacute;partition</th>
                     <th class="text-right">Montant</th>
+                    <th class="text-center" style="width:48px;">&nbsp;</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td>Fonds g&eacute;n&eacute;ral</td>
-                    <td class="text-right">60%</td>
-                    <td class="text-right cell-mono">&euro;300</td>
+                    <td>
+                      <select class="form-select" aria-label="Fonds">
+                        <option value="general" selected>Fonds g&eacute;n&eacute;ral</option>
+                        <option value="restreint">Fonds restreint M&eacute;diterran&eacute;e</option>
+                        <option value="aide-alim">Aide alimentaire</option>
+                      </select>
+                    </td>
+                    <td class="text-right">
+                      <input class="form-input" type="number" value="300" min="0" step="0.01" aria-label="Montant" style="text-align:right;font-family:var(--font-mono);">
+                    </td>
+                    <td class="text-center">
+                      <button type="button" class="action-view" aria-label="Supprimer la ligne" title="Supprimer la ligne"><span class="material-symbols-outlined" style="font-size:16px">delete</span></button>
+                    </td>
                   </tr>
                   <tr>
-                    <td>Fonds restreint M&eacute;diterran&eacute;e</td>
-                    <td class="text-right">40%</td>
-                    <td class="text-right cell-mono">&euro;200</td>
+                    <td>
+                      <select class="form-select" aria-label="Fonds">
+                        <option value="general">Fonds g&eacute;n&eacute;ral</option>
+                        <option value="restreint" selected>Fonds restreint M&eacute;diterran&eacute;e</option>
+                        <option value="aide-alim">Aide alimentaire</option>
+                      </select>
+                    </td>
+                    <td class="text-right">
+                      <input class="form-input" type="number" value="200" min="0" step="0.01" aria-label="Montant" style="text-align:right;font-family:var(--font-mono);">
+                    </td>
+                    <td class="text-center">
+                      <button type="button" class="action-view" aria-label="Supprimer la ligne" title="Supprimer la ligne"><span class="material-symbols-outlined" style="font-size:16px">delete</span></button>
+                    </td>
                   </tr>
                 </tbody>
               </table>
-            </div>
-          </div>
 
-          <!-- ============================== -->
-          <!--       Section: Options          -->
-          <!-- ============================== -->
-          <div class="form-section">
-            <h2 class="form-section-title">Options</h2>
-
-            <!-- Checkbox recu fiscal -->
-            <div class="form-group">
-              <label class="checkbox-label">
-                <input type="checkbox" checked>
-                <span>G&eacute;n&eacute;rer un re&ccedil;u fiscal</span>
-              </label>
-              <p class="form-hint">Un re&ccedil;u fiscal sera automatiquement g&eacute;n&eacute;r&eacute; et envoy&eacute; au donateur par email.</p>
-            </div>
-
-            <!-- Notes internes -->
-            <div class="form-group">
-              <label class="form-label" for="don-notes">Notes internes</label>
-              <textarea class="form-textarea" id="don-notes" rows="3" placeholder="Notes visibles uniquement par l'&eacute;quipe..."></textarea>
-            </div>
-          </div>
-
-          <!-- AI Suggestion Card -->
-          <div class="ai-card-form">
-            <div class="ai-card">
-              <div class="ai-card-header">
-                <span class="ai-card-icon"><span class="material-symbols-outlined" style="font-size:16px">auto_awesome</span></span>
-                <span class="ai-card-label">Suggestion IA</span>
-              </div>
-              <p class="ai-card-text">Bas&eacute; sur l'historique de Marie-Claire Fontaine, le montant moyen de ses dons est de &euro;625 &mdash; ajuster ?</p>
-              <div class="ai-card-actions">
-                <button class="btn btn-primary btn-sm" type="button">Appliquer</button>
-                <button class="btn btn-ghost btn-sm" type="button">Ignorer</button>
-              </div>
+              <button type="button" class="btn btn-secondary btn-sm" style="margin-top:var(--space-3);">
+                <span class="material-symbols-outlined" style="font-size:16px">add</span> Ajouter une ligne
+              </button>
             </div>
           </div>
 
           <!-- Form Footer -->
           <div class="form-footer">
-            <div class="form-footer-left">
-              <a href="list.html"><button class="btn btn-secondary" type="button">Annuler</button></a>
-            </div>
-            <button class="btn btn-secondary" type="button">Sauvegarder et ajouter un autre</button>
-            <a href="detail.html"><button class="btn btn-primary" type="submit"><span class="material-symbols-outlined" style="font-size:16px">check</span> Sauvegarder le don</button></a>
+            <a href="list.html"><button class="btn btn-ghost" type="button">Annuler</button></a>
+            <a href="detail.html"><button class="btn btn-primary" type="submit">Enregistrer le don</button></a>
           </div>
 
         </form>

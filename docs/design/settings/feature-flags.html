@@ -1,97 +1,160 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Paramètres &mdash; Feature flags</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/png" href="../shared/assets/logo-pheonix-vert.png">
-  <title>Givernance &mdash; Settings · Feature flags (org admin)</title>
   <link rel="stylesheet" href="../shared/tokens.css">
   <link rel="stylesheet" href="../shared/base.css">
   <style>
-    body { background: var(--color-background); font-family: 'Inter', sans-serif; padding: var(--space-6); color: var(--color-text); }
-    .page-wrap { max-width: 920px; margin: 0 auto; }
-    h1 { font-family: 'Newsreader', serif; font-size: 28px; margin: 0 0 var(--space-2); }
-    .subtitle { color: var(--color-text-secondary); font-size: 14px; margin-bottom: var(--space-6); }
-    .nav-strip { display: flex; gap: var(--space-2); padding: var(--space-2); background: var(--color-surface-container); border-radius: 16px; margin-bottom: var(--space-5); overflow-x: auto; }
-    .nav-item { padding: 10px 16px; border-radius: 10px; font-size: 14px; color: var(--color-text-secondary); cursor: pointer; min-height: 40px; display: inline-flex; align-items: center; }
-    .nav-item.active { background: var(--color-surface); color: var(--color-text); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-    .flag-card { border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 16px; padding: var(--space-5); margin-bottom: var(--space-3); display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; }
-    .flag-meta { flex: 1; }
-    .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; align-items: center; }
-    .badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
-    .badge-on { background: #DCFCE7; color: #15803D; }
-    .badge-off { background: #F1F5F9; color: #64748B; }
-    .badge-warn { background: #FEF3C7; color: #B45309; }
-    .description { color: var(--color-text-secondary); font-size: 14px; margin: 6px 0; }
-    .meta-row { font-size: 12px; color: var(--color-text-secondary); }
-    .source-default { font-size: 12px; color: var(--color-text-secondary); font-style: italic; }
-    .actions { display: flex; gap: 8px; flex-shrink: 0; }
-    .btn { padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 500; border: 0; cursor: pointer; }
-    .btn-primary { background: var(--color-primary); color: white; }
-    .btn-secondary { background: var(--color-surface-container); color: var(--color-text); }
-    .btn-ghost { background: transparent; color: var(--color-text-secondary); }
-    .empty-state { border: 1px dashed var(--color-border); background: var(--color-surface); border-radius: 16px; padding: var(--space-7) var(--space-5); text-align: center; }
-    .empty-state h3 { font-family: 'Newsreader', serif; margin: 0 0 var(--space-2); }
-    .empty-state p { color: var(--color-text-secondary); margin: 0 auto; max-width: 560px; line-height: 1.5; }
+    /* ── Settings → Feature flags (Epic #365, mirrors org-feature-flags-list.tsx) ── */
+    .settings-tabs { display: inline-flex; gap: var(--space-2); background: var(--color-surface-container); padding: var(--space-2); border-radius: var(--radius-2xl); margin-bottom: var(--space-6); overflow-x: auto; max-width: 100%; }
+    .settings-tab { padding: var(--space-2) var(--space-4); border-radius: var(--radius-lg); font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-on-surface-variant); cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .settings-tab.active { background: var(--color-surface-container-lowest); color: var(--color-on-surface); box-shadow: 0 0 0 1px rgba(190, 201, 193, 0.2); }
+
+    .flag-card { background: var(--color-surface-container-lowest); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-2xl); padding: var(--space-5); margin-bottom: var(--space-3); display: flex; gap: var(--space-4); justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+    .flag-meta { flex: 1; min-width: 0; }
+    .flag-badges { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; margin-bottom: var(--space-2); }
+    .flag-title { font-family: var(--font-body); font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--color-on-surface); margin: 0; }
+    .flag-description { color: var(--color-on-surface-variant); font-size: var(--text-sm); margin: var(--space-2) 0; }
+    .flag-default { font-size: var(--text-xs); color: var(--color-on-surface-variant); }
+    .flag-key { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); }
+    .flag-source-default { font-size: var(--text-xs); color: var(--color-on-surface-variant); font-style: italic; }
+    .flag-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+
+    .empty-card { background: var(--color-surface-container-low); border: 1px dashed var(--color-outline-variant); border-radius: var(--radius-2xl); padding: var(--space-12) var(--space-6); text-align: center; }
+    .empty-card h2 { font-family: var(--font-heading); font-size: var(--text-xl); color: var(--color-on-surface); margin-bottom: var(--space-2); }
+    .empty-card p { color: var(--color-on-surface-variant); font-size: var(--text-sm); max-width: 56ch; margin: 0 auto; line-height: var(--leading-relaxed); }
   </style>
 </head>
 <body>
-  <div class="page-wrap">
-    <h1>Feature flags</h1>
-    <p class="subtitle">Choose which optional features are turned on for your organisation. Givernance staff control which features are available here; you decide whether to use them.</p>
+  <div class="app-layout">
 
-    <nav class="nav-strip" aria-label="Organisation settings navigation">
-      <span class="nav-item">Organisation</span>
-      <span class="nav-item">Members</span>
-      <span class="nav-item">Funds</span>
-      <span class="nav-item">Bank accounts</span>
-      <span class="nav-item active">Feature flags</span>
-    </nav>
-
-    <!-- Empty state (day-one of registry) -->
-    <section class="empty-state" style="margin-bottom: var(--space-7);">
-      <h3>Nothing to configure yet</h3>
-      <p>Your organisation doesn't have any feature flags to configure right now. Givernance staff manage these for you; this page will list anything you can switch on or off as soon as it becomes available.</p>
-    </section>
-
-    <h2 style="font-family:'Newsreader',serif;font-size:14px;color:var(--color-text-secondary);margin: var(--space-5) 0 var(--space-3);">Mockup preview — once flags become available, rows will look like this:</h2>
-
-    <!-- Row with no override -->
-    <article class="flag-card">
-      <div class="flag-meta">
-        <div class="badges">
-          <h3 style="margin:0;font-weight:500;font-size:15px;">Notification centre digest</h3>
-          <span class="badge badge-off">Currently off</span>
-          <span class="source-default">Using the default</span>
+    <!-- Sidebar — org-operator -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <nav class="sidebar-nav" aria-label="Navigation principale">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">dashboard</span>
+          <span class="nav-item-label">Dashboard</span>
+        </a>
+        <a href="../constituents/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">groups</span>
+          <span class="nav-item-label">Constituants</span>
+        </a>
+        <a href="../campaigns/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">campaign</span>
+          <span class="nav-item-label">Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">volunteer_activism</span>
+          <span class="nav-item-label">Dons</span>
+        </a>
+        <div class="sidebar-section">Bientôt</div>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">account_balance</span><span class="nav-item-label">Subventions</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">layers</span><span class="nav-item-label">Programmes</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">front_hand</span><span class="nav-item-label">Bénévoles</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">monitoring</span><span class="nav-item-label">Impact</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">forum</span><span class="nav-item-label">Communications</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">assessment</span><span class="nav-item-label">Rapports</span><span class="nav-item-soon">Bientôt</span></span>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar">CM</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Claire Martin</div>
+            <div class="sidebar-footer-role">Association Démo</div>
+          </div>
         </div>
-        <p class="description">Sends a weekly summary of new donations, grant deadlines, and assigned tasks to each user.</p>
-        <p class="meta-row">Default: Off</p>
       </div>
-      <div class="actions">
-        <button class="btn btn-primary">Turn on</button>
-      </div>
-    </article>
+    </aside>
 
-    <!-- Row with override -->
-    <article class="flag-card">
-      <div class="flag-meta">
-        <div class="badges">
-          <h3 style="margin:0;font-weight:500;font-size:15px;">Theory-of-change builder</h3>
-          <span class="badge badge-on">Currently on</span>
-          <span class="badge badge-warn">Set by you</span>
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-breadcrumb">
+          <a href="../dashboard.html">Dashboard</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <a href="feature-flags.html">Paramètres</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Feature flags</span>
         </div>
-        <p class="description">Visual builder for the Theory of Change diagram used in grant reports.</p>
-        <p class="meta-row">Default: Off</p>
-      </div>
-      <div class="actions">
-        <button class="btn btn-secondary">Turn off</button>
-        <button class="btn btn-ghost">Use the default</button>
-      </div>
-    </article>
+        <div class="topbar-actions">
+          <button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
+            <span class="material-symbols-outlined">notifications</span>
+          </button>
+          <div class="topbar-avatar" title="Claire Martin">CM</div>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Feature flags</h1>
+            <p class="page-subtitle">Choisissez les fonctionnalités optionnelles à activer pour votre organisation. L'équipe Givernance contrôle quelles fonctionnalités sont disponibles ici ; vous décidez de les utiliser.</p>
+          </div>
+        </div>
+
+        <!-- Settings sub-nav (mirrors settings-navigation.tsx with showFeatureFlags=true) -->
+        <nav class="settings-tabs" aria-label="Sections des paramètres">
+          <a href="#" class="settings-tab">Organisation</a>
+          <a href="#" class="settings-tab">Membres</a>
+          <a href="#" class="settings-tab">Fonds</a>
+          <a href="bank-accounts-list.html" class="settings-tab">Comptes bancaires</a>
+          <a href="feature-flags.html" class="settings-tab active" aria-current="page">Feature flags</a>
+        </nav>
+
+        <!-- Empty state (day-one of registry — every flag is super-admin-only) -->
+        <section class="empty-card" style="margin-bottom: var(--space-8);">
+          <h2>Rien à configurer pour l'instant</h2>
+          <p>Votre organisation n'a aucune fonctionnalité à configurer pour le moment. L'équipe Givernance gère cela pour vous ; cette page listera ce que vous pouvez activer ou désactiver dès que c'est disponible.</p>
+        </section>
+
+        <!-- Preview of populated state once tenant-scoped flags exist -->
+        <h3 class="font-headline" style="font-size: var(--text-sm); color: var(--color-on-surface-variant); margin: var(--space-6) 0 var(--space-3); text-transform: uppercase; letter-spacing: var(--tracking-wide);">Aperçu — quand des flags seront disponibles, les lignes ressembleront à ceci :</h3>
+
+        <!-- Row 1: flag without override (using platform default) -->
+        <article class="flag-card">
+          <div class="flag-meta">
+            <div class="flag-badges">
+              <h4 class="flag-title">Résumé du centre de notifications</h4>
+              <span class="badge badge-neutral">Actuellement désactivé</span>
+              <span class="flag-source-default">Utilise la valeur par défaut</span>
+            </div>
+            <p class="flag-description">Envoie un résumé hebdomadaire des nouveaux dons, échéances de subventions et tâches assignées à chaque utilisateur.</p>
+            <p class="flag-default">Par défaut : Désactivé · <span class="flag-key">communication.notifications_digest</span></p>
+          </div>
+          <div class="flag-actions">
+            <button type="button" class="btn btn-primary btn-sm">Activer</button>
+          </div>
+        </article>
+
+        <!-- Row 2: flag with explicit org override (enabled) -->
+        <article class="flag-card">
+          <div class="flag-meta">
+            <div class="flag-badges">
+              <h4 class="flag-title">Constructeur Théorie du Changement</h4>
+              <span class="badge badge-success">Actuellement activé</span>
+              <span class="badge badge-warning">Défini par vous</span>
+            </div>
+            <p class="flag-description">Constructeur visuel pour le diagramme de Théorie du Changement utilisé dans les rapports de subvention.</p>
+            <p class="flag-default">Par défaut : Désactivé · <span class="flag-key">impact.toc_builder</span></p>
+          </div>
+          <div class="flag-actions">
+            <button type="button" class="btn btn-secondary btn-sm">Désactiver</button>
+            <button type="button" class="btn btn-ghost btn-sm">Utiliser la valeur par défaut</button>
+          </div>
+        </article>
+      </main>
+    </div>
   </div>
+<script src="../shared/mobile.js"></script>
 </body>
 </html>

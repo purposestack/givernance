@@ -65,7 +65,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── vision/
 │   │   └── conversational-mode.md — Future conversational AI mode (2026-2028)
 │   ├── security/                  — Security audits & RBAC matrices (non-numbered, dated; e.g. rbac-audit-2026-04-27.md)
-│   └── design/                    — 86 interactive HTML mockups
+│   └── design/                    — 116 interactive HTML mockups (operator + donor + roadmap), realigned with the MVP shell + canonical `givernance-logo.svg`
 ├── diagrams/
 │   ├── context.mmd       — C4 system context
 │   ├── container.mmd     — C4 container diagram
@@ -104,7 +104,7 @@ Use these agents for domain-specific tasks via Claude Code:
 
 ## Implementation Status
 
-**Phase 0 — Foundation (current)**: Architecture blueprint complete. 17 specification documents, 86 HTML mockups, 4 Mermaid diagrams. No production code yet.
+**Phase 0 — Foundation (current)**: Architecture blueprint complete. 17 specification documents, 116 HTML mockups, 4 Mermaid diagrams. No production code yet.
 
 Next: Phase 1 — Skeleton (TypeScript monorepo scaffolding with pnpm workspaces, Drizzle schema baseline, CI/CD, auth, first module).
 
