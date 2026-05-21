@@ -181,6 +181,17 @@ erDiagram
 
 The worker's `planFanout(event)` resolves recipients per the table in [§ 1](#1-end-to-end-user-flow). For "specific user" rules (postal export, bulk email), the payload carries `requestedBy` — if absent (older events, super-admin actions), the rule falls back to "all org_admins". A user with `notification_preferences.in_app = false` for the type is silently dropped at write time so the worker doesn't pile rows onto an opted-out user.
 
+### Identifier discipline (`users.id` vs `keycloak_id`)
+
+Every column on `notifications` / `notification_preferences` that points at a person is `user_id uuid REFERENCES users(id)` — the application's row UUID, NOT the Keycloak `sub`. Real seeds (and the impersonation playground tenant) keep `users.id ≠ users.keycloak_id`, so confusing the two is silent: queries return zero rows, fanout writes zero recipients, and the bell never lights up.
+
+Two consequences for any code that touches the notification graph:
+
+1. **Routes filter by `request.auth.userRowId`, not `request.auth.userId`.** The auth plugin resolves the row UUID alongside the active-row check (ADR-021) and surfaces it as `userRowId`. The route returns 401 when it's null — super-admins (no `users` row) and DB-blip fail-opens both surface that way.
+2. **Outbox payloads that the fanout reads as a recipient (e.g. `requestedBy` for `campaign.postal_export_requested`, `communication.bulk_email_requested`) carry the resolved row UUID, not the JWT subject.** Audit attribution for "who requested this" is captured separately by the audit plugin from `request.auth.userId` — payload `requestedBy` is fanout-targeting only.
+
+The same discipline applies to other FK columns pointing at `users.id` across the schema (`tenant_flag_overrides.set_by`, `bulk_email_jobs.requested_by`, `campaign_postal_exports.requested_by`, …): write the row UUID, never the JWT `sub`.
+
 ## 4. Permissions matrix
 
 | Endpoint | Method | Flag | Guard | Notes |

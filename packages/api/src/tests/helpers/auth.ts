@@ -7,8 +7,27 @@ import { db } from "../../lib/db.js";
 
 export const ORG_A = "00000000-0000-0000-0000-000000000001";
 export const ORG_B = "00000000-0000-0000-0000-000000000002";
+/**
+ * Keycloak `sub` (JWT subject) for the default tenant-A test user. Used
+ * as the `sub` claim by `signToken` and as the `keycloak_id` column in
+ * `ensureTestTenants`. NEVER use this where a `users.id` (row UUID) is
+ * expected — `users.id` is deliberately distinct (see `USER_A_ROW_ID`).
+ *
+ * Epic #363 GLO-004 follow-up: prior to PR #XXX, fixtures conflated the
+ * two (insert with `id = keycloak_id`), which masked the
+ * notifications-routes bug where the route filtered `users.id` columns
+ * by the JWT `sub`. The distinction is enforced in `ensureTestTenants`.
+ */
 export const USER_A = "00000000-0000-0000-0000-000000000099";
 export const USER_B = "00000000-0000-0000-0000-000000000098";
+/**
+ * `users.id` row UUIDs for the default test users — DISTINCT from the
+ * `sub` claim above. Tests that need to seed FK rows pointing at
+ * `users.id` (e.g. `notifications.user_id`, `notification_preferences.user_id`,
+ * `audit_logs.user_id`) MUST use these, not `USER_A` / `USER_B`.
+ */
+export const USER_A_ROW_ID = "00000000-0000-0000-0000-0000000a0099";
+export const USER_B_ROW_ID = "00000000-0000-0000-0000-0000000a0098";
 
 const TEST_JWT_ISSUER = process.env.KEYCLOAK_ISSUER ?? "https://keycloak.test/realms/givernance";
 const TEST_JWT_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
@@ -131,21 +150,27 @@ export async function ensureTestTenants() {
   // `signTokenB`. The auth plugin's active-row check requires
   // `(keycloak_id, org_id, deleted_at IS NULL)` to resolve — without
   // these rows, every authenticated test request 401s.
-  // `ON CONFLICT (org_id, email) WHERE deleted_at IS NULL DO NOTHING`
-  // keeps the fixture idempotent across re-runs even after a soft-delete
-  // (a soft-deleted row stays out of the partial unique, so a re-INSERT
-  // would raise on the email — explicitly DELETE soft-deleted fixtures
-  // first so re-runs are clean).
+  //
+  // CRITICAL — Epic #363 GLO-004: `users.id` is DELIBERATELY distinct
+  // from `users.keycloak_id` here (and in production seeds). Code that
+  // filters a `users.id` FK by the JWT `sub` will silently return zero
+  // rows. The notifications routes regression test depends on this
+  // distinction surviving — never collapse the two columns back to the
+  // same UUID even if it makes a refactor easier locally.
+  //
+  // We DELETE by the legacy `id = keycloak_id` shape too so a workspace
+  // upgraded mid-suite (where a prior `ensureTestTenants` already wrote
+  // the conflated rows) is reset cleanly.
   await db.execute(sql`
     DELETE FROM users
-    WHERE id IN (${USER_A}, ${USER_B})
+    WHERE id IN (${USER_A_ROW_ID}, ${USER_B_ROW_ID}, ${USER_A}, ${USER_B})
        OR (org_id IN (${ORG_A}, ${ORG_B}) AND email IN ('user-a@example.org', 'user-b@example.org'))
   `);
   await db.execute(sql`
     INSERT INTO users (id, org_id, keycloak_id, email, first_name, last_name, role)
     VALUES
-      (${USER_A}, ${ORG_A}, ${USER_A}, 'user-a@example.org', 'Test', 'UserA', 'org_admin'),
-      (${USER_B}, ${ORG_B}, ${USER_B}, 'user-b@example.org', 'Test', 'UserB', 'org_admin')
+      (${USER_A_ROW_ID}, ${ORG_A}, ${USER_A}, 'user-a@example.org', 'Test', 'UserA', 'org_admin'),
+      (${USER_B_ROW_ID}, ${ORG_B}, ${USER_B}, 'user-b@example.org', 'Test', 'UserB', 'org_admin')
   `);
 }
 

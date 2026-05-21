@@ -267,43 +267,59 @@ export async function isUserBlocklisted(keycloakId: string | undefined): Promise
 }
 
 /**
- * Look up the active-row cache. Returns:
- *   - `"active"` — a `users` row exists for `(keycloak_id, org_id)` with `deleted_at IS NULL`
- *   - `"missing"` — no active row (cached negative)
- *   - `null` — not in cache; caller should query Postgres
+ * Look up the active-row cache. Returns either:
+ *   - `{ active: true, userRowId }` — a `users` row exists for
+ *     `(keycloak_id, org_id)` with `deleted_at IS NULL`; row UUID cached
+ *     so call sites that need `users.id` (e.g. notifications routes
+ *     filtering against `notifications.user_id`) don't re-query.
+ *   - `"missing"` — no active row (cached negative).
+ *   - `null` — not in cache; caller should query Postgres.
  *
  * The cache is intentionally short-TTL so a soft-delete propagates without
  * needing a fanout invalidation; for zero-second propagation use the
  * `blocklistUser` path which closes the door immediately.
+ *
+ * Cache value encoding:
+ *   - `"0"` ⇒ missing (negative cache, legacy compat)
+ *   - any other non-empty string ⇒ `users.id` row UUID (positive cache)
+ *
+ * The old `"1"` positive value (pre-Epic-#363 GLO-004 fix) is treated as
+ * a cache miss so an in-flight rolling deploy on top of a stale Redis
+ * doesn't hand callers a `userRowId` of `"1"`.
  */
 export async function getActiveUserCache(
   keycloakId: string,
   orgId: string,
-): Promise<"active" | "missing" | null> {
+): Promise<{ active: true; userRowId: string } | "missing" | null> {
   try {
     const hit = await redis.get(activeUserCacheKey(keycloakId, orgId));
-    if (hit === "1") return "active";
+    if (hit === null) return null;
     if (hit === "0") return "missing";
-    return null;
+    // Reject the pre-fix `"1"` positive value and any other shape that
+    // isn't a UUID — a "1" handed back as `userRowId` would silently
+    // re-introduce the bug on tenant routes filtering by `users.id`.
+    if (hit === "1" || !UUID_RE.test(hit)) return null;
+    return { active: true, userRowId: hit };
   } catch (err) {
     logger.error({ err, keycloakId, orgId }, "active-user cache read failed");
     return null;
   }
 }
 
-/** Write the cache with a short TTL after a successful (or negative) DB lookup. */
+/**
+ * Write the cache with a short TTL after a successful (or negative) DB
+ * lookup. `userRowId` is the `users.id` row UUID when active, omitted
+ * for the negative case.
+ */
 export async function setActiveUserCache(
   keycloakId: string,
   orgId: string,
-  state: "active" | "missing",
+  result: { active: true; userRowId: string } | { active: false },
   ttlSeconds = ACTIVE_USER_CACHE_TTL_SECONDS,
 ): Promise<void> {
   try {
-    await redis.setex(
-      activeUserCacheKey(keycloakId, orgId),
-      ttlSeconds,
-      state === "active" ? "1" : "0",
-    );
+    const value = result.active ? result.userRowId : "0";
+    await redis.setex(activeUserCacheKey(keycloakId, orgId), ttlSeconds, value);
   } catch (err) {
     logger.error({ err, keycloakId, orgId }, "active-user cache write failed");
   }

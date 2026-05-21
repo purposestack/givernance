@@ -11,6 +11,16 @@
  * `user_id = currentUserId` so a tenant member can never read another
  * member's notifications even within the same tenant.
  *
+ * Identifier discipline: `notifications.user_id` and
+ * `notification_preferences.user_id` are FK'd to `users.id` (row UUID),
+ * NOT `users.keycloak_id`. Routes must pass `request.auth.userRowId`
+ * (the resolved `users.id`) to the service — passing
+ * `request.auth.userId` (= Keycloak `sub`) silently returns zero rows
+ * for any real user since `users.id != keycloak_id` in production seeds.
+ * A null `userRowId` means the caller has no `users` row (super-admin,
+ * or DB blip in the active-row resolver) and the panel is not
+ * applicable: respond 401 rather than leaking that distinction.
+ *
  * Wire format: `{ data: ... }` envelope (consistent with every other
  * Givernance module). RFC 9457 problem+json on every error path.
  */
@@ -113,8 +123,8 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
-      const userId = request.auth?.userId;
-      if (!orgId || !userId) {
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
       const query = request.query as {
@@ -123,7 +133,7 @@ export async function notificationRoutes(app: FastifyInstance) {
         type?: NotificationType;
         onlyUnread?: boolean;
       };
-      const result = await listNotifications(orgId, userId, query);
+      const result = await listNotifications(orgId, userRowId, query);
       return {
         data: result.data.map(serializeNotification),
         nextCursor: result.nextCursor,
@@ -142,11 +152,11 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
-      const userId = request.auth?.userId;
-      if (!orgId || !userId) {
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
-      const unread = await getUnreadCount(orgId, userId);
+      const unread = await getUnreadCount(orgId, userRowId);
       return { data: { unread } };
     },
   );
@@ -166,12 +176,12 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
-      const userId = request.auth?.userId;
-      if (!orgId || !userId) {
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
       const { id } = request.params as { id: string };
-      const updated = await markRead(orgId, userId, id);
+      const updated = await markRead(orgId, userRowId, id);
       if (!updated) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Notification not found"));
       }
@@ -193,11 +203,11 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
-      const userId = request.auth?.userId;
-      if (!orgId || !userId) {
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
-      const marked = await markAllRead(orgId, userId);
+      const marked = await markAllRead(orgId, userRowId);
       return { data: { marked } };
     },
   );
@@ -217,12 +227,12 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
-      const userId = request.auth?.userId;
-      if (!orgId || !userId) {
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
       const { id } = request.params as { id: string };
-      const deleted = await softDeleteNotification(orgId, userId, id);
+      const deleted = await softDeleteNotification(orgId, userRowId, id);
       if (!deleted) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Notification not found"));
       }
@@ -250,7 +260,8 @@ export async function notificationRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       const userId = request.auth?.userId;
-      if (!orgId || !userId) {
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userId || !userRowId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
 
@@ -260,11 +271,17 @@ export async function notificationRoutes(app: FastifyInstance) {
       // `notifications.stream.opened` before hijack so SIEM has the
       // signal even if the stream is short-lived. Mirrors the
       // PATCH/DELETE shape the existing audit plugin records.
+      //
+      // Audit attribution keys on the Keycloak `sub` (matches the
+      // `audit_logs.user_id` column elsewhere in the codebase); the row
+      // id we later hand to the streaming service is logged separately
+      // so a SIEM correlator can join the two without ambiguity.
       request.log.info(
         {
           event: "audit.notifications.stream.opened",
           orgId,
           userId,
+          userRowId,
           impersonationSessionId: request.auth?.impersonation?.sessionId,
         },
         "SSE stream opened",
@@ -326,7 +343,7 @@ export async function notificationRoutes(app: FastifyInstance) {
             ? new Date(lastEventId)
             : undefined;
 
-        const stream = streamNotifications(orgId, userId, {
+        const stream = streamNotifications(orgId, userRowId, {
           signal: controller.signal,
           intervalMs: 5_000,
           since: Number.isNaN(since?.getTime() ?? NaN) ? undefined : since,
@@ -381,11 +398,11 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
-      const userId = request.auth?.userId;
-      if (!orgId || !userId) {
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
-      return listPreferences(orgId, userId);
+      return listPreferences(orgId, userRowId);
     },
   );
 
@@ -405,13 +422,13 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId;
-      const userId = request.auth?.userId;
-      if (!orgId || !userId) {
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
       const { type } = request.params as { type: NotificationType };
       const body = request.body as { inApp: boolean; emailDigest: boolean };
-      const updated = await updatePreference(orgId, userId, type, body);
+      const updated = await updatePreference(orgId, userRowId, type, body);
       if (!updated) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Unknown notification type"));
       }
