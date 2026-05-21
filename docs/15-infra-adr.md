@@ -30,3 +30,6 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-026: Postgres 17 Cutover and Scaleway-Anchored Versioning Policy](./adrs/adr-026-postgres-17-cutover-and-scaleway-anchored-versioning.md)
 - [ADR-027: Swiss QR-bill Generation — `swissqrbill` v4 + Per-Letter QRR/SCOR + Separate-Sheet A4 Layout](./adrs/adr-027-swiss-qr-bill.md)
 - [ADR-028: camt.053 Ingestion — Manual Upload + XSD Validation + Idempotent Per-Entry Reconciliation](./adrs/adr-028-camt053-ingestion.md)
+- [ADR-029: Keycloak Session Revocation — back-channel `sid` blocklist, 5-min access tokens, silent refresh](./adrs/adr-029-keycloak-session-revocation.md)
+- [ADR-030: Public Donation Page Style Archetypes — hybrid shell + slot components](./adrs/adr-030-public-page-style-archetypes.md)
+- [ADR-031: Multi-Currency Strategy — Currency Layers, Ledger Design, FX Rate Policy](./adrs/adr-031-multi-currency-strategy.md)
