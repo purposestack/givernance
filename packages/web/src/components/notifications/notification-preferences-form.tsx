@@ -21,7 +21,7 @@
 
 import { NOTIFICATION_TYPE_REGISTRY, type NotificationType } from "@givernance/shared/constants";
 import { useTranslations } from "next-intl";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { createClientApiClient } from "@/lib/api/client-browser";
 import {
@@ -82,23 +82,37 @@ export function NotificationPreferencesForm({ initial }: NotificationPreferences
     }),
   );
 
+  // Ref-backed mirror of `rows` so the `toggle` handler can read the
+  // latest committed state without re-creating the callback on every
+  // render. Reading from a functional `setRows` updater is NOT a safe
+  // way to snapshot pre-click state — React 18 only invokes the updater
+  // eagerly when the fiber's update queue is empty; with any other
+  // update pending (a sibling row's PATCH response, the panel's polling
+  // hook, a strict-mode double-invoke), the updater is deferred to the
+  // next render and any closure variable mutated inside it stays at
+  // its initial value through the synchronous tail of the handler.
+  // The prior implementation relied on that pattern, which silently
+  // dropped the PATCH and left the row stuck on `saving=true` (grey).
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+
   const toggle = useCallback(
     async (type: NotificationType, field: "inApp" | "emailDigest", next: boolean) => {
-      // Snapshot the row state INSIDE the functional setter so two
-      // rapid toggles don't roll back to a stale value (Frontend M4).
-      // The functional setter runs against the latest committed state
-      // — capturing `previous` via `rows.find` from closure would read
-      // pre-first-click state on the second double-click.
-      let previous: RowState | null = null;
+      // Snapshot the row from the ref BEFORE queuing the optimistic
+      // update — guaranteed-synchronous read, independent of React's
+      // batching. The `disabled` gate on the checkbox prevents a second
+      // toggle on the same row while saving, so this snapshot is always
+      // the "before-click" state for the row being interacted with.
+      const previousRow = rowsRef.current.find((row) => row.type === type);
+      if (!previousRow) return;
+
       setRows((current) =>
-        current.map((row) => {
-          if (row.type !== type) return row;
-          previous = row;
-          return { ...row, [field]: next, isDefault: false, saving: true, error: null };
-        }),
+        current.map((row) =>
+          row.type === type
+            ? { ...row, [field]: next, isDefault: false, saving: true, error: null }
+            : row,
+        ),
       );
-      if (!previous) return;
-      const previousRow: RowState = previous;
 
       const payload = {
         inApp: field === "inApp" ? next : previousRow.inApp,
