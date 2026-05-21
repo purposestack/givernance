@@ -44,6 +44,7 @@ import {
 import { notificationPreferences, notifications, tenants, users } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { and, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
 import { defaultEmailSender, type EmailSender } from "../lib/email.js";
 import { isFlagEnabled } from "../lib/flags.js";
@@ -223,20 +224,35 @@ function safeRelativePath(linkUrl: string | null): string | null {
   return linkUrl;
 }
 
+/**
+ * Resolve a stored relative path (`/donations/<uuid>`) into the
+ * absolute URL an email client can dereference. Stored relative paths
+ * are correct for the panel (the browser already knows the origin) but
+ * an email client renders the href against its OWN base — Mailpit's
+ * `http://localhost:8025` in dev — and ends up on a 404. `APP_URL`
+ * carries the tenant-facing origin (`http://localhost:3000` for dev,
+ * `https://app.givernance.com` for SaaS prod).
+ */
+function absoluteUrl(relativePath: string): string {
+  const base = env.APP_URL.replace(/\/+$/, "");
+  return `${base}${relativePath}`;
+}
+
 function renderDigestText(rows: DigestRow[]): string {
   const lines = rows.map((row) => {
     const title = humanTitleFor(row.type);
     const when = row.createdAt.toISOString();
     const safeLink = safeRelativePath(row.linkUrl);
-    const link = safeLink ? ` (${safeLink})` : "";
+    const link = safeLink ? ` (${absoluteUrl(safeLink)})` : "";
     return `• ${title} — ${when}${link}`;
   });
+  const preferencesUrl = absoluteUrl("/profile/notifications");
   return [
     "Here is your daily digest of in-app notifications from Givernance.",
     "",
     ...lines,
     "",
-    "Manage your preferences at /profile/notifications.",
+    `Manage your preferences at ${preferencesUrl}.`,
   ].join("\n");
 }
 
@@ -246,14 +262,15 @@ function renderDigestHtml(rows: DigestRow[]): string {
       const title = escapeHtml(humanTitleFor(row.type));
       const when = escapeHtml(row.createdAt.toISOString());
       const safeLink = safeRelativePath(row.linkUrl);
-      const link = safeLink ? `<a href="${escapeAttribute(safeLink)}">View</a>` : "";
+      const link = safeLink ? `<a href="${escapeAttribute(absoluteUrl(safeLink))}">View</a>` : "";
       return `<li><strong>${title}</strong> — ${when} ${link}</li>`;
     })
     .join("");
+  const preferencesUrl = escapeAttribute(absoluteUrl("/profile/notifications"));
   return `<!doctype html><html><body>
   <p>Here is your daily digest of in-app notifications from Givernance.</p>
   <ul>${items}</ul>
-  <p>Manage your preferences at <a href="/profile/notifications">/profile/notifications</a>.</p>
+  <p>Manage your preferences at <a href="${preferencesUrl}">${preferencesUrl}</a>.</p>
   </body></html>`;
 }
 

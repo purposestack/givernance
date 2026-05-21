@@ -151,6 +151,7 @@ erDiagram
     varchar(128) body_key
     jsonb params
     text link_url
+    boolean panel_visible
     timestamptz read_at
     timestamptz archived_at
     timestamptz deleted_at
@@ -173,13 +174,27 @@ erDiagram
 
 - **`type` is `varchar(64)`** with a CHECK constraint on shape (`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`), NOT a Postgres enum. Adding a new type is a code change + producer wiring, never a migration.
 - **`(title_key, body_key, params)` instead of frozen `text`** — i18n resolution at READ time. A French recipient sees French regardless of the worker's session locale.
-- **`link_url` is a relative path** (CHECK `link_url LIKE '/%'`). Frontend prepends `APP_URL`. Absolute URLs would break for tenants on custom subdomains (Epic #279 follow-up).
+- **`link_url` is a relative path** (CHECK `link_url LIKE '/%'`). Frontend prepends `APP_URL`. Absolute URLs would break for tenants on custom subdomains (Epic #279 follow-up). The **email digest renderer** prepends `APP_URL` itself before serialising the href: an email client renders against its own base URL (in dev, Mailpit at `http://localhost:8025`), so a stored relative path would deliver a broken link. Resolution happens in `notifications-email-digest.ts → absoluteUrl()`.
 - **`deleted_at` (soft-delete)** per `feedback_soft_delete_universal` — a panel "delete" sets the column; the row stays for audit + GDPR DSR replay.
 - **Partial index `(user_id) WHERE read_at IS NULL AND deleted_at IS NULL`** keeps the bell badge query O(log N) on a noisy tenant.
 
 ### Recipient resolution
 
-The worker's `planFanout(event)` resolves recipients per the table in [§ 1](#1-end-to-end-user-flow). For "specific user" rules (postal export, bulk email), the payload carries `requestedBy` — if absent (older events, super-admin actions), the rule falls back to "all org_admins". A user with `notification_preferences.in_app = false` for the type is silently dropped at write time so the worker doesn't pile rows onto an opted-out user.
+The worker's `planFanout(event)` resolves recipients per the table in [§ 1](#1-end-to-end-user-flow). For "specific user" rules (postal export, bulk email), the payload carries `requestedBy` — if absent (older events, super-admin actions), the rule falls back to "all org_admins". The fanout writes a `notifications` row when EITHER `in_app` OR `email_digest` is enabled for the recipient's (user, type) pair; the row's `panel_visible` column records the panel-side decision at write time so the in-app surface honours `in_app=false` while the digest worker can still pick the row up. Users who opted out of BOTH channels are silently dropped before any row is written.
+
+### Channel decoupling (`panel_visible`, migration 0056)
+
+`in_app` and `email_digest` are two independent delivery channels. The original Epic #363 contract coupled them — `in_app=false` short-circuited the row insert, leaving the digest worker with nothing to read. Migration 0056 introduces `notifications.panel_visible BOOLEAN NOT NULL DEFAULT TRUE`, set at fanout time to the recipient's effective `in_app` preference:
+
+| Effective `in_app` | Effective `email_digest` | Row written? | `panel_visible` | Panel sees it? | Digest sees it? |
+|---|---|---|---|---|---|
+| true | any | yes | `true` | yes | yes (if `email_digest=true`) |
+| false | true | yes | `false` | no | yes |
+| false | false | no | n/a | n/a | n/a |
+
+The decision is **frozen** at write time — toggling `in_app=true` later does NOT retroactively reveal historical digest-only rows. This preserves the "decision captured at write time" semantics from the original design without locking out the email channel.
+
+Reads that target the panel apply `panel_visible = true` as an extra predicate: `listNotifications`, `getUnreadCount`, `streamNotifications` (SSE), and the mutating endpoints (`markRead`, `markAllRead`, `softDeleteNotification`) all filter so a digest-only row is invisible to the bell, can't be marked-read from the panel, and isn't dragged into "mark all read". The digest worker is unchanged — it already filters by `notification_preferences.email_digest = true` and now finds the rows it needs.
 
 ### Identifier discipline (`users.id` vs `keycloak_id`)
 
