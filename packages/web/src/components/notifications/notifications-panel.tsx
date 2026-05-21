@@ -32,6 +32,8 @@ import {
   ExternalLink,
   FileText,
   Image,
+  Link2,
+  Link2Off,
   type LucideIcon,
   Mail,
   UserPlus,
@@ -214,20 +216,29 @@ export function NotificationsPanel({
                 {unread > 99 ? "99+" : unread}
               </span>
             ) : null}
+            {/* SSE live-connection status. Originally a coloured dot,
+                but a dot next to the unread badge reads as "you have an
+                unread notification" — a chain-link icon makes the
+                meaning ("connection") legible without competing with
+                the badge semantics. */}
             {liveConnected ? (
               <span
                 role="status"
                 aria-label={t("liveOn")}
                 title={t("liveOn")}
-                className="inline-flex h-2 w-2 rounded-full bg-success"
-              />
+                className="inline-flex"
+              >
+                <Link2 size={14} aria-hidden="true" className="text-success" />
+              </span>
             ) : (
               <span
                 role="status"
                 aria-label={t("liveOff")}
                 title={t("liveOff")}
-                className="inline-flex h-2 w-2 rounded-full bg-text-muted"
-              />
+                className="inline-flex"
+              >
+                <Link2Off size={14} aria-hidden="true" className="text-error" />
+              </span>
             )}
           </div>
           <div className="flex items-center gap-1">
