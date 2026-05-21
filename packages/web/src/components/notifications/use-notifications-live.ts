@@ -212,9 +212,16 @@ export function useNotificationsLive(
             if (current.some((row) => row.id === payload.id)) return current;
             return [payload, ...current];
           });
-          if (!payload.readAt) {
-            setUnread((c) => c + 1);
-          }
+          // Re-fetch the authoritative unread count instead of `c => c + 1`.
+          // The optimistic increment drifts upward whenever the same
+          // payload reaches the handler more than once (EventSource
+          // auto-reconnect after a blip with the server's polling-loop
+          // overlap; React 18 strict-mode double-mount; Fast Refresh
+          // re-creating the source; the polling fallback firing in
+          // parallel after an SSE recovery). The dedupe on `rows` masked
+          // the bug — the badge climbed without any new row showing up.
+          // One extra HTTP GET per delivery is fine at panel-level cadence.
+          void fetchUnreadCount();
         } catch {
           // Malformed payload — silently ignore. Real errors surface
           // via the `error` handler below.
