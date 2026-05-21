@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsx watch --env-file=../../.env src/worker.ts",
+    "digest:trigger": "tsx --env-file=../../.env scripts/trigger-notification-digest.ts",
     "start": "node dist/worker.js",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
