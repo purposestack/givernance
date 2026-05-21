@@ -190,7 +190,12 @@ export async function dispatchBulkEmail(
       metadata,
       payload: {
         bulkEmailJobId: job.id,
-        requestedBy: userId,
+        // `requestedBy` carries the resolved `users.id` row UUID (NOT
+        // the Keycloak `sub`). The notification fanout (Epic #363)
+        // targets the single requester via `eq(users.id, requestedBy)`
+        // and would silently miss every real user otherwise. Audit
+        // attribution is captured separately from `request.auth.userId`.
+        requestedBy: requestedByInternal,
       },
     });
 
@@ -521,7 +526,10 @@ export async function resumeBulkEmailJob(
       metadata,
       payload: {
         bulkEmailJobId: resumed.id,
-        requestedBy: userId,
+        // See same note above on `requestedBy`: this is the resolved
+        // `users.id` row UUID so the notification fanout targets the
+        // requester correctly.
+        requestedBy: requestedByInternal,
       },
     });
 

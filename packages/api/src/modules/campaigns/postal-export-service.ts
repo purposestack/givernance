@@ -404,9 +404,14 @@ export async function startPostalExport(
         campaignId,
         mode,
         totalCount,
-        // Outbox payload keeps the JWT subject (= keycloak id) — it's an
-        // opaque audit trail value, not an FK.
-        requestedBy: userId,
+        // `requestedBy` here carries the resolved `users.id` row UUID —
+        // the notification fanout (Epic #363) targets the single
+        // requester via `eq(users.id, payload.requestedBy)`, so passing
+        // the Keycloak `sub` instead would silently fan out to zero
+        // recipients in any real seed where `users.id != keycloak_id`.
+        // Audit attribution (the JWT subject) is recorded separately
+        // by the audit plugin from `request.auth.userId`.
+        requestedBy: requestedByInternal,
       },
     });
 

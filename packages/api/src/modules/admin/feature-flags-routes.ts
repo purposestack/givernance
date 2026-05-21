@@ -622,7 +622,12 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const orgId = request.auth?.orgId;
       const userId = request.auth?.userId;
-      if (!orgId || !userId) {
+      // `tenant_flag_overrides.set_by` is FK'd to `users.id` (row UUID),
+      // NOT `users.keycloak_id`. Passing the JWT `sub` here raises a FK
+      // violation against any real seed where the two columns differ
+      // (Epic #363 GLO-004 follow-up).
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userId || !userRowId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
       const { key } = request.params as { key: string };
@@ -641,7 +646,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         flagKey: key,
         value: body.value,
         reason: body.reason ?? null,
-        setBy: userId,
+        setBy: userRowId,
       });
       if (!result) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Feature flag not found"));

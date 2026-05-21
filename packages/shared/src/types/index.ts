@@ -45,10 +45,26 @@ export interface ImpersonationContext {
 
 /** Authenticated user context extracted from JWT */
 export interface AuthContext {
+  /**
+   * Keycloak `sub` claim — the immutable upstream identifier. Use this
+   * for blocklist checks, audit attribution, and any FK against
+   * `users.keycloak_id`. NEVER use it as a `users.id` (row UUID)
+   * comparand: schema FKs that target `users.id` (`notifications.user_id`,
+   * `notification_preferences.user_id`, etc.) must be filtered against
+   * `userRowId` below.
+   */
   userId: string;
   orgId: string;
   roles: string[];
   email: string;
+  /**
+   * `users.id` row UUID resolved at auth time from `(keycloak_id, org_id)`.
+   * Null when the principal has no `users` row by design — i.e.
+   * `super_admin` (lives in `platform_admins`) or a non-impersonated
+   * platform-admin call. Routes filtering against a `users.id` FK MUST
+   * use this and reject with 401/404 when null.
+   */
+  userRowId: string | null;
   /** Application-level role from JWT `role` claim */
   role?: UserRole;
   /** RFC 8693 §4.1 actor claim — present only on delegation/impersonation tokens */

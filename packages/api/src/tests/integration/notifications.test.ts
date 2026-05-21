@@ -31,8 +31,8 @@ import {
   ORG_B,
   signToken,
   signTokenB,
-  USER_A,
-  USER_B,
+  USER_A_ROW_ID,
+  USER_B_ROW_ID,
 } from "../helpers/auth.js";
 
 const FLAG_KEY = FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER;
@@ -200,8 +200,8 @@ describe("Notifications — list + mark + delete (flag on)", () => {
   });
 
   it("GET /v1/notifications returns caller's own rows", async () => {
-    const id1 = await seedNotification({ orgId: ORG_A, userId: USER_A });
-    const id2 = await seedNotification({ orgId: ORG_A, userId: USER_A });
+    const id1 = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    const id2 = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
 
     const token = signToken(app);
     const res = await app.inject({
@@ -218,9 +218,9 @@ describe("Notifications — list + mark + delete (flag on)", () => {
   });
 
   it("GET /v1/notifications/unread-count returns the right count", async () => {
-    await seedNotification({ orgId: ORG_A, userId: USER_A }); // unread
-    await seedNotification({ orgId: ORG_A, userId: USER_A, readAt: new Date() }); // read
-    await seedNotification({ orgId: ORG_A, userId: USER_A, deletedAt: new Date() }); // deleted
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID }); // unread
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID, readAt: new Date() }); // read
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID, deletedAt: new Date() }); // deleted
 
     const token = signToken(app);
     const res = await app.inject({
@@ -234,7 +234,7 @@ describe("Notifications — list + mark + delete (flag on)", () => {
   });
 
   it("PATCH /v1/notifications/:id/read marks one row read and is idempotent", async () => {
-    const id = await seedNotification({ orgId: ORG_A, userId: USER_A });
+    const id = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
     const token = signToken(app);
 
     const first = await app.inject({
@@ -269,9 +269,9 @@ describe("Notifications — list + mark + delete (flag on)", () => {
   });
 
   it("POST /v1/notifications/read-all marks every unread row read", async () => {
-    await seedNotification({ orgId: ORG_A, userId: USER_A });
-    await seedNotification({ orgId: ORG_A, userId: USER_A });
-    await seedNotification({ orgId: ORG_A, userId: USER_A });
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
 
     const token = signToken(app);
     const res = await app.inject({
@@ -292,7 +292,7 @@ describe("Notifications — list + mark + delete (flag on)", () => {
   });
 
   it("DELETE /v1/notifications/:id soft-deletes (deleted_at set, row stays)", async () => {
-    const id = await seedNotification({ orgId: ORG_A, userId: USER_A });
+    const id = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
     const token = signToken(app);
 
     const res = await app.inject({
@@ -323,7 +323,7 @@ describe("Notifications — list + mark + delete (flag on)", () => {
   it("PATCH /:id/read on a soft-deleted row returns 404", async () => {
     const id = await seedNotification({
       orgId: ORG_A,
-      userId: USER_A,
+      userId: USER_A_ROW_ID,
       deletedAt: new Date(),
     });
     const token = signToken(app);
@@ -338,7 +338,7 @@ describe("Notifications — list + mark + delete (flag on)", () => {
   it("DELETE /:id on an already-soft-deleted row returns 404", async () => {
     const id = await seedNotification({
       orgId: ORG_A,
-      userId: USER_A,
+      userId: USER_A_ROW_ID,
       deletedAt: new Date(),
     });
     const token = signToken(app);
@@ -359,7 +359,7 @@ describe("Notifications — list + mark + delete (flag on)", () => {
     for (let i = 0; i < 21; i++) {
       await seedNotification({
         orgId: ORG_A,
-        userId: USER_A,
+        userId: USER_A_ROW_ID,
         createdAt: new Date(baseTime - i * 1000),
       });
     }
@@ -419,7 +419,7 @@ describe("Notifications — isolation (RLS + recipient)", () => {
   });
 
   it("Tenant A user can NEVER see Tenant B notifications via list", async () => {
-    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B });
+    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B_ROW_ID });
 
     const tokenA = signToken(app);
     const res = await app.inject({
@@ -433,7 +433,7 @@ describe("Notifications — isolation (RLS + recipient)", () => {
   });
 
   it("Tenant A user cannot mark-read a Tenant B row (404, not 200)", async () => {
-    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B });
+    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B_ROW_ID });
 
     const tokenA = signToken(app);
     const res = await app.inject({
@@ -445,7 +445,7 @@ describe("Notifications — isolation (RLS + recipient)", () => {
   });
 
   it("Tenant B reads their own rows under the same flag (positive bound)", async () => {
-    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B });
+    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B_ROW_ID });
 
     const tokenB = signTokenB(app);
     const res = await app.inject({
@@ -461,7 +461,7 @@ describe("Notifications — isolation (RLS + recipient)", () => {
   // QA H3 — cross-tenant DELETE must be a 404, not a silent 200 over
   // another tenant's row.
   it("Tenant A cannot DELETE a Tenant B row (404)", async () => {
-    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B });
+    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B_ROW_ID });
     const tokenA = signToken(app);
     const res = await app.inject({
       method: "DELETE",
@@ -473,7 +473,7 @@ describe("Notifications — isolation (RLS + recipient)", () => {
 
   // QA H3 — cross-tenant unread-count must not leak the integer.
   it("Tenant A unread-count never includes Tenant B unread rows", async () => {
-    await seedNotification({ orgId: ORG_B, userId: USER_B }); // B has 1 unread
+    await seedNotification({ orgId: ORG_B, userId: USER_B_ROW_ID }); // B has 1 unread
     const tokenA = signToken(app);
     const res = await app.inject({
       method: "GET",
@@ -486,7 +486,7 @@ describe("Notifications — isolation (RLS + recipient)", () => {
 
   // QA H3 — cross-tenant read-all must not touch the other tenant.
   it("Tenant A read-all does NOT mark Tenant B rows as read", async () => {
-    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B });
+    const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B_ROW_ID });
     const tokenA = signToken(app);
     await app.inject({
       method: "POST",

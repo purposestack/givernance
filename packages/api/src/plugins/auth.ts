@@ -215,13 +215,23 @@ async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult>
   // members must still resolve an active `users` row for `(sub, org_id)`
   // — this closes the soft-delete + tenant-removal window where the JWT
   // is still cryptographically valid but the subject is gone.
+  //
+  // The resolver also surfaces the `users.id` row UUID (`userRowId`) so
+  // routes filtering against schema FKs that target `users.id`
+  // (notifications, notification_preferences, …) don't have to re-query.
+  // Epic #363 GLO-004 follow-up: comparing `request.auth.userId` (=
+  // Keycloak `sub`) against a `users.id` column silently returns zero
+  // rows for any real user where `users.id != keycloak_id`.
+  let userRowId: string | null = null;
   if (!isSuperAdmin) {
-    const isActive = await resolveActiveMembership(decoded.sub, decoded.org_id);
-    if (!isActive) return "no_active_membership";
+    const membership = await resolveActiveMembership(decoded.sub, decoded.org_id);
+    if (!membership.active) return "no_active_membership";
+    userRowId = membership.userRowId;
   }
 
   request.auth = {
     userId: decoded.sub,
+    userRowId,
     orgId: decoded.org_id,
     roles: realmRoles,
     email: decoded.email,
@@ -292,8 +302,20 @@ async function applyImpersonationFromToken(
     return "impersonation_revoked";
   }
 
+  // Resolve the target's `users.id` row UUID so routes that filter on
+  // schema FKs into `users.id` (Epic #363 GLO-004: notifications,
+  // notification_preferences) see the correct row even under
+  // impersonation. The token's `sub` is the target's Keycloak `sub`, so
+  // the same resolver as the normal path applies — the target IS a
+  // tenant user and must have an active `users` row. A null row id is
+  // surfaced to the route as a 401/empty list (defence-in-depth; we
+  // expect the impersonation start flow to have already validated the
+  // target's row).
+  const membership = await resolveActiveMembership(decoded.sub, decoded.org_id);
+
   request.auth = {
     userId: decoded.sub,
+    userRowId: membership.userRowId,
     orgId: decoded.org_id,
     roles: decoded.realm_access.roles,
     email: decoded.email,
@@ -312,17 +334,35 @@ async function applyImpersonationFromToken(
 }
 
 /**
- * Resolve whether a `(sub, orgId)` pair maps to an active `users` row
- * (ADR-021 active-row check). Reads through the Redis cache first; on
- * a miss, queries Postgres and writes the result. Cache TTL is short
- * (~30 s) so soft-delete propagates without explicit invalidation —
- * callers that want zero-second propagation should also call
- * `invalidateActiveUserCache` from the session-service module.
+ * Discriminated active-membership result. `active: true` means the
+ * caller may proceed with the auth check; `userRowId` carries the
+ * `users.id` row UUID on a confirmed hit, or `null` when the resolver
+ * failed open on a DB blip (active-row check did NOT confirm a row but
+ * we don't 401 the world over a transient outage — the JWT signature +
+ * user blocklist are still hard gates). Routes that depend on a
+ * non-null row id (notifications, preferences) will 401 themselves when
+ * `userRowId` is null.
  */
-async function resolveActiveMembership(sub: string, orgId: string): Promise<boolean> {
+type ActiveMembership =
+  | { active: true; userRowId: string | null }
+  | { active: false; userRowId: null };
+
+/**
+ * Resolve `(sub, orgId)` against the active-row check (ADR-021). Reads
+ * through the Redis cache first; on a miss, queries Postgres and writes
+ * either the row id (positive) or the missing marker (negative). Cache
+ * TTL is short (~30 s) so soft-delete propagates without explicit
+ * invalidation — callers that want zero-second propagation should also
+ * call `invalidateActiveUserCache` from the session-service module.
+ *
+ * The returned row id powers `request.auth.userRowId` for routes that
+ * must filter against schema columns FK'd to `users.id` (Epic #363
+ * GLO-004: `notifications.user_id`, `notification_preferences.user_id`).
+ */
+async function resolveActiveMembership(sub: string, orgId: string): Promise<ActiveMembership> {
   const cached = await getActiveUserCache(sub, orgId);
-  if (cached === "active") return true;
-  if (cached === "missing") return false;
+  if (cached === "missing") return { active: false, userRowId: null };
+  if (cached !== null) return { active: true, userRowId: cached.userRowId };
 
   // Cache miss — query the source of truth. Filtered by tenant via
   // RLS through `withTenantContext`; the `eq(orgId)` predicate is
@@ -330,11 +370,11 @@ async function resolveActiveMembership(sub: string, orgId: string): Promise<bool
   //
   // We catch and swallow DB errors here: the auth plugin runs on every
   // authenticated request, and a DB blip during the active-row check
-  // would otherwise turn into a 500 cascade. Fail-OPEN to "active" on
-  // DB error so a transient outage doesn't lock everyone out — the
-  // user blocklist and the JWT signature are still hard gates. A
-  // structured error log gives ops visibility without breaking the
-  // hot path.
+  // would otherwise turn into a 500 cascade. Fail-OPEN to `active: true`
+  // (userRowId = null) so a transient outage doesn't lock everyone out
+  // — the user blocklist and the JWT signature are still hard gates. A
+  // structured error log gives ops visibility without breaking the hot
+  // path.
   try {
     const rows = await withTenantContext(orgId, async (tx) =>
       tx
@@ -343,15 +383,21 @@ async function resolveActiveMembership(sub: string, orgId: string): Promise<bool
         .where(and(eq(users.keycloakId, sub), eq(users.orgId, orgId), isNull(users.deletedAt)))
         .limit(1),
     );
-    const isActive = rows.length > 0;
-    await setActiveUserCache(sub, orgId, isActive ? "active" : "missing");
-    return isActive;
+    const userRowId = rows[0]?.id ?? null;
+    if (userRowId !== null) {
+      await setActiveUserCache(sub, orgId, { active: true, userRowId });
+      return { active: true, userRowId };
+    }
+    await setActiveUserCache(sub, orgId, { active: false });
+    return { active: false, userRowId: null };
   } catch (err) {
     // Module-scoped fallback log — the request-scoped pino logger isn't
-    // reachable from the auth-resolver helper. Failing open returns true
-    // so a transient DB blip doesn't lock everyone out.
+    // reachable from the auth-resolver helper. Failing open returns
+    // `active: true` so a transient DB blip doesn't lock everyone out;
+    // `userRowId` stays null so notification-style routes (which need a
+    // FK target) refuse to proceed.
     console.error({ err, sub, orgId }, "auth: active-row resolution failed — failing open");
-    return true;
+    return { active: true, userRowId: null };
   }
 }
 
