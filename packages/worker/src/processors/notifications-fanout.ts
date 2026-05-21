@@ -255,13 +255,17 @@ async function runFanoutPlan(input: FanoutInput, plan: FanoutPlanEntry[]): Promi
       const recipientUserIds = await resolveRecipients(tx, entry.recipients);
       if (recipientUserIds.length === 0) continue;
 
-      // Honour per-user preferences. Users with `in_app=false` for
-      // this type are silently dropped at write time so the worker
-      // doesn't pile rows onto a user who opted out of the channel.
-      const enabledRecipients = await filterByPreferences(tx, recipientUserIds, entry.type);
-      if (enabledRecipients.length === 0) continue;
+      // Honour per-user preferences across BOTH channels. A user is a
+      // recipient when EITHER `in_app` OR `email_digest` is enabled for
+      // the type — coupling the two at write time (the original Epic
+      // #363 contract) silently broke email-only opt-ins. The row's
+      // `panel_visible` column records the panel decision so the bell
+      // hides it while the digest worker can still pick it up.
+      // Migration 0056 captures the rationale.
+      const channels = await resolveChannels(tx, recipientUserIds, entry.type);
+      if (channels.length === 0) continue;
 
-      const rows: NewNotification[] = enabledRecipients.map((userId) => ({
+      const rows: NewNotification[] = channels.map(({ userId, inApp }) => ({
         orgId: input.tenantId,
         outboxEventId: input.outboxId,
         userId,
@@ -270,6 +274,7 @@ async function runFanoutPlan(input: FanoutInput, plan: FanoutPlanEntry[]): Promi
         bodyKey: entry.bodyKey,
         params: entry.params,
         linkUrl: entry.linkUrl,
+        panelVisible: inApp,
       }));
 
       // `ON CONFLICT DO NOTHING` — the natural unique key
@@ -305,12 +310,21 @@ async function resolveRecipients(
   return rows.map((r: { id: string }) => r.id);
 }
 
-async function filterByPreferences(
+interface ResolvedChannels {
+  userId: string;
+  /** Effective `in_app` decision — controls `panel_visible` on the row. */
+  inApp: boolean;
+  /** Effective `email_digest` decision — purely informational here; the
+   *  digest worker reads `notification_preferences` itself. */
+  emailDigest: boolean;
+}
+
+async function resolveChannels(
   // biome-ignore lint/suspicious/noExplicitAny: see above
   tx: any,
   userIds: string[],
   type: NotificationType,
-): Promise<string[]> {
+): Promise<ResolvedChannels[]> {
   if (userIds.length === 0) return [];
   // Pull preference rows for the (recipient set, type) pair only.
   // Earlier revisions scanned every preference row for the type
@@ -318,21 +332,33 @@ async function filterByPreferences(
   // scope mismatch. The new `inArray(userId, userIds)` clause hits
   // `notification_preferences_user_idx` directly.
   const rows = await tx
-    .select({ userId: notificationPreferences.userId, inApp: notificationPreferences.inApp })
+    .select({
+      userId: notificationPreferences.userId,
+      inApp: notificationPreferences.inApp,
+      emailDigest: notificationPreferences.emailDigest,
+    })
     .from(notificationPreferences)
     .where(
       and(eq(notificationPreferences.type, type), inArray(notificationPreferences.userId, userIds)),
     );
 
-  const defaultInApp = getNotificationDescriptor(type).defaultInApp;
-  const explicit = new Map<string, boolean>();
-  for (const row of rows as Array<{ userId: string; inApp: boolean }>) {
-    explicit.set(row.userId, row.inApp);
+  const descriptor = getNotificationDescriptor(type);
+  const defaultInApp = descriptor.defaultInApp;
+  const defaultEmailDigest = descriptor.defaultEmailDigest;
+  const explicit = new Map<string, { inApp: boolean; emailDigest: boolean }>();
+  for (const row of rows as Array<{ userId: string; inApp: boolean; emailDigest: boolean }>) {
+    explicit.set(row.userId, { inApp: row.inApp, emailDigest: row.emailDigest });
   }
-  return userIds.filter((id) => {
-    const v = explicit.get(id);
-    return v === undefined ? defaultInApp : v;
-  });
+  const resolved: ResolvedChannels[] = [];
+  for (const id of userIds) {
+    const explicitRow = explicit.get(id);
+    const inApp = explicitRow?.inApp ?? defaultInApp;
+    const emailDigest = explicitRow?.emailDigest ?? defaultEmailDigest;
+    // Skip users who opted out of BOTH channels — no row needed.
+    if (!inApp && !emailDigest) continue;
+    resolved.push({ userId: id, inApp, emailDigest });
+  }
+  return resolved;
 }
 
 function stringOrNull(value: unknown): string | null {

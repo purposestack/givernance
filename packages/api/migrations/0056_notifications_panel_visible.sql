@@ -1,0 +1,58 @@
+-- Migration: 0056_notifications_panel_visible (Epic #363 follow-up)
+--
+-- Decouples the `in_app` and `email_digest` notification channels.
+--
+-- Background: the original Epic #363 design (migration 0055 + the
+-- `filterByPreferences` helper in `notifications-fanout.ts`) dropped a
+-- recipient at WRITE time when their `notification_preferences.in_app`
+-- was false — no row was ever inserted into `notifications`. That made
+-- the per-row contract tidy ("if it's in the table, the user opted
+-- into the panel") but coupled the two channels: an operator who
+-- toggles `in_app=false` AND `email_digest=true` was expecting "no
+-- bell, weekly email" — instead they got nothing, because the digest
+-- worker reads from `notifications` and the row was never written.
+--
+-- This migration introduces a row-level flag that records the panel
+-- decision at WRITE time, so the two channels can be independent:
+--
+--   * Fanout writes the row when either `in_app` OR `email_digest` is
+--     enabled for the (user, type) pair.
+--   * `panel_visible` is set to the user's current `in_app` preference
+--     at the moment of write — frozen, NOT dynamic. Re-toggling
+--     `in_app=true` later does NOT retroactively reveal historical
+--     rows. This preserves the "decision is captured at write time"
+--     semantics the original design committed to.
+--   * The bell, panel, and unread-count queries add
+--     `panel_visible = true` to their WHERE clause.
+--   * The digest worker continues to read from `notifications` filtered
+--     by `email_digest = true` — no change to its query shape, but the
+--     row it depends on now actually exists.
+--
+-- Backfill: every existing row was inserted under the old contract,
+-- which means the writer already verified `in_app = true` for the
+-- recipient at that time. The `DEFAULT TRUE` therefore correctly
+-- preserves the historical "panel-visible" semantics for every row
+-- that survived to this migration.
+--
+-- Idempotent per `feedback_never_modify_applied_migrations` — column
+-- add is gated by `IF NOT EXISTS`.
+
+ALTER TABLE notifications
+  ADD COLUMN IF NOT EXISTS panel_visible BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- The two existing partial indexes are still load-bearing; the panel +
+-- unread queries add `panel_visible = true` as a residual predicate
+-- under the same index scan. We don't tighten the partial WHERE
+-- clauses to include `panel_visible = true` because:
+--
+--   1. The common case is `panel_visible = true` (the user opted IN
+--      for in-app on the type, which is the per-type registry default
+--      for every type shipped today). A residual filter discards a
+--      tiny fraction of heap tuples; the partial index already pre-
+--      filters the giant `deleted_at IS NULL` set.
+--   2. Tightening the partial would force a REINDEX CONCURRENTLY in
+--      prod — not necessary for the access patterns we care about.
+--
+-- If digest opt-out at scale eventually creates a meaningful set of
+-- `panel_visible = false` rows, a follow-up adds a `panel_visible =
+-- true` predicate to the partial indexes.

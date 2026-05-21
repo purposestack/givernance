@@ -77,6 +77,13 @@ async function seedNotification(opts: {
   type?: string;
   readAt?: Date | null;
   deletedAt?: Date | null;
+  /**
+   * Override `panel_visible` (migration 0056). Defaults to `true` to
+   * mirror the fanout's behaviour for users with `in_app` enabled.
+   * Set `false` to seed a row that exists only for the email digest —
+   * such a row must be invisible to the panel + bell.
+   */
+  panelVisible?: boolean;
   /** Override the `created_at` for cursor-pagination tests. */
   createdAt?: Date;
 }): Promise<string> {
@@ -87,16 +94,17 @@ async function seedNotification(opts: {
   const id = crypto.randomUUID();
   const outboxId = crypto.randomUUID();
   const createdAt = opts.createdAt ?? new Date();
+  const panelVisible = opts.panelVisible ?? true;
   await db.execute(sql`
     INSERT INTO notifications
-      (id, org_id, outbox_event_id, user_id, type, title_key, body_key, params, link_url, read_at, deleted_at, created_at)
+      (id, org_id, outbox_event_id, user_id, type, title_key, body_key, params, link_url, panel_visible, read_at, deleted_at, created_at)
     VALUES
       (${id}, ${opts.orgId}, ${outboxId}, ${opts.userId}, ${opts.type ?? "donation.received"},
        'notifications.types.donation_received.title',
        'notifications.types.donation_received.body',
        '{"donationId":"00000000-0000-0000-0000-000000000aaa"}'::jsonb,
        '/donations/00000000-0000-0000-0000-000000000aaa',
-       ${opts.readAt ?? null}, ${opts.deletedAt ?? null}, ${createdAt})
+       ${panelVisible}, ${opts.readAt ?? null}, ${opts.deletedAt ?? null}, ${createdAt})
   `);
   return id;
 }
@@ -551,6 +559,108 @@ describe("Notifications — isolation (RLS + recipient)", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json<{ data: { unread: number } }>().data.unread).toBe(0);
+  });
+});
+
+// ─── 3.5 Channel decoupling (migration 0056) ──────────────────────────
+//
+// Regression guard for the Epic #363 follow-up: a user who opted OUT of
+// in-app but IN to email_digest still gets a `notifications` row at
+// fanout time (so the digest worker has something to read), but the
+// panel + bell + SSE must hide it. `panel_visible = false` is the row-
+// level flag that carries the write-time decision.
+
+describe("Notifications — panel_visible (digest-only rows)", () => {
+  beforeEach(async () => {
+    await setFlag(true);
+  });
+
+  it("GET /v1/notifications excludes panel_visible = false rows", async () => {
+    const visible = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    const digestOnly = await seedNotification({
+      orgId: ORG_A,
+      userId: USER_A_ROW_ID,
+      panelVisible: false,
+    });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/notifications",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: Array<{ id: string }> }>();
+    const ids = body.data.map((r) => r.id);
+    expect(ids).toContain(visible);
+    expect(ids).not.toContain(digestOnly);
+  });
+
+  it("GET /v1/notifications/unread-count ignores panel_visible = false rows", async () => {
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID, panelVisible: false });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/notifications/unread-count",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { unread: number } }>().data.unread).toBe(1);
+  });
+
+  it("PATCH /v1/notifications/:id/read on a panel_visible = false row returns 404", async () => {
+    const digestOnly = await seedNotification({
+      orgId: ORG_A,
+      userId: USER_A_ROW_ID,
+      panelVisible: false,
+    });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/notifications/${digestOnly}/read`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("DELETE /v1/notifications/:id on a panel_visible = false row returns 404", async () => {
+    const digestOnly = await seedNotification({
+      orgId: ORG_A,
+      userId: USER_A_ROW_ID,
+      panelVisible: false,
+    });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/notifications/${digestOnly}`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("POST /v1/notifications/read-all leaves panel_visible = false rows untouched", async () => {
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    const digestOnly = await seedNotification({
+      orgId: ORG_A,
+      userId: USER_A_ROW_ID,
+      panelVisible: false,
+    });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/read-all",
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { marked: number } }>().data.marked).toBe(1);
+
+    // The digest-only row must still be unread for the digest worker
+    // to pick it up tomorrow.
+    const [row] = await db
+      .select({ readAt: notifications.readAt })
+      .from(notifications)
+      .where(eq(notifications.id, digestOnly));
+    expect(row?.readAt).toBeNull();
   });
 });
 

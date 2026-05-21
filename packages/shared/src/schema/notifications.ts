@@ -99,6 +99,19 @@ export const notifications = pgTable(
      * follow-up) sees the right host.
      */
     linkUrl: text("link_url"),
+    /**
+     * Frozen panel-visibility decision taken at write time (migration
+     * 0056). `true` when the recipient had `notification_preferences.in_app`
+     * effective-true for the type at fanout time. The fanout still
+     * writes a row when ONLY `email_digest` is enabled (so the digest
+     * worker can read it) — `panel_visible = false` keeps that row out
+     * of the bell + panel.
+     *
+     * Frozen, NOT dynamic: a later `in_app=true` toggle does not
+     * retroactively reveal historical rows. The panel + unread-count
+     * queries add `panel_visible = true` to their WHERE clauses.
+     */
+    panelVisible: boolean("panel_visible").notNull().default(true),
     /** NULL until the user marks read (single read or read-all). */
     readAt: timestamp("read_at", { withTimezone: true }),
     /**

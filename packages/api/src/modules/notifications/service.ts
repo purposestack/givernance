@@ -63,6 +63,11 @@ export async function listNotifications(
   return withTenantContext(orgId, async (tx) => {
     const conditions = [
       eq(notifications.userId, userId),
+      // Panel hides rows whose recipient opted out of in-app at write
+      // time (migration 0056 — decouples in_app from email_digest).
+      // `panel_visible = true` is frozen, so a later in_app toggle does
+      // NOT retroactively reveal historical rows.
+      eq(notifications.panelVisible, true),
       isNull(notifications.deletedAt),
       // Default view hides archived rows. A `?includeArchived=true`
       // is a follow-up (issue #363 § 4 out-of-scope: archive
@@ -115,6 +120,8 @@ export async function getUnreadCount(orgId: string, userId: string): Promise<num
       .where(
         and(
           eq(notifications.userId, userId),
+          // Bell badge mirrors the panel — see `listNotifications`.
+          eq(notifications.panelVisible, true),
           isNull(notifications.readAt),
           isNull(notifications.deletedAt),
           isNull(notifications.archivedAt),
@@ -147,6 +154,10 @@ export async function markRead(
         and(
           eq(notifications.id, id),
           eq(notifications.userId, userId),
+          // Only panel-visible rows can be operated on from the bell UI.
+          // A row stored solely for the email digest is invisible to the
+          // panel; mark-read on its id is 404 (anti-disclosure).
+          eq(notifications.panelVisible, true),
           isNull(notifications.deletedAt),
         ),
       )
@@ -175,6 +186,11 @@ export async function markAllRead(orgId: string, userId: string): Promise<number
       .where(
         and(
           eq(notifications.userId, userId),
+          // Same scope as the panel — don't pre-read digest-only rows
+          // since the user can't see them. Their unread state is
+          // irrelevant for the bell and "mark all read" is a panel
+          // affordance.
+          eq(notifications.panelVisible, true),
           isNull(notifications.readAt),
           isNull(notifications.deletedAt),
         ),
@@ -201,6 +217,8 @@ export async function softDeleteNotification(
         and(
           eq(notifications.id, id),
           eq(notifications.userId, userId),
+          // Panel-only affordance — see `markRead`.
+          eq(notifications.panelVisible, true),
           isNull(notifications.deletedAt),
         ),
       )
@@ -349,6 +367,10 @@ export async function* streamNotifications(
         .where(
           and(
             eq(notifications.userId, userId),
+            // SSE stream feeds the same panel — skip digest-only rows
+            // so the bell badge doesn't tick up for something the user
+            // can't see.
+            eq(notifications.panelVisible, true),
             isNull(notifications.deletedAt),
             sql`${notifications.createdAt} > ${cursor.toISOString()}`,
           ),
