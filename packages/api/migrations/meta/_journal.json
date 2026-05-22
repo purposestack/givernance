@@ -666,6 +666,13 @@
       "when": 2078180000000,
       "tag": "0058_bank_accounts_multi_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1778110000000,
+      "tag": "0057_currency_metadata",
+      "breakpoints": true
     }
   ]
 }

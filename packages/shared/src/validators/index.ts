@@ -176,6 +176,8 @@ export const DonationAllocationSchema = Type.Object({
   amountCents: Type.Integer({ exclusiveMinimum: 0 }),
 });
 
+// TODO(ADR-031): Replace this static list with a runtime check against currency_metadata.enabled = true
+// This will be wired in task #409 (checkout-config endpoint).
 export const MULTI_CURRENCY_VALUES = ["EUR", "GBP", "CHF"] as const;
 export const MultiCurrencySchema = Type.Union(
   MULTI_CURRENCY_VALUES.map((currency) => Type.Literal(currency)),
@@ -186,6 +188,8 @@ export const MultiCurrencySchema = Type.Union(
 export const DonationCreateSchema = Type.Object({
   constituentId: Type.String({ format: "uuid" }),
   amountCents: Type.Integer({ exclusiveMinimum: 0 }),
+  // TODO(ADR-031): Replace this static list with a runtime check against currency_metadata.enabled = true
+  // This will be wired in task #409 (checkout-config endpoint).
   currency: Type.Union(
     [
       Type.Literal("EUR"),

@@ -685,6 +685,14 @@ export {
   type NewCustomizationQuotaOverrideRow,
 } from "./customization";
 
+// ─── Currency metadata (ADR-031 §2.9, Epic #416) ──────────────────────────────
+
+export {
+  type CurrencyMetadata,
+  currencyMetadata,
+  type NewCurrencyMetadata,
+} from "./currency-metadata";
+
 // ─── Swiss QR-bill foundation (Epic #318) ────────────────────────────────────
 //
 // The cross-table FKs `campaigns.bank_account_id`, `donations.swiss_qr_reference_id`,
