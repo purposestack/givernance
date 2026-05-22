@@ -1927,6 +1927,9 @@
         "fields": {
           "iban": "IBAN",
           "ibanPlaceholder": "CH93 0076 2011 6238 5295 7",
+          "label": "Account label",
+          "labelPlaceholder": "PostFinance CHF, UBS EUR, Raiffeisen CHF…",
+          "labelHint": "A short name to identify this account in the campaign editor (e.g. PostFinance CHF).",
           "ibanHintDefault": "CH or LI only. Whitespace and case are normalised on save.",
           "ibanHintQrIban": "Detected: QR-IBAN — Swiss QR-bills will use a 27-digit QRR reference (mod-10).",
           "ibanHintRegular": "Detected: regular IBAN — Swiss QR-bills will use a SCOR reference (RF + mod-97).",
@@ -1956,10 +1959,11 @@
           "submitting": "Saving…"
         },
         "errors": {
+          "labelRequired": "Account label is required.",
+          "labelTooLong": "Account label must be at most 255 characters.",
           "ibanRequired": "IBAN is required.",
           "ibanInvalid": "IBAN failed mod-97 / format validation.",
           "bicLength": "BIC must be exactly 8 or 11 characters when present (ISO 9362).",
-          "bankNameRequired": "Bank name is required.",
           "bankNameTooLong": "Bank name must be at most 100 characters.",
           "holderNameRequired": "Holder name is required.",
           "holderNameTooLong": "Holder name must be at most 70 characters (IG QR-bill cap).",

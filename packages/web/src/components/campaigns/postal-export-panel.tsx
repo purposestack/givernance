@@ -60,10 +60,10 @@ interface PostalExportPanelProps {
    * Drives the mode-summary panel + the mode-aware button label.
    */
   bankAccount: {
-    bankName: string;
+    bankName: string | null;
     /** Last 4 digits of the IBAN — surfaced in the summary panel. */
     ibanLast4: string;
-    currency: "CHF" | "EUR";
+    currency: string;
   } | null;
   initialExports: PostalExport[];
   /** Number of constituents currently linked — used to disable "personalized" when 0. */
@@ -787,7 +787,7 @@ function ModeSummaryPanel({
 }) {
   const t = useTranslations("campaigns.postal.modeSummary");
   const bankAccountLabel = bankAccount
-    ? `${bankAccount.bankName} · ****${bankAccount.ibanLast4} · ${bankAccount.currency}`
+    ? `${bankAccount.bankName ?? "—"} · ****${bankAccount.ibanLast4} · ${bankAccount.currency}`
     : "—";
   const reasonText =
     runMode === "standard"

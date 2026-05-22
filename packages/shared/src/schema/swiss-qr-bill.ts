@@ -33,6 +33,7 @@
 
 import {
   bigint,
+  boolean,
   date,
   index,
   integer,
@@ -55,14 +56,6 @@ export type BankAccountIbanKind = (typeof BANK_ACCOUNT_IBAN_KIND_VALUES)[number]
 
 export const bankAccountIbanKindEnum = pgEnum("bank_account_iban_kind", [
   ...BANK_ACCOUNT_IBAN_KIND_VALUES,
-]);
-
-/** Operating-account currency. CHF default; EUR allowed (SCOR-only — EUR+QRR is illegal under IG v2.4). */
-export const BANK_ACCOUNT_CURRENCY_VALUES = ["CHF", "EUR"] as const;
-export type BankAccountCurrency = (typeof BANK_ACCOUNT_CURRENCY_VALUES)[number];
-
-export const bankAccountCurrencyEnum = pgEnum("bank_account_currency", [
-  ...BANK_ACCOUNT_CURRENCY_VALUES,
 ]);
 
 /** Swiss QR-bill reference type: 27-digit QRR (mod-10) or RF-prefixed SCOR (ISO 11649). */
@@ -158,6 +151,8 @@ export const bankAccounts = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
+    /** Human-readable label for the operator UI (e.g. "PostFinance CHF", "UBS EUR"). */
+    label: varchar("label", { length: 255 }).notNull(),
     holderName: varchar("holder_name", { length: 70 }).notNull(),
     /** IG QR-bill S-address `StrtNm` — street name only, no number. ≤ 70 chars. */
     holderStreet: varchar("holder_street", { length: 70 }).notNull(),
@@ -179,8 +174,16 @@ export const bankAccounts = pgTable(
     /** SWIFT/BIC — 8 or 11 chars; nullable because not always known by the operator. */
     bic: varchar("bic", { length: 11 }),
     /** Bank display name (e.g. "PostFinance", "UBS Switzerland AG") — printed on the slip. */
-    bankName: varchar("bank_name", { length: 100 }).notNull(),
-    currency: bankAccountCurrencyEnum("currency").notNull().default("CHF"),
+    bankName: varchar("bank_name", { length: 100 }),
+    /**
+     * ISO 4217 alpha-3 settlement currency (e.g. "CHF", "EUR", "GBP").
+     * Open-ended varchar(3) — no DB enum — so new currencies can be added
+     * without a migration. Validated at the API boundary. No default:
+     * operators must explicitly choose the settlement currency.
+     */
+    currency: varchar("currency", { length: 3 }).notNull(),
+    /** When false the account is hidden from the campaign editor but retained for audit. */
+    isActive: boolean("is_active").notNull().default(true),
     /**
      * Soft-delete marker. The matching unique index on `(org_id, iban)`
      * is partial — `WHERE deleted_at IS NULL` — so the same IBAN can be

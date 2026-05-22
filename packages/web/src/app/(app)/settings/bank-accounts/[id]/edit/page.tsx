@@ -44,7 +44,7 @@ export default async function EditBankAccountPage({ params }: EditBankAccountPag
           { label: tSettings("breadcrumbRoot"), href: "/dashboard" },
           { label: t("settings"), href: "/settings" },
           { label: t("title"), href: "/settings/bank-accounts" },
-          { label: bankAccount.bankName },
+          { label: bankAccount.bankName ?? bankAccount.label },
           { label: tForm("breadcrumbEdit") },
         ]}
       />

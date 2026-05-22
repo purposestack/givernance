@@ -392,6 +392,7 @@ describe("Bank Accounts — IBAN canonical CHECK", () => {
         .insert(bankAccounts)
         .values({
           orgId: ORG_A,
+          label: "Test CHF",
           holderName: "Test",
           holderStreet: "Street",
           holderPostalCode: "1003",

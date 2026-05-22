@@ -3,9 +3,6 @@ import type { Pagination } from "@/models/constituent";
 /** Discriminator derived from the IBAN's IID range — never set by the operator. */
 export type BankAccountIbanKind = "iban" | "qr_iban";
 
-/** Currencies allowed by IG QR-bill v2.4. EUR + QRR is illegal (euroSIC). */
-export type BankAccountCurrency = "CHF" | "EUR";
-
 /**
  * Operator-configured Swiss operating account (Epic #318). IG QR-bill
  * v2.4 / v2.5 **structured address (S)** shape — combined-address (K)
@@ -14,6 +11,8 @@ export type BankAccountCurrency = "CHF" | "EUR";
 export interface BankAccount {
   id: string;
   orgId: string;
+  /** Human-readable label for the operator UI (e.g. "PostFinance CHF"). */
+  label: string;
   holderName: string;
   /** IG `StrtNm` — street name only. */
   holderStreet: string;
@@ -28,8 +27,10 @@ export interface BankAccount {
   iban: string;
   ibanKind: BankAccountIbanKind;
   bic: string | null;
-  bankName: string;
-  currency: BankAccountCurrency;
+  bankName: string | null;
+  /** ISO 4217 alpha-3 settlement currency (e.g. "CHF", "EUR", "GBP"). */
+  currency: string;
+  isActive: boolean;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -56,6 +57,8 @@ export interface BankAccountDetailResponse {
 }
 
 export interface BankAccountCreateInput {
+  /** Human-readable label for the operator UI (e.g. "PostFinance CHF"). */
+  label: string;
   holderName: string;
   holderStreet: string;
   holderBuildingNumber?: string | null;
@@ -64,11 +67,13 @@ export interface BankAccountCreateInput {
   holderCountryCode?: string;
   iban: string;
   bic?: string | null;
-  bankName: string;
-  currency?: BankAccountCurrency;
+  bankName?: string | null;
+  /** ISO 4217 alpha-3 settlement currency. Required — no default. */
+  currency: string;
 }
 
 export interface BankAccountUpdateInput {
+  label?: string;
   holderName?: string;
   holderStreet?: string;
   holderBuildingNumber?: string | null;
@@ -76,8 +81,10 @@ export interface BankAccountUpdateInput {
   holderTown?: string;
   holderCountryCode?: string;
   bic?: string | null;
-  bankName?: string;
-  currency?: BankAccountCurrency;
+  bankName?: string | null;
+  /** ISO 4217 alpha-3 settlement currency. */
+  currency?: string;
+  isActive?: boolean;
 }
 
 export interface BankAccountUsage {

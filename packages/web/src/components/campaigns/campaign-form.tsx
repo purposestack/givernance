@@ -858,7 +858,7 @@ function SwissQrBillFields({
                 <SelectItem value={EMPTY_BANK_ACCOUNT}>{t("fields.bankAccountNone")}</SelectItem>
                 {bankAccountOptions.map((account) => (
                   <SelectItem key={account.id} value={account.id}>
-                    {`${account.bankName} · ${formatIbanForDisplay(account.iban)} · ${account.currency}`}
+                    {`${account.bankName ?? "—"} · ${formatIbanForDisplay(account.iban)} · ${account.currency}`}
                   </SelectItem>
                 ))}
               </SelectContent>

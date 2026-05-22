@@ -1925,6 +1925,9 @@
           }
         },
         "fields": {
+          "label": "Libellé du compte",
+          "labelPlaceholder": "PostFinance CHF, UBS EUR, Raiffeisen CHF…",
+          "labelHint": "Nom court pour identifier ce compte dans l'éditeur de campagne (ex. « PostFinance CHF »).",
           "iban": "IBAN",
           "ibanPlaceholder": "CH93 0076 2011 6238 5295 7",
           "ibanHintDefault": "CH ou LI uniquement. Les espaces et la casse sont normalisés à l'enregistrement.",
@@ -1956,10 +1959,11 @@
           "submitting": "Enregistrement…"
         },
         "errors": {
+          "labelRequired": "Le libellé du compte est obligatoire.",
+          "labelTooLong": "Le libellé doit faire au plus 255 caractères.",
           "ibanRequired": "L'IBAN est obligatoire.",
           "ibanInvalid": "L'IBAN n'a pas passé la validation mod-97 ou de format.",
           "bicLength": "Le BIC doit faire exactement 8 ou 11 caractères s'il est renseigné (ISO 9362).",
-          "bankNameRequired": "Le nom de la banque est obligatoire.",
           "bankNameTooLong": "Le nom de la banque doit faire au plus 100 caractères.",
           "holderNameRequired": "Le nom du titulaire est obligatoire.",
           "holderNameTooLong": "Le nom du titulaire doit faire au plus 70 caractères (limite IG QR-bill).",

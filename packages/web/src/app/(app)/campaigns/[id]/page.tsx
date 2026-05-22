@@ -172,7 +172,7 @@ async function fetchLinkedBankAccountOrNull(
   client: Awaited<ReturnType<typeof createServerApiClient>>,
   bankAccountId: string | null,
   isAdmin: boolean,
-): Promise<{ bankName: string; ibanLast4: string; currency: "CHF" | "EUR" } | null> {
+): Promise<{ bankName: string | null; ibanLast4: string; currency: string } | null> {
   if (!isAdmin || !bankAccountId) return null;
   try {
     const account = await BankAccountService.getBankAccount(client, bankAccountId);

@@ -115,7 +115,8 @@ export async function ensureSwissQrReference(args: {
   /** NULL for door-drop (one campaign-level reference per export). */
   constituentId: string | null;
   referenceType: SwissQrReferenceType;
-  currency: "CHF" | "EUR";
+  /** ISO 4217 alpha-3 settlement currency — open-ended after ADR-031 §2.4. */
+  currency: string;
 }): Promise<{ reference: string; referenceType: SwissQrReferenceType }> {
   return withWorkerContext(args.orgId, async (tx) => {
     // 1. Idempotent SELECT — pick up an existing ref if a previous
@@ -307,7 +308,12 @@ export async function renderSwissQrBillPdf(args: {
   // surfaced on PR #355 review.
   const qrBill = new SwissQRBill(
     {
-      currency: args.bankAccount.currency,
+      // `SwissQRBill` v4 types this as "CHF" | "EUR" — Swiss QR-bill
+      // scope. The API readiness gate rejects non-Swiss currencies
+      // before a postal export can be enqueued, so this assertion is
+      // safe at runtime. Cast needed because `BankAccount.currency` is
+      // now varchar(3) (ADR-031 §2.4 multi-currency generalisation).
+      currency: args.bankAccount.currency as "CHF" | "EUR",
       reference: args.reference,
       creditor: {
         account: args.bankAccount.iban,
@@ -353,7 +359,7 @@ export function prebuildQrBillForValidation(
   // Construct in-memory; no `attachTo` (no PDFKit doc), no IO. Throws
   // if the data shape is invalid per the lib's validators.
   new SwissQRBill({
-    currency: args.bankAccount.currency,
+    currency: args.bankAccount.currency as "CHF" | "EUR",
     reference: args.reference,
     creditor: {
       account: args.bankAccount.iban,

@@ -77,6 +77,7 @@ function mapBankAccount(raw: BankAccount): BankAccount {
   return {
     id: raw.id,
     orgId: raw.orgId,
+    label: raw.label,
     holderName: raw.holderName,
     holderStreet: raw.holderStreet,
     holderBuildingNumber: raw.holderBuildingNumber,
@@ -88,6 +89,7 @@ function mapBankAccount(raw: BankAccount): BankAccount {
     bic: raw.bic,
     bankName: raw.bankName,
     currency: raw.currency,
+    isActive: raw.isActive,
     deletedAt: raw.deletedAt,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
@@ -96,31 +98,32 @@ function mapBankAccount(raw: BankAccount): BankAccount {
 
 function toCreateBody(input: BankAccountCreateInput): Record<string, unknown> {
   const body: Record<string, unknown> = {
+    label: input.label,
     holderName: input.holderName,
     holderStreet: input.holderStreet,
     holderPostalCode: input.holderPostalCode,
     holderTown: input.holderTown,
     iban: input.iban,
-    bankName: input.bankName,
+    currency: input.currency,
   };
   if (input.holderBuildingNumber !== undefined) {
     body.holderBuildingNumber = input.holderBuildingNumber ?? null;
   }
   if (input.holderCountryCode !== undefined) body.holderCountryCode = input.holderCountryCode;
   if (input.bic !== undefined) body.bic = input.bic ?? null;
-  if (input.currency !== undefined) body.currency = input.currency;
+  if (input.bankName !== undefined) body.bankName = input.bankName ?? null;
   return body;
 }
 
 function toUpdateBody(input: BankAccountUpdateInput): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   for (const key of [
+    "label",
     "holderName",
     "holderStreet",
     "holderPostalCode",
     "holderTown",
     "holderCountryCode",
-    "bankName",
     "currency",
   ] as const) {
     if (input[key] !== undefined) body[key] = input[key];
@@ -129,5 +132,7 @@ function toUpdateBody(input: BankAccountUpdateInput): Record<string, unknown> {
     body.holderBuildingNumber = input.holderBuildingNumber ?? null;
   }
   if (input.bic !== undefined) body.bic = input.bic ?? null;
+  if (input.bankName !== undefined) body.bankName = input.bankName ?? null;
+  if (input.isActive !== undefined) body.isActive = input.isActive;
   return body;
 }

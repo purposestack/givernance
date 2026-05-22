@@ -701,12 +701,9 @@ import {
 } from "./swiss-qr-bill";
 
 export {
-  BANK_ACCOUNT_CURRENCY_VALUES,
   BANK_ACCOUNT_IBAN_KIND_VALUES,
   type BankAccount,
-  type BankAccountCurrency,
   type BankAccountIbanKind,
-  bankAccountCurrencyEnum,
   bankAccountIbanKindEnum,
   bankAccounts,
   CAMPAIGN_QR_REFERENCE_MODE_VALUES,
