@@ -15,6 +15,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  smallint,
   text,
   timestamp,
   unique,
@@ -1265,6 +1266,27 @@ export const campaignFunds = pgTable(
     fundId: uuid("fund_id")
       .notNull()
       .references(() => funds.id, { onDelete: "cascade" }),
+    /**
+     * Percentage of a split-routed donation allocated to this fund.
+     * NULL is valid when only one fund is assigned — in that case the
+     * entire donation amount flows to the single fund with no split.
+     * When two or more funds are assigned, every row must have a non-null
+     * splitPct and the values must sum to exactly 100.00.
+     * ADR-031 §2.5, Epic #416 Task 4.
+     */
+    splitPct: numeric("split_pct", { precision: 5, scale: 2 }),
+    /**
+     * When true, this fund is presented as the default on the online
+     * donation form when the donor does not select a specific fund.
+     * Exactly one row per campaign must have isOnlineDefault = true
+     * whenever two or more funds are assigned.
+     */
+    isOnlineDefault: boolean("is_online_default").notNull().default(false),
+    /**
+     * Display / picker order within the campaign. Lower values appear
+     * first. Defaults to 0 — ties are broken by fund name client-side.
+     */
+    sortOrder: smallint("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

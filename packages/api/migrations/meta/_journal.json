@@ -680,6 +680,13 @@
       "when": 1778120000000,
       "tag": "0058_funds_bank_account_id",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1778130000000,
+      "tag": "0059_campaign_funds_routing",
+      "breakpoints": true
     }
   ]
 }

@@ -386,6 +386,22 @@ export const FEATURE_FLAG_KEYS = {
    * 7+ days past soft-delete/replacement by definition).
    */
   BRANDING_ORPHAN_GC_SWEEP: "branding.orphan_gc_sweep",
+
+  /**
+   * Gates multi-fund routing within a campaign (ADR-031 §2.5, Epic #416).
+   *
+   * Task 4 (this task) ships the schema expansion and CRUD API behind this
+   * flag. Task 8 will add the full registry entry (label + description +
+   * seed migration) and flip the flag default to false/platform-gated once
+   * the end-to-end split-payment flow is proven on staging.
+   *
+   * Surfaces gated by this key (Task 4):
+   *   - API: GET /v1/campaigns/:id/funds (new routing-aware endpoint)
+   *   - API: POST /v1/campaigns/:id/funds
+   *   - API: PATCH /v1/campaigns/:id/funds/:fundId
+   *   - API: DELETE /v1/campaigns/:id/funds/:fundId
+   */
+  DONATION_FUND_ROUTING: "donation.fund_routing",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
