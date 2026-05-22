@@ -7,6 +7,8 @@ import type {
   CampaignPublicPage,
   CampaignPublicPageInput,
   CampaignPublicPageResponse,
+  CheckoutConfig,
+  CheckoutConfigResponse,
   PublicDonationIntent,
   PublicDonationIntentInput,
   PublishedCampaignPublicPage,
@@ -76,6 +78,26 @@ export const CampaignPublicPageService = {
       }>(`/v1/public/qr/${encodeURIComponent(code)}`);
       return response.data;
     } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Fetch checkout-config for the given campaign (Epic #416 multi-currency).
+   * Called from the public page SSR component when `donation.multi_currency`
+   * may be enabled; returns `null` when the flag is off (404) or the campaign
+   * is not ready (422). Non-fatal — caller falls back to the hardcoded
+   * `PUBLIC_DONATION_CURRENCIES` list.
+   */
+  async getCheckoutConfig(client: ApiClient, campaignId: string): Promise<CheckoutConfig | null> {
+    const safeCampaignId = requireCampaignId(campaignId);
+    try {
+      const response = await client.get<CheckoutConfigResponse>(
+        `/v1/campaigns/${encodeURIComponent(safeCampaignId)}/checkout-config`,
+      );
+      return response.data;
+    } catch {
+      // 404 (flag off or campaign not found) or 422 (not ready) — not fatal
       return null;
     }
   },
