@@ -55,6 +55,11 @@ beforeAll(async () => {
   // Fresh slate for both bank-account scopes — re-runs against a
   // persistent DB would otherwise collide on the partial unique
   // (org_id, iban) WHERE deleted_at IS NULL.
+  // campaign-funds-routing.test.ts runs first and leaves funds that
+  // reference bank accounts; delete them before attempting to delete
+  // bank_accounts to avoid a FK constraint violation.
+  await db.execute(sql`DELETE FROM campaign_funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  await db.execute(sql`DELETE FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
   await db.execute(sql`DELETE FROM bank_accounts WHERE org_id IN (${ORG_A}, ${ORG_B})`);
 
   // Seed: two bank accounts on ORG_A (one regular, one QR-IBAN) + one

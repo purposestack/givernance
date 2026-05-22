@@ -56,17 +56,19 @@ beforeAll(async () => {
   `);
   await flagService.invalidate();
 
-  // Clean state to avoid re-run collisions
+  // Clean state to avoid re-run and cross-test-file collisions.
+  // Wipe ALL funds/bank_accounts for these orgs, not just 'Routing%'-prefixed ones,
+  // because other test files (e.g. fund-bank-account.test.ts) may share the same
+  // IBAN and leave rows behind if their afterAll doesn't clean up.
   await db.execute(sql`DELETE FROM campaign_funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
   await db.execute(
     sql`DELETE FROM campaigns WHERE org_id IN (${ORG_A}, ${ORG_B}) AND name LIKE 'Routing Test%'`,
   );
   await db.execute(
-    sql`DELETE FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B}) AND name LIKE 'Routing Fund%'`,
+    sql`DELETE FROM donation_allocations WHERE fund_id IN (SELECT id FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B}))`,
   );
-  await db.execute(
-    sql`DELETE FROM bank_accounts WHERE org_id IN (${ORG_A}, ${ORG_B}) AND label LIKE 'Routing Test%'`,
-  );
+  await db.execute(sql`DELETE FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  await db.execute(sql`DELETE FROM bank_accounts WHERE org_id IN (${ORG_A}, ${ORG_B})`);
 
   const tokenA = signToken(app, {
     acr: "urn:givernance:acr:bank-mutation",

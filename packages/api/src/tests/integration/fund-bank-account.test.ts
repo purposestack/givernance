@@ -131,6 +131,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Clean up so subsequent test files don't inherit stale bank accounts / funds
+  // that would cause FK or duplicate-IBAN conflicts.
+  await db.execute(sql`DELETE FROM campaign_funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  await db.execute(
+    sql`DELETE FROM donation_allocations WHERE fund_id IN (SELECT id FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B}))`,
+  );
+  await db.execute(sql`DELETE FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  await db.execute(sql`DELETE FROM bank_accounts WHERE org_id IN (${ORG_A}, ${ORG_B})`);
   await app.close();
 });
 
