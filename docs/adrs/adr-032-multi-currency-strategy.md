@@ -2,7 +2,7 @@
 
 > Related: [ADR-010 Payment Provider Selection](adr-010-payment-provider-selection.md) · [ADR-029 Keycloak Session Revocation](adr-029-keycloak-session-revocation.md) · [docs/20-payment-strategy.md](../20-payment-strategy.md) · [docs/03-data-model.md](../03-data-model.md) · [docs/25-swiss-qr-bill.md](../25-swiss-qr-bill.md)
 
-**Status**: Accepted — 2026-05-21
+**Status**: Implemented — 2026-05-22 (Epic #416, PR #417)
 **Supersedes**: v1 (initial multi-currency sketch, same date)
 
 ---
