@@ -708,6 +708,13 @@
       "when": 1778160000000,
       "tag": "0062_users_display_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1778170000000,
+      "tag": "0063_multi_currency_flags",
+      "breakpoints": true
     }
   ]
 }

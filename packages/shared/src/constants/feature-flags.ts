@@ -390,18 +390,49 @@ export const FEATURE_FLAG_KEYS = {
   /**
    * Gates multi-fund routing within a campaign (ADR-031 §2.5, Epic #416).
    *
-   * Task 4 (this task) ships the schema expansion and CRUD API behind this
-   * flag. Task 8 will add the full registry entry (label + description +
-   * seed migration) and flip the flag default to false/platform-gated once
-   * the end-to-end split-payment flow is proven on staging.
+   * Task 4 shipped the schema expansion and CRUD API behind this flag.
+   * Task 8 (this task) adds the full registry entry (label + description +
+   * seed migration) so the parity integration test passes and the Back
+   * Office Back Office UI shows a human-readable label.
    *
-   * Surfaces gated by this key (Task 4):
-   *   - API: GET /v1/campaigns/:id/funds (new routing-aware endpoint)
+   * `scope='platform'` + `tenant_override_allowed=false`: requires the
+   * end-to-end split-payment flow to be proven on staging before any
+   * tenant is exposed to it. Super-admin controls the gate.
+   *
+   * Surfaces gated by this key:
+   *   - API: GET /v1/campaigns/:id/funds (routing-aware endpoint)
    *   - API: POST /v1/campaigns/:id/funds
    *   - API: PATCH /v1/campaigns/:id/funds/:fundId
    *   - API: DELETE /v1/campaigns/:id/funds/:fundId
    */
   DONATION_FUND_ROUTING: "donation.fund_routing",
+
+  /**
+   * Gates multi-currency checkout support (ADR-031, Epic #416).
+   *
+   * With this flag ON, donors can select their preferred currency at
+   * checkout and the system presents live exchange-rate-converted amounts
+   * based on Stripe settlement currencies supported by the tenant's
+   * connected account. The Fixer.io FX cache (populated by the worker's
+   * daily sync job) must be warm for accurate conversion at checkout time.
+   *
+   * `scope='platform'` + `tenant_override_allowed=false`: requires the
+   * FX-cache worker, Stripe settlement-currency detection, and the
+   * checkout currency-selector UI to be verified end-to-end on staging
+   * before any tenant is exposed to it. Super-admin controls the gate.
+   *
+   * `public=false`: the currency selector is a checkout-time concern
+   * rendered server-side; it does not need to appear in the tenant-facing
+   * `/v1/feature-flags` projection used to gate UI widgets. The API
+   * enforces the flag server-side before any FX conversion logic runs.
+   *
+   * Surfaces gated by this key:
+   *   - API: currency parameter on donation creation endpoints
+   *   - API: FX conversion helpers (amount_in_settlement_currency)
+   *   - Worker: daily Fixer.io FX-rate sync job
+   *   - Web: currency selector widget at checkout
+   */
+  DONATION_MULTI_CURRENCY: "donation.multi_currency",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -565,6 +596,28 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     label: "Nightly logo storage cleanup",
     description:
       "Runs a nightly maintenance job that permanently removes logo files left behind after a logo was replaced or deleted, once a 7-day safety window has passed. Off by default: Givernance staff enable it per environment after verification.",
+    scope: "platform",
+    tenantOverrideAllowed: false,
+    public: false,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.DONATION_MULTI_CURRENCY,
+    defaultEnabled: false,
+    label: "Multi-currency checkout support",
+    description:
+      "Enables dynamic currency selection at checkout based on Stripe settlement currencies. " +
+      "Requires Fixer.io cache to be populated.",
+    scope: "platform",
+    tenantOverrideAllowed: false,
+    public: false,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.DONATION_FUND_ROUTING,
+    defaultEnabled: false,
+    label: "Campaign → fund routing",
+    description:
+      "Enables assigning multiple funds to a campaign with split percentages. " +
+      "Required for multi-fund donation allocation.",
     scope: "platform",
     tenantOverrideAllowed: false,
     public: false,
