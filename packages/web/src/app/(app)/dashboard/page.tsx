@@ -79,6 +79,7 @@ export default async function DashboardPage() {
   const activeCampaignStats = await getActiveCampaignStats(activeCampaigns?.data ?? []);
   const totalRaisedCents = stats?.totalRaisedCents.current ?? 0;
   const primaryCurrency = kpiDonations?.data[0]?.currency ?? "EUR";
+  const mct = stats?.multiCurrencyTotal;
   const newDonorsThisMonth = stats?.newDonors.current ?? 0;
   const activeCampaignCount = activeCampaigns?.pagination.total ?? 0;
   const trendLabel = t("stats.trendLabel");
@@ -130,16 +131,35 @@ export default async function DashboardPage() {
         <StatCard
           label={t("stats.totalRaised")}
           value={
-            <CountUp
-              value={totalRaisedCents / 100}
-              locale={locale}
-              formatOptions={{
-                style: "currency",
-                currency: primaryCurrency,
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0,
-              }}
-            />
+            // Multi-currency aggregate (ADR-032 §2.13) keeps main's CountUp
+            // animation. The `≈` prefix marks a genuinely FX-converted total so
+            // the figure is never mistaken for an exact single-currency sum.
+            mct ? (
+              <>
+                {"≈ "}
+                <CountUp
+                  value={mct.totalDisplayCents / 100}
+                  locale={locale}
+                  formatOptions={{
+                    style: "currency",
+                    currency: mct.displayCurrency,
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }}
+                />
+              </>
+            ) : (
+              <CountUp
+                value={totalRaisedCents / 100}
+                locale={locale}
+                formatOptions={{
+                  style: "currency",
+                  currency: primaryCurrency,
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                }}
+              />
+            )
           }
           description={t("stats.totalRaisedHint")}
           period={t("stats.periodCurrentMonth", { month: monthLabel })}
