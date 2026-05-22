@@ -4,9 +4,11 @@ import { ExchangeRateService } from "@givernance/shared";
 import type { ProcessStripeWebhookJob } from "@givernance/shared/jobs";
 import {
   auditLogs,
+  campaignFunds,
   campaignQrCodes,
   campaigns,
   constituents,
+  donationAllocations,
   donations,
   outboxEvents,
   paymentAttempts,
@@ -19,6 +21,28 @@ import Stripe from "stripe";
 import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
+
+/**
+ * Pin the Stripe API version explicitly — same constant as the API's
+ * `payments/service.ts`. Keep them in sync when bumping the SDK.
+ */
+const STRIPE_API_VERSION = "2026-04-22.dahlia" as const;
+
+/** Lazily initialized Stripe client for balance_transaction look-ups */
+let stripeClient: Stripe | null = null;
+
+/**
+ * Returns the shared Stripe client, initializing it on first call.
+ * Returns null when STRIPE_SECRET_KEY is not configured (test environments
+ * that don't need balance_transaction fetching).
+ */
+function getStripe(): Stripe | null {
+  if (!env.STRIPE_SECRET_KEY) return null;
+  if (!stripeClient) {
+    stripeClient = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: STRIPE_API_VERSION });
+  }
+  return stripeClient;
+}
 
 /**
  * Type-safe coercion of the BullMQ-serialised payload back into a Stripe
@@ -201,9 +225,192 @@ export async function processStripeWebhook(
 }
 
 /**
+ * ADR-031 §2.2 — Fetch Stripe balance_transaction FX data.
+ *
+ * Pulled out of `handlePaymentIntentSucceeded` to keep that function below
+ * the cognitive-complexity threshold. Returns a plain object whose fields
+ * map 1-to-1 to the donation FX columns; callers spread the result into the
+ * INSERT values.
+ *
+ * When STRIPE_SECRET_KEY is not configured (test environments without a
+ * Stripe mock) the function returns `fxPending: false` with all other
+ * settlement fields undefined — this matches the pre-ADR-031 behaviour and
+ * keeps existing tests green without adding a test-seam dependency.
+ */
+async function fetchBalanceTxnFx(
+  intent: Stripe.PaymentIntent,
+  accountId: string,
+  log: ReturnType<typeof jobLogger>,
+): Promise<{
+  settledAmountCents: number | undefined;
+  settledCurrency: string | undefined;
+  stripeBalanceTxnId: string | undefined;
+  fxExchangeRate: number | undefined;
+  exchangeRateSource: string | undefined;
+  exchangeRateTimestamp: Date | undefined;
+  amountInSettlementCurrencyCents: number | undefined;
+  fxPending: boolean;
+}> {
+  const stripe = getStripe();
+  if (!stripe) {
+    log.debug("STRIPE_SECRET_KEY not configured — skipping balance_transaction fetch");
+    return {
+      settledAmountCents: undefined,
+      settledCurrency: undefined,
+      stripeBalanceTxnId: undefined,
+      fxExchangeRate: undefined,
+      exchangeRateSource: undefined,
+      exchangeRateTimestamp: undefined,
+      amountInSettlementCurrencyCents: undefined,
+      fxPending: false,
+    };
+  }
+
+  // `intent.charges` is present in `payment_intent.succeeded` webhook payloads
+  // (the Charges sub-list is expanded by default in the webhook event object).
+  const firstCharge = (intent as unknown as { charges?: { data?: Stripe.Charge[] } }).charges
+    ?.data?.[0];
+  if (!firstCharge?.balance_transaction) {
+    log.warn(
+      { paymentIntentId: intent.id },
+      "No balance_transaction on first charge, marking FX pending",
+    );
+    return {
+      settledAmountCents: undefined,
+      settledCurrency: undefined,
+      stripeBalanceTxnId: undefined,
+      fxExchangeRate: undefined,
+      exchangeRateSource: undefined,
+      exchangeRateTimestamp: undefined,
+      amountInSettlementCurrencyCents: undefined,
+      fxPending: true,
+    };
+  }
+
+  const balanceTxnId =
+    typeof firstCharge.balance_transaction === "string"
+      ? firstCharge.balance_transaction
+      : firstCharge.balance_transaction.id;
+  try {
+    // Pass the connected account id as RequestOptions (third arg) — not a query
+    // param, because BalanceTransactionRetrieveParams only accepts `expand`.
+    const balanceTxn = await stripe.balanceTransactions.retrieve(balanceTxnId, undefined, {
+      stripeAccount: accountId,
+    });
+    const result = {
+      settledAmountCents: balanceTxn.amount,
+      settledCurrency: balanceTxn.currency.toUpperCase(),
+      stripeBalanceTxnId: balanceTxn.id,
+      fxExchangeRate: balanceTxn.exchange_rate ?? 1.0,
+      exchangeRateSource: balanceTxn.exchange_rate ? "stripe_balance_txn" : "same_currency",
+      exchangeRateTimestamp: new Date(balanceTxn.created * 1000),
+      amountInSettlementCurrencyCents: balanceTxn.amount,
+      fxPending: false,
+    };
+    log.info(
+      {
+        balanceTxnId,
+        settledAmountCents: result.settledAmountCents,
+        settledCurrency: result.settledCurrency,
+        exchangeRateSource: result.exchangeRateSource,
+        fxExchangeRate: result.fxExchangeRate,
+      },
+      "Fetched Stripe balance_transaction for FX data",
+    );
+    return result;
+  } catch (err) {
+    log.warn({ err, balanceTxnId }, "Failed to fetch balance_transaction, marking FX pending");
+    return {
+      settledAmountCents: undefined,
+      settledCurrency: undefined,
+      stripeBalanceTxnId: undefined,
+      fxExchangeRate: undefined,
+      exchangeRateSource: undefined,
+      exchangeRateTimestamp: undefined,
+      amountInSettlementCurrencyCents: undefined,
+      fxPending: true,
+    };
+  }
+}
+
+/**
+ * ADR-031 §3.1 — Multi-fund allocation inside a DB transaction.
+ *
+ * Pulled out of the `withWorkerContext` callback in `handlePaymentIntentSucceeded`
+ * to keep that callback below the cognitive-complexity threshold.
+ *
+ * Queries campaign_funds for rows with is_online_default = true, creates one
+ * donation_allocations row per fund, and applies a rounding-remainder correction
+ * so the total always sums to amountCents.
+ *
+ * Single-fund case: splitPct is NULL → full amount flows to that fund.
+ * No-op when the DONATION_FUND_ROUTING flag is off (defence-in-depth).
+ */
+async function maybeCreateFundAllocations(
+  tx: Parameters<Parameters<typeof withWorkerContext>[1]>[0],
+  args: {
+    orgId: string;
+    donationId: string;
+    campaignId: string;
+    amountCents: number;
+    log: ReturnType<typeof jobLogger>;
+  },
+): Promise<void> {
+  const { orgId, donationId, campaignId, amountCents, log } = args;
+
+  const fundRows = await tx
+    .select({ fundId: campaignFunds.fundId, splitPct: campaignFunds.splitPct })
+    .from(campaignFunds)
+    .where(
+      and(
+        eq(campaignFunds.campaignId, campaignId),
+        eq(campaignFunds.orgId, orgId),
+        eq(campaignFunds.isOnlineDefault, true),
+      ),
+    );
+
+  if (fundRows.length === 0) return;
+
+  const allocationValues = fundRows.map((row) => ({
+    orgId,
+    donationId,
+    fundId: row.fundId,
+    // NULL splitPct means single-fund: full amount flows to the fund.
+    amountCents:
+      row.splitPct !== null ? Math.round(amountCents * (Number(row.splitPct) / 100)) : amountCents,
+  }));
+
+  // Correct for rounding drift: add remainder to the first allocation so the
+  // sum of all allocation rows always equals the donation amount exactly.
+  const allocatedTotal = allocationValues.reduce((sum, a) => sum + a.amountCents, 0);
+  const remainder = amountCents - allocatedTotal;
+  if (remainder !== 0 && allocationValues[0]) {
+    allocationValues[0] = {
+      ...allocationValues[0],
+      amountCents: allocationValues[0].amountCents + remainder,
+    };
+  }
+
+  await tx.insert(donationAllocations).values(allocationValues);
+
+  log.info(
+    { donationId, campaignId, fundCount: fundRows.length },
+    "Created donation_allocations for multi-fund campaign",
+  );
+}
+
+/**
  * Handle payment_intent.succeeded — create a donation record for the tenant.
  * Resolves the tenant from the connected account ID, finds or creates the constituent,
  * and records the donation atomically with a DonationCreated outbox event.
+ *
+ * ADR-031 §2.2: after the charge is confirmed, fetch the Stripe balance_transaction
+ * to obtain the actual settled amount and FX rate stamped by Stripe at settlement.
+ * This is more accurate than the Fixer.io estimate because Stripe records the
+ * exact EUR amount (or whatever the account settlement currency is) after fees.
+ *
+ * ADR-031 §3.1: if the DONATION_FUND_ROUTING flag is on, create donation_allocations
+ * rows for each campaign_funds row with is_online_default = true.
  */
 async function handlePaymentIntentSucceeded(
   accountId: string | null,
@@ -239,6 +446,21 @@ async function handlePaymentIntentSucceeded(
   const qrCodeConstituentIdFromMetadata = metadata.qr_code_constituent_id || null;
   const platformFeeCents = intent.application_fee_amount ?? 0;
 
+  // ── ADR-031 §2.2 — Fetch Stripe balance_transaction for settlement FX data ──
+  // Delegated to `fetchBalanceTxnFx` to keep cognitive complexity below the
+  // max-20 threshold. Falls back gracefully (fxPending=true) on Stripe outage
+  // or missing STRIPE_SECRET_KEY; the backfill job (Task 5) fills it in later.
+  const {
+    settledAmountCents,
+    settledCurrency,
+    stripeBalanceTxnId,
+    fxExchangeRate,
+    exchangeRateSource,
+    exchangeRateTimestamp,
+    amountInSettlementCurrencyCents,
+    fxPending,
+  } = await fetchBalanceTxnFx(intent, accountId, log);
+
   await withWorkerContext(orgId, async (tx) => {
     const exchangeRateService = new ExchangeRateService({
       apiKey: env.EXCHANGE_RATE_API_KEY,
@@ -272,7 +494,8 @@ async function handlePaymentIntentSucceeded(
       log,
     });
 
-    // Create the donation record — ON CONFLICT guards against BullMQ retry duplicates
+    // Create the donation record — ON CONFLICT guards against BullMQ retry duplicates.
+    // ADR-031 §2.2: populate settlement FX columns from the balance_transaction fetch above.
     const [donation] = await tx
       .insert(donations)
       .values({
@@ -280,7 +503,8 @@ async function handlePaymentIntentSucceeded(
         constituentId,
         amountCents,
         currency,
-        exchangeRate: convertedAmount.exchangeRate.toFixed(8),
+        // Legacy base-currency conversion (kept for back-compat — ADR-031 §2.3)
+        exchangeRate: (fxExchangeRate ?? convertedAmount.exchangeRate).toFixed(8),
         amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: campaignId || undefined,
         qrCodeId: resolvedQrCodeId ?? undefined,
@@ -291,6 +515,14 @@ async function handlePaymentIntentSucceeded(
         paymentRef: paymentIntentId,
         donatedAt: new Date(),
         fiscalYear: new Date().getFullYear(),
+        // Settlement / FX columns (ADR-031 §2.2)
+        settledAmountCents,
+        settledCurrency,
+        stripeBalanceTxnId,
+        exchangeRateSource,
+        exchangeRateTimestamp,
+        amountInSettlementCurrencyCents,
+        fxPending,
       })
       .onConflictDoNothing()
       .returning();
@@ -344,6 +576,14 @@ async function handlePaymentIntentSucceeded(
           updatedAt: new Date(),
         })
         .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+    }
+
+    // ── ADR-031 §3.1 — Multi-fund allocation (DONATION_FUND_ROUTING flag) ────
+    // Delegated to `maybeCreateFundAllocations` (extracted to keep the callback
+    // below the cognitive-complexity threshold). No-op when flag is off or when
+    // there is no campaignId (vanilla donation with no campaign context).
+    if (campaignId && (await isFlagEnabled(FEATURE_FLAG_KEYS.DONATION_FUND_ROUTING))) {
+      await maybeCreateFundAllocations(tx, { orgId, donationId, campaignId, amountCents, log });
     }
 
     // Emit DonationCreated domain event atomically
@@ -417,8 +657,12 @@ async function handlePaymentIntentSucceeded(
         constituentId,
         currency,
         donationId,
-        exchangeRate: convertedAmount.exchangeRate,
+        exchangeRate: fxExchangeRate ?? convertedAmount.exchangeRate,
+        exchangeRateSource,
         amountCents,
+        settledAmountCents,
+        settledCurrency,
+        fxPending,
         qrCodeId: resolvedQrCodeId,
       },
       "Donation created from Stripe payment_intent.succeeded",
