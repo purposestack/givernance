@@ -11,7 +11,7 @@
 #
 # Image is built and pushed to GHCR in the deploy-staging.yml workflow before
 # `kamal accessory boot keycloak` runs.
-FROM quay.io/keycloak/keycloak:26.6.1
+FROM quay.io/keycloak/keycloak:26.6.2
 
 # Copy the Givernance login theme. Keycloak discovers themes by scanning
 # /opt/keycloak/themes/ on startup.
