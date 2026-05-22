@@ -10,7 +10,7 @@
 import { BANK_ACCOUNT_IBAN_KIND_VALUES } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
+import { requireAuth, requireBankMutationAcr, requireOrgAdmin } from "../../lib/guards.js";
 import {
   DataArrayResponse,
   DataResponse,
@@ -129,6 +129,10 @@ const BankAccountUsageResponse = Type.Object({
 // ─── Routes ────────────────────────────────────────────────────────────────
 
 export async function bankAccountRoutes(app: FastifyInstance) {
+  // Step-up guard instance — bound once per plugin registration so the
+  // factory overhead (if any) is not repeated per request.
+  const bankMutationAcr = requireBankMutationAcr();
+
   app.get(
     "/bank-accounts",
     {
@@ -168,7 +172,10 @@ export async function bankAccountRoutes(app: FastifyInstance) {
   app.post(
     "/bank-accounts",
     {
-      preHandler: requireOrgAdmin,
+      // Guard order: auth → step-up ACR → role. The step-up check fires
+      // only for authenticated callers (requireAuth is first); role check
+      // confirms org_admin on an already-valid session.
+      preHandler: [requireAuth, bankMutationAcr, requireOrgAdmin],
       schema: {
         tags: ["Bank Accounts"],
         body: BankAccountCreateBody,
@@ -258,7 +265,7 @@ export async function bankAccountRoutes(app: FastifyInstance) {
   app.patch(
     "/bank-accounts/:id",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: [requireAuth, bankMutationAcr, requireOrgAdmin],
       schema: {
         tags: ["Bank Accounts"],
         params: IdParams,
@@ -301,7 +308,7 @@ export async function bankAccountRoutes(app: FastifyInstance) {
   app.delete(
     "/bank-accounts/:id",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: [requireAuth, bankMutationAcr, requireOrgAdmin],
       schema: {
         tags: ["Bank Accounts"],
         params: IdParams,

@@ -24,7 +24,8 @@ export type GuardName =
   | "requireWrite"
   | "requireOrgAdmin"
   | "requireSuperAdmin"
-  | "requireSuperAdminOrOwnOrgAdmin";
+  | "requireSuperAdminOrOwnOrgAdmin"
+  | "requireBankMutationAcr";
 
 export interface AuthDenial {
   guard: GuardName;
@@ -206,6 +207,92 @@ export async function requireAdminSecret(request: FastifyRequest, reply: Fastify
       detail: "Invalid admin secret",
     });
   }
+}
+
+/**
+ * Guard: require bank-mutation step-up ACR (ADR-031 §2.7).
+ *
+ * Bank account mutation endpoints (POST / PATCH / DELETE) require the
+ * caller's JWT to carry `acr = "urn:givernance:acr:bank-mutation"` AND
+ * an `auth_time` no older than 900 seconds (15 minutes). Both conditions
+ * must hold simultaneously — a fresh re-auth that lacks the custom ACR
+ * claim is insufficient, and the right ACR on a stale session is equally
+ * insufficient.
+ *
+ * On failure the response follows RFC 9457 with a `WWW-Authenticate`
+ * header so the web client can trigger a Keycloak step-up redirect.
+ *
+ * The factory signature matches the pattern used by `requireFlag` so
+ * routes can include it in `preHandler` arrays without an extra import
+ * of the Fastify instance.
+ */
+export function requireBankMutationAcr(_fastify?: unknown) {
+  return async function bankMutationAcrHook(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const auth = request.auth;
+
+    // requireAuth must run before this guard — if auth is null, 401 is
+    // already being sent. Defensive check in case the order is wrong.
+    if (!auth) {
+      void reply.header("WWW-Authenticate", 'Bearer acr_values="urn:givernance:acr:bank-mutation"');
+      return reply.status(401).send({
+        type: "urn:givernance:error:step-up-required",
+        title: "Step-up authentication required",
+        status: 401,
+        detail: "Bank account mutations require TOTP re-authentication within the last 15 minutes.",
+        instance: request.url,
+      });
+    }
+
+    const acr = auth.acr;
+    const authTime = auth.authTime;
+
+    const hasRequiredAcr = acr === "urn:givernance:acr:bank-mutation";
+    const nowSec = Math.floor(Date.now() / 1000);
+    const isRecent = typeof authTime === "number" && nowSec - authTime < 900;
+
+    if (!hasRequiredAcr || !isRecent) {
+      request.log.warn(
+        {
+          event: "bank_mutation.step_up_required",
+          acr: acr ?? null,
+          authTime: authTime ?? null,
+          authTimeAge: typeof authTime === "number" ? nowSec - authTime : null,
+          url: request.url,
+          userId: auth.userId,
+          orgId: auth.orgId,
+          reason: !hasRequiredAcr ? "acr_insufficient" : "auth_time_stale",
+        },
+        "Bank account mutation blocked — step-up ACR required",
+      );
+      void reply.header("WWW-Authenticate", 'Bearer acr_values="urn:givernance:acr:bank-mutation"');
+      return reply.status(401).send({
+        type: "urn:givernance:error:step-up-required",
+        title: "Step-up authentication required",
+        status: 401,
+        detail: "Bank account mutations require TOTP re-authentication within the last 15 minutes.",
+        instance: request.url,
+      });
+    }
+
+    // Step-up passed — emit a structured audit log line so the SIEM
+    // can correlate bank-mutation events with the ACR claim that
+    // authorised them, without having to reconstruct from raw JWT fields.
+    request.log.info(
+      {
+        event: "bank_mutation.step_up_passed",
+        acr,
+        authTime,
+        authTimeAge: nowSec - (authTime as number),
+        url: request.url,
+        userId: auth.userId,
+        orgId: auth.orgId,
+      },
+      "Bank account mutation step-up ACR verified",
+    );
+  };
 }
 
 /** Constant-time string comparison to prevent timing attacks (M1 fix) */
