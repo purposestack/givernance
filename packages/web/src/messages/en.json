@@ -2118,6 +2118,10 @@
       "success": {
         "updated": "Language preference updated."
       }
+    },
+    "displayCurrency": {
+      "displayCurrencyLabel": "Display currency",
+      "displayCurrencyPlaceholder": "Same as organisation default"
     }
   },
   "dashboard": {

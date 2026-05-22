@@ -300,6 +300,15 @@ export const users = pgTable(
      */
     locale: varchar("locale", { length: 10 }).$type<Locale>(),
     /**
+     * Personal display currency override (ADR-031 §2.8, Epic #416 Task 7).
+     * NULL means "use the org's baseCurrency as the display currency".
+     * When set, must reference a `currency_metadata.code` WHERE enabled = true.
+     * The PATCH /v1/users/me endpoint validates the value against
+     * currency_metadata at write time and returns 422 if the currency is not
+     * found or not enabled.
+     */
+    displayCurrency: varchar("display_currency", { length: 3 }),
+    /**
      * Soft-delete marker (ADR-021). Set when an org_admin removes a
      * member; cleared on rejoin. Listing endpoints, /me, and PATCH all
      * filter `deleted_at IS NULL`. The row is preserved so audit_logs

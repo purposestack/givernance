@@ -701,6 +701,13 @@
       "when": 1778150000000,
       "tag": "0061_org_currency_balances",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1778160000000,
+      "tag": "0062_users_display_currency",
+      "breakpoints": true
     }
   ]
 }

@@ -2118,6 +2118,10 @@
       "success": {
         "updated": "Préférence de langue mise à jour."
       }
+    },
+    "displayCurrency": {
+      "displayCurrencyLabel": "Devise d’affichage",
+      "displayCurrencyPlaceholder": "Identique à la devise par défaut de l’organisation"
     }
   },
   "dashboard": {

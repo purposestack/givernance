@@ -20,12 +20,29 @@ import type { MeProfile } from "@/models/user";
 import { UserService } from "@/services/UserService";
 
 /**
- * Sentinel value used by the Select to mean "no personal override — use
+ * Sentinel value used by the locale Select to mean "no personal override — use
  * the tenant default". The API takes `locale: null` for the same intent;
  * we map between them at the form boundary.
  */
 const FOLLOW_TENANT = "__follow_tenant__" as const;
 type LocaleChoice = Locale | typeof FOLLOW_TENANT;
+
+/**
+ * Sentinel value used by the displayCurrency Select to mean "no personal
+ * override — use the org's baseCurrency". The API takes `displayCurrency: null`.
+ * ADR-031 §2.8, Epic #416 Task 7.
+ *
+ * TODO(ADR-031 task #409): fetch the enabled currency list from /v1/currencies
+ * when that endpoint exists instead of using the hardcoded DISPLAY_CURRENCIES list.
+ */
+const FOLLOW_ORG_CURRENCY = "__follow_org__" as const;
+type CurrencyChoice = string | typeof FOLLOW_ORG_CURRENCY;
+
+/**
+ * Hardcoded list of currencies offered in the display currency picker.
+ * TODO(ADR-031 task #409): fetch from /v1/currencies when endpoint exists.
+ */
+const DISPLAY_CURRENCIES = ["EUR", "CHF", "GBP", "USD", "SEK", "NOK", "DKK", "PLN", "CZK"] as const;
 
 function resolveApiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiProblem) {
@@ -45,16 +62,23 @@ interface ProfileLanguageFormProps {
 
 export function ProfileLanguageForm({ initial }: ProfileLanguageFormProps) {
   const t = useTranslations("profile.language");
+  const tCurrency = useTranslations("profile.displayCurrency");
   const router = useRouter();
   const [tenantDefaultLocale, setTenantDefaultLocale] = useState<Locale>(
     initial.tenantDefaultLocale,
   );
   const [choice, setChoice] = useState<LocaleChoice>(initial.locale ?? FOLLOW_TENANT);
   const [initialChoice, setInitialChoice] = useState<LocaleChoice>(initial.locale ?? FOLLOW_TENANT);
+  const [currencyChoice, setCurrencyChoice] = useState<CurrencyChoice>(
+    initial.displayCurrency ?? FOLLOW_ORG_CURRENCY,
+  );
+  const [initialCurrencyChoice, setInitialCurrencyChoice] = useState<CurrencyChoice>(
+    initial.displayCurrency ?? FOLLOW_ORG_CURRENCY,
+  );
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const isDirty = choice !== initialChoice;
+  const isDirty = choice !== initialChoice || currencyChoice !== initialCurrencyChoice;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,10 +89,14 @@ export function ProfileLanguageForm({ initial }: ProfileLanguageFormProps) {
     try {
       const next = await UserService.updateMe(createClientApiClient(), {
         locale: choice === FOLLOW_TENANT ? null : choice,
+        displayCurrency: currencyChoice === FOLLOW_ORG_CURRENCY ? null : currencyChoice,
       });
       const nextChoice: LocaleChoice = next.locale ?? FOLLOW_TENANT;
+      const nextCurrencyChoice: CurrencyChoice = next.displayCurrency ?? FOLLOW_ORG_CURRENCY;
       setChoice(nextChoice);
       setInitialChoice(nextChoice);
+      setCurrencyChoice(nextCurrencyChoice);
+      setInitialCurrencyChoice(nextCurrencyChoice);
       setTenantDefaultLocale(next.tenantDefaultLocale);
       toast.success(t("success.updated"));
       // Issue #153: re-run the server components so next-intl re-resolves
@@ -133,6 +161,37 @@ export function ProfileLanguageForm({ initial }: ProfileLanguageFormProps) {
                 ? t("fields.localeHint.followsTenant")
                 : t("fields.localeHint.personalOverride")}
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="profile-display-currency"
+              className="text-sm font-medium text-on-surface"
+            >
+              {tCurrency("displayCurrencyLabel")}
+            </label>
+            <Select
+              value={currencyChoice}
+              onValueChange={(value) => setCurrencyChoice(value as CurrencyChoice)}
+              disabled={saving}
+            >
+              <SelectTrigger
+                id="profile-display-currency"
+                aria-label={tCurrency("displayCurrencyLabel")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={FOLLOW_ORG_CURRENCY}>
+                  {tCurrency("displayCurrencyPlaceholder")}
+                </SelectItem>
+                {DISPLAY_CURRENCIES.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

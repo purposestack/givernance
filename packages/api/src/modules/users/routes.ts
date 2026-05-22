@@ -1,9 +1,16 @@
 /** User routes — user profile and org-admin user management */
 
 import { createHash } from "node:crypto";
-import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import { type Locale, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { USER_EVENT_TYPES } from "@givernance/shared/jobs";
-import { auditLogs, outboxEvents, platformAdmins, tenants, users } from "@givernance/shared/schema";
+import {
+  auditLogs,
+  currencyMetadata,
+  outboxEvents,
+  platformAdmins,
+  tenants,
+  users,
+} from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -229,13 +236,17 @@ async function syncUserUpdateToKeycloak(args: {
 }
 
 /**
- * Body for `PATCH /v1/users/me` (issue #153). The single-field body keeps
- * the contract minimal — there's no other personal preference exposed
- * yet. Setting `locale: null` clears `users.locale` so the user reverts
- * to inheriting the tenant's `default_locale`.
+ * Body for `PATCH /v1/users/me` (issue #153). Setting `locale: null` clears
+ * `users.locale` so the user reverts to inheriting the tenant's `default_locale`.
+ * `displayCurrency` is optional — when supplied it must be an ISO 4217 3-letter
+ * code that exists in `currency_metadata WHERE enabled = true`; null clears the
+ * override so the user inherits the org's baseCurrency (ADR-031 §2.8, Epic #416 Task 7).
  */
 const UpdateMeBody = Type.Object({
-  locale: Type.Union([UserLocaleSchema, Type.Null()]),
+  locale: Type.Optional(Type.Union([UserLocaleSchema, Type.Null()])),
+  displayCurrency: Type.Optional(
+    Type.Union([Type.Null(), Type.String({ minLength: 3, maxLength: 3 })]),
+  ),
 });
 
 const CreateUserBody = Type.Object({
@@ -291,6 +302,9 @@ const UserResponse = Type.Object({
  * inherit the tenant default); `tenantDefaultLocale` is the tenant's
  * `default_locale` so the profile UI can show "Use organisation default"
  * with the actual default value as a hint without a second round-trip.
+ *
+ * ADR-031 §2.8: `displayCurrency` is the user's personal display currency
+ * override (NULL when they inherit the org's baseCurrency).
  */
 const MeResponse = Type.Object({
   id: UuidSchema,
@@ -304,11 +318,47 @@ const MeResponse = Type.Object({
   provisionalUntil: Type.Union([Type.String(), Type.Null()]),
   locale: Type.Union([UserLocaleSchema, Type.Null()]),
   tenantDefaultLocale: UserLocaleSchema,
+  displayCurrency: Type.Union([Type.String({ minLength: 3, maxLength: 3 }), Type.Null()]),
   orgSlug: Type.String(),
   orgName: Type.String(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
+
+type UpdateMeBodyShape = {
+  locale?: "en" | "fr" | null;
+  displayCurrency?: string | null;
+};
+
+type UpdateMeExisting = {
+  id: string;
+  locale: string | null;
+  displayCurrency: string | null;
+};
+
+/**
+ * Build the preferences audit diff for `PATCH /v1/users/me`.
+ * Only records fields that actually changed so the audit row is minimal.
+ */
+function buildMePreferencesDiff(
+  body: UpdateMeBodyShape,
+  existing: UpdateMeExisting,
+): {
+  oldValues: Record<string, string | null | undefined>;
+  newValues: Record<string, string | null | undefined>;
+} {
+  const oldValues: Record<string, string | null | undefined> = {};
+  const newValues: Record<string, string | null | undefined> = {};
+  if (body.locale !== undefined && body.locale !== existing.locale) {
+    oldValues.locale = existing.locale;
+    newValues.locale = body.locale;
+  }
+  if (body.displayCurrency !== undefined && body.displayCurrency !== existing.displayCurrency) {
+    oldValues.displayCurrency = existing.displayCurrency;
+    newValues.displayCurrency = body.displayCurrency;
+  }
+  return { oldValues, newValues };
+}
 
 export async function userRoutes(app: FastifyInstance) {
   /** GET /v1/users/me — current user profile (requires JWT) */
@@ -382,6 +432,7 @@ export async function userRoutes(app: FastifyInstance) {
             firstAdmin: false,
             provisionalUntil: null,
             locale: admin.locale as "en" | "fr" | null,
+            displayCurrency: null,
             tenantDefaultLocale: "en" as const,
             orgSlug: "platform",
             orgName: "Givernance Platform",
@@ -404,6 +455,7 @@ export async function userRoutes(app: FastifyInstance) {
             firstAdmin: users.firstAdmin,
             provisionalUntil: users.provisionalUntil,
             locale: users.locale,
+            displayCurrency: users.displayCurrency,
             tenantDefaultLocale: tenants.defaultLocale,
             createdAt: users.createdAt,
             updatedAt: users.updatedAt,
@@ -472,7 +524,8 @@ export async function userRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
-      const body = request.body as { locale: "en" | "fr" | null };
+<<<<<<< HEAD
+      const body = request.body as UpdateMeBodyShape;
       const isSuperAdmin = request.auth?.roles?.includes("super_admin") ?? false;
       const isImpersonationSession = !!request.auth?.impersonation;
 
@@ -564,6 +617,7 @@ export async function userRoutes(app: FastifyInstance) {
             firstAdmin: false,
             provisionalUntil: null,
             locale: updated.locale as "en" | "fr" | null,
+            displayCurrency: null,
             tenantDefaultLocale: "en" as const,
             orgSlug: "platform",
             orgName: "Givernance Platform",
@@ -573,20 +627,51 @@ export async function userRoutes(app: FastifyInstance) {
         });
       }
 
+      // Validate displayCurrency against currency_metadata WHERE enabled = true
+      // (ADR-031 §2.8). currency_metadata has no RLS so we use systemDb.
+      if (body.displayCurrency !== undefined && body.displayCurrency !== null) {
+        const [currRow] = await systemDb
+          .select({ code: currencyMetadata.code })
+          .from(currencyMetadata)
+          .where(
+            and(
+              eq(currencyMetadata.code, body.displayCurrency),
+              eq(currencyMetadata.enabled, true),
+            ),
+          )
+          .limit(1);
+        if (!currRow) {
+          return reply.status(422).send({
+            type: "https://httpproblems.com/http-status/422",
+            title: "Unprocessable Entity",
+            status: 422,
+            detail: "Currency not supported or not enabled.",
+          });
+        }
+      }
+
       const result = await withTenantContext(orgId, async (tx) => {
-        // Read the existing locale so the audit `oldValues` carries the
-        // pre-update value. The same SELECT also resolves the application
+        // Read the existing preferences so the audit `oldValues` carries the
+        // pre-update values. The same SELECT also resolves the application
         // user id for the audit row's `userId` column.
         const [existing] = await tx
-          .select({ id: users.id, locale: users.locale })
+          .select({ id: users.id, locale: users.locale, displayCurrency: users.displayCurrency })
           .from(users)
           .where(and(eq(users.keycloakId, userId), eq(users.orgId, orgId), isNull(users.deletedAt)))
           .limit(1);
         if (!existing) return null;
 
+        // Build the sparse patch — only update fields explicitly provided in
+        // the body so callers can patch locale without touching displayCurrency
+        // and vice versa.
+        const patch: { updatedAt: Date; locale?: Locale | null; displayCurrency?: string | null } =
+          { updatedAt: new Date() };
+        if (body.locale !== undefined) patch.locale = body.locale as Locale | null;
+        if (body.displayCurrency !== undefined) patch.displayCurrency = body.displayCurrency;
+
         const [updated] = await tx
           .update(users)
-          .set({ locale: body.locale, updatedAt: new Date() })
+          .set(patch)
           .where(eq(users.id, existing.id))
           .returning({
             id: users.id,
@@ -599,27 +684,28 @@ export async function userRoutes(app: FastifyInstance) {
             firstAdmin: users.firstAdmin,
             provisionalUntil: users.provisionalUntil,
             locale: users.locale,
+            displayCurrency: users.displayCurrency,
             createdAt: users.createdAt,
             updatedAt: users.updatedAt,
           });
         if (!updated) return null;
 
-        await tx.insert(auditLogs).values({
-          orgId,
-          userId: existing.id,
-          action: "user.preferences_updated",
-          resourceType: "user",
-          resourceId: existing.id,
-          oldValues: { locale: existing.locale },
-          newValues: { locale: body.locale },
-        });
+        // Audit diff — only record fields that actually changed.
+        const { oldValues, newValues } = buildMePreferencesDiff(body, existing);
+        if (Object.keys(newValues).length > 0) {
+          await tx.insert(auditLogs).values({
+            orgId,
+            userId: existing.id,
+            action: "user.preferences_updated",
+            resourceType: "user",
+            resourceId: existing.id,
+            oldValues,
+            newValues,
+          });
+        }
 
         const [tenantRow] = await tx
-          .select({
-            slug: tenants.slug,
-            name: tenants.name,
-            defaultLocale: tenants.defaultLocale,
-          })
+          .select({ slug: tenants.slug, name: tenants.name, defaultLocale: tenants.defaultLocale })
           .from(tenants)
           .where(eq(tenants.id, orgId))
           .limit(1);
