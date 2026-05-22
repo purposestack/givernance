@@ -3,12 +3,14 @@
 import { CUSTOM_FIELD_JOBS, CUSTOM_FIELDS_QUEUE } from "@givernance/shared/custom-fields";
 import {
   BRANDING_EVENT_TYPES,
+  CURRENCY_BALANCE_QUEUE_NAME,
   FINANCE_DASHBOARD_JOBS,
   NOTIFICATIONS_DIGEST_JOBS,
   PLATFORM_REPORTS_JOBS,
   QUEUE_NAMES,
   RECEIPT_JOBS,
   TENANT_LIFECYCLE_JOBS,
+  type UpdateOrgCurrencyBalancePayload,
 } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
@@ -51,6 +53,7 @@ import { fanoutSurveyErasure } from "./processors/survey-erasure-cascade.js";
 import { processSurveyInvitationEmail } from "./processors/survey-invitation-email.js";
 import { processTeamInviteEmail } from "./processors/team-invite-email.js";
 import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
+import { processUpdateOrgCurrencyBalance } from "./processors/update-org-currency-balance.processor.js";
 
 /** Create a fresh ioredis connection — BullMQ requires separate connections for Queue vs Worker */
 function createRedisConnection() {
@@ -71,6 +74,11 @@ const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
 });
 const brandingQueue = new Queue(QUEUE_NAMES.BRANDING, { connection: queueConnection });
 const keycloakSyncQueue = new Queue(QUEUE_NAMES.KEYCLOAK_SYNC, { connection: queueConnection });
+// Currency balance update queue (ADR-031 §2.10, Epic #416 Task 6)
+const currencyBalancesQueue = new Queue(CURRENCY_BALANCE_QUEUE_NAME, {
+  connection: queueConnection,
+});
+
 const notificationsDigestQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS_DIGEST, {
   connection: queueConnection,
   // BullMQ Worker constructors don't honour `attempts/backoff` — those
@@ -324,6 +332,31 @@ async function processDomainEvent(job: Job): Promise<void> {
   // alongside the routing decision. The helper short-circuits on
   // non-`user.soft_deleted` events.
   await fanoutSurveyErasure({ outboxId: id, tenantId, type, payload });
+
+  // Org currency balance update (ADR-031 §2.10, Epic #416 Task 6).
+  // Enqueue a dedicated BullMQ job for donation lifecycle events so the
+  // materialized totals stay in sync. jobId is stable per (donation, eventType)
+  // so outbox re-deliveries don't produce duplicate balance mutations.
+  if (
+    type === "donation.created" ||
+    type === "donation.refunded" ||
+    type === "donation.status_changed"
+  ) {
+    const currencyBalancePayload: UpdateOrgCurrencyBalancePayload = {
+      orgId: tenantId,
+      donationId: payload.donationId as string,
+      eventType: type as UpdateOrgCurrencyBalancePayload["eventType"],
+    };
+    await currencyBalancesQueue.add("update-org-currency-balance", currencyBalancePayload, {
+      jobId: `currency-balance-${payload.donationId as string}-${type}`,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 5000 },
+    });
+    log.info(
+      { donationId: payload.donationId, eventType: type },
+      "Enqueued currency balance update",
+    );
+  }
 
   const decision = routeDomainEvent({ id, tenantId, type, payload, traceparent });
 
@@ -865,6 +898,18 @@ function startWorkers() {
     },
   );
 
+  // Currency balance update worker (ADR-031 §2.10, Epic #416 Task 6).
+  // Concurrency 5: jobs are short-lived (single upsert) and idempotent.
+  const currencyBalancesWorker = new Worker(
+    CURRENCY_BALANCE_QUEUE_NAME,
+    (job: Job<UpdateOrgCurrencyBalancePayload>) => processUpdateOrgCurrencyBalance(job),
+    {
+      connection: createRedisConnection(),
+      concurrency: 5,
+      ...defaultJobOpts,
+    },
+  );
+
   const workers = [
     receiptsWorker,
     emailsWorker,
@@ -881,6 +926,7 @@ function startWorkers() {
     bulkImportWorker,
     financeDashboardWorker,
     platformReportsWorker,
+    currencyBalancesWorker,
   ];
 
   for (const w of workers) {

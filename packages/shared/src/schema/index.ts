@@ -15,6 +15,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -1065,6 +1066,46 @@ export const donationAllocations = pgTable(
     index("donation_allocations_fund_id_idx").on(table.fundId),
   ],
 );
+
+// ─── Org Currency Balances (ADR-031 §2.10) ───────────────────────────────────
+
+/**
+ * Materialized running totals per (org, currency) pair. Updated by the
+ * `update-org-currency-balance` worker processor whenever a domain event
+ * signals a donation status change (donation.created, donation.refunded,
+ * donation.status_changed). Consumed by the reporting API to answer
+ * "how much has this org received in each currency?" in O(1) without
+ * scanning the full `donations` table.
+ *
+ * `cleared_total_cents` — sum of donations with status = 'cleared'.
+ * `pending_total_cents` — sum of donations with status = 'pending'.
+ *
+ * Deltas are signed: refunds pass a negative cleared delta so the
+ * ON CONFLICT UPDATE naturally subtracts from the running total.
+ *
+ * RLS tenant isolation: `org_id = current_setting('app.current_org_id', true)::uuid`.
+ * Only `SELECT` is granted to `givernance_app`; the worker processor
+ * connects via the owner role for the upsert.
+ */
+export const orgCurrencyBalances = pgTable(
+  "org_currency_balances",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    clearedTotalCents: integer("cleared_total_cents").notNull().default(0),
+    pendingTotalCents: integer("pending_total_cents").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.orgId, t.currency] }),
+    index("org_currency_balances_org_idx").on(t.orgId),
+  ],
+);
+
+export type OrgCurrencyBalance = typeof orgCurrencyBalances.$inferSelect;
+export type NewOrgCurrencyBalance = typeof orgCurrencyBalances.$inferInsert;
 
 // ─── Pledges ─────────────────────────────────────────────────────────────────
 

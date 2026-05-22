@@ -391,6 +391,32 @@ export const RECEIPT_JOBS = {
   REWRAP_DEKS: "receipts.rewrap_deks",
 } as const;
 
+// ─── Org currency balances (ADR-031 §2.10, Epic #416 Task 6) ────────────────
+
+/**
+ * Update the org_currency_balances materialized table in response to a
+ * donation lifecycle event.
+ *
+ * `eventType` maps to a signed delta on cleared/pending totals:
+ *   - "donation.created"     status=cleared → +cleared
+ *   - "donation.created"     status=pending → +pending
+ *   - "donation.refunded"                  → -cleared
+ *   - "donation.status_changed" (pending→cleared) → +cleared, -pending
+ */
+export interface UpdateOrgCurrencyBalanceJob {
+  name: "update-org-currency-balance";
+  data: UpdateOrgCurrencyBalancePayload;
+}
+
+export type UpdateOrgCurrencyBalancePayload = {
+  orgId: string;
+  donationId: string;
+  eventType: "donation.created" | "donation.refunded" | "donation.status_changed";
+};
+
+/** Queue name for the currency-balance update jobs (Epic #416 Task 6). */
+export const CURRENCY_BALANCE_QUEUE_NAME = "currency_balances" as const;
+
 /** Union of all job types */
 export type JobDefinition =
   | GenerateReceiptJob
@@ -409,7 +435,8 @@ export type JobDefinition =
   | ProcessBulkImportJob
   | CustomFieldOptionMergeJob
   | CustomFieldOptionMergeUndoJob
-  | GenerateMonthlyFinanceReportJob;
+  | GenerateMonthlyFinanceReportJob
+  | UpdateOrgCurrencyBalanceJob;
 
 /** Queue names */
 export const QUEUE_NAMES = {
