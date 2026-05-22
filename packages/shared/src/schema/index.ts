@@ -704,6 +704,21 @@ export {
   type NewCurrencyMetadata,
 } from "./currency-metadata";
 
+// ─── Bank accounts ────────────────────────────────────────────────────────────
+//
+// `bank-account.ts` uses a lazy `references(() => tenants.id)` callback back
+// into this file (same circular-import pattern as `swiss-qr-bill.ts`).
+import { bankAccounts } from "./bank-account";
+
+export {
+  BANK_ACCOUNT_IBAN_KIND_VALUES,
+  type BankAccount,
+  type BankAccountIbanKind,
+  bankAccountIbanKindEnum,
+  bankAccounts,
+  type NewBankAccount,
+} from "./bank-account";
+
 // ─── Swiss QR-bill foundation (Epic #318) ────────────────────────────────────
 //
 // The cross-table FKs `campaigns.bank_account_id`, `donations.swiss_qr_reference_id`,
@@ -712,7 +727,6 @@ export {
 // lazy `references((): AnyPgColumn => ...)` callbacks — the table definitions
 // in `swiss-qr-bill.ts` themselves only use lazy refs back into this file.
 import {
-  bankAccounts,
   campaignQrReferenceModeEnum,
   camtCreditEntries,
   donationPaymentSourceEnum,
@@ -720,11 +734,6 @@ import {
 } from "./swiss-qr-bill";
 
 export {
-  BANK_ACCOUNT_IBAN_KIND_VALUES,
-  type BankAccount,
-  type BankAccountIbanKind,
-  bankAccountIbanKindEnum,
-  bankAccounts,
   CAMPAIGN_QR_REFERENCE_MODE_VALUES,
   CAMT_STATEMENT_STATUS_VALUES,
   CAMT_UNRECONCILED_REASON_VALUES,
@@ -746,7 +755,6 @@ export {
   DONATION_PAYMENT_SOURCE_VALUES,
   type DonationPaymentSource,
   donationPaymentSourceEnum,
-  type NewBankAccount,
   type NewCamtCreditEntry,
   type NewCamtStatement,
   type NewCamtUnreconciledEntry,
