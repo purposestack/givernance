@@ -417,6 +417,51 @@ export type UpdateOrgCurrencyBalancePayload = {
 /** Queue name for the currency-balance update jobs (Epic #416 Task 6). */
 export const CURRENCY_BALANCE_QUEUE_NAME = "currency_balances" as const;
 
+// ─── FX cache (ADR-031 §2.1, Epic #416 Tasks 9–11) ─────────────────────────
+
+/**
+ * Refresh the Fixer.io FX-rate Redis cache for every active bank-account
+ * currency + every user's display currency.
+ *
+ * After successful refresh, enqueues a `backfill_fx_rate` job to resolve
+ * any donations still marked `fx_pending = true`.
+ */
+export type RefreshFxCachePayload = {
+  /** "startup" — one-shot enqueued at worker boot; "schedule" — daily cron. */
+  triggeredBy: "startup" | "schedule";
+};
+
+export interface RefreshFxCacheJob {
+  name: "refresh_fx_cache";
+  data: RefreshFxCachePayload;
+}
+
+/**
+ * Backfill the historical Fixer.io exchange rate for donations that could not
+ * fetch a rate synchronously (fx_pending = true).
+ *
+ * Processes donations in BACKFILL_FX_BATCH_SIZE chunks; re-enqueues itself with
+ * a 10-minute delay when more fx_pending rows remain after a successful batch.
+ */
+export type BackfillFxRatePayload = {
+  /** "refresh_fx_cache" — triggered by the nightly refresh job; "self" — re-enqueued by this processor. */
+  triggeredBy: "refresh_fx_cache" | "self";
+};
+
+export interface BackfillFxRateJob {
+  name: "backfill_fx_rate";
+  data: BackfillFxRatePayload;
+}
+
+/** Queue name shared by the FX-cache refresh and backfill jobs (Epic #416). */
+export const FX_CACHE_QUEUE_NAME = "fx_cache" as const;
+
+/** Job names inside the FX_CACHE queue. */
+export const FX_CACHE_JOBS = {
+  REFRESH: "refresh_fx_cache",
+  BACKFILL: "backfill_fx_rate",
+} as const;
+
 /** Union of all job types */
 export type JobDefinition =
   | GenerateReceiptJob
@@ -436,7 +481,9 @@ export type JobDefinition =
   | CustomFieldOptionMergeJob
   | CustomFieldOptionMergeUndoJob
   | GenerateMonthlyFinanceReportJob
-  | UpdateOrgCurrencyBalanceJob;
+  | UpdateOrgCurrencyBalanceJob
+  | RefreshFxCacheJob
+  | BackfillFxRateJob;
 
 /** Queue names */
 export const QUEUE_NAMES = {
