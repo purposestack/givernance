@@ -20,6 +20,13 @@ const mockTenant = {
   updatedAt: new Date().toISOString(),
 };
 
+// Mock Redis module — health routes probe fx:rates:EUR key.
+vi.mock("../../lib/redis.js", () => ({
+  redis: {
+    get: vi.fn().mockResolvedValue(null),
+  },
+}));
+
 // Mock DB module before importing the server — Vitest hoists vi.mock() calls.
 vi.mock("../../lib/db.js", () => {
   const makeInsertChain = () => ({
