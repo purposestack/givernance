@@ -1773,6 +1773,43 @@
         "minLifetimeHint": "Dans votre devise de référence. Inclut les dons reçus, déduits des remboursements.",
         "apply": "Appliquer",
         "clear": "Effacer les filtres"
+      },
+      "title": "Filtrer les Constituants",
+      "addFilter": "Ajouter un Filtre",
+      "addCondition": "Ajouter une Condition",
+      "clearAll": "Tout Effacer",
+      "matchCount": "{count, plural, =0 {Aucune correspondance} one {# correspondance} other {# correspondances}}",
+      "counting": "Calcul des correspondances...",
+      "empty": "Aucun filtre appliqué",
+      "getStarted": "Utilisez des modèles prédéfinis ou créez des filtres personnalisés",
+      "presets": {
+        "trigger": "Utiliser un Modèle",
+        "title": "Modèles de Filtres",
+        "categories": {
+          "donation": "Historique des Dons",
+          "engagement": "Engagement",
+          "demographic": "Démographie"
+        }
+      },
+      "condition": {
+        "titleAdd": "Ajouter une Condition de Filtre",
+        "titleEdit": "Modifier la Condition de Filtre",
+        "description": "Construisez une condition pour filtrer vos constituants",
+        "field": "Champ",
+        "operator": "Condition",
+        "value": "Valeur",
+        "selectField": "Sélectionner un champ",
+        "selectOperator": "Sélectionner une condition",
+        "selectValue": "Sélectionner une valeur",
+        "enterValue": "Entrer une valeur",
+        "enterDate": "Entrer une date",
+        "valueFrom": "Valeur de",
+        "valueTo": "Valeur à",
+        "dateFrom": "Date de",
+        "dateTo": "Date à",
+        "cancel": "Annuler",
+        "add": "Ajouter la Condition",
+        "update": "Mettre à Jour la Condition"
       }
     },
     "actions": {
@@ -2216,7 +2253,12 @@
           "cancel": "Annuler",
           "submitting": "Ajout…",
           "confirm": "{count, plural, =0 {Ajouter} one {Ajouter # constituant} other {Ajouter # constituants}}",
-          "error": "Impossible d'ajouter les constituants sélectionnés."
+          "error": "Impossible d'ajouter les constituants sélectionnés.",
+          "descriptionEnhanced": "Utilisez des filtres pour sélectionner plusieurs constituants à la fois, ou recherchez individuellement.",
+          "results": "{count, plural, =0 {Aucun résultat} one {# résultat} other {# résultats}}",
+          "selectAll": "Tout Sélectionner",
+          "selectNone": "Tout Désélectionner",
+          "noMatches": "Aucun constituant ne correspond à vos critères de filtre"
         }
       },
       "qrTracking": {

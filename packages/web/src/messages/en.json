@@ -1773,6 +1773,43 @@
         "minLifetimeHint": "In your base currency. Counts cleared donations net of refunds.",
         "apply": "Apply",
         "clear": "Clear filters"
+      },
+      "title": "Filter Constituents",
+      "addFilter": "Add Filter",
+      "addCondition": "Add Condition",
+      "clearAll": "Clear All",
+      "matchCount": "{count, plural, =0 {No matches} one {# match} other {# matches}}",
+      "counting": "Calculating matches...",
+      "empty": "No filters applied",
+      "getStarted": "Use preset templates or create custom filters",
+      "presets": {
+        "trigger": "Use Template",
+        "title": "Filter Templates",
+        "categories": {
+          "donation": "Donation History",
+          "engagement": "Engagement",
+          "demographic": "Demographics"
+        }
+      },
+      "condition": {
+        "titleAdd": "Add Filter Condition",
+        "titleEdit": "Edit Filter Condition",
+        "description": "Build a condition to filter your constituents",
+        "field": "Field",
+        "operator": "Condition",
+        "value": "Value",
+        "selectField": "Select a field",
+        "selectOperator": "Select a condition",
+        "selectValue": "Select a value",
+        "enterValue": "Enter a value",
+        "enterDate": "Enter a date",
+        "valueFrom": "From value",
+        "valueTo": "To value",
+        "dateFrom": "From date",
+        "dateTo": "To date",
+        "cancel": "Cancel",
+        "add": "Add Condition",
+        "update": "Update Condition"
       }
     },
     "actions": {
@@ -2216,7 +2253,12 @@
           "cancel": "Cancel",
           "submitting": "Adding…",
           "confirm": "{count, plural, =0 {Add} one {Add # constituent} other {Add # constituents}}",
-          "error": "Could not add the selected constituents."
+          "error": "Could not add the selected constituents.",
+          "descriptionEnhanced": "Use filters to select multiple constituents at once, or search individually.",
+          "results": "{count, plural, =0 {No results} one {# result} other {# results}}",
+          "selectAll": "Select All",
+          "selectNone": "Select None",
+          "noMatches": "No constituents match your filter criteria"
         }
       },
       "qrTracking": {
