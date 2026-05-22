@@ -982,6 +982,18 @@ export const funds = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     type: fundTypeEnum("type").notNull().default("unrestricted"),
+    /**
+     * Optional FK to the settlement bank account for this fund (ADR-031 §2.4,
+     * Epic #416 Task 3). When set, donations allocated to this fund settle via
+     * the specified bank account; `bank_accounts.currency` becomes the fund's
+     * settlement currency. Nullable — existing funds have no bank account
+     * assigned yet. A follow-up migration will enforce NOT NULL once all funds
+     * are assigned. ON DELETE RESTRICT prevents accidental removal of an account
+     * that still has funds bound to it.
+     */
+    bankAccountId: uuid("bank_account_id").references((): AnyPgColumn => bankAccounts.id, {
+      onDelete: "restrict",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

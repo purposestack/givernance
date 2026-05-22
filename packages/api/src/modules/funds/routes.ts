@@ -16,10 +16,13 @@ import {
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
+  BankAccountInactiveError,
+  BankAccountNotFoundError,
   createFund,
   deleteFund,
   FUND_SORT_FIELDS,
   FundConflictError,
+  FundCurrencyChangedError,
   getFund,
   listFunds,
   updateFund,
@@ -31,6 +34,7 @@ const FundCreateBody = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
   description: Type.Optional(Type.Union([Type.String({ maxLength: 5000 }), Type.Null()])),
   type: Type.Optional(FundTypeSchema),
+  bankAccountId: Type.Optional(Type.String({ format: "uuid" })),
 });
 
 const FundUpdateBody = Type.Object(
@@ -38,6 +42,7 @@ const FundUpdateBody = Type.Object(
     name: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
     description: Type.Optional(Type.Union([Type.String({ maxLength: 5000 }), Type.Null()])),
     type: Type.Optional(FundTypeSchema),
+    bankAccountId: Type.Optional(Type.String({ format: "uuid" })),
   },
   { minProperties: 1 },
 );
@@ -48,6 +53,8 @@ const FundResponse = Type.Object({
   name: Type.String(),
   description: Type.Union([Type.String(), Type.Null()]),
   type: FundTypeSchema,
+  bankAccountId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  settlementCurrency: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -124,10 +131,33 @@ export async function fundRoutes(app: FastifyInstance) {
         name: string;
         description?: string | null;
         type?: "restricted" | "unrestricted";
+        bankAccountId?: string;
       };
 
-      const fund = await createFund(orgId, body);
-      return reply.status(201).send({ data: fund });
+      try {
+        const fund = await createFund(orgId, body);
+        return reply.status(201).send({ data: fund });
+      } catch (error) {
+        if (error instanceof BankAccountNotFoundError) {
+          return reply.status(404).send({
+            type: "urn:givernance:error:not-found",
+            title: "Not Found",
+            status: 404,
+            detail: error.message,
+            instance: request.url,
+          });
+        }
+        if (error instanceof BankAccountInactiveError) {
+          return reply.status(422).send({
+            type: "urn:givernance:error:validation",
+            title: "Unprocessable Entity",
+            status: 422,
+            detail: error.message,
+            instance: request.url,
+          });
+        }
+        throw error;
+      }
     },
   );
 
@@ -184,15 +214,47 @@ export async function fundRoutes(app: FastifyInstance) {
         name?: string;
         description?: string | null;
         type?: "restricted" | "unrestricted";
+        bankAccountId?: string;
       };
 
-      const updated = await updateFund(orgId, id, body);
+      try {
+        const updated = await updateFund(orgId, id, body);
 
-      if (!updated) {
-        return reply.status(404).send(problemDetail(404, "Not Found", "Fund not found"));
+        if (!updated) {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Fund not found"));
+        }
+
+        return { data: updated };
+      } catch (error) {
+        if (error instanceof BankAccountNotFoundError) {
+          return reply.status(404).send({
+            type: "urn:givernance:error:not-found",
+            title: "Not Found",
+            status: 404,
+            detail: error.message,
+            instance: request.url,
+          });
+        }
+        if (error instanceof BankAccountInactiveError) {
+          return reply.status(422).send({
+            type: "urn:givernance:error:validation",
+            title: "Unprocessable Entity",
+            status: 422,
+            detail: error.message,
+            instance: request.url,
+          });
+        }
+        if (error instanceof FundCurrencyChangedError) {
+          return reply.status(422).send({
+            type: "urn:givernance:error:validation",
+            title: "Unprocessable Entity",
+            status: 422,
+            detail: error.message,
+            instance: request.url,
+          });
+        }
+        throw error;
       }
-
-      return { data: updated };
     },
   );
 
