@@ -934,6 +934,41 @@ export const donations = pgTable(
      * webhook handler.
      */
     refundedAt: timestamp("refunded_at", { withTimezone: true }),
+
+    // ── Fee breakdown (in donation/presentment currency) ────────────────────
+    transactionFeeCents: integer("transaction_fee_cents").notNull().default(0),
+    forexFeeCents: integer("forex_fee_cents").notNull().default(0),
+    /** Nullable; computed on write as amountCents − transactionFeeCents − forexFeeCents − platformFeeCents. */
+    netAmountCents: integer("net_amount_cents"),
+
+    // ── Settlement record ────────────────────────────────────────────────────
+    settledAmountCents: integer("settled_amount_cents"),
+    settledCurrency: varchar("settled_currency", { length: 3 }),
+    stripeBalanceTxnId: text("stripe_balance_txn_id"),
+
+    // ── FX accounting ────────────────────────────────────────────────────────
+    /**
+     * Source of the exchange rate: 'stripe_balance_txn' | 'fixer_api' |
+     * 'backfilled' | 'manual' | 'same_currency'. Checked at DB level via
+     * donations_exchange_rate_source_check constraint (migration 0060).
+     */
+    exchangeRateSource: text("exchange_rate_source"),
+    exchangeRateTimestamp: timestamp("exchange_rate_timestamp", { withTimezone: true }),
+    /**
+     * Donation amount converted to the fund's settlement currency, in
+     * settlement-currency cents. Supersedes amountBaseCents conceptually
+     * (ADR-031 §2.3) — amountBaseCents is retained for back-compat.
+     */
+    amountInSettlementCurrencyCents: integer("amount_in_settlement_currency_cents"),
+
+    // ── Outage resilience ────────────────────────────────────────────────────
+    /**
+     * Set TRUE when the FX rate could not be fetched synchronously (e.g. Fixer
+     * API outage). The backfill job queries WHERE fx_pending = TRUE, fills in
+     * exchangeRate / exchangeRateSource / amountInSettlementCurrencyCents, then
+     * flips this to FALSE. (Epic #416 Task 5 / ADR-031 §2.3)
+     */
+    fxPending: boolean("fx_pending").notNull().default(false),
     paymentMethod: varchar("payment_method", { length: 50 }),
     paymentRef: varchar("payment_ref", { length: 255 }),
     /**
