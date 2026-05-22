@@ -22,7 +22,7 @@ import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth
 
 let app: FastifyInstance;
 
-const VALID_CH_IBAN = "CH3680808001234567890";
+const VALID_CH_IBAN = "CH3509000000000000001"; // PostFinance IID 09000 — mod-97 = 1 verified
 
 const BASE_HOLDER = {
   holderName: "Association Checkout Config Test",
@@ -46,15 +46,15 @@ beforeAll(async () => {
   await db.execute(sql`
     INSERT INTO feature_flags (key, enabled, label, description, scope, tenant_override_allowed, public)
     VALUES
-      ('donation.multi_currency', TRUE, 'Multi-currency checkout', 'Multi-currency checkout support', 'platform', FALSE, FALSE),
-      ('donation.fund_routing', TRUE, 'Campaign fund routing', 'Multi-fund routing', 'platform', FALSE, FALSE)
-    ON CONFLICT (key) DO UPDATE SET enabled = TRUE
+      ('donation.multi_currency', TRUE, 'Multi-currency checkout support', 'Enables dynamic currency selection at checkout based on Stripe settlement currencies. Requires Fixer.io cache to be populated.', 'platform', FALSE, FALSE),
+      ('donation.fund_routing', TRUE, 'Campaign → fund routing', 'Enables assigning multiple funds to a campaign with split percentages. Required for multi-fund donation allocation.', 'platform', FALSE, FALSE)
+    ON CONFLICT (key) DO UPDATE SET enabled = TRUE, label = EXCLUDED.label, description = EXCLUDED.description
   `);
 
   // Seed CHF in currency_metadata so the presentment list is non-empty
   await db.execute(sql`
-    INSERT INTO currency_metadata (code, minor_unit, enabled, label)
-    VALUES ('CHF', 2, TRUE, 'Swiss Franc')
+    INSERT INTO currency_metadata (code, name, minor_unit, stripe_zero_dec, stripe_special, stripe_min_amt, enabled)
+    VALUES ('CHF', 'Swiss Franc', 2, FALSE, FALSE, 50, TRUE)
     ON CONFLICT (code) DO UPDATE SET enabled = TRUE
   `);
 
@@ -80,7 +80,7 @@ beforeAll(async () => {
     method: "POST",
     url: "/v1/campaigns",
     headers: authHeader(signToken(app)),
-    payload: { name: "Checkout Config Test No Routing", type: "general", defaultCurrency: "CHF" },
+    payload: { name: "Checkout Config Test No Routing", type: "digital", defaultCurrency: "CHF" },
   });
   expect(camp1Res.statusCode).toBe(201);
   campaignWithNoRouting = camp1Res.json<{ data: { id: string } }>().data.id;
@@ -90,7 +90,7 @@ beforeAll(async () => {
     method: "POST",
     url: "/v1/campaigns",
     headers: authHeader(signToken(app)),
-    payload: { name: "Checkout Config Test With Routing", type: "general", defaultCurrency: "CHF" },
+    payload: { name: "Checkout Config Test With Routing", type: "digital", defaultCurrency: "CHF" },
   });
   expect(camp2Res.statusCode).toBe(201);
   campaignWithRouting = camp2Res.json<{ data: { id: string } }>().data.id;

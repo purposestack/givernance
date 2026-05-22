@@ -42,7 +42,8 @@ const FundUpdateBody = Type.Object(
     name: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
     description: Type.Optional(Type.Union([Type.String({ maxLength: 5000 }), Type.Null()])),
     type: Type.Optional(FundTypeSchema),
-    bankAccountId: Type.Optional(Type.String({ format: "uuid" })),
+    // null explicitly clears the bank account link (unlinking the settlement currency)
+    bankAccountId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
   },
   { minProperties: 1 },
 );

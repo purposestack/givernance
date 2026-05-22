@@ -23,6 +23,10 @@ import {
 import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
+// Step-up tokens — POST / PATCH / DELETE on /v1/bank-accounts require
+// acr = "urn:givernance:acr:bank-mutation" + a recent auth_time.
+let acrToken: string;
+let acrTokenB: string;
 
 beforeAll(async () => {
   app = await createServer();
@@ -33,6 +37,13 @@ beforeAll(async () => {
   // safe because no swiss_qr_references rows exist yet (PR #3 lands
   // the worker integration that issues them).
   await db.execute(sql`DELETE FROM bank_accounts WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+
+  const acrClaims = {
+    acr: "urn:givernance:acr:bank-mutation",
+    auth_time: Math.floor(Date.now() / 1000) - 60,
+  };
+  acrToken = signToken(app, acrClaims);
+  acrTokenB = signTokenB(app, acrClaims);
 });
 
 afterAll(async () => {
@@ -63,13 +74,13 @@ describe("Bank Accounts CRUD", () => {
   let qrIbanAccountId: string;
 
   it("POST /v1/bank-accounts creates a regular-IBAN account", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: {
         ...BASE_HOLDER,
+        label: "PostFinance CHF",
         // Mixed-case + whitespace ingress to verify canonicalisation.
         iban: "ch93 0076 2011 6238 5295 7",
         bankName: "PostFinance",
@@ -88,13 +99,13 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("POST /v1/bank-accounts derives `qr_iban` from the IID range (30000-31999)", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: {
         ...BASE_HOLDER,
+        label: "UBS QR-IBAN",
         iban: VALID_QR_IBAN,
         bankName: "UBS Switzerland AG",
         currency: "CHF",
@@ -108,13 +119,13 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("POST /v1/bank-accounts rejects a non-CH/LI IBAN", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: {
         ...BASE_HOLDER,
+        label: "BNP FR Account",
         iban: VALID_FR_IBAN,
         bankName: "BNP Paribas",
         currency: "EUR",
@@ -127,14 +138,14 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("POST /v1/bank-accounts accepts a Liechtenstein IBAN", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: {
         ...BASE_HOLDER,
         holderCountryCode: "LI",
+        label: "LLB Liechtenstein",
         iban: VALID_LI_IBAN,
         bankName: "LLB",
         currency: "CHF",
@@ -145,11 +156,10 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("PATCH /v1/bank-accounts/:id rejects a BIC of invalid length (ISO 9362 = 8 or 11)", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/bank-accounts/${regularAccountId}`,
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: { bic: "ABCDEFG" }, // 7 chars — invalid
     });
 
@@ -159,13 +169,13 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("POST /v1/bank-accounts rejects a malformed (mod-97-fail) IBAN", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: {
         ...BASE_HOLDER,
+        label: "Invalid Checksum",
         iban: "CH9300762011623852958", // last digit flipped — checksum fails
         bankName: "PostFinance",
         currency: "CHF",
@@ -207,11 +217,10 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("PATCH /v1/bank-accounts/:id updates mutable fields", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/bank-accounts/${regularAccountId}`,
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: {
         holderName: "Association Givernance Test — Renamed",
         bic: "POFICHBE", // canonical PostFinance BIC, 8 chars
@@ -225,11 +234,10 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("PATCH /v1/bank-accounts/:id rejects EUR on a QR-IBAN account", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/bank-accounts/${qrIbanAccountId}`,
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: { currency: "EUR" },
     });
 
@@ -239,13 +247,13 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("POST duplicate active IBAN within the same org returns 409", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: {
         ...BASE_HOLDER,
+        label: "PostFinance CHF Duplicate",
         iban: VALID_CH_IBAN, // already taken by regularAccountId
         bankName: "PostFinance",
         currency: "CHF",
@@ -266,11 +274,12 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("Tenant isolation: ORG_B cannot patch ORG_A's account", async () => {
-    const tokenB = signTokenB(app);
+    // Use the ACR-enabled ORG_B token so the step-up guard passes;
+    // the handler's RLS query returns 404 because the account belongs to ORG_A.
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/bank-accounts/${regularAccountId}`,
-      headers: authHeader(tokenB),
+      headers: authHeader(acrTokenB),
       payload: { holderName: "Hijacked" },
     });
     expect(res.statusCode).toBe(404);
@@ -312,11 +321,10 @@ describe("Bank Accounts CRUD", () => {
       sql`UPDATE campaigns SET bank_account_id = ${regularAccountId}
           WHERE id IN (SELECT id FROM campaigns WHERE org_id = ${ORG_A} LIMIT 1)`,
     );
-    const token = signToken(app);
     const res = await app.inject({
       method: "DELETE",
       url: `/v1/bank-accounts/${regularAccountId}`,
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
     });
 
     expect(res.statusCode).toBe(200);
@@ -328,7 +336,7 @@ describe("Bank Accounts CRUD", () => {
     const listRes = await app.inject({
       method: "GET",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(signToken(app)),
     });
     const list = listRes.json<{ data: Array<{ id: string }> }>();
     expect(list.data.find((a) => a.id === regularAccountId)).toBeUndefined();
@@ -342,13 +350,13 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("Re-create the same IBAN after soft-delete succeeds (partial unique WHERE deleted_at IS NULL)", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
       payload: {
         ...BASE_HOLDER,
+        label: "PostFinance Re-registered",
         iban: VALID_CH_IBAN, // freed by the soft-delete above
         bankName: "PostFinance — Re-registered",
         currency: "CHF",
@@ -373,11 +381,10 @@ describe("Bank Accounts CRUD", () => {
   });
 
   it("DELETE on already-deleted account returns 404", async () => {
-    const token = signToken(app);
     const res = await app.inject({
       method: "DELETE",
       url: `/v1/bank-accounts/${regularAccountId}`,
-      headers: authHeader(token),
+      headers: authHeader(acrToken),
     });
     expect(res.statusCode).toBe(404);
   });

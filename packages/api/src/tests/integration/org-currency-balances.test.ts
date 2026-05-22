@@ -16,7 +16,7 @@ import { orgCurrencyBalances } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db, withTenantContext } from "../../lib/db.js";
+import { systemDb, withTenantContext } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { ensureTestTenants, ORG_A, ORG_B } from "../helpers/auth.js";
 
@@ -27,13 +27,25 @@ beforeAll(async () => {
   await app.ready();
   await ensureTestTenants();
 
-  // Clean up any leftover test rows from prior runs
-  await db.execute(sql`DELETE FROM org_currency_balances WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  // Clean up any leftover test rows from prior runs (owner role — SELECT-only app role can't delete)
+  await systemDb.execute(
+    sql`DELETE FROM org_currency_balances WHERE org_id IN (${ORG_A}, ${ORG_B})`,
+  );
+
+  // Pre-seed ORG_B row so test 4 ("ORG_B tenant context sees its own rows") passes even when
+  // the RLS isolation test (test 3) is skipped in CI (DATABASE_URL_APP not set there).
+  await systemDb.execute(sql`
+    INSERT INTO org_currency_balances (org_id, currency, cleared_total_cents, pending_total_cents)
+    VALUES (${ORG_B}, 'EUR', 20000, 0)
+    ON CONFLICT (org_id, currency) DO NOTHING
+  `);
 });
 
 afterAll(async () => {
-  // Clean up test rows so re-runs start clean
-  await db.execute(sql`DELETE FROM org_currency_balances WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  // Clean up test rows so re-runs start clean (owner role — SELECT-only app role can't delete)
+  await systemDb.execute(
+    sql`DELETE FROM org_currency_balances WHERE org_id IN (${ORG_A}, ${ORG_B})`,
+  );
   await app.close();
 });
 
@@ -41,7 +53,7 @@ describe("org_currency_balances schema + RLS (Epic #416 Task 6)", () => {
   it("direct INSERT via db.execute succeeds (owner role bypasses RLS)", async () => {
     // The owner-role db instance bypasses RLS — we use raw sql to simulate
     // what the worker upsert would do.
-    await db.execute(sql`
+    await systemDb.execute(sql`
       INSERT INTO org_currency_balances (org_id, currency, cleared_total_cents, pending_total_cents)
       VALUES (${ORG_A}, 'CHF', 10000, 500)
       ON CONFLICT (org_id, currency) DO UPDATE
@@ -68,25 +80,31 @@ describe("org_currency_balances schema + RLS (Epic #416 Task 6)", () => {
     expect(rows[0]?.pendingTotalCents).toBe(500);
   });
 
-  it("INSERT a row for ORG_B and verify it is isolated from ORG_A context", async () => {
-    await db.execute(sql`
-      INSERT INTO org_currency_balances (org_id, currency, cleared_total_cents, pending_total_cents)
-      VALUES (${ORG_B}, 'EUR', 20000, 0)
-      ON CONFLICT (org_id, currency) DO UPDATE
-        SET cleared_total_cents = EXCLUDED.cleared_total_cents,
-            pending_total_cents = EXCLUDED.pending_total_cents,
-            updated_at = NOW()
-    `);
+  // RLS isolation can only be verified when DATABASE_URL_APP is set to a limited-privilege role.
+  // In CI the owner role is used for both `db` and `systemDb`, so withTenantContext bypasses RLS
+  // and would see cross-tenant rows — the test would be a false negative.
+  it.skipIf(!process.env["DATABASE_URL_APP"])(
+    "INSERT a row for ORG_B and verify it is isolated from ORG_A context",
+    async () => {
+      await systemDb.execute(sql`
+        INSERT INTO org_currency_balances (org_id, currency, cleared_total_cents, pending_total_cents)
+        VALUES (${ORG_B}, 'EUR', 20000, 0)
+        ON CONFLICT (org_id, currency) DO UPDATE
+          SET cleared_total_cents = EXCLUDED.cleared_total_cents,
+              pending_total_cents = EXCLUDED.pending_total_cents,
+              updated_at = NOW()
+      `);
 
-    // ORG_A tenant context should NOT see ORG_B rows
-    const rowsFromOrgAContext = await withTenantContext(ORG_A, async (tx) => {
-      return tx.select().from(orgCurrencyBalances).where(eq(orgCurrencyBalances.orgId, ORG_B));
-    });
+      // ORG_A tenant context should NOT see ORG_B rows
+      const rowsFromOrgAContext = await withTenantContext(ORG_A, async (tx) => {
+        return tx.select().from(orgCurrencyBalances).where(eq(orgCurrencyBalances.orgId, ORG_B));
+      });
 
-    // RLS policy filters org_id = current_setting('app.current_organization_id')::uuid
-    // so ORG_B rows are invisible when the context is ORG_A
-    expect(rowsFromOrgAContext).toHaveLength(0);
-  });
+      // RLS policy filters org_id = current_setting('app.current_organization_id')::uuid
+      // so ORG_B rows are invisible when the context is ORG_A
+      expect(rowsFromOrgAContext).toHaveLength(0);
+    },
+  );
 
   it("ORG_B tenant context sees its own rows", async () => {
     const rows = await withTenantContext(ORG_B, async (tx) => {

@@ -23,7 +23,7 @@ let app: FastifyInstance;
 const ACR_CLAIM = "urn:givernance:acr:bank-mutation";
 const STEP_UP_WINDOW_SECONDS = 900;
 
-const VALID_CH_IBAN = "CH1604835012345678009";
+const VALID_CH_IBAN = "CH4808390000012345678";
 
 const MINIMAL_BANK_ACCOUNT_PAYLOAD = {
   label: "Step-up Test Account",

@@ -59,12 +59,23 @@ beforeAll(async () => {
 
   // Seed: two bank accounts on ORG_A (one regular, one QR-IBAN) + one
   // on ORG_B for the cross-tenant test.
-  const tokenA = signToken(app);
+  // Bank account mutations require the step-up ACR claim.
+  const bankAcrClaims = {
+    acr: "urn:givernance:acr:bank-mutation",
+    auth_time: Math.floor(Date.now() / 1000) - 60,
+  };
+  const tokenA = signToken(app, bankAcrClaims);
   const createA = await app.inject({
     method: "POST",
     url: "/v1/bank-accounts",
     headers: authHeader(tokenA),
-    payload: { ...BASE_HOLDER, iban: VALID_CH_IBAN, bankName: "PostFinance", currency: "CHF" },
+    payload: {
+      ...BASE_HOLDER,
+      label: "PostFinance Regular ORG_A",
+      iban: VALID_CH_IBAN,
+      bankName: "PostFinance",
+      currency: "CHF",
+    },
   });
   bankAccountA = createA.json<{ data: { id: string } }>().data.id;
 
@@ -72,16 +83,28 @@ beforeAll(async () => {
     method: "POST",
     url: "/v1/bank-accounts",
     headers: authHeader(tokenA),
-    payload: { ...BASE_HOLDER, iban: VALID_QR_IBAN, bankName: "UBS Switzerland", currency: "CHF" },
+    payload: {
+      ...BASE_HOLDER,
+      label: "UBS QR-IBAN ORG_A",
+      iban: VALID_QR_IBAN,
+      bankName: "UBS Switzerland",
+      currency: "CHF",
+    },
   });
   qrIbanBankAccountA = createQrIban.json<{ data: { id: string } }>().data.id;
 
-  const tokenB = signTokenB(app);
+  const tokenB = signTokenB(app, bankAcrClaims);
   const createB = await app.inject({
     method: "POST",
     url: "/v1/bank-accounts",
     headers: authHeader(tokenB),
-    payload: { ...BASE_HOLDER, iban: VALID_CH_IBAN, bankName: "PostFinance", currency: "CHF" },
+    payload: {
+      ...BASE_HOLDER,
+      label: "PostFinance Regular ORG_B",
+      iban: VALID_CH_IBAN,
+      bankName: "PostFinance",
+      currency: "CHF",
+    },
   });
   bankAccountB = createB.json<{ data: { id: string } }>().data.id;
 });
@@ -182,13 +205,19 @@ describe("Campaign × bank-account link (Epic #318)", () => {
 
   it("rejects a soft-deleted `bankAccountId` at link-time", async () => {
     // Create a throwaway account, soft-delete it, then try to link.
+    // Bank account mutations need the step-up ACR; campaign PATCH does not.
+    const bankToken = signToken(app, {
+      acr: "urn:givernance:acr:bank-mutation",
+      auth_time: Math.floor(Date.now() / 1000) - 60,
+    });
     const token = signToken(app);
     const tempCreate = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(bankToken),
       payload: {
         ...BASE_HOLDER,
+        label: "Throwaway Test Account",
         iban: "CH3208387000001080173", // SIX-published test (regular CH)
         bankName: "Test",
         currency: "CHF",
@@ -200,7 +229,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
     await app.inject({
       method: "DELETE",
       url: `/v1/bank-accounts/${tempId}`,
-      headers: authHeader(token),
+      headers: authHeader(bankToken),
     });
 
     const res = await app.inject({

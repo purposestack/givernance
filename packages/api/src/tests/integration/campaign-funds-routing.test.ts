@@ -93,7 +93,7 @@ beforeAll(async () => {
     method: "POST",
     url: "/v1/campaigns",
     headers: authHeader(signToken(app)),
-    payload: { name: "Routing Test Campaign A", type: "general", defaultCurrency: "CHF" },
+    payload: { name: "Routing Test Campaign A", type: "digital", defaultCurrency: "CHF" },
   });
   expect(campaignRes.statusCode).toBe(201);
   campaignId = campaignRes.json<{ data: { id: string } }>().data.id;
@@ -103,7 +103,7 @@ beforeAll(async () => {
     method: "POST",
     url: "/v1/campaigns",
     headers: authHeader(signTokenB(app)),
-    payload: { name: "Routing Test Campaign B", type: "general", defaultCurrency: "EUR" },
+    payload: { name: "Routing Test Campaign B", type: "digital", defaultCurrency: "EUR" },
   });
   expect(campaignBRes.statusCode).toBe(201);
   campaignBId = campaignBRes.json<{ data: { id: string } }>().data.id;

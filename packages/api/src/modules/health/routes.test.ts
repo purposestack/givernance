@@ -21,9 +21,12 @@ const mockTenant = {
 };
 
 // Mock Redis module — health routes probe fx:rates:EUR key.
+// `rateLimit` must be truthy so the @fastify/rate-limit RedisStore constructor
+// skips its `defineCommand` call (which would throw on a plain mock object).
 vi.mock("../../lib/redis.js", () => ({
   redis: {
     get: vi.fn().mockResolvedValue(null),
+    rateLimit: vi.fn(),
   },
 }));
 
