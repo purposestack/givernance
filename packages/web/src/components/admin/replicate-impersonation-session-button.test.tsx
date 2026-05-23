@@ -226,4 +226,68 @@ describe("ReplicateImpersonationSessionButton — outcome branches (issue #428)"
     );
     expect(assignMock).not.toHaveBeenCalled();
   });
+
+  // QA review (PR #429): the previous test asserts the alert text but
+  // doesn't pin which field of the RFC 9457 body the component reads.
+  // If a refactor flattens the parser to e.g. `body.message`, the 409
+  // test above would still pass because the mock happens to set
+  // `detail`. This test exercises the fall-through: a body with
+  // `title` but no `detail` (RFC 9457 §3.1 permits omitting detail
+  // when the title carries the full meaning) must surface the title
+  // through `body.detail ?? body.title ?? ` Request failed: status `.
+  it("falls back to body.title when body.detail is absent (RFC 9457 fall-through)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({
+        type: "https://httpproblems.com/http-status/429",
+        title: "Too Many Requests",
+        status: 429,
+        // detail intentionally omitted — RFC 9457 §3.1 lets `title`
+        // stand alone when it carries the full meaning of the error.
+      }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const user = userEvent.setup();
+    render(<ReplicateImpersonationSessionButton {...baseProps()} />);
+    await user.click(screen.getByRole("button", { name: /Replicate/i }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/Too Many Requests/i));
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  // QA review (PR #429): the third branch of `markReplicated()` —
+  // when appending " (replicated)" would exceed the 2000-char API
+  // cap, the marker is skipped silently so the rebroadcast still
+  // works. Pre-this-test, branches 1 (already-marked) and 3 (append)
+  // were covered but the overflow guard was uncovered — a regression
+  // that tightened the predicate would ship green.
+  it("overflow guard: a reason 1995 chars long is sent verbatim without the marker", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ data: { sessionId: "sess-new" } }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    // 1995 chars + " (replicated)" (13 chars) = 2008 → over the 2000
+    // cap → marker MUST be skipped. We pad with `x` because the
+    // reason validator only cares about length, not content.
+    const longReason = `Investigation: ${"x".repeat(1995 - "Investigation: ".length)}`;
+    expect(longReason.length).toBe(1995);
+
+    const user = userEvent.setup();
+    render(<ReplicateImpersonationSessionButton {...baseProps({ reason: longReason })} />);
+    await user.click(screen.getByRole("button", { name: /Replicate/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body),
+    );
+    // Reason is unchanged — no marker, length preserved.
+    expect(body.reason).toBe(longReason);
+    expect(body.reason.length).toBe(1995);
+    expect(body.reason.endsWith(" (replicated)")).toBe(false);
+  });
 });

@@ -397,6 +397,8 @@
       "ending": "Fermeture…",
       "replicate": "Répliquer",
       "replicating": "Réplication…",
+      "replicateUnavailableShort": "utilisateur supprimé",
+      "replicateUnavailableOffboarded": "La réplication est indisponible car l'utilisateur cible a été supprimé de la plateforme. La session est conservée pour l'audit, mais aucune nouvelle session ne peut être démarrée sur un utilisateur supprimé.",
       "stepUpRedirecting": "MFA requis — redirection vers la connexion…",
       "errorStepUpFailed": "L'authentification renforcée a échoué. Réauthentifiez-vous avec MFA puis réessayez.",
       "errorLockout": "Trop d'échecs d'authentification renforcée. Votre compte est temporairement bloqué — réessayez dans 15 minutes.",
