@@ -86,6 +86,21 @@ export const NotificationsService = {
     return response.data.marked;
   },
 
+  /**
+   * Auto-mark-read every unread, panel-visible notification pointing at
+   * `linkUrl` for the current user. The web shell fires this on every
+   * pathname change so the bell badge stays in sync with what the user
+   * has actually looked at — see doc 27 § "Auto-mark-read on
+   * consumption". Idempotent; returns 0 when no row matches.
+   */
+  async markReadByLink(client: ApiClient, linkUrl: string): Promise<number> {
+    const response = await client.post<{ data: { marked: number } }>(
+      "/v1/notifications/mark-read-by-link",
+      { linkUrl },
+    );
+    return response.data.marked;
+  },
+
   async deleteOne(client: ApiClient, id: string): Promise<NotificationDto> {
     const response = await client.delete<{ data: NotificationDto }>(`/v1/notifications/${id}`);
     return response.data;

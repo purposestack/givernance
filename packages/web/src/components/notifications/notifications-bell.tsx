@@ -14,14 +14,16 @@
 
 import type { NotificationFilterKey } from "@givernance/shared/constants";
 import { Bell } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { NotificationsPanel } from "./notifications-panel";
 import { formatBadgeCount, useNotificationsLive } from "./use-notifications-live";
 
 export function NotificationsBell() {
   const t = useTranslations("notifications.bell");
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<NotificationFilterKey>("all");
   // Trigger ref — the panel restores focus here on close (Frontend
@@ -39,9 +41,27 @@ export function NotificationsBell() {
     loadMore,
     markRead,
     markAllRead,
+    markReadByLink,
     deleteOne,
     reset,
   } = useNotificationsLive({ enabled: true });
+
+  // Auto-mark-read on consumption: whenever the operator's pathname
+  // matches a notification's `link_url`, landing there is the implicit
+  // "I've seen what you wanted to tell me about" — fire-and-forget POST
+  // marks every matching unread row read. Doc 27 § "Auto-mark-read on
+  // consumption" covers the per-type contract and the rationale.
+  //
+  // The endpoint is idempotent and the hook soft-fails on any error, so
+  // this effect can safely run on every navigation. The bell is mounted
+  // in the app layout, so it sees every authenticated route change.
+  // next-intl runs locale resolution from the JWT (NOT a `/fr/` URL
+  // prefix in this codebase) so `pathname` matches the stored relative
+  // `link_url` directly — no locale stripping is required.
+  useEffect(() => {
+    if (!pathname) return;
+    void markReadByLink(pathname);
+  }, [pathname, markReadByLink]);
 
   const handleToggle = useCallback(() => {
     setOpen((prev) => {

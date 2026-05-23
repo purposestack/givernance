@@ -74,6 +74,24 @@ The worker's `processDomainEvent` (`packages/worker/src/worker.ts`) already runs
 
 **`type` is `varchar(64)`** with a CHECK constraint on shape (`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`), NOT a Postgres enum. Adding a new type ("campaign_postal_export_completed") is a code change in `NOTIFICATION_TYPE_VALUES` + producer wiring — never a migration. The shared registry (`packages/shared/src/constants/notifications.ts`) is the source of truth.
 
+#### 4. Auto-mark-read on consumption — per-type contract
+
+A notification stays unread until the recipient acts on it. The acceptable trigger is **landing on the notification's `link_url`** — at that point the operator has visibly consumed the linked resource and the bell ping is stale. Every notification type therefore ships with a `link_url` that satisfies this contract: navigating there means "I have now seen what you wanted to tell me about".
+
+Concretely:
+
+- The web shell POSTs `/v1/notifications/mark-read-by-link` on every pathname change. The endpoint marks every panel-visible unread notification for the current user whose `link_url` matches the path. Idempotent — fires on every navigation, returns 0 in the common case (no match).
+- The bell hook owns this side-effect because it's already mounted in the topbar of every authenticated page and already holds the `markRead*` mutators. No per-page wiring needed.
+- Digest-only rows (`panel_visible = false`) are NOT affected — the bell never showed them and `markReadByLink` filters by `panel_visible = true`. Their read state is irrelevant to the panel.
+
+**Contract for new notification types**: pick a `link_url` such that landing there is a meaningful "I have consumed this" signal. Concretely:
+
+- Resource-scoped events (`donation.received`, `branding.logo_synced`) link to the resource's detail / settings page. Landing means the operator has looked at the receipt / new logo / new invitation.
+- Index-page events (`bulk_email.queued`, `invitation.created`) link to the list view where the new item appears. Landing means the operator has at least scanned the list.
+- **Avoid `link_url`s that are too broad** (e.g. linking every team event to `/settings`) — they collapse unrelated notifications into one auto-read sweep. When in doubt, prefer the more specific resource page.
+
+If a future type genuinely cannot satisfy the "landing = consumption" contract (e.g. a "your scheduled job will fire in 5 minutes" preview), it should ship with `link_url = NULL` so the auto-mark-read sweep never matches it, and rely on the explicit "Marquer comme lu" button in the panel.
+
 ### Consequences
 
 **Pro**:

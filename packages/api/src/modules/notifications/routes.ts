@@ -47,6 +47,7 @@ import {
   listPreferences,
   markAllRead,
   markRead,
+  markReadByLink,
   softDeleteNotification,
   streamNotifications,
   updatePreference,
@@ -208,6 +209,50 @@ export async function notificationRoutes(app: FastifyInstance) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
       const marked = await markAllRead(orgId, userRowId);
+      return { data: { marked } };
+    },
+  );
+
+  // ─── Auto-mark-read by link_url ─────────────────────────────────────
+  //
+  // POSTed by the web shell whenever the caller's pathname changes —
+  // the convention is "landing on a notification's link_url means the
+  // user has consumed the linked resource and the bell ping is stale".
+  // The endpoint is idempotent and returns 0 in the common case (no
+  // unread notif points at the current path), so the layout-level hook
+  // can fire it unconditionally without worrying about noise.
+  //
+  // Mirrors `docs/27-notifications.md` § "Auto-mark-read on consumption".
+  app.post(
+    "/notifications/mark-read-by-link",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      schema: {
+        tags: ["Notifications"],
+        body: Type.Object({
+          // Match the schema's CHECK on `notifications.link_url`: must
+          // be a relative path starting with `/` and not `//` (which a
+          // browser resolves as protocol-relative).
+          linkUrl: Type.String({
+            minLength: 2,
+            maxLength: 2048,
+            pattern: "^/(?!/).*$",
+          }),
+        }),
+        response: {
+          200: Type.Object({ data: Type.Object({ marked: Type.Integer({ minimum: 0 }) }) }),
+          ...ErrorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { linkUrl } = request.body as { linkUrl: string };
+      const marked = await markReadByLink(orgId, userRowId, linkUrl);
       return { data: { marked } };
     },
   );

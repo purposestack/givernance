@@ -146,6 +146,11 @@ describe("Notifications — off-state flag (anti-disclosure)", () => {
     },
     { method: "POST", url: "/v1/notifications/read-all" },
     {
+      method: "POST",
+      url: "/v1/notifications/mark-read-by-link",
+      payload: { linkUrl: "/donations/00000000-0000-0000-0000-000000000aaa" },
+    },
+    {
       method: "DELETE",
       url: "/v1/notifications/00000000-0000-0000-0000-000000000001",
     },
@@ -661,6 +666,131 @@ describe("Notifications — panel_visible (digest-only rows)", () => {
       .from(notifications)
       .where(eq(notifications.id, digestOnly));
     expect(row?.readAt).toBeNull();
+  });
+});
+
+// ─── 3.6 Auto-mark-read by link_url ───────────────────────────────────
+//
+// Regression guard for the "landing on a notification's link_url
+// implicitly marks it as read" rule (doc 27 § "Auto-mark-read on
+// consumption"). The web shell POSTs `/v1/notifications/mark-read-by-link`
+// on every pathname change.
+
+describe("Notifications — mark-read-by-link", () => {
+  beforeEach(async () => {
+    await setFlag(true);
+  });
+
+  it("marks every panel-visible unread notification pointing at the link as read", async () => {
+    const one = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    const two = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/mark-read-by-link",
+      headers: authHeader(token),
+      payload: { linkUrl: "/donations/00000000-0000-0000-0000-000000000aaa" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { marked: number } }>().data.marked).toBe(2);
+
+    const rows = await db
+      .select({ id: notifications.id, readAt: notifications.readAt })
+      .from(notifications)
+      .where(eq(notifications.id, one));
+    expect(rows[0]?.readAt).not.toBeNull();
+    const rows2 = await db
+      .select({ id: notifications.id, readAt: notifications.readAt })
+      .from(notifications)
+      .where(eq(notifications.id, two));
+    expect(rows2[0]?.readAt).not.toBeNull();
+  });
+
+  it("returns 0 marked when no notification points at the given link", async () => {
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/mark-read-by-link",
+      headers: authHeader(token),
+      payload: { linkUrl: "/totally/different/page" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { marked: number } }>().data.marked).toBe(0);
+  });
+
+  it("never marks panel_visible = false rows (digest-only stays unread)", async () => {
+    const digestOnly = await seedNotification({
+      orgId: ORG_A,
+      userId: USER_A_ROW_ID,
+      panelVisible: false,
+    });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/mark-read-by-link",
+      headers: authHeader(token),
+      payload: { linkUrl: "/donations/00000000-0000-0000-0000-000000000aaa" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { marked: number } }>().data.marked).toBe(0);
+
+    const [row] = await db
+      .select({ readAt: notifications.readAt })
+      .from(notifications)
+      .where(eq(notifications.id, digestOnly));
+    expect(row?.readAt).toBeNull();
+  });
+
+  it("scopes by current user — never marks another user's rows in the same tenant", async () => {
+    const user2 = await seedSecondUserInTenantA();
+    const otherUserId = await seedNotification({ orgId: ORG_A, userId: user2 });
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/mark-read-by-link",
+      headers: authHeader(token),
+      payload: { linkUrl: "/donations/00000000-0000-0000-0000-000000000aaa" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { marked: number } }>().data.marked).toBe(0);
+
+    // user2's row stays untouched.
+    const [row] = await db
+      .select({ readAt: notifications.readAt })
+      .from(notifications)
+      .where(eq(notifications.id, otherUserId));
+    expect(row?.readAt).toBeNull();
+  });
+
+  it("rejects protocol-relative URLs (`//evil.example/x`) with 400", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/mark-read-by-link",
+      headers: authHeader(token),
+      payload: { linkUrl: "//evil.example/x" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects empty / non-slash URLs with 400", async () => {
+    const token = signToken(app);
+    const resAbs = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/mark-read-by-link",
+      headers: authHeader(token),
+      payload: { linkUrl: "https://evil.example/x" },
+    });
+    expect(resAbs.statusCode).toBe(400);
+
+    const resEmpty = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/mark-read-by-link",
+      headers: authHeader(token),
+      payload: { linkUrl: "" },
+    });
+    expect(resEmpty.statusCode).toBe(400);
   });
 });
 
