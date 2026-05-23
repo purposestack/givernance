@@ -167,7 +167,8 @@ export async function softDeleteActiveLogo(input: {
     await tx
       .update(orgBrandingAssets)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(orgBrandingAssets.id, asset.id));
+      // Issue #430 — explicit org filter for defence in depth.
+      .where(and(eq(orgBrandingAssets.id, asset.id), eq(orgBrandingAssets.orgId, input.orgId)));
 
     // Compose the S3 prefix from the original key — the GC job uses
     // this to drop the entire `{org}/logo/{asset}/` directory in one

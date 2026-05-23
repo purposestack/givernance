@@ -282,8 +282,11 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
 
   if (search) {
     const pattern = `%${search}%`;
-    // Subquery: constituents matching the term. RLS on `constituents`
-    // already scopes to the current org, so no need to re-filter org_id here.
+    // Subquery: constituents matching the term. Issue #430 — every
+    // subselect on a tenant-scoped table carries an explicit
+    // `eq(constituents.orgId, orgId)` so the subselect never silently
+    // depends on RLS (and never returns 0 rows if the deploy ever
+    // ships the wrong DB role).
     conditions.push(
       inArray(
         donations.constituentId,
@@ -291,10 +294,13 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
           .select({ id: constituents.id })
           .from(constituents)
           .where(
-            or(
-              ilike(constituents.firstName, pattern),
-              ilike(constituents.lastName, pattern),
-              ilike(constituents.email, pattern),
+            and(
+              eq(constituents.orgId, orgId),
+              or(
+                ilike(constituents.firstName, pattern),
+                ilike(constituents.lastName, pattern),
+                ilike(constituents.email, pattern),
+              ),
             ),
           ),
       ),
@@ -308,16 +314,15 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
   if (constituentId) conditions.push(eq(donations.constituentId, constituentId));
   if (campaignId) conditions.push(eq(donations.campaignId, campaignId));
   if (receiptStatus) {
-    // Donations whose latest receipt has the requested status. Only one
-    // receipt per donation is produced today (cf. enrichDonationRows), so
-    // an EXISTS-style subquery is sufficient and avoids a window function.
+    // Donations whose latest receipt has the requested status. Issue
+    // #430 — explicit org filter on the subselect.
     conditions.push(
       inArray(
         donations.id,
         db
           .select({ id: receipts.donationId })
           .from(receipts)
-          .where(eq(receipts.status, receiptStatus)),
+          .where(and(eq(receipts.orgId, orgId), eq(receipts.status, receiptStatus))),
       ),
     );
   }
@@ -334,12 +339,16 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
 async function attachLatestReceiptStatus<T extends { id: string }>(
   tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
   rows: T[],
+  orgId: string,
 ) {
   const donationIds = rows.map((d) => d.id);
   const receiptRows = await tx
     .select({ donationId: receipts.donationId, status: receipts.status })
     .from(receipts)
-    .where(inArray(receipts.donationId, donationIds))
+    // Issue #430: explicit `eq(receipts.orgId, orgId)` so the lookup
+    // never returns rows from another tenant if a donation_id were ever
+    // collide-able.
+    .where(and(eq(receipts.orgId, orgId), inArray(receipts.donationId, donationIds)))
     .orderBy(desc(receipts.createdAt));
 
   const receiptByDonationId = new Map<string, (typeof receiptRows)[number]["status"]>();
@@ -411,7 +420,7 @@ export async function listDonations(orgId: string, query: ListDonationsQuery) {
       }),
     );
 
-    const enriched = await attachLatestReceiptStatus(tx, shaped);
+    const enriched = await attachLatestReceiptStatus(tx, shaped, orgId);
     return { data: enriched, pagination };
   });
 }
@@ -426,6 +435,8 @@ export async function getDonation(orgId: string, id: string) {
 
     if (!donation) return null;
 
+    // Issue #430 — explicit org filter on every sibling lookup even
+    // though the parent donation is already verified for this orgId.
     const [constituent] = await tx
       .select({
         id: constituents.id,
@@ -434,7 +445,7 @@ export async function getDonation(orgId: string, id: string) {
         email: constituents.email,
       })
       .from(constituents)
-      .where(eq(constituents.id, donation.constituentId));
+      .where(and(eq(constituents.id, donation.constituentId), eq(constituents.orgId, orgId)));
 
     const allocations = await tx
       .select({
@@ -444,8 +455,8 @@ export async function getDonation(orgId: string, id: string) {
         fundName: funds.name,
       })
       .from(donationAllocations)
-      .innerJoin(funds, eq(funds.id, donationAllocations.fundId))
-      .where(eq(donationAllocations.donationId, id));
+      .innerJoin(funds, and(eq(funds.id, donationAllocations.fundId), eq(funds.orgId, orgId)))
+      .where(and(eq(donationAllocations.donationId, id), eq(donationAllocations.orgId, orgId)));
 
     return { ...donation, constituent: constituent ?? null, allocations };
   });

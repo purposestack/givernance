@@ -865,7 +865,12 @@ export async function userRoutes(app: FastifyInstance) {
           // Idempotent: already soft-deleted, return the row as-is. KC
           // cleanup may have failed previously; the post-commit hooks
           // below run again to reconverge.
-          const [row] = await tx.select().from(users).where(eq(users.id, id)).limit(1);
+          // Issue #430 — explicit org filter for defence in depth.
+          const [row] = await tx
+            .select()
+            .from(users)
+            .where(and(eq(users.id, id), eq(users.orgId, orgId)))
+            .limit(1);
           return {
             kind: "already_soft_deleted" as const,
             keycloakId: existing.keycloakId,

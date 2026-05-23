@@ -23,7 +23,7 @@ import {
   users,
 } from "@givernance/shared/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { db, withTenantContext } from "../../lib/db.js";
+import { systemDb, withTenantContext } from "../../lib/db.js";
 import { isUniqueViolation } from "../../lib/db-errors.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -57,7 +57,7 @@ export interface OpenDisputeInput {
 export async function openDispute(input: OpenDisputeInput): Promise<OpenDisputeResult> {
   if (!isUuid(input.orgId)) return { ok: false, error: "tenant_not_found" };
 
-  const [tenant] = await db
+  const [tenant] = await systemDb
     .select({ id: tenants.id, status: tenants.status, createdVia: tenants.createdVia })
     .from(tenants)
     .where(eq(tenants.id, input.orgId))
@@ -65,7 +65,7 @@ export async function openDispute(input: OpenDisputeInput): Promise<OpenDisputeR
   if (!tenant) return { ok: false, error: "tenant_not_found" };
 
   // Resolve the disputer (must be a tenant member, but NOT first_admin).
-  const [disputer] = await db
+  const [disputer] = await systemDb
     .select({
       id: users.id,
       firstAdmin: users.firstAdmin,
@@ -77,7 +77,7 @@ export async function openDispute(input: OpenDisputeInput): Promise<OpenDisputeR
   if (disputer.firstAdmin) return { ok: false, error: "is_first_admin" };
 
   // Find the current provisional admin of the tenant and their grace window.
-  const [provisional] = await db
+  const [provisional] = await systemDb
     .select({ id: users.id, provisionalUntil: users.provisionalUntil })
     .from(users)
     .where(and(eq(users.orgId, input.orgId), eq(users.firstAdmin, true)))
@@ -169,7 +169,7 @@ export interface ResolveDisputeInput {
 export async function resolveDispute(input: ResolveDisputeInput): Promise<ResolveDisputeResult> {
   if (!isUuid(input.disputeId)) return { ok: false, error: "not_found" };
 
-  const [dispute] = await db
+  const [dispute] = await systemDb
     .select({
       id: tenantAdminDisputes.id,
       orgId: tenantAdminDisputes.orgId,
@@ -184,7 +184,7 @@ export async function resolveDispute(input: ResolveDisputeInput): Promise<Resolv
   if (!dispute) return { ok: false, error: "not_found" };
   if (dispute.resolution) return { ok: false, error: "already_resolved" };
 
-  const [resolverUser] = await db
+  const [resolverUser] = await systemDb
     .select({ id: users.id })
     .from(users)
     .where(eq(users.keycloakId, input.resolverUserKeycloakSub))
@@ -244,16 +244,22 @@ async function applyReplacedResolution(
         throw new DisputeStateError("target_missing");
       }
 
+      // Defence in depth (issue #430): every user mutation here filters
+      // by `eq(users.orgId, dispute.orgId)` so a provisional/disputer
+      // user_id pointing at a foreign tenant cannot promote/demote
+      // someone in the wrong org. The dispute itself is already
+      // tenant-bound; we propagate that boundary to every dependent
+      // update.
       const [provisionalUser] = await tx
         .select({ id: users.id, firstAdmin: users.firstAdmin })
         .from(users)
-        .where(eq(users.id, latest.provisionalAdminId))
+        .where(and(eq(users.id, latest.provisionalAdminId), eq(users.orgId, dispute.orgId)))
         .for("update")
         .limit(1);
       const [disputerUser] = await tx
         .select({ id: users.id, firstAdmin: users.firstAdmin })
         .from(users)
-        .where(eq(users.id, latest.disputerId))
+        .where(and(eq(users.id, latest.disputerId), eq(users.orgId, dispute.orgId)))
         .for("update")
         .limit(1);
       if (!provisionalUser || !disputerUser) {
@@ -274,7 +280,7 @@ async function applyReplacedResolution(
           provisionalUntil: null,
           updatedAt: new Date(),
         })
-        .where(eq(users.id, provisionalUser.id));
+        .where(and(eq(users.id, provisionalUser.id), eq(users.orgId, dispute.orgId)));
 
       await tx
         .update(users)
@@ -284,7 +290,7 @@ async function applyReplacedResolution(
           provisionalUntil: null,
           updatedAt: new Date(),
         })
-        .where(eq(users.id, disputerUser.id));
+        .where(and(eq(users.id, disputerUser.id), eq(users.orgId, dispute.orgId)));
 
       await tx
         .update(tenantAdminDisputes)
@@ -294,7 +300,9 @@ async function applyReplacedResolution(
           resolvedBy: resolverUserId,
           updatedAt: new Date(),
         })
-        .where(eq(tenantAdminDisputes.id, dispute.id));
+        .where(
+          and(eq(tenantAdminDisputes.id, dispute.id), eq(tenantAdminDisputes.orgId, dispute.orgId)),
+        );
 
       await tx.insert(outboxEvents).values({
         tenantId: dispute.orgId,
@@ -344,7 +352,11 @@ async function applyKeptOrEscalatedResolution(
       await tx
         .update(users)
         .set({ provisionalUntil: null, updatedAt: new Date() })
-        .where(eq(users.id, dispute.provisionalAdminId as string));
+        // Defence in depth (issue #430): bind the user update to the
+        // dispute's tenant explicitly.
+        .where(
+          and(eq(users.id, dispute.provisionalAdminId as string), eq(users.orgId, dispute.orgId)),
+        );
     }
 
     await tx
@@ -355,7 +367,9 @@ async function applyKeptOrEscalatedResolution(
         resolvedBy: resolverUserId,
         updatedAt: new Date(),
       })
-      .where(eq(tenantAdminDisputes.id, dispute.id));
+      .where(
+        and(eq(tenantAdminDisputes.id, dispute.id), eq(tenantAdminDisputes.orgId, dispute.orgId)),
+      );
 
     await tx.insert(outboxEvents).values({
       tenantId: dispute.orgId,
@@ -395,7 +409,7 @@ export interface DisputeRow {
 
 export async function listDisputes(filter: { open?: boolean }): Promise<DisputeRow[]> {
   const where = filter.open ? isNull(tenantAdminDisputes.resolution) : undefined;
-  const rows = await db
+  const rows = await systemDb
     .select({
       id: tenantAdminDisputes.id,
       orgId: tenantAdminDisputes.orgId,
@@ -452,7 +466,7 @@ export interface DomainDisputeRow {
 
 export async function listDomainDisputes(filter: { open?: boolean }): Promise<DomainDisputeRow[]> {
   const whereCondition = filter.open ? eq(tenantDisputes.state, "open") : undefined;
-  const rows = await db
+  const rows = await systemDb
     .select({
       id: tenantDisputes.id,
       orgId: tenantDisputes.orgId,
@@ -508,7 +522,7 @@ export async function resolveDomainDispute(
 ): Promise<{ ok: boolean; state?: string }> {
   if (!isUuid(input.disputeId)) return { ok: false };
 
-  const [dispute] = await db
+  const [dispute] = await systemDb
     .select({ id: tenantDisputes.id, orgId: tenantDisputes.orgId, state: tenantDisputes.state })
     .from(tenantDisputes)
     .where(eq(tenantDisputes.id, input.disputeId))
@@ -516,7 +530,7 @@ export async function resolveDomainDispute(
 
   if (!dispute || dispute.state !== "open") return { ok: false };
 
-  const [resolverUser] = await db
+  const [resolverUser] = await systemDb
     .select({ id: users.id })
     .from(users)
     .where(eq(users.keycloakId, input.resolverUserKeycloakSub))
@@ -569,7 +583,7 @@ export interface ExpireJobResult {
  *     path would race against the job.)
  */
 export async function runExpireJob(now = new Date()): Promise<ExpireJobResult> {
-  const candidates = await db
+  const candidates = await systemDb
     .select({
       userId: users.id,
       orgId: users.orgId,
@@ -582,7 +596,7 @@ export async function runExpireJob(now = new Date()): Promise<ExpireJobResult> {
 
   for (const row of candidates) {
     // Is there an open dispute on this tenant?
-    const [openDispute] = await db
+    const [openDispute] = await systemDb
       .select({ id: tenantAdminDisputes.id })
       .from(tenantAdminDisputes)
       .where(and(eq(tenantAdminDisputes.orgId, row.orgId), isNull(tenantAdminDisputes.resolution)))

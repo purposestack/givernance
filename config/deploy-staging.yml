@@ -235,13 +235,21 @@ accessories:
       secret:
         - POSTGRES_PASSWORD
         - KEYCLOAK_DB_PASSWORD
+        # Issue #430 — the application role `givernance_app` (NOBYPASSRLS)
+        # gets its password from this secret. The init script below
+        # provisions it on first cluster boot; on an existing datadir the
+        # one-shot SQL in `docs/runbooks/feature-flag-rollback.md`'s sibling
+        # `docs/runbooks/givernance-app-password-rotation.md` rotates it
+        # without restarting the accessory.
+        - GIVERNANCE_APP_PASSWORD
     files:
       # Mounted into /docker-entrypoint-initdb.d, which the postgres image
       # only executes on a brand-new datadir (PG_VERSION absent). Shipping
-      # it here makes a future fresh-init produce an ADR-017-compliant
-      # cluster with no operator intervention; on the existing staging
-      # datadir it's an inert bind-mount.
+      # both makes a future fresh-init produce an ADR-017-compliant +
+      # issue-#430-compliant cluster with no operator intervention; on the
+      # existing staging datadir both are inert bind-mounts.
       - infra/postgres/init/01-init-keycloak-db.sh:/docker-entrypoint-initdb.d/01-init-keycloak-db.sh
+      - infra/postgres/init/02-init-givernance-app-role.sh:/docker-entrypoint-initdb.d/02-init-givernance-app-role.sh
     directories:
       - data/postgres:/var/lib/postgresql/data
   redis:

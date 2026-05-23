@@ -18,7 +18,7 @@
  */
 
 import { orgBrandingAssets, tenants } from "@givernance/shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { LRUCache } from "lru-cache";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
@@ -57,6 +57,10 @@ export async function getActivePdfLetterhead(orgId: string): Promise<Buffer | nu
   const cached = cache.get(tenant.logoAssetId);
   if (cached) return cached;
 
+  // Defence in depth (issue #430): scope by orgId even when looking
+  // up by primary key, so a drifted `tenants.logo_asset_id` pointer
+  // cannot return a foreign tenant's asset (which would embed the
+  // wrong logo in this tenant's receipt PDFs).
   const [asset] = await db
     .select({
       id: orgBrandingAssets.id,
@@ -65,7 +69,7 @@ export async function getActivePdfLetterhead(orgId: string): Promise<Buffer | nu
       deletedAt: orgBrandingAssets.deletedAt,
     })
     .from(orgBrandingAssets)
-    .where(eq(orgBrandingAssets.id, tenant.logoAssetId));
+    .where(and(eq(orgBrandingAssets.id, tenant.logoAssetId), eq(orgBrandingAssets.orgId, orgId)));
 
   if (!asset || asset.status !== "ready" || asset.deletedAt) {
     return null;

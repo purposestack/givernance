@@ -60,7 +60,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 27-notifications.md         — In-app notification centre (Epic #363, GLO-004): bell + side panel + per-user preferences + SSE delivery + opt-in email digest + outbox-fanout producer
 │   ├── 28-bulk-import.md           — Bulk Import Constituents (Epic #373): CSV/Excel upload, async worker pipeline, dedupe, 90-day retention, audit trail
 │   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary, ADR-027 Swiss QR-bill, ADR-028 camt.053 ingestion, ADR-029 Keycloak session revocation, ADR-030 public-page archetype slots — hybrid shell + slot components per Epic #362, ADR-031 notification delivery + outbox fanout — SSE with polling fallback per Epic #363)
-│   ├── runbooks/                   — Operator-driven one-shot ops (e.g. migrate-staging-keycloak-db.md for issue #283; launch-prod.md for the production-environment launch — issue #344); each file is plan + live journal + post-mortem. Also: bulk-email-stalled-job.md (recurring SRE triage flow for issue #326's Stalled / Partial bulk-email recovery), feature-flag-rollback.md (emergency psql + redis-cli flip when the Back Office page is unavailable), and keycloak-backchannel-logout-cutover.md (per-env override of `backchannel.logout.url` after each realm sync — issue #76)
+│   ├── runbooks/                   — Operator-driven one-shot ops (e.g. migrate-staging-keycloak-db.md for issue #283; launch-prod.md for the production-environment launch — issue #344); each file is plan + live journal + post-mortem. Also: bulk-email-stalled-job.md (recurring SRE triage flow for issue #326's Stalled / Partial bulk-email recovery), feature-flag-rollback.md (emergency psql + redis-cli flip when the Back Office page is unavailable), keycloak-backchannel-logout-cutover.md (per-env override of `backchannel.logout.url` after each realm sync — issue #76), and cross-tenant-rls-hardening-cutover.md (issue #430 — one-shot wiring of the `GIVERNANCE_APP_PASSWORD` secret + `givernance_app` role rotation that closes the staging cross-tenant notification leak)
 │   ├── dev/
 │   │   └── staging-secrets-setup.md — Reference for fork developers + the prod-launch runbook: every GH-Environment secret the deploy needs, how to generate it, how to rotate it (#343)
 │   ├── vision/
@@ -239,6 +239,26 @@ close #182
 ```
 
 Apply this in `gh pr create` / `gh pr edit` bodies, in commit messages that close issues, and in any PR template. Use `close` (not `closes`, not `fix`, not `fixes`).
+
+### 🛑 RLS is the safety net, never the contract (issue #430)
+
+**Every tenant-scoped Drizzle query MUST filter by `eq(<table>.orgId, ctx.orgId)` (or equivalent) explicitly, in addition to whatever RLS policy applies.** RLS — `users.tenant_isolation`, etc. — is defence in depth. The contract is the application code.
+
+**Why this is non-negotiable**: on 2026-05-23 staging produced a cross-tenant notification leak. The notification fanout query was `SELECT id FROM users WHERE role='org_admin'` with no `eq(orgId, …)`, relying entirely on RLS to scope. RLS was active and forced on `users`. But `DATABASE_URL_APP` had been misconstructed in the kamal-secrets composite action to use the **owner role `givernance`** (`rolbypassrls=t`) instead of the intended `givernance_app` (`rolbypassrls=f`). Every RLS-dependent query in the API + worker silently bypassed RLS. The audit traced 26 query sites with this anti-pattern; all are fixed in PR #430.
+
+**What "explicit" means**:
+- Reads: `where(and(eq(<table>.orgId, ctx.orgId), …other predicates))`
+- Mutations (`update`/`delete`): same predicate in the `where(...)`
+- Joined SELECTs: the `eq(orgId, …)` predicate appears on the root table AND on every join clause (or in the join's `on` condition)
+- PK lookups: keep the `eq(<table>.orgId, …)` even when the PK looks like it implies the tenant — a leaked or guessed UUID is the entire reason this rule exists
+- Owner-pool (`systemDb`) cross-tenant queries: legitimate but rare; document the cross-tenant intent in a comment, and even then add `eq(orgId, …)` whenever a tenant is in scope (e.g. branding-asset lookup by PK, where the tenant pointer can drift)
+
+**Defence-in-depth, not "instead of"**: every tenant-scoped table also has RLS enabled + forced via [`packages/api/migrations/0012_force_rls.sql`](packages/api/migrations/0012_force_rls.sql) and per-table policies. The boot-time `assertAppRoleSecure` / `assertWorkerAppRoleSecure` guards in [`packages/api/src/lib/db.ts`](packages/api/src/lib/db.ts) + [`packages/worker/src/lib/db.ts`](packages/worker/src/lib/db.ts) crash-loop the container if `DATABASE_URL_APP` ever connects as a BYPASSRLS role again. The three together — explicit filter, RLS policy, boot guard — make a future deploy-config bug a deploy failure, not a silent data leak.
+
+**Reviewer checklist** (claude reviewing any PR that adds a Drizzle query):
+- [ ] Every tenant-scoped read/write has `eq(<table>.orgId, …)` (or equivalent) **in the application code**, not just relying on RLS.
+- [ ] No new `systemDb` use without a comment justifying the cross-tenant intent.
+- [ ] If the query is inside a worker processor, the `withWorkerContext(orgId, …)` wrapper is present AND the inner query carries the explicit `eq(orgId, …)`.
 
 ### 🛑 No secrets in Keycloak Organization attributes (issue #114)
 

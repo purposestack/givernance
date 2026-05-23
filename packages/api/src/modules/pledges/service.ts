@@ -102,7 +102,8 @@ export async function listInstallments(orgId: string, pledgeId: string) {
     const data = await tx
       .select()
       .from(pledgeInstallments)
-      .where(eq(pledgeInstallments.pledgeId, pledgeId))
+      // Issue #430 — explicit org filter for defence in depth.
+      .where(and(eq(pledgeInstallments.pledgeId, pledgeId), eq(pledgeInstallments.orgId, orgId)))
       .orderBy(pledgeInstallments.expectedAt);
 
     return data;

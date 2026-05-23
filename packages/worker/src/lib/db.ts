@@ -47,3 +47,35 @@ export async function withWorkerContext<T>(
     return callback(tx);
   });
 }
+
+/**
+ * Boot-time guard (issue #430): the worker's app pool must connect as
+ * a NOBYPASSRLS role. The 2026-05-23 staging incident traced back to
+ * `DATABASE_URL_APP` pointing at the owner role (`rolbypassrls=t`),
+ * which silently bypassed the `users.tenant_isolation` policy and
+ * fanned out notifications to every org_admin in every tenant. Crash
+ * fast on misconfig — a silent leak is worse than no boot.
+ */
+export async function assertWorkerAppRoleSecure(): Promise<void> {
+  const res = await appPool.query<{
+    current_user: string;
+    rolbypassrls: boolean;
+    rolsuper: boolean;
+  }>(
+    "SELECT current_user, r.rolbypassrls, r.rolsuper FROM pg_roles r WHERE r.rolname = current_user",
+  );
+  const row = res.rows[0];
+  if (!row) {
+    throw new Error("assertWorkerAppRoleSecure: unable to resolve current_user against pg_roles");
+  }
+  if (row.rolsuper) {
+    throw new Error(
+      `FATAL: worker DATABASE_URL_APP connects as SUPERUSER role '${row.current_user}'. RLS is bypassed across the worker. Fix DATABASE_URL_APP to use 'givernance_app' (see issue #430).`,
+    );
+  }
+  if (row.rolbypassrls) {
+    throw new Error(
+      `FATAL: worker DATABASE_URL_APP connects as BYPASSRLS role '${row.current_user}'. RLS is bypassed across the worker. Fix DATABASE_URL_APP to use 'givernance_app' (see issue #430).`,
+    );
+  }
+}

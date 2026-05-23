@@ -667,13 +667,17 @@ export async function processBulkImport(
         mimeType: bulkImportFiles.mimeType,
       })
       .from(bulkImportFiles)
-      .where(eq(bulkImportFiles.id, row.fileId));
+      // Defence in depth (issue #430): scope by orgId even on PK lookup
+      // so a drifted `fileId` pointer cannot fetch a foreign tenant's
+      // S3 upload metadata (which would trigger an S3 download for the
+      // wrong tenant).
+      .where(and(eq(bulkImportFiles.id, row.fileId), eq(bulkImportFiles.orgId, data.orgId)));
     if (!file) return null;
 
     await tx
       .update(bulkImportJobs)
       .set({ status: "processing", updatedAt: new Date() })
-      .where(eq(bulkImportJobs.id, row.id));
+      .where(and(eq(bulkImportJobs.id, row.id), eq(bulkImportJobs.orgId, data.orgId)));
 
     return { ...row, alreadyTerminal: false as const, file };
   });

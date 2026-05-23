@@ -406,7 +406,11 @@ KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
 SESSION_SECRET=${SESSION_SECRET}
 KC_DB_PASSWORD=${KEYCLOAK_DB_PASSWORD}
 DATABASE_URL=postgres://givernance:${POSTGRES_PASSWORD}@givernance-postgres:5432/givernance_staging
-DATABASE_URL_APP=postgres://givernance:${POSTGRES_PASSWORD}@givernance-postgres:5432/givernance_staging
+# Issue #430 — DATABASE_URL_APP must connect as `givernance_app` (NOBYPASSRLS),
+# NEVER the owner `givernance` role. Before #430 this line had `givernance:` and
+# silently bypassed RLS across the app + worker.
+DATABASE_URL_APP=postgres://givernance_app:${GIVERNANCE_APP_PASSWORD}@givernance-postgres:5432/givernance_staging
+GIVERNANCE_APP_PASSWORD=${GIVERNANCE_APP_PASSWORD}
 REDIS_URL=redis://:${REDIS_PASSWORD}@givernance-redis:6379
 S3_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
 KEYCLOAK_ADMIN_CLIENT_SECRET=${KEYCLOAK_ADMIN_CLIENT_SECRET}

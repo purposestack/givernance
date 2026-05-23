@@ -70,6 +70,18 @@ runs:
         # After PR #336 cutover (2026-05-10), staging keycloak runs as
         # the dedicated `keycloak` role with this password.
         KEYCLOAK_DB_PASS="${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
+        # Application-role password (issue #430). The application + worker
+        # connect to Postgres as `givernance_app` (NOBYPASSRLS) so the
+        # `users.tenant_isolation` RLS policy is enforced at the connection
+        # level. The owner role `givernance` (BYPASSRLS) stays on
+        # `DATABASE_URL` for migrations and legitimate cross-tenant work
+        # (signup, webhook resolution, platform-admin tasks).
+        #
+        # Before the 2026-05-23 patch landed, `DATABASE_URL_APP` was
+        # constructed with the owner role — `givernance_app` had no
+        # password set anywhere in deploy config — and RLS was silently
+        # bypassed across the entire stack.
+        APP_PASS="${GIVERNANCE_APP_PASSWORD:?GIVERNANCE_APP_PASSWORD is required — set it in Settings → Environments → staging → Secrets (generate with 'openssl rand -hex 24'). See docs/dev/staging-secrets-setup.md.}"
         # MinIO server-side AES256 encryption key. Format
         # `<key-name>:<base64-32-byte-secret>`; generate with
         # `openssl rand -base64 32` and prefix with `<keyname>:`. The
@@ -96,6 +108,7 @@ runs:
         # got swallowed). `jq -sRr @uri` is RFC 3986 percent-encoding;
         # available on every GH Actions runner via the standard image.
         PG_PASS_ENC=$(printf '%s' "$PG_PASS" | jq -sRr @uri)
+        APP_PASS_ENC=$(printf '%s' "$APP_PASS" | jq -sRr @uri)
         REDIS_PASS_ENC=$(printf '%s' "$REDIS_PASS" | jq -sRr @uri)
 
         cat <<EOF > .kamal/secrets
@@ -108,7 +121,8 @@ runs:
         SESSION_SECRET=$SESSION_SEC
         KC_DB_PASSWORD=$KEYCLOAK_DB_PASS
         DATABASE_URL=postgres://givernance:$PG_PASS_ENC@givernance-postgres:5432/givernance_staging
-        DATABASE_URL_APP=postgres://givernance:$PG_PASS_ENC@givernance-postgres:5432/givernance_staging
+        DATABASE_URL_APP=postgres://givernance_app:$APP_PASS_ENC@givernance-postgres:5432/givernance_staging
+        GIVERNANCE_APP_PASSWORD=$APP_PASS
         REDIS_URL=redis://:$REDIS_PASS_ENC@givernance-redis:6379
         S3_SECRET_ACCESS_KEY=$MINIO_PASS
         KEYCLOAK_ADMIN_CLIENT_SECRET=$KC_CLIENT_SECRET

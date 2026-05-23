@@ -165,7 +165,9 @@ export async function processSendBulkEmail(
     await tx
       .update(bulkEmailJobs)
       .set({ status: "processing", updatedAt: new Date() })
-      .where(eq(bulkEmailJobs.id, bulkEmailJobId));
+      // Defence in depth (issue #430): every sibling statement filters
+      // by `eq(bulkEmailJobs.orgId, data.orgId)` — this one regressed.
+      .where(and(eq(bulkEmailJobs.id, bulkEmailJobId), eq(bulkEmailJobs.orgId, data.orgId)));
     return { ...row, alreadyTerminal: false };
   });
 
