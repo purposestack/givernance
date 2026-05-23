@@ -55,6 +55,12 @@ interface UseNotificationsLiveResult {
   loadMore: (filter?: NotificationType | "all") => Promise<void>;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
+  /**
+   * Mark every panel-visible unread notification pointing at `linkUrl`
+   * as read. Powers the "auto-mark-read on consumption" hook fired from
+   * the web shell on every pathname change — see doc 27.
+   */
+  markReadByLink: (linkUrl: string) => Promise<void>;
   deleteOne: (id: string) => Promise<void>;
   reset: (filter: NotificationType | "all") => Promise<void>;
 }
@@ -161,6 +167,30 @@ export function useNotificationsLive(
       setError(err instanceof Error ? err.message : "Failed to mark all read");
     }
   }, [client]);
+
+  const markReadByLink = useCallback(
+    async (linkUrl: string) => {
+      try {
+        const marked = await NotificationsService.markReadByLink(client, linkUrl);
+        if (marked === 0) return;
+        const now = new Date().toISOString();
+        setRows((current) =>
+          current.map((row) =>
+            !row.readAt && row.linkUrl === linkUrl ? { ...row, readAt: now } : row,
+          ),
+        );
+        // Re-pull the authoritative count rather than `c => c - marked` —
+        // a SSE delivery overlap or a manual mark-read by the user could
+        // otherwise drift the badge.
+        await fetchUnreadCount();
+      } catch {
+        // Soft-fail — the bell stays in its prior state. This hook fires
+        // on every pathname change so a transient 401 / 5xx during
+        // navigation should never burst into the global error banner.
+      }
+    },
+    [client, fetchUnreadCount],
+  );
 
   const deleteOne = useCallback(
     async (id: string) => {
@@ -280,6 +310,7 @@ export function useNotificationsLive(
     loadMore,
     markRead,
     markAllRead,
+    markReadByLink,
     deleteOne,
     reset,
   };

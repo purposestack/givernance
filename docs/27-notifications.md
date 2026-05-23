@@ -196,6 +196,24 @@ The decision is **frozen** at write time — toggling `in_app=true` later does N
 
 Reads that target the panel apply `panel_visible = true` as an extra predicate: `listNotifications`, `getUnreadCount`, `streamNotifications` (SSE), and the mutating endpoints (`markRead`, `markAllRead`, `softDeleteNotification`) all filter so a digest-only row is invisible to the bell, can't be marked-read from the panel, and isn't dragged into "mark all read". The digest worker is unchanged — it already filters by `notification_preferences.email_digest = true` and now finds the rows it needs.
 
+### Auto-mark-read on consumption
+
+A notification stays unread until the recipient acts on it. The canonical trigger is **landing on the notification's `link_url`** — at that point the operator has visibly consumed the linked resource and the bell ping is stale.
+
+Implementation:
+
+- The bell hook (mounted in the topbar of every authenticated page) calls `usePathname()` and, on every change, fires `NotificationsService.markReadByLink(client, pathname)`.
+- `POST /v1/notifications/mark-read-by-link` marks every panel-visible unread notification for the current user whose `link_url` matches the body. Idempotent — every navigation hits the endpoint; the common case is `marked: 0`.
+- The body's `linkUrl` shares the same shape constraint as the DB CHECK on `notifications.link_url` (`^/(?!/).*$`) so a malformed payload 400s before reaching the SQL.
+- The hook soft-fails on any error (5xx / 401 mid-navigation): the bell stays in its prior state rather than burst a global error banner on every page change.
+
+**Contract for new notification types** (also captured in ADR-031 § 4): pick a `link_url` such that landing on it is a meaningful "I have consumed this" signal:
+
+- Resource-scoped events (`donation.received`, `branding.logo_synced`) → resource detail / settings page.
+- Index-page events (`bulk_email.queued`, `invitation.created`) → the list view where the new item appears.
+- Avoid `link_url`s that are too broad — they collapse unrelated notifications into one auto-read sweep.
+- If a future type cannot satisfy the contract, ship it with `link_url = NULL` so the sweep never matches; the panel's explicit "Marquer comme lu" button is the only way to clear it.
+
 ### Identifier discipline (`users.id` vs `keycloak_id`)
 
 Every column on `notifications` / `notification_preferences` that points at a person is `user_id uuid REFERENCES users(id)` — the application's row UUID, NOT the Keycloak `sub`. Real seeds (and the impersonation playground tenant) keep `users.id ≠ users.keycloak_id`, so confusing the two is silent: queries return zero rows, fanout writes zero recipients, and the bell never lights up.
@@ -215,6 +233,7 @@ The same discipline applies to other FK columns pointing at `users.id` across th
 | `/v1/notifications/unread-count` | GET | `communication.notifications_center` | `requireAuth` | Caller-scoped count. |
 | `/v1/notifications/:id/read` | PATCH | `communication.notifications_center` | `requireAuth` | Caller-scoped — 404 if not owned. Idempotent. |
 | `/v1/notifications/read-all` | POST | `communication.notifications_center` | `requireAuth` | Idempotent — returns count of rows touched. |
+| `/v1/notifications/mark-read-by-link` | POST | `communication.notifications_center` | `requireAuth` | Body `{ linkUrl }`. Marks every panel-visible unread row matching the link as read. Auto-fired by the bell hook on every pathname change. |
 | `/v1/notifications/:id` | DELETE | `communication.notifications_center` | `requireAuth` | Soft-delete (sets `deleted_at`). |
 | `/v1/notifications/stream` | GET | `communication.notifications_center` | `requireAuth` | SSE. Heartbeat every 25 s. Resumes from `Last-Event-ID`. |
 | `/v1/notification-preferences` | GET | `communication.notifications_center` | `requireAuth` | Returns the closed set (every registered type), defaults merged in. |

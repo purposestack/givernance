@@ -201,6 +201,49 @@ export async function markAllRead(orgId: string, userId: string): Promise<number
 }
 
 /**
+ * Mark every unread, panel-visible notification for this user pointing
+ * at the given `linkUrl` as read. Returns the count.
+ *
+ * Powers the "auto-mark-read when the recipient lands on the linked
+ * resource" rule (Epic #363 follow-up — `docs/27-notifications.md` §
+ * "Auto-mark-read on consumption"). Idempotent — landing on the page
+ * again is a no-op once everything is read.
+ *
+ * Why `link_url` rather than resource-type / resource-id: every
+ * notification already carries `link_url` as its canonical destination
+ * (CHECK-enforced relative path). Matching on it is one indexed lookup
+ * and adapts automatically to any new notification type — the per-type
+ * routing decision lives in `planFanout` exactly once.
+ *
+ * `panel_visible = true` is honoured here: digest-only rows
+ * (`panel_visible = false`) are not affected by panel-driven navigation
+ * since the bell never showed them to begin with. Their read state is
+ * managed by the digest worker's send-time semantics (out of scope).
+ */
+export async function markReadByLink(
+  orgId: string,
+  userId: string,
+  linkUrl: string,
+): Promise<number> {
+  return withTenantContext(orgId, async (tx) => {
+    const rows = await tx
+      .update(notifications)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          eq(notifications.userId, userId),
+          eq(notifications.linkUrl, linkUrl),
+          eq(notifications.panelVisible, true),
+          isNull(notifications.readAt),
+          isNull(notifications.deletedAt),
+        ),
+      )
+      .returning({ id: notifications.id });
+    return rows.length;
+  });
+}
+
+/**
  * Soft-delete one notification. Sets `deleted_at`; the row stays for
  * audit. Returns `null` if not found / not owned.
  */
