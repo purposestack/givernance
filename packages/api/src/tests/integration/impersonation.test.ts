@@ -955,6 +955,134 @@ describe("GET /v1/admin/impersonation", () => {
   });
 });
 
+// ─── Replicate row-action (issue #428) ─────────────────────────────────────
+
+describe("Replicate row-action surface (issue #428)", () => {
+  it("GET /v1/admin/impersonation surfaces targetUserId on every row", async () => {
+    // Pre-flight a session against the seeded target user. The list
+    // endpoint must echo `targetUserId` (the app users.id) so the
+    // Replicate row-action can re-POST against the start endpoint —
+    // which keys on `users.id`, not the Keycloak `sub`. Regression
+    // guard for the schema additive change (`ImpersonationSessionSchema`).
+    const token = superAdminToken();
+    const start = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: { targetUserId: TARGET_USER_APP_ID, mode: "delegation", reason: VALID_REASON },
+    });
+    expect(start.statusCode).toBe(201);
+    const startedSessionId = JSON.parse(start.payload).data.sessionId;
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+    });
+    expect(list.statusCode).toBe(200);
+    const body = JSON.parse(list.payload) as {
+      data: Array<{ id: string; targetUserId: string | null; targetKeycloakId: string }>;
+    };
+    const row = body.data.find((s) => s.id === startedSessionId);
+    expect(row).toBeDefined();
+    // The field is present (not undefined) AND resolves to the app
+    // users.id of the active target. A null here for a known-live
+    // target would mean the LEFT JOIN regressed (e.g., wrong condition
+    // on org_id).
+    expect(row?.targetUserId).toBe(TARGET_USER_APP_ID);
+    expect(row?.targetKeycloakId).toBe(TARGET_USER_KEYCLOAK_ID);
+  });
+
+  it("replicate POST with the (replicated) marker round-trips into the DB reason", async () => {
+    // Replicate is a pure client wrapper over POST /v1/admin/impersonation.
+    // The FE appends " (replicated)" to the reason; we exercise that exact
+    // payload here so a future tightening of the reason validator (e.g.,
+    // banning parens or a trailing-marker regex) breaks here, not in
+    // production after the operator clicks Replicate for the first time.
+    const token = superAdminToken();
+    const replicatedReason = `${VALID_REASON} (replicated)`;
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: {
+        targetUserId: TARGET_USER_APP_ID,
+        mode: "delegation",
+        reason: replicatedReason,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const sessionId = JSON.parse(res.payload).data.sessionId;
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/v1/admin/impersonation/${sessionId}`,
+      headers: authHeader(token),
+    });
+    expect(detail.statusCode).toBe(200);
+    const body = JSON.parse(detail.payload) as {
+      data: { reason: string; targetUserId: string | null };
+    };
+    // The marker is preserved verbatim — no server-side trimming /
+    // normalisation. Audit-log readers can group replicate chains by
+    // `reason LIKE '% (replicated)'`.
+    expect(body.data.reason).toBe(replicatedReason);
+    expect(body.data.reason.endsWith(" (replicated)")).toBe(true);
+    expect(body.data.targetUserId).toBe(TARGET_USER_APP_ID);
+  });
+
+  it("two consecutive replicates against the same target produce distinct session rows", async () => {
+    // Mirrors the operator's real workflow: end a session, click
+    // Replicate, then click Replicate AGAIN on the now-most-recent past
+    // row. Each click is an independent POST and must produce a fresh
+    // `impersonation_sessions` row — never a re-activate of the prior
+    // one (the prevent-mutation trigger from migration 0033 enforces
+    // append-only, so this also guards against any accidental UPDATE
+    // path being introduced later).
+    const token = superAdminToken();
+    const replicatedReason = `${VALID_REASON} (replicated)`;
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: {
+        targetUserId: TARGET_USER_APP_ID,
+        mode: "delegation",
+        reason: replicatedReason,
+      },
+    });
+    expect(first.statusCode).toBe(201);
+    const firstId = JSON.parse(first.payload).data.sessionId;
+
+    // End the first session so the operator can replicate (the
+    // "block impersonation-from-impersonation" gate uses the operator's
+    // *token* state, not DB state, so this isn't strictly required for
+    // the POST to succeed — but ending first matches the realistic
+    // operator flow).
+    const endRes = await app.inject({
+      method: "DELETE",
+      url: `/v1/admin/impersonation/${firstId}`,
+      headers: authHeader(token),
+    });
+    expect(endRes.statusCode).toBe(204);
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/admin/impersonation",
+      headers: authHeader(token),
+      payload: {
+        targetUserId: TARGET_USER_APP_ID,
+        mode: "delegation",
+        reason: replicatedReason,
+      },
+    });
+    expect(second.statusCode).toBe(201);
+    const secondId = JSON.parse(second.payload).data.sessionId;
+    expect(secondId).not.toBe(firstId);
+  });
+});
+
 // Non-test cleanup. impersonation_sessions is append-only at the DB level
 // (trigger from migration 0033) — the most we can do is mark the rows
 // ended. audit_logs rows referencing these sessions are also immutable so

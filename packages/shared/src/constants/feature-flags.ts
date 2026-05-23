@@ -202,6 +202,49 @@ export const FEATURE_FLAG_KEYS = {
    *     the flag is off.
    */
   CONSTITUENTS_BULK_IMPORT: "constituents.bulk_import",
+
+  /**
+   * Gates the one-click "Replicate" row-action on the Back Office
+   * impersonation list (issue #428).
+   *
+   * The Epic adds a Replicate button next to every past-session row.
+   * Click → re-POST `/v1/admin/impersonation` with the original
+   * target / mode / reason. If the operator's MFA step-up is still
+   * fresh (Keycloak `auth_time` ≤ 5 min, the existing
+   * `STEP_UP_AUTH_TIME_WINDOW_SECONDS` window), the new session
+   * starts in a single click; otherwise the same stash + bounce-through
+   * `/admin/impersonation/new` machinery the start-form already uses
+   * picks the request up after the MFA round-trip. With the flag OFF
+   * the past-sessions list looks identical to what it shipped — no
+   * extra column, no extra DOM, no extra keybinding.
+   *
+   * `scope='platform'`: this is a dev-/staff-speed feature, not a
+   * tenant-facing capability. Only Givernance staff (super-admins)
+   * see the button at all; the gate is global, not per-tenant.
+   *
+   * `tenant_override_allowed=false`: tenants have no business with
+   * this flag — it sits behind `super_admin` anyway.
+   *
+   * `public=true`: the Back Office list page SSR-fetches
+   * `/v1/feature-flags` to decide whether to render the Replicate
+   * cell. A private projection would unconditionally hide the
+   * surface and defeat the Epic.
+   *
+   * Surfaces gated by this key:
+   *   - Web: Replicate column on the past-sessions table at
+   *     `/admin/impersonation`.
+   *
+   * No backend route or schema is gated — Replicate is a pure client
+   * wrapper over the existing `POST /v1/admin/impersonation`. The
+   * five-step flag pattern still applies (registry + seed migration +
+   * parity test + SSR gate + off-state QA) but step 3 (`requireFlag`
+   * preHandler) and step 4 (worker `isFlagEnabled`) don't have a
+   * surface here.
+   *
+   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`
+   * if the Back Office is unavailable.
+   */
+  ADMIN_IMPERSONATION_REPLICATE: "admin.impersonation_replicate",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -297,6 +340,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
       "Lets operators upload a CSV or Excel file (max 10 MB) to create constituents in bulk, with duplicate detection and a per-row progress view. Off by default while we monitor the first real-world imports — flip it on from this page when you're ready.",
     scope: "tenant",
     tenantOverrideAllowed: true,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.ADMIN_IMPERSONATION_REPLICATE,
+    defaultEnabled: false,
+    label: "One-click replicate of past impersonation sessions",
+    description:
+      "Adds a Replicate button next to every past support session on the impersonation list, so a Givernance staffer can re-enter the same session in one click without retyping the target, mode, and reason. The same MFA step-up rules still apply.",
+    scope: "platform",
+    tenantOverrideAllowed: false,
     public: true,
   },
 ];

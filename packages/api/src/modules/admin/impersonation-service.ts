@@ -355,6 +355,11 @@ const enrichedSessionSelect = {
   targetFirstName: targetUsers.firstName,
   targetLastName: targetUsers.lastName,
   targetEmail: targetUsers.email,
+  // App `users.id` of the target — surfaced for the Replicate row
+  // action (issue #428) which re-POSTs against the start endpoint
+  // (the API keys on `users.id`, not the Keycloak `sub`). Null when
+  // the target has been off-boarded since the session ran.
+  targetUserId: targetUsers.id,
   tenantName: tenants.name,
   tenantSlug: tenants.slug,
   // Operator enrichment with the platform_admins fallback. Drizzle

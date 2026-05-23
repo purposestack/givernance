@@ -2,8 +2,9 @@
 
 > **Status**: Implemented — issue #24
 > **Owner**: Impersonation Engineer agent (`.claude/agents/impersonation-engineer.md`)
-> **Related**: `02-reference-architecture.md`, `03-data-model.md`, `06-security-compliance.md`, `15-infra-adr.md`, `17-log-management.md`
+> **Related**: `02-reference-architecture.md`, `03-data-model.md`, `06-security-compliance.md`, `15-infra-adr.md`, `17-log-management.md`, `18-feature-flags.md`
 > **Closes**: #6, #24
+> **Extended by**: #428 (one-click Replicate from past sessions list — § 4.1)
 
 ## 0. Two coexisting modes — at a glance
 
@@ -24,6 +25,8 @@ Givernance supports **two distinct support-session flavours**. They share most o
 Both modes carry the RFC 8693 `act` claim — the RFC's "delegation" / "impersonation" terminology is about token shape, not our product modes. We always emit `act` so the audit chain is complete.
 
 **Why both must coexist**: a one-mode design forces a tradeoff between "operator can do support work" and "operator can safely browse a user's account without changing anything". Delegation answers the first; pure impersonation answers the second. Conflating them is what the RFC 8693 spec writers explicitly warned against (§4.1).
+
+**Dev-speed surface (issue #428)**: a one-click **Replicate** row-action on the Back Office past-sessions list re-enters the same target with the same mode + reason, reusing the existing 5-min MFA-fresh window (no new security mechanism — see § 4.1). Gated by `admin.impersonation_replicate` (default off, `scope='platform'`); with the flag off the list is identical to what shipped with issue #24.
 
 ## 1. Goals
 
@@ -139,6 +142,49 @@ ACTIVE   ──(TTL reached)─────────────────�
 
 Status is **derived**, never stored. The `impersonation_sessions` row is INSERT + at most one final UPDATE on `(ended_at, end_reason)`. A trigger (`prevent_impersonation_session_mutation` in migration 0033) rejects any other UPDATE and any DELETE — same append-only stance as `audit_logs`.
 
+### 4.1. Replicating a past session (issue #428)
+
+Once a session is `ENDED` / `REVOKED` / `EXPIRED`, the same investigation often needs to be picked up again — same target, same mode, same reason. The Back Office past-sessions list ships a **Replicate** row-action so this is one click instead of six (`/admin/impersonation` → `/new` → tenant picker → user picker → mode → retype the 20+ char reason).
+
+**Mechanism**: Replicate is a pure client wrapper over the existing `POST /v1/admin/impersonation`. The list-DTO now surfaces `targetUserId` (the app `users.id` the start endpoint keys on, distinct from `targetKeycloakId`); the button POSTs `{ targetUserId, mode, reason: original_reason + " (replicated)" }`. The API treats the request identically to a start-form submission — same gates, same step-up validation, same lockout, same 24h cap.
+
+**MFA reuse**: no new logic. If the operator's Keycloak `auth_time` is within the existing `STEP_UP_AUTH_TIME_WINDOW_SECONDS` (5 min), the server returns `201` and the new session starts immediately. If stale, the server returns `401 { step_up_required: true }`; the button stashes the replicate payload to the same `sessionStorage` key the start-form uses (`gv-impersonation-resubmit`) and bounces through `/api/auth/login?acr_values=2&return_to=/admin/impersonation/new` — the start-form's Resume banner picks up the post-MFA bounce-back exactly as for a manually-filled form (see § 7 "End-to-end web flow"). Net effect: one click *or* "click → MFA → Resume click", never re-typing.
+
+**Reason marker**: the FE appends `" (replicated)"` to the original reason before POSTing, idempotently (no double-append on chained replicates) and skipped when the result would exceed the 2000-char cap. Audit-log readers see distinct rows under `impersonation.started` with the marker visible in the captured reason; SOC dashboards correlate replicate chains by `(impersonator_keycloak_id, target_keycloak_id)` ordered by `created_at`.
+
+**Flag gate**: `admin.impersonation_replicate` (default off, `scope='platform'`, `tenant_override_allowed=false`, `public=true`). SSR-fetched on the list page; with the flag off the column ends with only the View button and the Replicate component is never mounted. Migration `0059_admin_impersonation_replicate_flag` seeds the row. Emergency rollback: `docs/runbooks/feature-flag-rollback.md`.
+
+**Off-boarded target**: if the past target's `users.id` has been hard-deleted (`targetUserId` null in the DTO), the Replicate button is hidden for that row even with the flag on. The operator can still inspect the past session via View, but cannot re-enter it (the start endpoint requires a live `users.id` — see `resolveTarget()` in `impersonation-service.ts`).
+
+```mermaid
+sequenceDiagram
+  participant Op as Super-admin
+  participant Web as /admin/impersonation
+  participant API as POST /v1/admin/impersonation
+  participant KC as Keycloak
+
+  Op->>Web: click Replicate on past row
+  Web->>API: POST { targetUserId, mode, reason+" (replicated)" }
+  alt MFA fresh (auth_time ≤ 5 min)
+    API-->>Web: 201 + Set-Cookie givernance_jwt
+    Web-->>Op: redirect /dashboard (as target)
+  else MFA stale
+    API-->>Web: 401 { step_up_required: true }
+    Web->>Web: stash payload to sessionStorage
+    Web-->>Op: redirect /api/auth/login?acr_values=2
+    Op->>KC: re-auth with MFA
+    KC-->>Web: bounce to /admin/impersonation/new
+    Web->>Web: hydrate Resume banner from stash
+    Op->>Web: click Resume
+    Web->>API: POST { same payload }
+    API-->>Web: 201 + Set-Cookie
+    Web-->>Op: redirect /dashboard (as target)
+  else 5-fail lockout engaged
+    API-->>Web: 401 { step_up_required: false }
+    Web-->>Op: render lockout error inline
+  end
+```
+
 ### `impersonation_sessions` schema
 
 ```sql
@@ -183,6 +229,8 @@ Effect:
 | Session ended (operator) | `impersonation.ended_by_admin` | info | |
 | Session revoked (other super_admin) | `impersonation.revoked` | warn | Includes the revoker as `actor_id` |
 | Step-up failure | `impersonation.denied` (logger only — no audit row, since no session was created) | error | Counted into the brute-force lockout |
+
+**Replicate marker (issue #428)**: a session started via the past-list Replicate row-action carries a `reason` ending with `" (replicated)"` (FE-appended, idempotent, skipped if it would exceed the 2000-char cap). SOC dashboards can group replicate chains via `WHERE reason LIKE '% (replicated)' AND impersonator_keycloak_id = $1 ORDER BY created_at`. The original session's reason is unchanged — only the new row carries the marker.
 
 ## 6. Permission isolation — what each mode does at the boundary
 

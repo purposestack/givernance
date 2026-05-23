@@ -20,6 +20,7 @@ import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsServi
 
 const PHASE2_KEY = "admin.feature_flags_phase2";
 const PUBLIC_PAGE_STYLES_KEY = "donation.public_page_styles";
+const IMPERSONATION_REPLICATE_KEY = "admin.impersonation_replicate";
 
 /**
  * Returns `true` iff `admin.feature_flags_phase2` is on for the
@@ -50,6 +51,23 @@ export async function isPublicPageStylesEnabled(): Promise<boolean> {
     const api = await createServerApiClient();
     const flags = await FeatureFlagsService.listPublic(api);
     return isFlagEnabled(flags, PUBLIC_PAGE_STYLES_KEY);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns `true` iff `admin.impersonation_replicate` is on for the
+ * caller. Drives whether the Back Office impersonation list renders
+ * the Replicate row-action (issue #428). Fail-closed on projection
+ * errors — better to hide the button than render one that points
+ * at an off feature.
+ */
+export async function isImpersonationReplicateEnabled(): Promise<boolean> {
+  try {
+    const api = await createServerApiClient();
+    const flags = await FeatureFlagsService.listPublic(api);
+    return isFlagEnabled(flags, IMPERSONATION_REPLICATE_KEY);
   } catch {
     return false;
   }
