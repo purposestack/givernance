@@ -246,6 +246,32 @@ Apply this in `gh pr create` / `gh pr edit` bodies, in commit messages that clos
 
 Valid uses for Organization attributes: non-sensitive identifiers (`org_id`, slug), feature flags that don't imply entitlements (`theme`, `locale`), public-facing labels. Anything else belongs in the application database (`tenants` table) with RLS.
 
+### 🛑 Drizzle migrations: journal must stay in sync with the folder
+
+**Adding a `.sql` file to [`packages/api/migrations/`](packages/api/migrations/) is not enough — the migration must also be registered in [`packages/api/migrations/meta/_journal.json`](packages/api/migrations/meta/_journal.json).** `drizzle-kit migrate` (run by CI as `pnpm db:migrate` before tests) only applies migrations listed in the journal; unregistered SQL files are silently skipped. The Epic #363 follow-up hit this exact gap — `0056_notifications_panel_visible.sql` was on disk but missing from the journal, so CI's test Postgres never got the new column and every integration test that touched it failed with `42703 column … does not exist`. Local dev didn't catch it because the developer had `psql < 0056_*.sql`'d the column in by hand while iterating.
+
+**When this rule fires** (audit the journal in each of these cases):
+- **Adding a hand-written migration** (you're not running `drizzle-kit generate`): append a journal entry yourself.
+- **Rebasing onto `main`** when both your branch and main added migrations in parallel: re-check that `idx` is contiguous, `tag`s match filenames, and `when` is strictly increasing.
+- **Cherry-picking a commit** that included a migration: confirm the journal change rode along (not just the `.sql`).
+- **Resolving a merge conflict that touched `_journal.json`**: walk every entry by hand — `git`'s line-based merge does not know that journal entries are positional.
+
+**How to append manually** (for hand-written migrations like new columns / constraints / seeds that don't come from a schema diff):
+1. Decide on the next free `NNNN` prefix for the filename. Check the highest current `idx` in the journal.
+2. Add an entry at the end of `entries[]`:
+   ```json
+   {
+     "idx": <highestIdx + 1>,
+     "version": "7",
+     "when": <previousEntry.when + 10_000_000_000>,
+     "tag": "<filename without .sql>",
+     "breakpoints": true
+   }
+   ```
+3. `tag` must match the filename exactly (minus `.sql`). The `when` field is an arbitrary monotonic counter in this repo, not a real timestamp — preserve the +10b spacing so future rebases stay easy.
+
+**Automated guard**: [`packages/api/src/tests/integration/migrations-journal-parity.test.ts`](packages/api/src/tests/integration/migrations-journal-parity.test.ts) fails CI on orphan files, phantom journal entries, gappy `idx`, and non-monotonic `when`. If that test goes red after an edit, the journal is the thing to fix — never the test.
+
 ---
 
 ## 🛑 DEV PROCESS (CRITICAL FOR CI)
