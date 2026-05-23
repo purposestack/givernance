@@ -164,12 +164,15 @@
     .hero-mobilisation-value .score-letter { font-family: var(--font-heading); font-size: 64px; line-height: 1; font-weight: var(--weight-regular); }
     .hero-mobilisation-value .score-num { font-family: var(--font-mono); font-size: var(--text-3xl); font-variant-numeric: tabular-nums; color: var(--color-on-surface); }
     .hero-mobilisation-value .score-out-of { font-family: var(--font-body); font-size: var(--text-base); color: var(--color-on-surface-variant); }
-    .hero-formula-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
-    .hero-formula-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 56px; align-items: center; gap: var(--space-2); font-size: var(--text-xs); }
-    .hero-formula-row .label { color: var(--color-on-surface-variant); font-weight: var(--weight-medium); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+    .hero-formula-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-3); }
+    /* 3-col layout: label sized to its content (no truncation), bar fills the middle,
+       weighted pct on the right. minmax(0, …) prevents any column from shrinking the
+       bar to invisibility on narrow viewports. */
+    .hero-formula-row { display: grid; grid-template-columns: minmax(96px, max-content) minmax(40px, 1fr) minmax(72px, max-content); align-items: center; gap: var(--space-3); font-size: var(--text-xs); }
+    .hero-formula-row .label { color: var(--color-on-surface-variant); font-weight: var(--weight-semi); white-space: nowrap; }
     .hero-formula-row .track { height: 6px; border-radius: var(--radius-pill); background: var(--color-surface-container-high); overflow: hidden; }
     .hero-formula-row .track .fill { height: 100%; background: var(--color-primary); border-radius: var(--radius-pill); }
-    .hero-formula-row .pct { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-on-surface); text-align: right; font-size: var(--text-xs); }
+    .hero-formula-row .pct { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-on-surface); text-align: right; font-size: var(--text-xs); white-space: nowrap; }
 
     /* Letter colours mapped to tokens — semantic, not literal */
     .score-letter--a-plus,
