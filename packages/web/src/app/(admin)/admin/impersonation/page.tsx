@@ -129,25 +129,22 @@ export default async function ImpersonationListPage({ searchParams }: Impersonat
 }
 
 /**
- * URL-driven segmented control above the past-sessions table.
+ * URL-driven filter buttons above the past-sessions table.
  *
- * Visually mirrors the design-system `Tabs` / `TabsList` / `TabsTrigger`
- * primitives in `@/components/ui/tabs` (Radix-based; used on the
- * tenant detail page and elsewhere) — same `surface-container-low`
- * track, same `surface-container-lowest + shadow-xs` active pip,
- * same `rounded-[var(--radius-md)]` outer / `rounded-[var(--radius-sm)]`
- * inner radii. The shared visual primitive is intentional so the
- * operator's mental model of "this is a tab strip / segmented filter"
- * stays consistent across admin surfaces.
+ * Matches the visual contract of the per-flag tenant filter buttons
+ * at `/admin/feature-flags/[key]` (see `per-flag-tenants.tsx` ~L360)
+ * so the operator sees one consistent filter style across admin
+ * surfaces. Same `rounded-md border px-3 py-1.5 text-xs font-medium`
+ * shape, same `border-primary bg-primary-container text-on-primary-
+ * container` active state, same `border-outline-variant bg-surface
+ * text-on-surface-variant` inactive state, same `hover:bg-surface-
+ * container` affordance.
  *
- * Why this isn't `<Tabs>` itself: Radix Tabs is a Client Component
- * with internal `value` state. Driving the filter through the URL
- * (so back/forward navigation mirrors the operator's filter history,
- * AND the page stays SSR with no JS payload) requires plain `<Link>`
- * triggers — which Radix's `<TabsTrigger>` does support via
- * `asChild`, but only when the parent Tabs is mounted on the client.
- * Re-implementing the same visual contract here keeps the page
- * server-rendered without giving up the design-system look.
+ * Server-rendered `<Link>` triggers (not `<button onClick>` like the
+ * per-flag page) because the filter is URL-driven — the back/forward
+ * stack mirrors the operator's filter history, and the page stays
+ * SSR with no JS payload. The `aria-current="page"` / `aria-pressed`
+ * accessibility contract is preserved.
  */
 async function ModeFilterTabs({
   activeFilter,
@@ -157,41 +154,36 @@ async function ModeFilterTabs({
   counts: { all: number; delegation: number; impersonation: number };
 }) {
   const t = await getTranslations("admin.impersonation");
-  // Track and trigger classes lifted verbatim from
-  // `@/components/ui/tabs` so any future design-token change
-  // (e.g., tweaking the active shadow) propagates here too.
-  const trackClass = cn(
-    "inline-flex items-center gap-1 p-1",
-    "bg-surface-container-low text-on-surface-variant",
-    "rounded-[var(--radius-md)]",
-  );
-  const triggerBase = cn(
-    "inline-flex items-center justify-center whitespace-nowrap",
-    "px-3 py-1.5 text-sm font-medium",
-    "rounded-[var(--radius-sm)] transition-colors duration-normal ease-out",
-    "focus-visible:outline-none focus-visible:shadow-ring",
-  );
-  const triggerActive = "bg-surface-container-lowest text-on-surface shadow-xs";
+  // Classes lifted verbatim from per-flag-tenants.tsx:365 so a
+  // future design-token change (e.g., tweaking primary-container)
+  // propagates to both surfaces without a parallel edit.
+  const triggerBase = "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors";
+  const triggerActive = "border-primary bg-primary-container text-on-primary-container";
+  const triggerInactive =
+    "border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container";
 
   return (
-    <nav aria-label={t("filterByModeAriaLabel")} className={trackClass}>
+    <nav aria-label={t("filterByModeAriaLabel")} className="flex flex-wrap items-center gap-2">
       <Link
         href="/admin/impersonation"
-        className={cn(triggerBase, activeFilter === null && triggerActive)}
+        className={cn(triggerBase, activeFilter === null ? triggerActive : triggerInactive)}
         aria-current={activeFilter === null ? "page" : undefined}
       >
         {t("filterAll", { count: counts.all })}
       </Link>
       <Link
         href="/admin/impersonation?mode=delegation"
-        className={cn(triggerBase, activeFilter === "delegation" && triggerActive)}
+        className={cn(triggerBase, activeFilter === "delegation" ? triggerActive : triggerInactive)}
         aria-current={activeFilter === "delegation" ? "page" : undefined}
       >
         {t("filterDelegation", { count: counts.delegation })}
       </Link>
       <Link
         href="/admin/impersonation?mode=impersonation"
-        className={cn(triggerBase, activeFilter === "impersonation" && triggerActive)}
+        className={cn(
+          triggerBase,
+          activeFilter === "impersonation" ? triggerActive : triggerInactive,
+        )}
         aria-current={activeFilter === "impersonation" ? "page" : undefined}
       >
         {t("filterImpersonation", { count: counts.impersonation })}
