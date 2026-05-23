@@ -24,7 +24,12 @@ import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { requireAuth } from "../../lib/guards.js";
-import { ErrorResponses, problemDetail, UuidSchema } from "../../lib/schemas.js";
+import {
+  ErrorResponses,
+  ProblemDetailSchema,
+  problemDetail,
+  UuidSchema,
+} from "../../lib/schemas.js";
 import { MAX_QUERY_LENGTH, search } from "./service.js";
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
@@ -71,15 +76,22 @@ export async function searchRoutes(app: FastifyInstance) {
       // is comfortably above any realistic human typing speed. The
       // bulk-import polling endpoint uses the same value.
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      // Quiet the per-keystroke 200s so a sustained typing burst
+      // doesn't flood stdout (and Loki) with the raw `q` substring.
+      // Errors (4xx / 5xx) still emit at warn+. The flag-gate denial
+      // path emits its own structured `flag.route_gated` log line at
+      // info via `requireFlag` (kept) — that one is bounded by route
+      // template, not the user's query.
+      logLevel: "warn",
       schema: {
         tags: ["Search"],
         summary: "Cross-entity global search backing the command palette",
         querystring: SearchQuerystring,
         response: {
           200: SearchResponse,
-          400: ErrorResponses[404],
+          400: ProblemDetailSchema,
           ...ErrorResponses,
-          429: ErrorResponses[404],
+          429: ProblemDetailSchema,
         },
       },
     },

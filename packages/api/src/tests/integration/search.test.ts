@@ -52,10 +52,15 @@ afterAll(async () => {
 
 beforeEach(async () => {
   // Clean only the rows this suite seeds — other suites share the
-  // schema and may have their own fixtures live.
+  // schema and may have their own fixtures live. Match BOTH first_name
+  // and last_name on the prefix so the soft-delete + cap fixtures
+  // (which intentionally vary the last name) still get reaped.
   await db.execute(sql`DELETE FROM donations WHERE payment_ref LIKE 'SEARCH-TEST-%'`);
   await db.execute(sql`DELETE FROM campaigns WHERE name LIKE 'SEARCH-TEST-%'`);
-  await db.execute(sql`DELETE FROM constituents WHERE first_name LIKE 'SEARCH-TEST-%'`);
+  await db.execute(sql`
+    DELETE FROM constituents
+    WHERE first_name LIKE 'SEARCH-TEST-%' OR last_name LIKE 'SEARCH-TEST-%'
+  `);
   await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, FLAG_KEY));
   await flagService.invalidate();
 });
@@ -248,7 +253,7 @@ describe("Search — happy path", () => {
     expect(body.data.groups.donations).toEqual([]);
   });
 
-  it("rejects an empty `q` with a 400", async () => {
+  it("rejects an empty `q` with a 400 and an RFC 9457 body", async () => {
     const token = signToken(app);
     const res = await app.inject({
       method: "GET",
@@ -256,6 +261,11 @@ describe("Search — happy path", () => {
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(400);
+    const body = res.json<{ status?: number; title?: string }>();
+    // Pin the well-known RFC 9457 members so a future "throw new
+    // Error" regression returns 400 with a plain string instead.
+    expect(body.status).toBe(400);
+    expect(typeof body.title).toBe("string");
   });
 
   it("rejects a missing `q` with a 400", async () => {
@@ -266,6 +276,69 @@ describe("Search — happy path", () => {
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("excludes soft-deleted constituents from the result set", async () => {
+    const token = signToken(app);
+    // Seed an active row + a soft-deleted row with the same searchable
+    // token, so the filter (not the absence of data) is what removes it.
+    await seedConstituent(ORG_A, "SEARCH-TEST-SoftDeleteToken", "Active");
+    const deletedId = await seedConstituent(ORG_A, "SEARCH-TEST-SoftDeleteToken", "Deleted");
+    await db.execute(sql`
+      UPDATE constituents SET deleted_at = now() WHERE id = ${deletedId}
+    `);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/search?q=SoftDeleteToken",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { groups: { constituents: Array<{ id: string; subtitle: string }> } };
+    }>();
+    const ids = body.data.groups.constituents.map((h) => h.id);
+    expect(ids).not.toContain(deletedId);
+  });
+
+  it("caps each group at PER_GROUP_LIMIT (5) hits", async () => {
+    const token = signToken(app);
+    // Seven matches; the cap should drop to five.
+    for (let i = 0; i < 7; i++) {
+      await seedConstituent(ORG_A, `SEARCH-TEST-CapToken${i}`, "Cap");
+    }
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/search?q=CapToken",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { groups: { constituents: unknown[] } };
+    }>();
+    expect(body.data.groups.constituents.length).toBe(5);
+  });
+
+  it("ranks the closer match above the weaker one", async () => {
+    const token = signToken(app);
+    // Both rows tokenise on "Rankseed"; only the second carries it as
+    // the first name (similarity boost), so it must rank first.
+    await seedConstituent(ORG_A, "SEARCH-TEST-Unrelated", "Rankseed-Surname");
+    await seedConstituent(ORG_A, "SEARCH-TEST-Rankseed", "Closer");
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/search?q=Rankseed",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { groups: { constituents: Array<{ title: string }> } };
+    }>();
+    expect(body.data.groups.constituents[0]?.title).toContain("SEARCH-TEST-Rankseed");
   });
 });
 

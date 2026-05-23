@@ -51,8 +51,9 @@ sequenceDiagram
 **Error branches**
 
 - Query < 2 chars → no DB call, empty state stays (static commands visible).
-- Network error → palette stays open, shows `t("commandPalette.error")`; `aria-live="assertive"` announces it.
-- 429 (rate-limit) → handled as a transient error (same UX); the next keystroke supersedes the failed request.
+- Network error → palette stays open, shows the generic `t("commandPalette.error")` ("Could not run the search. Try again in a moment."); `aria-live="assertive"` + `role="alert"` announce it to assistive tech. The next valid keystroke supersedes the failed request.
+- 429 (rate-limit) → surfaced as the **same** generic error banner (no distinct toast) — we deliberately keep one error path rather than expose the rate-limit as a separate UX, because a sustained burst hitting the cap is usually a runaway typing loop, not a state the operator can fix differently.
+- Unauthenticated request mid-session (cookie expired between renders) → the global axios-style 401 handler in [`packages/web/src/lib/api/client.ts`](../packages/web/src/lib/api/client.ts) already routes through the auth refresh path; the palette catches the resulting rejection and surfaces the generic error until the next debounced refetch succeeds.
 - Flag off mid-session (operator just got demoted) → SSR-fetched flag list was stale, the topbar button vanishes on next nav, the API returns 404; the palette is never re-opened. No UI is left half-broken because the entire surface is conditional on `commandPaletteEnabled`.
 
 ## 2. Domain model — no new tables
