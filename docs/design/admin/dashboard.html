@@ -1,0 +1,838 @@
+<!--
+  Issue #206 — Super-admin Platform finance dashboard.
+  Route: /admin/finance (sibling to /admin/tenants, /admin/disputes).
+  Audience: super_admin only — gated by `(admin)` layout + requireSuperAdmin guard.
+
+  Feature flag (mandatory per docs/18-feature-flags.md):
+    key:    admin.finance_dashboard   (dotted-domain, aligned with existing admin.* namespace)
+    default: off
+    preHandler order: requireFlag → requireSuperAdmin (flag check FIRST so a non-flagged
+                      probe sees 404 without revealing role requirements)
+    sidebar: the "Finance plateforme" nav-item is hidden server-side when the flag is off
+             OR when the viewer is not super_admin (defence in depth — never rely on the
+             route 404 alone, see CLAUDE.md "RLS is the safety net, never the contract").
+    worker:  if a `donations.stripe_fee_cents` enrichment job (path A) ships with this PR,
+             gate the payment_intent.succeeded enrichment branch with isFlagEnabled(...)
+             so the worker keeps processing donations normally when the flag is off.
+
+  Period default: 30d. Deltas = period vs. previous period of same length.
+
+  Implementation-issue concerns (NOT addressed in this mockup PR — track in the
+  implementation issue's AC checklist):
+    1. Schema: add `donations.platform_fee_base_cents` (or compute on-the-fly via
+       exchange_rate) so the "Revenu Givernance" KPI is currency-correct in multi-tenant
+       (EUR + GBP + CHF) deployments. Today's `platform_fee_cents` is stored in the
+       donation's input currency, so SUM() across currencies double-counts.
+    2. SQL must use the owner pool (`systemDb`) explicitly with a "CROSS-TENANT
+       INTENTIONAL: super-admin platform aggregate" comment — RLS is the safety net,
+       not the contract. When a tenantId filter is set, the query MUST still carry
+       `eq(donations.orgId, filter.tenantId)`.
+    3. Stripe-fee KPI must filter `paymentSource = 'stripe'` to exclude camt053 / manual
+       donations (Epic #318) so the percent-of-volume math is honest.
+    4. Refund period scoping: schema today has no `refunded_at`; the refund-rate KPI
+       therefore measures "donations made in [period] currently in 'refunded' state",
+       which is NOT the same as "refunds processed in [period]". Document this on the
+       KPI tooltip OR add a `refunded_at` column.
+    5. TypeBox on `from` / `to` query params: format='date' (ISO 8601), refuse range
+       > 366d, clamp from >= 2024-01-01, reject from > to.
+    6. Emit an `audit_logs` row per 200 response (action='view',
+       resourceType='platform_finance_summary', metadata={period, filters, ipHash}).
+    7. Redis cache key: `superadmin:finance:summary:v1:{period}:{from}:{to}:{currency}:{tenantId|all}`
+       — shared across super-admins, 5-min absolute TTL, no event-bound invalidation.
+    8. K-anonymity on per-tenant rows: suppress rows where donation_count < 5.
+    9. Lock TypeBox response shape so a future refactor cannot accidentally include
+       `donations.stripe_fee_cents` in any tenant-facing projection.
+
+  Source of truth: docs/04-business-capabilities.md + issue #206 acceptance criteria.
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Back office &mdash; Finance plateforme</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/base.css">
+  <style>
+    .switch-link { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin: 0 var(--space-3) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-on-surface-variant); border: 1px solid var(--color-outline-variant); text-decoration: none; }
+
+    /* ── Period tabs row + secondary filter row ── */
+    .finance-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-6); flex-wrap: wrap; }
+    .period-tabs { display: inline-flex; gap: 0; border-bottom: 1px solid var(--color-outline-variant); }
+    .period-tabs .tab { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
+    .finance-toolbar-right { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+    .finance-toolbar-right select.form-select { height: 36px; padding: 0 var(--space-3); font-size: var(--text-sm); max-width: 220px; }
+
+    /* ── KPI delta pill: green up, red down, neutral grey ── */
+    .delta-pill { display: inline-flex; align-items: center; gap: 2px; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--weight-bold); padding: 2px 8px; border-radius: var(--radius-pill); font-variant-numeric: tabular-nums; }
+    .delta-pill--up { color: var(--color-primary); background: var(--color-primary-50); }
+    .delta-pill--down { color: var(--color-error); background: var(--color-error-container); }
+    .delta-pill--flat { color: var(--color-on-surface-variant); background: var(--color-surface-container-high); }
+
+    /* ── KPI tile internals — match dashboard.html stat-card pattern but with delta + sparkline ── */
+    .kpi-tile-head { display: flex; align-items: center; justify-content: space-between; }
+    .kpi-icon-tile { display: flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: var(--radius-lg); }
+    .kpi-value-row { display: flex; align-items: baseline; gap: var(--space-2); margin-top: var(--space-3); font-family: var(--font-heading); font-size: var(--text-4xl); line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--color-on-surface); }
+    .kpi-value-row .currency-suffix { font-family: var(--font-body); font-size: var(--text-base); color: var(--color-on-surface-variant); font-weight: var(--weight-regular); }
+    .kpi-footnote { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-on-surface-variant); }
+    .kpi-footnote code { font-size: 11px; }
+    .kpi-tile--enrichment { position: relative; }
+    .kpi-tile--enrichment::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-xl); pointer-events: none; }
+    .kpi-pending-note { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--color-tertiary); font-weight: var(--weight-medium); }
+
+    /* ── Time-series chart card ── */
+    .chart-card { padding: var(--space-6) var(--space-8) var(--space-8); }
+    .chart-card .card-header { margin-bottom: var(--space-4); }
+    .chart-legend { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+    .chart-legend-item { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--color-on-surface-variant); }
+    .chart-legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+    .chart-svg-wrap { width: 100%; }
+    .chart-svg-wrap svg { width: 100%; height: auto; display: block; }
+    .chart-axis-label { font-family: var(--font-mono); font-size: var(--text-2xs); fill: var(--color-on-surface-variant); }
+    .chart-tooltip-card { position: absolute; pointer-events: none; background: var(--color-inverse-surface); color: var(--color-inverse-on-surface); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); box-shadow: var(--shadow-md); }
+
+    /* ── Top tenants horizontal bar list ── */
+    /* Top-tenants row layout. Reuses base.css .progress + .progress-fill for the volume bar
+       (no duplicate gradient declared here) — see base.css:1198-1210. */
+    .tenant-bar { display: grid; grid-template-columns: minmax(0, 1fr) 88px; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--color-outline-variant); }
+    .tenant-bar:last-child { border-bottom: none; }
+    .tenant-bar-name { font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+    .tenant-bar-name:hover { color: var(--color-primary); }
+    .tenant-bar-meta { display: flex; align-items: center; gap: var(--space-2); margin-top: 4px; }
+    .tenant-bar-track { height: 8px; flex: 1; background: var(--color-surface-container-high); border-radius: var(--radius-pill); overflow: hidden; }
+    .tenant-bar-fill { height: 100%; background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-primary-container) 100%); border-radius: var(--radius-pill); }
+    .tenant-bar-amount { font-family: var(--font-mono); font-size: var(--text-sm); font-variant-numeric: tabular-nums; color: var(--color-on-surface); text-align: right; }
+    .tenant-bar-amount-secondary { font-family: var(--font-mono); font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--color-on-surface-variant); display: block; margin-top: 2px; }
+    .tenant-bar-share { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-on-surface-variant); font-variant-numeric: tabular-nums; }
+
+    /* ── Refund rate panel ──
+       Gauge scale is 0–8 % linear. Threshold ticks must be positioned at their actual
+       linear positions (1 % = 12.5 % of width, 5 % = 62.5 % of width) — even spacing
+       would lie about the zones. The gradient stops match the thresholds so the colour
+       transition is at the same x-coordinate as the tick label below it. */
+    .refund-kpi { display: flex; align-items: baseline; gap: var(--space-2); font-family: var(--font-heading); font-size: var(--text-4xl); line-height: 1.1; color: var(--color-on-surface); font-variant-numeric: tabular-nums; }
+    .refund-kpi .unit { font-family: var(--font-body); font-size: var(--text-xl); color: var(--color-on-surface-variant); font-weight: var(--weight-regular); }
+    .refund-bar-track { margin-top: var(--space-4); height: 10px; border-radius: var(--radius-pill); background: var(--color-surface-container-high); overflow: hidden; position: relative; }
+    .refund-bar-fill { height: 100%;
+      background: linear-gradient(
+        90deg,
+        var(--color-green) 0%,
+        var(--color-green) 12.5%,
+        var(--color-tertiary) 12.5%,
+        var(--color-tertiary) 62.5%,
+        var(--color-error) 62.5%,
+        var(--color-error) 100%
+      );
+      border-radius: var(--radius-pill);
+    }
+    .refund-bar-cursor { position: absolute; top: -2px; width: 2px; height: 14px; background: var(--color-on-surface); border-radius: 1px; }
+    /* Ticks at 0 % (=0%), 1 % (=12.5%), 5 % (=62.5%), 8 % (=100%) of width. */
+    .refund-thresholds { position: relative; height: 14px; margin-top: var(--space-2); font-size: var(--text-2xs); color: var(--color-on-surface-variant); font-variant-numeric: tabular-nums; }
+    .refund-thresholds .tick { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+    .refund-thresholds .tick:first-child { transform: translateX(0); }
+    .refund-thresholds .tick:last-child { transform: translateX(-100%); }
+
+    /* ── Per-currency donut ── */
+    .currency-donut-wrap { display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
+    .currency-donut { flex: 0 0 140px; width: 140px; height: 140px; }
+    .currency-legend { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: var(--space-2); }
+    .currency-legend-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+    .currency-legend-row .swatch { width: 12px; height: 12px; border-radius: 3px; }
+    .currency-legend-row .ccy { font-family: var(--font-mono); color: var(--color-on-surface); }
+    .currency-legend-row .amount { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-on-surface); }
+    .currency-legend-row .share { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-on-surface-variant); font-size: var(--text-xs); min-width: 44px; text-align: right; }
+
+    /* ── Two-column row ── */
+    .finance-two-col { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr); gap: var(--space-6); margin-top: var(--space-6); }
+    @media (max-width: 1024px) { .finance-two-col { grid-template-columns: 1fr; } }
+
+    /* ── Empty-state demo (illustrative companion to the populated dashboard) ── */
+    .empty-state-card { padding: var(--space-8); text-align: center; border-radius: var(--radius-2xl); background: var(--color-surface-container-low); border: 1px dashed var(--color-outline-variant); margin-top: var(--space-6); }
+    .empty-state-card .empty-state-icon { font-size: 36px; opacity: 0.5; margin-bottom: var(--space-2); }
+    .empty-state-card .empty-state-title { font-size: var(--text-lg); }
+    .empty-state-card .empty-state-text { font-size: var(--text-sm); }
+
+    /* Tabular-nums everywhere we render money so column widths don't dance */
+    .num-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    /* Sparkline inside KPI tiles */
+    .kpi-sparkline { width: 100%; height: 32px; margin-top: var(--space-3); }
+
+    /* Visually-hidden helper for screen-reader-only chart data tables (a11y) */
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+    /* Audit footer note — informs the operator that platform-finance views are logged */
+    .audit-footer { margin-top: var(--space-8); padding-top: var(--space-4); border-top: 1px solid var(--color-outline-variant); display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--color-on-surface-variant); }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+
+    <!-- ============================================================
+         SUPER-ADMIN SIDEBAR — matches ADMIN_NAV_ITEMS in layout/sidebar.tsx
+         Order mirrors admin/index.html + adds Finance entry shipped with this issue.
+         ============================================================ -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <a href="../dashboard.html" class="switch-link">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Retour à l'organisation
+      </a>
+      <nav class="sidebar-nav" aria-label="Navigation Back office">
+        <div class="sidebar-section">Super admin</div>
+        <a href="dashboard.html" class="nav-item nav-item--active" aria-current="page">
+          <span class="material-symbols-outlined nav-item-icon">payments</span>
+          <span class="nav-item-label">Finance plateforme</span>
+        </a>
+        <a href="tenants/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">business</span>
+          <span class="nav-item-label">Locataires</span>
+        </a>
+        <a href="#" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">shield</span>
+          <span class="nav-item-label">Litiges</span>
+        </a>
+        <a href="#" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">person_search</span>
+          <span class="nav-item-label">Usurpation</span>
+        </a>
+        <a href="#" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">admin_panel_settings</span>
+          <span class="nav-item-label">Admins plateforme</span>
+        </a>
+        <a href="#" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">flag</span>
+          <span class="nav-item-label">Feature flags</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar" style="background: var(--color-indigo);">SA</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Sam Admin</div>
+            <div class="sidebar-footer-role">Super admin</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-breadcrumb">
+          <a href="index.html">Back office</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Finance plateforme</span>
+        </div>
+        <div class="topbar-actions">
+          <div class="topbar-avatar" title="Sam Admin" style="background: var(--color-indigo);">SA</div>
+        </div>
+      </header>
+
+      <main class="main-content">
+
+        <!-- Page header. Subtitle restates the active scope (period · devise · tenant)
+             so a screen-reader user lands with the filter context, not just the title. -->
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Finance plateforme</h1>
+            <p class="page-subtitle">Vue agrégée sur tous les tenants — volume des dons, revenu Givernance, frais Stripe et donateurs uniques. <span aria-live="polite" id="finance-scope-summary">Période active : 30 derniers jours · Toutes devises · Tous tenants.</span></p>
+          </div>
+          <div class="page-header-actions">
+            <button type="button" class="btn btn-secondary btn-sm" aria-label="Exporter le rapport au format CSV">
+              <span class="material-symbols-outlined" style="font-size:16px;">download</span>
+              Exporter CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Flag posture is documented in the head-comment of this file (lines 11-22).
+             Intentionally NOT rendered as visible page chrome: the shipped React page
+             matches the mockup byte-for-byte per the mockup-first rule, and a flag
+             banner is not part of the shipped surface. -->
+
+        <!-- ============================================================
+             TOOLBAR — period filter buttons (left) + currency + tenant filters (right)
+             Default "30 j" is the active filter. "Personnalisé" opens the date-range picker
+             (max 366 days, clamped from 2024-01-01).
+
+             NOTE: these are radio-style filter buttons, not a tab interface, because the
+             page content does not change DOM — only data values. Using role="tab" without
+             role="tabpanel" would lie to assistive tech.
+             ============================================================ -->
+        <div class="finance-toolbar" role="group" aria-label="Filtres de période et de portée">
+          <div class="period-tabs" role="radiogroup" aria-label="Période">
+            <button class="tab" type="button" role="radio" aria-checked="false">Aujourd'hui</button>
+            <button class="tab" type="button" role="radio" aria-checked="false">7 j</button>
+            <button class="tab active" type="button" role="radio" aria-checked="true">30 j</button>
+            <button class="tab" type="button" role="radio" aria-checked="false">90 j</button>
+            <button class="tab" type="button" role="radio" aria-checked="false">YTD</button>
+            <button class="tab" type="button" role="radio" aria-checked="false" title="Plage personnalisée — fenêtre maximale 366 jours">
+              <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px;">date_range</span>
+              Personnalisé
+            </button>
+          </div>
+          <div class="finance-toolbar-right">
+            <label class="sr-only" for="finance-currency">Devise</label>
+            <select id="finance-currency" class="form-select" aria-label="Filtre par devise">
+              <option>Toutes les devises (EUR éq.)</option>
+              <option>EUR</option>
+              <option>GBP</option>
+              <option>CHF</option>
+            </select>
+            <label class="sr-only" for="finance-tenant">Tenant</label>
+            <select id="finance-tenant" class="form-select" aria-label="Filtre par tenant">
+              <option>Tous les tenants</option>
+              <option>Croix-Rouge Française</option>
+              <option>Les Restaurants du Cœur</option>
+              <option>Emmaüs Solidarité</option>
+              <option>WWF France</option>
+              <option>Médecins du Monde</option>
+              <option>Action contre la Faim</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ============================================================
+             ROW 1 — 4 KPI cards: Volume / Platform fee / Stripe fee / Donor count
+             Delta = period vs previous period of same length.
+             ============================================================ -->
+        <div class="grid-4">
+
+          <!-- KPI 1 — Donation volume (headline) -->
+          <article class="stat-card" aria-labelledby="kpi-volume-label">
+            <div class="kpi-tile-head">
+              <div>
+                <div class="stat-label" id="kpi-volume-label">Volume des dons</div>
+                <div class="kpi-pending-note" style="visibility:hidden;">&nbsp;</div>
+              </div>
+              <div class="kpi-icon-tile" style="background: var(--color-primary-fixed); color: var(--color-on-primary-fixed-variant);">
+                <span class="material-symbols-outlined" style="font-size:20px;">savings</span>
+              </div>
+            </div>
+            <div class="kpi-value-row">
+              €1 284 530<span class="currency-suffix">,00</span>
+            </div>
+            <div style="margin-top:var(--space-2); display:flex; align-items:center; gap:var(--space-2);">
+              <span class="delta-pill delta-pill--up" title="Comparé aux 30 jours précédents">
+                <span class="material-symbols-outlined" style="font-size:12px;">arrow_upward</span>+18,2 %
+              </span>
+              <span class="kpi-footnote" style="margin-top:0;">vs 30 j préc.</span>
+            </div>
+            <!-- Sparkline: daily total over the 30d period, primary green -->
+            <svg class="kpi-sparkline" viewBox="0 0 200 32" preserveAspectRatio="none" aria-hidden="true">
+              <polyline fill="none" stroke="var(--color-primary)" stroke-width="1.6"
+                points="0,22 7,21 14,18 21,19 28,15 35,14 42,12 49,13 56,11 63,10 70,12 77,9 84,7 91,8 98,10 105,7 112,6 119,5 126,8 133,5 140,4 147,6 154,3 161,5 168,4 175,2 182,3 189,2 196,3 200,1"/>
+              <polyline fill="var(--color-primary-50)" stroke="none"
+                points="0,22 7,21 14,18 21,19 28,15 35,14 42,12 49,13 56,11 63,10 70,12 77,9 84,7 91,8 98,10 105,7 112,6 119,5 126,8 133,5 140,4 147,6 154,3 161,5 168,4 175,2 182,3 189,2 196,3 200,1 200,32 0,32"/>
+            </svg>
+          </article>
+
+          <!-- KPI 2 — Platform fee revenue = Givernance's actual revenue.
+               Renamed from "Revenu commission" to "Revenu Givernance" — unambiguous about
+               who earns the money (not Stripe, not the NPO). -->
+          <article class="stat-card" aria-labelledby="kpi-platform-fee-label">
+            <div class="kpi-tile-head">
+              <div>
+                <div class="stat-label" id="kpi-platform-fee-label">Revenu Givernance</div>
+                <div class="kpi-pending-note" style="visibility:hidden;">&nbsp;</div>
+              </div>
+              <div class="kpi-icon-tile" style="background: var(--color-tertiary-fixed); color: var(--color-on-tertiary-fixed-variant);">
+                <span class="material-symbols-outlined" style="font-size:20px;">request_quote</span>
+              </div>
+            </div>
+            <div class="kpi-value-row">
+              €23 192<span class="currency-suffix">,40</span>
+            </div>
+            <div style="margin-top:var(--space-2); display:flex; align-items:center; gap:var(--space-2);">
+              <span class="delta-pill delta-pill--up">
+                <span class="material-symbols-outlined" style="font-size:12px;">arrow_upward</span>+17,9 %
+              </span>
+              <span class="kpi-footnote" style="margin-top:0;">1,5 % + 0,30 par don clearé (dans la devise du don)</span>
+            </div>
+            <svg class="kpi-sparkline" viewBox="0 0 200 32" preserveAspectRatio="none" aria-hidden="true">
+              <polyline fill="none" stroke="var(--color-tertiary)" stroke-width="1.6"
+                points="0,23 7,22 14,19 21,20 28,16 35,15 42,13 49,14 56,12 63,11 70,13 77,10 84,8 91,9 98,11 105,8 112,7 119,6 126,9 133,6 140,5 147,7 154,4 161,6 168,5 175,3 182,4 189,3 196,4 200,2"/>
+            </svg>
+          </article>
+
+          <!-- KPI 3 — Donor count -->
+          <article class="stat-card" aria-labelledby="kpi-donors-label">
+            <div class="kpi-tile-head">
+              <div>
+                <div class="stat-label" id="kpi-donors-label">Donateurs uniques</div>
+                <div class="kpi-pending-note" style="visibility:hidden;">&nbsp;</div>
+              </div>
+              <div class="kpi-icon-tile" style="background: var(--color-secondary-fixed); color: var(--color-on-secondary-fixed-variant);">
+                <span class="material-symbols-outlined" style="font-size:20px;">groups</span>
+              </div>
+            </div>
+            <div class="kpi-value-row">
+              8 947
+            </div>
+            <div style="margin-top:var(--space-2); display:flex; align-items:center; gap:var(--space-2);">
+              <span class="delta-pill delta-pill--up">
+                <span class="material-symbols-outlined" style="font-size:12px;">arrow_upward</span>+12,1 %
+              </span>
+              <span class="kpi-footnote" style="margin-top:0;">+963 vs 30 j préc. · 13 080 dons (1,46 don/donateur)</span>
+            </div>
+            <svg class="kpi-sparkline" viewBox="0 0 200 32" preserveAspectRatio="none" aria-hidden="true">
+              <polyline fill="none" stroke="var(--color-secondary)" stroke-width="1.6"
+                points="0,24 7,23 14,21 21,22 28,19 35,18 42,16 49,17 56,15 63,14 70,15 77,12 84,11 91,12 98,13 105,10 112,9 119,8 126,11 133,8 140,7 147,9 154,6 161,8 168,7 175,5 182,6 189,5 196,6 200,4"/>
+            </svg>
+          </article>
+
+          <!-- KPI 4 — Stripe processing fee. Cost-side metric: rising costs are NOT
+               framed as positive (delta-pill is neutral grey, never green-up).
+               Footnote clarifies who pays the fee (the NPO, not us) and which payment
+               rail it applies to (excludes camt053 / manual). -->
+          <article class="stat-card kpi-tile--enrichment" aria-labelledby="kpi-stripe-fee-label">
+            <div class="kpi-tile-head">
+              <div>
+                <div class="stat-label" id="kpi-stripe-fee-label">Frais Stripe (rail carte)</div>
+                <div class="kpi-pending-note" title="Enrichi à partir des webhooks payment_intent.succeeded sur la colonne donations.stripe_fee_cents. Les dons antérieurs au déploiement n'ont pas de données d'enrichissement.">
+                  <span class="material-symbols-outlined" style="font-size:12px;">sync</span>données depuis 2026-05-23
+                </div>
+              </div>
+              <div class="kpi-icon-tile" style="background: var(--color-indigo-light); color: var(--color-indigo-text);">
+                <span class="material-symbols-outlined" style="font-size:20px;">credit_card</span>
+              </div>
+            </div>
+            <div class="kpi-value-row">
+              €18 472<span class="currency-suffix">,15</span>
+            </div>
+            <div style="margin-top:var(--space-2); display:flex; align-items:center; gap:var(--space-2);">
+              <span class="delta-pill delta-pill--flat" title="Hausse des coûts = pas un signal positif. Pill volontairement neutre.">
+                <span class="material-symbols-outlined" style="font-size:12px;">trending_up</span>+18,4 %
+              </span>
+              <span class="kpi-footnote" style="margin-top:0;">~1,44 % du volume — déduits du compte de la NPO, pas du nôtre</span>
+            </div>
+            <svg class="kpi-sparkline" viewBox="0 0 200 32" preserveAspectRatio="none" aria-hidden="true">
+              <polyline fill="none" stroke="var(--color-indigo)" stroke-width="1.6"
+                points="0,21 7,20 14,18 21,19 28,15 35,14 42,12 49,13 56,11 63,10 70,12 77,9 84,8 91,9 98,11 105,8 112,7 119,6 126,9 133,6 140,5 147,7 154,4 161,6 168,5 175,3 182,4 189,3 196,4 200,3"/>
+            </svg>
+          </article>
+        </div>
+
+        <!-- ============================================================
+             ROW 2 — Time-series: Volume + Revenu Givernance daily over the period.
+
+             Two-axis chart: left axis = volume (€), right axis = revenu Givernance (€).
+             Recharts implementation MUST set `<YAxis yAxisId="right" domain={[0, volumeMax * 0.018]} />`
+             explicitly — auto-domain will collapse the right line to near-zero because
+             revenue is ~1.5 % of volume. The two-line visual is informational only
+             (the relationship is mathematical) — consider replacing with a single
+             volume chart + a take-rate stat line in v2.
+
+             Recharts <Tooltip /> handles cursor positioning. The static <g> tooltip
+             at x≈648 in the SVG below is illustrative anchor only — do NOT replicate
+             the (660, 50) offset literally.
+
+             Colorblind safety: the Revenu Givernance line is dashed (stroke-dasharray
+             "6,4") in addition to its tertiary-amber colour, so the two series are
+             distinguishable without colour vision.
+             ============================================================ -->
+        <div class="card chart-card" style="margin-top: var(--space-6);">
+          <div class="card-header" style="margin-bottom: var(--space-2);">
+            <div>
+              <h2 class="card-title">Volume quotidien</h2>
+              <p class="card-subtitle">Dons clearés par jour, avec le revenu Givernance superposé (axe droit, échelle 1,5 % du volume).</p>
+            </div>
+            <div class="chart-legend">
+              <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:var(--color-primary);" aria-hidden="true"></span>Volume des dons</span>
+              <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:var(--color-tertiary);border-style:dashed;border:1px dashed var(--color-tertiary);" aria-hidden="true"></span>Revenu Givernance (pointillé)</span>
+            </div>
+          </div>
+
+          <div class="chart-svg-wrap">
+            <svg viewBox="0 0 960 280" preserveAspectRatio="none" role="img" aria-labelledby="ts-chart-title" aria-describedby="ts-chart-summary">
+              <title id="ts-chart-title">Volume des dons et revenu Givernance — 30 derniers jours</title>
+              <desc id="ts-chart-summary">Le volume quotidien évolue de €11&nbsp;000 le 24 avril 2026 à €78&nbsp;000 le 23 mai 2026. Le revenu Givernance suit linéairement à environ 1,8 % du volume sur l'axe droit. Tableau de données détaillé fourni ci-dessous.</desc>
+              <!-- Background grid. Outline-variant at full opacity meets WCAG 1.4.11 (3:1
+                   non-text contrast) on the surface background. -->
+              <g stroke="var(--color-outline-variant)" stroke-width="1">
+                <line x1="60" y1="40" x2="940" y2="40" />
+                <line x1="60" y1="90" x2="940" y2="90" />
+                <line x1="60" y1="140" x2="940" y2="140" />
+                <line x1="60" y1="190" x2="940" y2="190" />
+                <line x1="60" y1="240" x2="940" y2="240" />
+              </g>
+              <!-- Left Y-axis (volume €) labels -->
+              <g class="chart-axis-label">
+                <text x="50" y="44" text-anchor="end">€80k</text>
+                <text x="50" y="94" text-anchor="end">€60k</text>
+                <text x="50" y="144" text-anchor="end">€40k</text>
+                <text x="50" y="194" text-anchor="end">€20k</text>
+                <text x="50" y="244" text-anchor="end">€0</text>
+              </g>
+              <!-- Right Y-axis (platform fee €) labels -->
+              <g class="chart-axis-label">
+                <text x="950" y="44" text-anchor="start">€1,4k</text>
+                <text x="950" y="94" text-anchor="start">€1,1k</text>
+                <text x="950" y="144" text-anchor="start">€700</text>
+                <text x="950" y="194" text-anchor="start">€350</text>
+                <text x="950" y="244" text-anchor="start">€0</text>
+              </g>
+              <!-- X-axis date labels (every ~5 days; period = 24 avr → 23 mai 2026) -->
+              <g class="chart-axis-label">
+                <text x="60" y="262" text-anchor="middle">24 avr.</text>
+                <text x="207" y="262" text-anchor="middle">29 avr.</text>
+                <text x="354" y="262" text-anchor="middle">4 mai</text>
+                <text x="501" y="262" text-anchor="middle">9 mai</text>
+                <text x="648" y="262" text-anchor="middle">14 mai</text>
+                <text x="795" y="262" text-anchor="middle">19 mai</text>
+                <text x="940" y="262" text-anchor="middle">23 mai</text>
+              </g>
+
+              <!-- Volume area (filled, primary green) -->
+              <polyline fill="var(--color-primary-50)" stroke="none"
+                points="60,220 89,210 118,205 147,225 176,228 205,180 234,165 263,178 292,175 321,148 350,135 379,162 408,168 437,118 466,108 495,135 524,140 553,98 582,85 611,108 640,113 669,72 698,60 727,82 756,88 785,52 814,42 843,60 872,68 901,42 930,30 940,30 940,240 60,240" />
+              <!-- Volume line (primary green, solid). -->
+              <polyline fill="none" stroke="var(--color-primary)" stroke-width="2"
+                points="60,220 89,210 118,205 147,225 176,228 205,180 234,165 263,178 292,175 321,148 350,135 379,162 408,168 437,118 466,108 495,135 524,140 553,98 582,85 611,108 640,113 669,72 698,60 727,82 756,88 785,52 814,42 843,60 872,68 901,42 930,30 940,30" />
+
+              <!-- Revenu Givernance line (tertiary amber, DASHED for colorblind safety).
+                   Y values translated to RIGHT-axis scale (revenue ≈ 1,8 % of volume, axis
+                   max = €1,4k vs. €80k on the left). -->
+              <polyline fill="none" stroke="var(--color-tertiary)" stroke-width="2" stroke-dasharray="6,4"
+                points="60,225 89,218 118,215 147,229 176,231 205,194 234,180 263,193 292,191 321,166 350,154 379,179 408,184 437,140 466,131 495,154 524,158 553,121 582,108 611,128 640,133 669,98 698,87 727,104 756,109 785,80 814,72 843,86 872,93 901,72 930,62 940,62" />
+
+              <!-- Last-point markers -->
+              <circle cx="930" cy="30" r="4" fill="var(--color-primary)" stroke="var(--color-surface)" stroke-width="2" />
+              <circle cx="930" cy="62" r="4" fill="var(--color-tertiary)" stroke="var(--color-surface)" stroke-width="2" />
+
+              <!-- Hover tooltip preview anchored to 14 mai (illustrative — recharts
+                   <Tooltip /> handles real positioning; do NOT replicate the static
+                   transform offset literally). -->
+              <line x1="648" y1="40" x2="648" y2="240" stroke="var(--color-on-surface-variant)" stroke-width="1" stroke-dasharray="3,3" opacity="0.4" />
+              <circle cx="648" cy="113" r="4" fill="var(--color-primary)" stroke="var(--color-surface)" stroke-width="2" />
+              <circle cx="648" cy="133" r="4" fill="var(--color-tertiary)" stroke="var(--color-surface)" stroke-width="2" />
+              <g transform="translate(660, 50)">
+                <rect width="180" height="68" rx="8" ry="8" fill="var(--color-inverse-surface)" />
+                <text x="12" y="20" class="chart-axis-label" fill="var(--color-inverse-on-surface)" style="font-family: var(--font-body); font-weight: var(--weight-medium);">14 mai 2026</text>
+                <text x="12" y="38" class="chart-axis-label" fill="var(--color-primary-fixed-dim)">● Volume €52 100</text>
+                <text x="12" y="54" class="chart-axis-label" fill="var(--color-tertiary-fixed-dim)">● Revenu €811,50</text>
+              </g>
+            </svg>
+            <!-- Screen-reader-only data table — Recharts implementation must render the
+                 same table inside a visually-hidden wrapper next to the chart, populated
+                 from the API response so AT users get the underlying numbers. -->
+            <table class="sr-only">
+              <caption>Volume des dons et revenu Givernance par jour — 30 derniers jours</caption>
+              <thead>
+                <tr><th scope="col">Date</th><th scope="col">Volume (€)</th><th scope="col">Revenu Givernance (€)</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>24 avr. 2026</td><td>11 200</td><td>198</td></tr>
+                <tr><td>1 mai 2026</td><td>32 400</td><td>516</td></tr>
+                <tr><td>8 mai 2026</td><td>48 600</td><td>757</td></tr>
+                <tr><td>14 mai 2026</td><td>52 100</td><td>811</td></tr>
+                <tr><td>21 mai 2026</td><td>71 900</td><td>1 109</td></tr>
+                <tr><td>23 mai 2026</td><td>78 000</td><td>1 200</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ============================================================
+             ROW 3 — Top tenants bar list (2/3) + Refund rate + Currency split (1/3)
+             ============================================================ -->
+        <div class="finance-two-col">
+
+          <!-- LEFT — Top tenants by volume (top 10).
+               Each row shows ONE bar (volume share) — the previous parallel commission bar
+               was visually identical to the volume bar (commission = 1.5% × volume + 0.30 €
+               × N), so it carried no extra information. Commission is surfaced inline as
+               secondary text instead. -->
+          <div class="card">
+            <div class="card-header" style="margin-bottom: var(--space-4);">
+              <div>
+                <h2 class="card-title">Top tenants par volume</h2>
+                <p class="card-subtitle">Les 10 NPO qui pilotent la majorité du volume sur la période. Cliquer pour ouvrir la fiche tenant. Tenants &lt; 5 dons sont agrégés pour préserver l'anonymat (k-anonymity).</p>
+              </div>
+            </div>
+
+            <div role="list">
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">Croix-Rouge Française</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 21,8 %"><span class="tenant-bar-fill" style="width:100%;"></span></span>
+                    <span class="tenant-bar-share">21,8 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€280 250,00
+                  <span class="tenant-bar-amount-secondary">commission €5 056,15</span>
+                </span>
+              </div>
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">Les Restaurants du Cœur</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 17,1 %"><span class="tenant-bar-fill" style="width:78%;"></span></span>
+                    <span class="tenant-bar-share">17,1 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€219 240,00
+                  <span class="tenant-bar-amount-secondary">commission €3 951,00</span>
+                </span>
+              </div>
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">WWF France</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 14,0 %"><span class="tenant-bar-fill" style="width:64%;"></span></span>
+                    <span class="tenant-bar-share">14,0 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€179 880,00
+                  <span class="tenant-bar-amount-secondary">commission €3 240,00</span>
+                </span>
+              </div>
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">Médecins du Monde</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 11,2 %"><span class="tenant-bar-fill" style="width:51%;"></span></span>
+                    <span class="tenant-bar-share">11,2 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€143 750,00
+                  <span class="tenant-bar-amount-secondary">commission €2 597,40</span>
+                </span>
+              </div>
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">Action contre la Faim</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 9,2 %"><span class="tenant-bar-fill" style="width:42%;"></span></span>
+                    <span class="tenant-bar-share">9,2 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€118 200,00
+                  <span class="tenant-bar-amount-secondary">commission €2 134,80</span>
+                </span>
+              </div>
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">Secours Populaire Français</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 7,4 %"><span class="tenant-bar-fill" style="width:34%;"></span></span>
+                    <span class="tenant-bar-share">7,4 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€95 020,00
+                  <span class="tenant-bar-amount-secondary">commission €1 716,30</span>
+                </span>
+              </div>
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">Emmaüs Solidarité</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 5,7 %"><span class="tenant-bar-fill" style="width:26%;"></span></span>
+                    <span class="tenant-bar-share">5,7 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€73 130,00
+                  <span class="tenant-bar-amount-secondary">commission €1 320,90</span>
+                </span>
+              </div>
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">Handicap International</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 4,6 %"><span class="tenant-bar-fill" style="width:21%;"></span></span>
+                    <span class="tenant-bar-share">4,6 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€59 250,00
+                  <span class="tenant-bar-amount-secondary">commission €1 070,40</span>
+                </span>
+              </div>
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">ATD Quart Monde</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 3,5 %"><span class="tenant-bar-fill" style="width:16%;"></span></span>
+                    <span class="tenant-bar-share">3,5 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€44 970,00
+                  <span class="tenant-bar-amount-secondary">commission €812,40</span>
+                </span>
+              </div>
+
+              <div class="tenant-bar" role="listitem">
+                <div style="min-width:0;">
+                  <a href="tenants/detail-overview.html" class="tenant-bar-name">Fondation Abbé Pierre</a>
+                  <div class="tenant-bar-meta">
+                    <span class="tenant-bar-track" aria-label="Part du volume : 2,8 %"><span class="tenant-bar-fill" style="width:13%;"></span></span>
+                    <span class="tenant-bar-share">2,8 %</span>
+                  </div>
+                </div>
+                <span class="tenant-bar-amount">€35 970,00
+                  <span class="tenant-bar-amount-secondary">commission €649,80</span>
+                </span>
+              </div>
+            </div>
+
+            <div class="card-footer" style="margin-top: var(--space-4); border-top-color: var(--color-outline-variant);">
+              <span class="text-muted text-xs">10 sur 47 tenants — 2,8 % du volume restant non affiché.</span>
+              <a href="tenants/list.html" class="btn btn-ghost btn-sm">Voir tous les tenants &#8594;</a>
+            </div>
+          </div>
+
+          <!-- RIGHT — Refund rate gauge + Per-currency donut, stacked -->
+          <div class="dashboard-col" style="display:flex;flex-direction:column;gap:var(--space-6);">
+
+            <!-- Refund rate card.
+                 Definition: dons sur la période actuellement en statut 'refunded' ÷ volume
+                 total de la période. The numerator is donations MADE in this period that
+                 are now refunded, NOT refunds processed in this period — see
+                 implementation-issue concern #4 in the head-comment for the `refunded_at`
+                 follow-up that would let us flip this to "refunds processed".
+                 0/0 handling: if volume = 0 but refunded_volume > 0 (e.g. earlier-period
+                 cleared donations refunded now), show "—" and a footnote, not the empty
+                 state. -->
+            <div class="card">
+              <div class="card-header" style="margin-bottom: var(--space-4);">
+                <div>
+                  <h2 class="card-title">Taux de remboursement</h2>
+                  <p class="card-subtitle">Volume remboursé sur la période ÷ volume total. Sain &lt; 1 % · à surveiller 1-5 % · rouge &gt; 5 %. Échelle 0-8 %.</p>
+                </div>
+              </div>
+
+              <div class="refund-kpi">
+                0,42<span class="unit">%</span>
+              </div>
+              <div style="margin-top:var(--space-2); display:flex; align-items:center; gap:var(--space-2);">
+                <span class="delta-pill delta-pill--up" title="Une baisse du taux de remboursement est un signal positif — d'où le pill vert.">
+                  <span class="material-symbols-outlined" style="font-size:12px;">arrow_downward</span>−0,08 pt
+                </span>
+                <span class="kpi-footnote" style="margin-top:0;">€5 393,00 remboursés sur 187 dons (rétrospective période)</span>
+              </div>
+
+              <!-- Gauge — linear 0-8 % scale. Tick labels positioned at their actual
+                   linear x-coordinate (1 % = 12.5 %, 5 % = 62.5 %), not evenly spaced. -->
+              <div class="refund-bar-track" role="img" aria-label="Position actuelle : 0,42 % — zone saine">
+                <div class="refund-bar-fill"></div>
+                <!-- Cursor at 0,42 / 8 = 5,25 % of width -->
+                <div class="refund-bar-cursor" style="left: 5.25%;"></div>
+              </div>
+              <div class="refund-thresholds" aria-hidden="true">
+                <span class="tick" style="left: 0%;">0 %</span>
+                <span class="tick" style="left: 12.5%;">1 %</span>
+                <span class="tick" style="left: 62.5%;">5 %</span>
+                <span class="tick" style="left: 100%;">8 %</span>
+              </div>
+            </div>
+
+            <!-- Currency split card -->
+            <div class="card">
+              <div class="card-header" style="margin-bottom: var(--space-4);">
+                <div>
+                  <h2 class="card-title">Répartition par devise</h2>
+                  <p class="card-subtitle">Devises acceptées en MVP. Toute devise zéro/trois décimales nécessite un audit préalable (voir <code>docs/04-business-capabilities.md</code>).</p>
+                </div>
+              </div>
+
+              <div class="currency-donut-wrap">
+                <!-- Donut SVG: EUR 68%, GBP 19%, CHF 13%. In recharts, render as
+                     <PieChart> with <Cell fill={token}> per slice; the centre label
+                     goes in <Label content={<CenterLabel/>} position="center" />. -->
+                <svg class="currency-donut" viewBox="0 0 42 42" role="img" aria-label="Répartition par devise : EUR 68 %, GBP 19 %, CHF 13 %">
+                  <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--color-surface-container-high)" stroke-width="6" />
+                  <!-- EUR 68% -->
+                  <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--color-primary)" stroke-width="6"
+                    stroke-dasharray="68 32" stroke-dashoffset="25" />
+                  <!-- GBP 19% -->
+                  <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--color-tertiary)" stroke-width="6"
+                    stroke-dasharray="19 81" stroke-dashoffset="-43" />
+                  <!-- CHF 13% -->
+                  <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--color-indigo)" stroke-width="6"
+                    stroke-dasharray="13 87" stroke-dashoffset="-62" />
+                  <text x="21" y="22" text-anchor="middle" style="font-family: var(--font-heading); font-size: 6px; fill: var(--color-on-surface);">3</text>
+                  <text x="21" y="27" text-anchor="middle" style="font-family: var(--font-body); font-size: 2.4px; fill: var(--color-on-surface-variant);">devises</text>
+                </svg>
+                <div class="currency-legend">
+                  <div class="currency-legend-row">
+                    <span class="swatch" style="background: var(--color-primary);" aria-hidden="true"></span>
+                    <span class="ccy">EUR</span>
+                    <span class="amount">€873 480,40</span>
+                    <span class="share">68,0 %</span>
+                  </div>
+                  <div class="currency-legend-row">
+                    <span class="swatch" style="background: var(--color-tertiary);" aria-hidden="true"></span>
+                    <span class="ccy">GBP</span>
+                    <span class="amount">£212 088,30</span>
+                    <span class="share">19,0 %</span>
+                  </div>
+                  <div class="currency-legend-row">
+                    <span class="swatch" style="background: var(--color-indigo);" aria-hidden="true"></span>
+                    <span class="ccy">CHF</span>
+                    <span class="amount">CHF&nbsp;152 350,00</span>
+                    <span class="share">13,0 %</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============================================================
+             AUDIT FOOTER — every super-admin view of this page emits an
+             audit_logs row (action='view', resourceType='platform_finance_summary').
+             Disclosed in-page so the operator knows the lookup is logged.
+             ============================================================ -->
+        <div class="audit-footer" role="note">
+          <span class="material-symbols-outlined" style="font-size:16px;">history</span>
+          <span>Vos consultations de cette page sont enregistrées dans le journal d'audit plateforme (<code>audit_logs</code>, ressource <code>platform_finance_summary</code>).</span>
+        </div>
+
+        <!-- ============================================================
+             EMPTY-STATE PREVIEW (collapsed by default).
+             In the shipped page, the populated layout above is REPLACED by this card —
+             not appended to it. Wrapped in <details> so a reviewer reading the mockup
+             doesn't think both render simultaneously.
+             ============================================================ -->
+        <details style="margin-top: var(--space-8);">
+          <summary style="cursor: pointer; font-size: var(--text-sm); color: var(--color-on-surface-variant); padding: var(--space-2) 0;">
+            <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px;">visibility</span>
+            Aperçu — état vide (déploiement neuf · aucun don clearé sur la période)
+          </summary>
+          <aside class="empty-state-card" aria-label="Aperçu — état vide" style="margin-top: var(--space-3);">
+            <div class="empty-state-icon">
+              <span class="material-symbols-outlined" style="font-size:36px;">monitoring</span>
+            </div>
+            <h3 class="empty-state-title">Aucune donnée pour le moment</h3>
+            <p class="empty-state-text" style="margin-bottom: var(--space-4);">Dès qu'un tenant aura encaissé son premier don, le tableau de bord affichera le volume, le revenu Givernance, les frais Stripe et le nombre de donateurs uniques pour la période sélectionnée.</p>
+            <a href="tenants/list.html" class="btn btn-secondary">
+              <span class="material-symbols-outlined" style="font-size:16px;">business</span>
+              Voir les tenants
+            </a>
+            <p class="text-muted text-xs" style="margin: var(--space-4) 0 0;">État alternatif — affiché à la place du tableau de bord ci-dessus lorsque <code>volume = 0</code> ET <code>refunded_volume = 0</code> sur la période. Un cas mixte (volume = 0, refunds &gt; 0) garde le tableau visible avec « — » sur le taux pour éviter une division par zéro.</p>
+          </aside>
+        </details>
+
+      </main>
+    </div>
+  </div>
+<script src="../shared/mobile.js"></script>
+</body>
+</html>
