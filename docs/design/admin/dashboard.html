@@ -43,7 +43,72 @@
     9. Lock TypeBox response shape so a future refactor cannot accidentally include
        `donations.stripe_fee_cents` in any tenant-facing projection.
 
-  Source of truth: docs/04-business-capabilities.md + issue #206 acceptance criteria.
+  ============================================================================
+  TENANT MOBILIZATION SCORE — extension to Issue #206 (cf. PR conversation)
+
+  A composite per-tenant indicator displayed:
+    - in the hero card above the 4 KPI tiles (platform-wide average)
+    - as a column in the Top tenants list (per-tenant letter + score)
+    - in the "Santé des tenants" panel (distribution histogram + spotlights)
+
+  Why "Mobilisation" and not "Impact": Givernance has zero beneficiary-side
+  data today (Impact module is Phase 2/3 — no `programs`, `enrollments`,
+  `service_deliveries`, `impact_indicators` tables in the schema). Calling
+  this an "impact score" would overstate what we can measure. Mobilisation
+  honestly describes what the score reflects: how effectively the org is
+  rallying its community around fundraising.
+
+  Formula (transparent, weightable, all signals available in today's schema):
+
+    Mobilisation_score(tenant, period) =
+        25 % · ACTIVATION       = (donateurs_uniques / max(constituents, 1)) × 100
+      + 25 % · RÉCURRENCE        = (volume_pledges_actifs / max(volume_total, 1€)) × 100
+      + 20 % · ÉCHELLE           = clamp(log₁₀(volume_base_eur / 100) × 20, 0, 100)
+      + 20 % · CROISSANCE        = clamp(growth_30d_pct + 50, 0, 100)   // -50 % → 0, 0 % → 50, +50 % → 100
+      + 10 % · DIVERSITÉ         = clamp(canaux_actifs / 4 × 100, 0, 100)
+                                   // canaux: digital, postal, swiss-qr, manual
+
+    Grade map (note + chip color):
+      A+ : 90-100  →  --color-primary
+      A  : 75-89   →  --color-primary-fixed-dim
+      B  : 60-74   →  --color-tertiary
+      C  : 40-59   →  --color-tertiary-container
+      D  :  0-39   →  --color-error
+
+  Robustness against gaming:
+    - ACTIVATION is bounded by constituent count, so spamming campaigns
+      without growing the base doesn't move the score.
+    - DIVERSITÉ counts distinct payment channels, not campaign count, so
+      creating dummy €0-cost campaigns to inflate diversity fails.
+    - ÉCHELLE is log-scaled — a 10× volume increase moves the score by
+      only +20 pts, not +200, so big orgs can't dominate by sheer volume.
+    - All components are clamped to [0, 100] before weighting so a
+      single runaway metric can't break the composite.
+
+  Cross-tenant comparison caveat (displayed in the score tooltip):
+    A medical-aid NPO and a cultural NPO will have very different
+    fundraising patterns; the score is a HEALTH indicator within a
+    tenant's own trajectory, not a comparative ranking of organizations.
+    Period-over-period delta is more meaningful than the absolute score.
+
+  Implementation notes (for the React PR):
+    a. `tenants.constituent_count_cached` + `tenants.last_constituent_count_at`
+       columns refreshed daily by a worker job — avoids COUNT(constituents)
+       on every dashboard render (47 tenants × periods = N+1 explosion).
+    b. Score computed in a single CTE-driven SQL query against `systemDb`
+       (cross-tenant intent) and cached in Redis under the same key shape
+       as the finance summary (5-min absolute TTL).
+    c. Display the 5 components in the score tooltip with their weighted
+       contribution — transparency is the antidote to gaming.
+    d. k-anonymity: tenants with < 5 donateurs_uniques on the period
+       show "—" instead of a score (their breakdown would reveal too much).
+    e. Lifecycle: re-evaluate weights after 3 months of production data —
+       if every tenant is clustering in B/C, the formula is too compressed.
+
+  Source of truth: docs/04-business-capabilities.md + issue #206 + this
+  head-comment. Full doc will land at docs/30-tenant-mobilization-score.md
+  in the implementation PR.
+  ============================================================================
 -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -85,6 +150,66 @@
     .kpi-tile--enrichment::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-xl); pointer-events: none; }
     .kpi-pending-note { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--color-tertiary); font-weight: var(--weight-medium); }
 
+    /* ── Hero "Score de Mobilisation plateforme" card ────────────────────────
+       Full-width card above the 4 KPI tiles. Larger visual weight than the
+       stat-cards because this is the new headline indicator.
+       --------------------------------------------------------------------- */
+    .hero-mobilisation { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.1fr); gap: var(--space-8); align-items: stretch; padding: var(--space-8); background: var(--color-surface-container-lowest); border-radius: var(--radius-2xl); box-shadow: var(--shadow-kpi); margin-bottom: var(--space-6); }
+    @media (max-width: 1024px) { .hero-mobilisation { grid-template-columns: 1fr; gap: var(--space-6); } }
+    .hero-mobilisation-block { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+    .hero-mobilisation-block + .hero-mobilisation-block { padding-left: var(--space-8); border-left: 1px solid var(--color-outline-variant); }
+    @media (max-width: 1024px) { .hero-mobilisation-block + .hero-mobilisation-block { padding-left: 0; border-left: none; padding-top: var(--space-4); border-top: 1px solid var(--color-outline-variant); } }
+    .hero-mobilisation-label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-on-surface-variant); }
+    .hero-mobilisation-value { display: flex; align-items: baseline; gap: var(--space-3); margin-top: var(--space-2); }
+    .hero-mobilisation-value .score-letter { font-family: var(--font-heading); font-size: 64px; line-height: 1; font-weight: var(--weight-regular); }
+    .hero-mobilisation-value .score-num { font-family: var(--font-mono); font-size: var(--text-3xl); font-variant-numeric: tabular-nums; color: var(--color-on-surface); }
+    .hero-mobilisation-value .score-out-of { font-family: var(--font-body); font-size: var(--text-base); color: var(--color-on-surface-variant); }
+    .hero-formula-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
+    .hero-formula-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 56px; align-items: center; gap: var(--space-2); font-size: var(--text-xs); }
+    .hero-formula-row .label { color: var(--color-on-surface-variant); font-weight: var(--weight-medium); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+    .hero-formula-row .track { height: 6px; border-radius: var(--radius-pill); background: var(--color-surface-container-high); overflow: hidden; }
+    .hero-formula-row .track .fill { height: 100%; background: var(--color-primary); border-radius: var(--radius-pill); }
+    .hero-formula-row .pct { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-on-surface); text-align: right; font-size: var(--text-xs); }
+
+    /* Letter colours mapped to tokens — semantic, not literal */
+    .score-letter--a-plus,
+    .score-grade-chip--a-plus { color: var(--color-primary); background: var(--color-primary-50); }
+    .score-letter--a,
+    .score-grade-chip--a { color: var(--color-on-primary-fixed-variant); background: var(--color-primary-fixed); }
+    .score-letter--b,
+    .score-grade-chip--b { color: var(--color-on-tertiary-fixed-variant); background: var(--color-tertiary-fixed); }
+    .score-letter--c,
+    .score-grade-chip--c { color: var(--color-tertiary); background: var(--color-tertiary-container); color: var(--color-on-tertiary); }
+    .score-letter--d,
+    .score-grade-chip--d { color: var(--color-on-error-container); background: var(--color-error-container); }
+    /* When used as a hero letter (large display), strip the background, keep colour only */
+    .hero-mobilisation .score-letter { background: transparent !important; padding: 0; }
+
+    /* Mini A→D distribution histogram inline in the hero */
+    .hero-histogram { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-2); align-items: end; height: 80px; }
+    .hero-histogram-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .hero-histogram-col .bar { width: 100%; border-radius: var(--radius-sm) var(--radius-sm) 0 0; min-height: 4px; }
+    .hero-histogram-col .label { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-on-surface-variant); font-variant-numeric: tabular-nums; }
+    .hero-histogram-col .count { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-on-surface); font-variant-numeric: tabular-nums; font-weight: var(--weight-semi); }
+
+    /* ── Per-row grade chip (used in Top tenants list) ── */
+    .score-grade-chip { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--weight-bold); padding: 2px 8px; border-radius: var(--radius-pill); font-variant-numeric: tabular-nums; }
+    .score-grade-chip .letter { font-family: var(--font-heading); font-size: var(--text-sm); line-height: 1; }
+    .score-grade-chip .num { opacity: 0.85; }
+
+    /* ── "Santé des tenants" panel (distribution + spotlights) ── */
+    .health-panel { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--space-6); margin-top: var(--space-6); }
+    @media (max-width: 1024px) { .health-panel { grid-template-columns: 1fr; } }
+    .health-distribution-svg { width: 100%; height: auto; display: block; }
+    .health-spotlight { display: flex; flex-direction: column; gap: var(--space-3); }
+    .health-spotlight-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--color-surface-container-low); }
+    .health-spotlight-item .name { font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+    .health-spotlight-item .name:hover { color: var(--color-primary); }
+    .health-spotlight-item .delta { font-family: var(--font-mono); font-size: var(--text-xs); font-variant-numeric: tabular-nums; font-weight: var(--weight-semi); }
+    .health-spotlight-item .delta--up { color: var(--color-primary); }
+    .health-spotlight-item .delta--down { color: var(--color-error); }
+    .health-spotlight-title { font-family: var(--font-heading); font-size: var(--text-md); color: var(--color-on-surface); margin: 0 0 var(--space-3); }
+
     /* ── Time-series chart card ── */
     .chart-card { padding: var(--space-6) var(--space-8) var(--space-8); }
     .chart-card .card-header { margin-bottom: var(--space-4); }
@@ -98,8 +223,10 @@
 
     /* ── Top tenants horizontal bar list ── */
     /* Top-tenants row layout. Reuses base.css .progress + .progress-fill for the volume bar
-       (no duplicate gradient declared here) — see base.css:1198-1210. */
-    .tenant-bar { display: grid; grid-template-columns: minmax(0, 1fr) 88px; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--color-outline-variant); }
+       (no duplicate gradient declared here) — see base.css:1198-1210.
+       3 columns: name + volume bar | mobilisation grade chip | money amount. */
+    .tenant-bar { display: grid; grid-template-columns: minmax(0, 1fr) 80px 104px; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--color-outline-variant); }
+    @media (max-width: 768px) { .tenant-bar { grid-template-columns: minmax(0, 1fr) 64px 96px; gap: var(--space-2); } }
     .tenant-bar:last-child { border-bottom: none; }
     .tenant-bar-name { font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
     .tenant-bar-name:hover { color: var(--color-primary); }
@@ -299,6 +426,117 @@
             </select>
           </div>
         </div>
+
+        <!-- ============================================================
+             HERO — Score de Mobilisation plateforme
+             Composite indicator (0-100 + letter grade) averaged across all tenants
+             for the active period. Three blocks side-by-side:
+               1. Big letter + score + delta vs previous period
+               2. The 5 weighted components with mini progress bars (full transparency)
+               3. Mini A→D histogram showing the distribution across tenants
+             See head-comment for the formula. The score MUST be displayed with its
+             breakdown — never as a black-box number — to defeat the optimisation
+             pressure that single-score KPIs always create.
+             ============================================================ -->
+        <section class="hero-mobilisation" aria-labelledby="hero-mobilisation-label">
+
+          <!-- Block 1 — headline letter + numeric score + delta -->
+          <div class="hero-mobilisation-block">
+            <div class="hero-mobilisation-label" id="hero-mobilisation-label">
+              <span class="material-symbols-outlined" style="font-size:18px;">monitoring</span>
+              Score de Mobilisation
+              <span class="material-symbols-outlined" style="font-size:14px;color:var(--color-on-surface-variant);" title="Mesure la santé du fundraising — pas un score d'impact bénéficiaire. Voir le détail de la formule à droite.">info</span>
+            </div>
+            <div class="hero-mobilisation-value">
+              <span class="score-letter score-letter--a" aria-hidden="true">A</span>
+              <span>
+                <span class="score-num">76</span><span class="score-out-of">&nbsp;/&nbsp;100</span>
+              </span>
+            </div>
+            <div style="display:flex; align-items:center; gap:var(--space-2);">
+              <span class="delta-pill delta-pill--up" title="Évolution du score moyen pondéré par le volume — vs 30 jours précédents.">
+                <span class="material-symbols-outlined" style="font-size:12px;">arrow_upward</span>+3,4 pts
+              </span>
+              <span class="kpi-footnote" style="margin-top:0;">Moyenne pondérée par volume · 47 tenants notés</span>
+            </div>
+            <p class="kpi-footnote" style="margin-top: var(--space-2); line-height: 1.4;">
+              Indicateur de <strong>santé du fundraising</strong> par tenant (activation, récurrence, échelle, croissance, diversité). Comparaisons inter-tenants à manier avec précaution — un score A en médico-social ≠ un score A en culture.
+            </p>
+          </div>
+
+          <!-- Block 2 — formula breakdown (5 components with weighted contribution) -->
+          <div class="hero-mobilisation-block" aria-label="Décomposition du score moyen">
+            <div class="hero-mobilisation-label">
+              <span class="material-symbols-outlined" style="font-size:18px;">tune</span>
+              Composantes (moyenne plateforme)
+            </div>
+            <ol class="hero-formula-list" style="margin-top: var(--space-3);">
+              <li class="hero-formula-row">
+                <span class="label" title="Donateurs uniques ÷ constituents — capacité à transformer une audience en donateurs">Activation</span>
+                <span class="track" aria-hidden="true"><span class="fill" style="width: 78%; background: var(--color-primary);"></span></span>
+                <span class="pct">78 · ×25 %</span>
+              </li>
+              <li class="hero-formula-row">
+                <span class="label" title="Volume issu de pledges actifs ÷ volume total — stabilité du revenu">Récurrence</span>
+                <span class="track" aria-hidden="true"><span class="fill" style="width: 64%; background: var(--color-primary-fixed-dim);"></span></span>
+                <span class="pct">64 · ×25 %</span>
+              </li>
+              <li class="hero-formula-row">
+                <span class="label" title="log₁₀(volume base EUR / 100) × 20 — capté à 100">Échelle</span>
+                <span class="track" aria-hidden="true"><span class="fill" style="width: 82%; background: var(--color-tertiary);"></span></span>
+                <span class="pct">82 · ×20 %</span>
+              </li>
+              <li class="hero-formula-row">
+                <span class="label" title="Croissance volume 30j vs 30j précédents, recadrée 0-100">Croissance</span>
+                <span class="track" aria-hidden="true"><span class="fill" style="width: 71%; background: var(--color-secondary);"></span></span>
+                <span class="pct">71 · ×20 %</span>
+              </li>
+              <li class="hero-formula-row">
+                <span class="label" title="Nombre de canaux de paiement actifs (Stripe, postal, Swiss-QR, manuel)">Diversité</span>
+                <span class="track" aria-hidden="true"><span class="fill" style="width: 75%; background: var(--color-indigo);"></span></span>
+                <span class="pct">75 · ×10 %</span>
+              </li>
+            </ol>
+          </div>
+
+          <!-- Block 3 — Mini A→D distribution histogram -->
+          <div class="hero-mobilisation-block" aria-label="Répartition des scores par grade">
+            <div class="hero-mobilisation-label">
+              <span class="material-symbols-outlined" style="font-size:18px;">bar_chart</span>
+              Répartition des 47 tenants
+            </div>
+            <div class="hero-histogram" role="img" aria-label="Histogramme : 3 tenants A+, 14 tenants A, 18 tenants B, 9 tenants C, 3 tenants D">
+              <div class="hero-histogram-col">
+                <span class="count">3</span>
+                <div class="bar" style="height: 16%; background: var(--color-primary);"></div>
+                <span class="label">A+</span>
+              </div>
+              <div class="hero-histogram-col">
+                <span class="count">14</span>
+                <div class="bar" style="height: 74%; background: var(--color-primary-fixed-dim);"></div>
+                <span class="label">A</span>
+              </div>
+              <div class="hero-histogram-col">
+                <span class="count">18</span>
+                <div class="bar" style="height: 95%; background: var(--color-tertiary);"></div>
+                <span class="label">B</span>
+              </div>
+              <div class="hero-histogram-col">
+                <span class="count">9</span>
+                <div class="bar" style="height: 47%; background: var(--color-tertiary-container);"></div>
+                <span class="label">C</span>
+              </div>
+              <div class="hero-histogram-col">
+                <span class="count">3</span>
+                <div class="bar" style="height: 16%; background: var(--color-error);"></div>
+                <span class="label">D</span>
+              </div>
+            </div>
+            <p class="kpi-footnote" style="margin-top: var(--space-3); line-height: 1.4;">
+              Tenants avec &lt; 5 donateurs uniques sur la période exclus (k-anonymity) — 2 cas sur 47, non comptabilisés ci-dessus.
+            </p>
+          </div>
+        </section>
 
         <!-- ============================================================
              ROW 1 — 4 KPI cards: Volume / Platform fee / Stripe fee / Donor count
@@ -565,13 +803,21 @@
                Each row shows ONE bar (volume share) — the previous parallel commission bar
                was visually identical to the volume bar (commission = 1.5% × volume + 0.30 €
                × N), so it carried no extra information. Commission is surfaced inline as
-               secondary text instead. -->
+               secondary text instead.
+               3 cells per row: name+bar | mobilisation grade chip | volume amount. -->
           <div class="card">
             <div class="card-header" style="margin-bottom: var(--space-4);">
               <div>
                 <h2 class="card-title">Top tenants par volume</h2>
-                <p class="card-subtitle">Les 10 NPO qui pilotent la majorité du volume sur la période. Cliquer pour ouvrir la fiche tenant. Tenants &lt; 5 dons sont agrégés pour préserver l'anonymat (k-anonymity).</p>
+                <p class="card-subtitle">Les 10 NPO qui pilotent la majorité du volume sur la période — avec leur score de Mobilisation. Cliquer pour ouvrir la fiche tenant. Tenants &lt; 5 dons sont agrégés pour préserver l'anonymat (k-anonymity).</p>
               </div>
+            </div>
+
+            <!-- Column header row (mirrors the .tenant-bar grid) -->
+            <div class="tenant-bar" role="presentation" style="padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-outline); font-size: var(--text-2xs); color: var(--color-on-surface-variant); text-transform: uppercase; letter-spacing: var(--tracking-wide); font-weight: var(--weight-medium);">
+              <span>Tenant · part du volume</span>
+              <span style="text-align: center;">Mobilisation</span>
+              <span style="text-align: right;">Volume</span>
             </div>
 
             <div role="list">
@@ -584,6 +830,7 @@
                     <span class="tenant-bar-share">21,8 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--a-plus" title="A+ · Mobilisation excellente (94/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : A+, 94 sur 100" aria-valuenow="94" aria-valuemin="0" aria-valuemax="100"><span class="letter">A+</span><span class="num">94</span></span>
                 <span class="tenant-bar-amount">€280 250,00
                   <span class="tenant-bar-amount-secondary">commission €5 056,15</span>
                 </span>
@@ -597,6 +844,7 @@
                     <span class="tenant-bar-share">17,1 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--a" title="A · Mobilisation forte (87/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : A, 87 sur 100" aria-valuenow="87" aria-valuemin="0" aria-valuemax="100"><span class="letter">A</span><span class="num">87</span></span>
                 <span class="tenant-bar-amount">€219 240,00
                   <span class="tenant-bar-amount-secondary">commission €3 951,00</span>
                 </span>
@@ -610,6 +858,7 @@
                     <span class="tenant-bar-share">14,0 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--a" title="A · Mobilisation forte (82/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : A, 82 sur 100" aria-valuenow="82" aria-valuemin="0" aria-valuemax="100"><span class="letter">A</span><span class="num">82</span></span>
                 <span class="tenant-bar-amount">€179 880,00
                   <span class="tenant-bar-amount-secondary">commission €3 240,00</span>
                 </span>
@@ -623,6 +872,7 @@
                     <span class="tenant-bar-share">11,2 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--a" title="A · Mobilisation forte (78/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : A, 78 sur 100" aria-valuenow="78" aria-valuemin="0" aria-valuemax="100"><span class="letter">A</span><span class="num">78</span></span>
                 <span class="tenant-bar-amount">€143 750,00
                   <span class="tenant-bar-amount-secondary">commission €2 597,40</span>
                 </span>
@@ -636,6 +886,7 @@
                     <span class="tenant-bar-share">9,2 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--b" title="B · Mobilisation correcte (72/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : B, 72 sur 100" aria-valuenow="72" aria-valuemin="0" aria-valuemax="100"><span class="letter">B</span><span class="num">72</span></span>
                 <span class="tenant-bar-amount">€118 200,00
                   <span class="tenant-bar-amount-secondary">commission €2 134,80</span>
                 </span>
@@ -649,6 +900,7 @@
                     <span class="tenant-bar-share">7,4 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--b" title="B · Mobilisation correcte (68/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : B, 68 sur 100" aria-valuenow="68" aria-valuemin="0" aria-valuemax="100"><span class="letter">B</span><span class="num">68</span></span>
                 <span class="tenant-bar-amount">€95 020,00
                   <span class="tenant-bar-amount-secondary">commission €1 716,30</span>
                 </span>
@@ -662,6 +914,7 @@
                     <span class="tenant-bar-share">5,7 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--b" title="B · Mobilisation correcte (64/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : B, 64 sur 100" aria-valuenow="64" aria-valuemin="0" aria-valuemax="100"><span class="letter">B</span><span class="num">64</span></span>
                 <span class="tenant-bar-amount">€73 130,00
                   <span class="tenant-bar-amount-secondary">commission €1 320,90</span>
                 </span>
@@ -675,6 +928,7 @@
                     <span class="tenant-bar-share">4,6 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--c" title="C · Mobilisation faible — à surveiller (58/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : C, 58 sur 100" aria-valuenow="58" aria-valuemin="0" aria-valuemax="100"><span class="letter">C</span><span class="num">58</span></span>
                 <span class="tenant-bar-amount">€59 250,00
                   <span class="tenant-bar-amount-secondary">commission €1 070,40</span>
                 </span>
@@ -688,6 +942,7 @@
                     <span class="tenant-bar-share">3,5 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--b" title="B · Mobilisation correcte (61/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : B, 61 sur 100" aria-valuenow="61" aria-valuemin="0" aria-valuemax="100"><span class="letter">B</span><span class="num">61</span></span>
                 <span class="tenant-bar-amount">€44 970,00
                   <span class="tenant-bar-amount-secondary">commission €812,40</span>
                 </span>
@@ -701,6 +956,7 @@
                     <span class="tenant-bar-share">2,8 %</span>
                   </div>
                 </div>
+                <span class="score-grade-chip score-grade-chip--c" title="C · Mobilisation faible — à surveiller (52/100). Cliquer pour voir la décomposition." role="meter" aria-label="Score de Mobilisation : C, 52 sur 100" aria-valuenow="52" aria-valuemin="0" aria-valuemax="100"><span class="letter">C</span><span class="num">52</span></span>
                 <span class="tenant-bar-amount">€35 970,00
                   <span class="tenant-bar-amount-secondary">commission €649,80</span>
                 </span>
@@ -809,6 +1065,171 @@
             </div>
           </div>
         </div>
+
+        <!-- ============================================================
+             "SANTÉ DES TENANTS" — score distribution histogram + spotlights.
+             Complements the hero (platform-wide score) with a deeper read:
+               - LEFT: full-resolution score distribution (47 tenants, A+ to D, 5-pt bins)
+               - RIGHT: spotlights — top 3 progressers + top 3 to watch (biggest drops)
+             ============================================================ -->
+        <section class="health-panel" aria-label="Santé des tenants — distribution et spotlights">
+
+          <!-- LEFT — full-resolution score distribution -->
+          <div class="card">
+            <div class="card-header" style="margin-bottom: var(--space-4);">
+              <div>
+                <h2 class="card-title">Distribution des scores</h2>
+                <p class="card-subtitle">Répartition fine des 47 tenants sur l'échelle 0-100, par tranches de 10 points. La ligne pointillée marque la moyenne plateforme pondérée (76).</p>
+              </div>
+            </div>
+
+            <svg class="health-distribution-svg" viewBox="0 0 560 220" preserveAspectRatio="none" role="img" aria-labelledby="health-dist-title" aria-describedby="health-dist-summary">
+              <title id="health-dist-title">Distribution des scores de Mobilisation des tenants</title>
+              <desc id="health-dist-summary">Tableau de données fourni ci-dessous pour les lecteurs d'écran. Distribution majoritairement centrée entre 60 et 90 points.</desc>
+
+              <!-- Y-axis grid -->
+              <g stroke="var(--color-outline-variant)" stroke-width="1">
+                <line x1="40" y1="20" x2="540" y2="20" />
+                <line x1="40" y1="70" x2="540" y2="70" />
+                <line x1="40" y1="120" x2="540" y2="120" />
+                <line x1="40" y1="170" x2="540" y2="170" />
+              </g>
+              <g class="chart-axis-label">
+                <text x="35" y="24" text-anchor="end">12</text>
+                <text x="35" y="74" text-anchor="end">8</text>
+                <text x="35" y="124" text-anchor="end">4</text>
+                <text x="35" y="174" text-anchor="end">0</text>
+              </g>
+
+              <!-- Bars: 10 buckets (0-10, 10-20, …, 90-100) -->
+              <!-- Heights: 0, 0, 1, 2, 3, 6, 9, 12, 9, 5 → max 12 → scale 12.5 px/tenant on a 150 px height range -->
+              <g>
+                <rect x="50"  y="170" width="44" height="0"   fill="var(--color-error)" rx="2" />
+                <rect x="100" y="170" width="44" height="0"   fill="var(--color-error)" rx="2" />
+                <rect x="150" y="158" width="44" height="12"  fill="var(--color-error)" rx="2" />
+                <rect x="200" y="146" width="44" height="24"  fill="var(--color-tertiary-container)" rx="2" />
+                <rect x="250" y="134" width="44" height="36"  fill="var(--color-tertiary-container)" rx="2" />
+                <rect x="300" y="98"  width="44" height="72"  fill="var(--color-tertiary)" rx="2" />
+                <rect x="350" y="62"  width="44" height="108" fill="var(--color-tertiary-fixed)" rx="2" />
+                <rect x="400" y="26"  width="44" height="144" fill="var(--color-primary-fixed-dim)" rx="2" />
+                <rect x="450" y="62"  width="44" height="108" fill="var(--color-primary-fixed-dim)" rx="2" />
+                <rect x="500" y="110" width="44" height="60"  fill="var(--color-primary)" rx="2" />
+              </g>
+
+              <!-- Bar counts (above each bar) -->
+              <g class="chart-axis-label" style="font-family: var(--font-mono);">
+                <text x="72"  y="166" text-anchor="middle" fill="var(--color-on-surface-variant)">0</text>
+                <text x="122" y="166" text-anchor="middle" fill="var(--color-on-surface-variant)">0</text>
+                <text x="172" y="154" text-anchor="middle" fill="var(--color-on-surface)">1</text>
+                <text x="222" y="142" text-anchor="middle" fill="var(--color-on-surface)">2</text>
+                <text x="272" y="130" text-anchor="middle" fill="var(--color-on-surface)">3</text>
+                <text x="322" y="94"  text-anchor="middle" fill="var(--color-on-surface)">6</text>
+                <text x="372" y="58"  text-anchor="middle" fill="var(--color-on-surface)">9</text>
+                <text x="422" y="22"  text-anchor="middle" fill="var(--color-on-surface)">12</text>
+                <text x="472" y="58"  text-anchor="middle" fill="var(--color-on-surface)">9</text>
+                <text x="522" y="106" text-anchor="middle" fill="var(--color-on-surface)">5</text>
+              </g>
+
+              <!-- X-axis labels -->
+              <g class="chart-axis-label">
+                <text x="72"  y="195" text-anchor="middle">0-10</text>
+                <text x="122" y="195" text-anchor="middle">10-20</text>
+                <text x="172" y="195" text-anchor="middle">20-30</text>
+                <text x="222" y="195" text-anchor="middle">30-40</text>
+                <text x="272" y="195" text-anchor="middle">40-50</text>
+                <text x="322" y="195" text-anchor="middle">50-60</text>
+                <text x="372" y="195" text-anchor="middle">60-70</text>
+                <text x="422" y="195" text-anchor="middle">70-80</text>
+                <text x="472" y="195" text-anchor="middle">80-90</text>
+                <text x="522" y="195" text-anchor="middle">90-100</text>
+              </g>
+
+              <!-- Grade band labels at bottom -->
+              <g class="chart-axis-label" style="font-weight: var(--weight-medium);">
+                <text x="125" y="212" text-anchor="middle" fill="var(--color-error)">D</text>
+                <text x="247" y="212" text-anchor="middle" fill="var(--color-tertiary)">C</text>
+                <text x="372" y="212" text-anchor="middle" fill="var(--color-tertiary)">B</text>
+                <text x="472" y="212" text-anchor="middle" fill="var(--color-primary)">A</text>
+                <text x="522" y="212" text-anchor="middle" fill="var(--color-primary)">A+</text>
+              </g>
+
+              <!-- Mean line at score 76 → x = 50 + (76 / 100 × 490) + 22 = 444 -->
+              <line x1="444" y1="20" x2="444" y2="170" stroke="var(--color-on-surface)" stroke-width="1.5" stroke-dasharray="5,3" />
+              <text x="448" y="34" class="chart-axis-label" fill="var(--color-on-surface)" style="font-weight: var(--weight-medium);">Moyenne · 76</text>
+            </svg>
+
+            <!-- Screen-reader table -->
+            <table class="sr-only">
+              <caption>Distribution des 47 tenants par tranche de score</caption>
+              <thead><tr><th>Tranche</th><th>Tenants</th></tr></thead>
+              <tbody>
+                <tr><td>0-20</td><td>0</td></tr>
+                <tr><td>20-30</td><td>1</td></tr>
+                <tr><td>30-40</td><td>2</td></tr>
+                <tr><td>40-50</td><td>3</td></tr>
+                <tr><td>50-60</td><td>6</td></tr>
+                <tr><td>60-70</td><td>9</td></tr>
+                <tr><td>70-80</td><td>12</td></tr>
+                <tr><td>80-90</td><td>9</td></tr>
+                <tr><td>90-100</td><td>5</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- RIGHT — Spotlights: progressers + to-watch -->
+          <div class="card">
+            <div class="card-header" style="margin-bottom: var(--space-4);">
+              <div>
+                <h2 class="card-title">Spotlights</h2>
+                <p class="card-subtitle">Mouvements les plus marquants sur la période. Les hausses majeures méritent un appel client de félicitations ; les baisses majeures, un check-in support.</p>
+              </div>
+            </div>
+
+            <h3 class="health-spotlight-title">
+              <span class="material-symbols-outlined" style="font-size:16px; vertical-align:-2px; color: var(--color-primary);">trending_up</span>
+              En progression
+            </h3>
+            <div class="health-spotlight">
+              <div class="health-spotlight-item">
+                <a href="tenants/detail-overview.html" class="name">WWF France</a>
+                <span class="score-grade-chip score-grade-chip--a" role="meter" aria-label="Score A, 82" aria-valuenow="82" aria-valuemin="0" aria-valuemax="100"><span class="letter">A</span><span class="num">82</span></span>
+                <span class="delta delta--up"><span class="material-symbols-outlined" style="font-size:12px; vertical-align:-2px;">arrow_upward</span>+11 pts</span>
+              </div>
+              <div class="health-spotlight-item">
+                <a href="tenants/detail-overview.html" class="name">Médecins du Monde</a>
+                <span class="score-grade-chip score-grade-chip--a" role="meter" aria-label="Score A, 78" aria-valuenow="78" aria-valuemin="0" aria-valuemax="100"><span class="letter">A</span><span class="num">78</span></span>
+                <span class="delta delta--up"><span class="material-symbols-outlined" style="font-size:12px; vertical-align:-2px;">arrow_upward</span>+9 pts</span>
+              </div>
+              <div class="health-spotlight-item">
+                <a href="tenants/detail-overview.html" class="name">ATD Quart Monde</a>
+                <span class="score-grade-chip score-grade-chip--b" role="meter" aria-label="Score B, 61" aria-valuenow="61" aria-valuemin="0" aria-valuemax="100"><span class="letter">B</span><span class="num">61</span></span>
+                <span class="delta delta--up"><span class="material-symbols-outlined" style="font-size:12px; vertical-align:-2px;">arrow_upward</span>+7 pts</span>
+              </div>
+            </div>
+
+            <h3 class="health-spotlight-title" style="margin-top: var(--space-6);">
+              <span class="material-symbols-outlined" style="font-size:16px; vertical-align:-2px; color: var(--color-error);">trending_down</span>
+              À surveiller
+            </h3>
+            <div class="health-spotlight">
+              <div class="health-spotlight-item">
+                <a href="tenants/detail-overview.html" class="name">Fondation Abbé Pierre</a>
+                <span class="score-grade-chip score-grade-chip--c" role="meter" aria-label="Score C, 52" aria-valuenow="52" aria-valuemin="0" aria-valuemax="100"><span class="letter">C</span><span class="num">52</span></span>
+                <span class="delta delta--down"><span class="material-symbols-outlined" style="font-size:12px; vertical-align:-2px;">arrow_downward</span>−8 pts</span>
+              </div>
+              <div class="health-spotlight-item">
+                <a href="tenants/detail-overview.html" class="name">Handicap International</a>
+                <span class="score-grade-chip score-grade-chip--c" role="meter" aria-label="Score C, 58" aria-valuenow="58" aria-valuemin="0" aria-valuemax="100"><span class="letter">C</span><span class="num">58</span></span>
+                <span class="delta delta--down"><span class="material-symbols-outlined" style="font-size:12px; vertical-align:-2px;">arrow_downward</span>−6 pts</span>
+              </div>
+              <div class="health-spotlight-item">
+                <a href="tenants/detail-overview.html" class="name">Emmaüs Solidarité</a>
+                <span class="score-grade-chip score-grade-chip--b" role="meter" aria-label="Score B, 64" aria-valuenow="64" aria-valuemin="0" aria-valuemax="100"><span class="letter">B</span><span class="num">64</span></span>
+                <span class="delta delta--down"><span class="material-symbols-outlined" style="font-size:12px; vertical-align:-2px;">arrow_downward</span>−4 pts</span>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <!-- ============================================================
              AUDIT FOOTER — every super-admin view of this page emits an
