@@ -203,7 +203,7 @@ A notification stays unread until the recipient acts on it. The canonical trigge
 Implementation:
 
 - The bell hook (mounted in the topbar of every authenticated page) calls `usePathname()` and, on every change, fires `NotificationsService.markReadByLink(client, pathname)`.
-- `POST /v1/notifications/mark-read-by-link` marks every panel-visible unread notification for the current user whose `link_url` matches the body. Idempotent — every navigation hits the endpoint; the common case is `marked: 0`.
+- `POST /v1/notifications/mark-read-by-link` marks every unread notification for the current user whose `link_url` matches the body — REGARDLESS of `panel_visible`. A digest-only row (`panel_visible = false`) whose resource the user just visited is "consumed" exactly like a panel row; leaving it unread would feed it back into tomorrow's digest as a stale recap. Idempotent — every navigation hits the endpoint; the common case is `marked: 0`.
 - The body's `linkUrl` shares the same shape constraint as the DB CHECK on `notifications.link_url` (`^/(?!/).*$`) so a malformed payload 400s before reaching the SQL.
 - The hook soft-fails on any error (5xx / 401 mid-navigation): the bell stays in its prior state rather than burst a global error banner on every page change.
 

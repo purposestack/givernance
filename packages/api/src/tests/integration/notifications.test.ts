@@ -719,7 +719,13 @@ describe("Notifications — mark-read-by-link", () => {
     expect(res.json<{ data: { marked: number } }>().data.marked).toBe(0);
   });
 
-  it("never marks panel_visible = false rows (digest-only stays unread)", async () => {
+  it("marks panel_visible = false rows too (digest-only suppresses tomorrow's digest)", async () => {
+    // A user with in_app=false + email_digest=true ends up with a
+    // panel_visible=false row. The bell never shows it, but the digest
+    // worker DOES read it. If the user lands on the resource's page
+    // BEFORE tomorrow's digest, the row must still be marked read so
+    // it doesn't get recapped — exactly the "auto-mark-read on
+    // consumption" contract.
     const digestOnly = await seedNotification({
       orgId: ORG_A,
       userId: USER_A_ROW_ID,
@@ -733,13 +739,13 @@ describe("Notifications — mark-read-by-link", () => {
       payload: { linkUrl: "/donations/00000000-0000-0000-0000-000000000aaa" },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json<{ data: { marked: number } }>().data.marked).toBe(0);
+    expect(res.json<{ data: { marked: number } }>().data.marked).toBe(1);
 
     const [row] = await db
       .select({ readAt: notifications.readAt })
       .from(notifications)
       .where(eq(notifications.id, digestOnly));
-    expect(row?.readAt).toBeNull();
+    expect(row?.readAt).not.toBeNull();
   });
 
   it("scopes by current user — never marks another user's rows in the same tenant", async () => {
