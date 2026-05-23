@@ -395,6 +395,11 @@
       "whenEndedAt": "Ended {time}",
       "endSession": "End session",
       "ending": "Ending…",
+      "replicate": "Replicate",
+      "replicating": "Replicating…",
+      "stepUpRedirecting": "Step-up MFA required — redirecting to sign in…",
+      "errorStepUpFailed": "Step-up authentication failed. Re-authenticate with MFA and try again.",
+      "errorLockout": "Too many failed step-up attempts. Your account is temporarily locked — try again in 15 minutes.",
       "detail": {
         "backToList": "Back to sessions",
         "title": "Session detail",

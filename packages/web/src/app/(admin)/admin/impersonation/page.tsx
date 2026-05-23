@@ -2,8 +2,10 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { EndImpersonationSessionButton } from "@/components/admin/end-impersonation-session-button";
+import { ReplicateImpersonationSessionButton } from "@/components/admin/replicate-impersonation-session-button";
 import { Button } from "@/components/ui/button";
 import { createServerApiClient } from "@/lib/api/client-server";
+import { isImpersonationReplicateEnabled } from "@/lib/feature-flags/server";
 import {
   ImpersonationService,
   type ImpersonationSessionDTO,
@@ -34,8 +36,15 @@ function deriveStatus(s: ImpersonationSessionDTO): DerivedStatus {
 export default async function ImpersonationListPage() {
   const t = await getTranslations("admin.impersonation");
   const client = await createServerApiClient();
-  // ?all=true returns historical sessions too — newest-first.
-  const { data } = await ImpersonationService.listSessions(client, { all: true, limit: 200 });
+  // Two independent SSR fetches — kick off in parallel so the page
+  // doesn't block on serial round-trips. `?all=true` returns historical
+  // sessions too (newest-first); the flag fetch decides whether the
+  // past-rows table renders the Replicate row-action (issue #428).
+  const [sessionsRes, replicateEnabled] = await Promise.all([
+    ImpersonationService.listSessions(client, { all: true, limit: 200 }),
+    isImpersonationReplicateEnabled(),
+  ]);
+  const { data } = sessionsRes;
 
   const active = data.filter((s) => deriveStatus(s) === "active");
   const past = data.filter((s) => deriveStatus(s) !== "active");
@@ -57,7 +66,7 @@ export default async function ImpersonationListPage() {
         {active.length === 0 ? (
           <EmptyState label={t("emptyActive")} />
         ) : (
-          <SessionTable rows={active} showActions />
+          <SessionTable rows={active} rowActions="end" />
         )}
       </section>
 
@@ -66,7 +75,7 @@ export default async function ImpersonationListPage() {
         {past.length === 0 ? (
           <EmptyState label={t("emptyHistory")} />
         ) : (
-          <SessionTable rows={past} showActions={false} />
+          <SessionTable rows={past} rowActions={replicateEnabled ? "replicate" : "none"} />
         )}
       </section>
     </main>
@@ -127,12 +136,20 @@ function UserCell({
   );
 }
 
+/**
+ * Per-section row action mode. `end` = active row with the End-Session
+ * button. `replicate` = past row with the Replicate row-action (issue
+ * #428, gated on `admin.impersonation_replicate`). `none` = past row
+ * with the flag off, only the View button renders.
+ */
+type RowActions = "end" | "replicate" | "none";
+
 async function SessionTable({
   rows,
-  showActions,
+  rowActions,
 }: {
   rows: ImpersonationSessionDTO[];
-  showActions: boolean;
+  rowActions: RowActions;
 }) {
   const t = await getTranslations("admin.impersonation");
   return (
@@ -151,7 +168,7 @@ async function SessionTable({
         </thead>
         <tbody className="divide-y divide-border">
           {rows.map((session) => (
-            <SessionRow key={session.id} session={session} showActions={showActions} />
+            <SessionRow key={session.id} session={session} rowActions={rowActions} />
           ))}
         </tbody>
       </table>
@@ -161,10 +178,10 @@ async function SessionTable({
 
 async function SessionRow({
   session,
-  showActions,
+  rowActions,
 }: {
   session: ImpersonationSessionDTO;
-  showActions: boolean;
+  rowActions: RowActions;
 }) {
   const t = await getTranslations("admin.impersonation");
   const status = deriveStatus(session);
@@ -241,7 +258,32 @@ async function SessionRow({
               {t("view")}
             </Link>
           </Button>
-          {showActions && <EndImpersonationSessionButton sessionId={session.id} />}
+          {rowActions === "end" && <EndImpersonationSessionButton sessionId={session.id} />}
+          {/*
+            Replicate only renders when:
+              - the flag `admin.impersonation_replicate` is ON (SSR-gated
+                by the parent which passes rowActions="replicate" only
+                in that case), AND
+              - the past session still has a resolvable app `users.id`
+                for the target (null = off-boarded → nothing to POST).
+            Off-state QA invariant: with the flag off, this branch is
+            never reached, so the column ends with only the View button.
+           */}
+          {rowActions === "replicate" && session.targetUserId !== null && (
+            <ReplicateImpersonationSessionButton
+              targetUserId={session.targetUserId}
+              mode={session.mode}
+              reason={session.reason}
+              targetKeycloakId={session.targetKeycloakId}
+              targetOrgId={session.targetOrgId}
+              targetRole={session.targetRole}
+              targetFirstName={session.targetFirstName}
+              targetLastName={session.targetLastName}
+              targetEmail={session.targetEmail}
+              tenantName={session.tenantName}
+              tenantSlug={session.tenantSlug}
+            />
+          )}
         </div>
       </td>
     </tr>

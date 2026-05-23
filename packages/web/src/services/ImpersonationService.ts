@@ -31,6 +31,14 @@ export interface ImpersonationSessionDTO {
   targetFirstName: string | null;
   targetLastName: string | null;
   targetEmail: string | null;
+  /**
+   * App `users.id` of the target — surfaced so the Replicate row
+   * action (issue #428) can re-POST `/v1/admin/impersonation`
+   * (the API keys on `users.id`, not the Keycloak `sub`). Null when
+   * the target has been off-boarded since the session ran — Replicate
+   * is hidden in that case.
+   */
+  targetUserId: string | null;
   tenantName: string | null;
   tenantSlug: string | null;
   impersonatorFirstName: string | null;

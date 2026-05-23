@@ -31,11 +31,12 @@ import {
   campaigns,
   constituents,
   donations,
+  impersonationSessions,
   platformAdmins,
   tenants,
   users,
 } from "@givernance/shared/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, systemDb, withTenantContext } from "../src/lib/db.js";
 
 const TENANT_SLUG = "givernance";
@@ -664,6 +665,237 @@ async function seedDemoTenant(options: { seedData: boolean }): Promise<void> {
   }
 }
 
+/**
+ * Seed a small fixture of past impersonation sessions so the Back
+ * Office list at `/admin/impersonation` is non-empty on a fresh dev
+ * environment (issue #428). Without this, the Replicate button has
+ * nothing to act on the first time a staff engineer logs in, which
+ * defeats the whole point of "dev-speed for support work."
+ *
+ * Targets are the seeded `users` rows from both tenants (NPO: alice
+ * c2 + bob c3; Demo Workspace: camille b1 + léo b2 + inès b3).
+ * Impersonator is the seeded super-admin (ADMIN_KEYCLOAK_ID). Modes,
+ * end_reasons, and time ranges are mixed so the list exercises every
+ * `deriveStatus` branch in the page (`active` excluded — these are
+ * all historical) and both mode-badge variants.
+ *
+ * Idempotent at the "any rows present for this operator" level — if
+ * a previous seed run already inserted history, skip without
+ * appending. This matches the conservative pattern the data tables
+ * use (the dev-up.sh wrapper gates re-runs on `constituents = 0`).
+ */
+async function seedImpersonationHistory(): Promise<void> {
+  const existing = await systemDb
+    .select({ id: impersonationSessions.id })
+    .from(impersonationSessions)
+    .where(eq(impersonationSessions.impersonatorKeycloakId, ADMIN_KEYCLOAK_ID))
+    .limit(1);
+  if (existing.length > 0) {
+    console.log(
+      `[seed] Impersonation history already present (operator=${ADMIN_KEYCLOAK_ID}) — skipping`,
+    );
+    return;
+  }
+
+  // Pull the seeded targets (NPO alice/bob + Demo camille/léo/inès) by
+  // keycloak_id so the fixture stays in lockstep with the user seed.
+  // A missing target (e.g. the realm seed changed) means we just have
+  // fewer past sessions — not a hard failure.
+  const NPO_ALICE = "00000000-0000-0000-0000-0000000000c2";
+  const NPO_BOB = "00000000-0000-0000-0000-0000000000c3";
+  const DEMO_CAMILLE = DEMO_USERS[0].keycloakId;
+  const DEMO_LEO = DEMO_USERS[1].keycloakId;
+  const DEMO_INES = DEMO_USERS[2].keycloakId;
+
+  type Fixture = {
+    targetKeycloakId: string;
+    targetOrgId: string;
+    targetRole: string;
+    mode: "delegation" | "impersonation";
+    reason: string;
+    /** Hours ago the session started. */
+    startedHoursAgo: number;
+    /** TTL (seconds) — fed to expires_at = started_at + ttl. */
+    ttlSeconds: number;
+    /**
+     * One of:
+     *   - "manual"   — operator clicked End-Session normally
+     *   - "revoked"  — another super-admin force-ended the session
+     *   - "switched" — operator switched to a different session
+     *   - "expired"  — session timed out (ended_at IS NULL, expires_at < now)
+     *   - "active-expired-explicit" — same TTL outcome but with ended_at
+     *     written (operator hit End after the TTL passed; rare but happens)
+     */
+    outcome: "manual" | "revoked" | "switched" | "expired" | "active-expired-explicit";
+  };
+
+  // Reasons are intentionally NPO-shaped and ≥ 20 chars (the validator
+  // floor). The mix exercises both modes and every derived status, with
+  // a slight lean toward "manual" + "delegation" because that's the
+  // realistic dominant case for a working support team.
+  const fixtures: Fixture[] = [
+    {
+      targetKeycloakId: NPO_ALICE,
+      targetOrgId: TENANT_ID,
+      targetRole: "org_admin",
+      mode: "delegation",
+      reason:
+        "Setting up the new fund routing on behalf of Alice — she's on PTO and the year-end appeal launches Monday.",
+      startedHoursAgo: 4,
+      ttlSeconds: 60 * 60,
+      outcome: "manual",
+    },
+    {
+      targetKeycloakId: NPO_BOB,
+      targetOrgId: TENANT_ID,
+      targetRole: "user",
+      mode: "impersonation",
+      reason:
+        "Reproducing the donor-receipt PDF rendering issue Bob reported in ticket #5872 — only repros under his account.",
+      startedHoursAgo: 26,
+      ttlSeconds: 60 * 60,
+      outcome: "expired",
+    },
+    {
+      targetKeycloakId: NPO_ALICE,
+      targetOrgId: TENANT_ID,
+      targetRole: "org_admin",
+      mode: "delegation",
+      reason:
+        "Configuring Mollie test keys with Alice during the onboarding call — handed back to her once webhook verified.",
+      startedHoursAgo: 50,
+      ttlSeconds: 60 * 60,
+      outcome: "manual",
+    },
+    {
+      targetKeycloakId: DEMO_CAMILLE,
+      targetOrgId: DEMO_TENANT_ID,
+      targetRole: "org_admin",
+      mode: "delegation",
+      reason:
+        "Walking Camille through the postal-export preview during the demo workspace orientation session.",
+      startedHoursAgo: 72,
+      ttlSeconds: 60 * 60,
+      outcome: "manual",
+    },
+    {
+      targetKeycloakId: DEMO_LEO,
+      targetOrgId: DEMO_TENANT_ID,
+      targetRole: "user",
+      mode: "impersonation",
+      reason:
+        "Investigating why Léo's constituents list pagination shows zero rows after the bulk-import dry-run.",
+      startedHoursAgo: 96,
+      ttlSeconds: 60 * 60,
+      outcome: "switched",
+    },
+    {
+      targetKeycloakId: DEMO_INES,
+      targetOrgId: DEMO_TENANT_ID,
+      targetRole: "viewer",
+      mode: "impersonation",
+      reason:
+        "Verifying the viewer role really cannot trigger the export — Inès saw a button she shouldn't have access to.",
+      startedHoursAgo: 120,
+      ttlSeconds: 30 * 60,
+      outcome: "manual",
+    },
+    {
+      targetKeycloakId: NPO_BOB,
+      targetOrgId: TENANT_ID,
+      targetRole: "user",
+      mode: "delegation",
+      reason:
+        "Emergency revocation drill — another staffer revoked this session as part of the quarterly incident-response rehearsal.",
+      startedHoursAgo: 168,
+      ttlSeconds: 4 * 60 * 60,
+      outcome: "revoked",
+    },
+    {
+      targetKeycloakId: DEMO_CAMILLE,
+      targetOrgId: DEMO_TENANT_ID,
+      targetRole: "org_admin",
+      mode: "delegation",
+      reason:
+        "First-time CSM walkthrough of the campaign editor with Camille — covered draft, preview, publish, archive.",
+      startedHoursAgo: 240,
+      ttlSeconds: 4 * 60 * 60,
+      outcome: "active-expired-explicit",
+    },
+    {
+      targetKeycloakId: DEMO_LEO,
+      targetOrgId: DEMO_TENANT_ID,
+      targetRole: "user",
+      mode: "impersonation",
+      reason:
+        "Reproducing a Drizzle 0.45 error-shape regression Léo hit — pre-fix, pure read-only checking of the donation form.",
+      startedHoursAgo: 480,
+      ttlSeconds: 60 * 60,
+      outcome: "expired",
+    },
+  ];
+
+  const now = Date.now();
+  for (const f of fixtures) {
+    const createdAt = new Date(now - f.startedHoursAgo * 3600_000);
+    const expiresAt = new Date(createdAt.getTime() + f.ttlSeconds * 1000);
+    const endedAt =
+      f.outcome === "expired"
+        ? null
+        : f.outcome === "active-expired-explicit"
+          ? expiresAt
+          : // For manual / revoked / switched, end the session a bit before
+            // the natural expiry so the row shows a real "ended" timestamp
+            // distinct from `expires_at`.
+            new Date(
+              createdAt.getTime() + Math.floor(f.ttlSeconds * 0.4) * 1000,
+            );
+    const endReason: "manual" | "revoked" | "expired" | "switched" | null =
+      f.outcome === "expired"
+        ? null
+        : f.outcome === "active-expired-explicit"
+          ? "expired"
+          : f.outcome;
+
+    // INSERT through systemDb (BYPASSRLS) — impersonation_sessions is
+    // a platform table with no tenant context. Use raw SQL so we can
+    // pin created_at to a historical timestamp (the Drizzle insert
+    // builder treats it as defaulted).
+    await systemDb.execute(sql`
+      INSERT INTO impersonation_sessions (
+        impersonator_keycloak_id,
+        target_keycloak_id,
+        target_org_id,
+        target_role,
+        mode,
+        reason,
+        expires_at,
+        ended_at,
+        end_reason,
+        ip_hash,
+        user_agent,
+        created_at
+      ) VALUES (
+        ${ADMIN_KEYCLOAK_ID},
+        ${f.targetKeycloakId},
+        ${f.targetOrgId},
+        ${f.targetRole},
+        ${f.mode}::impersonation_mode,
+        ${f.reason},
+        ${expiresAt.toISOString()},
+        ${endedAt ? endedAt.toISOString() : null},
+        ${endReason ? sql`${endReason}::impersonation_end_reason` : sql`NULL`},
+        ${"5eed5eed5eed5eed"},
+        ${"givernance-seed/1.0 (impersonation history fixture)"},
+        ${createdAt.toISOString()}
+      )
+    `);
+  }
+  console.log(
+    `[seed] Inserted ${fixtures.length} historical impersonation sessions for operator=${ADMIN_KEYCLOAK_ID}`,
+  );
+}
+
 async function main() {
   console.log("[seed] Starting Givernance dev seed…");
   await ensurePlatformSentinelTenant();
@@ -677,6 +909,10 @@ async function main() {
   // re-run guard — once it triggers a seed run, both tenants are
   // populated together so they stay in lockstep.
   await seedDemoTenant({ seedData: true });
+  // Past sessions fixture so the Back Office list isn't empty on a
+  // fresh dev env (issue #428). Idempotent — skips if the seeded
+  // super-admin already has any session rows.
+  await seedImpersonationHistory();
   console.log("[seed] Done.");
   process.exit(0);
 }

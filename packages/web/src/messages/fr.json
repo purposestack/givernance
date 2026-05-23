@@ -395,6 +395,11 @@
       "whenEndedAt": "Terminée le {time}",
       "endSession": "Terminer",
       "ending": "Fermeture…",
+      "replicate": "Répliquer",
+      "replicating": "Réplication…",
+      "stepUpRedirecting": "MFA requis — redirection vers la connexion…",
+      "errorStepUpFailed": "L'authentification renforcée a échoué. Réauthentifiez-vous avec MFA puis réessayez.",
+      "errorLockout": "Trop d'échecs d'authentification renforcée. Votre compte est temporairement bloqué — réessayez dans 15 minutes.",
       "detail": {
         "backToList": "Retour aux sessions",
         "title": "Détail de la session",

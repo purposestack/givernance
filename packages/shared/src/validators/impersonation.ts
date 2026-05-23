@@ -74,6 +74,11 @@ export const ImpersonationSessionSchema = Type.Object({
   targetFirstName: Type.Union([Type.String(), Type.Null()]),
   targetLastName: Type.Union([Type.String(), Type.Null()]),
   targetEmail: Type.Union([Type.String(), Type.Null()]),
+  // App-side `users.id` of the target — null when the target's `users`
+  // row is gone (off-boarded). The Replicate row-action (issue #428)
+  // POSTs this back to `/v1/admin/impersonation` (which keys off the
+  // app `users.id`, not the Keycloak `sub`); null = no Replicate button.
+  targetUserId: Type.Union([UuidSchema, Type.Null()]),
   tenantName: Type.Union([Type.String(), Type.Null()]),
   tenantSlug: Type.Union([Type.String(), Type.Null()]),
   impersonatorFirstName: Type.Union([Type.String(), Type.Null()]),
