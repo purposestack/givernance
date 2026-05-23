@@ -378,7 +378,6 @@
       "emptyHistory": "No past sessions yet.",
       "emptyHistoryDelegation": "No past delegation sessions match this filter.",
       "emptyHistoryImpersonation": "No past impersonation sessions match this filter.",
-      "filterByMode": "Filter",
       "filterByModeAriaLabel": "Filter past sessions by mode",
       "filterAll": "All ({count})",
       "filterDelegation": "Delegation ({count})",
