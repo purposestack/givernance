@@ -321,8 +321,6 @@
       "openMenu": "Ouvrir le menu",
       "closeMenu": "Fermer le menu",
       "breadcrumbDefault": "Tableau de bord",
-      "searchPlaceholder": "Rechercher...",
-      "searchLabel": "Rechercher",
       "notifications": "Notifications",
       "profileOf": "Profil de {name}",
       "accountMenu": {
@@ -332,6 +330,38 @@
         "language": "Langue",
         "signOut": "Se déconnecter",
         "signOutAriaLabel": "Se déconnecter — termine votre session"
+      }
+    },
+    "commandPalette": {
+      "title": "Recherche rapide",
+      "openTrigger": "Ouvrir la recherche rapide (Cmd+K)",
+      "placeholder": "Rechercher un contact, une campagne, un don…",
+      "shortcutBadge": "⌘K",
+      "loading": "Recherche…",
+      "error": "La recherche a échoué. Réessayez dans un instant.",
+      "noResults": "Aucun résultat.",
+      "groups": {
+        "navigation": "Navigation",
+        "quickCreate": "Création rapide",
+        "constituents": "Contacts",
+        "campaigns": "Campagnes",
+        "donations": "Dons"
+      },
+      "nav": {
+        "dashboard": "Aller au tableau de bord",
+        "constituents": "Aller aux contacts",
+        "campaigns": "Aller aux campagnes",
+        "donations": "Aller aux dons"
+      },
+      "create": {
+        "constituent": "Nouveau contact",
+        "donation": "Enregistrer un don",
+        "campaign": "Nouvelle campagne"
+      },
+      "footer": {
+        "navigate": "pour naviguer",
+        "select": "pour sélectionner",
+        "close": "pour fermer"
       }
     },
     "impersonation": {

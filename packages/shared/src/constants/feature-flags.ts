@@ -245,6 +245,54 @@ export const FEATURE_FLAG_KEYS = {
    * if the Back Office is unavailable.
    */
   ADMIN_IMPERSONATION_REPLICATE: "admin.impersonation_replicate",
+
+  /**
+   * Gates the global search / command palette feature (Epic #364, GLO-001).
+   *
+   * Adds a `Cmd+K` / `Ctrl+K` keyboard binding that opens a `cmdk` overlay
+   * with grouped, RLS-scoped cross-entity search across constituents,
+   * donations, and campaigns, plus static "go to …" navigation commands and
+   * RBAC-aware quick-create actions (new constituent, new donation,
+   * new campaign).
+   *
+   * `scope='tenant'`: every NPO is independent. A tenant on Postgres FTS
+   * is the entire feature today, but if Givernance later swaps to an
+   * external search engine (Meilisearch / Typesense, hosted EU on
+   * Scaleway), the per-tenant gate is the rollout knob — we can pilot
+   * the new backend with a single tenant override before flipping the
+   * platform default.
+   *
+   * `tenant_override_allowed=true`: there is no platform-level
+   * precondition (no DKIM-style external dependency); each org-admin can
+   * self-serve the toggle from `/settings/feature-flags` once we're past
+   * the initial rollout.
+   *
+   * `public=true`: the topbar's `Cmd+K` button + keyboard binding +
+   * SSR-rendered overlay shell all need to know the effective value at
+   * page-load time. A private projection would unconditionally hide the
+   * surface and defeat the Epic.
+   *
+   * Surfaces gated by this key:
+   *   - API: GET /v1/search (`requireFlag` is the FIRST preHandler — a
+   *     disabled tenant gets 404, indistinguishable from a typo'd URL,
+   *     so a scanner can't enumerate the feature).
+   *   - Web: the topbar `Cmd+K` button is completely absent when the
+   *     flag is off (no greyed-out placeholder).
+   *   - Web: the global `Cmd+K` / `Ctrl+K` keydown listener is NOT
+   *     mounted when the flag is off (off-state QA: pressing the
+   *     shortcut does nothing).
+   *   - Web: the command palette overlay component is not loaded at
+   *     all when the flag is off.
+   *
+   * Public-projection caveat: per the CLAUDE.md feature-flag-first
+   * rule, the key name `productivity.command_palette` is intentionally
+   * descriptive and not teasing an unannounced surprise, so its
+   * presence in `/v1/feature-flags` for every authenticated tenant
+   * user is acceptable.
+   *
+   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
+   */
+  PRODUCTIVITY_COMMAND_PALETTE: "productivity.command_palette",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -350,6 +398,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
       "Adds a Replicate action next to each past support session on the Back Office, so support staff can re-enter the same session in one click without retyping the target and reason. The same security checks still apply on every replicate.",
     scope: "platform",
     tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.PRODUCTIVITY_COMMAND_PALETTE,
+    defaultEnabled: false,
+    label: "Keyboard quick search (Cmd+K / Ctrl+K)",
+    description:
+      "Adds a quick search panel that opens with Cmd+K (Mac) or Ctrl+K (Windows / Linux) from any page. Type to find a constituent, donation, or campaign, jump to a section, or start a new record. Off by default while we monitor performance and search quality — flip it on from this page when you're ready.",
+    scope: "tenant",
+    tenantOverrideAllowed: true,
     public: true,
   },
 ];
