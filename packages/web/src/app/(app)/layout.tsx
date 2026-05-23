@@ -110,6 +110,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     publicFlags,
     FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER,
   );
+  const commandPaletteEnabled = isFlagEnabled(
+    publicFlags,
+    FEATURE_FLAG_KEYS.PRODUCTIVITY_COMMAND_PALETTE,
+  );
 
   // Broken state: a non-super-admin reached the authenticated layout but
   // we couldn't resolve their tenant memberships. Two failure modes:
@@ -157,6 +161,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         canManageBranding={auth.roles.includes("org_admin")}
         orgLogo={orgLogo}
         notificationsEnabled={notificationsEnabled}
+        commandPaletteEnabled={commandPaletteEnabled}
       >
         {children}
       </AppShell>

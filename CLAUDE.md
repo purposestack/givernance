@@ -59,6 +59,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 26-public-page-styles.md    — Public donation page archetype catalogue (Epic #362): 10 archetypes, schema, three-layer resolution, picker UX, easter-egg policy
 │   ├── 27-notifications.md         — In-app notification centre (Epic #363, GLO-004): bell + side panel + per-user preferences + SSE delivery + opt-in email digest + outbox-fanout producer
 │   ├── 28-bulk-import.md           — Bulk Import Constituents (Epic #373): CSV/Excel upload, async worker pipeline, dedupe, 90-day retention, audit trail
+│   ├── 29-global-search.md         — Global search / Command palette (Epic #364, GLO-001): Cmd+K overlay, Postgres FTS + pg_trgm, /v1/search RLS-scoped grouped results, RBAC-aware quick-create
 │   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary, ADR-027 Swiss QR-bill, ADR-028 camt.053 ingestion, ADR-029 Keycloak session revocation, ADR-030 public-page archetype slots — hybrid shell + slot components per Epic #362, ADR-031 notification delivery + outbox fanout — SSE with polling fallback per Epic #363)
 │   ├── runbooks/                   — Operator-driven one-shot ops (e.g. migrate-staging-keycloak-db.md for issue #283; launch-prod.md for the production-environment launch — issue #344); each file is plan + live journal + post-mortem. Also: bulk-email-stalled-job.md (recurring SRE triage flow for issue #326's Stalled / Partial bulk-email recovery), feature-flag-rollback.md (emergency psql + redis-cli flip when the Back Office page is unavailable), keycloak-backchannel-logout-cutover.md (per-env override of `backchannel.logout.url` after each realm sync — issue #76), and cross-tenant-rls-hardening-cutover.md (issue #430 — one-shot wiring of the `GIVERNANCE_APP_PASSWORD` secret + `givernance_app` role rotation that closes the staging cross-tenant notification leak)
 │   ├── dev/
@@ -172,7 +173,7 @@ Key ADRs for frontend work:
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
 - Terminology: **NPO** (nonprofit organization), not "NGO"
 - GDPR in English docs, RGPD in French docs
-- All docs are in `docs/`, numbered 01-28 for architecture specs (next free slot: `29-`)
+- All docs are in `docs/`, numbered 01-29 for architecture specs (next free slot: `30-`)
 
 ### 🛑 Documentation discipline (CRITICAL FOR ALL DOMAIN WORK)
 

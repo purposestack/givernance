@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AddLogoBanner } from "@/components/branding/add-logo-banner";
+import { CommandPalette } from "@/components/command-palette/command-palette";
 import type { ImpersonationInfo } from "@/lib/auth";
 import type { OrgLogo } from "@/models/branding";
 
@@ -43,6 +44,14 @@ interface AppShellProps {
    */
   notificationsEnabled?: boolean;
   /**
+   * Whether the `productivity.command_palette` feature flag is on for
+   * this tenant (Epic #364). Resolved SSR so the global Cmd+K
+   * listener + topbar button don't flash in/out on hydration. When
+   * `false`, the listener is never mounted and the overlay is never
+   * rendered — off-state QA per `feedback_feature_flag_first`.
+   */
+  commandPaletteEnabled?: boolean;
+  /**
    * Server-resolved org logo (Epic #286 / PR #287 review, major 4).
    * Threaded down to `Sidebar` and `AddLogoBanner` so they don't each
    * re-fetch `/v1/branding/org-logo` on every navigation. `null` means
@@ -77,8 +86,10 @@ export function AppShell({
   canManageBranding = false,
   orgLogo = null,
   notificationsEnabled = false,
+  commandPaletteEnabled = false,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
 
   const handleMenuToggle = useCallback(() => {
@@ -91,6 +102,14 @@ export function AppShell({
     hamburgerRef.current?.focus();
   }, []);
 
+  const handleCommandPaletteOpen = useCallback(() => {
+    setCommandPaletteOpen(true);
+  }, []);
+
+  const handleCommandPaletteClose = useCallback(() => {
+    setCommandPaletteOpen(false);
+  }, []);
+
   // Prevent scroll and tab-behind when mobile sidebar is open
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -99,6 +118,26 @@ export function AppShell({
       document.body.style.overflow = "";
     };
   }, [sidebarOpen]);
+
+  // Global Cmd+K / Ctrl+K binding (Epic #364, GLO-001). Mounted ONLY
+  // when the flag is on so an off-state user pressing the shortcut
+  // does nothing — off-state QA per `feedback_feature_flag_first`.
+  // Guards against firing inside a text field or with modifier
+  // combinations the OS already owns (Cmd+K is normally free; Ctrl+K
+  // shadows a browser address-bar shortcut in Firefox, which we accept
+  // — the palette is the higher-value surface for an authenticated
+  // app).
+  useEffect(() => {
+    if (!commandPaletteEnabled) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      const isShortcut = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === "k";
+      if (!isShortcut) return;
+      e.preventDefault();
+      setCommandPaletteOpen((prev) => !prev);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [commandPaletteEnabled]);
 
   return (
     <div className="flex min-h-screen">
@@ -119,6 +158,8 @@ export function AppShell({
           sidebarOpen={sidebarOpen}
           hamburgerRef={hamburgerRef}
           notificationsEnabled={notificationsEnabled}
+          commandPaletteEnabled={commandPaletteEnabled}
+          onCommandPaletteOpen={handleCommandPaletteOpen}
         />
 
         <main
@@ -128,6 +169,10 @@ export function AppShell({
           <div className="space-y-6 sm:space-y-8">{children}</div>
         </main>
       </div>
+
+      {commandPaletteEnabled ? (
+        <CommandPalette open={commandPaletteOpen} onClose={handleCommandPaletteClose} />
+      ) : null}
     </div>
   );
 }

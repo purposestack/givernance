@@ -321,8 +321,6 @@
       "openMenu": "Open menu",
       "closeMenu": "Close menu",
       "breadcrumbDefault": "Dashboard",
-      "searchPlaceholder": "Search...",
-      "searchLabel": "Search",
       "notifications": "Notifications",
       "profileOf": "Profile of {name}",
       "accountMenu": {
@@ -332,6 +330,38 @@
         "language": "Language",
         "signOut": "Sign out",
         "signOutAriaLabel": "Sign out — ends your session"
+      }
+    },
+    "commandPalette": {
+      "title": "Quick search",
+      "openTrigger": "Open quick search (Cmd+K)",
+      "placeholder": "Search constituents, campaigns, donations…",
+      "shortcutBadge": "⌘K",
+      "loading": "Searching…",
+      "error": "Could not run the search. Try again in a moment.",
+      "noResults": "No results.",
+      "groups": {
+        "navigation": "Navigation",
+        "quickCreate": "Quick create",
+        "constituents": "Constituents",
+        "campaigns": "Campaigns",
+        "donations": "Donations"
+      },
+      "nav": {
+        "dashboard": "Go to Dashboard",
+        "constituents": "Go to Constituents",
+        "campaigns": "Go to Campaigns",
+        "donations": "Go to Donations"
+      },
+      "create": {
+        "constituent": "New constituent",
+        "donation": "Record a donation",
+        "campaign": "New campaign"
+      },
+      "footer": {
+        "navigate": "to navigate",
+        "select": "to select",
+        "close": "to close"
       }
     },
     "impersonation": {

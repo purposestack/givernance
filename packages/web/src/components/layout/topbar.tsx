@@ -36,6 +36,17 @@ interface TopbarProps {
    * flash in then out on hydration.
    */
   notificationsEnabled?: boolean;
+  /**
+   * Whether the `productivity.command_palette` flag is on for this
+   * tenant (Epic #364). When `false`, the Cmd+K trigger button is
+   * completely absent — off-state QA per `feedback_feature_flag_first`.
+   */
+  commandPaletteEnabled?: boolean;
+  /**
+   * Open the global command palette overlay (owned by AppShell).
+   * Required when `commandPaletteEnabled=true`.
+   */
+  onCommandPaletteOpen?: () => void;
 }
 
 const avatarTriggerClasses =
@@ -47,10 +58,13 @@ export function Topbar({
   sidebarOpen,
   hamburgerRef,
   notificationsEnabled = false,
+  commandPaletteEnabled = false,
+  onCommandPaletteOpen,
 }: TopbarProps) {
   const { user, logout } = useAuth();
   const t = useTranslations("appShell.topbar");
   const tMenu = useTranslations("appShell.topbar.accountMenu");
+  const tPalette = useTranslations("appShell.commandPalette");
   const locale = useLocale() as Locale;
   const router = useRouter();
   const [isLocalePending, startLocaleTransition] = useTransition();
@@ -124,22 +138,30 @@ export function Topbar({
         </div>
       </div>
 
-      <div className="relative mx-auto hidden max-w-[400px] flex-1 md:block">
-        <Search
-          size={16}
-          className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-text-muted"
-          aria-hidden="true"
-        />
-        <input
-          type="text"
-          className="h-10 w-full rounded-pill border border-[var(--color-border-light)] bg-surface-container-lowest pl-10 pr-14 text-sm text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring"
-          placeholder={t("searchPlaceholder")}
-          aria-label={t("searchLabel")}
-        />
-        <kbd className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 rounded-sm border border-border bg-surface-container-low px-1.5 py-px font-mono text-xs text-text-muted">
-          ⌘K
-        </kbd>
-      </div>
+      {/*
+        Cmd+K trigger button (Epic #364, GLO-001). When the flag is off,
+        the surface is COMPLETELY absent (off-state QA per
+        `feedback_feature_flag_first`) — no inert placeholder input.
+        When on, this button opens the command palette via the
+        AppShell-owned state. Visual mimics the mockup's input look
+        (pill, search icon left, ⌘K badge right) but it's a button so
+        pointer + keyboard activation both go through one path.
+      */}
+      {commandPaletteEnabled && onCommandPaletteOpen ? (
+        <button
+          type="button"
+          onClick={onCommandPaletteOpen}
+          aria-label={tPalette("openTrigger")}
+          aria-haspopup="dialog"
+          className="relative mx-auto hidden h-10 max-w-[400px] flex-1 cursor-text items-center gap-2 rounded-pill border border-[var(--color-border-light)] bg-surface-container-lowest pl-3.5 pr-2.5 text-left text-sm text-text-muted hover:text-text focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring md:flex"
+        >
+          <Search size={16} aria-hidden="true" />
+          <span className="flex-1 truncate">{tPalette("placeholder")}</span>
+          <kbd className="rounded-sm border border-border bg-surface-container-low px-1.5 py-px font-mono text-xs text-text-muted">
+            {tPalette("shortcutBadge")}
+          </kbd>
+        </button>
+      ) : null}
 
       <div className="flex items-center gap-3">
         {/*
