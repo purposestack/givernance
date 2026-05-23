@@ -1,4 +1,4 @@
--- Migration: 0056_notifications_panel_visible (Epic #363 follow-up)
+-- Migration: 0058_notifications_panel_visible (Epic #363 follow-up)
 --
 -- Decouples the `in_app` and `email_digest` notification channels.
 --

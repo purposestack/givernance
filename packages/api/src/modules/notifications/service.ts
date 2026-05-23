@@ -64,7 +64,7 @@ export async function listNotifications(
     const conditions = [
       eq(notifications.userId, userId),
       // Panel hides rows whose recipient opted out of in-app at write
-      // time (migration 0056 — decouples in_app from email_digest).
+      // time (migration 0058 — decouples in_app from email_digest).
       // `panel_visible = true` is frozen, so a later in_app toggle does
       // NOT retroactively reveal historical rows.
       eq(notifications.panelVisible, true),
