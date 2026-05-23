@@ -232,6 +232,8 @@ Effect:
 
 **Replicate marker (issue #428)**: a session started via the past-list Replicate row-action carries a `reason` ending with `" (replicated)"` (FE-appended, idempotent, skipped if it would exceed the 2000-char cap). SOC dashboards can group replicate chains via `WHERE reason LIKE '% (replicated)' AND impersonator_keycloak_id = $1 ORDER BY created_at`. The original session's reason is unchanged — only the new row carries the marker.
 
+> ⚠ **The marker is advisory, not tamper-evident.** It is convention, not control. A super-admin can type `" (replicated)"` into a *fresh* session's reason from the start-form to make it grep-match the same pattern — or omit the marker on a true replicate (via the overflow guard, or by clicking through the start-form). Forensic questions about *which* session was a real replicate of *which* prior session MUST correlate by `(impersonator_keycloak_id, target_keycloak_id, mode, created_at)` ordered chronologically — not by string-matching the reason. A future column `impersonation_sessions.replicated_from_session_id` would make this tamper-evident and is the natural follow-up if SOC needs a queryable chain (out of scope for #428; see PR #429 review threads).
+
 ## 6. Permission isolation — what each mode does at the boundary
 
 | Layer | `delegation` | `impersonation` (pure) |

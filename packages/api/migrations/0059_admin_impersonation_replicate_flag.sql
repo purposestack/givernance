@@ -50,8 +50,8 @@ INSERT INTO feature_flags (
 VALUES (
   'admin.impersonation_replicate',
   FALSE,
-  'One-click replicate of past impersonation sessions',
-  'Adds a Replicate button next to every past support session on the impersonation list, so a Givernance staffer can re-enter the same session in one click without retyping the target, mode, and reason. The same MFA step-up rules still apply.',
+  'One-click Replicate on the Back Office support sessions list',
+  'Adds a Replicate action next to each past support session on the Back Office, so support staff can re-enter the same session in one click without retyping the target and reason. The same security checks still apply on every replicate.',
   'platform',
   FALSE,
   TRUE

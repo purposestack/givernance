@@ -260,30 +260,40 @@ async function SessionRow({
           </Button>
           {rowActions === "end" && <EndImpersonationSessionButton sessionId={session.id} />}
           {/*
-            Replicate only renders when:
-              - the flag `admin.impersonation_replicate` is ON (SSR-gated
-                by the parent which passes rowActions="replicate" only
-                in that case), AND
-              - the past session still has a resolvable app `users.id`
-                for the target (null = off-boarded → nothing to POST).
-            Off-state QA invariant: with the flag off, this branch is
-            never reached, so the column ends with only the View button.
+            Replicate variants when `rowActions === "replicate"` (flag
+            ON; off-state QA invariant: flag OFF means this branch is
+            never reached and the column ends with only the View button):
+              - `targetUserId !== null` → render the active button.
+              - `targetUserId === null` → render a disabled marker
+                explaining *why* Replicate is unavailable (off-boarded
+                target). Pre-fix the row was visually identical to a
+                flag-off row, which read as "Replicate is gone" rather
+                than "the target this session ran against has been
+                hard-deleted" — SOC + ops feedback, PR #429 review.
            */}
-          {rowActions === "replicate" && session.targetUserId !== null && (
-            <ReplicateImpersonationSessionButton
-              targetUserId={session.targetUserId}
-              mode={session.mode}
-              reason={session.reason}
-              targetKeycloakId={session.targetKeycloakId}
-              targetOrgId={session.targetOrgId}
-              targetRole={session.targetRole}
-              targetFirstName={session.targetFirstName}
-              targetLastName={session.targetLastName}
-              targetEmail={session.targetEmail}
-              tenantName={session.tenantName}
-              tenantSlug={session.tenantSlug}
-            />
-          )}
+          {rowActions === "replicate" &&
+            (session.targetUserId !== null ? (
+              <ReplicateImpersonationSessionButton
+                targetUserId={session.targetUserId}
+                mode={session.mode}
+                reason={session.reason}
+                targetKeycloakId={session.targetKeycloakId}
+                targetOrgId={session.targetOrgId}
+                targetRole={session.targetRole}
+                targetFirstName={session.targetFirstName}
+                targetLastName={session.targetLastName}
+                targetEmail={session.targetEmail}
+                tenantName={session.tenantName}
+                tenantSlug={session.tenantSlug}
+              />
+            ) : (
+              <span
+                className="text-xs italic text-muted-foreground"
+                title={t("replicateUnavailableOffboarded")}
+              >
+                {t("replicateUnavailableShort")}
+              </span>
+            ))}
         </div>
       </td>
     </tr>

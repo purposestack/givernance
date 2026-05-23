@@ -345,9 +345,9 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
   {
     key: FEATURE_FLAG_KEYS.ADMIN_IMPERSONATION_REPLICATE,
     defaultEnabled: false,
-    label: "One-click replicate of past impersonation sessions",
+    label: "One-click Replicate on the Back Office support sessions list",
     description:
-      "Adds a Replicate button next to every past support session on the impersonation list, so a Givernance staffer can re-enter the same session in one click without retyping the target, mode, and reason. The same MFA step-up rules still apply.",
+      "Adds a Replicate action next to each past support session on the Back Office, so support staff can re-enter the same session in one click without retyping the target and reason. The same security checks still apply on every replicate.",
     scope: "platform",
     tenantOverrideAllowed: false,
     public: true,
