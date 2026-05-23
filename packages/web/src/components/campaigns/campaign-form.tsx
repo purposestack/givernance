@@ -198,7 +198,12 @@ export function CampaignForm(props: CampaignFormProps) {
           toApiPayload(values),
         );
         toast.success(t("success.created"));
-        router.push(`/campaigns/${created.id}`);
+        // For nominative postal campaigns, redirect to constituent selection
+        if (created.type === "nominative_postal") {
+          router.push(`/campaigns/${created.id}/add-constituents`);
+        } else {
+          router.push(`/campaigns/${created.id}`);
+        }
         router.refresh();
       } else {
         const updated = await CampaignService.updateCampaign(

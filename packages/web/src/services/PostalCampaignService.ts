@@ -6,6 +6,7 @@
  * over the typed ApiClient that maps responses to the frontend models below.
  */
 
+import type { FilterQuery as FilterBuilderQuery } from "@/components/constituents/filters/filter-types";
 import type { ApiClient } from "@/lib/api";
 
 export type PostalExportMode = "door_drop" | "personalized";
@@ -50,6 +51,18 @@ export interface CampaignQrStats {
   scannedCodes: number;
   qrAttributedDonations: number;
   qrAttributedAmountCents: number;
+}
+
+/**
+ * Re-export of the advanced-filter `FilterQuery` (Epic #421). Lives in
+ * `components/constituents/filters/filter-types` so the FilterBuilder UI
+ * and the service share one shape on the wire.
+ */
+export type FilterQuery = FilterBuilderQuery;
+
+export interface AddMembersResult {
+  added: number;
+  skipped: number;
 }
 
 export const PostalCampaignService = {
@@ -137,6 +150,31 @@ export const PostalCampaignService = {
   async getQrStats(client: ApiClient, campaignId: string): Promise<CampaignQrStats> {
     const response = await client.get<{ data: CampaignQrStats }>(
       `/v1/campaigns/${encodeURIComponent(campaignId)}/qr-stats`,
+    );
+    return response.data;
+  },
+
+  // ── Filter-based members ─────────────────────────────────────────
+
+  /**
+   * Execute an advanced filter and atomically add every matching constituent
+   * to the campaign (Epic #421).
+   *
+   * Calls `POST /v1/campaigns/:id/members/filter` — a single round-trip that
+   * resolves the query and the membership insert in one backend transaction,
+   * which is what the route's 5-req/min rate limit is sized for. Do **not**
+   * fan-out the filter via `POST /v1/constituents/filter` and then call
+   * `addMembers` separately: that path was the source of the "filtered-0
+   * must match UUID pattern" bug fixed in this PR.
+   */
+  async addMembersFromFilter(
+    client: ApiClient,
+    campaignId: string,
+    filterQuery: FilterQuery,
+  ): Promise<AddMembersResult> {
+    const response = await client.post<{ data: AddMembersResult }>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}/members/filter`,
+      { query: filterQuery },
     );
     return response.data;
   },

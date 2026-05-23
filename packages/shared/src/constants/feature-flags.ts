@@ -293,6 +293,20 @@ export const FEATURE_FLAG_KEYS = {
    * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
    */
   PRODUCTIVITY_COMMAND_PALETTE: "productivity.command_palette",
+
+  /**
+   * Advanced constituent filtering with complex queries and pattern detection
+   * (issue #422). Enables DSL-based filtering with aggregations, patterns
+   * (LYBUNT, SYBUNT, recurring, lapsed, major donors), and campaign targeting.
+   *
+   * `scope='tenant'` + `tenant_override_allowed=true`:
+   * Performance-intensive feature that requires DB indexes (migration 0063).
+   * Gradual rollout to monitor query performance impact.
+   *
+   * `public=true`: the tenant UI reads this flag to show/hide advanced
+   * filter controls in the constituents module.
+   */
+  ADVANCED_FILTERS: "advanced_filters",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -406,6 +420,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     label: "Keyboard quick search (Cmd+K / Ctrl+K)",
     description:
       "Adds a quick search panel that opens with Cmd+K (Mac) or Ctrl+K (Windows / Linux) from any page. Type to find a constituent, donation, or campaign, jump to a section, or start a new record. Off by default while we monitor performance and search quality — flip it on from this page when you're ready.",
+    scope: "tenant",
+    tenantOverrideAllowed: true,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.ADVANCED_FILTERS,
+    defaultEnabled: false,
+    label: "Advanced constituent filtering",
+    description:
+      "Enables powerful filtering capabilities with complex queries, aggregations, and pattern detection (LYBUNT, SYBUNT, recurring donors, lapsed donors, major donors). Performance-intensive feature that requires database indexes. Enable gradually to monitor impact.",
     scope: "tenant",
     tenantOverrideAllowed: true,
     public: true,

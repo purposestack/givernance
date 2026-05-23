@@ -442,6 +442,20 @@
       "when": 1778160000000,
       "tag": "0062_search_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1778170000000,
+      "tag": "0063_add_filter_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1778180000000,
+      "tag": "0064_seed_advanced_filters_flag",
+      "breakpoints": true
     }
   ]
 }

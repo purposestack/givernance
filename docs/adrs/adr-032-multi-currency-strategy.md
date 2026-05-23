@@ -1,4 +1,4 @@
-# ADR-031: Multi-Currency Strategy — Fund/Account Settlement Model, FX Rate Policy, Checkout Currency Resolution, UI Display
+# ADR-032: Multi-Currency Strategy — Fund/Account Settlement Model, FX Rate Policy, Checkout Currency Resolution, UI Display
 
 > Related: [ADR-010 Payment Provider Selection](adr-010-payment-provider-selection.md) · [ADR-029 Keycloak Session Revocation](adr-029-keycloak-session-revocation.md) · [docs/20-payment-strategy.md](../20-payment-strategy.md) · [docs/03-data-model.md](../03-data-model.md) · [docs/25-swiss-qr-bill.md](../25-swiss-qr-bill.md)
 

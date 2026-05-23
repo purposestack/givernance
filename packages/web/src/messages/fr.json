@@ -1816,6 +1816,248 @@
         "minLifetimeHint": "Dans votre devise de référence. Inclut les dons reçus, déduits des remboursements.",
         "apply": "Appliquer",
         "clear": "Effacer les filtres"
+      },
+      "title": "Filtres avancés",
+      "description": "Choisissez un modèle rapide, affinez avec des règles, puis prévisualisez le compte avant d'appliquer.",
+      "stepPresets": "1. Partir d'un modèle rapide",
+      "stepPresetsHint": "Segments courants construits à partir de votre historique de dons. Optionnel — passez à l'étape suivante si vous préférez construire de zéro.",
+      "customFilters": "2. (Optionnel) Ajouter des règles personnalisées",
+      "customFiltersHint": "Combinez des champs comme le montant des dons, la date du dernier don ou la ville. Liez-les avec ET / OU pour affiner la liste.",
+      "activeFilters": "Sélection active",
+      "activeFiltersHint": "Tout ce qui sera appliqué. Retirez un chip pour l'exclure de la requête.",
+      "previewSectionTitle": "Aperçu en direct",
+      "previewSectionHint": "Mis à jour à chaque édition — applique exactement ce que vous voyez à la confirmation.",
+      "noConditions": "Aucune condition définie. Commencez par sélectionner un modèle prédéfini ou ajouter une condition personnalisée.",
+      "addCondition": "Ajouter une condition",
+      "selectField": "Sélectionner un champ",
+      "selectValue": "Sélectionner une valeur",
+      "selectValues": "Sélectionner des valeurs",
+      "selectValuesCount": "{count} sélectionnées",
+      "enterValue": "Entrer une valeur",
+      "yes": "Oui",
+      "no": "Non",
+      "removeCondition": "Supprimer la condition",
+      "cancel": "Annuler",
+      "apply": "Appliquer les filtres",
+      "applying": "Application...",
+      "applyWithCount": "Appliquer ({count})",
+      "applyError": "Échec de l'application des filtres",
+      "presetApplied": "Modèle appliqué : {name}",
+      "filterRemoved": "Filtre supprimé : {field}",
+      "addFirstCondition": "Ajouter votre premier filtre",
+      "addAnotherCondition": "Ajouter un autre filtre",
+      "selectOperator": "Sélectionner l'opérateur de comparaison",
+      "selectValueFor": "Sélectionner une valeur pour {field}",
+      "selectValuesFor": "Sélectionner des valeurs pour {field}",
+      "selectBooleanFor": "Sélectionner oui ou non pour {field}",
+      "enterValueFor": "Entrer une valeur pour {field}",
+      "startDate": "Date de début",
+      "endDate": "Date de fin",
+      "rangeStart": "Début de la plage {field}",
+      "rangeEnd": "Fin de la plage {field}",
+      "rangeSeparator": "à",
+      "rangeFrom": "De",
+      "rangeTo": "À",
+      "previewAnnouncement": "{count} constituants correspondent à vos filtres",
+      "operators": {
+        "and": "Correspondre à tous",
+        "or": "Correspondre à n'importe lequel",
+        "eq": "égal à",
+        "neq": "différent de",
+        "gt": "supérieur à",
+        "gte": "supérieur ou égal à",
+        "lt": "inférieur à",
+        "lte": "inférieur ou égal à",
+        "between": "entre",
+        "in": "parmi",
+        "notIn": "pas parmi",
+        "contains": "contient",
+        "notContains": "ne contient pas",
+        "startsWith": "commence par",
+        "endsWith": "se termine par",
+        "exists": "renseigné",
+        "notExists": "non renseigné"
+      },
+      "validation": {
+        "incomplete": "Veuillez compléter toutes les conditions de filtre",
+        "noConditions": "Veuillez ajouter au moins une condition de filtre"
+      },
+      "categories": {
+        "donation_history": "Historique des dons",
+        "donation_patterns": "Modèles de dons",
+        "demographics": "Démographie",
+        "engagement": "Engagement",
+        "calculated": "Métriques calculées"
+      },
+      "placeholders": {
+        "amountEur": "Montant en €",
+        "cityName": "Nom de la ville",
+        "postalCode": "1200",
+        "selectTags": "Sélectionner des étiquettes"
+      },
+      "fields": {
+        "donations": {
+          "lastDate": "Date du dernier don",
+          "lifetime": "Cumul total des dons",
+          "thisYear": "Montant donné cette année",
+          "count": "Nombre de dons",
+          "avgGift": "Montant moyen du don",
+          "largestGift": "Plus gros don unique",
+          "firstGiftDate": "Date du premier don",
+          "recurring": "Donateur récurrent",
+          "frequency": "Fréquence des dons"
+        },
+        "address": {
+          "city": "Ville",
+          "canton": "Canton",
+          "postalCode": "Code postal",
+          "country": "Pays"
+        },
+        "language": "Langue préférée",
+        "constituent": {
+          "type": "Type de constituant"
+        },
+        "tags": "Étiquettes",
+        "email": {
+          "status": "Statut de l'email"
+        },
+        "communication": {
+          "preferences": "Préférences de communication"
+        },
+        "engagement": {
+          "lastContact": "Date du dernier contact"
+        },
+        "metrics": {
+          "lifetimeValue": "Valeur sur la durée",
+          "givingFrequency": "Dons par an",
+          "recencyScore": "Mois depuis le dernier don"
+        }
+      },
+      "fieldOptions": {
+        "donations": {
+          "frequency": {
+            "monthly": "Mensuelle",
+            "quarterly": "Trimestrielle",
+            "annual": "Annuelle",
+            "irregular": "Irrégulière"
+          }
+        },
+        "address": {
+          "canton": {
+            "AG": "Argovie",
+            "AI": "Appenzell Rhodes-Intérieures",
+            "AR": "Appenzell Rhodes-Extérieures",
+            "BE": "Berne",
+            "BL": "Bâle-Campagne",
+            "BS": "Bâle-Ville",
+            "FR": "Fribourg",
+            "GE": "Genève",
+            "GL": "Glaris",
+            "GR": "Grisons",
+            "JU": "Jura",
+            "LU": "Lucerne",
+            "NE": "Neuchâtel",
+            "NW": "Nidwald",
+            "OW": "Obwald",
+            "SG": "Saint-Gall",
+            "SH": "Schaffhouse",
+            "SO": "Soleure",
+            "SZ": "Schwytz",
+            "TG": "Thurgovie",
+            "TI": "Tessin",
+            "UR": "Uri",
+            "VD": "Vaud",
+            "VS": "Valais",
+            "ZG": "Zoug",
+            "ZH": "Zurich"
+          },
+          "country": {
+            "CH": "Suisse",
+            "FR": "France",
+            "DE": "Allemagne",
+            "IT": "Italie",
+            "AT": "Autriche"
+          }
+        },
+        "language": {
+          "fr": "Français",
+          "de": "Allemand",
+          "it": "Italien",
+          "en": "Anglais"
+        },
+        "constituent": {
+          "type": {
+            "donor": "Donateur",
+            "volunteer": "Bénévole",
+            "member": "Membre",
+            "beneficiary": "Bénéficiaire",
+            "partner": "Partenaire"
+          }
+        },
+        "email": {
+          "status": {
+            "valid": "Valide",
+            "bounced": "Rebondi",
+            "unsubscribed": "Désabonné",
+            "unknown": "Inconnu"
+          }
+        },
+        "communication": {
+          "preferences": {
+            "email": "Email",
+            "postal": "Courrier postal",
+            "sms": "SMS",
+            "phone": "Téléphone"
+          }
+        }
+      },
+      "preview": {
+        "loading": "Calcul des correspondances...",
+        "count": "{count, plural, =0 {Aucun constituant correspondant} one {# constituant correspond} other {# constituants correspondent}}",
+        "error": "Impossible de calculer l'aperçu",
+        "errors": {
+          "badRequest": "Certaines conditions sont invalides — veuillez les vérifier.",
+          "unauthenticated": "Votre session a expiré. Veuillez vous reconnecter.",
+          "forbidden": "Vous n'avez pas la permission d'utiliser l'aperçu des filtres.",
+          "flagDisabled": "Les filtres avancés ne sont pas activés pour votre organisation.",
+          "rateLimit": "Trop de requêtes d'aperçu — veuillez patienter avant de réessayer."
+        }
+      },
+      "presets": {
+        "title": "Modèles rapides",
+        "items": {
+          "lybunt": {
+            "name": "Donateurs N-1 sans don N",
+            "description": "Constituants ayant donné l'an dernier mais pas cette année (LYBUNT)"
+          },
+          "majorDonors": {
+            "name": "Grands donateurs (cumul > 1000 €)",
+            "description": "Constituants dont le cumul des dons encaissés dépasse 1000 €"
+          },
+          "recurringMonthly": {
+            "name": "Donateurs récurrents",
+            "description": "Constituants avec une cadence régulière de dons mensuels ou trimestriels"
+          },
+          "newDonors": {
+            "name": "Nouveaux donateurs (premier don < 90 jours)",
+            "description": "Constituants dont le premier don encaissé date des 90 derniers jours"
+          },
+          "lapsedDonors": {
+            "name": "Donateurs inactifs (aucun don depuis 12+ mois)",
+            "description": "Constituants ayant déjà donné mais pas durant les 12 derniers mois"
+          },
+          "localGeneva": {
+            "name": "Soutiens locaux (région genevoise)",
+            "description": "Constituants à Genève ou dans la plage de codes postaux 1200–1299"
+          }
+        }
+      },
+      "patterns": {
+        "lybunt": "Donateurs N-1 inactifs N",
+        "sybunt": "Anciens donateurs inactifs",
+        "recurring": "Donateurs récurrents",
+        "lapsed": "Donateurs inactifs",
+        "majorDonor": "Grands donateurs"
       }
     },
     "actions": {
@@ -2241,14 +2483,29 @@
         "description": "Constituants qui recevront une lettre lors d'un envoi personnalisé.",
         "doorDropExplanation": "Les campagnes en boîte aux lettres ciblent une zone géographique et n'ont pas de liste de destinataires.",
         "empty": "Aucun constituant lié pour le moment.",
+        "columns": {
+          "name": "Nom",
+          "type": "Type",
+          "addedAt": "Ajouté le"
+        },
         "actions": {
           "add": "Ajouter des constituants",
-          "remove": "Retirer"
+          "remove": "Retirer",
+          "filter": "Filtres avancés",
+          "addFiltered": "Filtres avancés"
         },
         "toast": {
           "added": "{count, plural, =0 {Aucun ajout} one {# constituant ajouté} other {# constituants ajoutés}}",
           "removed": "Constituant retiré.",
-          "removeFailed": "Impossible de retirer ce constituant."
+          "removeFailed": "Impossible de retirer ce constituant.",
+          "filtered": "{count, plural, =0 {Aucun constituant correspondant} one {# constituant ajouté depuis le filtre} other {# constituants ajoutés depuis le filtre}}",
+          "filterSkipped": "{count, plural, =0 {Aucun constituant ignoré} one {# constituant ignoré (déjà lié)} other {# constituants ignorés (déjà liés)}}",
+          "filterFailed": "Impossible d'appliquer les filtres",
+          "filterBadRequest": "Certaines conditions de filtre sont invalides — veuillez les vérifier.",
+          "filterForbidden": "Vous n'avez pas la permission d'ajouter des constituants à cette campagne.",
+          "filterFlagDisabled": "Les filtres avancés ne sont pas activés pour votre organisation.",
+          "filterRateLimit": "Trop d'applications de filtres — veuillez patienter une minute avant de réessayer.",
+          "filterNotFound": "Campagne introuvable."
         },
         "dialog": {
           "title": "Ajouter des constituants à cette campagne",
@@ -2260,6 +2517,25 @@
           "submitting": "Ajout…",
           "confirm": "{count, plural, =0 {Ajouter} one {Ajouter # constituant} other {Ajouter # constituants}}",
           "error": "Impossible d'ajouter les constituants sélectionnés."
+        },
+        "activeFilters": "Filtres actifs",
+        "activeSelectionTitle": "Sélection active",
+        "clearAll": "Tout effacer",
+        "presetLabel": "Modèle de filtre : {name}",
+        "filterRemoved": "Filtre supprimé",
+        "filterDialog": {
+          "title": "Ajouter des membres avec des filtres",
+          "description": "Utilisez des filtres avancés pour sélectionner les bénéficiaires",
+          "filterBuilderLoading": "Chargement du générateur de filtres...",
+          "previewLoading": "Calcul des correspondances...",
+          "previewEmpty": "Aucun bénéficiaire ne correspond à vos filtres",
+          "previewTooMany": "Trop de correspondances ({count}). Veuillez affiner vos filtres.",
+          "previewCount": "{count} bénéficiaires seront ajoutés",
+          "cancel": "Annuler",
+          "confirm": "Ajouter {count} bénéficiaires",
+          "submitting": "Ajout des bénéficiaires...",
+          "success": "Ajout de {added} bénéficiaires ({skipped} ignorés)",
+          "error": "Échec de l'ajout des bénéficiaires"
         }
       },
       "qrTracking": {
@@ -2443,6 +2719,46 @@
           "reference": "Référence",
           "amount": "Montant"
         }
+      }
+    },
+    "addConstituents": {
+      "title": "Ajouter des bénéficiaires",
+      "subtitle": "Ajouter des destinataires à {campaignName}",
+      "breadcrumb": "Ajouter des bénéficiaires",
+      "doorDrop": {
+        "title": "Non applicable",
+        "description": "Les campagnes de distribution en porte-à-porte ciblent des zones géographiques plutôt que des destinataires spécifiques.",
+        "action": "Retour à la campagne"
+      },
+      "advancedFilters": {
+        "title": "Filtres avancés",
+        "description": "Utilisez des filtres pour ajouter des bénéficiaires en masse selon des critères"
+      },
+      "simpleSearch": {
+        "title": "Recherche simple",
+        "description": "Recherchez et sélectionnez individuellement les bénéficiaires à ajouter"
+      },
+      "actions": {
+        "skipForNow": "Passer pour le moment",
+        "adding": "Ajout en cours...",
+        "addFiltered": "Ajouter {count} bénéficiaires",
+        "addSelected": "Ajouter {count} sélectionnés"
+      },
+      "searchPlaceholder": "Rechercher par nom ou email...",
+      "searchEmpty": "Aucun bénéficiaire trouvé",
+      "filterBuilderLoading": "Chargement du générateur de filtres...",
+      "previewLoading": "Calcul des correspondances...",
+      "previewEmpty": "Aucun bénéficiaire ne correspond à vos critères",
+      "previewTooMany": "Trop de correspondances ({count}). Veuillez affiner vos filtres.",
+      "previewCount": "{count} bénéficiaires seront ajoutés",
+      "progress": "Traitement... {progress}%",
+      "success": {
+        "addedFromFilter": "Ajout réussi de {added} bénéficiaires ({skipped} ignorés)",
+        "addedFromSearch": "Ajout réussi de {added} bénéficiaires ({skipped} ignorés)"
+      },
+      "errors": {
+        "searchFailed": "La recherche a échoué. Veuillez réessayer.",
+        "addFailed": "Échec de l'ajout des bénéficiaires. Veuillez réessayer."
       }
     }
   },

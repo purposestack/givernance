@@ -94,6 +94,8 @@ async function fetchPostalMembersOrEmpty(
 ): Promise<{ data: CampaignMember[]; total: number }> {
   if (!isAdmin) return { data: [], total: 0 };
   try {
+    // perPage 25 matches `MEMBERS_PER_PAGE` in `CampaignMembersCard`, so the
+    // SSR-rendered first page hydrates without an immediate refetch.
     const fresh = await PostalCampaignService.listMembers(client, id, { perPage: 25 });
     return { data: fresh.data, total: fresh.pagination.total };
   } catch {

@@ -26,6 +26,7 @@ import {
   resumeBulkEmailJob,
 } from "./bulk-email-service.js";
 import { registerBulkImportRoutes } from "./bulk-import/routes.js";
+import { registerFilterEndpoints } from "./filters/filter.routes.js";
 import {
   CONSTITUENT_SORT_FIELDS,
   createConstituent,
@@ -779,4 +780,9 @@ export async function constituentRoutes(app: FastifyInstance) {
   // prefix is shared. All endpoints + their per-route guards live in
   // `bulk-import/routes.ts`.
   await registerBulkImportRoutes(app);
+
+  // ─── Advanced filters (Issue #422) ──────────────────────────────
+  // Filter endpoints are feature-flagged and provide complex querying
+  // capabilities for constituents with pattern detection
+  await registerFilterEndpoints(app);
 }
