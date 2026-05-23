@@ -201,8 +201,8 @@ export async function markAllRead(orgId: string, userId: string): Promise<number
 }
 
 /**
- * Mark every unread, panel-visible notification for this user pointing
- * at the given `linkUrl` as read. Returns the count.
+ * Mark every unread notification for this user pointing at the given
+ * `linkUrl` as read — regardless of `panel_visible`. Returns the count.
  *
  * Powers the "auto-mark-read when the recipient lands on the linked
  * resource" rule (Epic #363 follow-up — `docs/27-notifications.md` §
@@ -215,10 +215,13 @@ export async function markAllRead(orgId: string, userId: string): Promise<number
  * and adapts automatically to any new notification type — the per-type
  * routing decision lives in `planFanout` exactly once.
  *
- * `panel_visible = true` is honoured here: digest-only rows
- * (`panel_visible = false`) are not affected by panel-driven navigation
- * since the bell never showed them to begin with. Their read state is
- * managed by the digest worker's send-time semantics (out of scope).
+ * Why NOT filter by `panel_visible = true`: a user with `in_app=false`
+ * + `email_digest=true` (digest-only) still consumes the resource when
+ * they navigate to its page. Leaving the row unread would feed it back
+ * into tomorrow's digest — "here's a recap of what you already saw" —
+ * exactly the noise the auto-mark-read sweep is meant to suppress. The
+ * panel doesn't show these rows either way, so marking them read has
+ * no impact on the bell + panel UX.
  */
 export async function markReadByLink(
   orgId: string,
@@ -233,7 +236,6 @@ export async function markReadByLink(
         and(
           eq(notifications.userId, userId),
           eq(notifications.linkUrl, linkUrl),
-          eq(notifications.panelVisible, true),
           isNull(notifications.readAt),
           isNull(notifications.deletedAt),
         ),

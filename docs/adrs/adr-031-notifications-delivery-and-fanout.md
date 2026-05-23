@@ -80,9 +80,9 @@ A notification stays unread until the recipient acts on it. The acceptable trigg
 
 Concretely:
 
-- The web shell POSTs `/v1/notifications/mark-read-by-link` on every pathname change. The endpoint marks every panel-visible unread notification for the current user whose `link_url` matches the path. Idempotent — fires on every navigation, returns 0 in the common case (no match).
+- The web shell POSTs `/v1/notifications/mark-read-by-link` on every pathname change. The endpoint marks every unread notification for the current user whose `link_url` matches the path — REGARDLESS of `panel_visible`. Idempotent — fires on every navigation, returns 0 in the common case (no match).
 - The bell hook owns this side-effect because it's already mounted in the topbar of every authenticated page and already holds the `markRead*` mutators. No per-page wiring needed.
-- Digest-only rows (`panel_visible = false`) are NOT affected — the bell never showed them and `markReadByLink` filters by `panel_visible = true`. Their read state is irrelevant to the panel.
+- Digest-only rows (`panel_visible = false`) ARE marked read too. The user "consumed" the resource by visiting it — leaving the row unread would feed it back into tomorrow's digest as a stale recap. The panel doesn't show these rows either way, so the change has no impact on the bell + panel UX; it just keeps the digest in sync with what the recipient has already seen.
 
 **Contract for new notification types**: pick a `link_url` such that landing there is a meaningful "I have consumed this" signal. Concretely:
 
