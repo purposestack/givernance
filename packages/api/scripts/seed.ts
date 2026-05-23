@@ -833,6 +833,63 @@ async function seedImpersonationHistory(): Promise<void> {
       ttlSeconds: 60 * 60,
       outcome: "expired",
     },
+    // The four fixtures below guarantee EVERY seeded user has at
+    // least one session of BOTH modes (delegation + impersonation),
+    // so the new Quick Filters (issue #428 follow-up) demonstrate
+    // useful data for every user when narrowed by mode. Without
+    // these, filtering by "Impersonation" would empty the row for
+    // alice + camille; filtering by "Delegation" would empty the
+    // row for léo + inès. Per-tenant / per-mode coverage matrix:
+    //
+    //   alice  (NPO)    delegation + impersonation
+    //   bob    (NPO)    delegation + impersonation
+    //   camille(Demo)   delegation + impersonation
+    //   léo    (Demo)   delegation + impersonation
+    //   inès   (Demo)   delegation + impersonation
+    {
+      targetKeycloakId: NPO_ALICE,
+      targetOrgId: TENANT_ID,
+      targetRole: "org_admin",
+      mode: "impersonation",
+      reason:
+        "Reproducing Alice's report of a missing donor on the year-end appeal dashboard — read-only walkthrough.",
+      startedHoursAgo: 312,
+      ttlSeconds: 30 * 60,
+      outcome: "expired",
+    },
+    {
+      targetKeycloakId: DEMO_CAMILLE,
+      targetOrgId: DEMO_TENANT_ID,
+      targetRole: "org_admin",
+      mode: "impersonation",
+      reason:
+        "Reproducing Camille's screenshot of the postal-export download stuck at 95% — confirmed the spinner bug.",
+      startedHoursAgo: 360,
+      ttlSeconds: 30 * 60,
+      outcome: "manual",
+    },
+    {
+      targetKeycloakId: DEMO_LEO,
+      targetOrgId: DEMO_TENANT_ID,
+      targetRole: "user",
+      mode: "delegation",
+      reason:
+        "Helping Léo wire up the Stripe Connect onboarding link during the staging walkthrough call.",
+      startedHoursAgo: 408,
+      ttlSeconds: 2 * 60 * 60,
+      outcome: "manual",
+    },
+    {
+      targetKeycloakId: DEMO_INES,
+      targetOrgId: DEMO_TENANT_ID,
+      targetRole: "viewer",
+      mode: "delegation",
+      reason:
+        "Onboarding Inès as the new read-only treasurer — configured her notification preferences on her behalf.",
+      startedHoursAgo: 552,
+      ttlSeconds: 60 * 60,
+      outcome: "manual",
+    },
   ];
 
   const now = Date.now();

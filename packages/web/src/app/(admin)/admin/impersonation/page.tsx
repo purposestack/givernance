@@ -6,6 +6,7 @@ import { ReplicateImpersonationSessionButton } from "@/components/admin/replicat
 import { Button } from "@/components/ui/button";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { isImpersonationReplicateEnabled } from "@/lib/feature-flags/server";
+import { cn } from "@/lib/utils";
 import {
   ImpersonationService,
   type ImpersonationSessionDTO,
@@ -14,6 +15,20 @@ import {
 export const dynamic = "force-dynamic";
 
 type DerivedStatus = "active" | "ended" | "revoked" | "expired";
+
+/**
+ * URL-driven filter for the past-sessions section. `null` = show all.
+ * Validated from `searchParams.mode` server-side so a tampered value
+ * (`?mode=delete-everything`) silently falls back to `null` instead of
+ * leaking down into the row filter.
+ */
+type ModeFilter = "delegation" | "impersonation" | null;
+
+function parseModeFilter(value: string | string[] | undefined): ModeFilter {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === "delegation" || raw === "impersonation") return raw;
+  return null;
+}
 
 function deriveStatus(s: ImpersonationSessionDTO): DerivedStatus {
   if (s.isActive) return "active";
@@ -32,10 +47,22 @@ function deriveStatus(s: ImpersonationSessionDTO): DerivedStatus {
  * `listSessions`, so a super_admin can audit a colleague's sessions
  * (useful when the originating super_admin is on holiday and an incident
  * needs to be investigated).
+ *
+ * History section accepts a `?mode=delegation|impersonation` URL param
+ * (issue #428 follow-up) so the operator can narrow the past-sessions
+ * table to just one mode without losing the full counts on the chips.
+ * Active section is always unfiltered — the filter intent is "find a
+ * past session I want to inspect or replicate."
  */
-export default async function ImpersonationListPage() {
+interface ImpersonationListPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function ImpersonationListPage({ searchParams }: ImpersonationListPageProps) {
   const t = await getTranslations("admin.impersonation");
-  const client = await createServerApiClient();
+  const [params, client] = await Promise.all([searchParams, createServerApiClient()]);
+  const modeFilter = parseModeFilter(params.mode);
+
   // Two independent SSR fetches — kick off in parallel so the page
   // doesn't block on serial round-trips. `?all=true` returns historical
   // sessions too (newest-first); the flag fetch decides whether the
@@ -47,7 +74,15 @@ export default async function ImpersonationListPage() {
   const { data } = sessionsRes;
 
   const active = data.filter((s) => deriveStatus(s) === "active");
-  const past = data.filter((s) => deriveStatus(s) !== "active");
+  // Full past-session set BEFORE the mode filter — used to compute the
+  // chip counts so the "All" chip stays accurate even when narrowed.
+  const pastAll = data.filter((s) => deriveStatus(s) !== "active");
+  const past = modeFilter === null ? pastAll : pastAll.filter((s) => s.mode === modeFilter);
+  const counts = {
+    all: pastAll.length,
+    delegation: pastAll.filter((s) => s.mode === "delegation").length,
+    impersonation: pastAll.filter((s) => s.mode === "impersonation").length,
+  };
 
   return (
     <main id="main-content" className="mx-auto max-w-6xl space-y-8 p-6">
@@ -71,14 +106,75 @@ export default async function ImpersonationListPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-base font-semibold">{t("sectionHistory", { count: past.length })}</h2>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-base font-semibold">{t("sectionHistory", { count: past.length })}</h2>
+          <ModeFilterChips activeFilter={modeFilter} counts={counts} />
+        </div>
         {past.length === 0 ? (
-          <EmptyState label={t("emptyHistory")} />
+          <EmptyState
+            label={
+              modeFilter === null
+                ? t("emptyHistory")
+                : modeFilter === "delegation"
+                  ? t("emptyHistoryDelegation")
+                  : t("emptyHistoryImpersonation")
+            }
+          />
         ) : (
           <SessionTable rows={past} rowActions={replicateEnabled ? "replicate" : "none"} />
         )}
       </section>
     </main>
+  );
+}
+
+/**
+ * Three URL-driven filter chips above the past-sessions table.
+ * Server-rendered Links (no client state) so the back/forward stack
+ * mirrors the operator's filter history — handy when they bounce
+ * between mode views during an investigation. Counts come from the
+ * unfiltered pastAll set so the off-filter chips show their full
+ * available count even while a narrowed filter is active.
+ */
+async function ModeFilterChips({
+  activeFilter,
+  counts,
+}: {
+  activeFilter: ModeFilter;
+  counts: { all: number; delegation: number; impersonation: number };
+}) {
+  const t = await getTranslations("admin.impersonation");
+  const chipBase =
+    "rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:bg-surface-variant";
+  const chipActive = "border-primary bg-primary/10 text-primary";
+  const chipInactive = "border-border bg-surface text-muted-foreground";
+  return (
+    <nav className="flex flex-wrap items-center gap-2" aria-label={t("filterByModeAriaLabel")}>
+      <span className="text-xs uppercase tracking-wider text-muted-foreground">
+        {t("filterByMode")}
+      </span>
+      <Link
+        href="/admin/impersonation"
+        className={cn(chipBase, activeFilter === null ? chipActive : chipInactive)}
+        aria-current={activeFilter === null ? "page" : undefined}
+      >
+        {t("filterAll", { count: counts.all })}
+      </Link>
+      <Link
+        href="/admin/impersonation?mode=delegation"
+        className={cn(chipBase, activeFilter === "delegation" ? chipActive : chipInactive)}
+        aria-current={activeFilter === "delegation" ? "page" : undefined}
+      >
+        {t("filterDelegation", { count: counts.delegation })}
+      </Link>
+      <Link
+        href="/admin/impersonation?mode=impersonation"
+        className={cn(chipBase, activeFilter === "impersonation" ? chipActive : chipInactive)}
+        aria-current={activeFilter === "impersonation" ? "page" : undefined}
+      >
+        {t("filterImpersonation", { count: counts.impersonation })}
+      </Link>
+    </nav>
   );
 }
 
