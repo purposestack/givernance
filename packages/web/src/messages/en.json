@@ -1816,6 +1816,248 @@
         "minLifetimeHint": "In your base currency. Counts cleared donations net of refunds.",
         "apply": "Apply",
         "clear": "Clear filters"
+      },
+      "title": "Advanced Filters",
+      "description": "Pick a quick template, refine with extra rules, then preview the count before applying.",
+      "stepPresets": "1. Start from a quick template",
+      "stepPresetsHint": "Common segments built from your donation history. Optional — skip if you'd rather build a filter from scratch.",
+      "customFilters": "2. (Optional) Add custom rules",
+      "customFiltersHint": "Combine fields like donation amount, last gift date or city. Mix with AND / OR to narrow the list.",
+      "activeFilters": "Active selection",
+      "activeFiltersHint": "Everything that will be applied. Remove a chip to drop it from the query.",
+      "previewSectionTitle": "Live preview",
+      "previewSectionHint": "Refreshes as you edit — applies what you see when you confirm.",
+      "noConditions": "No conditions defined. Start by selecting a preset template or adding a custom condition.",
+      "addCondition": "Add condition",
+      "selectField": "Select field",
+      "selectValue": "Select value",
+      "selectValues": "Select values",
+      "selectValuesCount": "{count} selected",
+      "enterValue": "Enter value",
+      "yes": "Yes",
+      "no": "No",
+      "removeCondition": "Remove condition",
+      "cancel": "Cancel",
+      "apply": "Apply Filters",
+      "applying": "Applying...",
+      "applyWithCount": "Apply ({count})",
+      "applyError": "Failed to apply filters",
+      "presetApplied": "Applied preset: {name}",
+      "filterRemoved": "Filter removed: {field}",
+      "addFirstCondition": "Add your first filter condition",
+      "addAnotherCondition": "Add another filter condition",
+      "selectOperator": "Select comparison operator",
+      "selectValueFor": "Select value for {field}",
+      "selectValuesFor": "Select values for {field}",
+      "selectBooleanFor": "Select yes or no for {field}",
+      "enterValueFor": "Enter value for {field}",
+      "startDate": "Start date",
+      "endDate": "End date",
+      "rangeStart": "{field} range start",
+      "rangeEnd": "{field} range end",
+      "rangeSeparator": "to",
+      "rangeFrom": "From",
+      "rangeTo": "To",
+      "previewAnnouncement": "{count} constituents match your filters",
+      "operators": {
+        "and": "Match all",
+        "or": "Match any",
+        "eq": "equals",
+        "neq": "not equals",
+        "gt": "greater than",
+        "gte": "greater than or equal",
+        "lt": "less than",
+        "lte": "less than or equal",
+        "between": "between",
+        "in": "in",
+        "notIn": "not in",
+        "contains": "contains",
+        "notContains": "does not contain",
+        "startsWith": "starts with",
+        "endsWith": "ends with",
+        "exists": "exists",
+        "notExists": "does not exist"
+      },
+      "validation": {
+        "incomplete": "Please complete all filter conditions",
+        "noConditions": "Please add at least one filter condition"
+      },
+      "categories": {
+        "donation_history": "Donation History",
+        "donation_patterns": "Donation Patterns",
+        "demographics": "Demographics",
+        "engagement": "Engagement",
+        "calculated": "Calculated Metrics"
+      },
+      "placeholders": {
+        "amountEur": "Amount in €",
+        "cityName": "City name",
+        "postalCode": "1200",
+        "selectTags": "Select tags"
+      },
+      "fields": {
+        "donations": {
+          "lastDate": "Last donation date",
+          "lifetime": "Total donated (lifetime)",
+          "thisYear": "Amount donated this year",
+          "count": "Number of donations",
+          "avgGift": "Average gift size",
+          "largestGift": "Largest single gift",
+          "firstGiftDate": "First gift date",
+          "recurring": "Is recurring donor",
+          "frequency": "Donation frequency"
+        },
+        "address": {
+          "city": "City",
+          "canton": "Canton",
+          "postalCode": "Postal code",
+          "country": "Country"
+        },
+        "language": "Preferred language",
+        "constituent": {
+          "type": "Constituent type"
+        },
+        "tags": "Tags",
+        "email": {
+          "status": "Email status"
+        },
+        "communication": {
+          "preferences": "Communication preferences"
+        },
+        "engagement": {
+          "lastContact": "Last contact date"
+        },
+        "metrics": {
+          "lifetimeValue": "Lifetime value",
+          "givingFrequency": "Gifts per year",
+          "recencyScore": "Months since last gift"
+        }
+      },
+      "fieldOptions": {
+        "donations": {
+          "frequency": {
+            "monthly": "Monthly",
+            "quarterly": "Quarterly",
+            "annual": "Annual",
+            "irregular": "Irregular"
+          }
+        },
+        "address": {
+          "canton": {
+            "AG": "Aargau",
+            "AI": "Appenzell Innerrhoden",
+            "AR": "Appenzell Ausserrhoden",
+            "BE": "Bern",
+            "BL": "Basel-Landschaft",
+            "BS": "Basel-Stadt",
+            "FR": "Fribourg",
+            "GE": "Geneva",
+            "GL": "Glarus",
+            "GR": "Graubünden",
+            "JU": "Jura",
+            "LU": "Lucerne",
+            "NE": "Neuchâtel",
+            "NW": "Nidwalden",
+            "OW": "Obwalden",
+            "SG": "St. Gallen",
+            "SH": "Schaffhausen",
+            "SO": "Solothurn",
+            "SZ": "Schwyz",
+            "TG": "Thurgau",
+            "TI": "Ticino",
+            "UR": "Uri",
+            "VD": "Vaud",
+            "VS": "Valais",
+            "ZG": "Zug",
+            "ZH": "Zürich"
+          },
+          "country": {
+            "CH": "Switzerland",
+            "FR": "France",
+            "DE": "Germany",
+            "IT": "Italy",
+            "AT": "Austria"
+          }
+        },
+        "language": {
+          "fr": "French",
+          "de": "German",
+          "it": "Italian",
+          "en": "English"
+        },
+        "constituent": {
+          "type": {
+            "donor": "Donor",
+            "volunteer": "Volunteer",
+            "member": "Member",
+            "beneficiary": "Beneficiary",
+            "partner": "Partner"
+          }
+        },
+        "email": {
+          "status": {
+            "valid": "Valid",
+            "bounced": "Bounced",
+            "unsubscribed": "Unsubscribed",
+            "unknown": "Unknown"
+          }
+        },
+        "communication": {
+          "preferences": {
+            "email": "Email",
+            "postal": "Postal mail",
+            "sms": "SMS",
+            "phone": "Phone"
+          }
+        }
+      },
+      "preview": {
+        "loading": "Calculating matches...",
+        "count": "{count, plural, =0 {No constituents match} one {# constituent matches} other {# constituents match}}",
+        "error": "Could not calculate preview",
+        "errors": {
+          "badRequest": "Some conditions are invalid — please review them.",
+          "unauthenticated": "Your session expired. Please sign in again.",
+          "forbidden": "You don't have permission to preview filters.",
+          "flagDisabled": "Advanced filters are not enabled for your organization.",
+          "rateLimit": "Too many preview requests — please wait a moment and try again."
+        }
+      },
+      "presets": {
+        "title": "Quick Templates",
+        "items": {
+          "lybunt": {
+            "name": "Donated last year but not this year",
+            "description": "Constituents who gave last year but haven't given this year (LYBUNT)"
+          },
+          "majorDonors": {
+            "name": "Major donors (>€1000 lifetime)",
+            "description": "Constituents with lifetime cleared giving above €1000"
+          },
+          "recurringMonthly": {
+            "name": "Recurring donors",
+            "description": "Constituents with a regular monthly or quarterly giving cadence"
+          },
+          "newDonors": {
+            "name": "New donors (first gift in last 90 days)",
+            "description": "Constituents whose first cleared donation landed in the past 90 days"
+          },
+          "lapsedDonors": {
+            "name": "Lapsed donors (no gift in 12+ months)",
+            "description": "Constituents who donated before but not in the last 12 months"
+          },
+          "localGeneva": {
+            "name": "Local supporters (Geneva region)",
+            "description": "Constituents in the Geneva city or 1200–1299 postal-code band"
+          }
+        }
+      },
+      "patterns": {
+        "lybunt": "Donors from last year, none this year",
+        "sybunt": "Lapsed multi-year donors",
+        "recurring": "Recurring donors",
+        "lapsed": "Lapsed donors",
+        "majorDonor": "Major donors"
       }
     },
     "actions": {
@@ -2241,14 +2483,29 @@
         "description": "Constituents who will receive a letter when you run a personalized export.",
         "doorDropExplanation": "Door-drop campaigns target a geographic area instead of a recipient list — there is no membership to manage.",
         "empty": "No constituents linked yet.",
+        "columns": {
+          "name": "Name",
+          "type": "Type",
+          "addedAt": "Added"
+        },
         "actions": {
           "add": "Add constituents",
-          "remove": "Remove"
+          "remove": "Remove",
+          "filter": "Advanced Filters",
+          "addFiltered": "Advanced Filters"
         },
         "toast": {
           "added": "{count, plural, =0 {Nothing added} one {# constituent added} other {# constituents added}}",
           "removed": "Constituent removed.",
-          "removeFailed": "Could not remove this constituent."
+          "removeFailed": "Could not remove this constituent.",
+          "filtered": "{count, plural, =0 {No constituents matched} one {# constituent added from filter} other {# constituents added from filter}}",
+          "filterSkipped": "{count, plural, =0 {No constituents skipped} one {# constituent skipped (already linked)} other {# constituents skipped (already linked)}}",
+          "filterFailed": "Could not apply filters",
+          "filterBadRequest": "Some filter conditions are invalid — please review them.",
+          "filterForbidden": "You don't have permission to add constituents to this campaign.",
+          "filterFlagDisabled": "Advanced filters are not enabled for your organization.",
+          "filterRateLimit": "Too many filter applications — please wait a minute and try again.",
+          "filterNotFound": "Campaign not found."
         },
         "dialog": {
           "title": "Add constituents to this campaign",
@@ -2260,6 +2517,25 @@
           "submitting": "Adding…",
           "confirm": "{count, plural, =0 {Add} one {Add # constituent} other {Add # constituents}}",
           "error": "Could not add the selected constituents."
+        },
+        "activeFilters": "Active filters",
+        "activeSelectionTitle": "Active selection",
+        "clearAll": "Clear all",
+        "presetLabel": "Filter preset: {name}",
+        "filterRemoved": "Filter removed",
+        "filterDialog": {
+          "title": "Add Members with Filters",
+          "description": "Use advanced filters to select constituents",
+          "filterBuilderLoading": "Loading filter builder...",
+          "previewLoading": "Calculating matches...",
+          "previewEmpty": "No constituents match your filters",
+          "previewTooMany": "Too many matches ({count}). Please refine your filters.",
+          "previewCount": "{count} constituents will be added",
+          "cancel": "Cancel",
+          "confirm": "Add {count} constituents",
+          "submitting": "Adding constituents...",
+          "success": "Added {added} constituents ({skipped} skipped)",
+          "error": "Failed to add constituents"
         }
       },
       "qrTracking": {
@@ -2443,6 +2719,46 @@
           "reference": "Reference",
           "amount": "Amount"
         }
+      }
+    },
+    "addConstituents": {
+      "title": "Add Constituents",
+      "subtitle": "Add recipients to {campaignName}",
+      "breadcrumb": "Add constituents",
+      "doorDrop": {
+        "title": "Not applicable",
+        "description": "Door drop campaigns target geographic areas rather than specific recipients.",
+        "action": "Return to campaign"
+      },
+      "advancedFilters": {
+        "title": "Advanced Filters",
+        "description": "Use filters to bulk add constituents based on criteria"
+      },
+      "simpleSearch": {
+        "title": "Simple Search",
+        "description": "Search and select individual constituents to add"
+      },
+      "actions": {
+        "skipForNow": "Skip for now",
+        "adding": "Adding...",
+        "addFiltered": "Add {count} constituents",
+        "addSelected": "Add {count} selected"
+      },
+      "searchPlaceholder": "Search by name or email...",
+      "searchEmpty": "No constituents found",
+      "filterBuilderLoading": "Loading filter builder...",
+      "previewLoading": "Calculating matches...",
+      "previewEmpty": "No constituents match your criteria",
+      "previewTooMany": "Too many matches ({count}). Please refine your filters.",
+      "previewCount": "{count} constituents will be added",
+      "progress": "Processing... {progress}%",
+      "success": {
+        "addedFromFilter": "Successfully added {added} constituents ({skipped} skipped)",
+        "addedFromSearch": "Successfully added {added} constituents ({skipped} skipped)"
+      },
+      "errors": {
+        "searchFailed": "Search failed. Please try again.",
+        "addFailed": "Failed to add constituents. Please try again."
       }
     }
   },

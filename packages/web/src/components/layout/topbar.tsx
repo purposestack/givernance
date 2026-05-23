@@ -163,7 +163,7 @@ export function Topbar({
         </button>
       ) : null}
 
-      <div className="flex items-center gap-3">
+      <div className="ml-auto flex items-center gap-3">
         {/*
           NotificationsBell is feature-flag-gated (Epic #363). When the
           flag is off the button is completely absent — off-state QA per

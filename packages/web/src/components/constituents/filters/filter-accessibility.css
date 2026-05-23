@@ -1,0 +1,120 @@
+/* Accessibility improvements for filter components */
+
+/* Screen reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Focus indicators */
+.filter-condition:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .filter-chip {
+    border: 2px solid currentColor;
+  }
+  
+  .filter-condition {
+    border: 1px solid currentColor;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Keyboard navigation improvements */
+.filter-builder [role="combobox"]:focus,
+.filter-builder input:focus,
+.filter-builder button:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Skip links for keyboard navigation */
+.skip-to-conditions {
+  position: absolute;
+  left: -9999px;
+  z-index: 999;
+}
+
+.skip-to-conditions:focus {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  padding: 8px 16px;
+  background: var(--surface);
+  color: var(--on-surface);
+  text-decoration: none;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Error states with ARIA */
+.filter-condition[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.filter-error-message {
+  color: var(--error);
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+/* Loading states */
+.filter-preview[aria-busy="true"] {
+  opacity: 0.7;
+}
+
+/* Touch target sizes */
+@media (pointer: coarse) {
+  .filter-builder button,
+  .filter-builder [role="combobox"],
+  .filter-builder input {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .filter-builder {
+    --surface: #1a1a1a;
+    --on-surface: #e0e0e0;
+    --surface-variant: #2d2d2d;
+    --on-surface-variant: #b0b0b0;
+    --outline: #404040;
+    --outline-variant: #303030;
+  }
+}
+
+/* Print styles */
+@media print {
+  .filter-builder-dialog {
+    display: none;
+  }
+  
+  .active-filters-summary {
+    border: 1px solid #000;
+    padding: 1rem;
+    margin: 1rem 0;
+  }
+}

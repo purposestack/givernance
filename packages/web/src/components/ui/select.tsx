@@ -24,7 +24,7 @@ export const SelectTrigger = forwardRef<
       "font-body text-base placeholder:text-text-muted",
       "transition-[border-color,box-shadow] duration-normal ease-out",
       "focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring",
-      "disabled:cursor-not-allowed disabled:opacity-60",
+      "disabled:cursor-not-allowed disabled:opacity-70 disabled:contrast-more:opacity-80",
       "aria-invalid:border-error aria-invalid:focus-visible:shadow-ring-error",
       "data-[placeholder]:text-text-muted",
       className,
