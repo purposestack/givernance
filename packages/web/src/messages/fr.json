@@ -1903,7 +1903,7 @@
           "count": "Nombre de dons",
           "avgGift": "Montant moyen du don",
           "largestGift": "Plus gros don unique",
-          "firstGiftDate": "Date du premier don",
+          "firstDate": "Date du premier don",
           "recurring": "Donateur récurrent",
           "frequency": "Fréquence des dons"
         },

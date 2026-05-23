@@ -1903,7 +1903,7 @@
           "count": "Number of donations",
           "avgGift": "Average gift size",
           "largestGift": "Largest single gift",
-          "firstGiftDate": "First gift date",
+          "firstDate": "First gift date",
           "recurring": "Is recurring donor",
           "frequency": "Donation frequency"
         },

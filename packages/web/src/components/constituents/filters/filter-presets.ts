@@ -210,8 +210,13 @@ export const filterFields: FilterField[] = [
     placeholder: "placeholders.amountEur",
   },
   {
-    name: "donations.firstGiftDate",
-    label: "fields.donations.firstGiftDate",
+    // Field name MUST match the BE `FIELD_REGISTRY` key in
+    // packages/api/src/modules/constituents/filters/types.ts ("donations.firstDate").
+    // An earlier mismatch (`firstGiftDate` here vs `firstDate` BE-side) made the
+    // `new-donors` preset's chip fall back to its raw field name and trigger
+    // `MISSING_MESSAGE: constituents.filters.donations.firstDate` at runtime.
+    name: "donations.firstDate",
+    label: "fields.donations.firstDate",
     type: "date",
     category: "donation_history",
     operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "exists", "notExists"],
