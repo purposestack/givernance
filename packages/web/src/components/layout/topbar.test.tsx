@@ -212,3 +212,48 @@ describe("Topbar account menu", () => {
     });
   });
 });
+
+// ─── Command palette trigger (Epic #364, GLO-001) ────────────────────────
+
+function renderTopbarWithPalette(
+  opts: { enabled: boolean; onOpen?: () => void } = {
+    enabled: false,
+  },
+) {
+  const hamburgerRef = createRef<HTMLButtonElement>();
+  return render(
+    <Topbar
+      onMenuToggle={vi.fn()}
+      sidebarOpen={false}
+      hamburgerRef={hamburgerRef as React.RefObject<HTMLButtonElement | null>}
+      commandPaletteEnabled={opts.enabled}
+      onCommandPaletteOpen={opts.onOpen}
+    />,
+  );
+}
+
+describe("Topbar command-palette trigger", () => {
+  it("is completely absent when the flag is off (off-state QA)", () => {
+    renderTopbarWithPalette({ enabled: false });
+    // Neither the explicit aria-label nor any button matching the
+    // placeholder should appear. We use a regex on the EN aria-label
+    // ("Open quick search") and assert null.
+    expect(screen.queryByRole("button", { name: /open quick search/i })).toBeNull();
+  });
+
+  it("renders a button with aria-haspopup=dialog when the flag is on", () => {
+    renderTopbarWithPalette({ enabled: true, onOpen: vi.fn() });
+    const trigger = screen.getByRole("button", { name: /open quick search/i });
+    expect(trigger.tagName).toBe("BUTTON");
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+  });
+
+  it("invokes onCommandPaletteOpen when clicked", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    renderTopbarWithPalette({ enabled: true, onOpen });
+    const trigger = screen.getByRole("button", { name: /open quick search/i });
+    await user.click(trigger);
+    expect(onOpen).toHaveBeenCalledOnce();
+  });
+});

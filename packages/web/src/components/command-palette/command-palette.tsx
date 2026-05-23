@@ -187,19 +187,19 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     return [
       {
         id: "create-constituent",
-        href: "/constituents?new=1",
+        href: "/constituents/new",
         label: t("create.constituent"),
         icon: UserPlus,
       },
       {
         id: "create-donation",
-        href: "/donations?new=1",
+        href: "/donations/new",
         label: t("create.donation"),
         icon: PlusCircle,
       },
       {
         id: "create-campaign",
-        href: "/campaigns?new=1",
+        href: "/campaigns/new",
         label: t("create.campaign"),
         icon: Calendar,
       },

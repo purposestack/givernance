@@ -166,7 +166,6 @@ export async function search(orgId: string, rawQuery: string): Promise<SearchRes
             coalesce(c.city, '')
           ) @@ plainto_tsquery('simple', ${q})
           OR (coalesce(c.first_name, '') || ' ' || coalesce(c.last_name, '')) ILIKE ${likeQ}
-          OR coalesce(c.email, '') ILIKE ${likeQ}
         )
       ORDER BY score DESC, c.updated_at DESC
       LIMIT ${limit}
