@@ -155,6 +155,11 @@ async function processDigestForTenant(
       .innerJoin(users, eq(users.id, notifications.userId))
       .where(
         and(
+          // Defence in depth (issue #430): every tenant-scoped query
+          // filters by `org_id` explicitly. The GUC pin + RLS is the
+          // safety net, not the contract.
+          eq(notifications.orgId, tenantId),
+          eq(users.orgId, tenantId),
           isNotNull(notifications.userId),
           isNull(notifications.readAt),
           isNull(notifications.deletedAt),
@@ -165,6 +170,7 @@ async function processDigestForTenant(
           sql`EXISTS (
             SELECT 1 FROM ${notificationPreferences} p
             WHERE p.user_id = ${notifications.userId}
+              AND p.org_id = ${tenantId}::uuid
               AND p.type = ${notifications.type}
               AND p.email_digest = TRUE
           )`,

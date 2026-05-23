@@ -70,16 +70,18 @@ export async function processTeamInviteEmail(
   if (row.acceptedAt) return { sent: false, reason: "already_accepted" };
 
   // Resolve the inviter's display name — purely for personalisation. We
-  // run this without tenant context because the worker has no JWT and the
-  // events queue is itself the tenant boundary; `users` is FORCE RLS but
-  // the worker process uses the system role. A null result is fine —
+  // run this without tenant context (worker has no JWT, events queue is
+  // the tenant boundary). Issue #430 mandates an explicit
+  // `eq(users.orgId, payload.tenantId)` filter even on a PK lookup, so
+  // a drifted `inviterUserId` pointer cannot leak a foreign tenant's
+  // first/last name into the invitation email. Null result is fine —
   // `renderTeamInviteEmail` falls back to "A colleague".
   let inviterName: string | null = null;
   if (payload.inviterUserId) {
     const [u] = await db
       .select({ firstName: users.firstName, lastName: users.lastName })
       .from(users)
-      .where(eq(users.id, payload.inviterUserId))
+      .where(and(eq(users.id, payload.inviterUserId), eq(users.orgId, payload.tenantId)))
       .limit(1);
     if (u) inviterName = `${u.firstName} ${u.lastName}`.trim() || null;
   }

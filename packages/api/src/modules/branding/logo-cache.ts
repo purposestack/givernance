@@ -9,7 +9,7 @@
  */
 
 import { orgBrandingAssets, tenants } from "@givernance/shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { LRUCache } from "lru-cache";
 import { systemDb } from "../../lib/db.js";
 import { getBrandingObject } from "../../lib/s3.js";
@@ -43,6 +43,12 @@ export async function getActivePdfLetterhead(orgId: string): Promise<Buffer | nu
   const cached = cache.get(tenant.logoAssetId);
   if (cached) return cached;
 
+  // Issue #430 — scope the asset lookup by orgId even though we use
+  // `systemDb` (owner pool, BYPASSRLS). The tenant pointer
+  // `tenants.logo_asset_id` should never reference a foreign tenant's
+  // asset, but a drifted/corrupted pointer would otherwise embed the
+  // wrong logo in receipt PDFs. The explicit predicate keeps the
+  // tenant boundary load-bearing on the application code.
   const [asset] = await systemDb
     .select({
       id: orgBrandingAssets.id,
@@ -51,7 +57,7 @@ export async function getActivePdfLetterhead(orgId: string): Promise<Buffer | nu
       deletedAt: orgBrandingAssets.deletedAt,
     })
     .from(orgBrandingAssets)
-    .where(eq(orgBrandingAssets.id, tenant.logoAssetId));
+    .where(and(eq(orgBrandingAssets.id, tenant.logoAssetId), eq(orgBrandingAssets.orgId, orgId)));
 
   if (!asset || asset.status !== "ready" || asset.deletedAt) return null;
 

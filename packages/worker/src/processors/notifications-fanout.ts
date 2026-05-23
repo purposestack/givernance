@@ -252,7 +252,7 @@ export async function fanoutNotifications(input: FanoutInput): Promise<void> {
 async function runFanoutPlan(input: FanoutInput, plan: FanoutPlanEntry[]): Promise<void> {
   await withWorkerContext(input.tenantId, async (tx) => {
     for (const entry of plan) {
-      const recipientUserIds = await resolveRecipients(tx, entry.recipients);
+      const recipientUserIds = await resolveRecipients(tx, entry.recipients, input.tenantId);
       if (recipientUserIds.length === 0) continue;
 
       // Honour per-user preferences across BOTH channels. A user is a
@@ -262,7 +262,7 @@ async function runFanoutPlan(input: FanoutInput, plan: FanoutPlanEntry[]): Promi
       // `panel_visible` column records the panel decision so the bell
       // hides it while the digest worker can still pick it up.
       // Migration 0058 captures the rationale.
-      const channels = await resolveChannels(tx, recipientUserIds, entry.type);
+      const channels = await resolveChannels(tx, recipientUserIds, entry.type, input.tenantId);
       if (channels.length === 0) continue;
 
       const rows: NewNotification[] = channels.map(({ userId, inApp }) => ({
@@ -291,22 +291,29 @@ async function resolveRecipients(
   // biome-ignore lint/suspicious/noExplicitAny: Drizzle tx type is awkward to spell out — same shape as in API service
   tx: any,
   filter: RecipientFilter,
+  tenantId: string,
 ): Promise<string[]> {
+  // Defence in depth: every recipient query carries an explicit
+  // `eq(users.orgId, tenantId)` predicate, never relying on RLS as
+  // the sole barrier. Reason: a deploy misconfig (issue #430,
+  // 2026-05-23 incident) flipped `DATABASE_URL_APP` to the owner
+  // role on staging — RLS was bypassed across the stack, and the
+  // RLS-only `WHERE role='org_admin'` query here returned every
+  // org_admin across every tenant. The explicit filter makes the
+  // tenant boundary load-bearing on the application code, not on
+  // a deploy-time constant.
   if (filter.kind === "specific_user") {
-    // RLS already isolates the tenant; we additionally filter
-    // soft-deleted users.
     const rows = await tx
       .select({ id: users.id })
       .from(users)
-      .where(and(eq(users.id, filter.userId), isNull(users.deletedAt)))
+      .where(and(eq(users.id, filter.userId), eq(users.orgId, tenantId), isNull(users.deletedAt)))
       .limit(1);
     return rows.map((r: { id: string }) => r.id);
   }
-  // all_org_admins — RLS isolates the tenant.
   const rows = await tx
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.role, "org_admin"), isNull(users.deletedAt)));
+    .where(and(eq(users.orgId, tenantId), eq(users.role, "org_admin"), isNull(users.deletedAt)));
   return rows.map((r: { id: string }) => r.id);
 }
 
@@ -324,13 +331,15 @@ async function resolveChannels(
   tx: any,
   userIds: string[],
   type: NotificationType,
+  tenantId: string,
 ): Promise<ResolvedChannels[]> {
   if (userIds.length === 0) return [];
   // Pull preference rows for the (recipient set, type) pair only.
   // Earlier revisions scanned every preference row for the type
   // (scaling with tenant headcount); Data review H2 flagged the
   // scope mismatch. The new `inArray(userId, userIds)` clause hits
-  // `notification_preferences_user_idx` directly.
+  // `notification_preferences_user_idx` directly. The explicit
+  // `eq(orgId, tenantId)` is defence-in-depth (issue #430).
   const rows = await tx
     .select({
       userId: notificationPreferences.userId,
@@ -339,7 +348,11 @@ async function resolveChannels(
     })
     .from(notificationPreferences)
     .where(
-      and(eq(notificationPreferences.type, type), inArray(notificationPreferences.userId, userIds)),
+      and(
+        eq(notificationPreferences.orgId, tenantId),
+        eq(notificationPreferences.type, type),
+        inArray(notificationPreferences.userId, userIds),
+      ),
     );
 
   const descriptor = getNotificationDescriptor(type);

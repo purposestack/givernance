@@ -248,17 +248,29 @@ async function loadPublicPage(campaignId: string) {
         logoVariants: orgBrandingAssets.variants,
       })
       .from(campaignPublicPages)
-      .innerJoin(campaigns, eq(campaigns.id, campaignPublicPages.campaignId))
+      .innerJoin(
+        campaigns,
+        and(eq(campaigns.id, campaignPublicPages.campaignId), eq(campaigns.orgId, basicPage.orgId)),
+      )
       .innerJoin(tenants, eq(tenants.id, campaigns.orgId))
       .leftJoin(
         orgBrandingAssets,
         and(
           eq(orgBrandingAssets.id, tenants.logoAssetId),
+          eq(orgBrandingAssets.orgId, basicPage.orgId),
           eq(orgBrandingAssets.status, "ready"),
           isNull(orgBrandingAssets.deletedAt),
         ),
       )
-      .where(eq(campaignPublicPages.campaignId, campaignId));
+      // Defence in depth (issue #430): explicit orgId predicate on the
+      // root table so the cross-table join chain cannot fall back to
+      // RLS alone for tenant scoping.
+      .where(
+        and(
+          eq(campaignPublicPages.orgId, basicPage.orgId),
+          eq(campaignPublicPages.campaignId, campaignId),
+        ),
+      );
 
     if (!page) return null;
 
@@ -284,7 +296,16 @@ async function loadPublicPage(campaignId: string) {
         donorCount: sql<number>`COUNT(DISTINCT ${donations.constituentId})::int`,
       })
       .from(donations)
-      .where(and(eq(donations.campaignId, campaignId), eq(donations.status, "cleared")));
+      // Defence in depth (issue #430): explicit org filter so the
+      // public-page hero stats can never sum donations from another
+      // tenant if the campaign_id was ever leaked or guessed.
+      .where(
+        and(
+          eq(donations.orgId, basicPage.orgId),
+          eq(donations.campaignId, campaignId),
+          eq(donations.status, "cleared"),
+        ),
+      );
 
     // Strip the internal `logoVariants` + raw `bankAccountId` from
     // the cached shape. The two raw style columns survive into the

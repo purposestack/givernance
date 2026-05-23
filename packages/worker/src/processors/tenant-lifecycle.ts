@@ -59,6 +59,10 @@ export async function processTenantLifecycle(job: Job): Promise<void> {
           .set({ provisionalUntil: null, updatedAt: new Date() })
           .where(
             and(
+              // Defence in depth (issue #430): the candidate row's
+              // `orgId` is already in scope — adding it here keeps the
+              // tenant boundary explicit on the application code.
+              eq(users.orgId, row.orgId),
               eq(users.id, row.userId),
               sql`${users.provisionalUntil} IS NOT NULL`,
               eq(users.firstAdmin, true),

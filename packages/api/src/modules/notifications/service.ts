@@ -1,11 +1,16 @@
 /**
  * In-app notification centre — read/write service (Epic #363, GLO-004).
  *
- * Recipient-scoped (NOT just tenant-scoped): every query filters
- * `notifications.user_id = currentUserId` in addition to the RLS-
- * enforced `org_id = currentTenantId` boundary. A tenant member can
- * never read another member's notifications, even within the same
- * tenant. The same applies to mark-read mutations.
+ * Doubly scoped — every query filters BOTH:
+ *   1. `notifications.org_id = currentTenantId` — application-code
+ *      defence in depth (issue #430, 2026-05-23 incident: a deploy
+ *      misconfig flipped the app pool to a BYPASSRLS owner role and
+ *      RLS-only queries leaked cross-tenant; RLS is the safety net,
+ *      never the contract).
+ *   2. `notifications.user_id = currentUserId` — a tenant member can
+ *      never read another member's notifications, even within the
+ *      same tenant.
+ * Same scoping applies to every mutation.
  *
  * Soft-delete universal (ADR-021): every read filters
  * `deleted_at IS NULL`; deletion sets `deleted_at` instead of
@@ -62,6 +67,7 @@ export async function listNotifications(
 
   return withTenantContext(orgId, async (tx) => {
     const conditions = [
+      eq(notifications.orgId, orgId),
       eq(notifications.userId, userId),
       // Panel hides rows whose recipient opted out of in-app at write
       // time (migration 0058 — decouples in_app from email_digest).
@@ -119,6 +125,7 @@ export async function getUnreadCount(orgId: string, userId: string): Promise<num
       .from(notifications)
       .where(
         and(
+          eq(notifications.orgId, orgId),
           eq(notifications.userId, userId),
           // Bell badge mirrors the panel — see `listNotifications`.
           eq(notifications.panelVisible, true),
@@ -152,6 +159,7 @@ export async function markRead(
       .from(notifications)
       .where(
         and(
+          eq(notifications.orgId, orgId),
           eq(notifications.id, id),
           eq(notifications.userId, userId),
           // Only panel-visible rows can be operated on from the bell UI.
@@ -168,7 +176,7 @@ export async function markRead(
     const [updated] = await tx
       .update(notifications)
       .set({ readAt: new Date() })
-      .where(eq(notifications.id, id))
+      .where(and(eq(notifications.orgId, orgId), eq(notifications.id, id)))
       .returning();
     return updated ?? existing;
   });
@@ -185,6 +193,7 @@ export async function markAllRead(orgId: string, userId: string): Promise<number
       .set({ readAt: new Date() })
       .where(
         and(
+          eq(notifications.orgId, orgId),
           eq(notifications.userId, userId),
           // Same scope as the panel — don't pre-read digest-only rows
           // since the user can't see them. Their unread state is
@@ -234,6 +243,7 @@ export async function markReadByLink(
       .set({ readAt: new Date() })
       .where(
         and(
+          eq(notifications.orgId, orgId),
           eq(notifications.userId, userId),
           eq(notifications.linkUrl, linkUrl),
           isNull(notifications.readAt),
@@ -260,6 +270,7 @@ export async function softDeleteNotification(
       .set({ deletedAt: new Date() })
       .where(
         and(
+          eq(notifications.orgId, orgId),
           eq(notifications.id, id),
           eq(notifications.userId, userId),
           // Panel-only affordance — see `markRead`.
@@ -295,7 +306,9 @@ export async function listPreferences(orgId: string, userId: string): Promise<Pr
     const rows = (await tx
       .select()
       .from(notificationPreferences)
-      .where(eq(notificationPreferences.userId, userId))) as NotificationPreference[];
+      .where(
+        and(eq(notificationPreferences.orgId, orgId), eq(notificationPreferences.userId, userId)),
+      )) as NotificationPreference[];
     const explicit = new Map<string, NotificationPreference>();
     for (const row of rows) {
       explicit.set(row.type, row);
@@ -411,6 +424,7 @@ export async function* streamNotifications(
         .from(notifications)
         .where(
           and(
+            eq(notifications.orgId, orgId),
             eq(notifications.userId, userId),
             // SSE stream feeds the same panel — skip digest-only rows
             // so the bell badge doesn't tick up for something the user

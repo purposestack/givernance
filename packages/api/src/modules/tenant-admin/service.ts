@@ -1301,7 +1301,8 @@ export async function resendFirstEnterpriseInvitation(input: {
     await tx
       .update(invitations)
       .set({ token: newToken, expiresAt })
-      .where(eq(invitations.id, input.invitationId));
+      // Issue #430 — explicit org filter for defence in depth.
+      .where(and(eq(invitations.id, input.invitationId), eq(invitations.orgId, input.orgId)));
 
     // Outbox emits the same event type as the initial invite so the email
     // worker (#145) routes both to the same template; the audit action
@@ -1376,7 +1377,10 @@ export async function revokeFirstEnterpriseInvitation(input: {
       return { ok: false as const, error: "already_accepted" as const };
     }
 
-    await tx.delete(invitations).where(eq(invitations.id, input.invitationId));
+    await tx
+      .delete(invitations)
+      // Issue #430 — explicit org filter for defence in depth.
+      .where(and(eq(invitations.id, input.invitationId), eq(invitations.orgId, input.orgId)));
 
     await tx.insert(auditLogs).values({
       orgId: input.orgId,

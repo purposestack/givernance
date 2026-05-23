@@ -22,7 +22,7 @@
 import type { KeycloakSyncOrgLogoJob } from "@givernance/shared/jobs";
 import { orgBrandingAssets, tenants } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../lib/db.js";
 import { updateOrganization } from "../lib/keycloak-admin.js";
 import { jobLogger } from "../lib/logger.js";
@@ -68,7 +68,11 @@ export async function processKeycloakSyncOrgLogo(
         deletedAt: orgBrandingAssets.deletedAt,
       })
       .from(orgBrandingAssets)
-      .where(eq(orgBrandingAssets.id, tenant.logoAssetId));
+      // Defence in depth (issue #430): if `tenants.logo_asset_id` ever
+      // drifts to point at a foreign tenant's asset, this filter
+      // prevents us from publishing that foreign tenant's hero URL to
+      // this tenant's Keycloak organization.
+      .where(and(eq(orgBrandingAssets.id, tenant.logoAssetId), eq(orgBrandingAssets.orgId, orgId)));
 
     if (asset && asset.status === "ready" && !asset.deletedAt) {
       const heroKey = asset.variants?.["public-hero"]?.key;

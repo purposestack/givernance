@@ -263,7 +263,12 @@ export async function processGeneratePostalExport(
       const [publicPage] = await tx
         .select({ status: campaignPublicPages.status })
         .from(campaignPublicPages)
-        .where(eq(campaignPublicPages.campaignId, campaignId));
+        // Defence in depth (issue #430): explicit orgId filter so the
+        // mode re-resolution cannot pick up a foreign tenant's
+        // public-page status if the campaign_id ever collided.
+        .where(
+          and(eq(campaignPublicPages.campaignId, campaignId), eq(campaignPublicPages.orgId, orgId)),
+        );
 
       return {
         campaign: campaignRow,

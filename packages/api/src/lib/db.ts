@@ -67,3 +67,38 @@ export async function withTenantContext<T>(
     return callback(tx);
   });
 }
+
+/**
+ * Boot-time guard (issue #430): verify that the application pool's
+ * runtime role is NOT a BYPASSRLS role. RLS is the safety net we use
+ * for tenant isolation alongside the explicit `eq(orgId, …)` filter
+ * the application code carries; if the runtime role bypasses RLS, the
+ * safety net is gone and a single missed `eq` would leak cross-tenant
+ * (which is exactly the 2026-05-23 staging incident: `DATABASE_URL_APP`
+ * pointed to the owner role `givernance` with `rolbypassrls=t`).
+ *
+ * Crash fast on misconfig — the alternative is a silent leak.
+ */
+export async function assertAppRoleSecure(): Promise<void> {
+  const res = await pool.query<{
+    current_user: string;
+    rolbypassrls: boolean;
+    rolsuper: boolean;
+  }>(
+    "SELECT current_user, r.rolbypassrls, r.rolsuper FROM pg_roles r WHERE r.rolname = current_user",
+  );
+  const row = res.rows[0];
+  if (!row) {
+    throw new Error("assertAppRoleSecure: unable to resolve current_user against pg_roles");
+  }
+  if (row.rolsuper) {
+    throw new Error(
+      `FATAL: DATABASE_URL_APP connects as SUPERUSER role '${row.current_user}'. RLS is bypassed across the stack. Fix DATABASE_URL_APP to use 'givernance_app' (see issue #430).`,
+    );
+  }
+  if (row.rolbypassrls) {
+    throw new Error(
+      `FATAL: DATABASE_URL_APP connects as BYPASSRLS role '${row.current_user}'. RLS is bypassed across the stack. Fix DATABASE_URL_APP to use 'givernance_app' (see issue #430).`,
+    );
+  }
+}

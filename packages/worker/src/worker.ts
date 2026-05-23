@@ -10,6 +10,7 @@ import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { env } from "./env.js";
+import { assertWorkerAppRoleSecure } from "./lib/db.js";
 import { jobLogger, logger } from "./lib/logger.js";
 import { routeDomainEvent } from "./lib/route-domain-event.js";
 import { extractTraceId } from "./lib/trace-context.js";
@@ -568,7 +569,18 @@ function startWorkers() {
   logger.info({ workers: workers.map((w) => w.name) }, "Workers started");
 }
 
-startWorkers();
-scheduleRepeatableJobs().catch((err) => {
-  logger.error({ err }, "Failed to schedule repeatable jobs");
+// Issue #430 — boot-time tenant-isolation guard. A misconfigured
+// DATABASE_URL_APP (e.g. pointing at the owner role with BYPASSRLS, as
+// happened on staging on 2026-05-23) silently disables RLS across
+// every worker query. Crash fast before any job runs so the breakage
+// is a deploy failure, never a silent cross-tenant leak.
+async function main() {
+  await assertWorkerAppRoleSecure();
+  startWorkers();
+  await scheduleRepeatableJobs();
+}
+
+main().catch((err) => {
+  logger.error({ err }, "Worker failed to start");
+  process.exit(1);
 });

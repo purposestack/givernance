@@ -503,7 +503,10 @@ export async function revokeTeamInvitation(
       .where(and(eq(users.keycloakId, input.actorKeycloakId), eq(users.orgId, input.orgId)))
       .limit(1);
 
-    await tx.delete(invitations).where(eq(invitations.id, input.invitationId));
+    await tx
+      .delete(invitations)
+      // Issue #430: explicit org filter even after parent verify.
+      .where(and(eq(invitations.id, input.invitationId), eq(invitations.orgId, input.orgId)));
 
     await tx.insert(auditLogs).values({
       orgId: input.orgId,
@@ -649,7 +652,8 @@ export async function resendTeamInvitation(
     await tx
       .update(invitations)
       .set({ token: newToken, expiresAt })
-      .where(eq(invitations.id, input.invitationId));
+      // Issue #430: explicit org filter even after parent verify.
+      .where(and(eq(invitations.id, input.invitationId), eq(invitations.orgId, input.orgId)));
 
     const [actor] = await tx
       .select({ id: users.id })
@@ -958,7 +962,8 @@ export async function acceptTeamInvitation(
             deletedAt: null,
             updatedAt: new Date(),
           })
-          .where(eq(users.id, existingUserRow.id))
+          // Issue #430 — explicit org filter even on PK lookup.
+          .where(and(eq(users.id, existingUserRow.id), eq(users.orgId, row.orgId)))
           .returning({ id: users.id });
         // biome-ignore lint/style/noNonNullAssertion: update returning() yields one row by primary key
         userId = updated!.id;
@@ -995,7 +1000,8 @@ export async function acceptTeamInvitation(
       await tx
         .update(invitations)
         .set({ acceptedAt: new Date() })
-        .where(eq(invitations.id, row.invitationId));
+        // Issue #430: explicit org filter for defence in depth.
+        .where(and(eq(invitations.id, row.invitationId), eq(invitations.orgId, row.orgId)));
 
       const eventsToEmit: Array<{
         tenantId: string;
