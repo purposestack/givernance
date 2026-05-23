@@ -106,9 +106,9 @@ export default async function ImpersonationListPage({ searchParams }: Impersonat
       </section>
 
       <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold">{t("sectionHistory", { count: past.length })}</h2>
-          <ModeFilterChips activeFilter={modeFilter} counts={counts} />
+          <ModeFilterTabs activeFilter={modeFilter} counts={counts} />
         </div>
         {past.length === 0 ? (
           <EmptyState
@@ -129,14 +129,27 @@ export default async function ImpersonationListPage({ searchParams }: Impersonat
 }
 
 /**
- * Three URL-driven filter chips above the past-sessions table.
- * Server-rendered Links (no client state) so the back/forward stack
- * mirrors the operator's filter history — handy when they bounce
- * between mode views during an investigation. Counts come from the
- * unfiltered pastAll set so the off-filter chips show their full
- * available count even while a narrowed filter is active.
+ * URL-driven segmented control above the past-sessions table.
+ *
+ * Visually mirrors the design-system `Tabs` / `TabsList` / `TabsTrigger`
+ * primitives in `@/components/ui/tabs` (Radix-based; used on the
+ * tenant detail page and elsewhere) — same `surface-container-low`
+ * track, same `surface-container-lowest + shadow-xs` active pip,
+ * same `rounded-[var(--radius-md)]` outer / `rounded-[var(--radius-sm)]`
+ * inner radii. The shared visual primitive is intentional so the
+ * operator's mental model of "this is a tab strip / segmented filter"
+ * stays consistent across admin surfaces.
+ *
+ * Why this isn't `<Tabs>` itself: Radix Tabs is a Client Component
+ * with internal `value` state. Driving the filter through the URL
+ * (so back/forward navigation mirrors the operator's filter history,
+ * AND the page stays SSR with no JS payload) requires plain `<Link>`
+ * triggers — which Radix's `<TabsTrigger>` does support via
+ * `asChild`, but only when the parent Tabs is mounted on the client.
+ * Re-implementing the same visual contract here keeps the page
+ * server-rendered without giving up the design-system look.
  */
-async function ModeFilterChips({
+async function ModeFilterTabs({
   activeFilter,
   counts,
 }: {
@@ -144,32 +157,41 @@ async function ModeFilterChips({
   counts: { all: number; delegation: number; impersonation: number };
 }) {
   const t = await getTranslations("admin.impersonation");
-  const chipBase =
-    "rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:bg-surface-variant";
-  const chipActive = "border-primary bg-primary/10 text-primary";
-  const chipInactive = "border-border bg-surface text-muted-foreground";
+  // Track and trigger classes lifted verbatim from
+  // `@/components/ui/tabs` so any future design-token change
+  // (e.g., tweaking the active shadow) propagates here too.
+  const trackClass = cn(
+    "inline-flex items-center gap-1 p-1",
+    "bg-surface-container-low text-on-surface-variant",
+    "rounded-[var(--radius-md)]",
+  );
+  const triggerBase = cn(
+    "inline-flex items-center justify-center whitespace-nowrap",
+    "px-3 py-1.5 text-sm font-medium",
+    "rounded-[var(--radius-sm)] transition-colors duration-normal ease-out",
+    "focus-visible:outline-none focus-visible:shadow-ring",
+  );
+  const triggerActive = "bg-surface-container-lowest text-on-surface shadow-xs";
+
   return (
-    <nav className="flex flex-wrap items-center gap-2" aria-label={t("filterByModeAriaLabel")}>
-      <span className="text-xs uppercase tracking-wider text-muted-foreground">
-        {t("filterByMode")}
-      </span>
+    <nav aria-label={t("filterByModeAriaLabel")} className={trackClass}>
       <Link
         href="/admin/impersonation"
-        className={cn(chipBase, activeFilter === null ? chipActive : chipInactive)}
+        className={cn(triggerBase, activeFilter === null && triggerActive)}
         aria-current={activeFilter === null ? "page" : undefined}
       >
         {t("filterAll", { count: counts.all })}
       </Link>
       <Link
         href="/admin/impersonation?mode=delegation"
-        className={cn(chipBase, activeFilter === "delegation" ? chipActive : chipInactive)}
+        className={cn(triggerBase, activeFilter === "delegation" && triggerActive)}
         aria-current={activeFilter === "delegation" ? "page" : undefined}
       >
         {t("filterDelegation", { count: counts.delegation })}
       </Link>
       <Link
         href="/admin/impersonation?mode=impersonation"
-        className={cn(chipBase, activeFilter === "impersonation" ? chipActive : chipInactive)}
+        className={cn(triggerBase, activeFilter === "impersonation" && triggerActive)}
         aria-current={activeFilter === "impersonation" ? "page" : undefined}
       >
         {t("filterImpersonation", { count: counts.impersonation })}
