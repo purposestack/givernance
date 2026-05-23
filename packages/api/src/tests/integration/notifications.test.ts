@@ -78,7 +78,7 @@ async function seedNotification(opts: {
   readAt?: Date | null;
   deletedAt?: Date | null;
   /**
-   * Override `panel_visible` (migration 0056). Defaults to `true` to
+   * Override `panel_visible` (migration 0058). Defaults to `true` to
    * mirror the fanout's behaviour for users with `in_app` enabled.
    * Set `false` to seed a row that exists only for the email digest —
    * such a row must be invisible to the panel + bell.
@@ -567,7 +567,7 @@ describe("Notifications — isolation (RLS + recipient)", () => {
   });
 });
 
-// ─── 3.5 Channel decoupling (migration 0056) ──────────────────────────
+// ─── 3.5 Channel decoupling (migration 0058) ──────────────────────────
 //
 // Regression guard for the Epic #363 follow-up: a user who opted OUT of
 // in-app but IN to email_digest still gets a `notifications` row at

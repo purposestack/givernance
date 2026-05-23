@@ -182,9 +182,9 @@ erDiagram
 
 The worker's `planFanout(event)` resolves recipients per the table in [§ 1](#1-end-to-end-user-flow). For "specific user" rules (postal export, bulk email), the payload carries `requestedBy` — if absent (older events, super-admin actions), the rule falls back to "all org_admins". The fanout writes a `notifications` row when EITHER `in_app` OR `email_digest` is enabled for the recipient's (user, type) pair; the row's `panel_visible` column records the panel-side decision at write time so the in-app surface honours `in_app=false` while the digest worker can still pick the row up. Users who opted out of BOTH channels are silently dropped before any row is written.
 
-### Channel decoupling (`panel_visible`, migration 0056)
+### Channel decoupling (`panel_visible`, migration 0058)
 
-`in_app` and `email_digest` are two independent delivery channels. The original Epic #363 contract coupled them — `in_app=false` short-circuited the row insert, leaving the digest worker with nothing to read. Migration 0056 introduces `notifications.panel_visible BOOLEAN NOT NULL DEFAULT TRUE`, set at fanout time to the recipient's effective `in_app` preference:
+`in_app` and `email_digest` are two independent delivery channels. The original Epic #363 contract coupled them — `in_app=false` short-circuited the row insert, leaving the digest worker with nothing to read. Migration 0058 introduces `notifications.panel_visible BOOLEAN NOT NULL DEFAULT TRUE`, set at fanout time to the recipient's effective `in_app` preference:
 
 | Effective `in_app` | Effective `email_digest` | Row written? | `panel_visible` | Panel sees it? | Digest sees it? |
 |---|---|---|---|---|---|

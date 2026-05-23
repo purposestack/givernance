@@ -261,7 +261,7 @@ async function runFanoutPlan(input: FanoutInput, plan: FanoutPlanEntry[]): Promi
       // #363 contract) silently broke email-only opt-ins. The row's
       // `panel_visible` column records the panel decision so the bell
       // hides it while the digest worker can still pick it up.
-      // Migration 0056 captures the rationale.
+      // Migration 0058 captures the rationale.
       const channels = await resolveChannels(tx, recipientUserIds, entry.type);
       if (channels.length === 0) continue;
 
