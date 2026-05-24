@@ -1,0 +1,30 @@
+/* #440 — PMFMarker */
+
+.pmfMarker {
+  position: relative;
+  height: 0;
+}
+
+.line {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 42px;
+  background: var(--color-on-surface);
+  z-index: 2;
+}
+
+.tag {
+  position: absolute;
+  top: -22px;
+  transform: translateX(-50%);
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  color: var(--color-on-surface);
+  background: var(--color-surface-container-lowest);
+  padding: 1px 6px;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--color-outline-variant);
+  white-space: nowrap;
+  z-index: 3;
+}

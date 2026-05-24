@@ -1,0 +1,57 @@
+/* #440 — RefundGauge */
+
+.gauge {
+  width: 100%;
+}
+
+.track {
+  margin-top: var(--space-4);
+  height: 11px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  position: relative;
+  background: linear-gradient(
+    90deg,
+    var(--color-primary) 0%,
+    var(--color-primary) var(--gauge-ok-stop),
+    var(--color-tertiary) var(--gauge-ok-stop),
+    var(--color-tertiary) var(--gauge-watch-stop),
+    var(--color-error) var(--gauge-watch-stop),
+    var(--color-error) 100%
+  );
+}
+
+.cursor {
+  position: absolute;
+  top: -3px;
+  left: var(--cursor-x, 0%);
+  width: 3px;
+  height: 17px;
+  background: var(--color-on-surface);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px var(--color-surface-container-lowest);
+}
+
+.ticks {
+  position: relative;
+  height: 14px;
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--color-on-surface-variant);
+}
+
+.tick {
+  position: absolute;
+  left: var(--tick-x, 0%);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.tick:first-child {
+  transform: translateX(0);
+}
+
+.tick:last-child {
+  transform: translateX(-100%);
+}

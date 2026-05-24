@@ -1,0 +1,108 @@
+/* #440 — CurrencyDonut */
+
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.donut {
+  flex: 0 0 130px;
+  width: 130px;
+  height: 130px;
+  position: relative;
+}
+
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.centerCount {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--color-on-surface);
+}
+
+.centerLabel {
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  color: var(--color-on-surface-variant);
+  margin-top: 2px;
+}
+
+.legend {
+  flex: 1;
+  min-width: 170px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 13px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+
+/* Semantic tones — see FinanceTone in ./types.ts. */
+.tonePrimary {
+  background: var(--color-primary);
+}
+
+.toneTertiary {
+  background: var(--color-tertiary);
+}
+
+.toneSecondary {
+  background: var(--color-secondary);
+}
+
+.toneIndigo {
+  background: var(--color-indigo, var(--color-indigo-text));
+}
+
+.toneDanger {
+  background: var(--color-error);
+}
+
+.toneNeutral {
+  background: var(--color-on-surface-variant);
+}
+
+.code {
+  font-family: var(--font-mono);
+  color: var(--color-on-surface);
+  font-weight: var(--weight-medium);
+}
+
+.amount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-on-surface);
+  text-align: right;
+}
+
+.pct {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-on-surface-variant);
+  font-size: var(--text-xs);
+  min-width: 42px;
+  text-align: right;
+}
