@@ -2,6 +2,7 @@
 
 import {
   BRANDING_EVENT_TYPES,
+  FINANCE_DASHBOARD_JOBS,
   NOTIFICATIONS_DIGEST_JOBS,
   QUEUE_NAMES,
   TENANT_LIFECYCLE_JOBS,
@@ -18,6 +19,9 @@ import { processBrandingActivateLogo } from "./processors/branding-activate-logo
 import { processBrandingGcAsset } from "./processors/branding-gc-asset.js";
 import { processBrandingAsset } from "./processors/branding-process-asset.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
+import { processConstituentCountRefresh } from "./processors/finance-constituent-count-refresh.js";
+import { processSurveyRetention } from "./processors/finance-survey-retention.js";
+import { processSurveySend } from "./processors/finance-survey-send.js";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processKeycloakSyncOrgLogo } from "./processors/keycloak-sync-org-logo.js";
@@ -30,6 +34,7 @@ import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import { processSignupVerificationEmail } from "./processors/signup-email.js";
 import { processSignupResend } from "./processors/signup-resend.js";
 import { processStripeWebhook } from "./processors/stripe-webhook.js";
+import { fanoutSurveyErasure } from "./processors/survey-erasure-cascade.js";
 import { processTeamInviteEmail } from "./processors/team-invite-email.js";
 import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
 
@@ -70,6 +75,21 @@ const notificationsDigestQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS_DIGEST, {
 });
 const bulkImportQueue = new Queue(QUEUE_NAMES.BULK_IMPORT, { connection: queueConnection });
 
+// #436 — Super-admin finance dashboard enrichment queue. Carries three
+// cron-scheduled job names (constituent-count refresh, survey send,
+// survey retention). Default retry policy mirrors the digest queue —
+// transient PG flakes get exponential backoff, but the cron tick
+// retries cleanly on the next interval if all attempts fail.
+const financeDashboardQueue = new Queue(QUEUE_NAMES.FINANCE_DASHBOARD, {
+  connection: queueConnection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 60_000 },
+    removeOnComplete: { count: 10 },
+    removeOnFail: { count: 50 },
+  },
+});
+
 /**
  * Register the nightly provisional-admin expire job.
  *
@@ -100,6 +120,55 @@ async function scheduleRepeatableJobs() {
     {
       jobId: "notifications-digest-daily",
       repeat: { pattern: "0 9 * * *", tz: "UTC" },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+
+  // #436 — Super-admin finance dashboard enrichment crons. All three are
+  // platform-wide sweeps; each respects the `admin.finance_dashboard`
+  // feature flag and early-returns when off. `jobId` is fixed per
+  // schedule so worker restarts don't fan out duplicates.
+
+  // Daily constituent-count refresh at 03:00 UTC — pre-EU morning so
+  // the dashboard's per-tenant tile is fresh by the time super-admins
+  // log in.
+  await financeDashboardQueue.add(
+    FINANCE_DASHBOARD_JOBS.CONSTITUENT_COUNT_REFRESH,
+    {},
+    {
+      jobId: "finance-constituent-count-refresh-daily",
+      repeat: { pattern: "0 3 * * *", tz: "UTC" },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+
+  // Hourly survey-send sweep — picks up any survey whose
+  // next_scheduled_at has elapsed. Hourly granularity (rather than
+  // daily) is necessary so a super-admin who clicks "Schedule for
+  // 14:00 today" gets fanout that same hour, not at the next daily
+  // tick.
+  await financeDashboardQueue.add(
+    FINANCE_DASHBOARD_JOBS.SURVEY_SEND,
+    {},
+    {
+      jobId: "finance-survey-send-hourly",
+      repeat: { pattern: "0 * * * *", tz: "UTC" },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+
+  // Weekly survey-response retention sweep, Sunday 04:00 UTC — between
+  // the constituent-count refresh and the EU morning login window so
+  // an unexpectedly long sweep doesn't impact dashboard freshness.
+  await financeDashboardQueue.add(
+    FINANCE_DASHBOARD_JOBS.SURVEY_RETENTION,
+    {},
+    {
+      jobId: "finance-survey-retention-weekly",
+      repeat: { pattern: "0 4 * * 0", tz: "UTC" },
       removeOnComplete: { count: 10 },
       removeOnFail: { count: 50 },
     },
@@ -141,6 +210,11 @@ async function processDomainEvent(job: Job): Promise<void> {
   // but the existing receipt/email/branding routing below is not
   // blocked by a fanout failure (the helper logs and returns).
   await fanoutNotifications({ outboxId: id, tenantId, type, payload, traceparent });
+
+  // GDPR erasure cascade (issue #439) — soft-error-only, runs
+  // alongside the routing decision. The helper short-circuits on
+  // non-`user.soft_deleted` events.
+  await fanoutSurveyErasure({ outboxId: id, tenantId, type, payload });
 
   const decision = routeDomainEvent({ id, tenantId, type, payload, traceparent });
 
@@ -520,6 +594,34 @@ function startWorkers() {
     },
   );
 
+  // #436 — Super-admin finance dashboard enrichment worker.
+  // Concurrency 1: all three job names are platform-wide sweeps that
+  // must not race themselves (constituent count UPDATEs against every
+  // tenant in turn; survey send claims pending invitations
+  // idempotently but a duplicate sweep would still log noisy "already
+  // existing" skips). Scale by adding pods, not concurrency.
+  const financeDashboardWorker = new Worker(
+    QUEUE_NAMES.FINANCE_DASHBOARD,
+    async (job: Job) => {
+      if (job.name === FINANCE_DASHBOARD_JOBS.CONSTITUENT_COUNT_REFRESH) {
+        return processConstituentCountRefresh(job);
+      }
+      if (job.name === FINANCE_DASHBOARD_JOBS.SURVEY_SEND) {
+        return processSurveySend(job);
+      }
+      if (job.name === FINANCE_DASHBOARD_JOBS.SURVEY_RETENTION) {
+        return processSurveyRetention(job);
+      }
+      logger.warn({ jobName: job.name }, "Unknown finance-dashboard job — skipping");
+      return null;
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 1,
+      ...defaultJobOpts,
+    },
+  );
+
   const workers = [
     receiptsWorker,
     emailsWorker,
@@ -533,6 +635,7 @@ function startWorkers() {
     keycloakSyncWorker,
     notificationsDigestWorker,
     bulkImportWorker,
+    financeDashboardWorker,
   ];
 
   for (const w of workers) {
