@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
+import { USER_EVENT_TYPES } from "@givernance/shared/jobs";
 import { auditLogs, outboxEvents, platformAdmins, tenants, users } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
@@ -887,6 +888,20 @@ export async function userRoutes(app: FastifyInstance) {
           .where(and(eq(users.id, id), eq(users.orgId, orgId)))
           .returning();
         if (!updated) return { kind: "not_found" as const };
+
+        // GDPR erasure cascade (issue #439). Surveys carry the user as
+        // a FK on `survey_invitations.user_id` (ON DELETE SET NULL).
+        // The cascade processor NULLs every pending invitation pointer
+        // and emits one audit_logs row per affected invitation so the
+        // immutable trail records the erasure path. Emitting from
+        // inside the soft-delete tx keeps the (row mutation, outbox
+        // emit) pair atomic — a relay redelivery and a tx rollback
+        // can never disagree about whether the cascade is owed.
+        await tx.insert(outboxEvents).values({
+          tenantId: orgId,
+          type: USER_EVENT_TYPES.SOFT_DELETED,
+          payload: { userId: updated.id, orgId },
+        });
 
         return {
           kind: "soft_deleted" as const,
