@@ -1,0 +1,66 @@
+/* #440 — VolumeRevenueChart */
+
+.wrap {
+  position: relative;
+  width: 100%;
+}
+
+.wrap svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.tooltip {
+  /* In normal flow — recharts positions its own wrapper at the cursor
+     and handles edge-flipping. The previous `position: absolute; top:
+     X; right: Y` HARDCODED the tooltip to a fixed spot inside the
+     wrapper, which caused it to detach from the cursor (and overflow
+     into the sidebar on the chart's leftmost data points). */
+  min-width: 186px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container-lowest);
+  border: 1px solid var(--color-outline-variant);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+  pointer-events: none;
+}
+
+.tooltipDate {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  color: var(--color-on-surface);
+  margin-bottom: var(--space-2);
+}
+
+.tooltipRow {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--color-on-surface-variant);
+  margin-top: 4px;
+}
+
+.tooltipSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.tooltipSwatch[data-series="volume"] {
+  background: var(--color-primary);
+}
+
+.tooltipSwatch[data-series="revenue"] {
+  background: var(--color-tertiary);
+}
+
+.tooltipValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-on-surface);
+}

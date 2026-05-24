@@ -1,0 +1,102 @@
+/* #440 — KPITile */
+
+.kpi {
+  background: var(--color-surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-kpi);
+  padding: var(--space-6);
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lifted, 0 1px 2px rgba(30, 27, 22, 0.04), 0 8px 24px rgba(9, 100, 71, 0.06));
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-on-surface-variant);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.infoIcon {
+  font-size: 13px;
+  color: var(--color-outline);
+  cursor: help;
+}
+
+.iconChip {
+  display: flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  flex-shrink: 0;
+  /* Dynamic colour from caller-provided design tokens — see KPITile.tsx
+     comment about Exception 2 of the inline-style ban. */
+  background: var(--kpi-icon-bg);
+  color: var(--kpi-icon-color);
+}
+
+.iconChip .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.value {
+  font-family: var(--font-heading);
+  font-size: 2.1rem;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-on-surface);
+  margin-top: var(--space-3);
+  letter-spacing: -0.01em;
+}
+
+.suffix {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--color-on-surface-variant);
+  font-weight: var(--weight-regular);
+}
+
+.meta {
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.foot {
+  font-size: var(--text-xs);
+  color: var(--color-on-surface-variant);
+}
+
+.enrichNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-2xs);
+  color: var(--color-tertiary);
+  font-weight: var(--weight-medium);
+  margin-top: 2px;
+}
+
+.enrichNote .material-symbols-outlined {
+  font-size: 12px;
+}
