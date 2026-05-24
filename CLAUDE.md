@@ -61,6 +61,8 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 28-bulk-import.md           — Bulk Import Constituents (Epic #373): CSV/Excel upload, async worker pipeline, dedupe, 90-day retention, audit trail
 │   ├── 29-global-search.md         — Global search / Command palette (Epic #364, GLO-001): Cmd+K overlay, Postgres FTS + pg_trgm, /v1/search RLS-scoped grouped results, RBAC-aware quick-create
 │   ├── 30-advanced-filters.md      — Advanced Constituent Filters (Epic #418, PR #421): query DSL + pattern detection (LYBUNT, SYBUNT, RECURRING, LAPSED, MAJOR_DONOR), preset templates, real-time preview, persisted per-campaign segmentation
+│   ├── 31-tenant-mobilization-score.md      — Tenant Mobilisation Score (Epic #434): formula, weights, k-anonymity, re-evaluation hook
+│   ├── 32-survey-infrastructure.md         — In-house GDPR-native surveys (Epic #434, issue #439): PMF/NPS/CSAT, DPO-review gate, k-anonymity, 24-month retention, erasure cascade
 │   ├── adrs/                       — Individual ADR files (incl. ADR-023 bucket topology, ADR-024 image pipeline, ADR-025 PDF code boundary, ADR-027 Swiss QR-bill, ADR-028 camt.053 ingestion, ADR-029 Keycloak session revocation, ADR-030 public-page archetype slots — hybrid shell + slot components per Epic #362, ADR-031 notification delivery + outbox fanout — SSE with polling fallback per Epic #363, ADR-032 multi-currency strategy — fund/account settlement model + FX rate policy, ADR-033 advanced constituent filter architecture — query DSL + pattern detection per Epic #418)
 │   ├── runbooks/                   — Operator-driven one-shot ops (e.g. migrate-staging-keycloak-db.md for issue #283; launch-prod.md for the production-environment launch — issue #344); each file is plan + live journal + post-mortem. Also: bulk-email-stalled-job.md (recurring SRE triage flow for issue #326's Stalled / Partial bulk-email recovery), feature-flag-rollback.md (emergency psql + redis-cli flip when the Back Office page is unavailable), keycloak-backchannel-logout-cutover.md (per-env override of `backchannel.logout.url` after each realm sync — issue #76), and cross-tenant-rls-hardening-cutover.md (issue #430 — one-shot wiring of the `GIVERNANCE_APP_PASSWORD` secret + `givernance_app` role rotation that closes the staging cross-tenant notification leak)
 │   ├── dev/
@@ -174,7 +176,7 @@ Key ADRs for frontend work:
 - Project name: **Givernance** (not "Libero", not "givernance-npo-platform")
 - Terminology: **NPO** (nonprofit organization), not "NGO"
 - GDPR in English docs, RGPD in French docs
-- All docs are in `docs/`, numbered 01-30 for architecture specs (next free slot: `31-`)
+- All docs are in `docs/`, numbered 01-32 for architecture specs (next free slot: `33-`)
 
 ### 🛑 Documentation discipline (CRITICAL FOR ALL DOMAIN WORK)
 
