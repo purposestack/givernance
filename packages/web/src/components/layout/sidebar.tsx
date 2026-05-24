@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  ArrowLeft,
+  BarChart3,
   Building2,
   ChevronsUpDown,
   Flag,
@@ -44,7 +46,13 @@ interface NavItem {
 
 interface AdminNavItem {
   href: string;
-  labelKey: "tenants" | "disputes" | "impersonation" | "platformAdmins" | "featureFlags";
+  labelKey:
+    | "tenants"
+    | "disputes"
+    | "impersonation"
+    | "platformAdmins"
+    | "featureFlags"
+    | "finance";
   icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
 }
 
@@ -73,6 +81,17 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin/feature-flags", labelKey: "featureFlags", icon: Flag },
 ];
 
+/**
+ * Flag-gated admin nav entries (Epic #434). Rendered only when the
+ * matching flag prop is on at SSR time — keeps the off-state surface
+ * completely absent per `feedback_feature_flag_first`.
+ */
+const FINANCE_ADMIN_NAV_ITEM: AdminNavItem = {
+  href: "/admin/finance",
+  labelKey: "finance",
+  icon: BarChart3,
+};
+
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
@@ -84,6 +103,13 @@ interface SidebarProps {
    * callers that haven't threaded the prop yet.
    */
   isSuperAdmin?: boolean;
+  /**
+   * SSR-resolved value of `admin.finance_dashboard` (Epic #434). When
+   * `true` AND the viewer is super-admin, render the "Platform finance"
+   * nav entry. When `false` the entry is completely absent (no aria
+   * trace) — off-state QA per `feedback_feature_flag_first`.
+   */
+  financeDashboardEnabled?: boolean;
   /**
    * Server-resolved org logo (Epic #286 / PR #287 review, major 4).
    * Replaces the per-mount client-side fetch — both eliminates the
@@ -103,6 +129,7 @@ export function Sidebar({
   onClose,
   membershipCount,
   isSuperAdmin: isSuperAdminProp,
+  financeDashboardEnabled = false,
   orgLogo = null,
 }: SidebarProps) {
   const pathname = usePathname();
@@ -215,13 +242,29 @@ export function Sidebar({
               className="mt-6 border-t border-outline-variant pt-4"
               aria-labelledby="sidebar-backoffice-heading"
             >
+              {/* Back-to-org link — mockup docs/design/admin/dashboard.html
+                  L362. Mirrors the operator workflow of "I jumped into the
+                  super-admin shell, but my own org's dashboard is the one
+                  I usually live in." Only rendered for super-admins (the
+                  only role that sees this section). */}
+              <Link
+                href="/dashboard"
+                onClick={handleMobileClose}
+                className="mb-2 flex items-center gap-3 rounded-lg px-4 py-2 text-xs font-medium text-on-surface-variant transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-on-surface focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              >
+                <ArrowLeft size={14} aria-hidden="true" />
+                <span>{tAdmin("backToOrg")}</span>
+              </Link>
               <h2
                 id="sidebar-backoffice-heading"
                 className="mb-2 px-4 text-xs font-semibold uppercase tracking-wide text-on-surface-variant"
               >
                 {tAdmin("section")}
               </h2>
-              {ADMIN_NAV_ITEMS.map((item) => {
+              {[
+                ...ADMIN_NAV_ITEMS,
+                ...(financeDashboardEnabled ? [FINANCE_ADMIN_NAV_ITEM] : []),
+              ].map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
                 const Icon = item.icon;
                 return (

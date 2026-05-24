@@ -29,6 +29,13 @@ interface AppShellProps {
    */
   isSuperAdmin?: boolean;
   /**
+   * SSR-resolved value of `admin.finance_dashboard` (Epic #434). When
+   * `true` AND the viewer is super-admin, the sidebar renders the
+   * "Platform finance" entry. Defaults to `false` — off-state QA per
+   * `feedback_feature_flag_first`.
+   */
+  financeDashboardEnabled?: boolean;
+  /**
    * Active tenant id — used to scope the "Add your logo" banner's per-org
    * dismissal key (Epic #286). Optional: when missing (super-admin), the
    * banner skips its render path.
@@ -82,6 +89,7 @@ export function AppShell({
   provisionalAdmin,
   membershipCount,
   isSuperAdmin,
+  financeDashboardEnabled = false,
   orgId,
   canManageBranding = false,
   orgLogo = null,
@@ -146,6 +154,7 @@ export function AppShell({
         onClose={handleSidebarClose}
         membershipCount={membershipCount}
         isSuperAdmin={isSuperAdmin}
+        financeDashboardEnabled={financeDashboardEnabled}
         orgLogo={orgLogo}
       />
 

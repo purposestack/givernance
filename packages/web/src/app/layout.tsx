@@ -41,7 +41,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       lang={locale}
       className={`${inter.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
     >
-      <head />
+      <head>
+        {/* Material Symbols Outlined — variable icon font.
+            next/font can't enumerate the icon ligature set, so we load
+            it the classic way. Every component that renders
+            <span class="material-symbols-outlined">…</span> depends on
+            this stylesheet; without it the ligature name shows as raw
+            text (e.g. "savings" instead of the piggy-bank glyph). */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+        />
+      </head>
       <body>
         <a
           href="#main-content"

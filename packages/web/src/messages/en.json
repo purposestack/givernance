@@ -314,7 +314,9 @@
         "disputes": "Disputes",
         "impersonation": "Support sessions",
         "platformAdmins": "Platform admins",
-        "featureFlags": "Feature flags"
+        "featureFlags": "Feature flags",
+        "finance": "Platform finance",
+        "backToOrg": "Back to your organisation"
       }
     },
     "topbar": {
@@ -1005,6 +1007,216 @@
           "notFound": "This admin no longer exists.",
           "generic": "Something went wrong. Please retry."
         }
+      }
+    },
+    "finance": {
+      "pageEyebrow": "Platform view · {count} tenants",
+      "pageTitle": "Platform finance",
+      "pageTitlePrefix": "Platform",
+      "pageTitleEm": "finance",
+      "pageSubtitle": "Volume, Givernance revenue, satisfaction and portfolio health across all tenants.",
+      "pageSubtitleContext": "Last {period} · all currencies (EUR eq.) · all tenants.",
+      "liveIndicator": "Transactions live · {timestamp}",
+      "topbarLive": "Transactions live · {timestamp}",
+      "topbarStaleSource": "{count} stale source",
+      "topbarStaleSourceAria": "{count} data source is stale — jump to tenant health",
+      "actionExport": "Export",
+      "actionMonthlyReport": "Monthly report",
+      "filters": {
+        "currencyAria": "Currency",
+        "currencyAll": "All currencies (EUR eq.)",
+        "tenantAria": "Tenant",
+        "tenantAll": "All tenants"
+      },
+      "alertStrip": {
+        "body": "{count, plural, =1 {1 tenant on alert} other {# tenants on alert}} — detractors crossed with a churn signal. Reach out this week.",
+        "cta": "See the list →"
+      },
+      "distribution": {
+        "title": "Score distribution",
+        "subtitle": "{count} tenants in 10-pt buckets. Dashed line = mean ({score}).",
+        "axisAriaLabel": "Score distribution histogram"
+      },
+      "spotlights": {
+        "title": "Spotlights",
+        "subtitle": "Notable moves. Up → call to congratulate · down → support check-in.",
+        "trendingUp": "Trending up",
+        "trendingDown": "To watch",
+        "empty": "Not enough movement to highlight."
+      },
+      "sectionDistribution": "Distribution & moves",
+      "loading": "Refreshing…",
+      "period": {
+        "ariaLabel": "Period",
+        "today": "Today",
+        "7d": "7d",
+        "30d": "30d",
+        "90d": "90d",
+        "ytd": "YTD"
+      },
+      "empty": {
+        "title": "No data for this period",
+        "body": "No cleared donations yet for the selected window. Pick a longer period or check back once tenants start processing."
+      },
+      "fetchError": {
+        "title": "Could not load finance summary",
+        "body": "The dashboard request failed. Retry, or check the API logs if the issue persists."
+      },
+      "sections": {
+        "mobilisation": "Mobilisation",
+        "timeline": "Volume timeline",
+        "risk": "Risk & concentration",
+        "health": "Tenant health",
+        "tenants": "Tenants & flow",
+        "refunds": "Refund rate",
+        "currencies": "Currencies"
+      },
+      "sectionHints": {
+        "timeline": "Cleared donations / day · revenue overlay",
+        "risk": "Operational platform signals",
+        "tenants": "Top contributors · refunds · currencies"
+      },
+      "formula": {
+        "title": "Components · platform average",
+        "footnote": "The breakdown is shown for transparency. Each component is capped at 100 before weighting.",
+        "activation": "Activation",
+        "recurrence": "Recurrence",
+        "scale": "Scale",
+        "growth": "Growth",
+        "diversity": "Diversity"
+      },
+      "histogram": {
+        "title": "Distribution · {count} tenants",
+        "footnote": "Median {grade} ({score}). Tenants under 5 donors excluded (k-anonymity, {suppressed}).",
+        "ariaLabel": "{aplus} tenants A+, {a} A, {b} B, {c} C, {d} D"
+      },
+      "auditNote": "Your consultations are recorded in the platform audit log (resource: platform_finance_summary).",
+      "kpis": {
+        "volume": {
+          "label": "Donation volume",
+          "foot": "{count} donations · vs prev. {period}"
+        },
+        "revenue": {
+          "label": "Givernance revenue",
+          "info": "1.5% + €0.30 per cleared donation. Base-currency normalised.",
+          "foot": "take-rate {rate}%"
+        },
+        "recurring": {
+          "label": "Recurring revenue",
+          "info": "Share of revenue coming from active pledges — the predictable slice.",
+          "foot": "{share}% of revenue · {count} pledges"
+        },
+        "stripe": {
+          "label": "Stripe fee",
+          "info": "Stripe rail only. Deducted from each NPO's connected account.",
+          "foot": "~{rate}% of card volume",
+          "enrichNote": "enriched from Stripe BalanceTransaction"
+        }
+      },
+      "chart": {
+        "title": "Daily volume & Givernance revenue",
+        "subtitle": "Volume (area, left axis) · revenue (dashed line, right axis at 1.8% of volume).",
+        "volumeLegend": "Volume",
+        "revenueLegend": "Revenue",
+        "ariaLabel": "Volume and revenue — {period}"
+      },
+      "topTenants": {
+        "title": "Top tenants by volume",
+        "subtitle": "The 10 NPOs driving the bulk of platform volume, with their Mobilisation score. Tenants under 5 aggregated donations are suppressed (k-anonymity).",
+        "nameShare": "Tenant · share of volume",
+        "score": "Score",
+        "volume": "Volume",
+        "commissionPrefix": "fee"
+      },
+      "refund": {
+        "title": "Refund rate",
+        "subtitle": "Refunded volume ÷ cleared volume. Healthy platforms run under 1%.",
+        "valueSuffix": "%",
+        "ariaLabel": "{value}% refund rate",
+        "tick0": "0%",
+        "tick1": "1%",
+        "tick2": "5%",
+        "tick3": "8%"
+      },
+      "currencies": {
+        "title": "Per-currency breakdown",
+        "ariaLabel": "Currency share: {slices}",
+        "centerLabel": "currencies"
+      },
+      "mobilisation": {
+        "title": "Mobilisation score",
+        "info": "Aggregate weighted score across activation, recurrence, scale, growth and diversity components.",
+        "periodLabel": "vs prev. period · weighted by volume",
+        "deltaLabel": "{delta} pts",
+        "footnote": "Platform-wide fundraising health, aggregated across {count} tenants. An A in healthcare ≠ an A in culture — prefer the delta to the absolute.",
+        "outOf": "/ 100"
+      },
+      "risk": {
+        "concentration": {
+          "label": "Concentration",
+          "info": "HHI of volume shares. < 0.15 is diversified.",
+          "secondary": "HHI · top tenant = {share}"
+        },
+        "activeTenants": {
+          "label": "Active tenants",
+          "info": "Tenants with at least 1 cleared donation in the period.",
+          "suffix": " / {total}",
+          "secondary": "{active}% active · {dormant} dormant"
+        },
+        "failure": {
+          "label": "Payment failure rate",
+          "info": "Declined attempts ÷ total attempts. > 8% is a problem.",
+          "secondary": "{failures} / {attempts} attempts"
+        },
+        "badges": {
+          "okConcentration": "Well diversified",
+          "okBelow": "Below 8% threshold",
+          "watchDormant": "{count} to re-engage",
+          "alertFailure": "Above 8% threshold"
+        }
+      },
+      "pmf": {
+        "title": "Product-Market Fit",
+        "info": "Sean Ellis. Share of tenants who would be 'very disappointed' without Givernance. Threshold: 40%.",
+        "threshold": "tenants 'very disappointed' — fit threshold at {threshold}%",
+        "deltaLabel": "{delta} pts vs prev.",
+        "segmentsSummary": "{very}% very disappointed, {somewhat}% somewhat, {not}% not",
+        "markerLabel": "threshold · {threshold}%",
+        "legendVery": "Very disappointed",
+        "legendSomewhat": "Somewhat",
+        "legendNot": "Not",
+        "staleNote": "Based on the survey closed on {date} — no longer representative"
+      },
+      "surveyActions": {
+        "staleTitle": "Survey data is stale — refresh before deciding",
+        "staleBody": "Last PMF survey closed on {date} ({days} days ago). The quarterly window is past — the scores below reflect last quarter, not today.",
+        "soonTitle": "Survey window closing soon",
+        "soonBody": "PMF refresh window closes in {days} days. Launch the next campaign now to keep deltas reliable.",
+        "launchEmailLabel": "Launch email campaign",
+        "launchEmailAria": "Launch an email campaign to the {count} tenants eligible for the PMF survey",
+        "launchEmailDone": "Campaign launched",
+        "launchEmailToastSuccess": "Campaign launched — invitation sent to {count} tenants.",
+        "launchEmailToastCooldown": "Too early — try again in {minutes} minutes.",
+        "launchEmailToastError": "Could not launch the campaign. Check the API logs and retry.",
+        "activateInAppLabel": "Activate in-app survey",
+        "activateInAppAria": "Activate the in-app survey — shown to tenant admins at next login",
+        "scheduleReminderLabel": "Schedule recurring reminder",
+        "scheduleReminderAria": "Schedule a recurring reminder — auto re-launch 7 days before expiry"
+      },
+      "health": {
+        "npsLabel": "Tenant NPS",
+        "npsInfo": "Lagging indicator — PMF is the primary signal.",
+        "npsUnit": "/ 100",
+        "npsLegacy": "lagging indicator · legacy",
+        "csatLabel": "Support CSAT",
+        "csatInfo": "Post-ticket (1-5). Collected continuously.",
+        "csatUnit": "/ 5",
+        "csatFreshLabel": "fresh · {days}d",
+        "recontactLabel": "To re-engage",
+        "recontactInfo": "Detractors × behavioural signal — your CSM follow-up list.",
+        "recontactUnit": "tenants",
+        "recontactCta": "View the list",
+        "surveyFreshAria": "Last surveyed {days} days ago"
       }
     }
   },
