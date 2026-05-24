@@ -314,7 +314,9 @@
         "disputes": "Litiges",
         "impersonation": "Sessions de support",
         "platformAdmins": "Admins plateforme",
-        "featureFlags": "Feature flags"
+        "featureFlags": "Feature flags",
+        "finance": "Finance plateforme",
+        "backToOrg": "Retour à l'organisation"
       }
     },
     "topbar": {
@@ -1005,6 +1007,216 @@
           "notFound": "Cet admin n'existe plus.",
           "generic": "Une erreur est survenue. Veuillez réessayer."
         }
+      }
+    },
+    "finance": {
+      "pageEyebrow": "Vue plateforme · {count} tenants",
+      "pageTitle": "Finance plateforme",
+      "pageTitlePrefix": "Finance",
+      "pageTitleEm": "plateforme",
+      "pageSubtitle": "Volume, revenu Givernance, satisfaction et santé du portefeuille de tenants.",
+      "pageSubtitleContext": "{period} · toutes devises (éq. EUR) · tous tenants.",
+      "liveIndicator": "Transactions à jour · {timestamp}",
+      "topbarLive": "Transactions à jour · {timestamp}",
+      "topbarStaleSource": "{count} source périmée",
+      "topbarStaleSourceAria": "{count} source de données est périmée — aller à la santé des tenants",
+      "actionExport": "Exporter",
+      "actionMonthlyReport": "Rapport mensuel",
+      "filters": {
+        "currencyAria": "Devise",
+        "currencyAll": "Toutes devises (éq. EUR)",
+        "tenantAria": "Tenant",
+        "tenantAll": "Tous les tenants"
+      },
+      "alertStrip": {
+        "body": "{count, plural, =1 {1 tenant en alerte} other {# tenants en alerte}} — détracteurs croisés avec un signal de churn. À contacter cette semaine.",
+        "cta": "Voir la liste →"
+      },
+      "distribution": {
+        "title": "Distribution des scores",
+        "subtitle": "{count} tenants par tranches de 10 pts. Ligne pointillée = moyenne ({score}).",
+        "axisAriaLabel": "Histogramme de distribution des scores"
+      },
+      "spotlights": {
+        "title": "Spotlights",
+        "subtitle": "Mouvements marquants. Hausses → appel de félicitations ; baisses → check-in support.",
+        "trendingUp": "En progression",
+        "trendingDown": "À surveiller",
+        "empty": "Pas assez de mouvement à signaler."
+      },
+      "sectionDistribution": "Distribution & mouvements",
+      "loading": "Actualisation…",
+      "period": {
+        "ariaLabel": "Période",
+        "today": "Aujourd'hui",
+        "7d": "7 j",
+        "30d": "30 j",
+        "90d": "90 j",
+        "ytd": "YTD"
+      },
+      "empty": {
+        "title": "Aucune donnée pour la période",
+        "body": "Aucun don cleared sur la fenêtre sélectionnée. Choisissez une période plus large ou revenez après les premiers paiements."
+      },
+      "fetchError": {
+        "title": "Impossible de charger le résumé financier",
+        "body": "La requête a échoué. Réessayez, ou vérifiez les logs API si le problème persiste."
+      },
+      "sections": {
+        "mobilisation": "Mobilisation",
+        "timeline": "Évolution du volume",
+        "risk": "Risque & concentration",
+        "health": "Santé des tenants",
+        "tenants": "Tenants & flux",
+        "refunds": "Taux de remboursement",
+        "currencies": "Devises"
+      },
+      "sectionHints": {
+        "timeline": "Dons clearés / jour · revenu superposé",
+        "risk": "Signaux opérationnels plateforme",
+        "tenants": "Top contributeurs · remboursements · devises"
+      },
+      "formula": {
+        "title": "Composantes · moyenne plateforme",
+        "footnote": "La décomposition est affichée par transparence. Chaque composante est plafonnée à 100 avant pondération.",
+        "activation": "Activation",
+        "recurrence": "Récurrence",
+        "scale": "Échelle",
+        "growth": "Croissance",
+        "diversity": "Diversité"
+      },
+      "histogram": {
+        "title": "Répartition · {count} tenants",
+        "footnote": "Médiane {grade} ({score}). Tenants < 5 donateurs exclus (k-anonymity, {suppressed}).",
+        "ariaLabel": "{aplus} tenants A+, {a} A, {b} B, {c} C, {d} D"
+      },
+      "auditNote": "Vos consultations sont enregistrées dans le journal d'audit plateforme (ressource : platform_finance_summary).",
+      "kpis": {
+        "volume": {
+          "label": "Volume des dons",
+          "foot": "{count} dons · vs préc. {period}"
+        },
+        "revenue": {
+          "label": "Revenu Givernance",
+          "info": "1,5 % + 0,30 € par don cleared. Normalisé en devise de base.",
+          "foot": "take-rate {rate} %"
+        },
+        "recurring": {
+          "label": "Revenu récurrent",
+          "info": "Part du revenu issue de pledges actifs. Revenu prévisible.",
+          "foot": "{share}% du revenu · {count} pledges"
+        },
+        "stripe": {
+          "label": "Frais Stripe",
+          "info": "Rail Stripe uniquement. Déduit du compte de la NPO.",
+          "foot": "~{rate} % du volume carte",
+          "enrichNote": "enrichi depuis Stripe BalanceTransaction"
+        }
+      },
+      "chart": {
+        "title": "Volume quotidien & revenu Givernance",
+        "subtitle": "Volume (aire, axe gauche) · revenu (pointillé, axe droit à 1,8 % du volume).",
+        "volumeLegend": "Volume",
+        "revenueLegend": "Revenu",
+        "ariaLabel": "Volume et revenu — {period}"
+      },
+      "topTenants": {
+        "title": "Top tenants par volume",
+        "subtitle": "Les 10 NPO qui pilotent la majorité du volume, avec leur score de Mobilisation. Tenants < 5 dons agrégés (k-anonymity).",
+        "nameShare": "Tenant · part du volume",
+        "score": "Score",
+        "volume": "Volume",
+        "commissionPrefix": "comm."
+      },
+      "refund": {
+        "title": "Taux de remboursement",
+        "subtitle": "Volume remboursé ÷ volume cleared. Plateforme saine sous 1 %.",
+        "valueSuffix": "%",
+        "ariaLabel": "Taux de remboursement {value} %",
+        "tick0": "0 %",
+        "tick1": "1 %",
+        "tick2": "5 %",
+        "tick3": "8 %"
+      },
+      "currencies": {
+        "title": "Répartition par devise",
+        "ariaLabel": "Répartition des devises : {slices}",
+        "centerLabel": "devises"
+      },
+      "mobilisation": {
+        "title": "Score de Mobilisation",
+        "info": "Score pondéré agrégé sur les composantes activation, récurrence, scale, croissance et diversité.",
+        "periodLabel": "vs période préc. · moy. pondérée volume",
+        "deltaLabel": "{delta} pts",
+        "footnote": "Santé du fundraising agrégée sur {count} tenants. Un score A en médico-social ≠ un A en culture — privilégier le delta à l'absolu.",
+        "outOf": "/ 100"
+      },
+      "risk": {
+        "concentration": {
+          "label": "Concentration",
+          "info": "HHI sur les parts de volume. < 0,15 = diversifié.",
+          "secondary": "HHI · top tenant = {share}"
+        },
+        "activeTenants": {
+          "label": "Tenants actifs",
+          "info": "Tenants avec ≥ 1 don cleared sur la période.",
+          "suffix": " / {total}",
+          "secondary": "{active} % actifs · {dormant} dormants"
+        },
+        "failure": {
+          "label": "Échec paiement",
+          "info": "Refus carte ÷ tentatives. > 8 % = problème.",
+          "secondary": "{failures} / {attempts} tentatives"
+        },
+        "badges": {
+          "okConcentration": "Bien diversifié",
+          "okBelow": "Sous seuil 8 %",
+          "watchDormant": "{count} à relancer",
+          "alertFailure": "Au-dessus du seuil 8 %"
+        }
+      },
+      "pmf": {
+        "title": "Product-Market Fit",
+        "info": "Sean Ellis. % de tenants « très déçus » sans Givernance. Seuil 40 %.",
+        "threshold": "tenants « très déçus » — au-dessus du seuil de fit {threshold} %",
+        "deltaLabel": "{delta} pts vs T-1",
+        "segmentsSummary": "{very} % très déçus, {somewhat} % plutôt déçus, {not} % pas déçus",
+        "markerLabel": "seuil · {threshold} %",
+        "legendVery": "Très déçus",
+        "legendSomewhat": "Plutôt déçus",
+        "legendNot": "Pas déçus",
+        "staleNote": "Basé sur l'enquête du {date} — non représentatif"
+      },
+      "surveyActions": {
+        "staleTitle": "Données d'enquête périmées — à rafraîchir avant de décider",
+        "staleBody": "La dernière enquête PMF a été clôturée le {date} ({days} j). La fenêtre trimestrielle est dépassée : les scores ci-dessous reflètent l'état d'il y a un trimestre, pas aujourd'hui.",
+        "soonTitle": "Fenêtre d'enquête bientôt close",
+        "soonBody": "La fenêtre de refresh PMF expire dans {days} j. Lancez la prochaine campagne maintenant pour garder des deltas fiables.",
+        "launchEmailLabel": "Lancer une campagne email",
+        "launchEmailAria": "Lancer une campagne email vers les {count} tenants éligibles à l'enquête PMF",
+        "launchEmailDone": "Campagne lancée",
+        "launchEmailToastSuccess": "Campagne lancée — invitation envoyée à {count} tenants.",
+        "launchEmailToastCooldown": "Trop tôt — réessayez dans {minutes} minutes.",
+        "launchEmailToastError": "Impossible de lancer la campagne. Vérifiez les logs API et réessayez.",
+        "activateInAppLabel": "Activer le survey in-app",
+        "activateInAppAria": "Activer le survey in-app — affiché au prochain login des admins tenants",
+        "scheduleReminderLabel": "Planifier un rappel récurrent",
+        "scheduleReminderAria": "Planifier un rappel récurrent — relance automatique 7 jours avant péremption"
+      },
+      "health": {
+        "npsLabel": "NPS tenants",
+        "npsInfo": "Indicateur retardé — le PMF est l'indicateur principal.",
+        "npsUnit": "/ 100",
+        "npsLegacy": "indicateur retardé · legacy",
+        "csatLabel": "CSAT support",
+        "csatInfo": "Post-ticket (1-5). Collecté en continu.",
+        "csatUnit": "/ 5",
+        "csatFreshLabel": "à jour · {days} j",
+        "recontactLabel": "À recontacter",
+        "recontactInfo": "Détracteurs × signal comportemental — votre liste CSM.",
+        "recontactUnit": "tenants",
+        "recontactCta": "Voir la liste",
+        "surveyFreshAria": "Dernière enquête il y a {days} j"
       }
     }
   },

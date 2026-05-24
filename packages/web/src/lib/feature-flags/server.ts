@@ -21,6 +21,7 @@ import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsServi
 const PHASE2_KEY = "admin.feature_flags_phase2";
 const PUBLIC_PAGE_STYLES_KEY = "donation.public_page_styles";
 const IMPERSONATION_REPLICATE_KEY = "admin.impersonation_replicate";
+const FINANCE_DASHBOARD_KEY = "admin.finance_dashboard";
 
 /**
  * Returns `true` iff `admin.feature_flags_phase2` is on for the
@@ -68,6 +69,24 @@ export async function isImpersonationReplicateEnabled(): Promise<boolean> {
     const api = await createServerApiClient();
     const flags = await FeatureFlagsService.listPublic(api);
     return isFlagEnabled(flags, IMPERSONATION_REPLICATE_KEY);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns `true` iff `admin.finance_dashboard` is on for the current
+ * caller (Epic #434, issue #206). Gates:
+ *   - The `/admin/finance` super-admin page (returns notFound() when off).
+ *   - The "Finance plateforme" sidebar entry.
+ * Fail-closed on projection errors — better to hide the dashboard
+ * than render it pointing at a 404 backend.
+ */
+export async function isFinanceDashboardEnabled(): Promise<boolean> {
+  try {
+    const api = await createServerApiClient();
+    const flags = await FeatureFlagsService.listPublic(api);
+    return isFlagEnabled(flags, FINANCE_DASHBOARD_KEY);
   } catch {
     return false;
   }

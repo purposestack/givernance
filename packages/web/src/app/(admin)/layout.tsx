@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout";
 import { Toaster } from "@/components/ui/toast";
 import { AuthProvider } from "@/lib/auth";
 import { requireAuth } from "@/lib/auth/guards";
+import { isFinanceDashboardEnabled } from "@/lib/feature-flags/server";
 
 /**
  * Back-office layout — guarded by `super_admin` realm role.
@@ -16,9 +17,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     notFound();
   }
 
+  // Resolve the finance-dashboard flag SSR so the sidebar entry never
+  // pops in after hydration (off-state QA per `feedback_feature_flag_first`).
+  const financeDashboardEnabled = await isFinanceDashboardEnabled();
+
   return (
     <AuthProvider>
-      <AppShell impersonation={auth.impersonation} impersonationUserName={undefined} isSuperAdmin>
+      <AppShell
+        impersonation={auth.impersonation}
+        impersonationUserName={undefined}
+        isSuperAdmin
+        financeDashboardEnabled={financeDashboardEnabled}
+      >
         {children}
       </AppShell>
       <Toaster />
