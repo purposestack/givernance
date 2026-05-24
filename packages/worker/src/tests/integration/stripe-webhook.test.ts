@@ -4,12 +4,13 @@ import {
   donations,
   exchangeRates,
   outboxEvents,
+  paymentAttempts,
   webhookEvents,
 } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../lib/db.js";
-import { processStripeWebhook } from "../../processors/stripe-webhook.js";
+import { processStripeWebhook, setStripeFeeFetcher } from "../../processors/stripe-webhook.js";
 
 const ORG_ID = "00000000-0000-0000-0000-00000000000b";
 const MULTI_CURRENCY_ORG = "00000000-0000-0000-0000-000000000126";
@@ -58,6 +59,7 @@ beforeEach(() => {
 
 afterAll(async () => {
   // Cleanup in reverse dependency order
+  await db.execute(sql`DELETE FROM payment_attempts WHERE org_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
   await db.execute(sql`DELETE FROM outbox_events WHERE tenant_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
   await db.execute(sql`DELETE FROM donations WHERE org_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
   await db.execute(sql`DELETE FROM constituents WHERE org_id IN (${ORG_ID}, ${ORG_ID_OTHER})`);
@@ -65,6 +67,12 @@ afterAll(async () => {
   await db.execute(
     sql`DELETE FROM exchange_rates WHERE currency = 'EUR' AND base_currency = 'CHF' AND date = ${TODAY}`,
   );
+});
+
+afterEach(() => {
+  // Reset the BT fee fetcher seam between tests so a stubbed test
+  // doesn't bleed into the next test's path.
+  setStripeFeeFetcher(null);
 });
 
 describe("processStripeWebhook", () => {
@@ -293,6 +301,76 @@ describe("processStripeWebhook", () => {
 
     expect(donation?.exchangeRate).toBe("150.00000000");
     expect(donation?.amountBaseCents).toBe(375000);
+  });
+
+  // ─── Epic #434 / payment-reviewer BLOCKING: platform_fee_base_cents
+  // must be set on every new donation insert, not just historical
+  // backfill (migration 0065). Without this column being written here,
+  // multi-currency tenants would see their platform-fee KPI silently
+  // regress to zero.
+  it("computes platformFeeBaseCents from platformFeeCents × exchangeRate for foreign-currency donations", async () => {
+    await db.execute(
+      sql`INSERT INTO tenants (id, name, slug, stripe_account_id, base_currency)
+          VALUES (${MULTI_CURRENCY_ORG}, 'Multi Currency', 'multi-currency-worker', ${STRIPE_ACCOUNT_ID_MULTI}, 'JPY')
+          ON CONFLICT (id) DO UPDATE SET base_currency = 'JPY', stripe_account_id = EXCLUDED.stripe_account_id`,
+    );
+    await db
+      .insert(exchangeRates)
+      .values({
+        currency: "GBP",
+        baseCurrency: "JPY",
+        rate: "180.00000000",
+        date: TODAY,
+      })
+      .onConflictDoUpdate({
+        target: [exchangeRates.currency, exchangeRates.baseCurrency, exchangeRates.date],
+        set: { rate: "180.00000000", updatedAt: new Date() },
+      });
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-0000000000f5",
+      stripeEventId: "evt_test_platform_fee_base",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID_MULTI,
+      payload: {},
+      status: "pending",
+      livemode: false,
+    });
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-0000000000f5",
+      stripeEventId: "evt_test_platform_fee_base",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID_MULTI,
+      payload: {
+        id: "pi_test_platform_fee_base",
+        amount: 10000, // £100.00 GBP
+        currency: "gbp",
+        application_fee_amount: 200, // £2.00 GBP platform fee
+        metadata: {
+          constituent_email: "platform-fee-fx@example.org",
+        },
+      },
+    });
+
+    await processStripeWebhook(job);
+
+    const [donation] = await db
+      .select()
+      .from(donations)
+      .where(
+        and(
+          eq(donations.orgId, MULTI_CURRENCY_ORG),
+          eq(donations.paymentRef, "pi_test_platform_fee_base"),
+        ),
+      );
+
+    expect(donation?.platformFeeCents).toBe(200);
+    // 200 GBP cents × 180 JPY/GBP = 36 000 JPY cents.
+    expect(donation?.platformFeeBaseCents).toBe(36000);
+    // Non-zero AND distinct from the raw GBP figure: prevents a future
+    // regression where the column is hard-coded to `platformFeeCents`.
+    expect(donation?.platformFeeBaseCents).not.toBe(donation?.platformFeeCents);
+    expect(donation?.platformFeeBaseCents).toBeGreaterThan(0);
   });
 
   // ─── #198: malformed payload rejected, not silently inserted as €0 ──────
@@ -618,5 +696,206 @@ describe("processStripeWebhook", () => {
             AND resource_id = ${donation?.id}`,
     );
     expect((auditRows as unknown as { rows: unknown[] }).rows).toHaveLength(0);
+  });
+
+  // ─── #436: payment_intent.payment_failed creates a payment_attempts row ──
+
+  it("payment_intent.payment_failed inserts a payment_attempts row with status='failed'", async () => {
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-000000000436",
+      stripeEventId: "evt_test_pi_failed_436",
+      eventType: "payment_intent.payment_failed",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+      livemode: false,
+    });
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-000000000436",
+      stripeEventId: "evt_test_pi_failed_436",
+      eventType: "payment_intent.payment_failed",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: "pi_test_failed_436",
+        amount: 4200,
+        currency: "eur",
+        last_payment_error: {
+          code: "card_declined",
+          message: "Your card was declined.",
+        },
+      },
+    });
+
+    await processStripeWebhook(job);
+
+    const [attempt] = await db
+      .select()
+      .from(paymentAttempts)
+      .where(
+        and(
+          eq(paymentAttempts.orgId, ORG_ID),
+          eq(paymentAttempts.stripePaymentIntentId, "pi_test_failed_436"),
+        ),
+      );
+    expect(attempt).toBeTruthy();
+    expect(attempt?.status).toBe("failed");
+    expect(attempt?.failureCode).toBe("card_declined");
+    expect(attempt?.failureMessage).toBe("Your card was declined.");
+    expect(attempt?.amountCents).toBe(4200);
+    expect(attempt?.currency).toBe("EUR");
+
+    // No donation row written — failed intents never produce a donation.
+    const dons = await db
+      .select()
+      .from(donations)
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, "pi_test_failed_436")));
+    expect(dons).toHaveLength(0);
+  });
+
+  // ─── #436: succeeded path also writes payment_attempts (denominator) ──
+
+  it("payment_intent.succeeded ALSO inserts a payment_attempts row with status='succeeded'", async () => {
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-000000000437",
+      stripeEventId: "evt_test_pi_success_437",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+      livemode: false,
+    });
+
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-000000000437",
+      stripeEventId: "evt_test_pi_success_437",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: "pi_test_success_437",
+        amount: 5000,
+        currency: "eur",
+        metadata: { constituent_email: "denom@example.org" },
+      },
+    });
+
+    await processStripeWebhook(job);
+
+    const [attempt] = await db
+      .select()
+      .from(paymentAttempts)
+      .where(
+        and(
+          eq(paymentAttempts.orgId, ORG_ID),
+          eq(paymentAttempts.stripePaymentIntentId, "pi_test_success_437"),
+        ),
+      );
+    expect(attempt).toBeTruthy();
+    expect(attempt?.status).toBe("succeeded");
+    expect(attempt?.failureCode).toBeNull();
+  });
+
+  // ─── #436: BT enrichment stamps stripe_fee_cents (mocked Stripe SDK) ──
+
+  it("populates donations.stripe_fee_cents from BalanceTransaction when flag is on", async () => {
+    // Flip the flag on for this test. The seed migration inserts the
+    // row default-off; we toggle and revert.
+    await db.execute(
+      sql`INSERT INTO feature_flags (key, enabled, label, description, scope, public)
+          VALUES ('admin.finance_dashboard', true, 'finance', 'finance', 'platform', true)
+          ON CONFLICT (key) DO UPDATE SET enabled = true`,
+    );
+
+    // Stub the BT fetcher to return a 175 cents fee — bypasses the
+    // real Stripe SDK call. Same currency as the donation (EUR) so the
+    // 1:1 fee → base mapping holds.
+    setStripeFeeFetcher(async () => 175);
+
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-000000000438",
+      stripeEventId: "evt_test_bt_enrich_438",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+      livemode: false,
+    });
+
+    const paymentRef = "pi_test_bt_enrich_438";
+    const job = makeMockJob({
+      webhookEventId: "00000000-0000-0000-0000-000000000438",
+      stripeEventId: "evt_test_bt_enrich_438",
+      eventType: "payment_intent.succeeded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {
+        id: paymentRef,
+        amount: 10000,
+        currency: "eur",
+        metadata: { constituent_email: "fee-enriched@example.org" },
+        latest_charge: {
+          id: "ch_test_bt_enrich_438",
+          balance_transaction: "txn_test_bt_enrich_438",
+        },
+      },
+    });
+
+    try {
+      await processStripeWebhook(job);
+
+      const [don] = await db
+        .select({ stripeFeeCents: donations.stripeFeeCents })
+        .from(donations)
+        .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, paymentRef)));
+      expect(don?.stripeFeeCents).toBe(175);
+    } finally {
+      // Restore default-off so other tests run with the flag off.
+      await db.execute(
+        sql`UPDATE feature_flags SET enabled = false WHERE key = 'admin.finance_dashboard'`,
+      );
+      setStripeFeeFetcher(null);
+    }
+  });
+
+  // ─── #436: charge.refunded stamps refunded_at distinctly from updated_at ──
+
+  it("charge.refunded sets donations.refunded_at distinct from updated_at", async () => {
+    const paymentRef = "pi_test_refunded_at_marker";
+    await db.execute(
+      sql`INSERT INTO constituents (id, org_id, first_name, last_name, type)
+          VALUES ('00000000-0000-0000-0000-000000000c81', ${ORG_ID}, 'RefundedAt', 'Marker', 'donor')
+          ON CONFLICT (id) DO NOTHING`,
+    );
+    await db.execute(
+      sql`INSERT INTO donations
+          (org_id, constituent_id, amount_cents, currency, exchange_rate, amount_base_cents,
+           status, platform_fee_cents, payment_method, payment_ref, donated_at, fiscal_year)
+          VALUES (${ORG_ID}, '00000000-0000-0000-0000-000000000c81', 5000, 'EUR', '1', 5000,
+                  'cleared', 0, 'stripe', ${paymentRef}, now(), 2026)
+          ON CONFLICT DO NOTHING`,
+    );
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-000000000c82",
+      stripeEventId: "evt_test_refunded_at_marker",
+      eventType: "charge.refunded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+    });
+    await processStripeWebhook(
+      makeMockJob({
+        webhookEventId: "00000000-0000-0000-0000-000000000c82",
+        stripeEventId: "evt_test_refunded_at_marker",
+        eventType: "charge.refunded",
+        accountId: STRIPE_ACCOUNT_ID,
+        payload: { id: "ch_refunded_at", payment_intent: paymentRef },
+      }),
+    );
+    const [don] = await db
+      .select({ refundedAt: donations.refundedAt, status: donations.status })
+      .from(donations)
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, paymentRef)));
+    expect(don?.status).toBe("refunded");
+    expect(don?.refundedAt).toBeTruthy();
+    expect(don?.refundedAt instanceof Date).toBe(true);
   });
 });
