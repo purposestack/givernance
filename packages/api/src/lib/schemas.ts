@@ -2,14 +2,28 @@
 
 import { type TObject, Type } from "@sinclair/typebox";
 
-/** UUID v4 pattern used for all entity IDs */
+/** UUID pattern (any version) — legacy entity IDs may pre-date the v4 mandate */
 const UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
-/** Reusable UUID string schema */
+/**
+ * Strict UUID v4 pattern — required for Idempotency-Key headers and for
+ * invitation tokens (Epic #434 security-architect BLOCKING). RFC 4122 v4
+ * mandates `4xxx` in the third group and `[89ab]xxx` in the fourth group.
+ */
+const UUID_V4_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+
+/** Reusable UUID string schema (any version) */
 export const UuidSchema = Type.String({ pattern: UUID_PATTERN });
+
+/** Reusable UUID v4 string schema (RFC 4122 §4.4) */
+export const UuidV4Schema = Type.String({ pattern: UUID_V4_PATTERN, format: "uuid" });
 
 export function isUuid(value: string): boolean {
   return new RegExp(UUID_PATTERN, "i").test(value);
+}
+
+export function isUuidV4(value: string): boolean {
+  return new RegExp(UUID_V4_PATTERN, "i").test(value);
 }
 
 /** Standard :id route parameter */

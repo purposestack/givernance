@@ -36,6 +36,7 @@ import { reportsRoutes } from "./modules/reports/routes.js";
 import { searchRoutes } from "./modules/search/routes.js";
 import { sessionRoutes } from "./modules/session/routes.js";
 import { signupRoutes } from "./modules/signup/routes.js";
+import { superadminFinanceRoutes } from "./modules/superadmin/finance/routes.js";
 import { tenantAdminRoutes } from "./modules/tenant-admin/routes.js";
 import { tenantRoutes } from "./modules/tenants/routes.js";
 import { userRoutes } from "./modules/users/routes.js";
@@ -212,6 +213,7 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(sessionRoutes, { prefix: "/v1" });
   await app.register(disputeRoutes, { prefix: "/v1" });
   await app.register(dashboardRoutes, { prefix: "/v1" });
+  await app.register(superadminFinanceRoutes, { prefix: "/v1" });
 
   return app;
 }
