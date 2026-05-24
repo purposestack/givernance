@@ -5,6 +5,7 @@ export * from "./events/index.js";
 export * from "./finance/index.js";
 export * from "./i18n/locales.js";
 export * from "./jobs/index.js";
+export * from "./mobilisation/score.js";
 export * from "./postal-export-mode.js";
 export * from "./postal-print-layout.js";
 export * from "./schema/index.js";
