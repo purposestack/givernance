@@ -1,0 +1,33 @@
+-- Migration: 0066_donations_stripe_fee_cents (Epic #434, issue #435)
+--
+-- Adds `donations.stripe_fee_cents` — the Stripe processing fee in the
+-- donation's transactional currency, sourced from the Stripe
+-- BalanceTransaction (`balance_transaction.fee`). Populated going
+-- forward by the BalanceTransaction enrichment worker shipped in
+-- SUB-WORKER #436; no backfill for historical rows because Stripe's
+-- BalanceTransaction history isn't free-form re-queryable for arbitrary
+-- past charges (Connect platforms can read but the worker tick already
+-- handles the forward case and back-population is a one-off ops chore,
+-- not a migration).
+--
+-- NULL distinguishes "not yet enriched" from "enriched and zero" — the
+-- super-admin dashboard treats NULL rows as unknown (excluded from the
+-- frais-Stripe KPI denominator and surfaced in a "pending enrichment"
+-- counter) rather than as 0.
+--
+-- Stored in transactional currency by design — pairs with the existing
+-- `currency` + `exchange_rate` columns so a future "Stripe fees in base
+-- currency" KPI can compute ROUND(stripe_fee_cents * exchange_rate) on
+-- the fly. Adding a `stripe_fee_base_cents` column is deferred until
+-- the worker actually backfills — premature normalisation when 100% of
+-- existing rows are NULL adds no value.
+--
+-- TENANT-PROJECTION LOCK: the API contract (#437) MUST never include
+-- this column in tenant-facing responses — it's super-admin-only by
+-- product design (Stripe fee opacity is a Connect-platform feature for
+-- the platform, not the connected account). Enforced by TypeBox
+-- response shape separation in the API layer (BLOCKING item from
+-- security-architect re-review in epic #434).
+
+ALTER TABLE donations
+  ADD COLUMN stripe_fee_cents INTEGER;

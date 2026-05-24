@@ -226,6 +226,17 @@ export const tenants = pgTable(
      * regardless of what's stored here.
      */
     defaultPublicPageStyle: publicPageStyleEnum("default_public_page_style"),
+    /**
+     * Cached constituent count (Epic #434, migration 0069). Refreshed
+     * daily by a worker job; the super-admin dashboard reads this
+     * directly to avoid `COUNT(constituents) GROUP BY org_id` over the
+     * whole platform on every page load. May lag actual count by up to
+     * 24h — UI surfaces the staleness via `fresh-pip`.
+     */
+    constituentCountCached: integer("constituent_count_cached").notNull().default(0),
+    constituentCountRefreshedAt: timestamp("constituent_count_refreshed_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -826,6 +837,30 @@ export const donations = pgTable(
     paymentSource: donationPaymentSourceEnum("payment_source").notNull().default("stripe"),
     status: donationStatusEnum("status").notNull().default("cleared"),
     platformFeeCents: integer("platform_fee_cents").notNull().default(0),
+    /**
+     * Platform fee normalised to the org's base currency (Epic #434,
+     * migration 0065). Required for the cross-tenant Revenu Givernance
+     * KPI on the super-admin finance dashboard — summing
+     * `platform_fee_cents` directly is meaningless for multi-currency
+     * tenants (mixed-currency cents into one number).
+     */
+    platformFeeBaseCents: integer("platform_fee_base_cents").notNull().default(0),
+    /**
+     * Stripe processing fee in the donation's transactional currency
+     * (Epic #434, migration 0066). Sourced from the Stripe
+     * BalanceTransaction by the enrichment worker (SUB-WORKER #436).
+     * NULL = not yet enriched; distinct from "enriched and zero".
+     * TENANT-PROJECTION LOCK: never include in tenant-facing API
+     * responses — super-admin-only by product design.
+     */
+    stripeFeeCents: integer("stripe_fee_cents"),
+    /**
+     * Refund timestamp (Epic #434, migration 0067). Distinct from
+     * `updated_at` so the refund-rate KPI can be scoped by refund
+     * date, not donation date. Set by the Stripe `charge.refunded`
+     * webhook handler.
+     */
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
     paymentMethod: varchar("payment_method", { length: 50 }),
     paymentRef: varchar("payment_ref", { length: 255 }),
     donatedAt: timestamp("donated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -846,6 +881,11 @@ export const donations = pgTable(
     // matched credit; without these, every reconcile is O(donations).
     index("donations_swiss_qr_reference_id_idx").on(table.swissQrReferenceId),
     index("donations_camt_credit_entry_id_idx").on(table.camtCreditEntryId),
+    // Partial index on `refunded_at IS NOT NULL` (Epic #434, migration
+    // 0067) — Drizzle Kit doesn't model partial indexes, the migration
+    // is the source of truth. Unconditional declaration here gives
+    // type-side parity for the query builder.
+    index("donations_refunded_at_idx").on(table.refundedAt),
     unique("donations_org_payment_uniq").on(table.orgId, table.paymentMethod, table.paymentRef),
   ],
 );
@@ -914,6 +954,19 @@ export const pledges = pgTable(
       .references(() => constituents.id),
     amountCents: integer("amount_cents").notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("EUR"),
+    /**
+     * FX rate snapshot at pledge creation (Epic #434, migration 0068).
+     * Refreshed on `pledge.updated` by the Stripe webhook handler so a
+     * tenant whose pledges stay in CHF still contributes the right
+     * EUR-equivalent figure to the platform-wide MRR KPI.
+     */
+    exchangeRate: numeric("exchange_rate", { precision: 18, scale: 8 }).notNull().default("1"),
+    /**
+     * Pledge amount normalised to the org's base currency (Epic #434,
+     * migration 0068). Required for the Revenu récurrent (MRR) KPI on
+     * the super-admin finance dashboard.
+     */
+    amountBaseCents: integer("amount_base_cents").notNull(),
     frequency: pledgeFrequencyEnum("frequency").notNull(),
     status: pledgeStatusEnum("status").notNull().default("active"),
     stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
@@ -1757,4 +1810,198 @@ export const webhookEvents = pgTable(
     processedAt: timestamp("processed_at", { withTimezone: true }),
   },
   (table) => [index("webhook_events_stripe_event_id_idx").on(table.stripeEventId)],
+);
+
+// ─── Payment Attempts (Epic #434, migration 0070) ──────────────────────────
+
+/**
+ * Stripe PaymentIntent lifecycle observations — one row per attempt
+ * (succeeded / failed / requires_action). Feeds the "Taux d'échec
+ * paiement" KPI on the super-admin finance dashboard. RLS forced;
+ * application code MUST still carry `eq(paymentAttempts.orgId, …)`
+ * explicitly (defence in depth — see CLAUDE.md § "RLS is the safety
+ * net, never the contract").
+ */
+export const paymentAttemptStatusEnum = pgEnum("payment_attempt_status", [
+  "succeeded",
+  "failed",
+  "requires_action",
+]);
+
+export const paymentAttempts = pgTable(
+  "payment_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    stripePaymentIntentId: text("stripe_payment_intent_id").notNull().unique(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    status: paymentAttemptStatusEnum("status").notNull(),
+    /** Stripe `last_payment_error.code` (e.g. `card_declined`). */
+    failureCode: text("failure_code"),
+    /**
+     * Stripe `last_payment_error.message`. The API tenant-projection
+     * MUST scrub before exposing to non-super-admin callers.
+     */
+    failureMessage: text("failure_message"),
+    /** Stripe `charges.data[0].outcome.reason` — Radar-level signals. */
+    outcomeReason: text("outcome_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("payment_attempts_org_created_idx").on(table.orgId, table.createdAt),
+    // Partial index on `WHERE status='failed'` — Drizzle Kit can't
+    // express the predicate; the migration is the source of truth.
+    index("payment_attempts_failed_created_idx").on(table.status, table.createdAt),
+  ],
+);
+
+// ─── Surveys (Epic #434, docs/31, migrations 0071/0072/0073/0074) ──────────
+
+/**
+ * Survey-definition registry — PMF Sean Ellis, NPS, CSAT, custom.
+ * PLATFORM-LEVEL (no `org_id`, no RLS). Accessed exclusively through
+ * `systemDb`; the migration REVOKEs ALL on `givernance_app`.
+ */
+export const surveys = pgTable(
+  "surveys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** `pmf` | `nps` | `csat` | `custom` — DB CHECK enforces shape. */
+    kind: text("kind").notNull(),
+    /** URL-safe stable identifier used in route params. */
+    slug: text("slug").notNull(),
+    questionFr: text("question_fr").notNull(),
+    questionEn: text("question_en").notNull(),
+    options: jsonb("options").notNull().default(sql`'{}'::jsonb`),
+    cohortRule: jsonb("cohort_rule").notNull().default(sql`'{}'::jsonb`),
+    /** NULL = one-shot; integer N = re-send every N days per recipient. */
+    cadenceDays: integer("cadence_days"),
+    freshnessSoonDays: integer("freshness_soon_days").notNull(),
+    freshnessStaleDays: integer("freshness_stale_days").notNull(),
+    responseTarget: integer("response_target"),
+    nextScheduledAt: timestamp("next_scheduled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    // Drizzle Kit doesn't model partial indexes — the migration declares
+    // the partial-unique on `slug WHERE deleted_at IS NULL` directly.
+    // Unconditional unique here gives type-side parity for the query
+    // builder.
+    unique("surveys_slug_uniq").on(table.slug),
+    index("surveys_kind_slug_idx").on(table.kind, table.slug),
+  ],
+);
+
+/**
+ * One row per (survey, recipient, send). TENANT-SCOPED; RLS forced.
+ * Application code MUST still carry `eq(surveyInvitations.orgId, …)`
+ * explicitly.
+ */
+export const surveyInvitations = pgTable(
+  "survey_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    surveyId: uuid("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    /**
+     * Recipient. ON DELETE SET NULL on user purge — GDPR erasure nulls
+     * the pointer but preserves the row for the per-tenant aggregate
+     * (privacy posture: keep the aggregate, drop the identity).
+     */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** `email` | `in_app` — DB CHECK enforces. */
+    channel: text("channel").notNull(),
+    invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("survey_invitations_survey_org_idx").on(table.surveyId, table.orgId),
+    // Partial indexes ((user_id) WHERE user_id IS NOT NULL) and
+    // ((expires_at) WHERE opened_at IS NULL) live in the migration —
+    // Drizzle Kit doesn't model partial predicates.
+    index("survey_invitations_user_idx").on(table.userId),
+    index("survey_invitations_expiry_sweep_idx").on(table.expiresAt),
+  ],
+);
+
+/**
+ * Survey responses. `org_id` is DENORMALISED from
+ * `survey_invitations.org_id` so the RLS policy and dashboard
+ * aggregation queries run without a join. UNIQUE on `invitation_id`
+ * enforces "one response per invitation".
+ */
+export const surveyResponses = pgTable(
+  "survey_responses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    invitationId: uuid("invitation_id")
+      .notNull()
+      .references(() => surveyInvitations.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /**
+     * Survey-kind-specific payload. Write-time TypeBox validation +
+     * DOMPurify on free-text fields live in the API layer (#437).
+     */
+    response: jsonb("response").notNull(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * DPO review fields. The dashboard's "verbatims" tile filters
+     * `WHERE text_reviewed_at IS NOT NULL` so un-reviewed PII never
+     * reaches a super-admin who isn't the DPO.
+     */
+    textReviewedAt: timestamp("text_reviewed_at", { withTimezone: true }),
+    reviewedBy: uuid("reviewed_by").references(() => platformAdmins.id, { onDelete: "set null" }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    // Partial unique on `invitation_id WHERE deleted_at IS NULL` lives
+    // in the migration (Drizzle Kit doesn't model partial predicates);
+    // unconditional unique here gives type-side parity.
+    unique("survey_responses_invitation_uniq").on(table.invitationId),
+    index("survey_responses_submitted_at_idx").on(table.submittedAt),
+  ],
+);
+
+/**
+ * Idempotency-dedup for the 3 super-admin survey-launch endpoints +
+ * 24-hour cooldown enforcement per (survey, channel). PLATFORM-LEVEL
+ * (no `org_id`, no RLS). Accessed exclusively through `systemDb`; the
+ * migration REVOKEs ALL on `givernance_app`.
+ */
+export const surveyLaunches = pgTable(
+  "survey_launches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    surveyId: uuid("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    /** `email` | `in_app` | `schedule` — DB CHECK enforces. */
+    channel: text("channel").notNull(),
+    /** UUID from the client's `Idempotency-Key` header; UPSERT key. */
+    idempotencyKey: uuid("idempotency_key").notNull().unique(),
+    launchedBy: uuid("launched_by")
+      .notNull()
+      .references(() => platformAdmins.id),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    launchedAt: timestamp("launched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("survey_launches_cooldown_idx").on(table.surveyId, table.channel, table.launchedAt),
+  ],
 );

@@ -24,6 +24,8 @@ export async function createPledge(orgId: string, userId: string, input: PledgeI
         constituentId: input.constituentId,
         amountCents: input.amountCents,
         currency: input.currency ?? "EUR",
+        // 1:1 fallback when currency == tenant base; multi-currency pledge FX is roadmap (docs/30 §8).
+        amountBaseCents: input.amountCents,
         frequency: input.frequency,
         stripeCustomerId: input.stripeCustomerId,
         stripeAccountId: input.stripeAccountId,
