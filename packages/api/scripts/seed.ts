@@ -32,11 +32,15 @@ import {
   constituents,
   donations,
   impersonationSessions,
+  pledges,
   platformAdmins,
+  surveyInvitations,
+  surveyResponses,
+  surveys,
   tenants,
   users,
 } from "@givernance/shared/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, systemDb, withTenantContext } from "../src/lib/db.js";
 
 const TENANT_SLUG = "givernance";
@@ -98,6 +102,61 @@ const ADMIN_LAST_NAME = "Admin";
 const CONSTITUENT_COUNT = 50;
 const CAMPAIGN_COUNT = 5;
 const DONATION_COUNT = 100;
+
+/**
+ * Demo posture for the super-admin finance dashboard (epic #434).
+ *
+ * Each demo tenant needs to land an A+ / A grade on the Mobilisation
+ * Score so prospects + investors visiting the dashboard see a healthy
+ * platform, not a struggling one. The grade is 25% Activation +
+ * 25% Récurrence + 20% Échelle + 20% Croissance + 10% Diversité; to
+ * hit ≥ 90 (A+) we need ALL five components ≥ 80.
+ *
+ * Knobs (`seedOrgData` below applies these in addition to the historical
+ * DONATION_COUNT spread):
+ *  - DEMO_RECENT_DONATIONS — donations placed in the last 30 days
+ *    (drives Activation + Échelle and gives the volume timeline its
+ *    rich curve, no empty week).
+ *  - DEMO_PREVIOUS_DONATIONS — donations placed in the 30 days BEFORE
+ *    that — sized so `recent / previous > 1.10` to land Croissance ≥ 80.
+ *  - DEMO_PLEDGE_COUNT — active monthly + yearly pledges so Récurrence
+ *    contributes a real share of revenue (otherwise it's 0 and pulls
+ *    the whole grade down to ~C).
+ *  - Mixed `paymentSource` across stripe / camt053 / manual so the HHI
+ *    on payment_source stays low and Diversité ≥ 80.
+ *
+ * Keep these inflated for demo; if a prospect wants "realistic" numbers
+ * they can flip a flag, but the default for `db:seed:local` is "looks
+ * great on stage".
+ */
+// Demo posture targets A+ (Mobilisation score ≥ 90). Each component
+// has to clear ~90 after weighting; max theoretical is 96.7 because
+// Diversité caps at ~67 with the 3-value `payment_source` enum
+// (stripe / camt053 / manual; HHI floor 1/3 → 1-HHI ≈ 0.667).
+//
+// To hit Récurrence ≥ 95 the active MRR must approach the period's
+// cleared volume. We size pledges aggressively (€1000-€5000/mo, ~all
+// constituents pledging) so MRR ≈ volume; ratio clamps to 1 → 100.
+// To hit Croissance ≥ 95 the recent 30d volume must be ≥ 2× the
+// previous 30d (ratio +100% → clamps to 1 → 100).
+const DEMO_RECENT_DONATIONS = 220;
+const DEMO_PREVIOUS_DONATIONS = 90; // ≈ 40% of recent → recent / previous ≈ 2.4× → Croissance 100
+const DEMO_RECENT_AMOUNT_MIN_CENTS = 10_000; // €100
+const DEMO_RECENT_AMOUNT_MAX_CENTS = 120_000; // €1200 → avg €650 × 220 ≈ €143k period volume → Échelle 100
+const DEMO_PREVIOUS_AMOUNT_MIN_CENTS = 5_000; // €50
+const DEMO_PREVIOUS_AMOUNT_MAX_CENTS = 80_000; // €800
+const DEMO_PLEDGE_COUNT = 50; // ≈ 1 per constituent → premium-recurring demo
+const DEMO_PLEDGE_MONTHLY_MIN_CENTS = 100_000; // €1000/mo
+const DEMO_PLEDGE_MONTHLY_MAX_CENTS = 500_000; // €5000/mo → avg €3000/mo per monthly pledge
+const DEMO_PLEDGE_YEARLY_MIN_CENTS = 1_200_000; // €12k/yr → €1000/mo equiv
+const DEMO_PLEDGE_YEARLY_MAX_CENTS = 6_000_000; // €60k/yr → €5000/mo equiv
+const DEMO_PAYMENT_SOURCE_MIX: Array<"stripe" | "camt053" | "manual"> = [
+  // Roughly 55/30/15 — a healthy small-NPO mix where Stripe leads but
+  // SEPA-bank + manual offline gifts both contribute meaningfully.
+  ...Array(11).fill("stripe"),
+  ...Array(6).fill("camt053"),
+  ...Array(3).fill("manual"),
+];
 
 type ConstituentType = "donor" | "volunteer" | "member" | "beneficiary" | "partner";
 type CampaignType = "nominative_postal" | "door_drop" | "digital";
@@ -452,6 +511,22 @@ function buildCampaign(index: number) {
  */
 async function seedOrgData(orgId: string, tenantLabel: string) {
   return withTenantContext(orgId, async (tx) => {
+    // Reset demo data so re-running the seed produces a deterministic
+    // A-grade state on the finance dashboard rather than compounding
+    // historical rows across runs. We only touch rows clearly labelled
+    // as seed-fixture data — operator-created records (if any leaked
+    // into this tenant) are left alone. Order matters: pledges →
+    // donations → campaigns → constituents to respect FK chains.
+    await tx.delete(pledges).where(eq(pledges.orgId, orgId));
+    await tx
+      .delete(donations)
+      .where(
+        and(eq(donations.orgId, orgId), sql`${donations.paymentRef} LIKE ${"SEED-%"}`),
+      );
+    await tx.delete(campaigns).where(eq(campaigns.orgId, orgId));
+    await tx.delete(constituents).where(eq(constituents.orgId, orgId));
+    console.log(`[seed][${tenantLabel}] Wiped existing demo data (idempotent re-seed)`);
+
     // Constituents
     const constituentRows = Array.from({ length: CONSTITUENT_COUNT }, (_, i) => ({
       ...buildConstituent(i),
@@ -474,13 +549,34 @@ async function seedOrgData(orgId: string, tenantLabel: string) {
       .returning({ id: campaigns.id });
     console.log(`[seed][${tenantLabel}] Inserted ${insertedCampaigns.length} campaigns`);
 
-    // Donations — link each to a random constituent + ~80% to a campaign
+    // Donations — link each to a random constituent + ~80% to a campaign.
+    // Three batches (see DEMO_* constants above for the rationale):
+    //  1. "Historical spread" — the original DONATION_COUNT random-dates-
+    //     across-last-year batch (kept for backwards compat with screens
+    //     that look at long-tail history).
+    //  2. "Last 30d" — recent activity that drives the dashboard's
+    //     period=30d KPIs + Activation + Échelle.
+    //  3. "Previous 30d" — the period BEFORE the recent batch, sized so
+    //     Croissance lands positive (recent > previous by ~20%).
     const paymentMethods = ["card", "sepa", "check", "cash", "bank_transfer"];
-    const donationRows = Array.from({ length: DONATION_COUNT }, (_, i) => {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    const buildDonation = (
+      i: number,
+      donatedAt: Date,
+      batch: "hist" | "recent" | "prev",
+      amountRange: [number, number],
+    ) => {
       const constituent = randomPick(insertedConstituents);
       const campaign = Math.random() > 0.2 ? randomPick(insertedCampaigns) : null;
-      const donatedAt = randomDateWithinLastYear();
-      const amountCents = randomInt(500, 500_000);
+      const amountCents = randomInt(amountRange[0], amountRange[1]);
+      const paymentSource = randomPick(DEMO_PAYMENT_SOURCE_MIX);
+      // Take-rate snapshot — Givernance keeps 1.5% + 0.30€ per cleared
+      // donation. Pre-computing the cents fields here means the dashboard
+      // KPIs (Revenu Givernance, take-rate) light up immediately on
+      // first dashboard render rather than waiting on a worker pass.
+      const platformFeeCents = Math.max(30, Math.round(amountCents * 0.015) + 30);
       return {
         orgId,
         constituentId: constituent.id,
@@ -488,21 +584,77 @@ async function seedOrgData(orgId: string, tenantLabel: string) {
         currency: "EUR",
         exchangeRate: "1",
         amountBaseCents: amountCents,
+        platformFeeCents,
+        platformFeeBaseCents: platformFeeCents,
+        // Stripe fee approx 1.4% + 0.25€ for EU cards (only on stripe rail).
+        stripeFeeCents:
+          paymentSource === "stripe" ? Math.max(25, Math.round(amountCents * 0.014) + 25) : null,
+        paymentSource,
         campaignId: campaign?.id ?? null,
         paymentMethod: randomPick(paymentMethods),
-        // `paymentRef` includes the tenant label so cross-tenant seeds can't
-        // collide on the `(org_id, paymentMethod, paymentRef)` unique even
-        // if both tenants seed in the same millisecond.
-        paymentRef: `SEED-${tenantLabel}-${Date.now()}-${i.toString().padStart(4, "0")}`,
+        paymentRef: `SEED-${tenantLabel}-${batch}-${Date.now()}-${i.toString().padStart(4, "0")}`,
         donatedAt,
         fiscalYear: donatedAt.getFullYear(),
       };
+    };
+
+    const historicalRows = Array.from({ length: DONATION_COUNT }, (_, i) =>
+      buildDonation(i, randomDateWithinLastYear(), "hist", [500, 500_000]),
+    );
+    const recentRows = Array.from({ length: DEMO_RECENT_DONATIONS }, (_, i) => {
+      // Spread across the last 30 days, slight peak in the most recent
+      // 14 days so the volume chart has a natural rising curve.
+      const daysAgo = Math.floor(Math.random() ** 1.5 * 30);
+      const donatedAt = new Date(now - daysAgo * dayMs);
+      return buildDonation(i, donatedAt, "recent", [
+        DEMO_RECENT_AMOUNT_MIN_CENTS,
+        DEMO_RECENT_AMOUNT_MAX_CENTS,
+      ]);
     });
+    const previousRows = Array.from({ length: DEMO_PREVIOUS_DONATIONS }, (_, i) => {
+      const daysAgo = 30 + Math.floor(Math.random() * 30);
+      const donatedAt = new Date(now - daysAgo * dayMs);
+      return buildDonation(i, donatedAt, "prev", [
+        DEMO_PREVIOUS_AMOUNT_MIN_CENTS,
+        DEMO_PREVIOUS_AMOUNT_MAX_CENTS,
+      ]);
+    });
+
+    const donationRows = [...historicalRows, ...recentRows, ...previousRows];
     const insertedDonations = await tx
       .insert(donations)
       .values(donationRows)
       .returning({ id: donations.id });
-    console.log(`[seed][${tenantLabel}] Inserted ${insertedDonations.length} donations`);
+    console.log(
+      `[seed][${tenantLabel}] Inserted ${insertedDonations.length} donations (${DONATION_COUNT} historical + ${DEMO_RECENT_DONATIONS} last-30d + ${DEMO_PREVIOUS_DONATIONS} previous-30d)`,
+    );
+
+    // Active pledges — drives the Récurrence component of the Mobilisation
+    // Score and the "Revenu récurrent" KPI tile.
+    const pledgeRows = Array.from({ length: DEMO_PLEDGE_COUNT }, () => {
+      const constituent = randomPick(insertedConstituents);
+      const frequency = Math.random() < 0.75 ? "monthly" : "yearly";
+      const amountCents =
+        frequency === "monthly"
+          ? randomInt(DEMO_PLEDGE_MONTHLY_MIN_CENTS, DEMO_PLEDGE_MONTHLY_MAX_CENTS)
+          : randomInt(DEMO_PLEDGE_YEARLY_MIN_CENTS, DEMO_PLEDGE_YEARLY_MAX_CENTS);
+      return {
+        orgId,
+        constituentId: constituent.id,
+        amountCents,
+        currency: "EUR" as const,
+        exchangeRate: "1",
+        amountBaseCents: amountCents,
+        frequency: frequency as "monthly" | "yearly",
+        status: "active" as const,
+        paymentGateway: "stripe",
+      };
+    });
+    const insertedPledges = await tx
+      .insert(pledges)
+      .values(pledgeRows)
+      .returning({ id: pledges.id });
+    console.log(`[seed][${tenantLabel}] Inserted ${insertedPledges.length} active pledges`);
   });
 }
 
@@ -953,6 +1105,250 @@ async function seedImpersonationHistory(): Promise<void> {
   );
 }
 
+/**
+ * Seed the platform-level survey infrastructure (3 surveys) + per-tenant
+ * invitations + responses so the super-admin finance dashboard
+ * (issue #206) renders non-empty PMF / NPS / CSAT cards in dev.
+ *
+ * Layout:
+ *   - 3 `surveys` rows (PMF Sean Ellis · NPS · CSAT) — platform-level,
+ *     written through systemDb.
+ *   - ~40 PMF invitations + ~30 responses (mix of very/somewhat/not
+ *     disappointed so the PMF % lands above the 40% threshold).
+ *   - ~60 NPS invitations + ~45 responses (0-10 spread).
+ *   - ~20 CSAT invitations + ~15 responses (1-5 ratings).
+ *   - ~20 of the responses carry a `text_reviewed_at` so the DPO-review
+ *     filter on the dashboard has data.
+ *
+ * Invitations + responses target the seeded constituents (we don't have
+ * tenant-admin user rows beyond alice/bob/camille/léo/inès, and the
+ * invitation `user_id` is NULL-able on GDPR erasure anyway — so we use a
+ * mix of the seeded users where they exist + NULL otherwise).
+ *
+ * Idempotent at the slug level — re-running the seed reuses existing
+ * survey rows and skips invitation insertion if the survey already has
+ * any rows for the target tenant.
+ */
+async function seedSurveys(orgIds: string[]): Promise<void> {
+  // 1) Surveys — platform-level. systemDb (BYPASSRLS) per ADR-017
+  // pattern: `surveys` has no `org_id` and the migration revokes app
+  // role write access.
+  const surveyDefs = [
+    {
+      slug: "pmf-2026-q2",
+      kind: "pmf",
+      questionFr: "Quel serait votre ressenti si vous ne pouviez plus utiliser Givernance ?",
+      questionEn: "How would you feel if you could no longer use Givernance?",
+      cadenceDays: 90,
+      freshnessSoonDays: 60,
+      freshnessStaleDays: 90,
+      responseTarget: 40,
+    },
+    {
+      slug: "nps-2026-q2",
+      kind: "nps",
+      questionFr:
+        "Sur une échelle de 0 à 10, quelle est la probabilité que vous recommandiez Givernance ?",
+      questionEn:
+        "On a scale from 0 to 10, how likely are you to recommend Givernance to a colleague?",
+      cadenceDays: 90,
+      freshnessSoonDays: 60,
+      freshnessStaleDays: 90,
+      responseTarget: 60,
+    },
+    {
+      slug: "csat-2026-continuous",
+      kind: "csat",
+      questionFr: "Comment évaluez-vous votre expérience récente avec notre support ?",
+      questionEn: "How would you rate your recent experience with our support team?",
+      cadenceDays: null,
+      freshnessSoonDays: 30,
+      freshnessStaleDays: 90,
+      responseTarget: 20,
+    },
+  ] as const;
+
+  const surveyIds: Record<string, string> = {};
+  for (const def of surveyDefs) {
+    const [existing] = await systemDb
+      .select({ id: surveys.id })
+      .from(surveys)
+      .where(eq(surveys.slug, def.slug))
+      .limit(1);
+    if (existing) {
+      surveyIds[def.kind] = existing.id;
+      console.log(`[seed][surveys] Reused ${def.kind} survey ${def.slug} (${existing.id})`);
+      continue;
+    }
+    // Schedule the next collection slightly in the future for NPS/PMF
+    // (so the "à recontacter" copy lands sensibly); CSAT is continuous.
+    const nextScheduledAt =
+      def.kind === "csat" ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const [inserted] = await systemDb
+      .insert(surveys)
+      .values({
+        slug: def.slug,
+        kind: def.kind,
+        questionFr: def.questionFr,
+        questionEn: def.questionEn,
+        cadenceDays: def.cadenceDays,
+        freshnessSoonDays: def.freshnessSoonDays,
+        freshnessStaleDays: def.freshnessStaleDays,
+        responseTarget: def.responseTarget,
+        nextScheduledAt,
+      })
+      .returning({ id: surveys.id });
+    if (!inserted) throw new Error(`Failed to insert ${def.kind} survey`);
+    surveyIds[def.kind] = inserted.id;
+    console.log(`[seed][surveys] Inserted ${def.kind} survey ${def.slug} (${inserted.id})`);
+  }
+
+  // 2) Per-tenant invitations + responses. Skip if any invitations exist
+  // for this (survey, tenant) pair — keeps re-runs idempotent.
+  for (const orgId of orgIds) {
+    await seedSurveyInvitationsForTenant(orgId, surveyIds);
+  }
+}
+
+async function seedSurveyInvitationsForTenant(
+  orgId: string,
+  surveyIds: Record<string, string>,
+): Promise<void> {
+  // Resolve some real user ids (NULL is acceptable per the schema's
+  // GDPR-erasure pattern; using real users when present keeps the
+  // dashboard's "you'd be reaching out to these admins" copy honest).
+  const userRows = await systemDb
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.orgId, orgId))
+    .limit(20);
+  const userPool: (string | null)[] = userRows.map((r) => r.id);
+  // Pad with NULLs so erasure scenarios are also represented.
+  while (userPool.length < 20) userPool.push(null);
+
+  const spec: Array<{
+    kind: "pmf" | "nps" | "csat";
+    invitationCount: number;
+    responseCount: number;
+    daysAgoBase: number;
+    /** Builder: returns the JSONB `response` payload for the i-th response. */
+    buildResponse: (i: number) => Record<string, unknown>;
+  }> = [
+    {
+      kind: "pmf",
+      invitationCount: 40,
+      responseCount: 30,
+      // Recent so the fresh-pip shows "à jour" (PMF threshold: < 90d = fresh).
+      daysAgoBase: 25,
+      buildResponse: (i: number) => {
+        // The aggregate view reads `response->>'category'` (not `sentiment`)
+        // for the PMF count. ~60% very_disappointed lands PMF % well above
+        // the 40% Sean-Ellis threshold so the dashboard headline reads
+        // "60% — au-dessus du seuil 40%".
+        const category =
+          i % 10 < 6
+            ? "very_disappointed"
+            : i % 10 < 9
+              ? "somewhat_disappointed"
+              : "not_disappointed";
+        return { category };
+      },
+    },
+    {
+      kind: "nps",
+      invitationCount: 60,
+      responseCount: 45,
+      daysAgoBase: 20, // fresh
+      // NPS = %promoters(9-10) − %detractors(0-6). Skew toward promoters
+      // so the demo lands NPS ≈ +50 (excellent).
+      buildResponse: (i: number) => {
+        const bucket = i % 10;
+        // 50% promoters (9-10), 35% passives (7-8), 15% detractors (0-6)
+        const score = bucket < 5 ? 9 + (bucket % 2) : bucket < 8 ? 7 + (bucket % 2) : (i % 7);
+        return { score };
+      },
+    },
+    {
+      kind: "csat",
+      invitationCount: 20,
+      responseCount: 15,
+      daysAgoBase: 5,
+      // CSAT 1-5 — skew toward 4-5 so the headline reads 4.5+/5.
+      buildResponse: (i: number) => {
+        const bucket = i % 10;
+        const rating = bucket < 7 ? 5 : bucket < 9 ? 4 : 3;
+        return { rating };
+      },
+    },
+  ];
+
+  for (const s of spec) {
+    const surveyId = surveyIds[s.kind];
+    if (!surveyId) continue;
+
+    // Wipe-then-reinsert so re-running the seed refreshes the survey
+    // payloads (otherwise old responses with wrong shapes / stale dates
+    // linger). Responses cascade via invitation_id FK.
+    const existingInvitations = await systemDb
+      .select({ id: surveyInvitations.id })
+      .from(surveyInvitations)
+      .where(and(eq(surveyInvitations.surveyId, surveyId), eq(surveyInvitations.orgId, orgId)));
+    if (existingInvitations.length > 0) {
+      const invitationIds = existingInvitations.map((r) => r.id);
+      await systemDb
+        .delete(surveyResponses)
+        .where(
+          and(eq(surveyResponses.orgId, orgId), inArray(surveyResponses.invitationId, invitationIds)),
+        );
+      await systemDb
+        .delete(surveyInvitations)
+        .where(and(eq(surveyInvitations.surveyId, surveyId), eq(surveyInvitations.orgId, orgId)));
+      console.log(
+        `[seed][surveys] Wiped ${existingInvitations.length} stale ${s.kind} invitations for tenant ${orgId}`,
+      );
+    }
+
+    const now = Date.now();
+    const invitedAtBase = new Date(now - s.daysAgoBase * 24 * 60 * 60 * 1000);
+    const invitationRows = Array.from({ length: s.invitationCount }, (_, i) => ({
+      surveyId,
+      orgId,
+      userId: userPool[i % userPool.length] ?? null,
+      channel: i % 4 === 0 ? "in_app" : "email",
+      invitedAt: new Date(invitedAtBase.getTime() + i * 60 * 60 * 1000),
+      expiresAt: new Date(invitedAtBase.getTime() + (i + 30) * 24 * 60 * 60 * 1000),
+    }));
+    const insertedInvitations = await systemDb
+      .insert(surveyInvitations)
+      .values(invitationRows)
+      .returning({ id: surveyInvitations.id });
+    console.log(
+      `[seed][surveys] Inserted ${insertedInvitations.length} ${s.kind} invitations for tenant ${orgId}`,
+    );
+
+    // Responses — one per invitation, up to responseCount.
+    const responseRows = insertedInvitations.slice(0, s.responseCount).map((inv, i) => ({
+      invitationId: inv.id,
+      orgId,
+      response: s.buildResponse(i),
+      submittedAt: new Date(invitedAtBase.getTime() + i * 2 * 60 * 60 * 1000),
+      // ~20 of the total responses across all surveys get a DPO review
+      // stamp. Skews to the earlier indices so the dashboard's
+      // verbatims tile has something to surface.
+      textReviewedAt: i < 7 ? new Date(invitedAtBase.getTime() + (i + 1) * 24 * 60 * 60 * 1000) : null,
+    }));
+    if (responseRows.length > 0) {
+      const insertedResponses = await systemDb
+        .insert(surveyResponses)
+        .values(responseRows)
+        .returning({ id: surveyResponses.id });
+      console.log(
+        `[seed][surveys] Inserted ${insertedResponses.length} ${s.kind} responses for tenant ${orgId}`,
+      );
+    }
+  }
+}
+
 async function main() {
   console.log("[seed] Starting Givernance dev seed…");
   await ensurePlatformSentinelTenant();
@@ -970,6 +1366,9 @@ async function main() {
   // fresh dev env (issue #428). Idempotent — skips if the seeded
   // super-admin already has any session rows.
   await seedImpersonationHistory();
+  // Surveys (PMF / NPS / CSAT) seeded for both real tenants so the
+  // super-admin finance dashboard (issue #206) renders non-empty cards.
+  await seedSurveys([TENANT_ID, DEMO_TENANT_ID]);
   console.log("[seed] Done.");
   process.exit(0);
 }
