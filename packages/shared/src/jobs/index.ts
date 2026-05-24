@@ -165,6 +165,62 @@ export interface SignupResendJob {
   };
 }
 
+// ─── Super-admin finance dashboard (Epic #434, issue #436) ──────────────────
+
+/**
+ * Cron-scheduled job names inside the FINANCE_DASHBOARD queue. Powers the
+ * enrichment that backs the super-admin "Finance plateforme" dashboard:
+ *
+ *  - CONSTITUENT_COUNT_REFRESH (daily, 03:00 UTC) — refreshes
+ *    `tenants.constituent_count_cached` so the per-tenant tile doesn't
+ *    re-COUNT(constituents) on every page render.
+ *  - SURVEY_SEND (hourly) — picks up `surveys WHERE next_scheduled_at
+ *    <= NOW()`, fans out invitations to the cohort, enqueues email
+ *    sends, and re-schedules cyclical surveys.
+ *  - SURVEY_RETENTION (weekly, Sunday 04:00 UTC) — soft-deletes
+ *    `survey_responses` older than 24 months (docs/31).
+ *
+ * All three respect the `admin.finance_dashboard` feature flag — a
+ * no-op (early return) when the flag is off so a paused rollout
+ * doesn't churn Postgres for nothing.
+ */
+export const FINANCE_DASHBOARD_JOBS = {
+  CONSTITUENT_COUNT_REFRESH: "finance.constituent_count_refresh",
+  SURVEY_SEND: "finance.survey_send",
+  SURVEY_RETENTION: "finance.survey_retention",
+} as const;
+
+/**
+ * Outbox event types emitted by the survey send loop (issue #436). The
+ * API agent (#437) wires the email-send consumer for these; the worker
+ * inserts a row into `outbox_events` and lets the transactional outbox
+ * relay enqueue the actual email send via existing infra.
+ */
+export const SURVEY_EVENT_TYPES = {
+  /** A survey invitation needs an email send (channel='email'). */
+  INVITATION_SEND_EMAIL: "survey.invitation.send_email",
+} as const;
+
+/**
+ * Outbox event types emitted by the user lifecycle (issue #439). The
+ * producer is the `DELETE /v1/users/:id` route handler, which emits
+ * inside the same transaction as the soft-delete itself so a relay
+ * redelivery and a tx rollback can never disagree about whether the
+ * downstream cascade is owed.
+ *
+ * Consumers — fanout-style, NOT routed through `routeDomainEvent`
+ * (these events drive side-effects in MULTIPLE subsystems, the same
+ * pattern as the notifications fanout):
+ *  - `survey-erasure-cascade` (this issue) — NULLs every pending
+ *    `survey_invitations.user_id` for the soft-deleted user and emits
+ *    one `audit_logs` row per affected invitation.
+ *  - Future subsystems that need to react to a tenant user erasure.
+ */
+export const USER_EVENT_TYPES = {
+  /** A tenant user row has just been soft-deleted (deleted_at = NOW(), keycloak_id = NULL). */
+  SOFT_DELETED: "user.soft_deleted",
+} as const;
+
 /**
  * Bulk-import processor input (Epic #373).
  *
@@ -242,6 +298,15 @@ export const QUEUE_NAMES = {
    * trigram query is CPU-bound; scale by adding pods.
    */
   BULK_IMPORT: "bulk_import",
+  /**
+   * Super-admin finance dashboard enrichment (Epic #434, issue #436).
+   * Carries three cron-scheduled job names — constituent-count refresh,
+   * survey send loop, survey retention sweep. Concurrency 1 per worker
+   * process; all three are platform-wide sweeps that should not run
+   * concurrently with themselves (constituent count UPDATEs against
+   * every tenant in turn; survey send claims invitations idempotently).
+   */
+  FINANCE_DASHBOARD: "finance_dashboard",
 } as const;
 
 /** Job names inside the NOTIFICATIONS_DIGEST queue. */
