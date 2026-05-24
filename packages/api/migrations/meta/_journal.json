@@ -456,6 +456,104 @@
       "when": 1778180000000,
       "tag": "0064_seed_advanced_filters_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1788180000000,
+      "tag": "0065_donations_platform_fee_base_cents",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1798180000000,
+      "tag": "0066_donations_stripe_fee_cents",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1808180000000,
+      "tag": "0067_donations_refunded_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1818180000000,
+      "tag": "0068_pledges_base_currency",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1828180000000,
+      "tag": "0069_tenants_constituent_count_cached",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1838180000000,
+      "tag": "0070_payment_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1848180000000,
+      "tag": "0071_surveys",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1858180000000,
+      "tag": "0072_survey_invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1868180000000,
+      "tag": "0073_survey_responses",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1878180000000,
+      "tag": "0074_survey_launches",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1888180000000,
+      "tag": "0075_admin_finance_dashboard_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1898180000000,
+      "tag": "0076_survey_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1908180000000,
+      "tag": "0077_survey_fk_restrict",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1918180000000,
+      "tag": "0078_admin_finance_dashboard_flag_label_update",
+      "breakpoints": true
     }
   ]
 }

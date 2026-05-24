@@ -307,6 +307,54 @@ export const FEATURE_FLAG_KEYS = {
    * filter controls in the constituents module.
    */
   ADVANCED_FILTERS: "advanced_filters",
+
+  /**
+   * Gates the super-admin platform finance + tenant-health dashboard
+   * (Epic #434, route `/admin/finance`).
+   *
+   * The epic ships the entire super-admin operational nerve-centre:
+   * real-time finance signals (volume, Revenu Givernance, MRR, frais
+   * Stripe), portfolio risk (HHI concentration, active-tenants ratio,
+   * payment-failure rate), Mobilisation Score per tenant (A+ → D), and
+   * Tenant Health via the in-house survey infrastructure (PMF Sean
+   * Ellis, NPS, CSAT) with the data-freshness pattern that surfaces
+   * stale survey data with inline refresh actions.
+   *
+   * Default-off until the dashboard's numbers have been validated
+   * against ground-truth on at least one live tenant. The KPIs
+   * aggregate cross-tenant data through `systemDb` (the only legitimate
+   * super-admin BYPASSRLS path); an off-by-one in the SQL is invisible
+   * to QA until real money is in the table, so the safe rollout is to
+   * deploy the schema + worker + API + page behind a flag and flip it
+   * per super-admin session for validation before the platform-wide
+   * enable.
+   *
+   * `scope='platform'`: the dashboard is super-admin-only by product
+   * design. Tenants have no per-tenant override semantics here — they
+   * never see this surface at all.
+   *
+   * `tenant_override_allowed=false`: follows from `scope='platform'`.
+   *
+   * `public=true`: the super-admin appShell SSR-fetches
+   * `/v1/feature-flags` to decide whether to render the "Finance
+   * plateforme" sidebar entry. A private projection would
+   * unconditionally hide the nav entry and defeat the epic.
+   *
+   * Surfaces gated by this key:
+   *   - API: GET /v1/superadmin/finance/summary (`requireFlag` is the
+   *     FIRST preHandler — disabled returns 404 so a scanner can't
+   *     enumerate role requirements).
+   *   - API: POST /v1/superadmin/surveys/:slug/launch (email|in_app)
+   *     + POST /v1/superadmin/surveys/:slug/schedule.
+   *   - Worker: Stripe BalanceTransaction enrichment job no-ops when
+   *     the flag is off; the daily constituent-count refresh job
+   *     no-ops too.
+   *   - Web: "Finance plateforme" sidebar entry hidden; `/admin/finance`
+   *     route returns 404.
+   *
+   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
+   */
+  ADMIN_FINANCE_DASHBOARD: "admin.finance_dashboard",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -432,6 +480,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
       "Enables powerful filtering capabilities with complex queries, aggregations, and pattern detection (LYBUNT, SYBUNT, recurring donors, lapsed donors, major donors). Performance-intensive feature that requires database indexes. Enable gradually to monitor impact.",
     scope: "tenant",
     tenantOverrideAllowed: true,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD,
+    defaultEnabled: false,
+    label: "Admin · Platform finance dashboard",
+    description:
+      "Cross-tenant super-admin dashboard aggregating donation volume, revenue, Stripe fees, and tenant health signals (Mobilisation Score + PMF/NPS/CSAT). Off by default until live tenant numbers are validated against ground truth.",
+    scope: "platform",
+    tenantOverrideAllowed: false,
     public: true,
   },
 ];
