@@ -112,6 +112,7 @@ erDiagram
 | Route | super_admin | org_admin / user / viewer | unauth |
 |---|---|---|---|
 | `POST /v1/superadmin/finance/reports/monthly` | 202 (or 200 replay) | 404 (anti-disclosure) | 401 |
+| `POST /v1/superadmin/finance/reports/backfill` | 200 (rate-limited 2/min/IP) | 404 | 401 |
 | `GET /v1/superadmin/finance/reports/:id` | 200 / 404 | 404 | 401 |
 | `GET /v1/superadmin/finance/reports/:id/pdf` | 200 stream / 409 / 404 | 404 | 401 |
 
@@ -124,6 +125,20 @@ Every route's `preHandler` is `requireFlag(ADMIN_FINANCE_DASHBOARD) → requireS
 - **Audit trail**: every `generate` and `download` writes an `audit_logs` row on the platform sentinel tenant, with `resource_type='platform_finance_report'`, `resource_id=<row.id>`, the super-admin's keycloak `sub` as `user_id` / `actor_id`, and a 16-char SHA-256 prefix of the IP. The `kpi_snapshot` JSONB on the row itself is the canonical record of "what numbers did the super-admin see" — decoupled from later schema drift in donations / pledges.
 - **Soft-delete**: `requested_by_platform_admin_id` is `ON DELETE SET NULL`, consistent with ADR-021 — the report stays auditable even after a super-admin is offboarded.
 - **Storage isolation**: ADR-023 — the `reports` bucket is **private** (ACL=private, SSE=AES256). Never co-locate with public-read assets (branding). Served back through the API only.
+
+## 5b. Automatic generation + backfill
+
+Two non-manual paths feed into the same `requestMonthlyReport()` flow:
+
+- **Boot-time backfill** — on every API process start, `startMonthlyReportScheduler` walks the last 12 fully-completed calendar months and idempotently enqueues a report for any month that doesn't already have a live row. Failures are logged but never block boot. Keeps the 12-month retention window populated after a fresh deploy.
+- **Recurring monthly cron** — the same scheduler also chains a `setTimeout` for `03:30 UTC on the 1st of each month`. On fire it calls `requestMonthlyReport()` for the previous month and re-schedules itself. The timer is `unref()`-ed so it doesn't keep the process alive on its own; an `onClose` Fastify hook cancels it on graceful shutdown.
+- **Manual backfill button** — `POST /v1/superadmin/finance/reports/backfill` powers the dashboard's "Backfill 12 mois" secondary button. Rate-limited at 2/min/IP because the 12 sequential `buildFinanceSummary` runs are a real load spike on the SQL pool. Audits as `action='backfill', resource_type='platform_finance_report', resource_id=NULL` with the enqueued/skipped month lists in `new_values`.
+
+**Multi-replica safety** — the cron and the boot-time backfill BOTH check `findLiveByMonth` before INSERTing; concurrent replicas race the partial unique index, and the loser catches the violation + replays the existing row. No coordination service required.
+
+**Flag gating** — both the boot-time backfill and the cron's fire-time fire re-check `ADMIN_FINANCE_DASHBOARD` and no-op when off, so a paused rollout doesn't churn Postgres.
+
+**Tests** — `disableSchedulers: true` on `createServer` opts is the test-only opt-out so integration suites don't enqueue spurious jobs. Production callers always get the scheduler.
 
 ## 6. Out of scope (deferred follow-ups)
 

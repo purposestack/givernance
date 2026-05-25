@@ -355,3 +355,16 @@ export const MonthlyReportResponse = Type.Object(
   { data: ReportSchema },
   { additionalProperties: false },
 );
+
+export const BackfillResponse = Type.Object(
+  {
+    data: StrictObject(
+      {
+        enqueued: Type.Array(ReportSchema),
+        skipped: Type.Array(ReportSchema),
+      },
+      { additionalProperties: false },
+    ),
+  },
+  { additionalProperties: false },
+);

@@ -271,6 +271,73 @@ export async function requestMonthlyReport(
 }
 
 /**
+ * Walk the last `n` fully-completed calendar months back from `now`
+ * and return the YYYY-MM labels in chronological order
+ * (oldest first). Used by the backfill route to know which months
+ * deserve a report.
+ */
+export function lastNMonths(n: number, now: Date = new Date()): string[] {
+  const months: string[] = [];
+  const baseYear = now.getUTCFullYear();
+  const baseMonth = now.getUTCMonth() + 1; // 1-indexed
+  const baseTotal = baseYear * 12 + (baseMonth - 1);
+  // Step into the most recent fully-completed month (matches
+  // previousMonth semantics), then walk back n entries.
+  for (let i = n; i >= 1; i -= 1) {
+    const total = baseTotal - i;
+    const y = Math.floor(total / 12);
+    const m = (total % 12) + 1;
+    months.push(`${y}-${String(m).padStart(2, "0")}`);
+  }
+  return months;
+}
+
+export interface BackfillResult {
+  /** Months that did not yet have a live row and were enqueued. */
+  enqueued: ReportRow[];
+  /** Months that already had a live (pending|ready) row — left untouched. */
+  skipped: ReportRow[];
+}
+
+/**
+ * Backfill — for each of the last 12 fully-completed calendar months
+ * (capped to the 2024-01 platform floor), idempotently request a
+ * monthly report. Calls share the same `requestMonthlyReport` flow as
+ * the manual button so the worker queue, S3 layout, audit shape and
+ * snapshot semantics stay identical between manual / backfill /
+ * cron-triggered paths.
+ */
+export async function backfillLast12Months(
+  input: { requestedByPlatformAdminId: string | null; traceparent?: string },
+  now: Date = new Date(),
+): Promise<BackfillResult> {
+  const enqueued: ReportRow[] = [];
+  const skipped: ReportRow[] = [];
+
+  for (const month of lastNMonths(12, now)) {
+    // The 2024-01 floor — silently skip pre-platform months instead of
+    // throwing, so a backfill from 2024-06 still works partially.
+    try {
+      validateMonth(month, now);
+    } catch {
+      continue;
+    }
+    const result = await requestMonthlyReport(
+      {
+        month,
+        requestedByPlatformAdminId: input.requestedByPlatformAdminId,
+        traceparent: input.traceparent,
+      },
+      now,
+    );
+    if (result.replayed) skipped.push(result.row);
+    else enqueued.push(result.row);
+  }
+
+  return { enqueued, skipped };
+}
+
+/**
  * List the N most recent reports (any status). Powers a future
  * "previous reports" panel on the dashboard — not exposed by issue
  * #443 itself but trivial to add and keeps the API surface coherent.

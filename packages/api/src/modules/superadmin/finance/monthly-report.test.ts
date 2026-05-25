@@ -6,7 +6,9 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { nextMonthlyFire } from "./auto-monthly-cron.js";
 import {
+  lastNMonths,
   MonthValidationError,
   periodForMonth,
   previousMonth,
@@ -87,5 +89,50 @@ describe("periodForMonth", () => {
     // `comparisonTo === from` (no overlap, no gap).
     expect(p.comparisonTo.toISOString()).toBe(p.from.toISOString());
     expect(p.comparisonFrom.getTime()).toBeLessThan(p.from.getTime());
+  });
+});
+
+describe("lastNMonths (backfill window)", () => {
+  it("returns N most recent completed months, oldest first", () => {
+    const now = new Date("2026-05-25T12:00:00Z");
+    const months = lastNMonths(12, now);
+    expect(months).toHaveLength(12);
+    expect(months[months.length - 1]).toBe("2026-04");
+    expect(months[0]).toBe("2025-05");
+  });
+
+  it("walks across the year boundary", () => {
+    const now = new Date("2026-02-10T12:00:00Z");
+    // Previous completed month = 2026-01; 12 months back = 2025-02.
+    const months = lastNMonths(12, now);
+    expect(months[0]).toBe("2025-02");
+    expect(months[months.length - 1]).toBe("2026-01");
+  });
+
+  it("N=1 → just the previous month", () => {
+    const now = new Date("2026-05-25T12:00:00Z");
+    expect(lastNMonths(1, now)).toEqual(["2026-04"]);
+  });
+});
+
+describe("nextMonthlyFire (auto-cron)", () => {
+  it("from mid-month → fires on the 1st of next month at 03:30 UTC", () => {
+    const now = new Date("2026-05-15T12:00:00Z");
+    expect(nextMonthlyFire(now).toISOString()).toBe("2026-06-01T03:30:00.000Z");
+  });
+
+  it("from the 1st at midnight → fires same day at 03:30 UTC", () => {
+    const now = new Date("2026-06-01T00:00:00Z");
+    expect(nextMonthlyFire(now).toISOString()).toBe("2026-06-01T03:30:00.000Z");
+  });
+
+  it("from the 1st just after 03:30 → fires on the 1st of NEXT month", () => {
+    const now = new Date("2026-06-01T03:31:00Z");
+    expect(nextMonthlyFire(now).toISOString()).toBe("2026-07-01T03:30:00.000Z");
+  });
+
+  it("December rollover → fires on Jan 1 of next year", () => {
+    const now = new Date("2026-12-20T12:00:00Z");
+    expect(nextMonthlyFire(now).toISOString()).toBe("2027-01-01T03:30:00.000Z");
   });
 });

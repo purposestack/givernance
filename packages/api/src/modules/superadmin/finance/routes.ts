@@ -28,6 +28,7 @@ import {
   problemDetail,
 } from "../../../lib/schemas.js";
 import {
+  backfillLast12Months,
   findById,
   MonthValidationError,
   previousMonth,
@@ -35,6 +36,7 @@ import {
 } from "./monthly-report.js";
 import { PeriodValidationError, resolvePeriod } from "./period.js";
 import {
+  BackfillResponse,
   CacheFlushResponse,
   InvitationIdParams,
   LaunchBody,
@@ -752,6 +754,95 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
         reply.header("content-length", contentLength);
       }
       return reply.send(body);
+    },
+  );
+
+  // ─── POST /v1/superadmin/finance/reports/backfill (issue #443) ──────────
+  // Idempotently requests reports for each of the last 12 fully-completed
+  // calendar months. Same flow as the manual button — re-uses the
+  // partial unique index for same-month dedup. Powers the "Backfill
+  // missing reports" action on the dashboard and the auto-cron that
+  // fires on day 1 of each month (it ALSO calls this codepath through
+  // requestMonthlyReport for resilience to past missed crons).
+  //
+  // Rate-limited at 2/min/IP — 12 sequential snapshot builds is a real
+  // load spike on the SQL pool and we never need to backfill that
+  // often.
+  app.post(
+    "/superadmin/finance/reports/backfill",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      schema: {
+        tags: ["Superadmin", "Finance"],
+        response: {
+          200: BackfillResponse,
+          ...ErrorResponses,
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 2,
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (request) => {
+      const platformAdminId = await resolvePlatformAdminId(request.auth?.userId ?? "");
+
+      const result = await backfillLast12Months({
+        requestedByPlatformAdminId: platformAdminId,
+        traceparent:
+          typeof request.headers.traceparent === "string" ? request.headers.traceparent : undefined,
+      });
+
+      // Project internal ReportRow → wire shape. `pdfS3Key` is an
+      // implementation detail (the S3 key is never exposed
+      // client-side; clients use the `pdfUrl` route instead).
+      const toWire = (r: (typeof result.enqueued)[number] | (typeof result.skipped)[number]) => ({
+        id: r.id,
+        month: r.month,
+        status: r.status,
+        failureReason: r.failureReason,
+        createdAt: r.createdAt,
+        readyAt: r.readyAt,
+        pdfUrl: r.status === "ready" ? `/v1/superadmin/finance/reports/${r.id}/pdf` : null,
+      });
+
+      // One audit row summarising the backfill — individual report
+      // enqueues already emit their own audit rows via
+      // requestMonthlyReport → POST handler? No, requestMonthlyReport
+      // itself does NOT audit (the POST route does). For the
+      // backfill path, emit a single summary audit to keep the
+      // audit_logs cardinality bounded.
+      const platformOrgId = await getPlatformOrgId();
+      try {
+        await systemDb.insert(auditLogs).values({
+          orgId: platformOrgId,
+          userId: request.auth?.userId ?? null,
+          actorId: request.auth?.userId ?? null,
+          action: "backfill",
+          resourceType: "platform_finance_report",
+          resourceId: null,
+          newValues: {
+            enqueued: result.enqueued.map((r) => ({ id: r.id, month: r.month })),
+            skipped: result.skipped.map((r) => ({ id: r.id, month: r.month })),
+          },
+          ipHash: hashIp(request.ip),
+          userAgent: request.headers["user-agent"] ?? undefined,
+        });
+      } catch (err) {
+        request.log.error(
+          { err, audit: "INSERT_FAILED" },
+          "CRITICAL: monthly finance report backfill audit insert failed",
+        );
+      }
+
+      return {
+        data: {
+          enqueued: result.enqueued.map(toWire),
+          skipped: result.skipped.map(toWire),
+        },
+      };
     },
   );
 }

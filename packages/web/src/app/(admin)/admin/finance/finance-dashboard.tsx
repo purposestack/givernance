@@ -154,6 +154,27 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     text: string;
   } | null>(null);
 
+  const handleBackfillReports = useCallback(async () => {
+    if (reportBusy) return;
+    setReportBusy(true);
+    setReportMessage({ tone: "info", text: "Backfill des 12 derniers mois en cours…" });
+    const api = createClientApiClient();
+    try {
+      const result = await SuperAdminFinanceService.backfillReports(api);
+      setReportMessage({
+        tone: "info",
+        text: `Backfill terminé — ${result.enqueued.length} nouveau(x) rapport(s) en file, ${result.skipped.length} déjà présent(s).`,
+      });
+    } catch (err) {
+      setReportMessage({
+        tone: "error",
+        text: err instanceof Error ? `Erreur backfill : ${err.message}` : "Erreur backfill.",
+      });
+    } finally {
+      setReportBusy(false);
+    }
+  }, [reportBusy]);
+
   const handleGenerateMonthlyReport = useCallback(async () => {
     if (reportBusy) return;
     setReportBusy(true);
@@ -463,6 +484,20 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               insights
             </span>
             {reportBusy ? "Génération…" : "Rapport mensuel"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="default"
+            onClick={handleBackfillReports}
+            disabled={reportBusy}
+            aria-busy={reportBusy}
+            title="Génère les rapports manquants des 12 derniers mois (idempotent)."
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden>
+              history
+            </span>
+            Backfill 12 mois
           </Button>
           {reportMessage && (
             <p
