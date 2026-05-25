@@ -64,4 +64,17 @@ export const SuperAdminFinanceService = {
     );
     return response.data;
   },
+
+  /**
+   * Force-flush the 5-minute Redis cache for the finance summary.
+   * Rare-use operator action — surfaces fresh data after an out-of-
+   * band SQL refresh (e.g. seed re-run). Server enforces rate-limit
+   * (5/min/IP) + audits each call. Issue #449.
+   */
+  async flushCache(client: ApiClient): Promise<{ keysDeleted: number; pattern: string }> {
+    const response = await client.post<{
+      data: { keysDeleted: number; pattern: string };
+    }>("/v1/superadmin/finance/cache/flush", {});
+    return response.data;
+  },
 };

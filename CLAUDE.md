@@ -296,6 +296,27 @@ Valid uses for Organization attributes: non-sensitive identifiers (`org_id`, slu
 
 **Automated guard**: [`packages/api/src/tests/integration/migrations-journal-parity.test.ts`](packages/api/src/tests/integration/migrations-journal-parity.test.ts) fails CI on orphan files, phantom journal entries, gappy `idx`, and non-monotonic `when`. If that test goes red after an edit, the journal is the thing to fix — never the test.
 
+### 🛑 Cached endpoints ship a flush route in the same PR (issue #449)
+
+**Any new endpoint that populates a Redis cache with a TTL > 1 minute MUST ship a matching operator-facing flush route in the SAME PR.** No exception. The cache stays useful (low DB load), but the operator never has to SSH the host + fight `redis-cli -a` AUTH gymnastics just to refresh after an out-of-band data change.
+
+**Why this is a hard rule**: PR #441 shipped the `/v1/superadmin/finance/summary` endpoint with a 5-minute Redis cache but no flush route. After PR #448 re-seeded the demo data on staging, the operator had to SSH the host and run `redis-cli` to invalidate the cache — which itself blew up on AUTH password URL-encoding (`WRONGPASS invalid username-password pair`). The 5-minute TTL eventually saved us, but the friction was avoidable.
+
+**How to apply when you add a cached endpoint** ([`packages/api/src/modules/superadmin/finance/routes.ts`](packages/api/src/modules/superadmin/finance/routes.ts) is the reference implementation):
+
+1. Pick a cache-key prefix as a `const` at module scope — never inline the literal. The flush route reuses the same constant for its SCAN pattern.
+2. Ship a POST route at `…/cache/flush` (or a name that reads as obviously-an-invalidation) in the same PR, same preHandler chain as the cached route (`requireFlag → requireSuperAdmin` for super-admin surfaces; `requireFlag → requireAuth` for tenant surfaces).
+3. **Pattern is HARDCODED server-side.** No body, no query, no header. The Redis SCAN target is built from the module-scoped prefix constant, NEVER from client input — otherwise `pattern=*` flushes the entire DB.
+4. **Rate-limit via `@fastify/rate-limit`** at a low cap (5 / minute / IP). Defends against a compromised-credential DoS that pounds the cache to force expensive SQL aggregation re-runs (cache-stampede).
+5. **Audit log on every call**: `action='cache.flushed', resource_type=<same as cached route>, metadata={pattern, keysDeleted, ipHash, correlationId}`. GDPR Art. 5(2) accountability.
+6. Use `redis.unlink(...)` (non-blocking, Redis 4+) rather than `redis.del(...)` for the deletion step — safer when the match set is large.
+7. **Response shape strict**: `{ data: { keysDeleted: number, pattern: string } }` with `additionalProperties: false`. Never echo the deleted KEYS themselves — they carry tenantId + period filters and leak usage patterns.
+8. **Add a discreet UI affordance** on the page that consumes the cached endpoint (small underlined "Forcer un rafraîchissement" link in the audit footer is the established pattern — opt-in, no high-traffic placement, rare-use). The UI dispatches the same POST with a toast on success/failure.
+9. **Tests** (integration): the same RBAC matrix as the cached endpoint (super_admin 200, others 404, unauth 401), flag-off → 404, decoy key with a different prefix MUST survive the flush (proof the pattern-scope is strict), client-supplied `?pattern=*` body / query / header MUST be ignored (server-side pattern is the only source of truth), idempotent re-call returns `keysDeleted: 0`.
+10. **`beforeEach`** in the test file clears `redis.keys("fastify-rate-limit-*")` so the 5/min cap doesn't bleed across test cases.
+
+Reference: [`packages/api/src/modules/superadmin/finance/routes.ts`](packages/api/src/modules/superadmin/finance/routes.ts) (route), [`packages/api/src/tests/integration/superadmin-finance.test.ts`](packages/api/src/tests/integration/superadmin-finance.test.ts) (test pattern), [`packages/web/src/services/SuperAdminFinanceService.ts`](packages/web/src/services/SuperAdminFinanceService.ts) (client wiring).
+
 ---
 
 ## 🛑 DEV PROCESS (CRITICAL FOR CI)
