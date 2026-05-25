@@ -108,6 +108,15 @@ export const SuperAdminFinanceService = {
   },
 
   /**
+   * List the most recent monthly reports, one row per month (the API
+   * deduplicates and prefers `ready` over `pending`/`failed`).
+   */
+  async listReports(client: ApiClient): Promise<MonthlyReport[]> {
+    const response = await client.get<{ data: MonthlyReport[] }>("/v1/superadmin/finance/reports");
+    return response.data;
+  },
+
+  /**
    * Backfill — request reports for each of the last 12 fully-completed
    * months that doesn't yet have a live row. Idempotent; existing
    * pending/ready rows are reported as `skipped`. Rate-limited

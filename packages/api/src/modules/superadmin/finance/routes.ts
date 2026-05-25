@@ -30,6 +30,7 @@ import {
 import {
   backfillLast12Months,
   findById,
+  listRecent,
   MonthValidationError,
   previousMonth,
   requestMonthlyReport,
@@ -41,6 +42,7 @@ import {
   InvitationIdParams,
   LaunchBody,
   LaunchResponse,
+  ListReportsResponse,
   MonthlyReportBody,
   MonthlyReportResponse,
   ReportIdParams,
@@ -644,6 +646,38 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
               ? `/v1/superadmin/finance/reports/${result.row.id}/pdf`
               : null,
         },
+      };
+    },
+  );
+
+  // ─── GET /v1/superadmin/finance/reports (list recent) ───────────────────
+  // Returns the 12 most-recent reports (any status) so the dashboard can
+  // render an "Archive" panel of downloadable monthly PDFs. Filter is
+  // applied client-side; the route returns the full set.
+  app.get(
+    "/superadmin/finance/reports",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      schema: {
+        tags: ["Superadmin", "Finance"],
+        response: {
+          200: ListReportsResponse,
+          ...ErrorResponses,
+        },
+      },
+    },
+    async () => {
+      const rows = await listRecent(24);
+      return {
+        data: rows.map((r) => ({
+          id: r.id,
+          month: r.month,
+          status: r.status,
+          failureReason: r.failureReason,
+          createdAt: r.createdAt,
+          readyAt: r.readyAt,
+          pdfUrl: r.status === "ready" ? `/v1/superadmin/finance/reports/${r.id}/pdf` : null,
+        })),
       };
     },
   );
