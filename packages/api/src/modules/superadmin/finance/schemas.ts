@@ -292,3 +292,20 @@ export const RespondResponse = Type.Object(
   },
   { additionalProperties: false },
 );
+
+// ─── Cache flush (#449) ─────────────────────────────────────────────────
+// Response shape for POST /v1/superadmin/finance/cache/flush. No request
+// body — pattern is hardcoded server-side to prevent any client-controlled
+// SCAN scope.
+export const CacheFlushResponse = Type.Object(
+  {
+    data: StrictObject(
+      {
+        keysDeleted: Type.Integer({ minimum: 0 }),
+        pattern: Type.String(),
+      },
+      { additionalProperties: false },
+    ),
+  },
+  { additionalProperties: false },
+);

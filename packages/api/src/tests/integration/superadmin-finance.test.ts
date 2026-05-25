@@ -761,3 +761,128 @@ describe("POST /v1/surveys/:invitationId/respond", () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe("POST /v1/superadmin/finance/cache/flush (#449)", () => {
+  const CACHE_KEY_A = "superadmin:finance:summary:v1:30d:_:_:all:all";
+  const CACHE_KEY_B = "superadmin:finance:summary:v1:90d:_:_:EUR:all";
+  // Decoy key with a different prefix — must NOT be touched by the flush.
+  const DECOY_KEY = "notifications:test:fixture-449";
+
+  beforeEach(async () => {
+    // Clear @fastify/rate-limit state — keys live under
+    // `fastify-rate-limit-*` (see filters.test.ts pattern). Without
+    // this, the 5/min cap on /cache/flush bleeds across test cases
+    // and a single 429 cascades the whole suite.
+    const rlKeys = await redis.keys("fastify-rate-limit-*");
+    if (rlKeys.length > 0) await redis.del(...rlKeys);
+    await redis.set(CACHE_KEY_A, JSON.stringify({ data: "seeded-30d" }), "EX", 300);
+    await redis.set(CACHE_KEY_B, JSON.stringify({ data: "seeded-90d" }), "EX", 300);
+    await redis.set(DECOY_KEY, "untouched", "EX", 300);
+  });
+  afterEach(async () => {
+    await redis.del(CACHE_KEY_A, CACHE_KEY_B, DECOY_KEY);
+  });
+
+  describe("RBAC matrix", () => {
+    it("super_admin → 200 + keysDeleted reflects the flushed count", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/superadmin/finance/cache/flush",
+        headers: authHeader(superAdminToken()),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        data: { keysDeleted: number; pattern: string };
+      };
+      expect(body.data.pattern).toBe("superadmin:finance:summary:v1:*");
+      expect(body.data.keysDeleted).toBeGreaterThanOrEqual(2);
+      // Seeded cache keys are gone.
+      expect(await redis.exists(CACHE_KEY_A)).toBe(0);
+      expect(await redis.exists(CACHE_KEY_B)).toBe(0);
+      // Decoy key with different prefix is INTACT — pattern-scope is strict.
+      expect(await redis.exists(DECOY_KEY)).toBe(1);
+    });
+
+    it("org_admin → 404 (anti-disclosure)", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/superadmin/finance/cache/flush",
+        headers: authHeader(signToken(app)),
+      });
+      expect(res.statusCode).toBe(404);
+      // Cache keys still present — RBAC blocked the operation.
+      expect(await redis.exists(CACHE_KEY_A)).toBe(1);
+    });
+
+    it("user role → 404", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/superadmin/finance/cache/flush",
+        headers: authHeader(signToken(app, { role: "user" })),
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("viewer role → 404", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/superadmin/finance/cache/flush",
+        headers: authHeader(signToken(app, { role: "viewer" })),
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("unauthenticated → 401", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/superadmin/finance/cache/flush",
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  it("flag off → 404", async () => {
+    await setFlag(false);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/superadmin/finance/cache/flush",
+      headers: authHeader(superAdminToken()),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("idempotent: flushing twice keeps decoy keys intact and returns 0 the second time", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/superadmin/finance/cache/flush",
+      headers: authHeader(superAdminToken()),
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/superadmin/finance/cache/flush",
+      headers: authHeader(superAdminToken()),
+    });
+    expect(second.statusCode).toBe(200);
+    const body = second.json() as { data: { keysDeleted: number } };
+    expect(body.data.keysDeleted).toBe(0);
+    expect(await redis.exists(DECOY_KEY)).toBe(1);
+  });
+
+  it("does NOT accept a client-supplied pattern (no body / query / header)", async () => {
+    // Even when sending a payload + query trying to extend the scan
+    // scope, the server must ignore it and only flush
+    // `superadmin:finance:summary:v1:*`.
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/superadmin/finance/cache/flush?pattern=*",
+      headers: authHeader(superAdminToken()),
+      payload: { pattern: "*" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: { pattern: string } };
+    expect(body.data.pattern).toBe("superadmin:finance:summary:v1:*");
+    // Decoy with `notifications:*` prefix MUST still be intact —
+    // proof the client-supplied `*` was ignored.
+    expect(await redis.exists(DECOY_KEY)).toBe(1);
+  });
+});

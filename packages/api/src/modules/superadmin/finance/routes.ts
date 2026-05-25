@@ -28,6 +28,7 @@ import {
 } from "../../../lib/schemas.js";
 import { PeriodValidationError, resolvePeriod } from "./period.js";
 import {
+  CacheFlushResponse,
   InvitationIdParams,
   LaunchBody,
   LaunchResponse,
@@ -125,6 +126,31 @@ async function emitAuditView(
     request.log.error(
       { err, audit: "INSERT_FAILED" },
       "CRITICAL: super-admin finance view audit insert failed — GDPR accountability gap",
+    );
+  }
+}
+
+async function emitAuditCacheFlush(
+  request: FastifyRequest,
+  metadata: { pattern: string; keysDeleted: number },
+): Promise<void> {
+  const platformOrgId = await getPlatformOrgId();
+  try {
+    await systemDb.insert(auditLogs).values({
+      orgId: platformOrgId,
+      userId: request.auth?.userId ?? null,
+      actorId: request.auth?.userId ?? null,
+      action: "cache.flushed",
+      resourceType: "platform_finance_summary",
+      resourceId: null,
+      newValues: metadata,
+      ipHash: hashIp(request.ip),
+      userAgent: request.headers["user-agent"] ?? undefined,
+    });
+  } catch (err) {
+    request.log.error(
+      { err, audit: "INSERT_FAILED", ...metadata },
+      "CRITICAL: super-admin finance cache flush audit insert failed — GDPR accountability gap",
     );
   }
 }
@@ -455,6 +481,73 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
           submittedAt: result.submittedAt.toISOString(),
         },
       };
+    },
+  );
+
+  // ─── POST /v1/superadmin/finance/cache/flush (#449) ─────────────────
+  // Invalidates the Redis cache for the platform finance summary so the
+  // dashboard surfaces fresh data immediately after a manual SQL refresh
+  // (e.g. SEED_DESTRUCTIVE_WIPE re-seed). Replaces the previous operator
+  // workflow of SSH + redis-cli + URL-encoded AUTH gymnastics.
+  //
+  // Security posture (per issue #449 callout — "ne doit pas être une
+  // faille"):
+  //  - preHandler chain identical to other superadmin routes: requireFlag
+  //    fires BEFORE requireSuperAdmin so a flag-off probe gets 404
+  //    without revealing the route.
+  //  - No request body / query / header. The Redis SCAN pattern is
+  //    hardcoded server-side; a compromised super-admin can NOT extend
+  //    the pattern to flush arbitrary keys (e.g. `*` to nuke the entire
+  //    DB).
+  //  - Rate-limited at 5 requests / minute / IP via @fastify/rate-limit.
+  //    Defends against DoS via cache pounding (each flush forces the
+  //    next request to re-run the expensive SQL aggregation; an
+  //    attacker holding super-admin credentials could otherwise produce
+  //    a cache-stampede load profile).
+  //  - Idempotent: flushing twice is a safe no-op. No Idempotency-Key
+  //    needed.
+  //  - Audit log on every call (action='cache.flushed', resource_type=
+  //    'platform_finance_summary'). GDPR Art. 5(2) accountability.
+  //  - Response shape strict — only { keysDeleted, pattern }. No cache
+  //    KEY listing exposed (keys carry tenantId + period filters which
+  //    would leak usage patterns).
+  app.post(
+    "/superadmin/finance/cache/flush",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      schema: {
+        tags: ["Superadmin", "Finance"],
+        response: {
+          200: CacheFlushResponse,
+          ...ErrorResponses,
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (request) => {
+      // Pattern is HARDCODED — no client-controlled SCAN scope.
+      const pattern = `${SUMMARY_CACHE_PREFIX}:*`;
+      const keys: string[] = [];
+      let cursor = "0";
+      do {
+        const [nextCursor, batch] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
+        keys.push(...batch);
+        cursor = nextCursor;
+      } while (cursor !== "0");
+
+      // UNLINK is the non-blocking sibling of DEL (Redis 4+). Safer for
+      // a potentially large match set; falls back to no-op when keys is
+      // empty.
+      const keysDeleted = keys.length > 0 ? await redis.unlink(...keys) : 0;
+
+      await emitAuditCacheFlush(request, { pattern, keysDeleted });
+
+      return { data: { keysDeleted, pattern } };
     },
   );
 }

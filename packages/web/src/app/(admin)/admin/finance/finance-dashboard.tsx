@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { VolumeRevenueChart } from "@/components/admin/finance";
+import { toast, VolumeRevenueChart } from "@/components/admin/finance";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import type { FinancePeriod, FinanceSummary } from "@/models/superadmin-finance";
 import { SuperAdminFinanceService } from "@/services/SuperAdminFinanceService";
@@ -109,8 +109,31 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const [summary, setSummary] = useState<FinanceSummary | null>(initialSummary);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<boolean>(initialError);
+  const [flushing, setFlushing] = useState(false);
 
   const handlePeriodChange = useCallback((next: FinancePeriod) => setPeriod(next), []);
+
+  const handleFlushCache = useCallback(async () => {
+    if (flushing) return;
+    setFlushing(true);
+    try {
+      const api = createClientApiClient();
+      const result = await SuperAdminFinanceService.flushCache(api);
+      toast.success(`Cache vidé · ${result.keysDeleted} entrée(s) supprimée(s)`);
+      // Re-fetch with current period/filters to populate the freshly-
+      // flushed cache and update the view.
+      const data = await SuperAdminFinanceService.fetchSummary(api, {
+        period,
+        currency: filters.currency === "all" ? undefined : filters.currency,
+        tenantId: filters.tenantId === "all" ? undefined : filters.tenantId,
+      });
+      setSummary(data);
+    } catch {
+      toast.error("Le flush a échoué — réessayez dans une minute.");
+    } finally {
+      setFlushing(false);
+    }
+  }, [flushing, period, filters.currency, filters.tenantId]);
   const handleCurrencyChange = useCallback(
     (next: FinanceFilters["currency"]) => setFilters((f) => ({ ...f, currency: next })),
     [],
@@ -1039,6 +1062,27 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         Cette vue a été chargée à {lastTimestamp}. Source :{" "}
         <code>/v1/superadmin/finance/summary</code>. Cache 5 min. Toute consultation est tracée dans{" "}
         <code>audit_logs</code>.
+        {/* Discreet operator action — used in rare cases (e.g. just
+            after an out-of-band SQL refresh). Server-side rate-limited
+            to 5/min, audited. Issue #449. */}
+        <button
+          type="button"
+          onClick={handleFlushCache}
+          disabled={flushing}
+          style={{
+            marginLeft: "var(--space-3)",
+            appearance: "none",
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            font: "inherit",
+            color: "var(--color-on-surface-variant)",
+            textDecoration: "underline",
+            cursor: flushing ? "wait" : "pointer",
+          }}
+        >
+          {flushing ? "Flush en cours…" : "Forcer un rafraîchissement"}
+        </button>
       </div>
 
       {loading && (
