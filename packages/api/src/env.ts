@@ -51,6 +51,14 @@ const EnvSchema = Type.Object({
    * ADR-023 (one bucket per visibility class).
    */
   S3_BULK_IMPORT_BUCKET: Type.String({ minLength: 1, default: "bulk-imports" }),
+  /**
+   * S3 bucket for super-admin monthly finance reports (issue #443).
+   * **Private** — PDFs aggregate cross-tenant donation volume,
+   * platform revenue, Stripe fees and Mobilisation Score per tenant.
+   * Served back through the API only (streaming-through-API per issue
+   * #214); never via presigned URL nor public-read. ADR-023.
+   */
+  S3_REPORTS_BUCKET: Type.String({ minLength: 1, default: "reports" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
   /**

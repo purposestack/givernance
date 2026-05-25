@@ -23,6 +23,7 @@ import { processConstituentCountRefresh } from "./processors/finance-constituent
 import { processSurveyRetention } from "./processors/finance-survey-retention.js";
 import { processSurveySend } from "./processors/finance-survey-send.js";
 import { processGdprErasure } from "./processors/gdpr-erasure.js";
+import { processGenerateMonthlyFinanceReport } from "./processors/generate-monthly-finance-report.js";
 import { processGenerateReceipt } from "./processors/generate-receipt.js";
 import { processKeycloakSyncOrgLogo } from "./processors/keycloak-sync-org-logo.js";
 import { processNotificationsEmailDigest } from "./processors/notifications-email-digest.js";
@@ -622,6 +623,25 @@ function startWorkers() {
     },
   );
 
+  // Issue #443 — Monthly platform finance report PDF generation.
+  // Concurrency 1 per process: each job runs a PDFKit render + a
+  // multipart S3 upload; the work is bound by S3 upload latency more
+  // than CPU. Scale by adding worker pods, not concurrency. The
+  // partial unique index on the live rows means at most one
+  // in-flight job per month anyway.
+  const platformReportsWorker = new Worker(
+    QUEUE_NAMES.PLATFORM_REPORTS,
+    (job) =>
+      processGenerateMonthlyFinanceReport(
+        job as Job<{ reportId: string; month: string; traceparent?: string }>,
+      ),
+    {
+      connection: createRedisConnection(),
+      concurrency: 1,
+      ...defaultJobOpts,
+    },
+  );
+
   const workers = [
     receiptsWorker,
     emailsWorker,
@@ -636,6 +656,7 @@ function startWorkers() {
     notificationsDigestWorker,
     bulkImportWorker,
     financeDashboardWorker,
+    platformReportsWorker,
   ];
 
   for (const w of workers) {

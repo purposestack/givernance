@@ -15,6 +15,8 @@ import type {
   FinancePeriod,
   FinanceSummary,
   FinanceSummaryResponse,
+  MonthlyReport,
+  MonthlyReportResponse,
   SurveyLaunchResponse,
 } from "@/models/superadmin-finance";
 
@@ -75,6 +77,32 @@ export const SuperAdminFinanceService = {
     const response = await client.post<{
       data: { keysDeleted: number; pattern: string };
     }>("/v1/superadmin/finance/cache/flush", {});
+    return response.data;
+  },
+
+  /**
+   * Request generation of the monthly platform finance report PDF
+   * (issue #443). Idempotent on the target month — same-month replays
+   * return the existing pending/ready row. Pass an explicit `month`
+   * to re-run an older period; default is the most recent
+   * fully-completed calendar month (server-resolved).
+   */
+  async requestMonthlyReport(
+    client: ApiClient,
+    body: { month?: string } = {},
+  ): Promise<MonthlyReport> {
+    const response = await client.post<MonthlyReportResponse>(
+      "/v1/superadmin/finance/reports/monthly",
+      body,
+    );
+    return response.data;
+  },
+
+  /** Poll the report's status until `ready` or `failed`. */
+  async fetchReport(client: ApiClient, id: string): Promise<MonthlyReport> {
+    const response = await client.get<MonthlyReportResponse>(
+      `/v1/superadmin/finance/reports/${encodeURIComponent(id)}`,
+    );
     return response.data;
   },
 };

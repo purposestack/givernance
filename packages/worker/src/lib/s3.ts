@@ -97,6 +97,21 @@ export async function streamArchiveToS3(
   return key;
 }
 
+/**
+ * Upload a platform monthly finance report PDF (issue #443) to the
+ * private reports bucket. Key shape: `monthly/{YYYY-MM}/{reportId}.pdf`
+ * — no tenant prefix because the report aggregates platform-wide
+ * cross-tenant data and is consumed by super-admins only.
+ */
+export async function uploadPlatformReportPdf(
+  month: string,
+  reportId: string,
+  doc: NodeJS.ReadableStream,
+): Promise<string> {
+  const key = `monthly/${month}/${reportId}.pdf`;
+  return streamPdfToS3(env.S3_REPORTS_BUCKET, key, doc);
+}
+
 /** Upload a postal-export ZIP to the campaigns bucket. */
 export async function uploadCampaignZip(
   tenantId: string,

@@ -128,3 +128,23 @@ export interface SurveyLaunchResponse {
     launchedAt: string;
   };
 }
+
+// ─── Monthly platform finance report (issue #443) ──────────────────────────
+
+export type MonthlyReportStatus = "pending" | "ready" | "failed";
+
+export interface MonthlyReport {
+  id: string;
+  /** YYYY-MM */
+  month: string;
+  status: MonthlyReportStatus;
+  failureReason: string | null;
+  createdAt: string;
+  readyAt: string | null;
+  /** Path-relative URL of the streamed PDF (null until status='ready'). */
+  pdfUrl: string | null;
+}
+
+export interface MonthlyReportResponse {
+  data: MonthlyReport;
+}

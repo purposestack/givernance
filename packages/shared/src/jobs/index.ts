@@ -165,6 +165,26 @@ export interface SignupResendJob {
   };
 }
 
+/**
+ * Generate the monthly platform finance report PDF (issue #443).
+ *
+ * `reportId` is the `platform_finance_reports.id` row the API created
+ * before enqueuing this job. The worker re-reads the row, runs
+ * `buildFinanceSummary` for the target month, renders the PDF,
+ * uploads to `S3_REPORTS_BUCKET`, then flips the row to
+ * `status='ready'` with `pdf_s3_key` set. No PII flows through Redis
+ * — only the row id + the month label (for log readability).
+ */
+export interface GenerateMonthlyFinanceReportJob {
+  name: "generate-monthly-finance-report";
+  data: {
+    reportId: string;
+    /** YYYY-MM target month — denormalised from the row for log readability. */
+    month: string;
+    traceparent?: string;
+  };
+}
+
 // ─── Super-admin finance dashboard (Epic #434, issue #436) ──────────────────
 
 /**
@@ -252,7 +272,8 @@ export type JobDefinition =
   | BrandingGcAssetJob
   | KeycloakSyncOrgLogoJob
   | SignupResendJob
-  | ProcessBulkImportJob;
+  | ProcessBulkImportJob
+  | GenerateMonthlyFinanceReportJob;
 
 /** Queue names */
 export const QUEUE_NAMES = {
@@ -307,6 +328,16 @@ export const QUEUE_NAMES = {
    * every tenant in turn; survey send claims invitations idempotently).
    */
   FINANCE_DASHBOARD: "finance_dashboard",
+  /**
+   * Super-admin monthly finance report PDF generation (issue #443).
+   * One job per `platform_finance_reports` row. Concurrency 1 per
+   * worker process — each job runs the full `buildFinanceSummary`
+   * aggregation (~12 SQL queries through `systemDb`) + a PDFKit
+   * render + a multipart S3 upload; running two side-by-side would
+   * pin both the Postgres pool and the event loop. Scale by adding
+   * worker pods, not concurrency.
+   */
+  PLATFORM_REPORTS: "platform_reports",
 } as const;
 
 /** Job names inside the NOTIFICATIONS_DIGEST queue. */

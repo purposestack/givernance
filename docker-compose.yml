@@ -125,6 +125,11 @@ services:
       # presigned URLs, no public-read. 90-day lifecycle matches the
       # row_data retention in `bulk_import_results` (see docs/26 §5).
       S3_BULK_IMPORT_BUCKET: ${S3_BULK_IMPORT_BUCKET:-bulk-imports}
+      # Platform monthly finance reports (issue #443) — **private**.
+      # Cross-tenant aggregated finance PDFs, super-admin only. Served
+      # back through the API stream-through (never presigned URL nor
+      # public-read). ADR-023.
+      S3_REPORTS_BUCKET: ${S3_REPORTS_BUCKET:-reports}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -134,6 +139,7 @@ services:
         mc mb --ignore-existing "local/$$S3_CAMPAIGNS_BUCKET"
         mc mb --ignore-existing "local/$$S3_BRANDING_BUCKET"
         mc mb --ignore-existing "local/$$S3_BULK_IMPORT_BUCKET"
+        mc mb --ignore-existing "local/$$S3_REPORTS_BUCKET"
         # GC orphan multipart parts after 1 day. The postal-export worker
         # streams a ZIP into S3 via @aws-sdk/lib-storage's multipart Upload;
         # if the source stream is destroyed mid-upload (worker crash, S3
@@ -147,6 +153,14 @@ services:
         mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_RECEIPTS_BUCKET" || true
         mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_BRANDING_BUCKET" || true
         mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_BULK_IMPORT_BUCKET" || true
+        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_REPORTS_BUCKET" || true
+        # Reports bucket — 12-month retention. Each monthly report is
+        # one ~50 KB PDF; over a year that's ~600 KB. Keep the rolling
+        # 12-month window for board-pack reference, prune anything
+        # older.
+        mc ilm rule add --expire-days 365 "local/$$S3_REPORTS_BUCKET" || true
+        # Reports bucket is private — explicit deny matches prod Scaleway.
+        mc anonymous set none "local/$$S3_REPORTS_BUCKET" || true
         # Bulk-import bucket — 90-day retention to match the row_data
         # snapshot retention in `bulk_import_results`. Operators can
         # re-download files within the window for audit; older files
