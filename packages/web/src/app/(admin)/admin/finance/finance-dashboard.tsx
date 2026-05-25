@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast, VolumeRevenueChart } from "@/components/admin/finance";
 import { Button } from "@/components/ui/button";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import type { FinancePeriod, FinanceSummary } from "@/models/superadmin-finance";
+import type { FinancePeriod, FinanceSummary, MonthlyReport } from "@/models/superadmin-finance";
 import { SuperAdminFinanceService } from "@/services/SuperAdminFinanceService";
 
 import "./finance-mockup.css";
@@ -153,6 +153,25 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     tone: "info" | "error";
     text: string;
   } | null>(null);
+  const [reports, setReports] = useState<MonthlyReport[]>([]);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+
+  const refreshReports = useCallback(async () => {
+    try {
+      const api = createClientApiClient();
+      const rows = await SuperAdminFinanceService.listReports(api);
+      setReports(rows);
+    } catch {
+      // Non-fatal — the archive panel just stays empty.
+    }
+  }, []);
+
+  // Lazy-fetch the archive list when the panel is first opened.
+  useEffect(() => {
+    if (archiveOpen && reports.length === 0) {
+      void refreshReports();
+    }
+  }, [archiveOpen, reports.length, refreshReports]);
 
   const handleBackfillReports = useCallback(async () => {
     if (reportBusy) return;
@@ -165,6 +184,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         tone: "info",
         text: `Backfill terminé — ${result.enqueued.length} nouveau(x) rapport(s) en file, ${result.skipped.length} déjà présent(s).`,
       });
+      void refreshReports();
     } catch (err) {
       setReportMessage({
         tone: "error",
@@ -173,7 +193,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     } finally {
       setReportBusy(false);
     }
-  }, [reportBusy]);
+  }, [reportBusy, refreshReports]);
 
   const handleGenerateMonthlyReport = useCallback(async () => {
     if (reportBusy) return;
@@ -192,6 +212,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         const absoluteUrl = api.resolveBrowserUrl(report.pdfUrl);
         setReportMessage({ tone: "info", text: `Rapport ${report.month} prêt — téléchargement…` });
         window.location.assign(absoluteUrl);
+        void refreshReports();
       } else if (report.status === "failed") {
         setReportMessage({
           tone: "error",
@@ -216,7 +237,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     } finally {
       setReportBusy(false);
     }
-  }, [reportBusy]);
+  }, [reportBusy, refreshReports]);
 
   // Tracks whether the user has interacted with the period / filter
   // controls since mount. The initial SSR fetch already loaded the
@@ -499,6 +520,19 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             </span>
             Backfill 12 mois
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="default"
+            onClick={() => setArchiveOpen((v) => !v)}
+            aria-expanded={archiveOpen}
+            aria-controls="finance-reports-archive"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden>
+              folder_open
+            </span>
+            {archiveOpen ? "Masquer l'archive" : "Voir l'archive"}
+          </Button>
           {reportMessage && (
             <p
               role={reportMessage.tone === "error" ? "alert" : "status"}
@@ -516,6 +550,111 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
           )}
         </div>
       </div>
+
+      {archiveOpen && (
+        <section
+          id="finance-reports-archive"
+          aria-label="Archive des rapports mensuels"
+          style={{
+            marginBottom: 16,
+            padding: 16,
+            background: "var(--color-surface-container)",
+            borderRadius: 8,
+            border: "1px solid var(--color-outline-variant)",
+          }}
+        >
+          <header
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              marginBottom: 8,
+            }}
+          >
+            <h2 style={{ fontSize: 14, fontWeight: 600, color: "var(--color-on-surface)" }}>
+              Archive · derniers rapports
+            </h2>
+            <span style={{ fontSize: 11, color: "var(--color-on-surface-variant)" }}>
+              Un rapport par mois · le plus récent en premier
+            </span>
+          </header>
+          {reports.length === 0 ? (
+            <p style={{ fontSize: 12, color: "var(--color-on-surface-variant)", margin: 0 }}>
+              Aucun rapport pour l'instant. Clique « Rapport mensuel » ou « Backfill 12 mois ».
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {reports.map((r) => (
+                <li
+                  key={r.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "120px 100px 1fr auto",
+                    gap: 12,
+                    alignItems: "center",
+                    padding: "8px 0",
+                    borderBottom: "1px solid var(--color-outline-variant)",
+                    fontSize: 13,
+                  }}
+                >
+                  <strong style={{ color: "var(--color-on-surface)" }}>{r.month}</strong>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color:
+                        r.status === "ready"
+                          ? "var(--color-primary)"
+                          : r.status === "failed"
+                            ? "var(--color-error)"
+                            : "var(--color-on-surface-variant)",
+                    }}
+                  >
+                    {r.status === "ready" ? "Prêt" : r.status === "pending" ? "En cours…" : "Échec"}
+                  </span>
+                  <span
+                    style={{ fontSize: 11, color: "var(--color-on-surface-variant)" }}
+                    title={r.failureReason ?? undefined}
+                  >
+                    {r.readyAt
+                      ? `Généré le ${new Date(r.readyAt).toLocaleString("fr-FR", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`
+                      : r.status === "failed"
+                        ? (r.failureReason ?? "Erreur")
+                        : "—"}
+                  </span>
+                  {r.status === "ready" && r.pdfUrl ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const api = createClientApiClient();
+                        window.location.assign(api.resolveBrowserUrl(r.pdfUrl ?? ""));
+                      }}
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: 14 }}
+                        aria-hidden
+                      >
+                        download
+                      </span>
+                      PDF
+                    </Button>
+                  ) : (
+                    <span aria-hidden style={{ width: 80 }} />
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <div className="finance-toolbar">
         <div className="segmented" role="radiogroup" aria-label="Période">

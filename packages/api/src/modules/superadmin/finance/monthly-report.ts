@@ -26,7 +26,7 @@
 import { QUEUE_NAMES } from "@givernance/shared/jobs";
 import { platformFinanceReports } from "@givernance/shared/schema";
 import { Queue } from "bullmq";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { systemDb } from "../../../lib/db.js";
 import { redis } from "../../../lib/redis.js";
 import type { ResolvedPeriod } from "./period.js";
@@ -338,15 +338,51 @@ export async function backfillLast12Months(
 }
 
 /**
- * List the N most recent reports (any status). Powers a future
- * "previous reports" panel on the dashboard — not exposed by issue
- * #443 itself but trivial to add and keeps the API surface coherent.
+ * List the N most recent reports, **one row per month** — preferring
+ * `ready` over `pending` over `failed`. Powers the dashboard's
+ * "Archive" panel. Without the per-month dedup, an operator who hits
+ * the manual button (or any transient `failed` retry burst) would see
+ * the panel pile up with duplicate-month entries.
+ *
+ * Returned in chronological-descending order (most recent month first).
  */
 export async function listRecent(limit = 12): Promise<ReportRow[]> {
-  const rows = await systemDb
-    .select()
-    .from(platformFinanceReports)
-    .orderBy(desc(platformFinanceReports.createdAt))
-    .limit(limit);
-  return rows.map(rowToDto);
+  // DISTINCT ON (month) is the canonical Postgres dedup. The ORDER BY
+  // inside the subquery is the tiebreaker: `ready` first, then
+  // `pending`, then `failed`, and within each status the most-recently
+  // created. The outer ORDER BY then re-sorts by `month DESC` so the
+  // panel shows newest months on top.
+  const rows = await systemDb.execute<{
+    id: string;
+    month: string;
+    status: string;
+    pdf_s3_key: string | null;
+    failure_reason: string | null;
+    created_at: Date;
+    ready_at: Date | null;
+  }>(sql`
+    SELECT id, month, status, pdf_s3_key, failure_reason, created_at, ready_at
+    FROM (
+      SELECT DISTINCT ON (month)
+        id, month, status, pdf_s3_key, failure_reason, created_at, ready_at
+      FROM platform_finance_reports
+      ORDER BY month, CASE status
+        WHEN 'ready' THEN 0
+        WHEN 'pending' THEN 1
+        WHEN 'failed' THEN 2
+        ELSE 3
+      END, created_at DESC
+    ) latest
+    ORDER BY month DESC
+    LIMIT ${limit}
+  `);
+  return rows.rows.map((r) => ({
+    id: r.id,
+    month: r.month,
+    status: r.status as ReportStatus,
+    pdfS3Key: r.pdf_s3_key,
+    failureReason: r.failure_reason,
+    createdAt: new Date(r.created_at).toISOString(),
+    readyAt: r.ready_at ? new Date(r.ready_at).toISOString() : null,
+  }));
 }

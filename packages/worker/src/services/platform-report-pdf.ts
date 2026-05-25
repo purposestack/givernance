@@ -365,8 +365,35 @@ function buildKpiRows(snapshot: ReportSnapshot): KpiRow[] {
 function renderKpis(doc: PdfDoc, snapshot: ReportSnapshot): void {
   sectionTitle(doc, "Indicateurs financiers");
 
+  // Column headers — same small-caps style as the tenants table.
+  doc.font("Helvetica").fontSize(8).fillColor(COLOR_OUTLINE);
+  const headerY = doc.y;
+  doc.text("INDICATEUR", KPI_COL_LABEL_X + 6, headerY, {
+    width: KPI_COL_LABEL_W,
+    align: "left",
+    characterSpacing: 1.2,
+  });
+  doc.text("MONTANT", KPI_COL_VALUE_X, headerY, {
+    width: KPI_COL_VALUE_W,
+    align: "right",
+    characterSpacing: 1.2,
+  });
+  doc.text("ÉVOLUTION", KPI_COL_DELTA_X, headerY, {
+    width: KPI_COL_DELTA_W - 6,
+    align: "right",
+    characterSpacing: 1.2,
+  });
+  doc.y = headerY + 14;
+  divider(doc);
+
   const rows = buildKpiRows(snapshot);
-  const rowH = 22;
+  // Row geometry: rect spans exactly [y, y+ROW_H]. Text is padded
+  // inside by ROW_PAD_Y so the baseline sits comfortably above
+  // mid-row. Advance doc.y by ROW_H exactly so the next row's rect
+  // tiles perfectly against the previous one — no overlap, no gap,
+  // no drift between text and its stripe.
+  const ROW_H = 24;
+  const ROW_PAD_Y = 7;
   doc.font("Helvetica").fontSize(10);
 
   for (let i = 0; i < rows.length; i += 1) {
@@ -374,18 +401,27 @@ function renderKpis(doc: PdfDoc, snapshot: ReportSnapshot): void {
     if (!row) continue;
     const y = doc.y;
 
-    // Alternating zebra-stripe background for readability.
     if (i % 2 === 0) {
       doc.save();
-      doc.rect(CONTENT_LEFT, y - 4, CONTENT_WIDTH, rowH).fill(COLOR_SURFACE_CONTAINER);
+      doc.rect(CONTENT_LEFT, y, CONTENT_WIDTH, ROW_H).fill(COLOR_SURFACE_CONTAINER);
       doc.restore();
     }
 
-    doc.fillColor(COLOR_ON_SURFACE_VARIANT).font("Helvetica");
-    doc.text(row.label, KPI_COL_LABEL_X + 6, y, { width: KPI_COL_LABEL_W, align: "left" });
+    const ty = y + ROW_PAD_Y;
 
-    doc.fillColor(COLOR_ON_SURFACE).font("Helvetica-Bold");
-    doc.text(row.value, KPI_COL_VALUE_X, y, { width: KPI_COL_VALUE_W, align: "right" });
+    doc.fillColor(COLOR_ON_SURFACE_VARIANT).font("Helvetica");
+    doc.text(row.label, KPI_COL_LABEL_X + 6, ty, { width: KPI_COL_LABEL_W, align: "left" });
+
+    // Cost KPIs (Frais Stripe, Remboursements) render as accounting
+    // negatives — value prefixed with `- ` and rendered in red — so
+    // an operator scanning the column instantly distinguishes
+    // money-out from money-in. Numeric n/a / non-cost / placeholder
+    // values stay neutral.
+    const isAccountingNegative = row.isCost && row.value !== "n/a" && row.value !== "—";
+    const displayValue = isAccountingNegative ? `- ${row.value}` : row.value;
+    const valueColor = isAccountingNegative ? COLOR_ERROR : COLOR_ON_SURFACE;
+    doc.fillColor(valueColor).font("Helvetica-Bold");
+    doc.text(displayValue, KPI_COL_VALUE_X, ty, { width: KPI_COL_VALUE_W, align: "right" });
 
     // For cost-type KPIs, an INCREASE is bad — invert the delta color.
     const baseColor = deltaColor(row.deltaValue);
@@ -396,12 +432,12 @@ function renderKpis(doc: PdfDoc, snapshot: ReportSnapshot): void {
           : COLOR_PRIMARY
         : baseColor;
     doc.fillColor(color).font("Helvetica");
-    doc.text(row.delta, KPI_COL_DELTA_X, y, {
+    doc.text(row.delta, KPI_COL_DELTA_X, ty, {
       width: KPI_COL_DELTA_W - 6,
       align: "right",
     });
 
-    doc.y = y + rowH - 4;
+    doc.y = y + ROW_H;
   }
 
   doc.fillColor(COLOR_ON_SURFACE);
@@ -458,7 +494,8 @@ function renderTopTenants(doc: PdfDoc, snapshot: ReportSnapshot): void {
   doc.y = headerY + 14;
   divider(doc);
 
-  const rowH = 20;
+  const ROW_H = 22;
+  const ROW_PAD_Y = 6;
   doc.font("Helvetica").fontSize(10);
   for (let i = 0; i < tenantsByVolume.length; i += 1) {
     const t = tenantsByVolume[i];
@@ -467,33 +504,35 @@ function renderTopTenants(doc: PdfDoc, snapshot: ReportSnapshot): void {
 
     if (i % 2 === 0) {
       doc.save();
-      doc.rect(CONTENT_LEFT, y - 4, CONTENT_WIDTH, rowH).fill(COLOR_SURFACE_CONTAINER);
+      doc.rect(CONTENT_LEFT, y, CONTENT_WIDTH, ROW_H).fill(COLOR_SURFACE_CONTAINER);
       doc.restore();
     }
 
+    const ty = y + ROW_PAD_Y;
+
     doc.fillColor(COLOR_ON_SURFACE).font("Helvetica");
-    doc.text(t.tenantName, T_COL_NAME_X + 6, y, {
+    doc.text(t.tenantName, T_COL_NAME_X + 6, ty, {
       width: T_COL_NAME_W - 6,
       align: "left",
       ellipsis: true,
     });
     doc.font("Helvetica-Bold");
-    doc.text(fmtEur(t.volumeCents), T_COL_AMOUNT_X, y, {
+    doc.text(fmtEur(t.volumeCents), T_COL_AMOUNT_X, ty, {
       width: T_COL_AMOUNT_W,
       align: "right",
     });
     doc.font("Helvetica").fillColor(COLOR_ON_SURFACE_VARIANT);
-    doc.text(fmtCount(t.donationCount), T_COL_COUNT_X, y, {
+    doc.text(fmtCount(t.donationCount), T_COL_COUNT_X, ty, {
       width: T_COL_COUNT_W,
       align: "right",
     });
     doc.fillColor(COLOR_PRIMARY).font("Helvetica-Bold");
-    doc.text(gradeByTenantId.get(t.tenantId) ?? "—", T_COL_GRADE_X, y, {
+    doc.text(gradeByTenantId.get(t.tenantId) ?? "—", T_COL_GRADE_X, ty, {
       width: T_COL_GRADE_W - 6,
       align: "right",
     });
 
-    doc.y = y + rowH - 4;
+    doc.y = y + ROW_H;
   }
 
   doc.fillColor(COLOR_ON_SURFACE);
@@ -537,7 +576,35 @@ function renderSurveys(doc: PdfDoc, snapshot: ReportSnapshot): void {
   const S_VALUE_W = 130;
   const S_N_X = CONTENT_LEFT + 420;
   const S_N_W = CONTENT_RIGHT - (CONTENT_LEFT + 420) - 6;
-  const rowH = 22;
+
+  // Column headers — same small-caps style as the other tables.
+  doc.font("Helvetica").fontSize(8).fillColor(COLOR_OUTLINE);
+  const headerY = doc.y;
+  doc.text("TYPE", S_KIND_X, headerY, {
+    width: S_KIND_W,
+    align: "left",
+    characterSpacing: 1.2,
+  });
+  doc.text("SLUG", S_SLUG_X, headerY, {
+    width: S_SLUG_W,
+    align: "left",
+    characterSpacing: 1.2,
+  });
+  doc.text("VALEUR", S_VALUE_X, headerY, {
+    width: S_VALUE_W,
+    align: "right",
+    characterSpacing: 1.2,
+  });
+  doc.text("RÉPONSES", S_N_X, headerY, {
+    width: S_N_W,
+    align: "right",
+    characterSpacing: 1.2,
+  });
+  doc.y = headerY + 14;
+  divider(doc);
+
+  const ROW_H = 26;
+  const ROW_PAD_Y = 7;
 
   for (let i = 0; i < snapshot.surveys.length; i += 1) {
     const s = snapshot.surveys[i];
@@ -546,11 +613,11 @@ function renderSurveys(doc: PdfDoc, snapshot: ReportSnapshot): void {
 
     if (i % 2 === 0) {
       doc.save();
-      doc.rect(CONTENT_LEFT, y - 4, CONTENT_WIDTH, rowH).fill(COLOR_SURFACE_CONTAINER);
+      doc.rect(CONTENT_LEFT, y, CONTENT_WIDTH, ROW_H).fill(COLOR_SURFACE_CONTAINER);
       doc.restore();
     }
 
-    const cellY = y + 4;
+    const cellY = y + ROW_PAD_Y;
 
     doc.font("Helvetica-Bold").fontSize(11).fillColor(COLOR_PRIMARY);
     doc.text(s.kind.toUpperCase(), S_KIND_X, cellY, { width: S_KIND_W, align: "left" });
@@ -583,7 +650,7 @@ function renderSurveys(doc: PdfDoc, snapshot: ReportSnapshot): void {
       });
     }
 
-    doc.y = y + rowH;
+    doc.y = y + ROW_H;
   }
 
   doc.fillColor(COLOR_ON_SURFACE);

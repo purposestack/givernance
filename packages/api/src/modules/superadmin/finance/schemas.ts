@@ -356,6 +356,13 @@ export const MonthlyReportResponse = Type.Object(
   { additionalProperties: false },
 );
 
+export const ListReportsResponse = Type.Object(
+  {
+    data: Type.Array(ReportSchema),
+  },
+  { additionalProperties: false },
+);
+
 export const BackfillResponse = Type.Object(
   {
     data: StrictObject(
