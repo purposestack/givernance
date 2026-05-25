@@ -20,18 +20,28 @@ import { systemDb } from "../../../lib/db.js";
 import { requireFlag } from "../../../lib/flags/flag-guard.js";
 import { requireAuth, requireSuperAdmin } from "../../../lib/guards.js";
 import { redis } from "../../../lib/redis.js";
+import { fetchPlatformReportObject } from "../../../lib/s3.js";
 import {
   ErrorResponses,
   isUuidV4,
   ProblemDetailSchema,
   problemDetail,
 } from "../../../lib/schemas.js";
+import {
+  findById,
+  MonthValidationError,
+  previousMonth,
+  requestMonthlyReport,
+} from "./monthly-report.js";
 import { PeriodValidationError, resolvePeriod } from "./period.js";
 import {
   CacheFlushResponse,
   InvitationIdParams,
   LaunchBody,
   LaunchResponse,
+  MonthlyReportBody,
+  MonthlyReportResponse,
+  ReportIdParams,
   RespondBody,
   RespondResponse,
   ScheduleBody,
@@ -548,6 +558,200 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
       await emitAuditCacheFlush(request, { pattern, keysDeleted });
 
       return { data: { keysDeleted, pattern } };
+    },
+  );
+
+  // ─── POST /v1/superadmin/finance/reports/monthly (issue #443) ───────────
+  app.post(
+    "/superadmin/finance/reports/monthly",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      schema: {
+        tags: ["Superadmin", "Finance"],
+        body: MonthlyReportBody,
+        response: {
+          200: MonthlyReportResponse,
+          202: MonthlyReportResponse,
+          ...ErrorResponses,
+          400: ProblemDetailSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = (request.body ?? {}) as { month?: string };
+      const targetMonth = body.month ?? previousMonth();
+
+      const platformAdminId = await resolvePlatformAdminId(request.auth?.userId ?? "");
+
+      let result: Awaited<ReturnType<typeof requestMonthlyReport>>;
+      try {
+        result = await requestMonthlyReport({
+          month: targetMonth,
+          requestedByPlatformAdminId: platformAdminId,
+          traceparent:
+            typeof request.headers.traceparent === "string"
+              ? request.headers.traceparent
+              : undefined,
+        });
+      } catch (err) {
+        if (err instanceof MonthValidationError) {
+          return reply.status(400).send(problemDetail(400, "Bad Request", err.detail));
+        }
+        throw err;
+      }
+
+      // Emit audit log: GDPR Art. 5(2) accountability — every report
+      // generation is traced to a super-admin, with replay flagged so
+      // a forensic timeline can tell a fresh enqueue from an
+      // idempotent same-month replay.
+      const platformOrgId = await getPlatformOrgId();
+      try {
+        await systemDb.insert(auditLogs).values({
+          orgId: platformOrgId,
+          userId: request.auth?.userId ?? null,
+          actorId: request.auth?.userId ?? null,
+          action: "generate",
+          resourceType: "platform_finance_report",
+          resourceId: result.row.id,
+          newValues: {
+            month: result.row.month,
+            replayed: result.replayed,
+            jobId: `monthly-finance-report-${result.row.id}`,
+          },
+          ipHash: hashIp(request.ip),
+          userAgent: request.headers["user-agent"] ?? undefined,
+        });
+      } catch (err) {
+        request.log.error(
+          { err, audit: "INSERT_FAILED" },
+          "CRITICAL: monthly finance report audit insert failed — GDPR accountability gap",
+        );
+      }
+
+      reply.status(result.replayed ? 200 : 202);
+      return {
+        data: {
+          id: result.row.id,
+          month: result.row.month,
+          status: result.row.status,
+          failureReason: result.row.failureReason,
+          createdAt: result.row.createdAt,
+          readyAt: result.row.readyAt,
+          pdfUrl:
+            result.row.status === "ready"
+              ? `/v1/superadmin/finance/reports/${result.row.id}/pdf`
+              : null,
+        },
+      };
+    },
+  );
+
+  // ─── GET /v1/superadmin/finance/reports/:id (polling) ───────────────────
+  app.get(
+    "/superadmin/finance/reports/:id",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      schema: {
+        tags: ["Superadmin", "Finance"],
+        params: ReportIdParams,
+        response: {
+          200: MonthlyReportResponse,
+          ...ErrorResponses,
+          404: ProblemDetailSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const row = await findById(id);
+      if (!row) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Report not found."));
+      }
+      return {
+        data: {
+          id: row.id,
+          month: row.month,
+          status: row.status,
+          failureReason: row.failureReason,
+          createdAt: row.createdAt,
+          readyAt: row.readyAt,
+          pdfUrl: row.status === "ready" ? `/v1/superadmin/finance/reports/${row.id}/pdf` : null,
+        },
+      };
+    },
+  );
+
+  // ─── GET /v1/superadmin/finance/reports/:id/pdf (streamed PDF) ──────────
+  //
+  // Stream-through-API rather than presigned URL: same rationale as
+  // `fetchReceiptObject` (issue #214) — keeps the donor-/operator-
+  // visible URL on the app's own apex and avoids baking the MinIO
+  // hostname into a SigV4 signature that's only resolvable inside the
+  // Docker network on staging.
+  app.get(
+    "/superadmin/finance/reports/:id/pdf",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      schema: {
+        tags: ["Superadmin", "Finance"],
+        params: ReportIdParams,
+        response: {
+          ...ErrorResponses,
+          404: ProblemDetailSchema,
+          409: ProblemDetailSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const row = await findById(id);
+      if (!row) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Report not found."));
+      }
+      if (row.status !== "ready" || !row.pdfS3Key) {
+        return reply
+          .status(409)
+          .send(
+            problemDetail(
+              409,
+              "Conflict",
+              `Report is not ready (status='${row.status}'). Poll GET /v1/superadmin/finance/reports/${row.id} until status='ready'.`,
+            ),
+          );
+      }
+
+      // Audit the download — separate `download` action so the
+      // forensic timeline tells a generate from a re-download.
+      const platformOrgId = await getPlatformOrgId();
+      try {
+        await systemDb.insert(auditLogs).values({
+          orgId: platformOrgId,
+          userId: request.auth?.userId ?? null,
+          actorId: request.auth?.userId ?? null,
+          action: "download",
+          resourceType: "platform_finance_report",
+          resourceId: row.id,
+          newValues: { month: row.month },
+          ipHash: hashIp(request.ip),
+          userAgent: request.headers["user-agent"] ?? undefined,
+        });
+      } catch (err) {
+        request.log.error(
+          { err, audit: "INSERT_FAILED" },
+          "CRITICAL: monthly finance report download audit insert failed",
+        );
+      }
+
+      const { body, contentLength } = await fetchPlatformReportObject(row.pdfS3Key);
+      reply.header("content-type", "application/pdf");
+      reply.header(
+        "content-disposition",
+        `attachment; filename="givernance-platform-finance-${row.month}.pdf"`,
+      );
+      if (contentLength !== undefined) {
+        reply.header("content-length", contentLength);
+      }
+      return reply.send(body);
     },
   );
 }

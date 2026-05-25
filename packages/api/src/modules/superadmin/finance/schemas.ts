@@ -309,3 +309,49 @@ export const CacheFlushResponse = Type.Object(
   },
   { additionalProperties: false },
 );
+
+// ─── Monthly platform finance report (issue #443) ──────────────────────────
+
+const MonthSchema = Type.String({
+  pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+  description: "Calendar month label YYYY-MM (e.g. '2026-04').",
+});
+
+const ReportStatusSchema = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("ready"),
+  Type.Literal("failed"),
+]);
+
+export const ReportIdParams = Type.Object({ id: UuidSchema }, { additionalProperties: false });
+
+export const MonthlyReportBody = Type.Object(
+  {
+    /**
+     * Optional explicit month — defaults to the most recent
+     * fully-completed calendar month. Set this to re-run an older
+     * month after a fix or for QA.
+     */
+    month: Type.Optional(MonthSchema),
+  },
+  { additionalProperties: false },
+);
+
+const ReportSchema = StrictObject(
+  {
+    id: UuidSchema,
+    month: MonthSchema,
+    status: ReportStatusSchema,
+    failureReason: Type.Union([Type.String(), Type.Null()]),
+    createdAt: Type.String(),
+    readyAt: Type.Union([Type.String(), Type.Null()]),
+    /** Path-relative URL of the streamed PDF (only when status='ready'). */
+    pdfUrl: Type.Union([Type.String(), Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
+export const MonthlyReportResponse = Type.Object(
+  { data: ReportSchema },
+  { additionalProperties: false },
+);

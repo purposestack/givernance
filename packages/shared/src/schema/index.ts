@@ -2005,3 +2005,43 @@ export const surveyLaunches = pgTable(
     index("survey_launches_cooldown_idx").on(table.surveyId, table.channel, table.launchedAt),
   ],
 );
+
+/**
+ * Platform-level monthly finance reports (Epic #434 follow-up, issue #443).
+ *
+ * One row per (calendar month, attempt). Rows in `status='ready'` /
+ * `status='pending'` are exclusive per month — the migration declares
+ * a partial unique index on `month WHERE status IN ('pending','ready')`
+ * which the route handler relies on for same-month idempotency.
+ *
+ * PLATFORM-LEVEL — no `org_id`, no RLS. Accessed exclusively through
+ * `systemDb` (BYPASSRLS owner pool). The migration REVOKEs ALL on
+ * `givernance_app`.
+ */
+export const platformFinanceReports = pgTable(
+  "platform_finance_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** YYYY-MM label of the calendar month the report covers. DB CHECK enforces shape. */
+    month: varchar("month", { length: 7 }).notNull(),
+    /** 'pending' | 'ready' | 'failed' — DB CHECK enforces. */
+    status: text("status").notNull().default("pending"),
+    /** Path inside `S3_REPORTS_BUCKET` once the worker uploads (NULL while pending/failed). */
+    pdfS3Key: text("pdf_s3_key"),
+    /** Full `SummaryServiceResult` frozen at generation time (numbers the PDF showed). */
+    kpiSnapshot: jsonb("kpi_snapshot"),
+    failureReason: text("failure_reason"),
+    requestedByPlatformAdminId: uuid("requested_by_platform_admin_id").references(
+      () => platformAdmins.id,
+      { onDelete: "set null" },
+    ),
+    /** BullMQ job id (`monthly-finance-report-<id>`) — for the polling-state hint. */
+    jobId: text("job_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("platform_finance_reports_status_idx").on(table.status),
+    index("platform_finance_reports_month_idx").on(table.month),
+  ],
+);

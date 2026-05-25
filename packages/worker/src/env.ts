@@ -55,6 +55,15 @@ const EnvSchema = Type.Object({
    * exposes them off-server. ADR-023.
    */
   S3_BULK_IMPORT_BUCKET: Type.String({ minLength: 1, default: "bulk-imports" }),
+  /**
+   * S3 bucket for super-admin monthly finance reports (issue #443).
+   * **Private** — the PDF aggregates cross-tenant donation volume,
+   * platform revenue, Stripe fees and tenant-level Mobilisation Score.
+   * Served back through the API only (streaming-through-API per issue
+   * #214); never via presigned URL nor public-read. Key shape:
+   * `monthly/{YYYY-MM}/{report_id}.pdf`. ADR-023.
+   */
+  S3_REPORTS_BUCKET: Type.String({ minLength: 1, default: "reports" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
   /**

@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { toast, VolumeRevenueChart } from "@/components/admin/finance";
+import { Button } from "@/components/ui/button";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import type { FinancePeriod, FinanceSummary } from "@/models/superadmin-finance";
 import { SuperAdminFinanceService } from "@/services/SuperAdminFinanceService";
@@ -142,6 +143,59 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     (next: FinanceFilters["tenantId"]) => setFilters((f) => ({ ...f, tenantId: next })),
     [],
   );
+
+  // ─── Monthly PDF report (issue #443) ──────────────────────────────────────
+  // The button is on the page header. Click → POST → poll the row by id
+  // every 2s until `ready` (or `failed`), then trigger a same-tab
+  // navigation to the streamed PDF URL.
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportMessage, setReportMessage] = useState<{
+    tone: "info" | "error";
+    text: string;
+  } | null>(null);
+
+  const handleGenerateMonthlyReport = useCallback(async () => {
+    if (reportBusy) return;
+    setReportBusy(true);
+    setReportMessage({ tone: "info", text: "Génération en cours…" });
+    const api = createClientApiClient();
+    try {
+      let report = await SuperAdminFinanceService.requestMonthlyReport(api);
+      // Poll every 2s up to 60 attempts (~2 min). The generation is
+      // typically sub-5s — this bound is the DLQ-candidate cutoff.
+      for (let attempt = 0; attempt < 60 && report.status === "pending"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        report = await SuperAdminFinanceService.fetchReport(api, report.id);
+      }
+      if (report.status === "ready" && report.pdfUrl) {
+        const absoluteUrl = api.resolveBrowserUrl(report.pdfUrl);
+        setReportMessage({ tone: "info", text: `Rapport ${report.month} prêt — téléchargement…` });
+        window.location.assign(absoluteUrl);
+      } else if (report.status === "failed") {
+        setReportMessage({
+          tone: "error",
+          text: report.failureReason
+            ? `Échec : ${report.failureReason}`
+            : "Échec de la génération du rapport.",
+        });
+      } else {
+        setReportMessage({
+          tone: "error",
+          text: "Rapport encore en attente — réessaie dans quelques minutes.",
+        });
+      }
+    } catch (err) {
+      setReportMessage({
+        tone: "error",
+        text:
+          err instanceof Error
+            ? `Erreur : ${err.message}`
+            : "Erreur lors de la génération du rapport.",
+      });
+    } finally {
+      setReportBusy(false);
+    }
+  }, [reportBusy]);
 
   // Tracks whether the user has interacted with the period / filter
   // controls since mount. The initial SSR fetch already loaded the
@@ -392,11 +446,40 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             </span>
           </p>
         </div>
-        {/* Action buttons (Exporter CSV + Rapport mensuel PDF) intentionally
-            hidden — backend endpoints not yet implemented. Tracked separately
-            so we ship UI when the feature is real, not before
-            (feedback_no_anticipatory_ui).
-            Follow-up issues: Export CSV (#442), Monthly PDF report (#443). */}
+        {/* Action buttons. CSV export (#442) is still not wired —
+            keep that one hidden per feedback_no_anticipatory_ui until
+            the backend lands. The "Rapport mensuel" PDF (#443) is
+            wired below. */}
+        <div className="page-header-actions">
+          <Button
+            type="button"
+            variant="primary"
+            size="default"
+            onClick={handleGenerateMonthlyReport}
+            disabled={reportBusy}
+            aria-busy={reportBusy}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden>
+              insights
+            </span>
+            {reportBusy ? "Génération…" : "Rapport mensuel"}
+          </Button>
+          {reportMessage && (
+            <p
+              role={reportMessage.tone === "error" ? "alert" : "status"}
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                color:
+                  reportMessage.tone === "error"
+                    ? "var(--color-error)"
+                    : "var(--color-on-surface-variant)",
+              }}
+            >
+              {reportMessage.text}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="finance-toolbar">
