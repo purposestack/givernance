@@ -511,21 +511,50 @@ function buildCampaign(index: number) {
  */
 async function seedOrgData(orgId: string, tenantLabel: string) {
   return withTenantContext(orgId, async (tx) => {
-    // Reset demo data so re-running the seed produces a deterministic
-    // A-grade state on the finance dashboard rather than compounding
-    // historical rows across runs. We only touch rows clearly labelled
-    // as seed-fixture data — operator-created records (if any leaked
-    // into this tenant) are left alone. Order matters: pledges →
-    // donations → campaigns → constituents to respect FK chains.
-    await tx.delete(pledges).where(eq(pledges.orgId, orgId));
-    await tx
-      .delete(donations)
-      .where(
-        and(eq(donations.orgId, orgId), sql`${donations.paymentRef} LIKE ${"SEED-%"}`),
+    // Safety gate (PR #441 follow-up): if the demo tenant already has
+    // donations, SKIP the seed entirely rather than destroying data.
+    //
+    // Why: staging runs `db:seed` automatically on every Kamal deploy.
+    // The first version of this function wiped pledges + donations +
+    // campaigns + constituents unconditionally — destroying any manual
+    // test data operators created via the UI / API on the demo tenant
+    // between deploys. The filter-by-SEED-* approach also failed because
+    // it left non-seed donations referencing constituents we tried to
+    // delete (donations_constituent_id_fkey violation, FAILED deploy).
+    //
+    // Operator can force a refresh by setting SEED_DESTRUCTIVE_WIPE=true:
+    //   ssh givernance-staging
+    //   docker exec -e SEED_DESTRUCTIVE_WIPE=true <api> pnpm db:seed
+    // …or simply running TRUNCATE on the demo tenant's tables.
+    const destructiveWipe = process.env.SEED_DESTRUCTIVE_WIPE === "true";
+
+    const [existingDonation] = await tx
+      .select({ id: donations.id })
+      .from(donations)
+      .where(eq(donations.orgId, orgId))
+      .limit(1);
+
+    if (existingDonation && !destructiveWipe) {
+      console.log(
+        `[seed][${tenantLabel}] Demo tenant already has donations — SKIPPING seed (set SEED_DESTRUCTIVE_WIPE=true to refresh)`,
       );
-    await tx.delete(campaigns).where(eq(campaigns.orgId, orgId));
-    await tx.delete(constituents).where(eq(constituents.orgId, orgId));
-    console.log(`[seed][${tenantLabel}] Wiped existing demo data (idempotent re-seed)`);
+      return;
+    }
+
+    if (existingDonation && destructiveWipe) {
+      // Destructive refresh requested — wipe in FK order.
+      //   pledges → cascades pledge_installments
+      //   donations → pledge_installments.donation_id is ON DELETE SET NULL
+      //   campaigns → no inbound FKs from this set
+      //   constituents → safe now that donations + pledges are gone
+      await tx.delete(pledges).where(eq(pledges.orgId, orgId));
+      await tx.delete(donations).where(eq(donations.orgId, orgId));
+      await tx.delete(campaigns).where(eq(campaigns.orgId, orgId));
+      await tx.delete(constituents).where(eq(constituents.orgId, orgId));
+      console.log(
+        `[seed][${tenantLabel}] SEED_DESTRUCTIVE_WIPE=true — wiped existing demo data`,
+      );
+    }
 
     // Constituents
     const constituentRows = Array.from({ length: CONSTITUENT_COUNT }, (_, i) => ({
@@ -1282,18 +1311,30 @@ async function seedSurveyInvitationsForTenant(
     },
   ];
 
+  const destructiveWipe = process.env.SEED_DESTRUCTIVE_WIPE === "true";
+
   for (const s of spec) {
     const surveyId = surveyIds[s.kind];
     if (!surveyId) continue;
 
-    // Wipe-then-reinsert so re-running the seed refreshes the survey
-    // payloads (otherwise old responses with wrong shapes / stale dates
-    // linger). Responses cascade via invitation_id FK.
     const existingInvitations = await systemDb
       .select({ id: surveyInvitations.id })
       .from(surveyInvitations)
       .where(and(eq(surveyInvitations.surveyId, surveyId), eq(surveyInvitations.orgId, orgId)));
-    if (existingInvitations.length > 0) {
+
+    // Same safety gate as seedOrgData: skip if survey data already
+    // exists for this (survey, tenant) pair. Real users on staging may
+    // have submitted responses via the in-app modal — auto-wiping each
+    // deploy would destroy that. SEED_DESTRUCTIVE_WIPE=true forces a
+    // refresh (cascades responses via invitation_id FK).
+    if (existingInvitations.length > 0 && !destructiveWipe) {
+      console.log(
+        `[seed][surveys] ${s.kind} invitations already present for tenant ${orgId} — skipping (set SEED_DESTRUCTIVE_WIPE=true to refresh)`,
+      );
+      continue;
+    }
+
+    if (existingInvitations.length > 0 && destructiveWipe) {
       const invitationIds = existingInvitations.map((r) => r.id);
       await systemDb
         .delete(surveyResponses)
@@ -1304,7 +1345,7 @@ async function seedSurveyInvitationsForTenant(
         .delete(surveyInvitations)
         .where(and(eq(surveyInvitations.surveyId, surveyId), eq(surveyInvitations.orgId, orgId)));
       console.log(
-        `[seed][surveys] Wiped ${existingInvitations.length} stale ${s.kind} invitations for tenant ${orgId}`,
+        `[seed][surveys] SEED_DESTRUCTIVE_WIPE=true — wiped ${existingInvitations.length} ${s.kind} invitations for tenant ${orgId}`,
       );
     }
 
