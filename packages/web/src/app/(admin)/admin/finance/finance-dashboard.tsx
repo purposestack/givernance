@@ -10,7 +10,7 @@
  * validated. FR copy lifted from the mockup; EN translation is a follow-up.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { VolumeRevenueChart } from "@/components/admin/finance";
 import { createClientApiClient } from "@/lib/api/client-browser";
@@ -120,8 +120,18 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     [],
   );
 
+  // Tracks whether the user has interacted with the period / filter
+  // controls since mount. The initial SSR fetch already loaded the
+  // 30d default; we skip the duplicate client fetch on first mount
+  // ONLY. After any interaction the skip lifts — otherwise navigating
+  // 30d → 90d → 30d would show stale 90d data labelled '30j' because
+  // the initialSummary check would still match (period back to 30d,
+  // initialSummary still truthy) and the refetch would be skipped.
+  const hasInteractedRef = useRef(false);
+
   useEffect(() => {
     if (
+      !hasInteractedRef.current &&
       period === "30d" &&
       filters.currency === "all" &&
       filters.tenantId === "all" &&
@@ -130,6 +140,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     ) {
       return;
     }
+    hasInteractedRef.current = true;
     let cancelled = false;
     setLoading(true);
     const api = createClientApiClient();
