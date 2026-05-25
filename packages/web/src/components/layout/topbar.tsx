@@ -133,7 +133,7 @@ export function Topbar({
       </button>
 
       <div className="flex min-w-0 items-center gap-2 text-sm">
-        <div className="flex items-center rounded-full bg-primary-fixed/30 px-3 py-1 text-on-primary-fixed-variant shadow-sm border border-primary-fixed/50">
+        <div className="flex items-center rounded-md bg-primary-fixed/30 px-3 py-1 text-on-primary-fixed-variant shadow-sm border border-primary-fixed/50">
           <span className="truncate font-medium">{title ?? t("breadcrumbDefault")}</span>
         </div>
       </div>
