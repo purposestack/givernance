@@ -99,9 +99,9 @@ const ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-000000000ad1";
 const ADMIN_EMAIL = "admin@givernance.org";
 const ADMIN_FIRST_NAME = "Super";
 const ADMIN_LAST_NAME = "Admin";
-const CONSTITUENT_COUNT = 50;
-const CAMPAIGN_COUNT = 5;
-const DONATION_COUNT = 100;
+const CONSTITUENT_COUNT = 200; // (#447) was 50 — bump for a credible-sized NPO
+const CAMPAIGN_COUNT = 15; // (#447) was 5 — mix active / closed / draft
+const DONATION_COUNT = 2500; // (#447) was 100 — 24 months of history for the volume timeline + period deltas
 
 /**
  * Demo posture for the super-admin finance dashboard (epic #434).
@@ -157,6 +157,84 @@ const DEMO_PAYMENT_SOURCE_MIX: Array<"stripe" | "camt053" | "manual"> = [
   ...Array(6).fill("camt053"),
   ...Array(3).fill("manual"),
 ];
+
+/**
+ * Currency mix for the 24-month historical batch — drives the
+ * super-admin "Devises" donut on the platform finance dashboard.
+ * Heavy EUR (the NPO base currency) with a small GBP + CHF tail
+ * so the donut shows three slices rather than 100% EUR. Recent
+ * donations stay EUR-only to keep the Croissance + Récurrence
+ * math clean (no FX-snapshot edge cases needed for demo).
+ */
+const DEMO_CURRENCY_MIX: Array<{ currency: "EUR" | "GBP" | "CHF"; rate: number; weight: number }> =
+  [
+    { currency: "EUR", rate: 1, weight: 85 },
+    { currency: "GBP", rate: 1.15, weight: 10 },
+    { currency: "CHF", rate: 1.05, weight: 5 },
+  ];
+
+/**
+ * Monthly seasonality multiplier for historical donations (#447). Indexed
+ * 0..11 (Jan..Dec). Models real-NPO fundraising patterns: post-holiday
+ * lull Jan/Feb, summer dip, GivingTuesday + year-end spike Nov/Dec.
+ */
+const SEASONALITY_BY_MONTH = [
+  0.7, // Jan — post-holiday lull
+  0.7, // Feb
+  1.0, // Mar
+  1.0, // Apr
+  1.1, // May — spring campaigns
+  0.9, // Jun
+  0.7, // Jul — summer dip
+  0.6, // Aug
+  1.0, // Sep — rentrée
+  1.1, // Oct
+  1.5, // Nov — GivingTuesday
+  2.0, // Dec — year-end peak
+];
+
+const HISTORICAL_MONTHS_BACK = 24;
+
+/**
+ * Pick a calendar month bucket using SEASONALITY_BY_MONTH weights, looking
+ * back N months from today. Returns a Date roughly in the middle of that
+ * bucket; the caller adds per-day jitter.
+ */
+function pickSeasonalMonthOffset(monthsBack: number): number {
+  // Build a weighted CDF over [0..monthsBack-1] (0 = current month, growing back).
+  const now = new Date();
+  const weights: number[] = [];
+  for (let i = 0; i < monthsBack; i++) {
+    const targetMonth = (now.getMonth() - i + 1200) % 12;
+    weights.push(SEASONALITY_BY_MONTH[targetMonth] ?? 1);
+  }
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i] ?? 0;
+    if (r <= 0) return i;
+  }
+  return 0;
+}
+
+function dateInMonthOffset(monthsBack: number): Date {
+  const d = new Date();
+  d.setMonth(d.getMonth() - monthsBack);
+  // Random day of month + jitter
+  d.setDate(randomInt(1, 28));
+  d.setHours(randomInt(8, 22), randomInt(0, 59), randomInt(0, 59), 0);
+  return d;
+}
+
+function pickCurrency(): { currency: "EUR" | "GBP" | "CHF"; rate: number } {
+  const total = DEMO_CURRENCY_MIX.reduce((a, c) => a + c.weight, 0);
+  let r = Math.random() * total;
+  for (const c of DEMO_CURRENCY_MIX) {
+    r -= c.weight;
+    if (r <= 0) return { currency: c.currency, rate: c.rate };
+  }
+  return { currency: "EUR", rate: 1 };
+}
 
 type ConstituentType = "donor" | "volunteer" | "member" | "beneficiary" | "partner";
 type CampaignType = "nominative_postal" | "door_drop" | "digital";
@@ -273,12 +351,6 @@ function randomPick<T>(items: readonly T[]): T {
 
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function randomDateWithinLastYear(): Date {
-  const now = Date.now();
-  const yearAgo = now - 365 * 24 * 60 * 60 * 1000;
-  return new Date(randomInt(yearAgo, now));
 }
 
 function emailFromName(first: string, last: string, suffix: number): string {
@@ -556,27 +628,59 @@ async function seedOrgData(orgId: string, tenantLabel: string) {
       );
     }
 
-    // Constituents
-    const constituentRows = Array.from({ length: CONSTITUENT_COUNT }, (_, i) => ({
-      ...buildConstituent(i),
-      orgId,
-    }));
+    // Constituents — spread `createdAt` over HISTORICAL_MONTHS_BACK (24 mo)
+    // so the org dashboard's "new donors this month" KPI has a credible
+    // history + a non-zero current period. Last ~10% of the cohort land
+    // in the last 30 days for the "+N this month" trend chip.
+    const constituentRows = Array.from({ length: CONSTITUENT_COUNT }, (_, i) => {
+      const isRecent = i < Math.floor(CONSTITUENT_COUNT * 0.1); // 20 / 200 in last 30d
+      const createdAt = isRecent
+        ? new Date(Date.now() - randomInt(0, 29) * 24 * 3600_000)
+        : dateInMonthOffset(randomInt(1, HISTORICAL_MONTHS_BACK - 1));
+      return {
+        ...buildConstituent(i),
+        orgId,
+        createdAt,
+        updatedAt: createdAt,
+      };
+    });
     const insertedConstituents = await tx
       .insert(constituents)
       .values(constituentRows)
       .returning({ id: constituents.id });
     console.log(`[seed][${tenantLabel}] Inserted ${insertedConstituents.length} constituents`);
 
-    // Campaigns
-    const campaignRows = Array.from({ length: CAMPAIGN_COUNT }, (_, i) => ({
-      ...buildCampaign(i),
-      orgId,
-    }));
+    // Campaigns — 15 total spread over 24 months, ~33% active /
+    // ~53% closed / ~14% draft. Two of the actives are created in
+    // the last 30 days so the org dashboard's "new active campaigns
+    // this month" trend chip is positive.
+    const campaignRows = Array.from({ length: CAMPAIGN_COUNT }, (_, i) => {
+      // Distribute statuses: index 0-4 = active (5), 5-12 = closed (8), 13-14 = draft (2).
+      const status: CampaignStatus = i < 5 ? "active" : i < 13 ? "closed" : "draft";
+      // Two of the actives in the last 30 days for the trend KPI.
+      const createdAt =
+        status === "active" && i < 2
+          ? new Date(Date.now() - randomInt(0, 28) * 24 * 3600_000)
+          : dateInMonthOffset(randomInt(1, HISTORICAL_MONTHS_BACK - 1));
+      const base = buildCampaign(i);
+      return {
+        ...base,
+        status,
+        orgId,
+        createdAt,
+        updatedAt: createdAt,
+      };
+    });
     const insertedCampaigns = await tx
       .insert(campaigns)
       .values(campaignRows)
-      .returning({ id: campaigns.id });
-    console.log(`[seed][${tenantLabel}] Inserted ${insertedCampaigns.length} campaigns`);
+      .returning({ id: campaigns.id, status: campaigns.status });
+    const activeCampaignIds = insertedCampaigns
+      .filter((c) => c.status === "active")
+      .map((c) => c.id);
+    console.log(
+      `[seed][${tenantLabel}] Inserted ${insertedCampaigns.length} campaigns (${activeCampaignIds.length} active)`,
+    );
 
     // Donations — link each to a random constituent + ~80% to a campaign.
     // Three batches (see DEMO_* constants above for the rationale):
@@ -591,62 +695,113 @@ async function seedOrgData(orgId: string, tenantLabel: string) {
     const now = Date.now();
     const dayMs = 24 * 60 * 60 * 1000;
 
+    // ~0.7% of donations are flipped to status='refunded' with a
+    // realistic refunded_at (between donated_at and donated_at + 30 days)
+    // so the dashboard's "Taux de remboursement" gauge has data. 0.7%
+    // sits comfortably in the gauge's green zone (sain < 1% · alerte
+    // > 5%) — visible cursor on the bar, no false alarm.
+    const REFUND_RATE = 0.007;
+
     const buildDonation = (
       i: number,
       donatedAt: Date,
       batch: "hist" | "recent" | "prev",
       amountRange: [number, number],
+      currencyOverride?: "EUR" | "GBP" | "CHF",
+      rateOverride?: number,
     ) => {
       const constituent = randomPick(insertedConstituents);
       const campaign = Math.random() > 0.2 ? randomPick(insertedCampaigns) : null;
       const amountCents = randomInt(amountRange[0], amountRange[1]);
       const paymentSource = randomPick(DEMO_PAYMENT_SOURCE_MIX);
+      const currency = currencyOverride ?? "EUR";
+      const rate = rateOverride ?? 1;
+      const amountBaseCents = Math.round(amountCents * rate);
       // Take-rate snapshot — Givernance keeps 1.5% + 0.30€ per cleared
       // donation. Pre-computing the cents fields here means the dashboard
       // KPIs (Revenu Givernance, take-rate) light up immediately on
       // first dashboard render rather than waiting on a worker pass.
       const platformFeeCents = Math.max(30, Math.round(amountCents * 0.015) + 30);
+      const platformFeeBaseCents = Math.round(platformFeeCents * rate);
+      const isRefunded = Math.random() < REFUND_RATE;
+      const refundedAt = isRefunded
+        ? new Date(donatedAt.getTime() + randomInt(1, 30) * 24 * 3600_000)
+        : null;
       return {
         orgId,
         constituentId: constituent.id,
         amountCents,
-        currency: "EUR",
-        exchangeRate: "1",
-        amountBaseCents: amountCents,
+        currency,
+        exchangeRate: String(rate),
+        amountBaseCents,
         platformFeeCents,
-        platformFeeBaseCents: platformFeeCents,
+        platformFeeBaseCents,
         // Stripe fee approx 1.4% + 0.25€ for EU cards (only on stripe rail).
         stripeFeeCents:
-          paymentSource === "stripe" ? Math.max(25, Math.round(amountCents * 0.014) + 25) : null,
+          paymentSource === "stripe"
+            ? Math.round(Math.max(25, Math.round(amountCents * 0.014) + 25) * rate)
+            : null,
         paymentSource,
         campaignId: campaign?.id ?? null,
         paymentMethod: randomPick(paymentMethods),
         paymentRef: `SEED-${tenantLabel}-${batch}-${Date.now()}-${i.toString().padStart(4, "0")}`,
         donatedAt,
         fiscalYear: donatedAt.getFullYear(),
+        status: (isRefunded ? "refunded" : "cleared") as "refunded" | "cleared",
+        refundedAt,
       };
     };
 
-    const historicalRows = Array.from({ length: DONATION_COUNT }, (_, i) =>
-      buildDonation(i, randomDateWithinLastYear(), "hist", [500, 500_000]),
-    );
+    // Historical 24-month batch — drives the volume timeline + period-
+    // over-period comparisons on both dashboards. Each donation's month
+    // is picked according to SEASONALITY_BY_MONTH so the chart shows the
+    // real NPO pattern (Dec/Nov peak, Jan/Feb lull, summer dip).
+    // Currency mix 85/10/5 EUR/GBP/CHF so the "Devises" donut on the
+    // super-admin dashboard has 3 slices.
+    const historicalRows = Array.from({ length: DONATION_COUNT }, (_, i) => {
+      // Pick a month bucket weighted by seasonality, then a random day.
+      // Skip the last THREE months (0, 1, 2) entirely — those windows
+      // are driven by the `recent` + `previous` batches below. Without
+      // this gap the historical bulk leaks into the period & previous-
+      // period windows and tanks the Croissance KPI (verified locally —
+      // an earlier draft with monthsBack >= 1 dropped the dashboard
+      // grade from A+ to B 66 because historical's December peak landed
+      // in the previous-30d window depending on calendar position).
+      const monthsBack = Math.max(3, pickSeasonalMonthOffset(HISTORICAL_MONTHS_BACK));
+      const donatedAt = dateInMonthOffset(monthsBack);
+      const { currency, rate } = pickCurrency();
+      return buildDonation(i, donatedAt, "hist", [500, 500_000], currency, rate);
+    });
     const recentRows = Array.from({ length: DEMO_RECENT_DONATIONS }, (_, i) => {
       // Spread across the last 30 days, slight peak in the most recent
-      // 14 days so the volume chart has a natural rising curve.
+      // 14 days so the volume chart has a natural rising curve. Currency
+      // mix carried through so the dashboard's "Devises" donut shows
+      // 3 slices (EUR-dominated, GBP + CHF tails) on the default 30d
+      // period rather than 100% EUR.
       const daysAgo = Math.floor(Math.random() ** 1.5 * 30);
       const donatedAt = new Date(now - daysAgo * dayMs);
-      return buildDonation(i, donatedAt, "recent", [
-        DEMO_RECENT_AMOUNT_MIN_CENTS,
-        DEMO_RECENT_AMOUNT_MAX_CENTS,
-      ]);
+      const { currency, rate } = pickCurrency();
+      return buildDonation(
+        i,
+        donatedAt,
+        "recent",
+        [DEMO_RECENT_AMOUNT_MIN_CENTS, DEMO_RECENT_AMOUNT_MAX_CENTS],
+        currency,
+        rate,
+      );
     });
     const previousRows = Array.from({ length: DEMO_PREVIOUS_DONATIONS }, (_, i) => {
       const daysAgo = 30 + Math.floor(Math.random() * 30);
       const donatedAt = new Date(now - daysAgo * dayMs);
-      return buildDonation(i, donatedAt, "prev", [
-        DEMO_PREVIOUS_AMOUNT_MIN_CENTS,
-        DEMO_PREVIOUS_AMOUNT_MAX_CENTS,
-      ]);
+      const { currency, rate } = pickCurrency();
+      return buildDonation(
+        i,
+        donatedAt,
+        "prev",
+        [DEMO_PREVIOUS_AMOUNT_MIN_CENTS, DEMO_PREVIOUS_AMOUNT_MAX_CENTS],
+        currency,
+        rate,
+      );
     });
 
     const donationRows = [...historicalRows, ...recentRows, ...previousRows];
@@ -667,13 +822,21 @@ async function seedOrgData(orgId: string, tenantLabel: string) {
         frequency === "monthly"
           ? randomInt(DEMO_PLEDGE_MONTHLY_MIN_CENTS, DEMO_PLEDGE_MONTHLY_MAX_CENTS)
           : randomInt(DEMO_PLEDGE_YEARLY_MIN_CENTS, DEMO_PLEDGE_YEARLY_MAX_CENTS);
+      // Multi-currency pledges (#447 follow-up): same EUR/GBP/CHF mix as
+      // donations so the MRR figure on the super-admin dashboard is
+      // genuinely currency-diverse, and so the per-currency donut
+      // reflects pledge contributions when the super-admin scopes to a
+      // tenant where recurring revenue dominates. `amount_base_cents`
+      // is snapshotted to the EUR equivalent at the FX rate stored in
+      // `exchange_rate` — same pattern as donations.
+      const { currency, rate } = pickCurrency();
       return {
         orgId,
         constituentId: constituent.id,
         amountCents,
-        currency: "EUR" as const,
-        exchangeRate: "1",
-        amountBaseCents: amountCents,
+        currency,
+        exchangeRate: String(rate),
+        amountBaseCents: Math.round(amountCents * rate),
         frequency: frequency as "monthly" | "yearly",
         status: "active" as const,
         paymentGateway: "stripe",
