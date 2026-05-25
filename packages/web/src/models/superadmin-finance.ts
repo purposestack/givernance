@@ -148,3 +148,10 @@ export interface MonthlyReport {
 export interface MonthlyReportResponse {
   data: MonthlyReport;
 }
+
+export interface BackfillResponse {
+  data: {
+    enqueued: MonthlyReport[];
+    skipped: MonthlyReport[];
+  };
+}

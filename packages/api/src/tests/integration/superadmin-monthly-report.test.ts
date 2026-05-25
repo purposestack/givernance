@@ -342,6 +342,66 @@ describe("GET /v1/superadmin/finance/reports/:id", () => {
   });
 });
 
+describe("POST /v1/superadmin/finance/reports/backfill", () => {
+  // The route is rate-limited 2/min/IP — Fastify keys on the test IP
+  // which is constant across `app.inject` calls. We sequence tests so
+  // each describe-it consumes at most one slot and use a distinct
+  // x-forwarded-for header per test where two consecutive calls are
+  // unavoidable.
+  it("flag off → 404 (gated)", async () => {
+    await setFlag(false);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/superadmin/finance/reports/backfill",
+      headers: { ...authHeader(superAdminToken()), "x-forwarded-for": "10.0.0.1" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("org_admin → 404 (anti-disclosure)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/superadmin/finance/reports/backfill",
+      headers: { ...authHeader(signToken(app)), "x-forwarded-for": "10.0.0.2" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("super_admin → 200 with enqueued + skipped breakdown; idempotent on replay", async () => {
+    const first = await app.inject({
+      method: "POST",
+      url: "/v1/superadmin/finance/reports/backfill",
+      headers: { ...authHeader(superAdminToken()), "x-forwarded-for": "10.0.0.3" },
+      payload: {},
+    });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json() as {
+      data: {
+        enqueued: Array<{ id: string; month: string }>;
+        skipped: Array<{ id: string; month: string }>;
+      };
+    };
+    expect(firstBody.data.enqueued.length).toBeGreaterThan(0);
+    expect(firstBody.data.skipped.length).toBe(0);
+
+    // Second call — every row is replayed; enqueued should be empty.
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/superadmin/finance/reports/backfill",
+      headers: { ...authHeader(superAdminToken()), "x-forwarded-for": "10.0.0.3" },
+      payload: {},
+    });
+    expect(second.statusCode).toBe(200);
+    const secondBody = second.json() as {
+      data: { enqueued: unknown[]; skipped: unknown[] };
+    };
+    expect(secondBody.data.enqueued.length).toBe(0);
+    expect(secondBody.data.skipped.length).toBe(firstBody.data.enqueued.length);
+  });
+});
+
 describe("GET /v1/superadmin/finance/reports/:id/pdf", () => {
   it("409 while pending — body explains why", async () => {
     const created = await app.inject({

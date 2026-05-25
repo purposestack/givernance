@@ -12,6 +12,7 @@
 
 import type { ApiClient } from "@/lib/api";
 import type {
+  BackfillResponse,
   FinancePeriod,
   FinanceSummary,
   FinanceSummaryResponse,
@@ -102,6 +103,20 @@ export const SuperAdminFinanceService = {
   async fetchReport(client: ApiClient, id: string): Promise<MonthlyReport> {
     const response = await client.get<MonthlyReportResponse>(
       `/v1/superadmin/finance/reports/${encodeURIComponent(id)}`,
+    );
+    return response.data;
+  },
+
+  /**
+   * Backfill — request reports for each of the last 12 fully-completed
+   * months that doesn't yet have a live row. Idempotent; existing
+   * pending/ready rows are reported as `skipped`. Rate-limited
+   * server-side (2/min/IP).
+   */
+  async backfillReports(client: ApiClient): Promise<BackfillResponse["data"]> {
+    const response = await client.post<BackfillResponse>(
+      "/v1/superadmin/finance/reports/backfill",
+      {},
     );
     return response.data;
   },
