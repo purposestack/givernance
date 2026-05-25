@@ -723,9 +723,22 @@ async function seedOrgData(orgId: string, tenantLabel: string) {
       // first dashboard render rather than waiting on a worker pass.
       const platformFeeCents = Math.max(30, Math.round(amountCents * 0.015) + 30);
       const platformFeeBaseCents = Math.round(platformFeeCents * rate);
+      // Refund timing: a refund-delay of 1-30 days after donation; if
+      // that would land in the future (recent donations + delay), clamp
+      // refunded_at to a short recent past so the dashboard's 30d
+      // refund-rate KPI actually surfaces a non-zero rate. Earlier
+      // version generated future refunded_at dates — visible row in
+      // the DB, but filtered out by `donated_at >= NOW() - 30d AND
+      // refunded_at IS NOT NULL` → KPI stayed at 0%.
       const isRefunded = Math.random() < REFUND_RATE;
+      const nowMs = Date.now();
+      const proposedRefundMs = donatedAt.getTime() + randomInt(1, 30) * 24 * 3600_000;
       const refundedAt = isRefunded
-        ? new Date(donatedAt.getTime() + randomInt(1, 30) * 24 * 3600_000)
+        ? new Date(
+            proposedRefundMs > nowMs
+              ? nowMs - randomInt(0, 7) * 24 * 3600_000 // clamp future → recent past
+              : proposedRefundMs,
+          )
         : null;
       return {
         orgId,
