@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowLeft,
   BarChart3,
   Building2,
   ChevronsUpDown,
@@ -213,48 +212,44 @@ export function Sidebar({
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-3" aria-label={t("menuLabel")}>
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
+          {/* Tenant nav items (Dashboard, Constituents, Campaigns, Donations,
+              Settings) are hidden for super-admins. Per ADR-022 super-admins
+              live in `platform_admins` with no `org_id`, so the tenant-scoped
+              pages have no tenant to operate on — surfacing them would only
+              produce 404s or "no organization" empty states. The Back-office
+              section below is the super-admin surface. */}
+          {!isSuperAdmin &&
+            NAV_ITEMS.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const Icon = item.icon;
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => {
-                  handleMobileClose();
-                }}
-                className={`flex items-center gap-4 rounded-lg px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
-                  isActive
-                    ? "bg-surface-container font-medium text-primary"
-                    : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
-                }`}
-                aria-current={isActive ? "page" : undefined}
-              >
-                <Icon size={20} aria-hidden="true" />
-                <span>{t(item.labelKey)}</span>
-              </Link>
-            );
-          })}
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => {
+                    handleMobileClose();
+                  }}
+                  className={`flex items-center gap-4 rounded-lg px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                    isActive
+                      ? "bg-surface-container font-medium text-primary"
+                      : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
+                  }`}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <Icon size={20} aria-hidden="true" />
+                  <span>{t(item.labelKey)}</span>
+                </Link>
+              );
+            })}
 
           {isSuperAdmin && (
-            <section
-              className="mt-6 border-t border-outline-variant pt-4"
-              aria-labelledby="sidebar-backoffice-heading"
-            >
-              {/* Back-to-org link — mockup docs/design/admin/dashboard.html
-                  L362. Mirrors the operator workflow of "I jumped into the
-                  super-admin shell, but my own org's dashboard is the one
-                  I usually live in." Only rendered for super-admins (the
-                  only role that sees this section). */}
-              <Link
-                href="/dashboard"
-                onClick={handleMobileClose}
-                className="mb-2 flex items-center gap-3 rounded-lg px-4 py-2 text-xs font-medium text-on-surface-variant transition-colors duration-normal ease-out hover:bg-surface-container-low hover:text-on-surface focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-              >
-                <ArrowLeft size={14} aria-hidden="true" />
-                <span>{tAdmin("backToOrg")}</span>
-              </Link>
+            <section aria-labelledby="sidebar-backoffice-heading">
+              {/* No back-to-org link — super-admins live in `platform_admins`
+                  without an `org_id` (ADR-022), so /dashboard would resolve
+                  to a no-tenant empty state. The earlier mockup carried a
+                  "Back to your organisation" link by design intent but the
+                  actual data model makes it a dead link. */}
               <h2
                 id="sidebar-backoffice-heading"
                 className="mb-2 px-4 text-xs font-semibold uppercase tracking-wide text-on-surface-variant"

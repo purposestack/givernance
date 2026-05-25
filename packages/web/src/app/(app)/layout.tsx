@@ -114,6 +114,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     publicFlags,
     FEATURE_FLAG_KEYS.PRODUCTIVITY_COMMAND_PALETTE,
   );
+  // Super-admin sidebar item "Platform finance" must stay visible across
+  // every authenticated route — not just `/admin/*`. Without this, a
+  // super-admin browsing to /dashboard or /constituents loses the
+  // navigation handle back to the platform finance view (and any other
+  // super-admin entry the sidebar adds). The (admin) layout resolves
+  // the same flag; this mirror keeps the (app) layout in lockstep.
+  const financeDashboardEnabled = isFlagEnabled(
+    publicFlags,
+    FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD,
+  );
 
   // Broken state: a non-super-admin reached the authenticated layout but
   // we couldn't resolve their tenant memberships. Two failure modes:
@@ -149,6 +159,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     };
   }
 
+  // Super-admins live in `platform_admins` without an org_id (ADR-022)
+  // so every TENANT-SCOPED chrome element is meaningless for them:
+  //   - 'Add your organisation's logo' banner → no organisation to add a logo to
+  //   - Command palette (Cmd+K) → searches constituents/donations/campaigns,
+  //     all tenant-scoped, nothing to search across as a platform admin
+  //   - Notifications centre → tenant-scoped events, super-admin doesn't
+  //     receive any
+  // The Keycloak seed gives the demo super-admin BOTH realmRoles=[super_admin]
+  // AND attributes.role=[org_admin] (for impersonation testing), which made
+  // the naive `auth.roles.includes("org_admin")` check evaluate to true on
+  // a super-admin session — that's how the logo banner leaked.
+  // (`isSuperAdmin` already resolved at the top of the function.)
+  const canManageBranding = !isSuperAdmin && auth.roles.includes("org_admin");
+
   return (
     <AuthProvider>
       <AppShell
@@ -156,12 +180,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         impersonationUserName={auth.impersonation ? userName : undefined}
         provisionalAdmin={provisionalAdmin}
         membershipCount={membershipCount}
-        isSuperAdmin={auth.roles.includes("super_admin")}
+        isSuperAdmin={isSuperAdmin}
         orgId={auth.orgId}
-        canManageBranding={auth.roles.includes("org_admin")}
+        canManageBranding={canManageBranding}
         orgLogo={orgLogo}
-        notificationsEnabled={notificationsEnabled}
-        commandPaletteEnabled={commandPaletteEnabled}
+        notificationsEnabled={!isSuperAdmin && notificationsEnabled}
+        commandPaletteEnabled={!isSuperAdmin && commandPaletteEnabled}
+        financeDashboardEnabled={financeDashboardEnabled}
       >
         {children}
       </AppShell>
