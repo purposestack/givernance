@@ -486,31 +486,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             100 avant pondération.
           </p>
         </div>
-        <div className="hero-block">
-          <div className="hero-label">
-            <span className="material-symbols-outlined">bar_chart</span>
-            Répartition · {tenantCount} tenants
-          </div>
-          <div
-            className="hero-hist"
-            role="img"
-            aria-label={gradeBuckets.map((b) => `${b.count} tenants ${b.key}`).join(", ")}
-          >
-            {gradeBuckets.map((b) => (
-              <div key={b.key} className="hist-col">
-                <span className="cnt">{b.count}</span>
-                <div
-                  className="bar"
-                  style={{ height: `${(b.count / maxBucket) * 95 + 5}%`, background: b.color }}
-                />
-                <span className="lab">{b.key}</span>
-              </div>
-            ))}
-          </div>
-          <p className="hero-foot" style={{ marginTop: "var(--space-5)" }}>
-            {`Distribution sur ${tenantCount} tenants. Tenants avec < 5 donateurs uniques exclus (k-anonymity).`}
-          </p>
-        </div>
+        <GradeHistogram buckets={gradeBuckets} maxBucket={maxBucket} tenantCount={tenantCount} />
       </section>
 
       <div className="kpi-grid">
@@ -1142,5 +1118,170 @@ function CurrencyDonutSvg({ slices }: CurrencyDonutSvgProps) {
         );
       })}
     </svg>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// GradeHistogram + whack-a-mole easter egg
+//
+// Triple-click the "Répartition · N tenants" label within 600 ms to
+// activate a 30-second whack-a-mole round. One of the five bars shoots
+// up (the "mole"), the others stay flat. Click the mole → +1, mole
+// rotates immediately. Mole also rotates every ~1.2 s on its own. When
+// the timer hits 0, score lingers for 4 s then the widget silently
+// returns to the real grade distribution.
+//
+// Deliberate easter-egg posture: no UI affordance hints at it (no
+// pointer cursor on the label, no tooltip, no a11y announcement). The
+// real distribution KPI is the load-bearing surface; the game is fun
+// for whoever discovers it. Stays inside this file because it's a tiny
+// self-contained component that only this page hosts.
+// ──────────────────────────────────────────────────────────────────────
+
+interface GradeHistogramProps {
+  buckets: Array<{ key: string; count: number; color: string }>;
+  maxBucket: number;
+  tenantCount: number;
+}
+
+const TRIPLE_CLICK_WINDOW_MS = 600;
+const GAME_DURATION_SECONDS = 30;
+const MOLE_ROTATION_MS = 1200;
+const GAME_OVER_LINGER_MS = 4000;
+
+function GradeHistogram({ buckets, maxBucket, tenantCount }: GradeHistogramProps) {
+  const [gameActive, setGameActive] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [score, setScore] = useState(0);
+  const [moleIndex, setMoleIndex] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
+  const clickTimesRef = useRef<number[]>([]);
+
+  const handleLabelClick = useCallback(() => {
+    if (gameActive) return;
+    const now = Date.now();
+    clickTimesRef.current = [
+      ...clickTimesRef.current.filter((t) => now - t < TRIPLE_CLICK_WINDOW_MS),
+      now,
+    ];
+    if (clickTimesRef.current.length >= 3) {
+      clickTimesRef.current = [];
+      setGameActive(true);
+      setGameOver(false);
+      setScore(0);
+      setTimeLeft(GAME_DURATION_SECONDS);
+      setMoleIndex(Math.floor(Math.random() * buckets.length));
+    }
+  }, [gameActive, buckets.length]);
+
+  // Countdown.
+  useEffect(() => {
+    if (!gameActive) return;
+    const interval = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t <= 1) {
+          setGameActive(false);
+          setGameOver(true);
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [gameActive]);
+
+  // Mole rotation — pick a different bar every ~1.2 s.
+  useEffect(() => {
+    if (!gameActive) return;
+    const interval = setInterval(() => {
+      setMoleIndex((current) => {
+        const next = Math.floor(Math.random() * buckets.length);
+        return current !== null && next === current ? (next + 1) % buckets.length : next;
+      });
+    }, MOLE_ROTATION_MS);
+    return () => clearInterval(interval);
+  }, [gameActive, buckets.length]);
+
+  // After game-over, return to real distribution after the linger.
+  useEffect(() => {
+    if (!gameOver) return;
+    const t = setTimeout(() => setGameOver(false), GAME_OVER_LINGER_MS);
+    return () => clearTimeout(t);
+  }, [gameOver]);
+
+  const handleBarClick = useCallback(
+    (idx: number) => {
+      if (!gameActive || moleIndex === null) return;
+      if (idx === moleIndex) {
+        setScore((s) => s + 1);
+        setMoleIndex(Math.floor(Math.random() * buckets.length));
+      }
+    },
+    [gameActive, moleIndex, buckets.length],
+  );
+
+  return (
+    <div className="hero-block">
+      <button
+        type="button"
+        className="hero-label"
+        onClick={handleLabelClick}
+        // Reset to <button> defaults; mockup styles .hero-label as a flex row
+        // and we keep it a label visually. The native button is the safe a11y
+        // wrapper for the click handler without surfacing the easter egg.
+        style={{
+          appearance: "none",
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          font: "inherit",
+          color: "inherit",
+          cursor: "default",
+          textAlign: "left",
+          width: "auto",
+        }}
+      >
+        <span className="material-symbols-outlined">bar_chart</span>
+        Répartition · {tenantCount} tenants
+      </button>
+      <div
+        className="hero-hist"
+        role="img"
+        aria-label={buckets.map((b) => `${b.count} tenants ${b.key}`).join(", ")}
+      >
+        {buckets.map((b, idx) => {
+          const isMole = gameActive && idx === moleIndex;
+          const heightPct = gameActive ? (isMole ? 95 : 8) : (b.count / maxBucket) * 95 + 5;
+          return (
+            // biome-ignore lint/a11y/noStaticElementInteractions: hidden easter-egg surface, mouse-only by design — a button would expose the game via keyboard/SR navigation and break the easter-egg posture
+            // biome-ignore lint/a11y/useKeyWithClickEvents: same — keyboard handler would surface the easter egg
+            <div
+              key={b.key}
+              className="hist-col"
+              onClick={() => handleBarClick(idx)}
+              style={{ cursor: gameActive ? "pointer" : "default" }}
+            >
+              <span className="cnt">{gameActive ? "" : b.count}</span>
+              <div
+                className="bar"
+                style={{
+                  height: `${heightPct}%`,
+                  background: b.color,
+                  transition: "height 0.3s ease",
+                }}
+              />
+              <span className="lab">{b.key}</span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="hero-foot" style={{ marginTop: "var(--space-5)" }}>
+        {gameActive
+          ? `Score : ${score} · ${timeLeft}s`
+          : gameOver
+            ? `Game over — score final : ${score}`
+            : `Distribution sur ${tenantCount} tenants. Tenants avec < 5 donateurs uniques exclus (k-anonymity).`}
+      </p>
+    </div>
   );
 }
