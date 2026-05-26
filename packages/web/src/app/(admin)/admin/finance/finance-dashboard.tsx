@@ -13,6 +13,15 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { toast, VolumeRevenueChart } from "@/components/admin/finance";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import type { FinancePeriod, FinanceSummary, MonthlyReport } from "@/models/superadmin-finance";
@@ -160,6 +169,10 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   } | null>(null);
   const [reports, setReports] = useState<MonthlyReport[]>([]);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  // Holds the report row whose regenerate-confirmation dialog is open.
+  // Single-slot — only one regeneration can be running at a time
+  // (gated by `reportBusy`).
+  const [reportToRegenerate, setReportToRegenerate] = useState<MonthlyReport | null>(null);
 
   const refreshReports = useCallback(async () => {
     try {
@@ -178,6 +191,21 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     }
   }, [archiveOpen, reports.length, refreshReports]);
 
+  // Auto-refresh the archive while any row is `pending` — picks up the
+  // worker's status flip without making the user reopen the panel.
+  // Stops itself as soon as every visible row is settled (ready /
+  // failed). Bounded by the panel being open so a backgrounded tab
+  // doesn't poll forever.
+  useEffect(() => {
+    if (!archiveOpen) return;
+    const hasPending = reports.some((r) => r.status === "pending");
+    if (!hasPending) return;
+    const interval = setInterval(() => {
+      void refreshReports();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [archiveOpen, reports, refreshReports]);
+
   // Auto-dismiss the report status message after 6s. We only schedule
   // the timer when the in-flight work is DONE (`reportBusy === false`)
   // so a long "Génération en cours…" message stays pinned until the
@@ -188,24 +216,46 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     return () => clearTimeout(timer);
   }, [reportMessage, reportBusy]);
 
-  const handleRegenerateReport = useCallback(
-    async (report: MonthlyReport) => {
+  // Request a regeneration — just opens the design-system AlertDialog;
+  // the actual work happens in `confirmRegenerate` only after the
+  // user confirms. Split this way so the confirmation lives in our
+  // own UI (with brand styling + i18n + a11y) instead of the
+  // platform-styled `window.confirm`.
+  const requestRegenerate = useCallback(
+    (report: MonthlyReport) => {
       if (reportBusy) return;
-      // Native confirm carries the RGPD warning. Functional super-admins
-      // are typically not on dialog-heavy UIs; a single browser confirm
-      // is the lowest-friction path. Copy mirrors the archive panel
-      // banner so the same information is presented twice — once
-      // ambient, once at decision time.
-      const ok = window.confirm(t("reports.archive.regenerateConfirm", { month: report.month }));
-      if (!ok) return;
-      setReportBusy(true);
-      setReportMessage({
-        tone: "info",
-        text: t("reports.messageRegenerating", { month: report.month }),
-      });
-      try {
-        const api = createClientApiClient();
-        const result = await SuperAdminFinanceService.regenerateReport(api, report.id);
+      setReportToRegenerate(report);
+    },
+    [reportBusy],
+  );
+
+  const confirmRegenerate = useCallback(async () => {
+    const report = reportToRegenerate;
+    if (!report || reportBusy) return;
+    setReportBusy(true);
+    setReportToRegenerate(null);
+    setReportMessage({
+      tone: "info",
+      text: t("reports.messageRegenerating", { month: report.month }),
+    });
+    // Surface the archive panel so the user can watch the new row
+    // tick from `pending` to `ready` via the watcher useEffect.
+    setArchiveOpen(true);
+    try {
+      const api = createClientApiClient();
+      const result = await SuperAdminFinanceService.regenerateReport(api, report.id);
+      void refreshReports();
+
+      // Poll the newly-created report (initially `pending`) until
+      // the worker flips it to `ready` or `failed`. Same 2s cadence
+      // and 60-attempt ceiling as the main "Rapport mensuel" flow.
+      let polled = result.newReport;
+      for (let attempt = 0; attempt < 60 && polled.status === "pending"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        polled = await SuperAdminFinanceService.fetchReport(api, polled.id);
+      }
+
+      if (polled.status === "ready") {
         setReportMessage({
           tone: "info",
           text: t("reports.messageRegenerated", {
@@ -214,20 +264,33 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
           }),
         });
         void refreshReports();
-      } catch (err) {
+      } else if (polled.status === "failed") {
         setReportMessage({
           tone: "error",
-          text:
-            err instanceof Error
-              ? t("reports.messageRegenerateError", { error: err.message })
-              : t("reports.messageRegenerateErrorGeneric"),
+          text: polled.failureReason
+            ? t("reports.messageFailed", { reason: polled.failureReason })
+            : t("reports.messageFailedGeneric"),
         });
-      } finally {
-        setReportBusy(false);
+      } else {
+        // Still pending after the poll window — surface the wait
+        // hint instead of silently dropping the "in-progress" state.
+        setReportMessage({
+          tone: "error",
+          text: t("reports.messagePendingTimeout"),
+        });
       }
-    },
-    [reportBusy, refreshReports, t],
-  );
+    } catch (err) {
+      setReportMessage({
+        tone: "error",
+        text:
+          err instanceof Error
+            ? t("reports.messageRegenerateError", { error: err.message })
+            : t("reports.messageRegenerateErrorGeneric"),
+      });
+    } finally {
+      setReportBusy(false);
+    }
+  }, [reportBusy, reportToRegenerate, refreshReports, t]);
 
   const handleBackfillReports = useCallback(async () => {
     if (reportBusy) return;
@@ -741,7 +804,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => void handleRegenerateReport(r)}
+                        onClick={() => requestRegenerate(r)}
                         disabled={reportBusy}
                         title={t("reports.archive.regenerateTitle")}
                       >
@@ -1485,6 +1548,41 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
           {t("loading")}
         </div>
       )}
+
+      <AlertDialog
+        open={reportToRegenerate !== null}
+        onOpenChange={(open) => {
+          if (!open) setReportToRegenerate(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {reportToRegenerate
+                ? t("reports.archive.regenerateDialogTitle", { month: reportToRegenerate.month })
+                : null}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("reports.archive.regenerateDialogBody")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={reportBusy}>
+              {t("reports.archive.regenerateDialogCancel")}
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => void confirmRegenerate()}
+              disabled={reportBusy}
+            >
+              {reportBusy
+                ? t("reports.archive.regenerateDialogConfirmBusy")
+                : t("reports.archive.regenerateDialogConfirm")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

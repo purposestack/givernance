@@ -1059,7 +1059,12 @@
           "downloadPdf": "PDF",
           "regenerate": "Régénérer",
           "regenerateTitle": "Régénère le rapport avec le code et les données actuels. L'ancien sera conservé pour la traçabilité RGPD.",
-          "regenerateConfirm": "Régénérer le rapport de {month} ?\n\nUn nouveau PDF sera généré avec le code et les données actuels. L'ancien rapport sera marqué comme remplacé mais restera dans le système (conformité RGPD Art. 5.2 — traçabilité de chaque génération).\n\nCette action est tracée dans le journal d'audit."
+          "regenerateConfirm": "Régénérer le rapport de {month} ?\n\nUn nouveau PDF sera généré avec le code et les données actuels. L'ancien rapport sera marqué comme remplacé mais restera dans le système (conformité RGPD Art. 5.2 — traçabilité de chaque génération).\n\nCette action est tracée dans le journal d'audit.",
+          "regenerateDialogTitle": "Régénérer le rapport de {month} ?",
+          "regenerateDialogBody": "Un nouveau PDF sera généré avec le code et les données actuels. L'ancien rapport sera marqué comme remplacé mais restera dans le système (conformité RGPD Art. 5.2 — traçabilité de chaque génération). Cette action est tracée dans le journal d'audit.",
+          "regenerateDialogCancel": "Annuler",
+          "regenerateDialogConfirm": "Régénérer",
+          "regenerateDialogConfirmBusy": "Régénération…"
         }
       },
       "filters": {
