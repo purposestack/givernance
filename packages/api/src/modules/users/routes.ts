@@ -524,7 +524,6 @@ export async function userRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
-<<<<<<< HEAD
       const body = request.body as UpdateMeBodyShape;
       const isSuperAdmin = request.auth?.roles?.includes("super_admin") ?? false;
       const isImpersonationSession = !!request.auth?.impersonation;
