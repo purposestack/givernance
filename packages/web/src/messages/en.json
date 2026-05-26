@@ -1059,7 +1059,12 @@
           "downloadPdf": "PDF",
           "regenerate": "Regenerate",
           "regenerateTitle": "Regenerates the report with current code and data. The previous one is kept for GDPR traceability.",
-          "regenerateConfirm": "Regenerate the {month} report?\n\nA new PDF will be generated with the current code and data. The previous report will be marked superseded but remain in the system (GDPR Art. 5.2 compliance — every generation is tracked).\n\nThis action is logged in the audit trail."
+          "regenerateConfirm": "Regenerate the {month} report?\n\nA new PDF will be generated with the current code and data. The previous report will be marked superseded but remain in the system (GDPR Art. 5.2 compliance — every generation is tracked).\n\nThis action is logged in the audit trail.",
+          "regenerateDialogTitle": "Regenerate the {month} report?",
+          "regenerateDialogBody": "A new PDF will be generated with the current code and data. The previous report will be marked superseded but remain in the system (GDPR Art. 5.2 compliance — every generation is tracked). This action is logged in the audit trail.",
+          "regenerateDialogCancel": "Cancel",
+          "regenerateDialogConfirm": "Regenerate",
+          "regenerateDialogConfirmBusy": "Regenerating…"
         }
       },
       "filters": {
