@@ -352,6 +352,7 @@ export async function userRoutes(app: FastifyInstance) {
             email: platformAdmins.email,
             firstName: platformAdmins.firstName,
             lastName: platformAdmins.lastName,
+            locale: platformAdmins.locale,
             createdAt: platformAdmins.createdAt,
             updatedAt: platformAdmins.updatedAt,
           })
@@ -380,7 +381,7 @@ export async function userRoutes(app: FastifyInstance) {
             role: "super_admin",
             firstAdmin: false,
             provisionalUntil: null,
-            locale: null,
+            locale: admin.locale as "en" | "fr" | null,
             tenantDefaultLocale: "en" as const,
             orgSlug: "platform",
             orgName: "Givernance Platform",
@@ -472,6 +473,105 @@ export async function userRoutes(app: FastifyInstance) {
       const userId = request.auth?.userId as string;
       const orgId = request.auth?.orgId as string;
       const body = request.body as { locale: "en" | "fr" | null };
+      const isSuperAdmin = request.auth?.roles?.includes("super_admin") ?? false;
+      const isImpersonationSession = !!request.auth?.impersonation;
+
+      // ADR-022 — super-admins outside an impersonation session live in
+      // `platform_admins`, not `users`. Mirror the GET branch: read +
+      // update + audit through the platform-side table instead of the
+      // tenant-scoped `users` row (which doesn't exist for them and
+      // would always 404). Same shape returned to the client so the
+      // profile form's re-base step works uniformly.
+      if (isSuperAdmin && !isImpersonationSession) {
+        const [existing] = await systemDb
+          .select({ id: platformAdmins.id, locale: platformAdmins.locale })
+          .from(platformAdmins)
+          .where(and(eq(platformAdmins.keycloakId, userId), isNull(platformAdmins.deletedAt)))
+          .limit(1);
+
+        if (!existing) {
+          const t = resolveTranslations(request);
+          return reply.status(404).send({
+            type: "https://httpproblems.com/http-status/404",
+            title: "Not Found",
+            status: 404,
+            detail: t("errors.notFound", { resource: t("resources.user") }),
+          });
+        }
+
+        const [updated] = await systemDb
+          .update(platformAdmins)
+          .set({ locale: body.locale, updatedAt: new Date() })
+          .where(eq(platformAdmins.id, existing.id))
+          .returning({
+            id: platformAdmins.id,
+            keycloakId: platformAdmins.keycloakId,
+            email: platformAdmins.email,
+            firstName: platformAdmins.firstName,
+            lastName: platformAdmins.lastName,
+            locale: platformAdmins.locale,
+            createdAt: platformAdmins.createdAt,
+            updatedAt: platformAdmins.updatedAt,
+          });
+        if (!updated) {
+          const t = resolveTranslations(request);
+          return reply.status(404).send({
+            type: "https://httpproblems.com/http-status/404",
+            title: "Not Found",
+            status: 404,
+            detail: t("errors.notFound", { resource: t("resources.user") }),
+          });
+        }
+
+        // Audit log on the platform sentinel tenant — same pattern as
+        // the super-admin finance routes (resource_type carries the
+        // platform-side table name so a forensic timeline distinguishes
+        // tenant-user preferences from super-admin preferences).
+        const [platformTenant] = await systemDb
+          .select({ id: tenants.id, defaultLocale: tenants.defaultLocale })
+          .from(tenants)
+          .where(eq(tenants.slug, "__platform__"))
+          .limit(1);
+        if (platformTenant) {
+          try {
+            await systemDb.insert(auditLogs).values({
+              orgId: platformTenant.id,
+              userId: null,
+              actorId: userId,
+              action: "platform_admin.preferences_updated",
+              resourceType: "platform_admin",
+              resourceId: existing.id,
+              oldValues: { locale: existing.locale },
+              newValues: { locale: body.locale },
+            });
+          } catch (err) {
+            request.log.error(
+              { err, audit: "INSERT_FAILED" },
+              "CRITICAL: platform-admin preferences audit insert failed",
+            );
+          }
+        }
+
+        return reply.send({
+          data: {
+            id: updated.id,
+            orgId,
+            keycloakId: updated.keycloakId,
+            email: updated.email,
+            firstName: updated.firstName,
+            lastName: updated.lastName,
+            role: "super_admin" as const,
+            firstAdmin: false,
+            provisionalUntil: null,
+            locale: updated.locale as "en" | "fr" | null,
+            tenantDefaultLocale: "en" as const,
+            orgSlug: "platform",
+            orgName: "Givernance Platform",
+            createdAt: updated.createdAt.toISOString(),
+            updatedAt: updated.updatedAt.toISOString(),
+          },
+        });
+      }
 
       const result = await withTenantContext(orgId, async (tx) => {
         // Read the existing locale so the audit `oldValues` carries the
