@@ -173,6 +173,16 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     }
   }, [archiveOpen, reports.length, refreshReports]);
 
+  // Auto-dismiss the report status message after 6s. We only schedule
+  // the timer when the in-flight work is DONE (`reportBusy === false`)
+  // so a long "Génération en cours…" message stays pinned until the
+  // poll loop finishes.
+  useEffect(() => {
+    if (!reportMessage || reportBusy) return;
+    const timer = setTimeout(() => setReportMessage(null), 6000);
+    return () => clearTimeout(timer);
+  }, [reportMessage, reportBusy]);
+
   const handleBackfillReports = useCallback(async () => {
     if (reportBusy) return;
     setReportBusy(true);
