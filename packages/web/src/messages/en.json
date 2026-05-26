@@ -1018,15 +1018,56 @@
       "pageSubtitleContext": "Last {period} · all currencies (EUR eq.) · all tenants.",
       "liveIndicator": "Transactions live · {timestamp}",
       "topbarLive": "Transactions live · {timestamp}",
-      "topbarStaleSource": "{count} stale source",
+      "topbarStaleSource": "{count, plural, =1 {1 stale source} other {# stale sources}}",
       "topbarStaleSourceAria": "{count} data source is stale — jump to tenant health",
+      "topbarStaleSourceTitle": "A data source is stale — click to investigate.",
       "actionExport": "Export",
       "actionMonthlyReport": "Monthly report",
+      "actionMonthlyReportBusy": "Generating…",
+      "actionBackfill12Months": "Backfill 12 months",
+      "actionBackfill12MonthsTitle": "Generates missing reports for the last 12 months (idempotent).",
+      "actionArchiveShow": "Show archive",
+      "actionArchiveHide": "Hide archive",
+      "reports": {
+        "messageGenerating": "Generating…",
+        "messageBackfillRunning": "Backfilling the last 12 months…",
+        "messageBackfillDone": "Backfill done — {enqueued, plural, =0 {no new report} =1 {1 new report} other {# new reports}} queued, {skipped, plural, =0 {none already present} =1 {1 already present} other {# already present}}.",
+        "messageBackfillError": "Backfill error: {error}",
+        "messageBackfillErrorGeneric": "Backfill error.",
+        "messageReady": "Report {month} ready — downloading…",
+        "messageFailed": "Failed: {reason}",
+        "messageFailedGeneric": "Report generation failed.",
+        "messagePendingTimeout": "Report still pending — try again in a few minutes.",
+        "messageGenerationError": "Error: {error}",
+        "messageGenerationErrorGeneric": "Error while generating the report.",
+        "messageRegenerating": "Regenerating report {month}…",
+        "messageRegenerated": "Report {month} regenerated — previous id {shortId}… superseded.",
+        "messageRegenerateError": "Regenerate error: {error}",
+        "messageRegenerateErrorGeneric": "Regenerate error.",
+        "archive": {
+          "ariaLabel": "Monthly reports archive",
+          "title": "Archive · recent reports",
+          "subtitle": "One report per month · most recent first",
+          "empty": "No report yet. Click \"Monthly report\" or \"Backfill 12 months\".",
+          "rgpdNoticeTitle": "Regeneration & GDPR compliance",
+          "rgpdNoticeBody": "Each report is frozen at generation time (Art. 5.2, accuracy and traceability principle). Regenerating creates a new document; the previous one is kept in the system and remains accessible via the audit log. Every action is tracked (who, when, from which IP).",
+          "statusReady": "Ready",
+          "statusPending": "Pending…",
+          "statusFailed": "Failed",
+          "generatedAt": "Generated on {date}",
+          "errorPlaceholder": "Error",
+          "downloadPdf": "PDF",
+          "regenerate": "Regenerate",
+          "regenerateTitle": "Regenerates the report with current code and data. The previous one is kept for GDPR traceability.",
+          "regenerateConfirm": "Regenerate the {month} report?\n\nA new PDF will be generated with the current code and data. The previous report will be marked superseded but remain in the system (GDPR Art. 5.2 compliance — every generation is tracked).\n\nThis action is logged in the audit trail."
+        }
+      },
       "filters": {
         "currencyAria": "Currency",
         "currencyAll": "All currencies (EUR eq.)",
         "tenantAria": "Tenant",
-        "tenantAll": "All tenants"
+        "tenantAll": "All tenants",
+        "tenantSelected": "selected tenant"
       },
       "alertStrip": {
         "body": "{count, plural, =1 {1 tenant on alert} other {# tenants on alert}} — detractors crossed with a churn signal. Reach out this week.",
@@ -1205,10 +1246,13 @@
       },
       "health": {
         "npsLabel": "Tenant NPS",
+        "npsShort": "NPS",
         "npsInfo": "Lagging indicator — PMF is the primary signal.",
         "npsUnit": "/ 100",
         "npsLegacy": "lagging indicator · legacy",
+        "npsHistoric": "historical indicator",
         "csatLabel": "Support CSAT",
+        "csatLabelFull": "Post-ticket CSAT",
         "csatInfo": "Post-ticket (1-5). Collected continuously.",
         "csatUnit": "/ 5",
         "csatFreshLabel": "fresh · {days}d",
@@ -1216,7 +1260,100 @@
         "recontactInfo": "Detractors × behavioural signal — your CSM follow-up list.",
         "recontactUnit": "tenants",
         "recontactCta": "View the list",
-        "surveyFreshAria": "Last surveyed {days} days ago"
+        "surveyFreshAria": "Last surveyed {days} days ago",
+        "sectionHint": "PMF · NPS · CSAT"
+      },
+      "freshness": {
+        "fresh": "fresh",
+        "soon": "going stale",
+        "stale": "stale"
+      },
+      "cacheFlush": {
+        "successToast": "Cache flushed · {keysDeleted, plural, =0 {no entry removed} =1 {1 entry removed} other {# entries removed}}",
+        "errorToast": "Flush failed — try again in a minute.",
+        "busy": "Flushing…",
+        "cta": "Force a refresh"
+      },
+      "viewLoadedAt": "This view was loaded at {timestamp}. Source: <code>/v1/superadmin/finance/summary</code>. Cache 5 min. Every consultation is logged to <code>audit_logs</code>.",
+      "heroAlert": {
+        "bodyRich": "<b>{count, plural, =1 {1 tenant on alert} other {# tenants on alert}}</b> — detractors crossed with a churn signal. Reach out this week.",
+        "cta": "See the list →"
+      },
+      "mobilisationHero": {
+        "title": "Mobilisation score",
+        "titleInfo": "Fundraising health indicator — not a beneficiary impact score.",
+        "outOf": "/ 100",
+        "deltaPlaceholder": "—",
+        "periodLabel": "vs prev. period · weighted by volume",
+        "footnoteRich": "Fundraising health aggregated across <b>{count} tenants</b>. An A in healthcare ≠ an A in culture — prefer the <b>delta</b> to the absolute."
+      },
+      "formulaHero": {
+        "title": "Components · platform average",
+        "footnoteRich": "The breakdown is shown for <b>transparency</b>. Each component is capped at 100 before weighting."
+      },
+      "kpisExtra": {
+        "recurringSuffix": "/mo",
+        "recurringFoot": "{share}% of volume · active pledges",
+        "volumeFoot": "{count} donations · vs prev. period",
+        "stripeFoot": "~{rate}% of card volume",
+        "revenueFoot": "take-rate {rate}%",
+        "revenueInfoTitle": "1.5% + €0.30 per cleared donation. Normalised to EUR.",
+        "recurringInfoTitle": "Share of revenue from active pledges. Predictable revenue.",
+        "stripeInfoTitle": "Stripe rail only. Deducted from the NPO's account."
+      },
+      "chartLabels": {
+        "ariaLabel": "Volume and revenue trend",
+        "volumeLabel": "Volume",
+        "revenueLabel": "Revenue"
+      },
+      "riskExtra": {
+        "concentrationLabelWithHhi": "Concentration (HHI)",
+        "concentrationInfoTitle": "HHI = sum of squared shares. < 0.15 = well diversified.",
+        "concentrationTopTenant": "Top tenant = {pct}%",
+        "concentrationBadgeWatch": "To watch",
+        "concentrationBadgeAlert": "Too concentrated",
+        "activeTenantsInfoTitle": "At least 1 cleared donation in the period.",
+        "activeTenantsSecondary": "{active}% active · {dormant} dormant",
+        "failureLabelFull": "Payment failure rate",
+        "failureInfoTitle": "Stripe only (Mollie not instrumented).",
+        "failureFootnote": "Across all Stripe attempts in the period."
+      },
+      "pmfExtra": {
+        "titleFull": "Product/Market Fit (Sean Ellis)",
+        "headlineRich": "\"Very disappointed\" if Givernance went away. PMF threshold = <b>40%</b>.",
+        "ariaLabel": "PMF: {pct}% very disappointed",
+        "segmentSomewhat": "somewhat",
+        "segmentNot": "not disappointed",
+        "markerLabelShort": "40% threshold",
+        "legendVeryRich": "<b>Very disappointed</b>: positive signal",
+        "noResponsesYet": "No PMF responses yet. Launch a campaign to collect."
+      },
+      "topTenantsCard": {
+        "title": "Top tenants · volume",
+        "subtitle": "By cleared donation volume in the period",
+        "headerName": "Tenant · share",
+        "headerScore": "Score",
+        "headerVolume": "Volume",
+        "donationsCountSuffix": "{count, plural, =1 {1 donation} other {# donations}}",
+        "empty": "No tenant with donations in this period."
+      },
+      "refundCard": {
+        "subtitle": "Healthy < 1% · alert > 5%",
+        "tick0": "0%",
+        "tick1": "1%",
+        "tick2": "5%",
+        "tick3": "8%+",
+        "amountSuffix": "{amount} refunded."
+      },
+      "currenciesCard": {
+        "subtitle": "Volume breakdown"
+      },
+      "histogramExtra": {
+        "label": "Distribution · {count} tenants",
+        "gameScore": "Score: {score} · {timeLeft}s",
+        "gameOver": "Game over — final score: {score}",
+        "footnoteFull": "Distribution across {count} tenants. Tenants with < 5 unique donors excluded (k-anonymity).",
+        "barAriaItem": "{count} tenants {grade}"
       }
     }
   },
