@@ -157,6 +157,82 @@ async function findLiveByMonth(month: string): Promise<ReportRow | null> {
   return row ? rowToDto(row) : null;
 }
 
+/**
+ * Mark an existing report row as superseded — set `status='failed'`
+ * with a recognisable `failure_reason`. The partial unique index is
+ * scoped to `pending|ready`, so flipping to `failed` frees up the
+ * month slot for a fresh `requestMonthlyReport` call. The old row
+ * stays in the table forever (RGPD Art. 5.2 accountability — we
+ * never lose the audit trail of what was generated).
+ */
+async function markSuperseded(id: string): Promise<void> {
+  await systemDb
+    .update(platformFinanceReports)
+    .set({ status: "failed", failureReason: "Remplacé par régénération" })
+    .where(eq(platformFinanceReports.id, id));
+}
+
+export interface RegenerateResult {
+  /** The new pending row that the worker is about to render. */
+  newRow: ReportRow;
+  /** The row that was just superseded (always `failed` status now). */
+  supersededRow: ReportRow;
+}
+
+export class RegenerateError extends Error {
+  readonly detail: string;
+  readonly statusCode: number;
+  constructor(statusCode: number, detail: string) {
+    super(detail);
+    this.name = "RegenerateError";
+    this.statusCode = statusCode;
+    this.detail = detail;
+  }
+}
+
+/**
+ * Regenerate an existing report. Flow:
+ *  1. Look up the source row.
+ *  2. Refuse if it's still `pending` (worker hasn't finished yet —
+ *     wait or let it fail naturally before regenerating).
+ *  3. Mark the source row `failed` with reason `Remplacé par
+ *     régénération`. The partial unique index is now free.
+ *  4. Call `requestMonthlyReport` for the same month — this builds
+ *     a fresh snapshot with the current SQL + enqueues the worker.
+ *
+ * The caller is responsible for emitting the audit_log row with
+ * `action='regenerate'` and the supersedes pointer.
+ */
+export async function regenerateReport(input: {
+  sourceId: string;
+  requestedByPlatformAdminId: string | null;
+  traceparent?: string;
+}): Promise<RegenerateResult> {
+  const source = await findById(input.sourceId);
+  if (!source) {
+    throw new RegenerateError(404, "Rapport introuvable.");
+  }
+  if (source.status === "pending") {
+    throw new RegenerateError(
+      409,
+      "Le rapport est encore en cours de génération — attendez qu'il soit prêt avant de le régénérer.",
+    );
+  }
+
+  await markSuperseded(source.id);
+
+  const fresh = await requestMonthlyReport({
+    month: source.month,
+    requestedByPlatformAdminId: input.requestedByPlatformAdminId,
+    traceparent: input.traceparent,
+  });
+
+  return {
+    newRow: fresh.row,
+    supersededRow: { ...source, status: "failed", failureReason: "Remplacé par régénération" },
+  };
+}
+
 export async function findById(id: string): Promise<ReportRow | null> {
   const [row] = await systemDb
     .select()

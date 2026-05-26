@@ -183,6 +183,48 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     return () => clearTimeout(timer);
   }, [reportMessage, reportBusy]);
 
+  const handleRegenerateReport = useCallback(
+    async (report: MonthlyReport) => {
+      if (reportBusy) return;
+      // Native confirm carries the RGPD warning. Functional super-admins
+      // are typically not on dialog-heavy UIs; a single browser confirm
+      // is the lowest-friction path. Copy mirrors the archive panel
+      // banner so the same information is presented twice — once
+      // ambient, once at decision time.
+      const ok = window.confirm(
+        `Régénérer le rapport de ${report.month} ?\n\n` +
+          "Un nouveau PDF sera généré avec le code et les données actuels. " +
+          "L'ancien rapport sera marqué comme remplacé mais restera dans le système " +
+          "(conformité RGPD Art. 5.2 — traçabilité de chaque génération).\n\n" +
+          "Cette action est tracée dans le journal d'audit.",
+      );
+      if (!ok) return;
+      setReportBusy(true);
+      setReportMessage({
+        tone: "info",
+        text: `Régénération du rapport ${report.month} en cours…`,
+      });
+      try {
+        const api = createClientApiClient();
+        const result = await SuperAdminFinanceService.regenerateReport(api, report.id);
+        setReportMessage({
+          tone: "info",
+          text: `Rapport ${report.month} régénéré — ancien ID ${result.supersededReport.id.slice(0, 8)}… remplacé.`,
+        });
+        void refreshReports();
+      } catch (err) {
+        setReportMessage({
+          tone: "error",
+          text:
+            err instanceof Error ? `Erreur régénération : ${err.message}` : "Erreur régénération.",
+        });
+      } finally {
+        setReportBusy(false);
+      }
+    },
+    [reportBusy, refreshReports],
+  );
+
   const handleBackfillReports = useCallback(async () => {
     if (reportBusy) return;
     setReportBusy(true);
@@ -588,6 +630,27 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               Un rapport par mois · le plus récent en premier
             </span>
           </header>
+          <p
+            role="note"
+            style={{
+              margin: "0 0 12px 0",
+              padding: "8px 10px",
+              fontSize: 11,
+              lineHeight: 1.5,
+              color: "var(--color-on-surface-variant)",
+              background: "var(--color-surface-container-low, #f9f8f6)",
+              borderLeft: "3px solid var(--color-primary)",
+              borderRadius: 4,
+            }}
+          >
+            <strong style={{ color: "var(--color-on-surface)" }}>
+              Régénération &amp; conformité RGPD
+            </strong>{" "}
+            — Chaque rapport est figé au moment de sa génération (Art. 5.2, principe d'exactitude et
+            de traçabilité). Une régénération crée un nouveau document ; l'ancien est conservé dans
+            le système et reste consultable via le journal d'audit. Toute action est tracée (qui,
+            quand, depuis quelle IP).
+          </p>
           {reports.length === 0 ? (
             <p style={{ fontSize: 12, color: "var(--color-on-surface-variant)", margin: 0 }}>
               Aucun rapport pour l'instant. Clique « Rapport mensuel » ou « Backfill 12 mois ».
@@ -637,28 +700,47 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                         ? (r.failureReason ?? "Erreur")
                         : "—"}
                   </span>
-                  {r.status === "ready" && r.pdfUrl ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const api = createClientApiClient();
-                        window.location.assign(api.resolveBrowserUrl(r.pdfUrl ?? ""));
-                      }}
-                    >
-                      <span
-                        className="material-symbols-outlined"
-                        style={{ fontSize: 14 }}
-                        aria-hidden
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    {r.status === "ready" && r.pdfUrl ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const api = createClientApiClient();
+                          window.location.assign(api.resolveBrowserUrl(r.pdfUrl ?? ""));
+                        }}
                       >
-                        download
-                      </span>
-                      PDF
-                    </Button>
-                  ) : (
-                    <span aria-hidden style={{ width: 80 }} />
-                  )}
+                        <span
+                          className="material-symbols-outlined"
+                          style={{ fontSize: 14 }}
+                          aria-hidden
+                        >
+                          download
+                        </span>
+                        PDF
+                      </Button>
+                    ) : null}
+                    {r.status !== "pending" && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleRegenerateReport(r)}
+                        disabled={reportBusy}
+                        title="Régénère le rapport avec le code et les données actuels. L'ancien sera conservé pour la traçabilité RGPD."
+                      >
+                        <span
+                          className="material-symbols-outlined"
+                          style={{ fontSize: 14 }}
+                          aria-hidden
+                        >
+                          refresh
+                        </span>
+                        Régénérer
+                      </Button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
