@@ -257,8 +257,13 @@ export function Sidebar({
                 {tAdmin("section")}
               </h2>
               {[
-                ...ADMIN_NAV_ITEMS,
+                // Finance plateforme is the daily-use dashboard for
+                // super-admins — render it first so the surface follows
+                // the admin-dashboard convention (overview → entities
+                // → operations → config). Flag-gated so the slot is
+                // absent when the rollout is paused.
                 ...(financeDashboardEnabled ? [FINANCE_ADMIN_NAV_ITEM] : []),
+                ...ADMIN_NAV_ITEMS,
               ].map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
                 const Icon = item.icon;
