@@ -163,10 +163,6 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   // every 2s until `ready` (or `failed`), then trigger a same-tab
   // navigation to the streamed PDF URL.
   const [reportBusy, setReportBusy] = useState(false);
-  const [reportMessage, setReportMessage] = useState<{
-    tone: "info" | "error";
-    text: string;
-  } | null>(null);
   const [reports, setReports] = useState<MonthlyReport[]>([]);
   const [archiveOpen, setArchiveOpen] = useState(false);
   // Holds the report row whose regenerate-confirmation dialog is open.
@@ -206,15 +202,13 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     return () => clearInterval(interval);
   }, [archiveOpen, reports, refreshReports]);
 
-  // Auto-dismiss the report status message after 6s. We only schedule
-  // the timer when the in-flight work is DONE (`reportBusy === false`)
-  // so a long "Génération en cours…" message stays pinned until the
-  // poll loop finishes.
-  useEffect(() => {
-    if (!reportMessage || reportBusy) return;
-    const timer = setTimeout(() => setReportMessage(null), 6000);
-    return () => clearTimeout(timer);
-  }, [reportMessage, reportBusy]);
+  // Status feedback uses the platform sonner Toaster (mounted once in
+  // the root layout). Sticky in-progress notifications use
+  // `toast.loading(...)` which returns an id that we resolve into a
+  // success / error toast with the same id when work completes. This
+  // replaces an earlier inline `<p>` banner that lived inside the
+  // page header and squeezed the title/subtitle to the left when
+  // shown (feedback 2026-05-26).
 
   // Request a regeneration — just opens the design-system AlertDialog;
   // the actual work happens in `confirmRegenerate` only after the
@@ -234,10 +228,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     if (!report || reportBusy) return;
     setReportBusy(true);
     setReportToRegenerate(null);
-    setReportMessage({
-      tone: "info",
-      text: t("reports.messageRegenerating", { month: report.month }),
-    });
+    const toastId = toast.loading(t("reports.messageRegenerating", { month: report.month }));
     // Surface the archive panel so the user can watch the new row
     // tick from `pending` to `ready` via the watcher useEffect.
     setArchiveOpen(true);
@@ -256,37 +247,33 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       }
 
       if (polled.status === "ready") {
-        setReportMessage({
-          tone: "info",
-          text: t("reports.messageRegenerated", {
+        toast.success(
+          t("reports.messageRegenerated", {
             month: report.month,
             shortId: result.supersededReport.id.slice(0, 8),
           }),
-        });
+          { id: toastId },
+        );
         void refreshReports();
       } else if (polled.status === "failed") {
-        setReportMessage({
-          tone: "error",
-          text: polled.failureReason
+        toast.error(
+          polled.failureReason
             ? t("reports.messageFailed", { reason: polled.failureReason })
             : t("reports.messageFailedGeneric"),
-        });
+          { id: toastId },
+        );
       } else {
         // Still pending after the poll window — surface the wait
         // hint instead of silently dropping the "in-progress" state.
-        setReportMessage({
-          tone: "error",
-          text: t("reports.messagePendingTimeout"),
-        });
+        toast.error(t("reports.messagePendingTimeout"), { id: toastId });
       }
     } catch (err) {
-      setReportMessage({
-        tone: "error",
-        text:
-          err instanceof Error
-            ? t("reports.messageRegenerateError", { error: err.message })
-            : t("reports.messageRegenerateErrorGeneric"),
-      });
+      toast.error(
+        err instanceof Error
+          ? t("reports.messageRegenerateError", { error: err.message })
+          : t("reports.messageRegenerateErrorGeneric"),
+        { id: toastId },
+      );
     } finally {
       setReportBusy(false);
     }
@@ -295,26 +282,25 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const handleBackfillReports = useCallback(async () => {
     if (reportBusy) return;
     setReportBusy(true);
-    setReportMessage({ tone: "info", text: t("reports.messageBackfillRunning") });
+    const toastId = toast.loading(t("reports.messageBackfillRunning"));
     const api = createClientApiClient();
     try {
       const result = await SuperAdminFinanceService.backfillReports(api);
-      setReportMessage({
-        tone: "info",
-        text: t("reports.messageBackfillDone", {
+      toast.success(
+        t("reports.messageBackfillDone", {
           enqueued: result.enqueued.length,
           skipped: result.skipped.length,
         }),
-      });
+        { id: toastId },
+      );
       void refreshReports();
     } catch (err) {
-      setReportMessage({
-        tone: "error",
-        text:
-          err instanceof Error
-            ? t("reports.messageBackfillError", { error: err.message })
-            : t("reports.messageBackfillErrorGeneric"),
-      });
+      toast.error(
+        err instanceof Error
+          ? t("reports.messageBackfillError", { error: err.message })
+          : t("reports.messageBackfillErrorGeneric"),
+        { id: toastId },
+      );
     } finally {
       setReportBusy(false);
     }
@@ -323,7 +309,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const handleGenerateMonthlyReport = useCallback(async () => {
     if (reportBusy) return;
     setReportBusy(true);
-    setReportMessage({ tone: "info", text: t("reports.messageGenerating") });
+    const toastId = toast.loading(t("reports.messageGenerating"));
     const api = createClientApiClient();
     try {
       let report = await SuperAdminFinanceService.requestMonthlyReport(api);
@@ -335,33 +321,26 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       }
       if (report.status === "ready" && report.pdfUrl) {
         const absoluteUrl = api.resolveBrowserUrl(report.pdfUrl);
-        setReportMessage({
-          tone: "info",
-          text: t("reports.messageReady", { month: report.month }),
-        });
+        toast.success(t("reports.messageReady", { month: report.month }), { id: toastId });
         window.location.assign(absoluteUrl);
         void refreshReports();
       } else if (report.status === "failed") {
-        setReportMessage({
-          tone: "error",
-          text: report.failureReason
+        toast.error(
+          report.failureReason
             ? t("reports.messageFailed", { reason: report.failureReason })
             : t("reports.messageFailedGeneric"),
-        });
+          { id: toastId },
+        );
       } else {
-        setReportMessage({
-          tone: "error",
-          text: t("reports.messagePendingTimeout"),
-        });
+        toast.error(t("reports.messagePendingTimeout"), { id: toastId });
       }
     } catch (err) {
-      setReportMessage({
-        tone: "error",
-        text:
-          err instanceof Error
-            ? t("reports.messageGenerationError", { error: err.message })
-            : t("reports.messageGenerationErrorGeneric"),
-      });
+      toast.error(
+        err instanceof Error
+          ? t("reports.messageGenerationError", { error: err.message })
+          : t("reports.messageGenerationErrorGeneric"),
+        { id: toastId },
+      );
     } finally {
       setReportBusy(false);
     }
@@ -660,21 +639,6 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             </span>
             {archiveOpen ? t("actionArchiveHide") : t("actionArchiveShow")}
           </Button>
-          {reportMessage && (
-            <p
-              role={reportMessage.tone === "error" ? "alert" : "status"}
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                color:
-                  reportMessage.tone === "error"
-                    ? "var(--color-error)"
-                    : "var(--color-on-surface-variant)",
-              }}
-            >
-              {reportMessage.text}
-            </p>
-          )}
         </div>
       </div>
 
