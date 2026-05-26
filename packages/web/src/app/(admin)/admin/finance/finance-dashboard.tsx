@@ -5,11 +5,11 @@
  * (docs/design/admin/dashboard.html) into JSX with dynamic data slots.
  *
  * First-pass strategy: keep the mockup markup verbatim (same class names,
- * same DOM structure) for guaranteed visual parity. Componentization +
- * i18n refactor will follow in a separate PR once visual fidelity is
- * validated. FR copy lifted from the mockup; EN translation is a follow-up.
+ * same DOM structure) for guaranteed visual parity. Componentization
+ * will follow in a separate PR once visual fidelity is validated.
  */
 
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { toast, VolumeRevenueChart } from "@/components/admin/finance";
@@ -25,12 +25,12 @@ interface FinanceDashboardProps {
   initialError: boolean;
 }
 
-const PERIOD_OPTIONS: Array<{ value: FinancePeriod; label: string }> = [
-  { value: "today", label: "Aujourd'hui" },
-  { value: "7d", label: "7 j" },
-  { value: "30d", label: "30 j" },
-  { value: "90d", label: "90 j" },
-  { value: "ytd", label: "YTD" },
+const PERIOD_VALUES = [
+  { value: "today" as FinancePeriod, key: "period.today" as const },
+  { value: "7d" as FinancePeriod, key: "period.7d" as const },
+  { value: "30d" as FinancePeriod, key: "period.30d" as const },
+  { value: "90d" as FinancePeriod, key: "period.90d" as const },
+  { value: "ytd" as FinancePeriod, key: "period.ytd" as const },
 ];
 
 function formatCents(cents: number, currency = "EUR", showCents = true): string {
@@ -111,6 +111,11 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<boolean>(initialError);
   const [flushing, setFlushing] = useState(false);
+  const t = useTranslations("admin.finance");
+
+  const periodOptions: Array<{ value: FinancePeriod; label: string }> = PERIOD_VALUES.map(
+    ({ value, key }) => ({ value, label: t(key) }),
+  );
 
   const handlePeriodChange = useCallback((next: FinancePeriod) => setPeriod(next), []);
 
@@ -120,7 +125,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     try {
       const api = createClientApiClient();
       const result = await SuperAdminFinanceService.flushCache(api);
-      toast.success(`Cache vidé · ${result.keysDeleted} entrée(s) supprimée(s)`);
+      toast.success(t("cacheFlush.successToast", { keysDeleted: result.keysDeleted }));
       // Re-fetch with current period/filters to populate the freshly-
       // flushed cache and update the view.
       const data = await SuperAdminFinanceService.fetchSummary(api, {
@@ -130,11 +135,11 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       });
       setSummary(data);
     } catch {
-      toast.error("Le flush a échoué — réessayez dans une minute.");
+      toast.error(t("cacheFlush.errorToast"));
     } finally {
       setFlushing(false);
     }
-  }, [flushing, period, filters.currency, filters.tenantId]);
+  }, [flushing, period, filters.currency, filters.tenantId, t]);
   const handleCurrencyChange = useCallback(
     (next: FinanceFilters["currency"]) => setFilters((f) => ({ ...f, currency: next })),
     [],
@@ -191,66 +196,71 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       // is the lowest-friction path. Copy mirrors the archive panel
       // banner so the same information is presented twice — once
       // ambient, once at decision time.
-      const ok = window.confirm(
-        `Régénérer le rapport de ${report.month} ?\n\n` +
-          "Un nouveau PDF sera généré avec le code et les données actuels. " +
-          "L'ancien rapport sera marqué comme remplacé mais restera dans le système " +
-          "(conformité RGPD Art. 5.2 — traçabilité de chaque génération).\n\n" +
-          "Cette action est tracée dans le journal d'audit.",
-      );
+      const ok = window.confirm(t("reports.archive.regenerateConfirm", { month: report.month }));
       if (!ok) return;
       setReportBusy(true);
       setReportMessage({
         tone: "info",
-        text: `Régénération du rapport ${report.month} en cours…`,
+        text: t("reports.messageRegenerating", { month: report.month }),
       });
       try {
         const api = createClientApiClient();
         const result = await SuperAdminFinanceService.regenerateReport(api, report.id);
         setReportMessage({
           tone: "info",
-          text: `Rapport ${report.month} régénéré — ancien ID ${result.supersededReport.id.slice(0, 8)}… remplacé.`,
+          text: t("reports.messageRegenerated", {
+            month: report.month,
+            shortId: result.supersededReport.id.slice(0, 8),
+          }),
         });
         void refreshReports();
       } catch (err) {
         setReportMessage({
           tone: "error",
           text:
-            err instanceof Error ? `Erreur régénération : ${err.message}` : "Erreur régénération.",
+            err instanceof Error
+              ? t("reports.messageRegenerateError", { error: err.message })
+              : t("reports.messageRegenerateErrorGeneric"),
         });
       } finally {
         setReportBusy(false);
       }
     },
-    [reportBusy, refreshReports],
+    [reportBusy, refreshReports, t],
   );
 
   const handleBackfillReports = useCallback(async () => {
     if (reportBusy) return;
     setReportBusy(true);
-    setReportMessage({ tone: "info", text: "Backfill des 12 derniers mois en cours…" });
+    setReportMessage({ tone: "info", text: t("reports.messageBackfillRunning") });
     const api = createClientApiClient();
     try {
       const result = await SuperAdminFinanceService.backfillReports(api);
       setReportMessage({
         tone: "info",
-        text: `Backfill terminé — ${result.enqueued.length} nouveau(x) rapport(s) en file, ${result.skipped.length} déjà présent(s).`,
+        text: t("reports.messageBackfillDone", {
+          enqueued: result.enqueued.length,
+          skipped: result.skipped.length,
+        }),
       });
       void refreshReports();
     } catch (err) {
       setReportMessage({
         tone: "error",
-        text: err instanceof Error ? `Erreur backfill : ${err.message}` : "Erreur backfill.",
+        text:
+          err instanceof Error
+            ? t("reports.messageBackfillError", { error: err.message })
+            : t("reports.messageBackfillErrorGeneric"),
       });
     } finally {
       setReportBusy(false);
     }
-  }, [reportBusy, refreshReports]);
+  }, [reportBusy, refreshReports, t]);
 
   const handleGenerateMonthlyReport = useCallback(async () => {
     if (reportBusy) return;
     setReportBusy(true);
-    setReportMessage({ tone: "info", text: "Génération en cours…" });
+    setReportMessage({ tone: "info", text: t("reports.messageGenerating") });
     const api = createClientApiClient();
     try {
       let report = await SuperAdminFinanceService.requestMonthlyReport(api);
@@ -262,20 +272,23 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       }
       if (report.status === "ready" && report.pdfUrl) {
         const absoluteUrl = api.resolveBrowserUrl(report.pdfUrl);
-        setReportMessage({ tone: "info", text: `Rapport ${report.month} prêt — téléchargement…` });
+        setReportMessage({
+          tone: "info",
+          text: t("reports.messageReady", { month: report.month }),
+        });
         window.location.assign(absoluteUrl);
         void refreshReports();
       } else if (report.status === "failed") {
         setReportMessage({
           tone: "error",
           text: report.failureReason
-            ? `Échec : ${report.failureReason}`
-            : "Échec de la génération du rapport.",
+            ? t("reports.messageFailed", { reason: report.failureReason })
+            : t("reports.messageFailedGeneric"),
         });
       } else {
         setReportMessage({
           tone: "error",
-          text: "Rapport encore en attente — réessaie dans quelques minutes.",
+          text: t("reports.messagePendingTimeout"),
         });
       }
     } catch (err) {
@@ -283,13 +296,13 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         tone: "error",
         text:
           err instanceof Error
-            ? `Erreur : ${err.message}`
-            : "Erreur lors de la génération du rapport.",
+            ? t("reports.messageGenerationError", { error: err.message })
+            : t("reports.messageGenerationErrorGeneric"),
       });
     } finally {
       setReportBusy(false);
     }
-  }, [reportBusy, refreshReports]);
+  }, [reportBusy, refreshReports, t]);
 
   // Tracks whether the user has interacted with the period / filter
   // controls since mount. The initial SSR fetch already loaded the
@@ -369,10 +382,10 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     return (
       <main>
         <h1 className="page-title">
-          Finance <em>plateforme</em>
+          {t("pageTitlePrefix")} <em>{t("pageTitleEm")}</em>
         </h1>
         <div role="alert" style={{ padding: 24, color: "var(--color-error)" }}>
-          Impossible de charger le résumé. Vérifie les logs API et réessaie.
+          {t("fetchError.title")}. {t("fetchError.body")}
         </div>
       </main>
     );
@@ -382,9 +395,9 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     return (
       <main>
         <h1 className="page-title">
-          Finance <em>plateforme</em>
+          {t("pageTitlePrefix")} <em>{t("pageTitleEm")}</em>
         </h1>
-        <p style={{ color: "var(--color-on-surface-variant)" }}>Chargement…</p>
+        <p style={{ color: "var(--color-on-surface-variant)" }}>{t("loading")}</p>
       </main>
     );
   }
@@ -396,31 +409,31 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const heroScore = Math.round(mobilisation.platformScore ?? 0);
   const componentRows: Array<{ label: string; pct: number; weight: number; color: string }> = [
     {
-      label: "Activation",
+      label: t("formula.activation"),
       pct: Math.round(mobilisation.components.activation),
       weight: 25,
       color: "var(--color-primary)",
     },
     {
-      label: "Récurrence",
+      label: t("formula.recurrence"),
       pct: Math.round(mobilisation.components.recurrence),
       weight: 25,
       color: "var(--color-primary-fixed-dim)",
     },
     {
-      label: "Échelle",
+      label: t("formula.scale"),
       pct: Math.round(mobilisation.components.scale),
       weight: 20,
       color: "var(--color-secondary)",
     },
     {
-      label: "Croissance",
+      label: t("formula.growth"),
       pct: Math.round(mobilisation.components.growth),
       weight: 20,
       color: "var(--color-tertiary)",
     },
     {
-      label: "Diversité",
+      label: t("formula.diversity"),
       pct: Math.round(mobilisation.components.diversity),
       weight: 10,
       color: "var(--color-indigo)",
@@ -429,9 +442,9 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
 
   const gradeBuckets: Array<{ key: string; count: number; color: string }> = (() => {
     const counts: Record<string, number> = { "A+": 0, A: 0, B: 0, C: 0, D: 0 };
-    for (const t of mobilisation.perTenant) {
-      if (t.grade && counts[t.grade] !== undefined) {
-        counts[t.grade] = (counts[t.grade] ?? 0) + 1;
+    for (const tenant of mobilisation.perTenant) {
+      if (tenant.grade && counts[tenant.grade] !== undefined) {
+        counts[tenant.grade] = (counts[tenant.grade] ?? 0) + 1;
       }
     }
     const colors: Record<string, string> = {
@@ -450,7 +463,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const maxBucket = Math.max(1, ...gradeBuckets.map((b) => b.count));
 
   const atRiskCount = mobilisation.perTenant.filter(
-    (t) => t.grade === "D" || (t.grade === "C" && (t.score ?? 100) < 50),
+    (tenant) => tenant.grade === "D" || (tenant.grade === "C" && (tenant.score ?? 100) < 50),
   ).length;
 
   const volumeDelta = kpis.deltas.volumePercent;
@@ -496,7 +509,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       <div className="fin-topchips">
         <span className="topbar-live">
           <span className="live-dot" />
-          Transactions à jour · {lastTimestamp}
+          {t("topbarLive", { timestamp: lastTimestamp })}
         </span>
         {staleSourcesCount > 0 && (
           <a
@@ -509,13 +522,12 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               textDecoration: "none",
               cursor: "pointer",
             }}
-            title="Une source de données est périmée — cliquer pour aller voir."
+            title={t("topbarStaleSourceTitle")}
           >
             <span className="material-symbols-outlined" style={{ fontSize: 13 }}>
               warning
             </span>
-            {staleSourcesCount} source{staleSourcesCount > 1 ? "s" : ""} périmée
-            {staleSourcesCount > 1 ? "s" : ""}
+            {t("topbarStaleSource", { count: staleSourcesCount })}
           </a>
         )}
       </div>
@@ -526,17 +538,17 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
               stacked_line_chart
             </span>
-            Vue plateforme · {tenantCount} tenants
+            {t("pageEyebrow", { count: tenantCount })}
           </div>
           <h1 className="page-title">
-            Finance <em>plateforme</em>
+            {t("pageTitlePrefix")} <em>{t("pageTitleEm")}</em>
           </h1>
           <p className="page-subtitle">
-            Volume, revenu Givernance, satisfaction et santé du portefeuille de tenants.{" "}
+            {t("pageSubtitle")}{" "}
             <span style={{ color: "var(--color-on-surface)", fontWeight: 500 }}>
-              {PERIOD_OPTIONS.find((o) => o.value === period)?.label} ·{" "}
-              {filters.currency === "all" ? "toutes devises (éq. EUR)" : filters.currency} ·{" "}
-              {filters.tenantId === "all" ? "tous tenants" : "tenant sélectionné"}.
+              {periodOptions.find((o) => o.value === period)?.label} ·{" "}
+              {filters.currency === "all" ? t("filters.currencyAll") : filters.currency} ·{" "}
+              {filters.tenantId === "all" ? t("filters.tenantAll") : t("filters.tenantSelected")}.
             </span>
           </p>
         </div>
@@ -556,7 +568,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden>
               insights
             </span>
-            {reportBusy ? "Génération…" : "Rapport mensuel"}
+            {reportBusy ? t("actionMonthlyReportBusy") : t("actionMonthlyReport")}
           </Button>
           <Button
             type="button"
@@ -565,12 +577,12 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             onClick={handleBackfillReports}
             disabled={reportBusy}
             aria-busy={reportBusy}
-            title="Génère les rapports manquants des 12 derniers mois (idempotent)."
+            title={t("actionBackfill12MonthsTitle")}
           >
             <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden>
               history
             </span>
-            Backfill 12 mois
+            {t("actionBackfill12Months")}
           </Button>
           <Button
             type="button"
@@ -583,7 +595,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden>
               folder_open
             </span>
-            {archiveOpen ? "Masquer l'archive" : "Voir l'archive"}
+            {archiveOpen ? t("actionArchiveHide") : t("actionArchiveShow")}
           </Button>
           {reportMessage && (
             <p
@@ -606,7 +618,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       {archiveOpen && (
         <section
           id="finance-reports-archive"
-          aria-label="Archive des rapports mensuels"
+          aria-label={t("reports.archive.ariaLabel")}
           style={{
             marginBottom: 16,
             padding: 16,
@@ -624,10 +636,10 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             }}
           >
             <h2 style={{ fontSize: 14, fontWeight: 600, color: "var(--color-on-surface)" }}>
-              Archive · derniers rapports
+              {t("reports.archive.title")}
             </h2>
             <span style={{ fontSize: 11, color: "var(--color-on-surface-variant)" }}>
-              Un rapport par mois · le plus récent en premier
+              {t("reports.archive.subtitle")}
             </span>
           </header>
           <p
@@ -644,16 +656,13 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             }}
           >
             <strong style={{ color: "var(--color-on-surface)" }}>
-              Régénération &amp; conformité RGPD
+              {t("reports.archive.rgpdNoticeTitle")}
             </strong>{" "}
-            — Chaque rapport est figé au moment de sa génération (Art. 5.2, principe d'exactitude et
-            de traçabilité). Une régénération crée un nouveau document ; l'ancien est conservé dans
-            le système et reste consultable via le journal d'audit. Toute action est tracée (qui,
-            quand, depuis quelle IP).
+            — {t("reports.archive.rgpdNoticeBody")}
           </p>
           {reports.length === 0 ? (
             <p style={{ fontSize: 12, color: "var(--color-on-surface-variant)", margin: 0 }}>
-              Aucun rapport pour l'instant. Clique « Rapport mensuel » ou « Backfill 12 mois ».
+              {t("reports.archive.empty")}
             </p>
           ) : (
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -683,21 +692,27 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                             : "var(--color-on-surface-variant)",
                     }}
                   >
-                    {r.status === "ready" ? "Prêt" : r.status === "pending" ? "En cours…" : "Échec"}
+                    {r.status === "ready"
+                      ? t("reports.archive.statusReady")
+                      : r.status === "pending"
+                        ? t("reports.archive.statusPending")
+                        : t("reports.archive.statusFailed")}
                   </span>
                   <span
                     style={{ fontSize: 11, color: "var(--color-on-surface-variant)" }}
                     title={r.failureReason ?? undefined}
                   >
                     {r.readyAt
-                      ? `Généré le ${new Date(r.readyAt).toLocaleString("fr-FR", {
-                          day: "numeric",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}`
+                      ? t("reports.archive.generatedAt", {
+                          date: new Date(r.readyAt).toLocaleString("fr-FR", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          }),
+                        })
                       : r.status === "failed"
-                        ? (r.failureReason ?? "Erreur")
+                        ? (r.failureReason ?? t("reports.archive.errorPlaceholder"))
                         : "—"}
                   </span>
                   <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
@@ -718,7 +733,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                         >
                           download
                         </span>
-                        PDF
+                        {t("reports.archive.downloadPdf")}
                       </Button>
                     ) : null}
                     {r.status !== "pending" && (
@@ -728,7 +743,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                         size="sm"
                         onClick={() => void handleRegenerateReport(r)}
                         disabled={reportBusy}
-                        title="Régénère le rapport avec le code et les données actuels. L'ancien sera conservé pour la traçabilité RGPD."
+                        title={t("reports.archive.regenerateTitle")}
                       >
                         <span
                           className="material-symbols-outlined"
@@ -737,7 +752,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                         >
                           refresh
                         </span>
-                        Régénérer
+                        {t("reports.archive.regenerate")}
                       </Button>
                     )}
                   </div>
@@ -749,8 +764,8 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       )}
 
       <div className="finance-toolbar">
-        <div className="segmented" role="radiogroup" aria-label="Période">
-          {PERIOD_OPTIONS.map((opt) => (
+        <div className="segmented" role="radiogroup" aria-label={t("period.ariaLabel")}>
+          {periodOptions.map((opt) => (
             // biome-ignore lint/a11y/useSemanticElements: pill-styled buttons in a radiogroup; native <input type="radio"> would defeat the styling + icon affordances. WCAG-compliant via role="radio" + aria-checked.
             <button
               key={opt.value}
@@ -767,25 +782,25 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         <div className="finance-toolbar-right">
           <select
             className="form-select"
-            aria-label="Devise"
+            aria-label={t("filters.currencyAria")}
             value={filters.currency}
             onChange={(e) => handleCurrencyChange(e.target.value as FinanceFilters["currency"])}
           >
-            <option value="all">Toutes devises (éq. EUR)</option>
+            <option value="all">{t("filters.currencyAll")}</option>
             <option value="EUR">EUR</option>
             <option value="GBP">GBP</option>
             <option value="CHF">CHF</option>
           </select>
           <select
             className="form-select"
-            aria-label="Tenant"
+            aria-label={t("filters.tenantAria")}
             value={filters.tenantId}
             onChange={(e) => handleTenantChange(e.target.value)}
           >
-            <option value="all">Tous les tenants</option>
-            {mobilisation.perTenant.map((t) => (
-              <option key={t.tenantId} value={t.tenantId}>
-                {t.tenantName}
+            <option value="all">{t("filters.tenantAll")}</option>
+            {mobilisation.perTenant.map((tenant) => (
+              <option key={tenant.tenantId} value={tenant.tenantId}>
+                {tenant.tenantName}
               </option>
             ))}
           </select>
@@ -796,12 +811,12 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         <a href="#tenant-health" className="hero-alert" style={{ textDecoration: "none" }}>
           <span className="material-symbols-outlined ha-icon">crisis_alert</span>
           <span className="ha-body">
-            <b>
-              {atRiskCount} tenant{atRiskCount > 1 ? "s" : ""} en alerte
-            </b>{" "}
-            — détracteurs croisés avec un signal de churn. À contacter cette semaine.
+            {t.rich("heroAlert.bodyRich", {
+              count: atRiskCount,
+              b: (chunks) => <b>{chunks}</b>,
+            })}
           </span>
-          <span className="ha-cta">Voir la liste →</span>
+          <span className="ha-cta">{t("heroAlert.cta")}</span>
         </a>
       )}
 
@@ -809,10 +824,10 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         <div className="hero-block">
           <div className="hero-label" id="hero-lab">
             <span className="material-symbols-outlined">monitoring</span>
-            Score de Mobilisation
+            {t("mobilisationHero.title")}
             <span
               className="material-symbols-outlined info-i"
-              title="Indicateur de santé du fundraising — pas un score d'impact bénéficiaire."
+              title={t("mobilisationHero.titleInfo")}
             >
               info
             </span>
@@ -821,24 +836,27 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             <span className={`hero-grade ${heroGradeClass(heroGrade)}`}>{heroGrade ?? "—"}</span>
             <span>
               <span className="hero-score-num">{heroScore}</span>
-              <span className="hero-score-out">&nbsp;/ 100</span>
+              <span className="hero-score-out">&nbsp;{t("mobilisationHero.outOf")}</span>
             </span>
           </div>
           <div className="hero-meta">
             <span className="delta-pill delta-pill--flat">
-              <span className="material-symbols-outlined">remove</span>—
+              <span className="material-symbols-outlined">remove</span>
+              {t("mobilisationHero.deltaPlaceholder")}
             </span>
-            <span className="kpi-foot">vs période préc. · moy. pondérée volume</span>
+            <span className="kpi-foot">{t("mobilisationHero.periodLabel")}</span>
           </div>
           <p className="hero-foot">
-            Santé du fundraising agrégée sur <b>{tenantCount} tenants</b>. Un score A en
-            médico-social ≠ un A en culture — privilégier le <b>delta</b> à l'absolu.
+            {t.rich("mobilisationHero.footnoteRich", {
+              count: tenantCount,
+              b: (chunks) => <b>{chunks}</b>,
+            })}
           </p>
         </div>
         <div className="hero-block">
           <div className="hero-label">
             <span className="material-symbols-outlined">tune</span>
-            Composantes · moyenne plateforme
+            {t("formulaHero.title")}
           </div>
           <ol className="formula-list">
             {componentRows.map((row) => (
@@ -854,8 +872,9 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             ))}
           </ol>
           <p className="hero-foot">
-            La décomposition est affichée par <b>transparence</b>. Chaque composante est plafonnée à
-            100 avant pondération.
+            {t.rich("formulaHero.footnoteRich", {
+              b: (chunks) => <b>{chunks}</b>,
+            })}
           </p>
         </div>
         <GradeHistogram buckets={gradeBuckets} maxBucket={maxBucket} tenantCount={tenantCount} />
@@ -864,7 +883,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       <div className="kpi-grid">
         <article className="kpi reveal">
           <div className="kpi-head">
-            <div className="kpi-label">Volume des dons</div>
+            <div className="kpi-label">{t("kpis.volume.label")}</div>
             <div
               className="kpi-icon"
               style={{
@@ -888,7 +907,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               {formatPercent(volumeDelta, 1)}%
             </span>
             <span className="kpi-foot">
-              {formatNumber(kpis.donorCount)} dons · vs période préc.
+              {t("kpisExtra.volumeFoot", { count: formatNumber(kpis.donorCount) })}
             </span>
           </div>
         </article>
@@ -896,10 +915,10 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         <article className="kpi reveal">
           <div className="kpi-head">
             <div className="kpi-label">
-              Revenu Givernance{" "}
+              {t("kpis.revenue.label")}{" "}
               <span
                 className="material-symbols-outlined info-i"
-                title="1,5% + 0,30€ par don cleared. Normalisé en EUR."
+                title={t("kpisExtra.revenueInfoTitle")}
               >
                 info
               </span>
@@ -926,17 +945,19 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               {revenueDelta >= 0 ? "+" : ""}
               {formatPercent(revenueDelta, 1)}%
             </span>
-            <span className="kpi-foot">take-rate {formatPercent(takeRate, 2)}%</span>
+            <span className="kpi-foot">
+              {t("kpisExtra.revenueFoot", { rate: formatPercent(takeRate, 2) })}
+            </span>
           </div>
         </article>
 
         <article className="kpi reveal">
           <div className="kpi-head">
             <div className="kpi-label">
-              Revenu récurrent{" "}
+              {t("kpis.recurring.label")}{" "}
               <span
                 className="material-symbols-outlined info-i"
-                title="Part du revenu issue de pledges actifs. Revenu prévisible."
+                title={t("kpisExtra.recurringInfoTitle")}
               >
                 info
               </span>
@@ -953,14 +974,14 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
           </div>
           <div className="kpi-value">
             {recurringKpi.main}
-            <span className="suffix">/mois</span>
+            <span className="suffix">{t("kpisExtra.recurringSuffix")}</span>
           </div>
           <div className="kpi-meta">
             <span className="delta-pill delta-pill--flat">
               <span className="material-symbols-outlined">remove</span>—
             </span>
             <span className="kpi-foot">
-              {Math.round(recurringRatio)}% du volume · pledges actifs
+              {t("kpisExtra.recurringFoot", { share: Math.round(recurringRatio) })}
             </span>
           </div>
         </article>
@@ -968,10 +989,10 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         <article className="kpi reveal">
           <div className="kpi-head">
             <div className="kpi-label">
-              Frais Stripe{" "}
+              {t("kpis.stripe.label")}{" "}
               <span
                 className="material-symbols-outlined info-i"
-                title="Rail Stripe uniquement. Déduit du compte de la NPO."
+                title={t("kpisExtra.stripeInfoTitle")}
               >
                 info
               </span>
@@ -996,16 +1017,16 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               {formatPercent(stripeDelta, 1)}%
             </span>
             <span className="kpi-foot">
-              ~{formatPercent(stripeSharePercent, 2)}% du volume carte
+              {t("kpisExtra.stripeFoot", { rate: formatPercent(stripeSharePercent, 2) })}
             </span>
           </div>
         </article>
       </div>
 
       <div className="section-head">
-        <h2>Évolution du volume</h2>
+        <h2>{t("sections.timeline")}</h2>
         <span className="rule" />
-        <span className="hint">Dons clearés / jour · revenu superposé</span>
+        <span className="hint">{t("sectionHints.timeline")}</span>
       </div>
       <div className="fin-card">
         {!isEmpty ? (
@@ -1017,9 +1038,9 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             }))}
             volumeMax={Math.max(...summary.timeseries.map((p) => p.volumeCents / 100), 100)}
             labels={{
-              ariaLabel: "Évolution du volume et du revenu",
-              volumeLabel: "Volume",
-              revenueLabel: "Revenu",
+              ariaLabel: t("chartLabels.ariaLabel"),
+              volumeLabel: t("chartLabels.volumeLabel"),
+              revenueLabel: t("chartLabels.revenueLabel"),
               formatVolumeTick: (v) => `€${Math.round(v / 1000)}k`,
               formatRevenueTick: (v) => `€${Math.round(v)}`,
               formatVolume: (v) => formatCents(Math.round(v * 100), "EUR", false),
@@ -1027,35 +1048,34 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             }}
           />
         ) : (
-          <p style={{ color: "var(--color-on-surface-variant)" }}>
-            Aucune donnée pour la période sélectionnée.
-          </p>
+          <p style={{ color: "var(--color-on-surface-variant)" }}>{t("empty.title")}</p>
         )}
       </div>
 
       <div className="section-head">
-        <h2>Risque &amp; concentration</h2>
+        <h2>{t("sections.risk")}</h2>
         <span className="rule" />
-        <span className="hint">Signaux opérationnels plateforme</span>
+        <span className="hint">{t("sectionHints.risk")}</span>
       </div>
       <div className="risk-grid">
         <div className="risk-item">
           <div className="rl">
-            Concentration (HHI){" "}
+            {t("riskExtra.concentrationLabelWithHhi")}{" "}
             <span
               className="material-symbols-outlined info-i"
-              title="HHI = somme des carrés des parts. < 0,15 = bien diversifié."
+              title={t("riskExtra.concentrationInfoTitle")}
             >
               info
             </span>
           </div>
           <div className="rv">{hhi.toFixed(2)}</div>
           <div className="rs">
-            Top tenant ={" "}
-            {topTenants[0] && kpis.volumeCents > 0
-              ? formatPercent((topTenants[0].volumeCents / kpis.volumeCents) * 100, 1)
-              : "0"}{" "}
-            %
+            {t("riskExtra.concentrationTopTenant", {
+              pct:
+                topTenants[0] && kpis.volumeCents > 0
+                  ? formatPercent((topTenants[0].volumeCents / kpis.volumeCents) * 100, 1)
+                  : "0",
+            })}
           </div>
           <span
             className={`risk-badge risk-badge--${hhiVariant === "alert" ? "watch" : hhiVariant}`}
@@ -1064,18 +1084,18 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               {hhiVariant === "ok" ? "check_circle" : "warning"}
             </span>
             {hhiVariant === "ok"
-              ? "Bien diversifié"
+              ? t("risk.badges.okConcentration")
               : hhiVariant === "watch"
-                ? "À surveiller"
-                : "Trop concentré"}
+                ? t("riskExtra.concentrationBadgeWatch")
+                : t("riskExtra.concentrationBadgeAlert")}
           </span>
         </div>
         <div className="risk-item">
           <div className="rl">
-            Tenants actifs{" "}
+            {t("risk.activeTenants.label")}{" "}
             <span
               className="material-symbols-outlined info-i"
-              title="Au moins 1 don cleared sur la période."
+              title={t("riskExtra.activeTenantsInfoTitle")}
             >
               info
             </span>
@@ -1089,31 +1109,34 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             </span>
           </div>
           <div className="rs">
-            {tenantCount > 0
-              ? formatPercent((kpis.activeTenantsCount / tenantCount) * 100, 0)
-              : "0"}
-            % actifs · {tenantCount - kpis.activeTenantsCount} dormants
+            {t("riskExtra.activeTenantsSecondary", {
+              active:
+                tenantCount > 0
+                  ? formatPercent((kpis.activeTenantsCount / tenantCount) * 100, 0)
+                  : "0",
+              dormant: tenantCount - kpis.activeTenantsCount,
+            })}
           </div>
         </div>
         <div className="risk-item">
           <div className="rl">
-            Taux d'échec paiement{" "}
+            {t("riskExtra.failureLabelFull")}{" "}
             <span
               className="material-symbols-outlined info-i"
-              title="Stripe uniquement (Mollie non instrumenté)."
+              title={t("riskExtra.failureInfoTitle")}
             >
               info
             </span>
           </div>
           <div className="rv">{formatPercent(failureRate, 1)} %</div>
-          <div className="rs">Sur l'ensemble des tentatives Stripe sur la période.</div>
+          <div className="rs">{t("riskExtra.failureFootnote")}</div>
         </div>
       </div>
 
       <div className="section-head" id="tenant-health">
-        <h2>Santé des tenants</h2>
+        <h2>{t("sections.health")}</h2>
         <span className="rule" />
-        <span className="hint">PMF · NPS · CSAT</span>
+        <span className="hint">{t("health.sectionHint")}</span>
       </div>
       <div className="fin-card">
         <div className="th-grid">
@@ -1125,15 +1148,15 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               >
                 psychology
               </span>
-              Product/Market Fit (Sean Ellis)
+              {t("pmfExtra.titleFull")}
               {pmfSurvey && (
                 <span className={`fresh-pip fresh-pip--${pmfFreshness}`}>
                   <span className="material-symbols-outlined">schedule</span>
                   {pmfFreshness === "ok"
-                    ? "à jour"
+                    ? t("freshness.fresh")
                     : pmfFreshness === "soon"
-                      ? "bientôt périmé"
-                      : "périmé"}
+                      ? t("freshness.soon")
+                      : t("freshness.stale")}
                 </span>
               )}
             </div>
@@ -1145,14 +1168,16 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                     <span className="pmf-unit">%</span>
                   </span>
                   <span className="pmf-threshold">
-                    « Très déçus » si Givernance disparaît. Seuil PMF = <b>40%</b>.
+                    {t.rich("pmfExtra.headlineRich", {
+                      b: (chunks) => <b>{chunks}</b>,
+                    })}
                   </span>
                 </div>
                 <div className="sentiment-bar-wrap">
                   <div
                     className="sentiment-bar"
                     role="img"
-                    aria-label={`PMF: ${Math.round(pmfPercent)}% très déçus`}
+                    aria-label={t("pmfExtra.ariaLabel", { pct: Math.round(pmfPercent) })}
                   >
                     <div className="sentiment-seg seg-very" style={{ flex: pmfPercent }}>
                       {Math.round(pmfPercent)}%
@@ -1161,41 +1186,43 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                       className="sentiment-seg seg-somewhat"
                       style={{ flex: Math.max(0, 80 - pmfPercent) }}
                     >
-                      moyennement
+                      {t("pmfExtra.segmentSomewhat")}
                     </div>
                     <div className="sentiment-seg seg-not" style={{ flex: 20 }}>
-                      pas déçus
+                      {t("pmfExtra.segmentNot")}
                     </div>
                   </div>
                   <div className="pmf-marker" aria-hidden="true">
                     <span className="line" />
-                    <span className="tag">40% seuil</span>
+                    <span className="tag">{t("pmfExtra.markerLabelShort")}</span>
                   </div>
                 </div>
                 <div className="sentiment-legend">
                   <span className="li">
                     <span className="sw" style={{ background: "var(--color-primary)" }} />
-                    <b>Très déçus</b> : signal positif
+                    {t.rich("pmfExtra.legendVeryRich", {
+                      b: (chunks) => <b>{chunks}</b>,
+                    })}
                   </span>
                   <span className="li">
                     <span
                       className="sw"
                       style={{ background: "var(--color-tertiary-fixed-dim)" }}
                     />{" "}
-                    Moyennement
+                    {t("pmf.legendSomewhat")}
                   </span>
                   <span className="li">
                     <span
                       className="sw"
                       style={{ background: "var(--color-surface-container-highest)" }}
                     />{" "}
-                    Pas déçus
+                    {t("pmf.legendNot")}
                   </span>
                 </div>
               </>
             ) : (
               <p style={{ color: "var(--color-on-surface-variant)", marginTop: 8 }}>
-                Pas encore de réponses PMF. Lance un envoi pour collecter.
+                {t("pmfExtra.noResponsesYet")}
               </p>
             )}
           </div>
@@ -1208,11 +1235,11 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                 >
                   thumb_up
                 </span>
-                NPS
+                {t("health.npsShort")}
                 {npsSurvey && (
                   <span className={`fresh-pip fresh-pip--${npsFreshness}`}>
                     <span className="material-symbols-outlined">schedule</span>
-                    {npsFreshness === "ok" ? "à jour" : "périmé"}
+                    {npsFreshness === "ok" ? t("freshness.fresh") : t("freshness.stale")}
                   </span>
                 )}
               </div>
@@ -1220,9 +1247,9 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                 {npsSurvey?.npsScore !== null && npsSurvey?.npsScore !== undefined
                   ? Math.round(npsSurvey.npsScore)
                   : "—"}
-                <small>/ 100</small>
+                <small>{t("health.npsUnit")}</small>
               </div>
-              <span className="legacy">indicateur historique</span>
+              <span className="legacy">{t("health.npsHistoric")}</span>
             </div>
             <div className="sat-mini">
               <div className="l">
@@ -1232,11 +1259,11 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                 >
                   sentiment_satisfied
                 </span>
-                CSAT post-ticket
+                {t("health.csatLabelFull")}
                 {csatSurvey && (
                   <span className={`fresh-pip fresh-pip--${csatFreshness}`}>
                     <span className="material-symbols-outlined">schedule</span>
-                    {csatFreshness === "ok" ? "à jour" : "périmé"}
+                    {csatFreshness === "ok" ? t("freshness.fresh") : t("freshness.stale")}
                   </span>
                 )}
               </div>
@@ -1244,7 +1271,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                 {csatSurvey?.csatScore !== null && csatSurvey?.csatScore !== undefined
                   ? csatSurvey.csatScore.toFixed(1)
                   : "—"}
-                <small>/ 5</small>
+                <small>{t("health.csatUnit")}</small>
               </div>
             </div>
             {atRiskCount > 0 && (
@@ -1253,11 +1280,13 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                   <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
                     crisis_alert
                   </span>
-                  À recontacter
+                  {t("health.recontactLabel")}
                 </div>
                 <div className="v" style={{ color: "var(--color-on-error-container)" }}>
                   {atRiskCount}
-                  <small style={{ color: "var(--color-on-error-container)" }}>tenants</small>
+                  <small style={{ color: "var(--color-on-error-container)" }}>
+                    {t("health.recontactUnit")}
+                  </small>
                 </div>
               </div>
             )}
@@ -1266,36 +1295,36 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       </div>
 
       <div className="section-head">
-        <h2>Tenants &amp; flux</h2>
+        <h2>{t("sections.tenants")}</h2>
         <span className="rule" />
-        <span className="hint">Top contributeurs · remboursements · devises</span>
+        <span className="hint">{t("sectionHints.tenants")}</span>
       </div>
       <div className="two-col">
         <div className="fin-card">
           <div className="fin-card-header">
             <div>
-              <div className="fin-card-title">Top tenants · volume</div>
-              <div className="fin-card-subtitle">Par volume de dons clearés sur la période</div>
+              <div className="fin-card-title">{t("topTenantsCard.title")}</div>
+              <div className="fin-card-subtitle">{t("topTenantsCard.subtitle")}</div>
             </div>
           </div>
           {topTenants.length > 0 ? (
             <>
               <div className="tenant-row head">
                 <span />
-                <span>Tenant · part</span>
-                <span style={{ textAlign: "right" }}>Score</span>
-                <span style={{ textAlign: "right" }}>Volume</span>
+                <span>{t("topTenantsCard.headerName")}</span>
+                <span style={{ textAlign: "right" }}>{t("topTenantsCard.headerScore")}</span>
+                <span style={{ textAlign: "right" }}>{t("topTenantsCard.headerVolume")}</span>
               </div>
-              {topTenants.map((t, idx) => {
+              {topTenants.map((tenant, idx) => {
                 const sharePct =
-                  kpis.volumeCents > 0 ? (t.volumeCents / kpis.volumeCents) * 100 : 0;
-                const mob = mobilisation.perTenant.find((m) => m.tenantId === t.tenantId);
+                  kpis.volumeCents > 0 ? (tenant.volumeCents / kpis.volumeCents) * 100 : 0;
+                const mob = mobilisation.perTenant.find((m) => m.tenantId === tenant.tenantId);
                 return (
-                  <div key={t.tenantId} className="tenant-row">
+                  <div key={tenant.tenantId} className="tenant-row">
                     <span className="tenant-rank">{String(idx + 1).padStart(2, "0")}</span>
                     <div style={{ minWidth: 0 }}>
-                      <a href={`/admin/tenants/${t.tenantId}`} className="tenant-name">
-                        {t.tenantName}
+                      <a href={`/admin/tenants/${tenant.tenantId}`} className="tenant-name">
+                        {tenant.tenantName}
                       </a>
                       <div className="tenant-meta">
                         <div className="tenant-track">
@@ -1311,25 +1340,27 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                       </span>
                     </span>
                     <span className="tenant-amount">
-                      {formatCents(t.volumeCents, "EUR", false)}
-                      <small>{formatNumber(t.donationCount)} dons</small>
+                      {formatCents(tenant.volumeCents, "EUR", false)}
+                      <small>
+                        {t("topTenantsCard.donationsCountSuffix", {
+                          count: tenant.donationCount,
+                        })}
+                      </small>
                     </span>
                   </div>
                 );
               })}
             </>
           ) : (
-            <p style={{ color: "var(--color-on-surface-variant)" }}>
-              Aucun tenant avec dons sur la période.
-            </p>
+            <p style={{ color: "var(--color-on-surface-variant)" }}>{t("topTenantsCard.empty")}</p>
           )}
         </div>
         <div className="stack">
           <div className="fin-card">
             <div className="fin-card-header">
               <div>
-                <div className="fin-card-title">Taux de remboursement</div>
-                <div className="fin-card-subtitle">Sain &lt; 1% · alerte &gt; 5%</div>
+                <div className="fin-card-title">{t("sections.refunds")}</div>
+                <div className="fin-card-subtitle">{t("refundCard.subtitle")}</div>
               </div>
             </div>
             <div className="gauge-val">
@@ -1341,27 +1372,29 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             </div>
             <div className="gauge-ticks">
               <span className="t" style={{ left: "0%" }}>
-                0%
+                {t("refundCard.tick0")}
               </span>
               <span className="t" style={{ left: "12.5%" }}>
-                1%
+                {t("refundCard.tick1")}
               </span>
               <span className="t" style={{ left: "62.5%" }}>
-                5%
+                {t("refundCard.tick2")}
               </span>
               <span className="t" style={{ left: "100%" }}>
-                8%+
+                {t("refundCard.tick3")}
               </span>
             </div>
             <p className="kpi-foot" style={{ marginTop: "var(--space-3)" }}>
-              {formatCents(kpis.refundedVolumeCents, "EUR", false)} remboursés.
+              {t("refundCard.amountSuffix", {
+                amount: formatCents(kpis.refundedVolumeCents, "EUR", false),
+              })}
             </p>
           </div>
           <div className="fin-card">
             <div className="fin-card-header">
               <div>
-                <div className="fin-card-title">Devises</div>
-                <div className="fin-card-subtitle">Répartition du volume</div>
+                <div className="fin-card-title">{t("sections.currencies")}</div>
+                <div className="fin-card-subtitle">{t("currenciesCard.subtitle")}</div>
               </div>
             </div>
             <div className="donut-wrap">
@@ -1408,9 +1441,10 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
           fingerprint
         </span>
-        Cette vue a été chargée à {lastTimestamp}. Source :{" "}
-        <code>/v1/superadmin/finance/summary</code>. Cache 5 min. Toute consultation est tracée dans{" "}
-        <code>audit_logs</code>.
+        {t.rich("viewLoadedAt", {
+          timestamp: lastTimestamp,
+          code: (chunks) => <code>{chunks}</code>,
+        })}
         {/* Discreet operator action — used in rare cases (e.g. just
             after an out-of-band SQL refresh). Server-side rate-limited
             to 5/min, audited. Issue #449. */}
@@ -1430,7 +1464,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             cursor: flushing ? "wait" : "pointer",
           }}
         >
-          {flushing ? "Flush en cours…" : "Forcer un rafraîchissement"}
+          {flushing ? t("cacheFlush.busy") : t("cacheFlush.cta")}
         </button>
       </div>
 
@@ -1448,7 +1482,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             fontSize: 13,
           }}
         >
-          Mise à jour…
+          {t("loading")}
         </div>
       )}
     </main>
@@ -1543,6 +1577,7 @@ const MOLE_ROTATION_MS = 1200;
 const GAME_OVER_LINGER_MS = 4000;
 
 function GradeHistogram({ buckets, maxBucket, tenantCount }: GradeHistogramProps) {
+  const t = useTranslations("admin.finance");
   const [gameActive, setGameActive] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [score, setScore] = useState(0);
@@ -1635,12 +1670,14 @@ function GradeHistogram({ buckets, maxBucket, tenantCount }: GradeHistogramProps
         }}
       >
         <span className="material-symbols-outlined">bar_chart</span>
-        Répartition · {tenantCount} tenants
+        {t("histogramExtra.label", { count: tenantCount })}
       </button>
       <div
         className="hero-hist"
         role="img"
-        aria-label={buckets.map((b) => `${b.count} tenants ${b.key}`).join(", ")}
+        aria-label={buckets
+          .map((b) => t("histogramExtra.barAriaItem", { count: b.count, grade: b.key }))
+          .join(", ")}
       >
         {buckets.map((b, idx) => {
           const isMole = gameActive && idx === moleIndex;
@@ -1670,10 +1707,10 @@ function GradeHistogram({ buckets, maxBucket, tenantCount }: GradeHistogramProps
       </div>
       <p className="hero-foot" style={{ marginTop: "var(--space-5)" }}>
         {gameActive
-          ? `Score : ${score} · ${timeLeft}s`
+          ? t("histogramExtra.gameScore", { score, timeLeft })
           : gameOver
-            ? `Game over — score final : ${score}`
-            : `Distribution sur ${tenantCount} tenants. Tenants avec < 5 donateurs uniques exclus (k-anonymity).`}
+            ? t("histogramExtra.gameOver", { score })
+            : t("histogramExtra.footnoteFull", { count: tenantCount })}
       </p>
     </div>
   );

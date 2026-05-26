@@ -1018,15 +1018,56 @@
       "pageSubtitleContext": "{period} · toutes devises (éq. EUR) · tous tenants.",
       "liveIndicator": "Transactions à jour · {timestamp}",
       "topbarLive": "Transactions à jour · {timestamp}",
-      "topbarStaleSource": "{count} source périmée",
+      "topbarStaleSource": "{count, plural, =1 {1 source périmée} other {# sources périmées}}",
       "topbarStaleSourceAria": "{count} source de données est périmée — aller à la santé des tenants",
+      "topbarStaleSourceTitle": "Une source de données est périmée — cliquer pour aller voir.",
       "actionExport": "Exporter",
       "actionMonthlyReport": "Rapport mensuel",
+      "actionMonthlyReportBusy": "Génération…",
+      "actionBackfill12Months": "Backfill 12 mois",
+      "actionBackfill12MonthsTitle": "Génère les rapports manquants des 12 derniers mois (idempotent).",
+      "actionArchiveShow": "Voir l'archive",
+      "actionArchiveHide": "Masquer l'archive",
+      "reports": {
+        "messageGenerating": "Génération en cours…",
+        "messageBackfillRunning": "Backfill des 12 derniers mois en cours…",
+        "messageBackfillDone": "Backfill terminé — {enqueued, plural, =0 {aucun nouveau rapport} =1 {1 nouveau rapport} other {# nouveaux rapports}} en file, {skipped, plural, =0 {aucun déjà présent} =1 {1 déjà présent} other {# déjà présents}}.",
+        "messageBackfillError": "Erreur backfill : {error}",
+        "messageBackfillErrorGeneric": "Erreur backfill.",
+        "messageReady": "Rapport {month} prêt — téléchargement…",
+        "messageFailed": "Échec : {reason}",
+        "messageFailedGeneric": "Échec de la génération du rapport.",
+        "messagePendingTimeout": "Rapport encore en attente — réessaie dans quelques minutes.",
+        "messageGenerationError": "Erreur : {error}",
+        "messageGenerationErrorGeneric": "Erreur lors de la génération du rapport.",
+        "messageRegenerating": "Régénération du rapport {month} en cours…",
+        "messageRegenerated": "Rapport {month} régénéré — ancien ID {shortId}… remplacé.",
+        "messageRegenerateError": "Erreur régénération : {error}",
+        "messageRegenerateErrorGeneric": "Erreur régénération.",
+        "archive": {
+          "ariaLabel": "Archive des rapports mensuels",
+          "title": "Archive · derniers rapports",
+          "subtitle": "Un rapport par mois · le plus récent en premier",
+          "empty": "Aucun rapport pour l'instant. Clique « Rapport mensuel » ou « Backfill 12 mois ».",
+          "rgpdNoticeTitle": "Régénération & conformité RGPD",
+          "rgpdNoticeBody": "Chaque rapport est figé au moment de sa génération (Art. 5.2, principe d'exactitude et de traçabilité). Une régénération crée un nouveau document ; l'ancien est conservé dans le système et reste consultable via le journal d'audit. Toute action est tracée (qui, quand, depuis quelle IP).",
+          "statusReady": "Prêt",
+          "statusPending": "En cours…",
+          "statusFailed": "Échec",
+          "generatedAt": "Généré le {date}",
+          "errorPlaceholder": "Erreur",
+          "downloadPdf": "PDF",
+          "regenerate": "Régénérer",
+          "regenerateTitle": "Régénère le rapport avec le code et les données actuels. L'ancien sera conservé pour la traçabilité RGPD.",
+          "regenerateConfirm": "Régénérer le rapport de {month} ?\n\nUn nouveau PDF sera généré avec le code et les données actuels. L'ancien rapport sera marqué comme remplacé mais restera dans le système (conformité RGPD Art. 5.2 — traçabilité de chaque génération).\n\nCette action est tracée dans le journal d'audit."
+        }
+      },
       "filters": {
         "currencyAria": "Devise",
         "currencyAll": "Toutes devises (éq. EUR)",
         "tenantAria": "Tenant",
-        "tenantAll": "Tous les tenants"
+        "tenantAll": "Tous les tenants",
+        "tenantSelected": "tenant sélectionné"
       },
       "alertStrip": {
         "body": "{count, plural, =1 {1 tenant en alerte} other {# tenants en alerte}} — détracteurs croisés avec un signal de churn. À contacter cette semaine.",
@@ -1205,10 +1246,13 @@
       },
       "health": {
         "npsLabel": "NPS tenants",
+        "npsShort": "NPS",
         "npsInfo": "Indicateur retardé — le PMF est l'indicateur principal.",
         "npsUnit": "/ 100",
         "npsLegacy": "indicateur retardé · legacy",
+        "npsHistoric": "indicateur historique",
         "csatLabel": "CSAT support",
+        "csatLabelFull": "CSAT post-ticket",
         "csatInfo": "Post-ticket (1-5). Collecté en continu.",
         "csatUnit": "/ 5",
         "csatFreshLabel": "à jour · {days} j",
@@ -1216,7 +1260,100 @@
         "recontactInfo": "Détracteurs × signal comportemental — votre liste CSM.",
         "recontactUnit": "tenants",
         "recontactCta": "Voir la liste",
-        "surveyFreshAria": "Dernière enquête il y a {days} j"
+        "surveyFreshAria": "Dernière enquête il y a {days} j",
+        "sectionHint": "PMF · NPS · CSAT"
+      },
+      "freshness": {
+        "fresh": "à jour",
+        "soon": "bientôt périmé",
+        "stale": "périmé"
+      },
+      "cacheFlush": {
+        "successToast": "Cache vidé · {keysDeleted, plural, =0 {aucune entrée supprimée} =1 {1 entrée supprimée} other {# entrées supprimées}}",
+        "errorToast": "Le flush a échoué — réessayez dans une minute.",
+        "busy": "Flush en cours…",
+        "cta": "Forcer un rafraîchissement"
+      },
+      "viewLoadedAt": "Cette vue a été chargée à {timestamp}. Source : <code>/v1/superadmin/finance/summary</code>. Cache 5 min. Toute consultation est tracée dans <code>audit_logs</code>.",
+      "heroAlert": {
+        "bodyRich": "<b>{count, plural, =1 {1 tenant en alerte} other {# tenants en alerte}}</b> — détracteurs croisés avec un signal de churn. À contacter cette semaine.",
+        "cta": "Voir la liste →"
+      },
+      "mobilisationHero": {
+        "title": "Score de Mobilisation",
+        "titleInfo": "Indicateur de santé du fundraising — pas un score d'impact bénéficiaire.",
+        "outOf": "/ 100",
+        "deltaPlaceholder": "—",
+        "periodLabel": "vs période préc. · moy. pondérée volume",
+        "footnoteRich": "Santé du fundraising agrégée sur <b>{count} tenants</b>. Un score A en médico-social ≠ un A en culture — privilégier le <b>delta</b> à l'absolu."
+      },
+      "formulaHero": {
+        "title": "Composantes · moyenne plateforme",
+        "footnoteRich": "La décomposition est affichée par <b>transparence</b>. Chaque composante est plafonnée à 100 avant pondération."
+      },
+      "kpisExtra": {
+        "recurringSuffix": "/mois",
+        "recurringFoot": "{share}% du volume · pledges actifs",
+        "volumeFoot": "{count} dons · vs période préc.",
+        "stripeFoot": "~{rate}% du volume carte",
+        "revenueFoot": "take-rate {rate}%",
+        "revenueInfoTitle": "1,5% + 0,30€ par don cleared. Normalisé en EUR.",
+        "recurringInfoTitle": "Part du revenu issue de pledges actifs. Revenu prévisible.",
+        "stripeInfoTitle": "Rail Stripe uniquement. Déduit du compte de la NPO."
+      },
+      "chartLabels": {
+        "ariaLabel": "Évolution du volume et du revenu",
+        "volumeLabel": "Volume",
+        "revenueLabel": "Revenu"
+      },
+      "riskExtra": {
+        "concentrationLabelWithHhi": "Concentration (HHI)",
+        "concentrationInfoTitle": "HHI = somme des carrés des parts. < 0,15 = bien diversifié.",
+        "concentrationTopTenant": "Top tenant = {pct} %",
+        "concentrationBadgeWatch": "À surveiller",
+        "concentrationBadgeAlert": "Trop concentré",
+        "activeTenantsInfoTitle": "Au moins 1 don cleared sur la période.",
+        "activeTenantsSecondary": "{active}% actifs · {dormant} dormants",
+        "failureLabelFull": "Taux d'échec paiement",
+        "failureInfoTitle": "Stripe uniquement (Mollie non instrumenté).",
+        "failureFootnote": "Sur l'ensemble des tentatives Stripe sur la période."
+      },
+      "pmfExtra": {
+        "titleFull": "Product/Market Fit (Sean Ellis)",
+        "headlineRich": "« Très déçus » si Givernance disparaît. Seuil PMF = <b>40%</b>.",
+        "ariaLabel": "PMF: {pct}% très déçus",
+        "segmentSomewhat": "moyennement",
+        "segmentNot": "pas déçus",
+        "markerLabelShort": "40% seuil",
+        "legendVeryRich": "<b>Très déçus</b> : signal positif",
+        "noResponsesYet": "Pas encore de réponses PMF. Lance un envoi pour collecter."
+      },
+      "topTenantsCard": {
+        "title": "Top tenants · volume",
+        "subtitle": "Par volume de dons clearés sur la période",
+        "headerName": "Tenant · part",
+        "headerScore": "Score",
+        "headerVolume": "Volume",
+        "donationsCountSuffix": "{count, plural, =1 {1 don} other {# dons}}",
+        "empty": "Aucun tenant avec dons sur la période."
+      },
+      "refundCard": {
+        "subtitle": "Sain < 1% · alerte > 5%",
+        "tick0": "0%",
+        "tick1": "1%",
+        "tick2": "5%",
+        "tick3": "8%+",
+        "amountSuffix": "{amount} remboursés."
+      },
+      "currenciesCard": {
+        "subtitle": "Répartition du volume"
+      },
+      "histogramExtra": {
+        "label": "Répartition · {count} tenants",
+        "gameScore": "Score : {score} · {timeLeft}s",
+        "gameOver": "Game over — score final : {score}",
+        "footnoteFull": "Distribution sur {count} tenants. Tenants avec < 5 donateurs uniques exclus (k-anonymity).",
+        "barAriaItem": "{count} tenants {grade}"
       }
     }
   },
