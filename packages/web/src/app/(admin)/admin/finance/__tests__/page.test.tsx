@@ -179,7 +179,11 @@ describe("/admin/finance — flag gate", () => {
     const tree = await FinancePage();
     const { container } = render(tree);
     await waitFor(() => {
-      expect(container.querySelector("h1")?.textContent).toBe("Finance plateforme");
+      // After the i18n migration (#443 follow-up) the dashboard renders
+      // through `useTranslations("admin.finance")`. The test mock uses
+      // the EN locale, so the H1 reads `pageTitlePrefix` + `pageTitleEm`
+      // = "Platform finance" (was "Finance plateforme" pre-migration).
+      expect(container.querySelector("h1")?.textContent).toBe("Platform finance");
     });
     expect(fetchSummaryMock).toHaveBeenCalledTimes(1);
   });
@@ -192,7 +196,7 @@ describe("/admin/finance — empty state", () => {
     const { default: FinancePage } = await import("../page");
     const tree = await FinancePage();
     render(tree);
-    // Empty-state: the chart card renders the "Aucune donnée…" fallback.
-    expect(await screen.findByText(/Aucune donnée pour la période/)).toBeInTheDocument();
+    // Empty-state body — `admin.finance.empty.title` in en.json.
+    expect(await screen.findByText(/No data for this period/)).toBeInTheDocument();
   });
 });

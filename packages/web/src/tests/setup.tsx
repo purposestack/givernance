@@ -45,8 +45,58 @@ vi.mock("next/link", () => ({
 
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: (namespace?: string) => (key: string, values?: Record<string, unknown>) =>
-    interpolate(lookupMessage(namespace ? `${namespace}.${key}` : key), values),
+  useTranslations: (namespace?: string) => {
+    // Plain string interpolation — drops any function-typed `values`
+    // (used by `t.rich` for inline tag formatters like
+    // `b: (chunks) => <b>{chunks}</b>`) so a non-rich call doesn't
+    // crash trying to coerce a function to a string.
+    const scalarValues = (values?: Record<string, unknown>) => {
+      if (!values) return undefined;
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(values)) {
+        if (typeof v !== "function") out[k] = v;
+      }
+      return out;
+    };
+    const translate = (key: string, values?: Record<string, unknown>) =>
+      interpolate(lookupMessage(namespace ? `${namespace}.${key}` : key), scalarValues(values));
+    // `t.rich` returns a ReactNode in production — it invokes the
+    // formatter functions on the inner text between matching tags
+    // (e.g. `<b>foo</b>` → `b("foo")`). The shape here is a
+    // best-effort mock: invoke every function-valued formatter with
+    // the message string so the rendered tree contains the elements,
+    // then just return the string itself for any leftover plain
+    // values. Tests rarely assert against rich content directly; this
+    // is enough to prevent `t.rich is not a function` crashes during
+    // render.
+    const rich = (key: string, values?: Record<string, unknown>): React.ReactNode => {
+      const raw = interpolate(
+        lookupMessage(namespace ? `${namespace}.${key}` : key),
+        scalarValues(values),
+      );
+      if (!values) return raw;
+      const fragments: React.ReactNode[] = [];
+      let remaining = raw;
+      for (const [k, v] of Object.entries(values)) {
+        if (typeof v !== "function") continue;
+        const tagRegex = new RegExp(`<${k}>(.*?)</${k}>`, "g");
+        const matches = [...remaining.matchAll(tagRegex)];
+        if (matches.length === 0) continue;
+        let lastIndex = 0;
+        const formatter = v as (chunks: string) => React.ReactNode;
+        for (const match of matches) {
+          if (match.index === undefined) continue;
+          if (match.index > lastIndex) fragments.push(remaining.slice(lastIndex, match.index));
+          fragments.push(formatter(match[1] ?? ""));
+          lastIndex = match.index + match[0].length;
+        }
+        remaining = remaining.slice(lastIndex);
+      }
+      if (remaining) fragments.push(remaining);
+      return fragments.length > 0 ? fragments : raw;
+    };
+    return Object.assign(translate, { rich });
+  },
 }));
 
 vi.mock("@/components/ui/toast", () => ({
