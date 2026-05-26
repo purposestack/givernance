@@ -40,7 +40,10 @@ export const AlertDialogContent = forwardRef<
       ref={ref}
       className={cn(
         "fixed left-1/2 top-1/2 z-[var(--z-modal)] -translate-x-1/2 -translate-y-1/2",
-        "w-full max-w-lg p-6",
+        // Bumped padding from p-6 → p-8 for breathing room around
+        // the title / body / footer trio (super-admin feedback,
+        // 2026-05-26 "la dialog box fait plate").
+        "w-full max-w-lg p-8",
         "bg-surface-container-lowest text-on-surface",
         "border border-outline-variant rounded-[var(--radius-lg)]",
         "shadow-modal",
@@ -56,13 +59,17 @@ export const AlertDialogContent = forwardRef<
 AlertDialogContent.displayName = "AlertDialogContent";
 
 export function AlertDialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("mb-4 flex flex-col gap-1.5 text-left", className)} {...props} />;
+  // gap-3 instead of gap-1.5 — title and description need real
+  // separation; mb-6 below the header for distinct content area.
+  return <div className={cn("mb-6 flex flex-col gap-3 text-left", className)} {...props} />;
 }
 
 export function AlertDialogFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+      // mt-8 + gap-3 gives the footer real breathing room from the
+      // body paragraph above (mt-6 + gap-2 felt cramped).
+      className={cn("mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end", className)}
       {...props}
     />
   );
@@ -74,7 +81,7 @@ export const AlertDialogTitle = forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Title
     ref={ref}
-    className={cn("font-heading text-xl leading-tight text-on-surface", className)}
+    className={cn("font-heading text-xl leading-snug text-on-surface", className)}
     {...props}
   />
 ));
@@ -86,17 +93,38 @@ export const AlertDialogDescription = forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-on-surface-variant", className)}
+    // leading-relaxed instead of the Tailwind default — long RGPD
+    // bodies read much better with extra line-height.
+    className={cn("text-sm leading-relaxed text-on-surface-variant", className)}
     {...props}
   />
 ));
 AlertDialogDescription.displayName = "AlertDialogDescription";
 
+// Shared cancel/action styling — matches the design-system Button
+// component's `default` size and shape so the two footer buttons
+// look visually balanced. Without this `AlertDialogCancel` ships as
+// an unstyled <button> (Radix Close), which renders as bare text
+// next to a fully-styled primary CTA — the imbalance feedback was
+// raised on 2026-05-26.
+const dialogButtonBase = cn(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap",
+  "rounded-[var(--radius-button)] font-body font-medium",
+  "h-[var(--btn-height-md)] px-6 text-sm",
+  "transition-colors duration-normal ease-out",
+  "focus-visible:outline-none focus-visible:shadow-ring",
+  "disabled:pointer-events-none disabled:opacity-60",
+);
+
 export const AlertDialogAction = forwardRef<
   ElementRef<typeof AlertDialogPrimitive.Close>,
   ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Close>
 >(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Close ref={ref} className={cn(className)} {...props} />
+  <AlertDialogPrimitive.Close
+    ref={ref}
+    className={cn(dialogButtonBase, "bg-primary text-on-primary hover:bg-primary-hover", className)}
+    {...props}
+  />
 ));
 AlertDialogAction.displayName = "AlertDialogAction";
 
@@ -104,6 +132,17 @@ export const AlertDialogCancel = forwardRef<
   ElementRef<typeof AlertDialogPrimitive.Close>,
   ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Close>
 >(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Close ref={ref} className={cn(className)} {...props} />
+  <AlertDialogPrimitive.Close
+    ref={ref}
+    className={cn(
+      dialogButtonBase,
+      // Secondary affordance — token-filled surface so the button
+      // reads as a real button (vs. the unstyled text it used to
+      // render as), but visually subordinate to the primary action.
+      "bg-surface-container-highest text-on-surface hover:bg-surface-dim",
+      className,
+    )}
+    {...props}
+  />
 ));
 AlertDialogCancel.displayName = "AlertDialogCancel";
