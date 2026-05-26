@@ -329,6 +329,13 @@ export const platformAdmins = pgTable(
     lastName: varchar("last_name", { length: 255 }).notNull(),
     /** Optional last-login marker so the audit story can answer "who's been active". */
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    /**
+     * UI language preference. NULL means "inherit the browser / platform
+     * default". DB CHECK constrains to 'en' | 'fr' — mirrors the tenant-side
+     * `users.locale` semantics so `PATCH /v1/users/me` writes through both
+     * code paths uniformly (issue: super-admin can't edit profile, 2026-05-26).
+     */
+    locale: text("locale"),
     /** Soft-delete marker (ADR-021 universal). Listing endpoints filter `deleted_at IS NULL`. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
