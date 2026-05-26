@@ -300,7 +300,28 @@ interface KpiRow {
   value: string;
   delta: string;
   deltaValue: number | null;
-  isCost?: boolean;
+  /**
+   * Render the value with a `- ` prefix (accounting "money-out"
+   * convention). Visually neutral — NOT a judgment call on whether
+   * the line is good or bad. Frais Stripe and Remboursements both
+   * sit on the cost side of the ledger and use this.
+   */
+  isAccountingNegative?: boolean;
+  /**
+   * Invert the delta colour: a POSITIVE evolution renders red, a
+   * negative one renders green. Only set this when an increase is
+   * unambiguously bad for the platform (Remboursements). Frais Stripe
+   * does NOT invert — Stripe fees grow with donation volume, so an
+   * increase usually mirrors the platform's own commission growth and
+   * is not a problem.
+   */
+  invertDelta?: boolean;
+  /**
+   * Raw cents amount (or null when the value is non-monetary / n/a).
+   * A zero value is neither money out nor money in — we skip the
+   * accounting `- ` prefix when `rawCents === 0`.
+   */
+  rawCents?: number | null;
 }
 
 function buildKpiRows(snapshot: ReportSnapshot): KpiRow[] {
@@ -323,7 +344,10 @@ function buildKpiRows(snapshot: ReportSnapshot): KpiRow[] {
       value: k.stripeFeeCents === null ? "n/a" : fmtEur(k.stripeFeeCents),
       delta: fmtDeltaPct(k.deltas.stripeFeePercent),
       deltaValue: k.deltas.stripeFeePercent,
-      isCost: true,
+      isAccountingNegative: true,
+      // No `invertDelta` — Stripe fees track donation volume, so an
+      // increase usually mirrors the platform's own commission growth.
+      rawCents: k.stripeFeeCents,
     },
     {
       label: "MRR récurrent (instantané)",
@@ -336,7 +360,10 @@ function buildKpiRows(snapshot: ReportSnapshot): KpiRow[] {
       value: fmtEur(k.refundedVolumeCents),
       delta: fmtDeltaPct(k.deltas.refundedVolumePercent),
       deltaValue: k.deltas.refundedVolumePercent,
-      isCost: true,
+      isAccountingNegative: true,
+      // Refunds going up IS a problem (lost revenue + donor friction).
+      invertDelta: true,
+      rawCents: k.refundedVolumeCents,
     },
     {
       label: "Donateurs uniques",
@@ -415,18 +442,31 @@ function renderKpis(doc: PdfDoc, snapshot: ReportSnapshot): void {
     // Cost KPIs (Frais Stripe, Remboursements) render as accounting
     // negatives — value prefixed with `- ` and rendered in red — so
     // an operator scanning the column instantly distinguishes
-    // money-out from money-in. Numeric n/a / non-cost / placeholder
-    // values stay neutral.
-    const isAccountingNegative = row.isCost && row.value !== "n/a" && row.value !== "—";
-    const displayValue = isAccountingNegative ? `- ${row.value}` : row.value;
-    const valueColor = isAccountingNegative ? COLOR_ERROR : COLOR_ON_SURFACE;
-    doc.fillColor(valueColor).font("Helvetica-Bold");
+    // Accounting view — render `- xxx €` for money-out lines (Frais
+    // Stripe, Remboursements). Visually NEUTRAL: no red colour, just
+    // the sign convention so an operator scanning the column tells
+    // money-out from money-in. Skip the prefix when the raw amount
+    // is exactly 0 (a zero cost is neither money out nor in).
+    const showAsNegative =
+      row.isAccountingNegative &&
+      row.value !== "n/a" &&
+      row.value !== "—" &&
+      row.rawCents !== null &&
+      row.rawCents !== undefined &&
+      row.rawCents !== 0;
+    const displayValue = showAsNegative ? `- ${row.value}` : row.value;
+    doc.fillColor(COLOR_ON_SURFACE).font("Helvetica-Bold");
     doc.text(displayValue, KPI_COL_VALUE_X, ty, { width: KPI_COL_VALUE_W, align: "right" });
 
-    // For cost-type KPIs, an INCREASE is bad — invert the delta color.
+    // Delta colour. Default semantics: up = green (good), down = red
+    // (bad). For KPIs flagged `invertDelta` (Remboursements only),
+    // the semantics flip — up = red, down = green. Frais Stripe does
+    // NOT invert because an increase usually correlates with donation
+    // volume growth (more donations = more Stripe fees = more
+    // platform commission), so red would be misleading.
     const baseColor = deltaColor(row.deltaValue);
     const color =
-      row.isCost && row.deltaValue !== null && Math.abs(row.deltaValue) > 0.05
+      row.invertDelta && row.deltaValue !== null && Math.abs(row.deltaValue) > 0.05
         ? row.deltaValue > 0
           ? COLOR_ERROR
           : COLOR_PRIMARY
@@ -663,8 +703,8 @@ function renderFooter(doc: PdfDoc): void {
   const footerY = PAGE_HEIGHT - MARGIN_LEFT - 26;
   doc.font("Helvetica").fontSize(7).fillColor(COLOR_OUTLINE);
   doc.text(
-    "Source : /v1/superadmin/finance/summary · cache 5 min · audit_logs (resource_type=platform_finance_report). " +
-      "Ce rapport agrège des données cross-tenant via le pool BYPASSRLS systemDb et est destiné aux super-administrateurs Givernance uniquement.",
+    "Document interne Givernance · Données consolidées de l'ensemble des organisations clientes, figées au moment de la génération. " +
+      "Réservé aux super-administrateurs. Chaque génération et chaque téléchargement sont enregistrés pour conformité (RGPD Art. 5.2).",
     CONTENT_LEFT,
     footerY,
     { width: CONTENT_WIDTH, align: "left" },
