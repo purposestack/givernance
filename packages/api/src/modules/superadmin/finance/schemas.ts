@@ -356,6 +356,19 @@ export const MonthlyReportResponse = Type.Object(
   { additionalProperties: false },
 );
 
+export const RegenerateResponse = Type.Object(
+  {
+    data: StrictObject(
+      {
+        newReport: ReportSchema,
+        supersededReport: ReportSchema,
+      },
+      { additionalProperties: false },
+    ),
+  },
+  { additionalProperties: false },
+);
+
 export const ListReportsResponse = Type.Object(
   {
     data: Type.Array(ReportSchema),

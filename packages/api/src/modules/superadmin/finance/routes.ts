@@ -33,6 +33,8 @@ import {
   listRecent,
   MonthValidationError,
   previousMonth,
+  RegenerateError,
+  regenerateReport,
   requestMonthlyReport,
 } from "./monthly-report.js";
 import { PeriodValidationError, resolvePeriod } from "./period.js";
@@ -45,6 +47,7 @@ import {
   ListReportsResponse,
   MonthlyReportBody,
   MonthlyReportResponse,
+  RegenerateResponse,
   ReportIdParams,
   RespondBody,
   RespondResponse,
@@ -678,6 +681,109 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
           readyAt: r.readyAt,
           pdfUrl: r.status === "ready" ? `/v1/superadmin/finance/reports/${r.id}/pdf` : null,
         })),
+      };
+    },
+  );
+
+  // ─── POST /v1/superadmin/finance/reports/:id/regenerate ─────────────────
+  // Marks the source row as superseded (status='failed', reason
+  // "Remplacé par régénération") and creates a fresh row for the same
+  // month using the current SQL + PDF renderer. The old row stays in
+  // the table for RGPD Art. 5.2 accountability — we never lose the
+  // trail of "what numbers were generated when".
+  //
+  // Rate-limited at 5/min/IP. The audit row carries a pointer to the
+  // superseded id in `new_values.supersedes`, plus the new report id
+  // in `resource_id`, so a forensic timeline can walk back through
+  // every regeneration chain.
+  app.post(
+    "/superadmin/finance/reports/:id/regenerate",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      schema: {
+        tags: ["Superadmin", "Finance"],
+        params: ReportIdParams,
+        response: {
+          200: RegenerateResponse,
+          ...ErrorResponses,
+          404: ProblemDetailSchema,
+          409: ProblemDetailSchema,
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const platformAdminId = await resolvePlatformAdminId(request.auth?.userId ?? "");
+
+      let result: Awaited<ReturnType<typeof regenerateReport>>;
+      try {
+        result = await regenerateReport({
+          sourceId: id,
+          requestedByPlatformAdminId: platformAdminId,
+          traceparent:
+            typeof request.headers.traceparent === "string"
+              ? request.headers.traceparent
+              : undefined,
+        });
+      } catch (err) {
+        if (err instanceof RegenerateError) {
+          return reply
+            .status(err.statusCode)
+            .send(
+              problemDetail(
+                err.statusCode,
+                err.statusCode === 404 ? "Not Found" : "Conflict",
+                err.detail,
+              ),
+            );
+        }
+        throw err;
+      }
+
+      const platformOrgId = await getPlatformOrgId();
+      try {
+        await systemDb.insert(auditLogs).values({
+          orgId: platformOrgId,
+          userId: request.auth?.userId ?? null,
+          actorId: request.auth?.userId ?? null,
+          action: "regenerate",
+          resourceType: "platform_finance_report",
+          resourceId: result.newRow.id,
+          newValues: {
+            month: result.newRow.month,
+            supersedes: result.supersededRow.id,
+          },
+          ipHash: hashIp(request.ip),
+          userAgent: request.headers["user-agent"] ?? undefined,
+        });
+      } catch (err) {
+        request.log.error(
+          { err, audit: "INSERT_FAILED" },
+          "CRITICAL: monthly finance report regenerate audit insert failed",
+        );
+      }
+
+      const toWire = (r: typeof result.newRow) => ({
+        id: r.id,
+        month: r.month,
+        status: r.status,
+        failureReason: r.failureReason,
+        createdAt: r.createdAt,
+        readyAt: r.readyAt,
+        pdfUrl: r.status === "ready" ? `/v1/superadmin/finance/reports/${r.id}/pdf` : null,
+      });
+
+      return {
+        data: {
+          newReport: toWire(result.newRow),
+          supersededReport: toWire(result.supersededRow),
+        },
       };
     },
   );

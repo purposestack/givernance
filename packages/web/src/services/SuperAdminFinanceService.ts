@@ -117,6 +117,22 @@ export const SuperAdminFinanceService = {
   },
 
   /**
+   * Regenerate an existing report — marks the source row as
+   * superseded and enqueues a fresh PDF for the same month using
+   * the current SQL + renderer. The old row stays in the system
+   * for RGPD Art. 5.2 accountability.
+   */
+  async regenerateReport(
+    client: ApiClient,
+    id: string,
+  ): Promise<{ newReport: MonthlyReport; supersededReport: MonthlyReport }> {
+    const response = await client.post<{
+      data: { newReport: MonthlyReport; supersededReport: MonthlyReport };
+    }>(`/v1/superadmin/finance/reports/${encodeURIComponent(id)}/regenerate`, {});
+    return response.data;
+  },
+
+  /**
    * Backfill — request reports for each of the last 12 fully-completed
    * months that doesn't yet have a live row. Idempotent; existing
    * pending/ready rows are reported as `skipped`. Rate-limited
