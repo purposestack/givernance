@@ -11,13 +11,24 @@
 
 import type { SummaryServiceResult } from "./service.js";
 
-const BOM = "﻿";
+const BOM = "\uFEFF";
+
+// Excel / LibreOffice / Google Sheets evaluate a cell as a formula when
+// the first character is one of `= + - @` (or TAB/CR which some apps
+// strip and then re-interpret). A tenant whose name is set to
+// `=HYPERLINK("http://attacker/", "click me")` would execute the moment
+// a super-admin opens the export — the OWASP "CSV injection" class.
+// Prefix a single quote (OWASP-recommended neutraliser) and quote the
+// cell so the leading `'` is preserved verbatim.
+const FORMULA_LEADERS = /^[=+\-@\t\r]/;
 
 function escapeCell(value: string): string {
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  const needsFormulaGuard = FORMULA_LEADERS.test(value);
+  const safe = needsFormulaGuard ? `'${value}` : value;
+  if (needsFormulaGuard || /[",\r\n]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return value;
+  return safe;
 }
 
 function toCsvLine(cells: Array<string | number | null>): string {

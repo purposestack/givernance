@@ -38,10 +38,20 @@ vi.mock("@/lib/api/client-server", () => ({
   createServerApiClient: async () => ({}),
 }));
 
+const buildSummaryCsvUrlMock = vi.fn(
+  (_client: unknown, params: { period: string; currency?: string; tenantId?: string }) => {
+    const q = new URLSearchParams({ period: params.period });
+    if (params.currency) q.set("currency", params.currency);
+    if (params.tenantId) q.set("tenantId", params.tenantId);
+    return `https://api.test/v1/superadmin/finance/summary.csv?${q.toString()}`;
+  },
+);
+
 vi.mock("@/services/SuperAdminFinanceService", () => ({
   SuperAdminFinanceService: {
     fetchSummary: (...args: [unknown, unknown]) => fetchSummaryMock(...args),
     launchSurvey: vi.fn(),
+    buildSummaryCsvUrl: (...args: [unknown, { period: string }]) => buildSummaryCsvUrlMock(...args),
   },
 }));
 
@@ -188,13 +198,38 @@ describe("/admin/finance — flag gate", () => {
     expect(fetchSummaryMock).toHaveBeenCalledTimes(1);
   });
 
-  it("exposes the CSV export button when the flag is on (#442)", async () => {
+  it("Export button click builds the CSV URL with current filters + triggers anchor download (#442)", async () => {
     isFinanceDashboardEnabledMock.mockResolvedValue(true);
     fetchSummaryMock.mockResolvedValue(buildSummary());
     const { default: FinancePage } = await import("../page");
     const tree = await FinancePage();
     render(tree);
-    expect(await screen.findByRole("button", { name: /Export/i })).toBeInTheDocument();
+
+    const exportBtn = await screen.findByRole("button", { name: /Export/i });
+    expect(exportBtn).toBeInTheDocument();
+    expect(exportBtn).not.toBeDisabled();
+
+    // Spy on every synthetic anchor click so we can assert the
+    // download was actually triggered (we replaced the earlier
+    // `window.location.assign` path with an `<a download>` click).
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+    await user.click(exportBtn);
+
+    expect(buildSummaryCsvUrlMock).toHaveBeenCalledTimes(1);
+    const params = buildSummaryCsvUrlMock.mock.calls[0]?.[1];
+    expect(params).toMatchObject({ period: "30d" });
+    // `"all"` filters are stripped to undefined — the API treats absence
+    // as "all", so a literal `currency=all` would be a 400.
+    expect(params?.currency).toBeUndefined();
+    expect(params?.tenantId).toBeUndefined();
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    clickSpy.mockRestore();
   });
 });
 

@@ -1022,7 +1022,7 @@
       "topbarStaleSourceAria": "{count} source de données est périmée — aller à la santé des tenants",
       "topbarStaleSourceTitle": "Une source de données est périmée — cliquer pour aller voir.",
       "actionExport": "Exporter",
-      "actionExportTitle": "Télécharger un CSV des KPI, par tenant, par devise et timeseries pour les filtres actifs.",
+      "actionExportTitle": "Télécharger un CSV des KPI, par tenant, par devise et séries temporelles pour les filtres actifs.",
       "exportCsv": {
         "successToast": "Export CSV lancé — vérifiez vos téléchargements."
       },
