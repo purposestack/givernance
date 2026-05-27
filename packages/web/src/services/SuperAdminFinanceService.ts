@@ -49,6 +49,23 @@ export const SuperAdminFinanceService = {
   },
 
   /**
+   * Build the absolute browser URL for the CSV export endpoint with the
+   * current filters baked into the query string. Returns the URL string;
+   * the caller triggers the download via `window.location.assign(...)`
+   * (or an `<a download>` click). The endpoint streams `text/csv` with a
+   * `Content-Disposition: attachment` header so the browser saves rather
+   * than navigates. Issue #442.
+   */
+  buildSummaryCsvUrl(client: ApiClient, params: FetchSummaryParams): string {
+    const query = new URLSearchParams({ period: params.period });
+    if (params.from) query.set("from", params.from);
+    if (params.to) query.set("to", params.to);
+    if (params.currency) query.set("currency", params.currency);
+    if (params.tenantId) query.set("tenantId", params.tenantId);
+    return client.resolveBrowserUrl(`/v1/superadmin/finance/summary.csv?${query.toString()}`);
+  },
+
+  /**
    * Launch a survey campaign. The server enforces a 24h cooldown per
    * (survey, channel) — a 429 carries `Retry-After`. The
    * `Idempotency-Key` header MUST be a fresh UUID per attempt so a
