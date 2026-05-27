@@ -403,6 +403,14 @@ describe("GET /v1/superadmin/finance/summary — archived/suspended tenants", ()
 // ─── GET /v1/superadmin/finance/summary.csv (#442) ──────────────────────
 
 describe("GET /v1/superadmin/finance/summary.csv", () => {
+  beforeEach(async () => {
+    // The CSV route is rate-limited at 10/min/IP (cache-bypassing
+    // aggregation guard). Without this, the 11th test injection in
+    // the same minute 429s and the whole describe block cascades red.
+    const rlKeys = await redis.keys("fastify-rate-limit-*");
+    if (rlKeys.length > 0) await redis.del(...rlKeys);
+  });
+
   describe("RBAC matrix", () => {
     it("super_admin → 200 with text/csv body + attachment disposition", async () => {
       const res = await app.inject({
@@ -506,11 +514,11 @@ describe("GET /v1/superadmin/finance/summary.csv", () => {
     });
   });
 
-  it("emits audit log with action='export'", async () => {
-    const before = await systemDb.execute<{ count: string }>(
-      sql`SELECT COUNT(*)::text AS count FROM audit_logs WHERE action = 'export' AND resource_type = 'platform_finance_summary'`,
-    );
-    const beforeCount = Number(before.rows[0]?.count ?? "0");
+  it("emits audit log with action='export' and locked metadata shape", async () => {
+    // Capture cutoff timestamp so the assertion is robust against
+    // earlier audit rows the file may have produced (avoids the
+    // `beforeCount + 1` fragility flagged in review).
+    const cutoff = new Date();
 
     const res = await app.inject({
       method: "GET",
@@ -519,11 +527,96 @@ describe("GET /v1/superadmin/finance/summary.csv", () => {
     });
     expect(res.statusCode).toBe(200);
 
-    const after = await systemDb.execute<{ count: string; new_values: unknown }>(
-      sql`SELECT COUNT(*)::text AS count FROM audit_logs WHERE action = 'export' AND resource_type = 'platform_finance_summary'`,
+    const rows = await systemDb.execute<{ new_values: Record<string, unknown> }>(
+      sql`
+        SELECT new_values FROM audit_logs
+        WHERE action = 'export'
+          AND resource_type = 'platform_finance_summary'
+          AND created_at >= ${cutoff.toISOString()}
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
     );
-    const afterCount = Number(after.rows[0]?.count ?? "0");
-    expect(afterCount).toBe(beforeCount + 1);
+    expect(rows.rows.length).toBe(1);
+    const metadata = rows.rows[0]?.new_values as {
+      format: string;
+      period: string;
+      filters: Record<string, unknown>;
+      correlationId: string;
+    };
+    expect(metadata).toMatchObject({
+      format: "csv",
+      period: "7d",
+      filters: { currency: "EUR", tenantId: null, from: null, to: null },
+    });
+    expect(typeof metadata.correlationId).toBe("string");
+  });
+
+  it("escapes CSV-injection payloads in tenant names", async () => {
+    // Seed a tenant whose name starts with '=' — the OWASP textbook
+    // formula-injection vector. The exported CSV row MUST quote the cell
+    // AND prefix it with a single quote so Excel renders it as a
+    // literal string rather than evaluating the formula.
+    const MALICIOUS_ORG = "00000000-0000-0000-0000-0000000004ce";
+    const MALICIOUS_CONSTITUENT = "00000000-0000-0000-0000-0000000004cf";
+    const MALICIOUS_NAME = '=HYPERLINK("http://evil/", "click")';
+    await systemDb.execute(sql`
+      INSERT INTO tenants (id, name, slug, status)
+      VALUES (${MALICIOUS_ORG}, ${MALICIOUS_NAME}, 'test-malicious-org', 'active')
+      ON CONFLICT (id) DO UPDATE SET name = ${MALICIOUS_NAME}, status = 'active'
+    `);
+    await systemDb.execute(sql`
+      INSERT INTO constituents (id, org_id, first_name, last_name, type)
+      VALUES (${MALICIOUS_CONSTITUENT}, ${MALICIOUS_ORG}, 'Evil', 'Donor', 'donor')
+      ON CONFLICT (id) DO NOTHING
+    `);
+    // K-anonymity in per-tenant projection drops rows with <5 donations.
+    // Seed 6 to ensure the malicious row reaches the CSV.
+    await systemDb.execute(sql`
+      INSERT INTO donations (
+        id, org_id, constituent_id, amount_cents, currency,
+        exchange_rate, amount_base_cents, platform_fee_base_cents,
+        status, donated_at
+      )
+      SELECT
+        gen_random_uuid(), ${MALICIOUS_ORG}, ${MALICIOUS_CONSTITUENT},
+        1000, 'EUR', 1.00000000, 1000, 10,
+        'cleared', NOW() - INTERVAL '1 day'
+      FROM generate_series(1, 6)
+    `);
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/superadmin/finance/summary.csv?period=7d",
+        headers: authHeader(superAdminToken()),
+      });
+      expect(res.statusCode).toBe(200);
+      // Body must contain the quoted+prefixed safe form, NOT the raw
+      // formula. The leading single quote inside the quoted cell is
+      // the OWASP-recommended neutraliser.
+      expect(res.body).toContain(`"'=HYPERLINK(""http://evil/"", ""click"")"`);
+      // Defence: the raw formula MUST NOT appear unquoted at the start
+      // of any line — that would be a formula-execution payload in
+      // Excel/Sheets/LibreOffice.
+      expect(res.body).not.toMatch(/^=HYPERLINK/m);
+    } finally {
+      await systemDb.execute(sql`DELETE FROM donations WHERE org_id = ${MALICIOUS_ORG}`);
+      await systemDb.execute(sql`DELETE FROM constituents WHERE id = ${MALICIOUS_CONSTITUENT}`);
+      await systemDb.execute(sql`DELETE FROM tenants WHERE id = ${MALICIOUS_ORG}`);
+    }
+  });
+
+  it("period=custom with valid range → 200 + filename carries `custom`", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/superadmin/finance/summary.csv?period=custom&from=2026-04-01&to=2026-04-30",
+      headers: authHeader(superAdminToken()),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-disposition"]).toMatch(
+      /^attachment; filename="givernance-finance-custom-\d{4}-\d{2}-\d{2}\.csv"$/,
+    );
   });
 });
 

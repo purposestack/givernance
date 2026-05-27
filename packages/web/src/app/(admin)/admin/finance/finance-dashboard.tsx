@@ -159,6 +159,11 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   );
 
   // ─── CSV export (issue #442) ──────────────────────────────────────────────
+  // Triggers the download via a synthetic `<a download>` click rather
+  // than `window.location.assign`. The anchor click never unloads the
+  // dashboard even if the server 4xx/5xx's — the browser just doesn't
+  // start a download. Same SameSite=Lax cookie behaviour as a top-level
+  // GET navigation, no CSRF concern (read-only export).
   const handleExportCsv = useCallback(() => {
     const api = createClientApiClient();
     const url = SuperAdminFinanceService.buildSummaryCsvUrl(api, {
@@ -166,10 +171,15 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       currency: filters.currency === "all" ? undefined : filters.currency,
       tenantId: filters.tenantId === "all" ? undefined : filters.tenantId,
     });
-    // Same-tab navigation — the server sends Content-Disposition:
-    // attachment so the browser triggers a download rather than
-    // unloading the dashboard.
-    window.location.assign(url);
+    const a = document.createElement("a");
+    a.href = url;
+    a.rel = "noopener";
+    // `download` is advisory — the server's Content-Disposition is the
+    // authoritative filename.
+    a.setAttribute("download", "");
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
     toast.success(t("exportCsv.successToast"));
   }, [period, filters.currency, filters.tenantId, t]);
 
@@ -614,12 +624,13 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         <div className="page-header-actions">
           <Button
             type="button"
-            variant="ghost"
+            variant="secondary"
             size="default"
             onClick={handleExportCsv}
+            disabled={loading || summary === null}
             title={t("actionExportTitle")}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden>
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden>
               download
             </span>
             {t("actionExport")}

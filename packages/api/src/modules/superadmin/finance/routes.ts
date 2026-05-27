@@ -310,6 +310,12 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   // the operator reaches for the CSV exactly when they want the freshest
   // numbers (post-import / post-refund). Audit log carries
   // action='export', resource_type='platform_finance_summary'.
+  //
+  // Rate-limited at 10/min/IP. Counterpart of the cache-flush guard:
+  // because the route deliberately bypasses the 5-min summary cache and
+  // runs ~8 concurrent cross-tenant SQL aggregations per call, an
+  // attacker holding super-admin credentials (or a wedged auto-refresh
+  // loop) could pin the systemDb pool with /summary.csv pounding.
   app.get(
     "/superadmin/finance/summary.csv",
     {
@@ -321,6 +327,12 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
           200: Type.String(),
           ...ErrorResponses,
           400: ProblemDetailSchema,
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
         },
       },
     },
@@ -360,7 +372,6 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
           from: query.from ?? null,
           to: query.to ?? null,
         },
-        ipHash: hashIp(request.ip),
         correlationId: request.id,
       });
 
