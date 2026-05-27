@@ -158,6 +158,21 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     [],
   );
 
+  // ─── CSV export (issue #442) ──────────────────────────────────────────────
+  const handleExportCsv = useCallback(() => {
+    const api = createClientApiClient();
+    const url = SuperAdminFinanceService.buildSummaryCsvUrl(api, {
+      period,
+      currency: filters.currency === "all" ? undefined : filters.currency,
+      tenantId: filters.tenantId === "all" ? undefined : filters.tenantId,
+    });
+    // Same-tab navigation — the server sends Content-Disposition:
+    // attachment so the browser triggers a download rather than
+    // unloading the dashboard.
+    window.location.assign(url);
+    toast.success(t("exportCsv.successToast"));
+  }, [period, filters.currency, filters.tenantId, t]);
+
   // ─── Monthly PDF report (issue #443) ──────────────────────────────────────
   // The button is on the page header. Click → POST → poll the row by id
   // every 2s until `ready` (or `failed`), then trigger a same-tab
@@ -594,11 +609,21 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             </span>
           </p>
         </div>
-        {/* Action buttons. CSV export (#442) is still not wired —
-            keep that one hidden per feedback_no_anticipatory_ui until
-            the backend lands. The "Rapport mensuel" PDF (#443) is
-            wired below. */}
+        {/* Action buttons. CSV export (#442) + Monthly PDF (#443) are
+            both wired. */}
         <div className="page-header-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            size="default"
+            onClick={handleExportCsv}
+            title={t("actionExportTitle")}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }} aria-hidden>
+              download
+            </span>
+            {t("actionExport")}
+          </Button>
           <Button
             type="button"
             variant="primary"

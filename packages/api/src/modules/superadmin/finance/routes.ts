@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto";
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { auditLogs, platformAdmins, tenants } from "@givernance/shared/schema";
+import { Type } from "@sinclair/typebox";
 import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { systemDb } from "../../../lib/db.js";
@@ -27,6 +28,7 @@ import {
   ProblemDetailSchema,
   problemDetail,
 } from "../../../lib/schemas.js";
+import { buildFinanceSummaryCsv, buildFinanceSummaryCsvFilename } from "./csv.js";
 import {
   backfillLast12Months,
   findById,
@@ -143,6 +145,31 @@ async function emitAuditView(
     request.log.error(
       { err, audit: "INSERT_FAILED" },
       "CRITICAL: super-admin finance view audit insert failed — GDPR accountability gap",
+    );
+  }
+}
+
+async function emitAuditExport(
+  request: FastifyRequest,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  const platformOrgId = await getPlatformOrgId();
+  try {
+    await systemDb.insert(auditLogs).values({
+      orgId: platformOrgId,
+      userId: request.auth?.userId ?? null,
+      actorId: request.auth?.userId ?? null,
+      action: "export",
+      resourceType: "platform_finance_summary",
+      resourceId: null,
+      newValues: metadata,
+      ipHash: hashIp(request.ip),
+      userAgent: request.headers["user-agent"] ?? undefined,
+    });
+  } catch (err) {
+    request.log.error(
+      { err, audit: "INSERT_FAILED" },
+      "CRITICAL: super-admin finance export audit insert failed — GDPR accountability gap",
     );
   }
 }
@@ -274,6 +301,73 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
       });
 
       return body;
+    },
+  );
+
+  // ─── GET /v1/superadmin/finance/summary.csv (#442) ──────────────────────
+  // CSV export of the same payload as /summary. Same preHandler chain and
+  // same query validation; the cache is intentionally bypassed because
+  // the operator reaches for the CSV exactly when they want the freshest
+  // numbers (post-import / post-refund). Audit log carries
+  // action='export', resource_type='platform_finance_summary'.
+  app.get(
+    "/superadmin/finance/summary.csv",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      schema: {
+        tags: ["Superadmin", "Finance"],
+        querystring: SummaryQuery,
+        response: {
+          200: Type.String(),
+          ...ErrorResponses,
+          400: ProblemDetailSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const query = request.query as {
+        period: "today" | "7d" | "30d" | "90d" | "ytd" | "custom";
+        from?: string;
+        to?: string;
+        currency?: "EUR" | "GBP" | "CHF" | "all";
+        tenantId?: string;
+      };
+
+      let period: ReturnType<typeof resolvePeriod>;
+      try {
+        period = resolvePeriod(query.period, query.from, query.to);
+      } catch (err) {
+        if (err instanceof PeriodValidationError) {
+          return reply.status(400).send(problemDetail(400, "Bad Request", err.detail));
+        }
+        throw err;
+      }
+
+      const result = await buildFinanceSummary({
+        period,
+        filters: { currency: query.currency, tenantId: query.tenantId },
+      });
+
+      const csv = buildFinanceSummaryCsv(result);
+      const filename = buildFinanceSummaryCsvFilename(query.period);
+
+      await emitAuditExport(request, {
+        format: "csv",
+        period: query.period,
+        filters: {
+          currency: query.currency ?? null,
+          tenantId: query.tenantId ?? null,
+          from: query.from ?? null,
+          to: query.to ?? null,
+        },
+        ipHash: hashIp(request.ip),
+        correlationId: request.id,
+      });
+
+      reply.header("Content-Type", "text/csv; charset=utf-8");
+      reply.header("Content-Disposition", `attachment; filename="${filename}"`);
+      reply.header("Cache-Control", "no-store");
+      return reply.send(csv);
     },
   );
 

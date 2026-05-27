@@ -1022,6 +1022,10 @@
       "topbarStaleSourceAria": "{count} data source is stale — jump to tenant health",
       "topbarStaleSourceTitle": "A data source is stale — click to investigate.",
       "actionExport": "Export",
+      "actionExportTitle": "Download CSV of KPIs, per-tenant, per-currency and timeseries for the current filters.",
+      "exportCsv": {
+        "successToast": "CSV export started — check your downloads."
+      },
       "actionMonthlyReport": "Monthly report",
       "actionMonthlyReportBusy": "Generating…",
       "actionBackfill12Months": "Backfill 12 months",

@@ -400,6 +400,133 @@ describe("GET /v1/superadmin/finance/summary — archived/suspended tenants", ()
   });
 });
 
+// ─── GET /v1/superadmin/finance/summary.csv (#442) ──────────────────────
+
+describe("GET /v1/superadmin/finance/summary.csv", () => {
+  describe("RBAC matrix", () => {
+    it("super_admin → 200 with text/csv body + attachment disposition", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/superadmin/finance/summary.csv?period=30d",
+        headers: authHeader(superAdminToken()),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/^text\/csv/);
+      expect(res.headers["content-disposition"]).toMatch(
+        /^attachment; filename="givernance-finance-30d-\d{4}-\d{2}-\d{2}\.csv"$/,
+      );
+      expect(res.headers["cache-control"]).toBe("no-store");
+    });
+
+    it("org_admin → 404 (anti-disclosure)", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/superadmin/finance/summary.csv?period=30d",
+        headers: authHeader(signToken(app)),
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("user role → 404", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/superadmin/finance/summary.csv?period=30d",
+        headers: authHeader(signToken(app, { role: "user" })),
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("viewer role → 404", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/superadmin/finance/summary.csv?period=30d",
+        headers: authHeader(signToken(app, { role: "viewer" })),
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("unauthenticated → 401", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/superadmin/finance/summary.csv?period=30d",
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("flag off → 404", async () => {
+      await setFlag(false);
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/superadmin/finance/summary.csv?period=30d",
+        headers: authHeader(superAdminToken()),
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
+  it("body shape — four sections in order with correct headers", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/superadmin/finance/summary.csv?period=30d",
+      headers: authHeader(superAdminToken()),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.body;
+    // UTF-8 BOM at start so Excel auto-detects encoding.
+    expect(body.charCodeAt(0)).toBe(0xfeff);
+    // Section headers in order
+    const kpisIdx = body.indexOf("# KPIs");
+    const perTenantIdx = body.indexOf("# Per-tenant");
+    const perCurrencyIdx = body.indexOf("# Per-currency");
+    const timeseriesIdx = body.indexOf("# Timeseries");
+    expect(kpisIdx).toBeGreaterThanOrEqual(0);
+    expect(perTenantIdx).toBeGreaterThan(kpisIdx);
+    expect(perCurrencyIdx).toBeGreaterThan(perTenantIdx);
+    expect(timeseriesIdx).toBeGreaterThan(perCurrencyIdx);
+    // Column headers per spec
+    expect(body).toContain("metric,value,unit,delta_percent");
+    expect(body).toContain("tenant_id,tenant_name,grade,score,volume_eur,donation_count,share_pct");
+    expect(body).toContain("currency,volume_eur,donation_count");
+    expect(body).toContain("date,volume_eur,revenue_eur");
+    // CRLF line endings (RFC 4180)
+    expect(body).toContain("\r\n");
+  });
+
+  it("400 RFC-9457 on invalid custom range", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/superadmin/finance/summary.csv?period=custom&from=2025-06-01&to=2025-01-01",
+      headers: authHeader(superAdminToken()),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      type: expect.any(String),
+      title: expect.any(String),
+      status: 400,
+    });
+  });
+
+  it("emits audit log with action='export'", async () => {
+    const before = await systemDb.execute<{ count: string }>(
+      sql`SELECT COUNT(*)::text AS count FROM audit_logs WHERE action = 'export' AND resource_type = 'platform_finance_summary'`,
+    );
+    const beforeCount = Number(before.rows[0]?.count ?? "0");
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/superadmin/finance/summary.csv?period=7d&currency=EUR",
+      headers: authHeader(superAdminToken()),
+    });
+    expect(res.statusCode).toBe(200);
+
+    const after = await systemDb.execute<{ count: string; new_values: unknown }>(
+      sql`SELECT COUNT(*)::text AS count FROM audit_logs WHERE action = 'export' AND resource_type = 'platform_finance_summary'`,
+    );
+    const afterCount = Number(after.rows[0]?.count ?? "0");
+    expect(afterCount).toBe(beforeCount + 1);
+  });
+});
+
 // ─── POST /v1/superadmin/surveys/:slug/launch ───────────────────────────
 
 describe("POST /v1/superadmin/surveys/:slug/launch", () => {

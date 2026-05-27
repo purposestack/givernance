@@ -187,6 +187,15 @@ describe("/admin/finance — flag gate", () => {
     });
     expect(fetchSummaryMock).toHaveBeenCalledTimes(1);
   });
+
+  it("exposes the CSV export button when the flag is on (#442)", async () => {
+    isFinanceDashboardEnabledMock.mockResolvedValue(true);
+    fetchSummaryMock.mockResolvedValue(buildSummary());
+    const { default: FinancePage } = await import("../page");
+    const tree = await FinancePage();
+    render(tree);
+    expect(await screen.findByRole("button", { name: /Export/i })).toBeInTheDocument();
+  });
 });
 
 describe("/admin/finance — empty state", () => {
