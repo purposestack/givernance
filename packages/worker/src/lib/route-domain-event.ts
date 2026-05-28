@@ -120,6 +120,18 @@ export type RoutingDecision =
       bulkImportJobId: string;
       traceparent?: string;
     }
+  | {
+      kind: "survey-invitation-email";
+      invitationId: string;
+      surveyId: string;
+      surveySlug: string;
+      email: string;
+      userId: string | null;
+      expiresAt: string;
+      source: string;
+      locale: Locale;
+      traceparent?: string;
+    }
   | { kind: "unhandled"; type: string };
 
 export function routeDomainEvent(input: RoutingInput): RoutingDecision {
@@ -246,5 +258,35 @@ export function routeDomainEvent(input: RoutingInput): RoutingDecision {
     };
   }
 
+  const surveyEmail = routeSurveyInvitationEmail({ type, payload, traceparent });
+  if (surveyEmail) return surveyEmail;
+
   return { kind: "unhandled", type };
+}
+
+/**
+ * Extracted because inlining the branch pushed `routeDomainEvent` over
+ * the cognitive-complexity budget (issue #444 follow-up). Returns
+ * `null` when the event type doesn't match — caller falls through to
+ * the next routing branch.
+ */
+function routeSurveyInvitationEmail(input: {
+  type: string;
+  payload: Record<string, unknown>;
+  traceparent?: string;
+}): Extract<RoutingDecision, { kind: "survey-invitation-email" }> | null {
+  if (input.type !== "survey.invitation.send_email") return null;
+  const { payload, traceparent } = input;
+  return {
+    kind: "survey-invitation-email",
+    invitationId: payload.invitationId as string,
+    surveyId: payload.surveyId as string,
+    surveySlug: payload.surveySlug as string,
+    email: payload.email as string,
+    userId: typeof payload.userId === "string" ? payload.userId : null,
+    expiresAt: payload.expiresAt as string,
+    source: typeof payload.source === "string" ? payload.source : "unknown",
+    locale: resolvePayloadLocale(payload),
+    traceparent,
+  };
 }

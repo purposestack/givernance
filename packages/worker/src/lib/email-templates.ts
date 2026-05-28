@@ -334,3 +334,110 @@ export function renderPlatformAdminInviteEmail(
 ): RenderedEmail {
   return PLATFORM_ADMIN_INVITE_TEMPLATES[input.locale](input);
 }
+
+// ─── Survey invitation templates (issue #444) ──────────────────────────────
+
+export interface SurveyInvitationTemplateInput {
+  surveyKind: "pmf" | "nps" | "csat" | "custom";
+  question: string;
+  respondUrl: string;
+  expiresAt: Date;
+  locale: Locale;
+}
+
+const SURVEY_KIND_LABEL: Record<Locale, Record<"pmf" | "nps" | "csat" | "custom", string>> = {
+  en: {
+    pmf: "Product feedback",
+    nps: "Recommend Givernance?",
+    csat: "Support experience",
+    custom: "Quick feedback",
+  },
+  fr: {
+    pmf: "Avis produit",
+    nps: "Recommanderiez-vous Givernance ?",
+    csat: "Expérience support",
+    custom: "Petite question",
+  },
+};
+
+function renderSurveyInvitationEn(input: SurveyInvitationTemplateInput): RenderedEmail {
+  const expires = input.expiresAt.toUTCString();
+  const safeQuestion = escapeHtml(input.question);
+  const safeUrl = escapeHtml(input.respondUrl);
+  const kindLabel = SURVEY_KIND_LABEL.en[input.surveyKind];
+  const subjectKind = sanitiseSubjectField(kindLabel);
+  return {
+    subject: `${subjectKind} — 30 seconds of your time?`,
+    text: [
+      `Hi,`,
+      ``,
+      `We'd love your input on Givernance — it takes about 30 seconds.`,
+      ``,
+      input.question,
+      ``,
+      `Respond by signing in to Givernance — the survey will appear automatically:`,
+      input.respondUrl,
+      ``,
+      `This invitation expires on ${expires}.`,
+      ``,
+      `Thanks!`,
+      `The Givernance team`,
+    ].join("\n"),
+    html: `<!doctype html><html lang="en"><body style="font-family:-apple-system,system-ui,sans-serif;line-height:1.6;color:#111;max-width:560px;margin:32px auto;padding:0 16px">
+<h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(kindLabel)}</h1>
+<p>We'd love your input on Givernance — it takes about 30 seconds.</p>
+<blockquote style="margin:24px 0;padding:12px 16px;border-left:3px solid #1a56db;background:#f5f7fb;font-size:15px;color:#222">${safeQuestion}</blockquote>
+<p style="margin:24px 0"><a href="${safeUrl}" style="display:inline-block;padding:12px 20px;background:#1a56db;color:#fff;border-radius:6px;text-decoration:none;font-weight:500">Open Givernance</a></p>
+<p style="font-size:13px;color:#555">The survey will appear automatically once you sign in.</p>
+<p style="font-size:13px;color:#555">This invitation expires on ${expires}.</p>
+<p style="font-size:12px;color:#888;margin-top:32px;border-top:1px solid #eee;padding-top:16px">Thanks for helping us improve — the Givernance team.</p>
+</body></html>`,
+  };
+}
+
+function renderSurveyInvitationFr(input: SurveyInvitationTemplateInput): RenderedEmail {
+  const expires = input.expiresAt.toUTCString();
+  const safeQuestion = escapeHtml(input.question);
+  const safeUrl = escapeHtml(input.respondUrl);
+  const kindLabel = SURVEY_KIND_LABEL.fr[input.surveyKind];
+  const subjectKind = sanitiseSubjectField(kindLabel);
+  return {
+    subject: `${subjectKind} — 30 secondes pour nous aider ?`,
+    text: [
+      `Bonjour,`,
+      ``,
+      `On aimerait avoir votre avis sur Givernance — ça prend environ 30 secondes.`,
+      ``,
+      input.question,
+      ``,
+      `Pour répondre, connectez-vous à Givernance — l'enquête s'affichera automatiquement :`,
+      input.respondUrl,
+      ``,
+      `Cette invitation expire le ${expires}.`,
+      ``,
+      `Merci !`,
+      `L'équipe Givernance`,
+    ].join("\n"),
+    html: `<!doctype html><html lang="fr"><body style="font-family:-apple-system,system-ui,sans-serif;line-height:1.6;color:#111;max-width:560px;margin:32px auto;padding:0 16px">
+<h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(kindLabel)}</h1>
+<p>On aimerait avoir votre avis sur Givernance — ça prend environ 30 secondes.</p>
+<blockquote style="margin:24px 0;padding:12px 16px;border-left:3px solid #1a56db;background:#f5f7fb;font-size:15px;color:#222">${safeQuestion}</blockquote>
+<p style="margin:24px 0"><a href="${safeUrl}" style="display:inline-block;padding:12px 20px;background:#1a56db;color:#fff;border-radius:6px;text-decoration:none;font-weight:500">Ouvrir Givernance</a></p>
+<p style="font-size:13px;color:#555">L'enquête s'affichera automatiquement à la connexion.</p>
+<p style="font-size:13px;color:#555">Cette invitation expire le ${expires}.</p>
+<p style="font-size:12px;color:#888;margin-top:32px;border-top:1px solid #eee;padding-top:16px">Merci pour votre aide — l'équipe Givernance.</p>
+</body></html>`,
+  };
+}
+
+const SURVEY_INVITATION_TEMPLATES: Record<
+  Locale,
+  (input: SurveyInvitationTemplateInput) => RenderedEmail
+> = {
+  en: renderSurveyInvitationEn,
+  fr: renderSurveyInvitationFr,
+};
+
+export function renderSurveyInvitationEmail(input: SurveyInvitationTemplateInput): RenderedEmail {
+  return SURVEY_INVITATION_TEMPLATES[input.locale](input);
+}

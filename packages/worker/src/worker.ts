@@ -36,6 +36,7 @@ import { processSignupVerificationEmail } from "./processors/signup-email.js";
 import { processSignupResend } from "./processors/signup-resend.js";
 import { processStripeWebhook } from "./processors/stripe-webhook.js";
 import { fanoutSurveyErasure } from "./processors/survey-erasure-cascade.js";
+import { processSurveyInvitationEmail } from "./processors/survey-invitation-email.js";
 import { processTeamInviteEmail } from "./processors/team-invite-email.js";
 import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
 
@@ -292,6 +293,24 @@ async function processDomainEvent(job: Job): Promise<void> {
       log.info(
         { outboxId: decision.outboxId, bulkEmailJobId: decision.bulkEmailJobId },
         "Enqueued bulk email dispatch",
+      );
+      return;
+    }
+
+    case "survey-invitation-email": {
+      const result = await processSurveyInvitationEmail({
+        invitationId: decision.invitationId,
+        surveyId: decision.surveyId,
+        surveySlug: decision.surveySlug,
+        email: decision.email,
+        userId: decision.userId,
+        expiresAt: decision.expiresAt,
+        source: decision.source,
+        locale: decision.locale,
+      });
+      log.info(
+        { invitationId: decision.invitationId, surveySlug: decision.surveySlug, ...result },
+        "Survey invitation email dispatched",
       );
       return;
     }
