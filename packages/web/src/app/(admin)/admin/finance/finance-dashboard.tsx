@@ -12,7 +12,12 @@
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { toast, VolumeRevenueChart } from "@/components/admin/finance";
+import {
+  SurveyLaunchCard,
+  type SurveyLaunchCardLabels,
+  toast,
+  VolumeRevenueChart,
+} from "@/components/admin/finance";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -24,7 +29,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import type { FinancePeriod, FinanceSummary, MonthlyReport } from "@/models/superadmin-finance";
+import type {
+  FinancePeriod,
+  FinanceSummary,
+  MonthlyReport,
+  SurveyCadence,
+} from "@/models/superadmin-finance";
 import { SuperAdminFinanceService } from "@/services/SuperAdminFinanceService";
 
 import "./finance-mockup.css";
@@ -149,6 +159,28 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
       setFlushing(false);
     }
   }, [flushing, period, filters.currency, filters.tenantId, t]);
+  // ─── Manual survey launch (issue #444) ────────────────────────────────────
+  // Server enforces cooldown + idempotency; we react to 429 with a
+  // clear toast instead of pre-disabling. See SurveyLaunchCard for the
+  // full rationale.
+  const handleLaunchSurvey = useCallback(
+    async (slug: string, channel: "email" | "in_app", idempotencyKey: string) => {
+      const api = createClientApiClient();
+      const result = await SuperAdminFinanceService.launchSurvey(
+        api,
+        slug,
+        { channel },
+        idempotencyKey,
+      );
+      return { recipientCount: result.recipientCount };
+    },
+    [],
+  );
+  const handleScheduleSurvey = useCallback(async (slug: string, cadence: SurveyCadence) => {
+    const api = createClientApiClient();
+    await SuperAdminFinanceService.scheduleSurvey(api, slug, { cadence });
+  }, []);
+
   const handleCurrencyChange = useCallback(
     (next: FinanceFilters["currency"]) => setFilters((f) => ({ ...f, currency: next })),
     [],
@@ -570,6 +602,37 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const pmfFreshness = computeFreshness(pmfSurvey?.lastCollectedAt ?? null, "quarterly");
   const npsFreshness = computeFreshness(npsSurvey?.lastCollectedAt ?? null, "quarterly");
   const csatFreshness = computeFreshness(csatSurvey?.lastCollectedAt ?? null, "continuous");
+
+  const surveyLaunchLabels: SurveyLaunchCardLabels = {
+    title: t("surveysLaunch.title"),
+    subtitle: t("surveysLaunch.subtitle"),
+    pmfLabel: t("surveysLaunch.pmfLabel"),
+    npsLabel: t("surveysLaunch.npsLabel"),
+    csatLabel: t("surveysLaunch.csatLabel"),
+    responseCount: (count) => t("surveysLaunch.responseCount", { count }),
+    lastCollectedAt: (date) => t("surveysLaunch.lastCollectedAt", { date }),
+    lastCollectedNever: t("surveysLaunch.lastCollectedNever"),
+    nextScheduledAt: (date) => t("surveysLaunch.nextScheduledAt", { date }),
+    nextScheduledNever: t("surveysLaunch.nextScheduledNever"),
+    launchEmail: t("surveysLaunch.launchEmail"),
+    launchInApp: t("surveysLaunch.launchInApp"),
+    changeCadence: t("surveysLaunch.changeCadence"),
+    toastLaunching: t("surveysLaunch.toastLaunching"),
+    toastLaunched: (recipientCount) => t("surveysLaunch.toastLaunched", { count: recipientCount }),
+    toastCooldown: (retryAfterMinutes) =>
+      t("surveysLaunch.toastCooldown", { minutes: retryAfterMinutes }),
+    toastError: (detail) => t("surveysLaunch.toastError", { detail }),
+    cadenceDialogTitle: (surveyLabel) =>
+      t("surveysLaunch.cadenceDialogTitle", { survey: surveyLabel }),
+    cadenceDialogBody: t("surveysLaunch.cadenceDialogBody"),
+    cadenceOptionQuarterly: t("surveysLaunch.cadenceOptionQuarterly"),
+    cadenceOptionMonthly: t("surveysLaunch.cadenceOptionMonthly"),
+    cadenceOptionContinuous: t("surveysLaunch.cadenceOptionContinuous"),
+    cadenceDialogCancel: t("surveysLaunch.cadenceDialogCancel"),
+    cadenceDialogConfirm: t("surveysLaunch.cadenceDialogConfirm"),
+    cadenceToastUpdated: t("surveysLaunch.cadenceToastUpdated"),
+    cadenceToastError: (detail) => t("surveysLaunch.cadenceToastError", { detail }),
+  };
 
   return (
     <main>
@@ -1356,6 +1419,17 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
           </div>
         </div>
       </div>
+
+      {summary.surveys.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <SurveyLaunchCard
+            surveys={summary.surveys}
+            labels={surveyLaunchLabels}
+            onLaunch={handleLaunchSurvey}
+            onSchedule={handleScheduleSurvey}
+          />
+        </div>
+      )}
 
       <div className="section-head">
         <h2>{t("sections.tenants")}</h2>

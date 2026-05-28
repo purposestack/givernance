@@ -15,8 +15,31 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { systemDb } from "../../../lib/db.js";
 import { resolveCohort } from "./survey-cohort.js";
 
-const COOLDOWN_HOURS = 24;
-const COOLDOWN_MS = COOLDOWN_HOURS * 60 * 60 * 1000;
+/**
+ * Cooldown is differentiated by channel (issue #444 follow-up):
+ *
+ * - `email` keeps the 24h lock. The outbox relay commits the SMTP
+ *   send minutes after the row lands, so a Tuesday re-launch on
+ *   Monday's PMF would dump a second email into every non-responder's
+ *   inbox — bad first impression, hard to walk back.
+ *
+ * - `in_app` runs with no cooldown. The fan-out's existing-invitation
+ *   guard (see below — `existingInvite` check on opened/dismissed/
+ *   expires) structurally prevents duplicate modals: a double-click
+ *   produces 0 new invitations, not two pops. The `@fastify/rate-limit`
+ *   cap on the route (10/min/IP per PR #441) handles abuse. So 24h
+ *   would punish a legitimate operator re-attempt for no privacy
+ *   benefit.
+ *
+ * Combined with the `recipient_count > 0` predicate on the cooldown
+ * SELECT (below), a launch that resolved to 0 new invitees doesn't
+ * lock the (survey, channel) at all — fixing the staging gotcha where
+ * a freshly-seeded environment burned 24h on the first click.
+ */
+const COOLDOWN_MS_BY_CHANNEL: Record<"email" | "in_app", number> = {
+  email: 24 * 60 * 60 * 1000,
+  in_app: 0,
+};
 const INVITATION_EXPIRY_DAYS = 30;
 
 export type LaunchError =
@@ -98,25 +121,35 @@ export async function launchSurvey(input: {
   }
 
   // Cooldown: refuse a fresh launch if any prior launch for the same
-  // (survey, channel) is within the last 24h.
-  const cooldownThreshold = new Date(now.getTime() - COOLDOWN_MS);
-  const [recent] = await systemDb
-    .select({ launchedAt: surveyLaunches.launchedAt })
-    .from(surveyLaunches)
-    .where(
-      and(
-        eq(surveyLaunches.surveyId, survey.id),
-        eq(surveyLaunches.channel, input.channel),
-        gt(surveyLaunches.launchedAt, cooldownThreshold),
-      ),
-    )
-    .orderBy(sql`${surveyLaunches.launchedAt} DESC`)
-    .limit(1);
+  // (survey, channel) within the channel's lock window actually
+  // produced at least one invitation. The `recipient_count > 0` guard
+  // matters: a launch that resolved to 0 new invitees (whole cohort
+  // already invited) cost the system nothing and must not lock the
+  // operator out for 24h — that was the staging gotcha that drove
+  // this follow-up. The `in_app` channel runs with cooldownMs=0 so
+  // this whole branch short-circuits past it.
+  const cooldownMs = COOLDOWN_MS_BY_CHANNEL[input.channel];
+  if (cooldownMs > 0) {
+    const cooldownThreshold = new Date(now.getTime() - cooldownMs);
+    const [recent] = await systemDb
+      .select({ launchedAt: surveyLaunches.launchedAt })
+      .from(surveyLaunches)
+      .where(
+        and(
+          eq(surveyLaunches.surveyId, survey.id),
+          eq(surveyLaunches.channel, input.channel),
+          gt(surveyLaunches.launchedAt, cooldownThreshold),
+          gt(surveyLaunches.recipientCount, 0),
+        ),
+      )
+      .orderBy(sql`${surveyLaunches.launchedAt} DESC`)
+      .limit(1);
 
-  if (recent) {
-    const retryAt = new Date(recent.launchedAt.getTime() + COOLDOWN_MS);
-    const retryAfterSeconds = Math.max(1, Math.ceil((retryAt.getTime() - now.getTime()) / 1000));
-    return { kind: "rate_limited", retryAfterSeconds };
+    if (recent) {
+      const retryAt = new Date(recent.launchedAt.getTime() + cooldownMs);
+      const retryAfterSeconds = Math.max(1, Math.ceil((retryAt.getTime() - now.getTime()) / 1000));
+      return { kind: "rate_limited", retryAfterSeconds };
+    }
   }
 
   // Resolve cohort. The worker uses the same resolver for the scheduled

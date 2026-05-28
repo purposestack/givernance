@@ -47,6 +47,8 @@ export type { SentimentBarProps } from "./sentiment-bar";
 export { SentimentBar } from "./sentiment-bar";
 export type { StaleBannerProps } from "./stale-banner";
 export { StaleBanner } from "./stale-banner";
+export type { SurveyLaunchCardLabels, SurveyLaunchCardProps } from "./survey-launch-card";
+export { SurveyLaunchCard } from "./survey-launch-card";
 
 export { ToastProvider, toast, useToast } from "./toast";
 export type { TopTenantsListLabels, TopTenantsListProps } from "./top-tenants-list";
