@@ -129,6 +129,17 @@ export interface SurveyLaunchResponse {
   };
 }
 
+export type SurveyCadence = "quarterly_minus_7d" | "monthly" | "continuous";
+
+export interface SurveyScheduleResponse {
+  data: {
+    surveyId: string;
+    cadence: SurveyCadence;
+    cadenceDays: number | null;
+    nextScheduledAt: string | null;
+  };
+}
+
 // ─── Monthly platform finance report (issue #443) ──────────────────────────
 
 export type MonthlyReportStatus = "pending" | "ready" | "failed";

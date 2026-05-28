@@ -19,6 +19,7 @@ import type {
   MonthlyReport,
   MonthlyReportResponse,
   SurveyLaunchResponse,
+  SurveyScheduleResponse,
 } from "@/models/superadmin-finance";
 
 export interface FetchSummaryParams {
@@ -81,6 +82,23 @@ export const SuperAdminFinanceService = {
       `/v1/superadmin/surveys/${encodeURIComponent(slug)}/launch`,
       body,
       { headers: { "Idempotency-Key": idempotencyKey } },
+    );
+    return response.data;
+  },
+
+  /**
+   * Change the cadence of a survey campaign. No cooldown, no
+   * Idempotency-Key — the server is idempotent on (survey, cadence)
+   * and a re-application with the same cadence is a no-op. Issue #444.
+   */
+  async scheduleSurvey(
+    client: ApiClient,
+    slug: string,
+    body: { cadence: "quarterly_minus_7d" | "monthly" | "continuous" },
+  ): Promise<SurveyScheduleResponse["data"]> {
+    const response = await client.post<SurveyScheduleResponse>(
+      `/v1/superadmin/surveys/${encodeURIComponent(slug)}/schedule`,
+      body,
     );
     return response.data;
   },

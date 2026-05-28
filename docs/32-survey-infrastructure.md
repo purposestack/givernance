@@ -81,6 +81,18 @@ sequenceDiagram
   API->>DB: SELECT FROM survey_responses_reviewed (DPO gate)
   API-->>Web: { pmf_percent, nps_score, csat_score, verbatims[] }
 
+  Note over SA,Worker: Manual off-cadence launch (issue #444)
+  SA->>Web: Click "Send email now" in SurveyLaunchCard
+  Web->>API: POST /v1/superadmin/surveys/:slug/launch {channel} + Idempotency-Key (UUID v4)
+  alt within 24h of last launch on same (survey, channel)
+    API-->>Web: 429 + Retry-After
+    Web-->>SA: Toast "Cooldown active — retry in X min"
+  else
+    API->>DB: INSERT survey_launches + cohort fanout
+    API-->>Web: 202 { recipientCount }
+    Web-->>SA: Toast "Sent to N recipients"
+  end
+
   Note over DB,Op: Cascade on user erasure
   Op->>API: DELETE /v1/users/:id (org_admin removes a colleague)
   API->>DB: UPDATE users SET deleted_at = NOW()
@@ -241,7 +253,7 @@ Explicitly deferred for the MVP:
 
 - **Multi-question surveys** — every survey is single-question + optional free-text follow-up. Adding multi-question support means a `survey_questions` child table and a more complex response shape.
 - **Branching logic** — no "if PMF answer = somewhat, then ask why_more" path. Single-question keeps the form rendering trivial and the response shape flat.
-- **Drag-and-drop survey editor** — surveys are seeded by migrations; the super-admin UI shows / launches existing surveys but does not let you create new ones from the browser.
+- **Drag-and-drop survey editor** — surveys are seeded by migrations; the super-admin UI shows / launches existing surveys (via the `SurveyLaunchCard` on `/admin/finance` — issue #444, which gives super-admins an off-cadence "Send email now" / "Activate in-app" / "Change cadence" affordance independent of the `StaleBanner`) but does not let you create new ones from the browser.
 - **SMS channel** — `channel` is `email | in_app` only. SMS would need a per-tenant SMS provider integration we don't have yet.
 - **Analytics dashboard for surveys themselves** — open-rate, click-through, time-to-respond. The current dashboard surfaces only the aggregate score + freshness; the meta-stats are out of scope.
 - **DPO review queue UI** — until shipped, `text_reviewed_at` is set via `psql` by the on-call DPO. The DB + API gates are in place from day 1; only the operator UI is deferred.
