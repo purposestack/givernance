@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pre-push hook — runs the EXACT command CI runs as its final gate, so
+# a `git push` cannot leave the branch in a state CI will reject.
+#
+# Mirrors the load-bearing step from CLAUDE.md § "DEV PROCESS" point 6:
+# "pnpm biome check ." — combines lint + format-check together.
+#
+# Install once per clone:
+#     git config core.hooksPath .githooks
+#
+# Bypass (only when you know what you're doing — e.g. mid-rebase push
+# to a feature branch you'll fix before opening the PR):
+#     git push --no-verify
+#
+# Why this exists: the format/lint check has been the most frequent
+# CI red on this repo. Local pipelines that skip step 6 ship the
+# branch with auto-formatter drift or a fresh `lint/correctness/*` rule
+# violation introduced by an edit made AFTER an earlier biome run.
+
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+echo "[pre-push] pnpm biome check ."
+if ! pnpm biome check . ; then
+  echo
+  echo "[pre-push] ✗ biome reported errors — push aborted."
+  echo "[pre-push]   Fix: pnpm biome check --write . (then re-stage + re-push)"
+  echo "[pre-push]   Bypass (last resort): git push --no-verify"
+  exit 1
+fi
+
+echo "[pre-push] ✓ biome clean"

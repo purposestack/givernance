@@ -335,3 +335,11 @@ Before concluding your task or pushing to origin, you must run and verify:
 If any of these fail, **fix the underlying issue** before pushing. Never leave a branch with a failing `typecheck` or `lint` command.
 
 ⚠ **Step 6 is the load-bearing one.** `pnpm run lint` is check-only and `pnpm run format` only auto-fixes — running them separately lets format drift sneak back in if you make edits between or after them. CI runs `pnpm biome check .` which combines both, so that's what you must run **last**, after every other edit, immediately before `git push`. If it returns non-zero, run `pnpm biome check --write .` to auto-fix, then re-run `pnpm biome check .` to confirm clean.
+
+**Install the pre-push hook on every fresh clone** (one-shot, repo-tracked):
+
+```sh
+git config core.hooksPath .githooks
+```
+
+[`.githooks/pre-push`](.githooks/pre-push) runs `pnpm biome check .` automatically before every `git push` and aborts the push on a non-zero exit. This is the structural guard against forgetting step 6 — local pipelines that skip the final biome run can no longer reach CI red. The hook is committed to the repo so a fresh clone just needs the one-line `git config` to activate it. Bypass with `git push --no-verify` only in genuine emergencies (mid-rebase to a feature branch you'll clean up before opening the PR).
