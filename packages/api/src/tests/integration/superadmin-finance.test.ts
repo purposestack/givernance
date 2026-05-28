@@ -146,6 +146,29 @@ beforeEach(async () => {
   await systemDb.execute(
     sql`DELETE FROM survey_responses WHERE invitation_id IN (${pmfInvitationForUserA}, ${pmfInvitationForUserB})`,
   );
+  // Restore seeded invitations if a prior test deleted them (the #444
+  // follow-up tests below DELETE to force a non-empty fan-out). Also
+  // resets opened_at / dismissed_at on rows that survived so the
+  // /pending + /dismiss describes see a pristine row.
+  await systemDb.execute(sql`
+    INSERT INTO survey_invitations (id, survey_id, user_id, org_id, channel, expires_at)
+    VALUES
+      (${pmfInvitationForUserA}, ${pmfSurveyId}, ${USER_A_ROW_ID}, ${ORG_A}, 'in_app', NOW() + INTERVAL '14 days'),
+      (${pmfInvitationForUserB}, ${pmfSurveyId}, ${USER_B_ROW_ID}, ${ORG_B}, 'in_app', NOW() + INTERVAL '14 days')
+    ON CONFLICT (id) DO UPDATE
+      SET opened_at = NULL,
+          dismissed_at = NULL,
+          deleted_at = NULL,
+          expires_at = NOW() + INTERVAL '14 days'
+  `);
+  // Also wipe any extra invitations created mid-test (e.g. fan-out
+  // landings on USER_A_ROW_ID / USER_B_ROW_ID beyond the two seeded
+  // IDs).
+  await systemDb.execute(sql`
+    DELETE FROM survey_invitations
+    WHERE survey_id = ${pmfSurveyId}
+      AND id NOT IN (${pmfInvitationForUserA}, ${pmfInvitationForUserB})
+  `);
 });
 
 afterEach(async () => {
@@ -690,8 +713,18 @@ describe("POST /v1/superadmin/surveys/:slug/launch", () => {
     expect(rows.rows[0]?.count).toBe("1");
   });
 
-  it("2nd launch within 24h with NEW key → 429 + Retry-After", async () => {
-    // First launch lands.
+  it("2nd email launch within 24h with NEW key → 429 + Retry-After", async () => {
+    // Wipe the seeded PMF invitations so the first launch fan-out
+    // actually produces recipient_count > 0 — the cooldown SELECT
+    // now requires `recipient_count > 0` so a no-op launch (whole
+    // cohort already invited) cannot lock the (survey, channel)
+    // for 24h. This was the staging gotcha that drove the #444
+    // follow-up.
+    await systemDb.execute(
+      sql`DELETE FROM survey_invitations WHERE id IN (${pmfInvitationForUserA}, ${pmfInvitationForUserB})`,
+    );
+
+    // First launch lands → real invitations created.
     const first = await app.inject({
       method: "POST",
       url: `/v1/superadmin/surveys/${PMF_SLUG}/launch`,
@@ -699,6 +732,9 @@ describe("POST /v1/superadmin/surveys/:slug/launch", () => {
       payload: { channel: "email" },
     });
     expect(first.statusCode).toBe(202);
+    expect(first.json<{ data: { recipientCount: number } }>().data.recipientCount).toBeGreaterThan(
+      0,
+    );
 
     // Second launch (fresh key) hits the cooldown.
     const second = await app.inject({
@@ -715,6 +751,57 @@ describe("POST /v1/superadmin/surveys/:slug/launch", () => {
       title: "Too Many Requests",
       status: 429,
     });
+  });
+
+  it("recipient_count=0 prior launch does NOT lock the cooldown (#444 follow-up)", async () => {
+    // Directly insert a `survey_launches` row with recipient_count=0
+    // 1 second ago — under the old cooldown logic this would have
+    // 429'd the next launch for 24h. With the `recipient_count > 0`
+    // predicate on the cooldown SELECT, the row is invisible to the
+    // cooldown check and the next launch must 202.
+    await systemDb.execute(sql`
+      INSERT INTO survey_launches (id, survey_id, channel, idempotency_key, launched_by, recipient_count, launched_at)
+      VALUES (gen_random_uuid(), ${pmfSurveyId}, 'email', ${randomUUID()}, ${SUPER_ADMIN_PLATFORM_ROW_ID}, 0, NOW() - INTERVAL '1 second')
+    `);
+
+    const next = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/surveys/${PMF_SLUG}/launch`,
+      headers: { ...authHeader(superAdminToken()), "idempotency-key": randomUUID() },
+      payload: { channel: "email" },
+    });
+    expect(next.statusCode).toBe(202);
+  });
+
+  it("in_app channel has no cooldown — back-to-back launches both 202 (#444 follow-up)", async () => {
+    // Wipe seeded invitations so the first in_app launch creates real
+    // ones, then verify the second consecutive in_app launch is NOT
+    // 429'd. The fan-out's existing-invitation guard still prevents
+    // duplicate modals (the 2nd launch returns recipientCount=0).
+    await systemDb.execute(
+      sql`DELETE FROM survey_invitations WHERE id IN (${pmfInvitationForUserA}, ${pmfInvitationForUserB})`,
+    );
+
+    const first = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/surveys/${PMF_SLUG}/launch`,
+      headers: { ...authHeader(superAdminToken()), "idempotency-key": randomUUID() },
+      payload: { channel: "in_app" },
+    });
+    expect(first.statusCode).toBe(202);
+    expect(first.json<{ data: { recipientCount: number } }>().data.recipientCount).toBeGreaterThan(
+      0,
+    );
+
+    const second = await app.inject({
+      method: "POST",
+      url: `/v1/superadmin/surveys/${PMF_SLUG}/launch`,
+      headers: { ...authHeader(superAdminToken()), "idempotency-key": randomUUID() },
+      payload: { channel: "in_app" },
+    });
+    expect(second.statusCode).toBe(202);
+    // Existing-invitation guard kicks in — no duplicate modals.
+    expect(second.json<{ data: { recipientCount: number } }>().data.recipientCount).toBe(0);
   });
 
   it("unknown slug → 404", async () => {
@@ -1104,5 +1191,212 @@ describe("POST /v1/superadmin/finance/cache/flush (#449)", () => {
     // Decoy with `notifications:*` prefix MUST still be intact —
     // proof the client-supplied `*` was ignored.
     expect(await redis.exists(DECOY_KEY)).toBe(1);
+  });
+});
+
+// ─── GET /v1/surveys/pending + POST /v1/surveys/:invitationId/dismiss ───
+// Issue #444 — in-app survey delivery for tenant users.
+
+describe("GET /v1/surveys/pending", () => {
+  beforeEach(async () => {
+    // Reset both seeded invitations to a clean pristine state — earlier
+    // tests in this file may have marked them as opened/dismissed.
+    await systemDb.execute(
+      sql`UPDATE survey_invitations
+          SET opened_at = NULL, dismissed_at = NULL, deleted_at = NULL,
+              expires_at = NOW() + INTERVAL '14 days'
+          WHERE id IN (${pmfInvitationForUserA}, ${pmfInvitationForUserB})`,
+    );
+  });
+
+  it("returns the user's own active in-app invitations only", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/surveys/pending",
+      headers: authHeader(signToken(app)),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      data: Array<{ invitationId: string; surveyKind: string; questionFr: string }>;
+    };
+    // Should see user A's own PMF invitation, NOT user B's.
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.invitationId).toBe(pmfInvitationForUserA);
+    expect(body.data[0]?.surveyKind).toBe("pmf");
+    expect(body.data[0]?.questionFr).toBe("PMF FR");
+  });
+
+  it("flag-off → 404 (anti-disclosure)", async () => {
+    await setFlag(false);
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/surveys/pending",
+      headers: authHeader(signToken(app)),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("super_admin → empty list (no tenant user row)", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/surveys/pending",
+      headers: authHeader(superAdminToken()),
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { data: unknown[] }).data).toEqual([]);
+  });
+
+  it("excludes expired in-app invitations", async () => {
+    await systemDb.execute(
+      sql`UPDATE survey_invitations SET expires_at = NOW() - INTERVAL '1 day' WHERE id = ${pmfInvitationForUserA}`,
+    );
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/surveys/pending",
+      headers: authHeader(signToken(app)),
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { data: unknown[] }).data).toHaveLength(0);
+  });
+
+  it("excludes invitations whose survey was soft-deleted", async () => {
+    await systemDb.execute(sql`UPDATE surveys SET deleted_at = NOW() WHERE id = ${pmfSurveyId}`);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/surveys/pending",
+        headers: authHeader(signToken(app)),
+      });
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { data: unknown[] }).data).toHaveLength(0);
+    } finally {
+      await systemDb.execute(sql`UPDATE surveys SET deleted_at = NULL WHERE id = ${pmfSurveyId}`);
+    }
+  });
+
+  it("excludes custom-kind surveys (modal has no renderer for them)", async () => {
+    const customSurveyId = randomUUID();
+    const customInvitationId = randomUUID();
+    await systemDb.execute(sql`
+      INSERT INTO surveys (id, kind, slug, question_fr, question_en, freshness_soon_days, freshness_stale_days)
+      VALUES (${customSurveyId}, 'custom', 'custom-test-444', 'CFR', 'CEN', 30, 90)
+    `);
+    await systemDb.execute(sql`
+      INSERT INTO survey_invitations (id, survey_id, user_id, org_id, channel, expires_at)
+      VALUES (${customInvitationId}, ${customSurveyId}, ${USER_A_ROW_ID}, ${ORG_A}, 'in_app', NOW() + INTERVAL '14 days')
+    `);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/surveys/pending",
+        headers: authHeader(signToken(app)),
+      });
+      const body = res.json() as { data: Array<{ invitationId: string }> };
+      expect(body.data.map((r) => r.invitationId)).not.toContain(customInvitationId);
+    } finally {
+      await systemDb.execute(sql`DELETE FROM survey_invitations WHERE id = ${customInvitationId}`);
+      await systemDb.execute(sql`DELETE FROM surveys WHERE id = ${customSurveyId}`);
+    }
+  });
+
+  it("respond → next /pending excludes the invitation (transactional opened_at)", async () => {
+    const respondRes = await app.inject({
+      method: "POST",
+      url: `/v1/surveys/${pmfInvitationForUserA}/respond`,
+      headers: authHeader(signToken(app)),
+      payload: { response: { category: "very_disappointed" } },
+    });
+    expect(respondRes.statusCode).toBe(200);
+    const pendingRes = await app.inject({
+      method: "GET",
+      url: "/v1/surveys/pending",
+      headers: authHeader(signToken(app)),
+    });
+    expect(pendingRes.statusCode).toBe(200);
+    const body = pendingRes.json() as { data: Array<{ invitationId: string }> };
+    expect(body.data.map((r) => r.invitationId)).not.toContain(pmfInvitationForUserA);
+    // Clean up the response so the dismiss describe block runs clean.
+    await systemDb.execute(
+      sql`DELETE FROM survey_responses WHERE invitation_id = ${pmfInvitationForUserA}`,
+    );
+  });
+
+  it("includes email-channel invitations (modal is the unified response surface)", async () => {
+    // Issue #444 follow-up — once the user lands logged-in (whether
+    // via the email magic-link CTA or a normal login), the modal
+    // must surface ALL their pending invitations regardless of
+    // channel. Filtering email invites out would orphan every
+    // recipient who clicked the email CTA.
+    const emailInviteId = randomUUID();
+    await systemDb.execute(sql`
+      INSERT INTO survey_invitations (id, survey_id, user_id, org_id, channel, expires_at)
+      VALUES (${emailInviteId}, ${pmfSurveyId}, ${USER_A_ROW_ID}, ${ORG_A}, 'email', NOW() + INTERVAL '14 days')
+    `);
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/surveys/pending",
+        headers: authHeader(signToken(app)),
+      });
+      const body = res.json() as { data: Array<{ invitationId: string }> };
+      expect(body.data.map((r) => r.invitationId)).toContain(emailInviteId);
+    } finally {
+      await systemDb.execute(sql`DELETE FROM survey_invitations WHERE id = ${emailInviteId}`);
+    }
+  });
+});
+
+describe("POST /v1/surveys/:invitationId/dismiss", () => {
+  beforeEach(async () => {
+    await systemDb.execute(
+      sql`UPDATE survey_invitations
+          SET opened_at = NULL, dismissed_at = NULL, deleted_at = NULL,
+              expires_at = NOW() + INTERVAL '14 days'
+          WHERE id IN (${pmfInvitationForUserA}, ${pmfInvitationForUserB})`,
+    );
+  });
+
+  it("settles the invitation (sets dismissed_at + opened_at) and 200s", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/surveys/${pmfInvitationForUserA}/dismiss`,
+      headers: authHeader(signToken(app)),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: { invitationId: string; dismissedAt: string } };
+    expect(body.data.invitationId).toBe(pmfInvitationForUserA);
+    expect(body.data.dismissedAt).toMatch(/T/);
+
+    const [row] = (
+      await systemDb.execute<{ opened_at: Date | null; dismissed_at: Date | null }>(
+        sql`SELECT opened_at, dismissed_at FROM survey_invitations WHERE id = ${pmfInvitationForUserA}`,
+      )
+    ).rows;
+    expect(row?.dismissed_at).not.toBeNull();
+    expect(row?.opened_at).not.toBeNull();
+    // Reset for downstream tests.
+    await systemDb.execute(
+      sql`UPDATE survey_invitations SET dismissed_at = NULL, opened_at = NULL WHERE id = ${pmfInvitationForUserA}`,
+    );
+  });
+
+  it("cross-tenant invitationId → 404 (anti-enumeration)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      // User A trying to dismiss User B's invitation.
+      url: `/v1/surveys/${pmfInvitationForUserB}/dismiss`,
+      headers: authHeader(signToken(app)),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("flag-off → 404", async () => {
+    await setFlag(false);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/surveys/${pmfInvitationForUserA}/dismiss`,
+      headers: authHeader(signToken(app)),
+    });
+    expect(res.statusCode).toBe(404);
   });
 });

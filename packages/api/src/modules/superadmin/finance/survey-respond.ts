@@ -7,7 +7,9 @@
 //   2. One response per invitation (DB unique guard + 409 mapping).
 //   3. `submitted_at` is server-set NOW(); never trust client values.
 //   4. Free-text fields refused if they contain `<` or `>` (XSS
-//      defence in depth; the React renderer also runs DOMPurify).
+//      defence in depth; the renderer side relies on React's default
+//      text-child escaping — never switch to `dangerouslySetInnerHTML`
+//      for these fields).
 //
 // The shared `db` import (RLS-bound) is intentional — even though RLS
 // is forced on `survey_invitations` + `survey_responses`, every query
@@ -15,7 +17,7 @@
 
 import { surveyInvitations, surveyResponses } from "@givernance/shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import { db } from "../../../lib/db.js";
+import { withTenantContext } from "../../../lib/db.js";
 
 export type RespondError =
   | { kind: "invitation_not_found" }
@@ -52,8 +54,8 @@ export async function submitSurveyResponse(input: {
 
   // Defence in depth: refuse `<` / `>` in any free-text field BEFORE
   // hitting the DB. TypeBox already caps maxLength; this catches the
-  // XSS pattern the DOMPurify renderer would otherwise be the only
-  // line of defence for.
+  // XSS pattern that React's default text-child escaping is the
+  // only renderer-side guard against (so this layer must hold).
   if (
     containsForbiddenText(input.response.text) ||
     containsForbiddenText(input.response.why_text) ||
@@ -62,60 +64,78 @@ export async function submitSurveyResponse(input: {
     return { kind: "invalid_text" };
   }
 
-  // Lookup: explicit (id, user_id, org_id, deleted_at IS NULL) filter
-  // so a leaked invitationId pointing at a different tenant returns
-  // 404 (not 403), and so RLS is the safety net rather than the
-  // contract.
-  const [invitation] = await db
-    .select({
-      id: surveyInvitations.id,
-      orgId: surveyInvitations.orgId,
-    })
-    .from(surveyInvitations)
-    .where(
-      and(
-        eq(surveyInvitations.id, input.invitationId),
-        eq(surveyInvitations.userId, input.userId),
-        eq(surveyInvitations.orgId, input.orgId),
-        isNull(surveyInvitations.deletedAt),
-      ),
-    )
-    .limit(1);
+  // Wrap the lookup + conflict check + insert+update in a single
+  // `withTenantContext` transaction so the RLS GUC
+  // (`app.current_organization_id`) is set on every query. Without
+  // this, the `givernance_app` runtime role hits the
+  // `tenant_isolation` policy on `survey_invitations` /
+  // `survey_responses` and every SELECT returns zero rows — manifests
+  // as a 404 in dev/prod (tests pass only because the test env falls
+  // back to the owner role). Explicit eq(userId)+eq(orgId) stays as
+  // the contract per CLAUDE.md "RLS is the safety net, never the
+  // contract".
+  return withTenantContext(input.orgId, async (tx) => {
+    const [invitation] = await tx
+      .select({
+        id: surveyInvitations.id,
+        orgId: surveyInvitations.orgId,
+      })
+      .from(surveyInvitations)
+      .where(
+        and(
+          eq(surveyInvitations.id, input.invitationId),
+          eq(surveyInvitations.userId, input.userId),
+          eq(surveyInvitations.orgId, input.orgId),
+          isNull(surveyInvitations.deletedAt),
+        ),
+      )
+      .limit(1);
 
-  if (!invitation) {
-    return { kind: "invitation_not_found" };
-  }
+    if (!invitation) {
+      return { kind: "invitation_not_found" };
+    }
 
-  // Conflict check: one response per invitation.
-  const [existing] = await db
-    .select({ id: surveyResponses.id })
-    .from(surveyResponses)
-    .where(
-      and(
-        eq(surveyResponses.invitationId, invitation.id),
-        eq(surveyResponses.orgId, invitation.orgId),
-        isNull(surveyResponses.deletedAt),
-      ),
-    )
-    .limit(1);
+    const [existing] = await tx
+      .select({ id: surveyResponses.id })
+      .from(surveyResponses)
+      .where(
+        and(
+          eq(surveyResponses.invitationId, invitation.id),
+          eq(surveyResponses.orgId, invitation.orgId),
+          isNull(surveyResponses.deletedAt),
+        ),
+      )
+      .limit(1);
 
-  if (existing) {
-    return { kind: "already_responded" };
-  }
+    if (existing) {
+      return { kind: "already_responded" };
+    }
 
-  const [created] = await db
-    .insert(surveyResponses)
-    .values({
-      invitationId: invitation.id,
-      orgId: invitation.orgId,
-      response: input.response,
-      submittedAt: now,
-    })
-    .returning({ id: surveyResponses.id, submittedAt: surveyResponses.submittedAt });
+    const [row] = await tx
+      .insert(surveyResponses)
+      .values({
+        invitationId: invitation.id,
+        orgId: invitation.orgId,
+        response: input.response,
+        submittedAt: now,
+      })
+      .returning({ id: surveyResponses.id, submittedAt: surveyResponses.submittedAt });
 
-  if (!created) {
-    throw new Error("survey response insert returned no row");
-  }
+    if (!row) {
+      throw new Error("survey response insert returned no row");
+    }
 
-  return { responseId: created.id, submittedAt: created.submittedAt };
+    await tx
+      .update(surveyInvitations)
+      .set({ openedAt: now })
+      .where(
+        and(
+          eq(surveyInvitations.id, invitation.id),
+          eq(surveyInvitations.orgId, invitation.orgId),
+          isNull(surveyInvitations.openedAt),
+        ),
+      );
+
+    return { responseId: row.id, submittedAt: row.submittedAt };
+  });
 }

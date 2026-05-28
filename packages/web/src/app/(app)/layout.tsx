@@ -1,6 +1,8 @@
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import { getLocale } from "next-intl/server";
 import { cache } from "react";
 import { AppShell } from "@/components/layout";
+import { SurveyInvitationPrompt } from "@/components/surveys/survey-invitation-prompt";
 import { Toaster } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
@@ -97,6 +99,7 @@ const fetchPublicFlags = cache(async () => {
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const auth = await requireAuth();
   const isSuperAdmin = auth.roles.includes("super_admin");
+  const locale = (await getLocale()) === "fr" ? "fr" : "en";
 
   const userName = auth.firstName ? `${auth.firstName} ${auth.lastName ?? ""}`.trim() : auth.email;
 
@@ -189,6 +192,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         financeDashboardEnabled={financeDashboardEnabled}
       >
         {children}
+        {!isSuperAdmin && financeDashboardEnabled && <SurveyInvitationPrompt locale={locale} />}
       </AppShell>
       <Toaster />
     </AuthProvider>

@@ -43,12 +43,14 @@ import { PeriodValidationError, resolvePeriod } from "./period.js";
 import {
   BackfillResponse,
   CacheFlushResponse,
+  DismissResponse,
   InvitationIdParams,
   LaunchBody,
   LaunchResponse,
   ListReportsResponse,
   MonthlyReportBody,
   MonthlyReportResponse,
+  PendingInvitationsResponse,
   RegenerateResponse,
   ReportIdParams,
   RespondBody,
@@ -61,6 +63,7 @@ import {
 } from "./schemas.js";
 import { buildFinanceSummary } from "./service.js";
 import { launchSurvey } from "./survey-launch.js";
+import { dismissInvitation, listPendingInvitations } from "./survey-pending.js";
 import { submitSurveyResponse } from "./survey-respond.js";
 import { type CadenceName, scheduleSurvey } from "./survey-schedule.js";
 
@@ -601,6 +604,106 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
         data: {
           responseId: result.responseId,
           submittedAt: result.submittedAt.toISOString(),
+        },
+      };
+    },
+  );
+
+  // ─── GET /v1/surveys/pending ─────────────────────────────────────────
+  // Tenant-user read of their actionable in-app survey invitations.
+  // Powers the `<SurveyInvitationPrompt>` modal that surfaces on every
+  // authenticated tenant page (issue #444). Email invitations are
+  // intentionally NOT returned here — they go through the SMTP outbox
+  // path instead, and surfacing the same invitation in both would
+  // double-notify.
+  app.get(
+    "/surveys/pending",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireAuth],
+      schema: {
+        tags: ["Surveys"],
+        response: {
+          200: PendingInvitationsResponse,
+          ...ErrorResponses,
+        },
+      },
+      // The client polls this endpoint every 60s while the user is
+      // active — 30/min/IP leaves comfortable headroom for a single
+      // user even across two tabs, but caps abuse from a compromised
+      // session.
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (request) => {
+      const orgId = request.auth?.orgId;
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
+        // Super-admins have no `userRowId` — they're not tenant users
+        // and therefore can never have an in-app invitation. Return an
+        // empty list rather than 401 so the modal mount is silent.
+        return { data: [] };
+      }
+      const rows = await listPendingInvitations({ userId: userRowId, orgId });
+      return {
+        data: rows.map((r) => ({
+          invitationId: r.invitationId,
+          surveyId: r.surveyId,
+          surveyKind: r.surveyKind,
+          questionFr: r.questionFr,
+          questionEn: r.questionEn,
+          invitedAt: r.invitedAt.toISOString(),
+          expiresAt: r.expiresAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  // ─── POST /v1/surveys/:invitationId/dismiss ──────────────────────────
+  // Tenant-user "Not now" gesture on the in-app modal. Sets
+  // `dismissed_at` AND `opened_at` so the future-launch cohort-skip
+  // predicate (which gates on `opened_at IS NULL AND dismissed_at IS
+  // NULL`) lets the user receive a fresh invitation on the next
+  // cadence tick — see survey-pending.ts for the full rationale.
+  app.post(
+    "/surveys/:invitationId/dismiss",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireAuth],
+      schema: {
+        tags: ["Surveys"],
+        params: InvitationIdParams,
+        response: {
+          200: DismissResponse,
+          ...ErrorResponses,
+        },
+      },
+      // /dismiss hits a DB UPDATE. Cap at 10/min/IP — an honest user
+      // never legitimately dismisses more than once per modal cycle.
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (request, reply) => {
+      const { invitationId } = request.params as { invitationId: string };
+      const orgId = request.auth?.orgId;
+      const userRowId = request.auth?.userRowId;
+      if (!orgId || !userRowId) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
+      }
+      const result = await dismissInvitation({ invitationId, userId: userRowId, orgId });
+      if ("kind" in result) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Invitation not found."));
+      }
+      return {
+        data: {
+          invitationId: result.invitationId,
+          dismissedAt: result.dismissedAt.toISOString(),
         },
       };
     },
