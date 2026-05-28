@@ -280,6 +280,47 @@ export const RespondBody = Type.Object(
   { additionalProperties: false },
 );
 
+/**
+ * Pending in-app survey invitations for the current tenant user
+ * (issue #444). The endpoint returns only `channel='in_app'` rows that
+ * are still actionable: not opened, not dismissed, not expired, not
+ * soft-deleted. Email invitations are intentionally excluded — they
+ * have their own delivery path (outbox → SMTP) and a duplicate in-app
+ * modal would double-notify the user.
+ */
+export const PendingInvitationRow = Type.Object(
+  {
+    invitationId: UuidV4Schema,
+    surveyId: UuidSchema,
+    surveyKind: Type.Union([Type.Literal("pmf"), Type.Literal("nps"), Type.Literal("csat")]),
+    questionFr: Type.String(),
+    questionEn: Type.String(),
+    invitedAt: Type.String(),
+    expiresAt: Type.String(),
+  },
+  { additionalProperties: false },
+);
+
+export const PendingInvitationsResponse = Type.Object(
+  {
+    data: Type.Array(PendingInvitationRow),
+  },
+  { additionalProperties: false },
+);
+
+export const DismissResponse = Type.Object(
+  {
+    data: Type.Object(
+      {
+        invitationId: UuidV4Schema,
+        dismissedAt: Type.String(),
+      },
+      { additionalProperties: false },
+    ),
+  },
+  { additionalProperties: false },
+);
+
 export const RespondResponse = Type.Object(
   {
     data: Type.Object(
