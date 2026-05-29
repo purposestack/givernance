@@ -118,17 +118,33 @@ describe("SurveyInvitationPrompt", () => {
     await waitFor(() => expect(screen.getByText("Second question")).toBeInTheDocument());
   });
 
-  it("clicking 'Not now' POSTs /dismiss to settle the invitation server-side", async () => {
+  it("clicking 'Don't ask again' POSTs /dismiss to settle the invitation server-side", async () => {
     fetchPending.mockResolvedValueOnce([pmfInvitation]).mockResolvedValue([]);
     dismiss.mockResolvedValue({});
     const user = userEvent.setup();
     render(<SurveyInvitationPrompt locale="en" />);
     await waitFor(() => expect(screen.getByText("EN question")).toBeInTheDocument());
 
-    await user.click(screen.getByRole("button", { name: /^notNow$/i }));
+    await user.click(screen.getByRole("button", { name: /^dismiss$/i }));
 
     await waitFor(() => expect(dismiss).toHaveBeenCalledTimes(1));
     expect(dismiss).toHaveBeenCalledWith({}, pmfInvitation.invitationId);
+  });
+
+  it("clicking 'Later' soft-closes locally — no /dismiss POST, modal unmounts", async () => {
+    // "Plus tard" must NOT settle the invitation server-side — it
+    // just suppresses the modal for this session via suppressedIds.
+    // The server row stays open so the next login / page refresh
+    // re-surfaces it, matching what "Later" implies.
+    fetchPending.mockResolvedValue([pmfInvitation]);
+    const user = userEvent.setup();
+    render(<SurveyInvitationPrompt locale="en" />);
+    await waitFor(() => expect(screen.getByText("EN question")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /^notNow$/i }));
+
+    expect(dismiss).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText("EN question")).toBeNull());
   });
 
   it("renders the 0-10 NPS grid for surveyKind='nps'", async () => {

@@ -3381,7 +3381,8 @@
     "pmfNotDisappointed": "Not disappointed",
     "npsAriaLabel": "Score from 0 (not at all) to 10 (definitely)",
     "csatAriaLabel": "Rating from 1 to 5 stars",
-    "notNow": "Not now",
+    "notNow": "Later",
+    "dismiss": "Don't ask again",
     "submit": "Submit",
     "toastSubmitted": "Thanks for your feedback.",
     "toastError": "Could not submit: {detail}"
