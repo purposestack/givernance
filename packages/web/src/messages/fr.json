@@ -3382,6 +3382,7 @@
     "npsAriaLabel": "Note de 0 (pas du tout) à 10 (tout à fait)",
     "csatAriaLabel": "Note de 1 à 5 étoiles",
     "notNow": "Plus tard",
+    "dismiss": "Ne plus me demander",
     "submit": "Envoyer",
     "toastSubmitted": "Merci pour ton retour.",
     "toastError": "Impossible d'envoyer : {detail}"
