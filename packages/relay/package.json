@@ -13,9 +13,9 @@
   "dependencies": {
     "@givernance/shared": "workspace:*",
     "@sinclair/typebox": "^0.34.12",
-    "bullmq": "^5.76.8",
+    "bullmq": "^5.77.6",
     "drizzle-orm": "^0.45.2",
-    "ioredis": "^5.4.2",
+    "ioredis": "^5.11.0",
     "pg": "^8.21.0",
     "pino": "^10.3.1"
   },
