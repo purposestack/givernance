@@ -3,9 +3,9 @@ import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type Stripe from "stripe";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, signToken, signTokenB } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 // vi.hoisted runs before vi.mock hoisting — ensures mocks are defined before use
 const {

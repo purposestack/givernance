@@ -13,7 +13,6 @@ import {
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { db, withTenantContext } from "../../lib/db.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
 import type { FilterQuery } from "../../modules/constituents/filters/types.js";
@@ -26,6 +25,7 @@ import {
   signToken,
   signTokenB,
 } from "../helpers/auth.js";
+import { db, withTenantContext } from "../helpers/db.js";
 
 // Test data interfaces
 interface TestConstituent {

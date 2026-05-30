@@ -8,9 +8,36 @@ import { createServer } from "node:http";
 
 process.env.DATABASE_URL ??=
   "postgresql://givernance:givernance_dev@localhost:5432/givernance_test";
-// DATABASE_URL_APP intentionally NOT set in tests — falls back to DATABASE_URL (owner role).
-// The givernance_app role is created by migration 0005 and applied in real environments;
-// tests use the owner role so they can set up fixtures without RLS restrictions.
+
+// Dual-role test execution (issue #455).
+//
+// The route-path pool (`db` in `lib/db.ts`) connects as
+// `env.DATABASE_URL_APP ?? env.DATABASE_URL`. CI runs the integration suite
+// under BOTH roles:
+//
+//   • `api-tests-owner` — DATABASE_URL_APP_TEST unset → `db` falls back to
+//     DATABASE_URL (the `givernance` owner role, BYPASSRLS). Ergonomic: fixture
+//     setup can write platform tables freely. This is also the local-dev
+//     default, so a bare `pnpm test` keeps working with zero extra config.
+//
+//   • `api-tests-app` — DATABASE_URL_APP_TEST points at the `givernance_app`
+//     role (NOBYPASSRLS, created by migration 0005). Every route query then
+//     goes through RLS, so any route that forgot `withTenantContext` — or that
+//     wrongly used the tenant pool on a REVOKE'd platform table — fails RED
+//     instead of silently passing. This is the must-pass gate.
+//
+// We map DATABASE_URL_APP_TEST → DATABASE_URL_APP here (before `env.ts` reads
+// process.env) rather than setting DATABASE_URL_APP directly in CI so the two
+// concerns stay separable: the *test* role swap never risks leaking into a
+// real DATABASE_URL_APP a developer may have exported for another purpose.
+//
+// Test *harness* code (fixtures + verification reads) deliberately stays on the
+// owner role regardless of this swap — it imports `db` from
+// `tests/helpers/db.js` (which re-exports the owner pool), so seeding any
+// tenant's rows never trips RLS. See that file's header for the rationale.
+if (process.env.DATABASE_URL_APP_TEST) {
+  process.env.DATABASE_URL_APP = process.env.DATABASE_URL_APP_TEST;
+}
 process.env.REDIS_URL ??= "redis://localhost:6379";
 process.env.S3_ENDPOINT ??= "http://localhost:9000";
 process.env.S3_ACCESS_KEY_ID ??= "minioadmin";

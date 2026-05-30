@@ -37,7 +37,6 @@ import {
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { db, withTenantContext } from "../../lib/db.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
@@ -49,6 +48,7 @@ import {
   signToken,
   signTokenB,
 } from "../helpers/auth.js";
+import { db, withTenantContext } from "../helpers/db.js";
 
 // ─── In-memory S3 mock (vi.hoisted so it's defined before vi.mock) ──────────
 //

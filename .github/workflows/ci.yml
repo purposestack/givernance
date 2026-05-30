@@ -7,8 +7,61 @@ on:
     branches: [main]
 
 jobs:
+  # Static gate: lint, types, i18n parity, build. No database — fast feedback
+  # that's independent of which Postgres role the tests run under.
   check:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # Reads the pnpm version from `packageManager` in package.json.
+      # v4 of pnpm/action-setup refuses to run when both `with.version`
+      # and `packageManager` are set, so we keep a single source of truth.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome lint
+        run: pnpm biome check .
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # ADR-015 (i18n): fail CI if any locale drifts from the source `fr` in
+      # either the web (next-intl) or API (RFC 9457 / email) message tree.
+      - name: Check translation key parity
+        run: pnpm check:translations
+
+      - name: Build
+        run: pnpm build
+
+  # Integration tests, run under BOTH Postgres roles (issue #455):
+  #
+  #   • api-tests-owner — the `db` pool falls back to DATABASE_URL (the
+  #     `givernance` owner role, BYPASSRLS). Ergonomic baseline; matches local
+  #     `pnpm test`.
+  #   • api-tests-app   — DATABASE_URL_APP_TEST points the `db` pool at
+  #     `givernance_app` (NOBYPASSRLS, created by migration 0005). Every route
+  #     query goes through RLS, so a route that forgot `withTenantContext`, or
+  #     that used the tenant pool on a REVOKE'd platform table, fails RED here
+  #     instead of silently passing under the owner role. This is the must-pass
+  #     tenant-isolation gate.
+  #
+  # `fail-fast: false` so a failure under one role still reports the other —
+  # you want to see whether a break is role-specific (an RLS bug) or universal.
+  api-tests:
+    name: api-tests-${{ matrix.role }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [owner, app]
 
     # ADR-017 (one logical DB per tool): CI today only spins up the app DB
     # (`givernance_test`). When Keycloak-dependent e2e tests land, add a
@@ -47,9 +100,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Reads the pnpm version from `packageManager` in package.json.
-      # v4 of pnpm/action-setup refuses to run when both `with.version`
-      # and `packageManager` are set, so we keep a single source of truth.
       - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v6
@@ -60,22 +110,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Biome lint
-        run: pnpm biome check .
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      # ADR-015 (i18n): fail CI if any locale drifts from the source `fr` in
-      # either the web (next-intl) or API (RFC 9457 / email) message tree.
-      - name: Check translation key parity
-        run: pnpm check:translations
-
       - name: Build
         run: pnpm build
 
+      # `givernance_app` (NOBYPASSRLS) is created by migration 0005 with the
+      # baked-in dev password. Migrations run as the owner role (DATABASE_URL).
       - name: Run database migrations
         run: pnpm db:migrate
+
+      # App role only: point the route-path pool at `givernance_app` so RLS is
+      # enforced. `tests/setup.ts` maps DATABASE_URL_APP_TEST → DATABASE_URL_APP
+      # before env validation. The owner leg leaves this unset → BYPASSRLS.
+      - name: Enable app-role (RLS-enforced) pool
+        if: matrix.role == 'app'
+        run: >-
+          echo "DATABASE_URL_APP_TEST=postgresql://givernance_app:givernance_app_dev@localhost:5432/givernance_test"
+          >> "$GITHUB_ENV"
 
       - name: Test
         run: pnpm test

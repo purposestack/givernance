@@ -17,7 +17,6 @@
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import {
   authHeader,
@@ -27,6 +26,7 @@ import {
   signToken,
   signTokenB,
 } from "../../tests/helpers/auth.js";
+import { db } from "../../tests/helpers/db.js";
 
 // CI has no MinIO service; the branding upload path does a real PutObject.
 // Stub the bucket-write helper so the route succeeds without the network

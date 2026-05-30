@@ -132,10 +132,21 @@ async function loadTenantFromDb(
   conn: NodePgDatabase<Record<string, never>>,
   orgId: string,
 ): Promise<Record<string, boolean>> {
-  const rows = await conn
-    .select({ flagKey: tenantFlagOverrides.flagKey, value: tenantFlagOverrides.value })
-    .from(tenantFlagOverrides)
-    .where(eq(tenantFlagOverrides.tenantId, orgId));
+  // `tenant_flag_overrides` has FORCE RLS (policy
+  // `tenant_id = app_current_organization_id()`). The evaluator runs on the
+  // `givernance_app` (NOBYPASSRLS) pool, so we MUST set the RLS GUC inside the
+  // read transaction — otherwise the policy filters every row and the
+  // evaluator silently falls back to the platform default for every flag
+  // (issue #455). We set the GUC on the passed `conn` rather than calling
+  // `withTenantContext` so the test-seam (`deps.db`) is still honoured; an
+  // owner-pool conn simply ignores the (harmless) GUC.
+  const rows = await conn.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${orgId}, true)`);
+    return tx
+      .select({ flagKey: tenantFlagOverrides.flagKey, value: tenantFlagOverrides.value })
+      .from(tenantFlagOverrides)
+      .where(eq(tenantFlagOverrides.tenantId, orgId));
+  });
   const map: Record<string, boolean> = {};
   for (const row of rows) {
     map[row.flagKey] = row.value;

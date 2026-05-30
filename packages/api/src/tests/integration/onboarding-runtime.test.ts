@@ -27,7 +27,6 @@ import {
 import { eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
 import type { TxtResolver } from "../../lib/dns.js";
 import type { KeycloakAdminClient } from "../../lib/keycloak-admin.js";
 import { KeycloakAdminError } from "../../lib/keycloak-admin.js";
@@ -48,6 +47,7 @@ import {
 } from "../../modules/tenant-admin/service.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, ORG_B, signToken } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
 

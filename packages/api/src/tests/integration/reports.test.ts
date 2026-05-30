@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import {
   authHeader,
@@ -10,6 +9,7 @@ import {
   signToken,
   signTokenB,
 } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
 const REPORTS_ORG = "00000000-0000-0000-0000-000000000124";

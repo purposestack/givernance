@@ -3,9 +3,9 @@ import { receipts } from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { withTenantContext } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken, signTokenB } from "../helpers/auth.js";
+import { withTenantContext } from "../helpers/db.js";
 
 // Stub S3 fetch so the streaming download tests don't depend on a real
 // MinIO object existing at the receipt's s3_path. The 403/404 paths

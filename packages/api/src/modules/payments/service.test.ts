@@ -22,8 +22,8 @@
 import { tenants } from "@givernance/shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { db } from "../../lib/db.js";
 import { ORG_A } from "../../tests/helpers/auth.js";
+import { db } from "../../tests/helpers/db.js";
 
 const { mockAccountsCreate, mockAccountsUpdate, mockAccountLinksCreate } = vi.hoisted(() => ({
   mockAccountsCreate: vi.fn(),

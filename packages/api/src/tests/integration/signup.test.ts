@@ -28,7 +28,6 @@ import { resendSignupVerification } from "@givernance/shared/signup";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { db, systemDb } from "../../lib/db.js";
 import {
   _resetKeycloakAdminSingleton,
   _setKeycloakAdminSingleton,
@@ -37,6 +36,7 @@ import {
 import { redis } from "../../lib/redis.js";
 import { cleanupUnverifiedTenants, log as signupLog } from "../../modules/signup/service.js";
 import { createServer } from "../../server.js";
+import { db, systemDb } from "../helpers/db.js";
 
 // F3 — route the in-process "enqueue" back through the same shared
 // `resendSignupVerification` helper the worker uses so DB state remains

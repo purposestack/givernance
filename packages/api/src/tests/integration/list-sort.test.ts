@@ -26,9 +26,9 @@
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, seedTenantUser, signToken } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 /**
  * RFC 9457 problem `type` URI used by this app for HTTP 400. Pinned to

@@ -3,7 +3,7 @@
 import { createSign } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { db } from "../../lib/db.js";
+import { systemDb as db } from "../../lib/db.js";
 
 export const ORG_A = "00000000-0000-0000-0000-000000000001";
 export const ORG_B = "00000000-0000-0000-0000-000000000002";
