@@ -367,11 +367,8 @@ describe("Advanced Constituent Filters", () => {
         },
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      if (body.data.data.length !== 1)
-        console.log("DATA:", JSON.stringify(body.data.data, null, 2));
       expect(body.data.data).toHaveLength(1);
       expect(body.data.data[0].firstName).toBe("John");
       expect(body.data.data[0].lastName).toBe("Doe");
@@ -393,7 +390,6 @@ describe("Advanced Constituent Filters", () => {
         },
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.data.data).toHaveLength(2);
@@ -416,11 +412,8 @@ describe("Advanced Constituent Filters", () => {
         },
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      if (body.data.data.length !== 1)
-        console.log("DATA:", JSON.stringify(body.data.data, null, 2));
       expect(body.data.data).toHaveLength(1);
       expect(body.data.data[0].firstName).toBe("John");
       expect(body.data.data[0].totalAmountCents).toBeGreaterThanOrEqual(100000);
@@ -440,11 +433,8 @@ describe("Advanced Constituent Filters", () => {
         },
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      if (body.data.data.length !== 1)
-        console.log("DATA:", JSON.stringify(body.data.data, null, 2));
       expect(body.data.data).toHaveLength(1);
       expect(body.data.data[0].firstName).toBe("Jane");
     });
@@ -463,11 +453,8 @@ describe("Advanced Constituent Filters", () => {
         },
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      if (body.data.data.length !== 1)
-        console.log("DATA:", JSON.stringify(body.data.data, null, 2));
       expect(body.data.data).toHaveLength(1);
       expect(body.data.data[0].firstName).toBe("Bob");
     });
@@ -489,7 +476,6 @@ describe("Advanced Constituent Filters", () => {
         },
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.data.data).toHaveLength(2);
@@ -570,7 +556,6 @@ describe("Advanced Constituent Filters", () => {
         },
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.data.count).toBe(2);
@@ -586,7 +571,6 @@ describe("Advanced Constituent Filters", () => {
         headers: authHeader(token),
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.data).toContain("New York");
@@ -601,7 +585,6 @@ describe("Advanced Constituent Filters", () => {
         headers: authHeader(token),
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.data).toContain("New York");
@@ -638,7 +621,6 @@ describe("Advanced Constituent Filters", () => {
         },
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.data.added).toBe(2);
@@ -688,7 +670,6 @@ describe("Advanced Constituent Filters", () => {
         },
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.data.added).toBe(1);
@@ -704,7 +685,6 @@ describe("Advanced Constituent Filters", () => {
         headers: authHeader(token),
       });
 
-      if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
       expect(response.statusCode).toBe(200);
       const body = response.json();
 
@@ -789,7 +769,6 @@ describe("Advanced Constituent Filters", () => {
           },
         });
 
-        if (response.statusCode === 404) console.log("RESPONSE BODY:", response.payload);
         expect(response.statusCode).toBe(200);
         // Results might be empty but query should succeed
       }
