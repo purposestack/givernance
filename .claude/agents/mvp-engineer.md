@@ -163,7 +163,7 @@ export function createDonationReceiptWorker(connection: Redis) {
 3. **Design the service layer first** — write the function signatures with types before the implementation
 4. **Implement routes.ts** referencing the service, with full TypeBox schemas for every input/output
 5. **Write the integration test** alongside the route (not after)
-6. **Run `pnpm typecheck` and `pnpm lint`** before declaring done
+6. **Run `pnpm typecheck` and `pnpm lint`** before declaring done — and run the suite under the `givernance_app` role (`DATABASE_URL_APP_TEST=postgresql://givernance_app:givernance_app_dev@localhost:5432/givernance_test pnpm test`) so a missed `withTenantContext` fails locally, not in the `api-tests-app` CI gate (issue #455)
 7. **Never skip the outbox** for mutations that trigger async work — insert domain_event in the same transaction
 
 ## Output format
@@ -184,6 +184,9 @@ export function createDonationReceiptWorker(connection: Redis) {
 | Offset pagination | Cursor-based pagination always |
 | Hard deletes on user data | Set `deleted_at`, filter in queries |
 | Skipping RLS context | Always `SET LOCAL` before any tenant query |
+| Tenant-scoped read on the bare `db` pool | Wrap in `withTenantContext(orgId, …)` — else it returns 0 rows under `givernance_app` |
+| Cross-tenant / platform-table read on the tenant pool | Use `systemDb` (owner) with a justifying comment — the tenant pool 500s on REVOKE'd tables and can't see other tenants |
+| Importing `db` from `lib/db.js` in a test file | Import from `tests/helpers/db.js` (owner pool) so harness setup survives the `app` test job (issue #455) |
 | Synchronous receipt generation | Emit domain event → BullMQ job → async processing |
 | Duplicating types between packages | Single source of truth in `@givernance/shared` |
 | Missing outbox entry | Every async side effect must go through outbox, never fire-and-forget |

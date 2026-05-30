@@ -39,7 +39,7 @@ import {
 } from "@givernance/shared/schema";
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { db, withTenantContext } from "../../lib/db.js";
+import { db, systemDb, withTenantContext } from "../../lib/db.js";
 import { isUniqueViolation } from "../../lib/db-errors.js";
 import {
   createSystemTxtResolver,
@@ -209,7 +209,14 @@ export async function claimDomain(input: DomainClaimInput): Promise<DomainClaimR
 
   // Pre-check global domain uniqueness among active rows (the partial unique
   // index is the real enforcer; this preempt returns a friendlier error).
-  const [conflict] = await db
+  //
+  // Owner pool (`systemDb`): this is a CROSS-TENANT uniqueness check — "is
+  // this domain claimed by ANY tenant?" — so it deliberately reaches outside
+  // the caller's tenant. `tenant_domains` has FORCE RLS, so the tenant pool
+  // (`givernance_app`) would only ever see the caller's own rows and silently
+  // skip the friendly conflict error for a domain claimed by a different org
+  // (issue #455). The partial unique index still backstops the actual write.
+  const [conflict] = await systemDb
     .select({ id: tenantDomains.id })
     .from(tenantDomains)
     .where(and(eq(tenantDomains.domain, parsed.domain), sql`${tenantDomains.state} <> 'revoked'`))
@@ -323,16 +330,24 @@ async function loadVerifiableClaim(
     }
   | { ok: false; error: "not_found" | "already_verified" }
 > {
-  const [claim] = await db
-    .select({
-      id: tenantDomains.id,
-      orgId: tenantDomains.orgId,
-      state: tenantDomains.state,
-      dnsTxtValue: tenantDomains.dnsTxtValue,
-    })
-    .from(tenantDomains)
-    .where(and(eq(tenantDomains.orgId, orgId), eq(tenantDomains.domain, domain)))
-    .limit(1);
+  // Tenant-scoped read against the FORCE-RLS `tenant_domains` table — wrap in
+  // `withTenantContext(orgId)` so the policy
+  // `org_id = app_current_organization_id()` matches under the
+  // `givernance_app` pool. Without the GUC the verify path reads zero rows and
+  // returns `not_found` for a claim the caller legitimately owns (issue #455);
+  // matches the `withTenantContext` wrapper `revokeDomain` already uses.
+  const [claim] = await withTenantContext(orgId, async (tx) =>
+    tx
+      .select({
+        id: tenantDomains.id,
+        orgId: tenantDomains.orgId,
+        state: tenantDomains.state,
+        dnsTxtValue: tenantDomains.dnsTxtValue,
+      })
+      .from(tenantDomains)
+      .where(and(eq(tenantDomains.orgId, orgId), eq(tenantDomains.domain, domain)))
+      .limit(1),
+  );
   if (!claim) return { ok: false, error: "not_found" };
   if (claim.state === "verified") return { ok: false, error: "already_verified" };
   if (claim.state === "revoked") return { ok: false, error: "not_found" };

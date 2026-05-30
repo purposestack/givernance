@@ -3,9 +3,9 @@ import { auditLogs, tenants } from "@givernance/shared/schema";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { authHeader, signToken } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
 

@@ -191,7 +191,14 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
   // Existing-user short-circuit: if the email already belongs to a user in
   // any tenant, surface `email_in_use` rather than creating a duplicate
   // provisional row that would 23505 at Keycloak-bind time (DATA-2).
-  const [existingUser] = await db
+  //
+  // Owner pool (`systemDb`): this is an UNAUTHENTICATED cross-tenant check
+  // ("is this email used by ANY tenant?") with no `app.current_organization_id`
+  // in scope. `users` has FORCE RLS, so the tenant pool (`givernance_app`)
+  // would silently return zero rows and miss the duplicate — the bug class
+  // issue #455 exists to catch. Same rationale as the domain checks below
+  // (lines using `systemDb`).
+  const [existingUser] = await systemDb
     .select({ id: users.id })
     .from(users)
     .where(sql`lower(${users.email}) = ${normalisedEmail}`)
@@ -202,8 +209,13 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
 
   // Domain-already-claimed check (enterprise tenants). Skipped for personal-
   // email domains.
+  //
+  // Owner pool (`systemDb`): same unauthenticated cross-tenant rationale as
+  // the existing-user check above — `tenant_domains` has FORCE RLS, so the
+  // tenant pool would return zero rows and let a competing org sign up on an
+  // already-claimed domain (issue #455).
   if (!isPersonalEmailDomain(parsedEmail.domain)) {
-    const [claimedDomain] = await db
+    const [claimedDomain] = await systemDb
       .select({ orgId: tenantDomains.orgId })
       .from(tenantDomains)
       .where(and(eq(tenantDomains.domain, parsedEmail.domain), eq(tenantDomains.state, "verified")))

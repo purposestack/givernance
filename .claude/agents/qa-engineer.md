@@ -100,6 +100,18 @@ describe('GET /constituents', () => {
 
 Integration tests connect only to the `givernance_test` database (app schema, owned by `givernance`). Keycloak is not spun up in CI today. When a Keycloak-dependent e2e test lands, it **must** use a separate `givernance_keycloak_test` database + `keycloak` role — never reuse `givernance_test` or any other co-located schema. Same rule as prod: any new tool that needs Postgres storage gets its own logical DB and its own owner role. Co-locating a third-party service's schema with app tables is rejected at review time. See [ADR-017](../../docs/15-infra-adr.md#adr-017-one-logical-database-per-tool--isolate-keycloak-from-the-application-db).
 
+## Tests run under BOTH Postgres roles — the `app` job is the RLS gate (issue #455)
+
+CI runs the integration suite **twice**: `api-tests-owner` (the `givernance` owner role, BYPASSRLS) and `api-tests-app` (the `givernance_app` NOBYPASSRLS role). **The `app` job is the must-pass gate.** Locally, a bare `pnpm test` runs as the owner role (ergonomic); set `DATABASE_URL_APP_TEST=postgresql://givernance_app:givernance_app_dev@localhost:5432/givernance_test` to reproduce the `app` job before pushing.
+
+Why two roles: when every test ran only as the BYPASSRLS owner, a route that forgot `withTenantContext` (returns 0 rows / 404 under RLS) or that used the tenant pool on a REVOKE'd platform table (permission denied / 500 under `givernance_app`) passed CI green and broke only in dev/staging/prod. The `app` job turns both into RED.
+
+**Route ↔ harness split (do not break it):**
+- **Import `db` / `withTenantContext` in test files from `../helpers/db.js`** (or `../../tests/helpers/db.js` for co-located module tests) — never from `../../lib/db.js`. The helper re-exports the **owner pool**, so fixture setup + cross-tenant seeding + verification reads never trip RLS regardless of which role the *route* pool uses.
+- **The route under test** uses `db` from `lib/db.ts`, which the `app` job points at `givernance_app`. That's the pool whose RLS behaviour you're validating.
+
+**Mandatory for every new test that exercises a tenant-scoped route:** it must pass under `api-tests-app` without bypassing RLS. If a new test only goes green under the owner role, you've found a real route bug (a missing `withTenantContext`, or a wrong `db`-vs-`systemDb` choice on a platform table) — fix the route, not the test. Write at least one assertion that would flip RED if `withTenantContext` were dropped from the route, so the coverage actually exercises the RLS path rather than coincidentally passing.
+
 ## RLS multi-tenancy tests (mandatory for every module)
 
 Every module must have an explicit RLS isolation test:

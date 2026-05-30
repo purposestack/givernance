@@ -265,6 +265,21 @@ Apply this in `gh pr create` / `gh pr edit` bodies, in commit messages that clos
 - [ ] No new `systemDb` use without a comment justifying the cross-tenant intent.
 - [ ] If the query is inside a worker processor, the `withWorkerContext(orgId, …)` wrapper is present AND the inner query carries the explicit `eq(orgId, …)`.
 
+#### Tests run under BOTH roles — the `app` job is the RLS gate (issue #455)
+
+**Integration tests run twice in CI: `api-tests-owner` (BYPASSRLS owner role, ergonomic baseline + local default) and `api-tests-app` (the `givernance_app` NOBYPASSRLS role). The `app` job is the must-pass tenant-isolation gate.** Before this, every test ran only as the owner role, so a route that forgot `withTenantContext` — or that used the tenant pool on a REVOKE'd platform table — passed CI green and broke only in dev/staging/prod. Issue #455 was filed after this bit twice in a single epic (the `survey-pending` 500 + `survey-respond` 404 in PR #454); the `app` job reproduces both as RED.
+
+**The route ↔ harness split is load-bearing — do not break it:**
+- **Route / production code** under test uses `db` from [`packages/api/src/lib/db.ts`](packages/api/src/lib/db.ts). In the `app` job this pool connects as `givernance_app`, so RLS is enforced exactly as in prod.
+- **Test-harness code** (fixture setup + cross-tenant seeding + verification reads) imports `db` from [`packages/api/src/tests/helpers/db.js`](packages/api/src/tests/helpers/db.ts), which re-exports the **owner pool**. Harness ops legitimately span tenants without an `app.current_organization_id` in scope — that's what the owner role is for — so they never spuriously fail under the `app` job. **Never import `db` from `lib/db.js` in a test file; always import from `tests/helpers/db.js`.** (`withTenantContext` is re-exported there too, for harness reads that genuinely want to exercise RLS.)
+
+**New-rule for every new test file that exercises a tenant-scoped route:** it MUST pass under `api-tests-app` without bypassing RLS. Concretely — the route it tests must set tenant context (`withTenantContext` / `withWorkerContext`) for tenant-scoped queries, or use `systemDb` (with a justifying comment) for legitimate cross-tenant / platform-table reads. If a brand-new test only passes under the owner role, that is a real route bug, not a test-harness quirk — fix the route, not the test.
+
+**Reviewer checklist (dual-role testing):**
+- [ ] Test files import `db` / `withTenantContext` from `../helpers/db.js` (or `../../tests/helpers/db.js` for co-located module tests), never from `lib/db.js`.
+- [ ] Any new tenant-scoped route is covered by a test that would 404/500 under `api-tests-app` if `withTenantContext` were dropped (i.e. the coverage actually exercises the RLS path).
+- [ ] Cross-tenant / platform-table reads in a route use `systemDb` with a comment; tenant-scoped reads use `withTenantContext`.
+
 ### 🛑 No secrets in Keycloak Organization attributes (issue #114)
 
 **Never put secrets, API keys, billing tokens, or any sensitive data into a Keycloak Organization's `attributes` map.** The `organization` client scope (attached as default to `givernance-web` and as optional to `admin-cli`) carries an `oidc-organization-membership-mapper` configured with `addOrganizationAttributes=true`, which emits every organization attribute into every access, ID, and introspection token for members of that org. Any secret stashed there will leak to the browser and every downstream service that sees the JWT.

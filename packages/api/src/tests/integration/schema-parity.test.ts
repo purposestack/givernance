@@ -32,7 +32,7 @@
 
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { systemDb } from "../../lib/db.js";
+import { systemDb } from "../helpers/db.js";
 
 interface IndexProbe {
   table: string;

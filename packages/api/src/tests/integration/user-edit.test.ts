@@ -22,7 +22,6 @@ import { auditLogs, tenants, users } from "@givernance/shared/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { db } from "../../lib/db.js";
 import {
   _resetKeycloakAdminSingleton,
   _setKeycloakAdminSingleton,
@@ -30,6 +29,7 @@ import {
 } from "../../lib/keycloak-admin.js";
 import { createServer } from "../../server.js";
 import { authHeader, signToken } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
 

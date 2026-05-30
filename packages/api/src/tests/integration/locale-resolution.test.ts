@@ -20,7 +20,7 @@ import { localeFromCountry, SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
+import { db } from "../helpers/db.js";
 import { expectQueryToReject } from "../helpers/db-errors.js";
 
 const trackedTenants = new Set<string>();

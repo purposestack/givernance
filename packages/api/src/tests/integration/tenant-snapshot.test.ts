@@ -1,9 +1,9 @@
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, signToken, signTokenB } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
 const SNAPSHOT_ORG = "00000000-0000-0000-0000-000000000123";

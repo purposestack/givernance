@@ -23,7 +23,6 @@ import { featureFlags } from "@givernance/shared/schema";
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { db, systemDb } from "../../lib/db.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
@@ -37,6 +36,7 @@ import {
   USER_A_ROW_ID,
   USER_B_ROW_ID,
 } from "../helpers/auth.js";
+import { db, systemDb } from "../helpers/db.js";
 
 const FLAG_KEY = FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD;
 const SUPER_ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000437ad";

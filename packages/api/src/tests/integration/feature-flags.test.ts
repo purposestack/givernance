@@ -20,11 +20,11 @@ import { auditLogs, featureFlags } from "@givernance/shared/schema";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
 

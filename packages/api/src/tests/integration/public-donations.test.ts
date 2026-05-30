@@ -1,9 +1,9 @@
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { db } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 const PRIMARY_THEME_COLOR = "#096447";
 const SECONDARY_THEME_COLOR = "#006C48";

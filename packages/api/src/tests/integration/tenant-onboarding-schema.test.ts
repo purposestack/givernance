@@ -25,8 +25,8 @@ import { tenantAdminDisputes, tenantDomains, tenants, users } from "@givernance/
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db, withTenantContext } from "../../lib/db.js";
 import { ensureTestTenants } from "../helpers/auth.js";
+import { db, withTenantContext } from "../helpers/db.js";
 import { expectQueryToReject } from "../helpers/db-errors.js";
 
 // Dedicated tenants for this suite so shared fixtures (ORG_A, ORG_B) aren't

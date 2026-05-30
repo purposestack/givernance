@@ -11,7 +11,6 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { env } from "../../env.js";
-import { db } from "../../lib/db.js";
 import {
   IMPERSONATION_DENIED_LOCKOUT_THRESHOLD,
   IMPERSONATION_MAX_STARTS_PER_24H,
@@ -27,6 +26,7 @@ import {
   USER_A,
   USER_B,
 } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 const SUPER_ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000000ad";
 const TARGET_USER_APP_ID = "00000000-0000-0000-0000-0000000aaaaa";

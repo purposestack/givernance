@@ -2,7 +2,6 @@ import { funds } from "@givernance/shared/schema";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { db, withTenantContext } from "../../lib/db.js";
 import { createServer } from "../../server.js";
 import {
   authHeader,
@@ -12,6 +11,7 @@ import {
   signToken,
   signTokenB,
 } from "../helpers/auth.js";
+import { db, withTenantContext } from "../helpers/db.js";
 
 // Stub the Stripe SDK so the refund route doesn't hit real Stripe. Only
 // `getStripe()` is mocked — the rest of the service runs unmodified.

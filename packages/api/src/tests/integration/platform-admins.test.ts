@@ -18,11 +18,11 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { db, systemDb } from "../../lib/db.js";
 import { _setKeycloakAdminSingleton, type KeycloakAdminClient } from "../../lib/keycloak-admin.js";
 import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
 import { authHeader, signToken } from "../helpers/auth.js";
+import { db, systemDb } from "../helpers/db.js";
 
 const PLATFORM_TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
 const SUPER_ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000000ad";

@@ -26,10 +26,10 @@ import { campaigns, donations, pledges } from "@givernance/shared/schema";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db, withTenantContext } from "../../lib/db.js";
 import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, signToken } from "../helpers/auth.js";
+import { db, withTenantContext } from "../helpers/db.js";
 
 let app: FastifyInstance;
 

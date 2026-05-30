@@ -2,7 +2,7 @@ import { clearExchangeRateApiCache } from "@givernance/shared";
 import { exchangeRates } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { db, withTenantContext } from "../../lib/db.js";
+import { db, withTenantContext } from "../../tests/helpers/db.js";
 import { ExchangeRateService } from "./exchange-rate-service.js";
 
 const ORG_ID = "00000000-0000-0000-0000-000000000125";
