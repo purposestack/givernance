@@ -231,19 +231,23 @@ export function SurveyInvitationPrompt({ locale }: { locale: "fr" | "en" }) {
         )}
 
         <DialogFooter>
-          {/* "Ignorer" settles the invitation server-side
+          {/* "Ne plus me demander" settles the invitation server-side
               (dismissed_at + opened_at = NOW) — the user opts out
               for this entire cycle and will only see this survey
-              again at the next cadence tick (90d for PMF/NPS). */}
-          <Button type="button" variant="ghost" onClick={handleDismiss} disabled={submitting}>
+              again at the next cadence tick (90d for PMF/NPS).
+              Lowest-emphasis of the three actions → `outline` (bordered
+              but unfilled) so it reads as a button on the white dialog
+              surface without competing with the neutral middle action. */}
+          <Button type="button" variant="outline" onClick={handleDismiss} disabled={submitting}>
             {t("dismiss")}
           </Button>
           {/* "Plus tard" is a session-local soft-close — no server
               call, just adds the invitation id to suppressedIds so
               the 60s poll doesn't re-pop it during this page
               session. Next login / page refresh surfaces it again,
-              matching what "plus tard" actually implies. */}
-          <Button type="button" variant="ghost" onClick={suppressLocally} disabled={submitting}>
+              matching what "plus tard" actually implies. Neutral middle
+              emphasis → `secondary` (filled) so it stays inviting. */}
+          <Button type="button" variant="secondary" onClick={suppressLocally} disabled={submitting}>
             {t("notNow")}
           </Button>
           <Button
