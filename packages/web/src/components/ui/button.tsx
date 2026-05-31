@@ -16,6 +16,16 @@ const buttonVariants = cva(
       variant: {
         primary: "bg-primary text-on-primary hover:bg-primary-hover",
         secondary: "bg-surface-container-highest text-on-surface hover:bg-surface-dim",
+        // Canonical low-emphasis *cancel / dismiss* affordance for dialogs.
+        // Unlike `ghost` (fully transparent, no border — invisible on the
+        // white `surface-container-lowest` a DialogContent renders on), the
+        // 1px `outline-variant` border keeps it readable as a button against
+        // any surface. Use this — NOT `ghost` — for the negative action in a
+        // DialogFooter (Cancel / "Ne plus me demander"). Pair it with
+        // `secondary` for a neutral middle action and `primary` for the
+        // confirming action so the three tiers stay visually distinct.
+        outline:
+          "border border-outline-variant bg-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         ghost:
           "bg-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         destructive: "bg-error text-on-error hover:bg-error-hover",
