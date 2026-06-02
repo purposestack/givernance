@@ -114,7 +114,7 @@ updates:
           - version-update:semver-major
 
   # Scans `image:` pins inside Compose files. Covers the local-dev stack
-  # (`docker-compose.yml`: postgres, redis, keycloak, minio, mc, mailpit,
+  # (`docker-compose.yml`: postgres, redis, keycloak, seaweedfs, aws-cli, mailpit,
   # caddy) — none of which sit behind a Dockerfile, so without this block
   # base-image CVEs in the runtime path are invisible. ADR-017 calls out
   # per-tool CVE visibility as the corollary of per-tool DB isolation.

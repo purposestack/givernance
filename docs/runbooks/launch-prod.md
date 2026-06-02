@@ -27,7 +27,7 @@
                                                                 │  - kamal-proxy (HTTPS via Let's Encrypt) │
                                                                 │  - postgres (kamal-network-only)         │
                                                                 │  - redis (kamal-network-only, requirepass│
-                                                                │  - minio (kamal-network-only)            │
+                                                                │  - seaweedfs (kamal-network-only)        │
                                                                 │  - keycloak (proxied; givernance_keycloak│
                                                                 │    DB from day 1 via init script)        │
                                                                 │  - api / web / worker / relay            │
@@ -48,7 +48,7 @@
   - `22/tcp` — SSH; consider IP allowlist for operator team + GH Actions runner ranges (the latter is harder to pin reliably; use a dedicated bastion instead if feasible)
   - `80/tcp` — HTTP (only for kamal-proxy ACME challenges; kamal-proxy auto-redirects to 443)
   - `443/tcp` — HTTPS
-  - **Explicitly deny** `5432`, `6379`, `8080`, `9000`. Belt-and-suspenders alongside the kamal-network-only configuration in `config/deploy-prod.yml` (when it lands; same shape as staging post-#341).
+  - **Explicitly deny** `5432`, `6379`, `8080`, `8333`. Belt-and-suspenders alongside the kamal-network-only configuration in `config/deploy-prod.yml` (when it lands; same shape as staging post-#341).
 - [ ] **SSH dedicated key** generated locally (NOT operator personal key). Save private key to 1Password vault `Givernance · Production` → item `SSH key (deploy)`. Public key added to the VM's `~/.ssh/authorized_keys` for the deploy user.
 - [ ] **`config/deploy-prod.yml` exists** in the repo, mirroring the structure of `config/deploy-staging.yml` post-#341 (no `port:` mapping on any infra accessory, redis uses `infra/redis/start.sh`, postgres mounts the `01-init-keycloak-db.sh` init script via `files:`). DNS hostnames swapped for prod values. Image references same as staging unless explicitly version-pinned per Scaleway's compliance ceiling (see `infra/compliance-versions.yml` + ADR-026).
 - [ ] **`production` GH Environment created** (`Settings → Environments → New environment → production`). Recommended: required-reviewer protection (the operator team), branch policy `Selected branches → main`.
@@ -70,7 +70,7 @@ gh run watch --repo purposestack/givernance --exit-status "$RUN_ID"
 
 The first run uses `mode=setup` (full kamal bootstrap), not the routine `mode=deploy`. This:
 - Sets up kamal-proxy on the VM with TLS via Let's Encrypt (auto-acquires certs for the four DNS names above on first start)
-- Boots all four accessories (postgres, redis, minio, keycloak) — postgres's first init runs `infra/postgres/init/01-init-keycloak-db.sh`, provisioning the dedicated `keycloak` role + `givernance_keycloak` DB AND hardening the public schema in both databases
+- Boots all four accessories (postgres, redis, seaweedfs, keycloak) — postgres's first init runs `infra/postgres/init/01-init-keycloak-db.sh`, provisioning the dedicated `keycloak` role + `givernance_keycloak` DB AND hardening the public schema in both databases
 - Builds and pushes the keycloak image
 - Builds and pushes the app image
 - Boots the api / web / worker / relay containers
@@ -145,7 +145,7 @@ Once the cluster is alive, day-to-day ops parallel staging. Reuse:
 - `SESSION_SECRET` / `IMPERSONATION_JWT_SECRET`: rotate quarterly, or on any operator-team change.
 - `POSTGRES_PASSWORD` / `REDIS_PASSWORD` / `KEYCLOAK_DB_PASSWORD`: rotate yearly, or on any infrastructure-team change.
 - `KEYCLOAK_ADMIN_PASSWORD` / `KEYCLOAK_ADMIN_CLIENT_SECRET`: rotate on any operator-team change.
-- `MINIO_ROOT_PASSWORD`: rotate yearly. **Never** rotate MINIO_KMS_SECRET_KEY without a re-encryption migration — encrypted objects become unreadable otherwise.
+- `SEAWEEDFS_S3_SECRET_KEY`: rotate yearly. **Never** rotate the SSE-S3 KEK passphrase (`WEED_S3_SSE_KEY` / `SEAWEEDFS_SSE_KEY`) without a re-encryption migration — encrypted objects become unreadable otherwise.
 - `SSH_PRIVATE_KEY`: rotate per the org's normal cadence.
 
 ---
@@ -175,7 +175,7 @@ Once the cluster is alive, day-to-day ops parallel staging. Reuse:
 - [ ] All four public endpoints return 200 in continuous monitoring (api healthz, auth OIDC, web home, web /login)
 - [ ] Sign-in flow works end-to-end (KC login → app dashboard → at least one DB-touching navigation)
 - [ ] Stripe webhook signature verification works (test webhook from the Stripe dashboard)
-- [ ] Receipt PDF generation works (create a test donation, verify PDF lands in MinIO with KMS encryption)
+- [ ] Receipt PDF generation works (create a test donation, verify PDF lands in SeaweedFS with SSE-S3 encryption)
 - [ ] Worker email delivery works (send a test invitation, verify receipt via Resend dashboard)
 - [ ] Logs flow into Scaleway Cockpit (Loki ingest + Grafana panels)
 - [ ] First nightly DB backup completes (Scaleway Managed PG handles this if applicable; otherwise verify your `pg_dump` cron)

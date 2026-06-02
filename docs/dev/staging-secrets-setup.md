@@ -16,8 +16,8 @@ Set every entry in **Settings → Environments → staging → Environment secre
 | `KEYCLOAK_DB_PASSWORD` | `openssl rand -hex 24` | dedicated `keycloak` role (#336) — KC connects to its own database with this | Set this BEFORE running the staging Keycloak DB cutover runbook on a fresh cluster. Bootstrap-superuser path: the postgres accessory's init script (`infra/postgres/init/01-init-keycloak-db.sh`) provisions the role + `givernance_keycloak` DB on first cluster boot. |
 | `KEYCLOAK_ADMIN_PASSWORD` | `openssl rand -hex 24` | KC master-realm admin user. **Important:** KC reads this only on first realm bootstrap; after that, the admin user's password is stored inside KC and ignores the env. To rotate later: `kcadm.sh set-password` on the running KC, THEN update the GH secret + reboot the accessory (so the env matches if a future fresh-init happens). | |
 | `KEYCLOAK_ADMIN_CLIENT_SECRET` | `openssl rand -hex 32` | `givernance-admin` confidential client in the `givernance` realm — used by the api for tenant-onboarding admin operations | `scripts/keycloak-sync-realm.sh` (called as the deploy's "Sync Keycloak realm" step) reconciles the realm-side value from this env on every deploy. |
-| `MINIO_ROOT_PASSWORD` | `openssl rand -hex 32` | MinIO admin user. Apps connect to MinIO **as root** via `S3_ACCESS_KEY_ID=admin` + `S3_SECRET_ACCESS_KEY=$MINIO_ROOT_PASSWORD`. To rotate: reboot the minio accessory (it picks up the new env on container restart), then redeploy apps so their S3_SECRET_ACCESS_KEY env matches. | |
-| `MINIO_KMS_SECRET_KEY` | `KEY=$(openssl rand -base64 32) && printf 'staging-kms:%s' "$KEY"` | MinIO server-side AES256 KMS — apps upload PDF receipts with `ServerSideEncryption: AES256` which requires this | **Format MUST be `<key-name>:<base64-32-byte-secret>`** (e.g. `staging-kms:<value>`). Base64 portion MUST decode to exactly 32 bytes — the composite action's `KMS_LEN` check enforces this. The 2026-04-29 staging outage (#211) was caused by a wrong-length value here. |
+| `SEAWEEDFS_S3_SECRET_KEY` | `openssl rand -hex 24` | SeaweedFS S3 secret-access-key — the S3 secret used by apps AND the SeaweedFS `admin` identity. Apps connect via `S3_ACCESS_KEY_ID=admin` + `S3_SECRET_ACCESS_KEY=$SEAWEEDFS_S3_SECRET_KEY`. To rotate: reboot the seaweedfs accessory (it picks up the new env on container restart), then redeploy apps so their S3_SECRET_ACCESS_KEY env matches. See [ADR-034](../adrs/adr-034-seaweedfs-over-minio-for-self-hosted-object-storage.md). | |
+| `SEAWEEDFS_SSE_KEY` | `openssl rand -hex 32` | SeaweedFS SSE-S3 KEK passphrase — apps upload PDF receipts with `ServerSideEncryption: AES256`; SeaweedFS HKDF-derives the AES-256 KEK from this passphrase (`WEED_S3_SSE_KEY`). | **No length constraint** — HKDF accepts any-length passphrase. See [ADR-034](../adrs/adr-034-seaweedfs-over-minio-for-self-hosted-object-storage.md). |
 | `SESSION_SECRET` | `openssl rand -hex 32` | Next.js session cookie signing | Rotation invalidates all live sessions (everyone gets logged out). |
 | `IMPERSONATION_JWT_SECRET` | `openssl rand -hex 32` | Symmetric HS256 secret signing the api's app-layer impersonation JWTs (and the web SSR's verification of them — issue #24) | Production env check in `packages/api/src/env.ts` requires this to be present and ≥32 chars on boot. |
 | `RESEND_API_KEY` | from Resend dashboard | Worker email sender (transactional sends — signup verification, team invitations) | Set as the dedicated staging Resend API key (scoped to the verified `givernance.org` apex). |
@@ -34,7 +34,7 @@ Set every entry in **Settings → Environments → staging → Environment secre
 For a fresh staging environment (or a fork), run something like this from a local checkout (assumes `gh` CLI authenticated against your fork):
 
 ```bash
-# 1. Generate every secret (URL-safe hex by default, special-cased MINIO_KMS).
+# 1. Generate every secret (URL-safe hex by default).
 declare -A SECRETS=(
   [POSTGRES_PASSWORD]="$(openssl rand -hex 24)"
   [GIVERNANCE_APP_PASSWORD]="$(openssl rand -hex 24)"
@@ -42,8 +42,8 @@ declare -A SECRETS=(
   [KEYCLOAK_DB_PASSWORD]="$(openssl rand -hex 24)"
   [KEYCLOAK_ADMIN_PASSWORD]="$(openssl rand -hex 24)"
   [KEYCLOAK_ADMIN_CLIENT_SECRET]="$(openssl rand -hex 32)"
-  [MINIO_ROOT_PASSWORD]="$(openssl rand -hex 32)"
-  [MINIO_KMS_SECRET_KEY]="staging-kms:$(openssl rand -base64 32)"
+  [SEAWEEDFS_S3_SECRET_KEY]="$(openssl rand -hex 24)"
+  [SEAWEEDFS_SSE_KEY]="$(openssl rand -hex 32)"
   [SESSION_SECRET]="$(openssl rand -hex 32)"
   [IMPERSONATION_JWT_SECRET]="$(openssl rand -hex 32)"
 )
@@ -92,7 +92,7 @@ Quick reference:
 | `REDIS_PASSWORD` | `gh secret set`, then `gh workflow run deploy-staging.yml -f mode=deploy`, then `gh workflow run staging-accessory-reboot.yml -f accessory=redis -f confirm=redis`. Redis rebooted with the new env picks up `requirepass` from the bag (via `infra/redis/start.sh`). |
 | `KEYCLOAK_ADMIN_PASSWORD` | `kcadm.sh set-password -r master --username admin --new-password '<new>'` on the running KC (auth with the OLD password first), THEN `gh secret set`, THEN reboot keycloak accessory (cosmetic — KC ignores the env post-bootstrap). |
 | `KEYCLOAK_ADMIN_CLIENT_SECRET` | `gh secret set`, then `gh workflow run deploy-staging.yml -f mode=deploy`. The deploy's "Sync Keycloak realm" step calls `scripts/keycloak-sync-realm.sh` which reconciles the realm-side value from env. |
-| `MINIO_ROOT_PASSWORD` | `gh secret set`, then reboot minio accessory (picks up new env on restart), then deploy mode=deploy (apps' S3_SECRET_ACCESS_KEY env updates). |
+| `SEAWEEDFS_S3_SECRET_KEY` | `gh secret set`, then reboot seaweedfs accessory (picks up new env on restart), then deploy mode=deploy (apps' S3_SECRET_ACCESS_KEY env updates). |
 | `SESSION_SECRET` / `IMPERSONATION_JWT_SECRET` | `gh secret set`, then `gh workflow run deploy-staging.yml -f mode=deploy`. Side effect: existing sessions / impersonation tokens invalidated. |
 
 ## Anti-patterns to avoid

@@ -39,9 +39,9 @@ if (process.env.DATABASE_URL_APP_TEST) {
   process.env.DATABASE_URL_APP = process.env.DATABASE_URL_APP_TEST;
 }
 process.env.REDIS_URL ??= "redis://localhost:6379";
-process.env.S3_ENDPOINT ??= "http://localhost:9000";
-process.env.S3_ACCESS_KEY_ID ??= "minioadmin";
-process.env.S3_SECRET_ACCESS_KEY ??= "minioadmin";
+process.env.S3_ENDPOINT ??= "http://localhost:8333";
+process.env.S3_ACCESS_KEY_ID ??= "givernance";
+process.env.S3_SECRET_ACCESS_KEY ??= "givernance_dev";
 process.env.ADMIN_SECRET ??= "test-secret";
 // Stripe credentials — `getStripe()` requires a non-empty value to construct
 // the SDK client. The actual key is never used by tests (the `stripe` module

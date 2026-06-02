@@ -8,8 +8,8 @@ process.env.DATABASE_URL ??=
 process.env.DATABASE_URL_APP ??=
   "postgresql://givernance:givernance_dev@localhost:5432/givernance_test";
 process.env.REDIS_URL ??= "redis://localhost:6379";
-process.env.S3_ENDPOINT ??= "http://localhost:9000";
-process.env.S3_ACCESS_KEY_ID ??= "minioadmin";
-process.env.S3_SECRET_ACCESS_KEY ??= "minioadmin";
+process.env.S3_ENDPOINT ??= "http://localhost:8333";
+process.env.S3_ACCESS_KEY_ID ??= "givernance";
+process.env.S3_SECRET_ACCESS_KEY ??= "givernance_dev";
 process.env.S3_RECEIPTS_BUCKET ??= "receipts";
 process.env.LOG_LEVEL ??= "silent";

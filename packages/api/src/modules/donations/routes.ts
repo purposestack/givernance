@@ -200,7 +200,7 @@ const DonationDetailResponse = Type.Object({
  * the frontend opens directly — `staging.givernance.org/v1/donations/.../
  * receipt/download` — so the donor-visible URL stays on the app's apex
  * (issue #214). No presigned URL field: presigned URLs would point at
- * the internal Docker hostname `givernance-minio:9000`, unreachable from
+ * the internal Docker hostname `givernance-seaweedfs:8333`, unreachable from
  * the browser.
  *
  * `expiresAt` is a coarse "consider re-fetching after" hint — the path

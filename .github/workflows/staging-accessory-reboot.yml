@@ -3,9 +3,9 @@ name: Reboot Staging Accessory
 # Manually-triggered workaround for accessory env-var changes that the
 # per-push `Deploy to Staging` flow doesn't cover. `kamal deploy` only
 # rolls app containers (web, api, worker, relay); accessories
-# (postgres, redis, minio, keycloak) keep running with whatever env
+# (postgres, redis, seaweedfs, keycloak) keep running with whatever env
 # they were last booted with. So when an accessory secret rotates
-# (e.g. MINIO_KMS_SECRET_KEY, KEYCLOAK_ADMIN_PASSWORD) or its image
+# (e.g. WEED_S3_SSE_KEY, KEYCLOAK_ADMIN_PASSWORD) or its image
 # bumps for a CVE patch, this workflow re-boots the named accessory
 # with the *current* GH secret values — without forcing a slow
 # `kamal setup` or an out-of-band `docker run` on the VPS that drifts
@@ -19,7 +19,7 @@ on:
         required: true
         type: choice
         options:
-          - minio
+          - seaweedfs
           - redis
           - postgres
           - keycloak
@@ -74,7 +74,7 @@ jobs:
 
       # Pinned to a commit SHA — this action receives `SSH_PRIVATE_KEY`
       # and the surrounding job handles other secrets (`POSTGRES_PASSWORD`,
-      # `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`),
+      # `REDIS_PASSWORD`, `SEAWEEDFS_S3_SECRET_KEY`, `KEYCLOAK_ADMIN_PASSWORD`),
       # so a third-party action gets a SHA pin instead of a moving tag.
       # SHA below is `webfactory/ssh-agent@v0.10.0` at 2026-05-10; bump
       # intentionally when upgrading.
@@ -91,14 +91,14 @@ jobs:
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
-          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          SEAWEEDFS_S3_SECRET_KEY: ${{ secrets.SEAWEEDFS_S3_SECRET_KEY }}
           KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
           KEYCLOAK_ADMIN_CLIENT_SECRET: ${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-          MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
+          SEAWEEDFS_SSE_KEY: ${{ secrets.SEAWEEDFS_SSE_KEY }}
           IMPERSONATION_JWT_SECRET: ${{ secrets.IMPERSONATION_JWT_SECRET }}
           KEYCLOAK_DB_PASSWORD: ${{ secrets.KEYCLOAK_DB_PASSWORD }}
           GIVERNANCE_APP_PASSWORD: ${{ secrets.GIVERNANCE_APP_PASSWORD }}

@@ -20,7 +20,7 @@ cd givernance
 # Node.js 22 LTS + pnpm 9 required
 pnpm install
 
-# Copy env file and start infra (PostgreSQL, Redis, Keycloak, MinIO, Mailpit)
+# Copy env file and start infra (PostgreSQL, Redis, Keycloak, SeaweedFS, Mailpit)
 cp .env.example .env
 ./scripts/dev-up.sh
 

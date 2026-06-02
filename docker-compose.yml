@@ -76,109 +76,83 @@ services:
       retries: 12
       start_period: 30s
 
-  minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+  # SeaweedFS (ADR-034) — Apache-2.0 S3-compatible object store; replaces
+  # MinIO, which entered maintenance-mode (no security patches) in Dec 2025.
+  # Single-node `weed server -s3` runs master(9333)+volume(8080)+filer(8888)
+  # and the S3 gateway on 8333 (MinIO used 9000) in one process. Production
+  # (SaaS) is unaffected — it stays on Scaleway Object Storage (ADR-009).
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.31
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      # S3 API. Apps (api/worker) reach it in-network at http://seaweedfs:8333.
+      - "${S3_PORT:-8333}:8333"
+      # Filer browser UI — replaces the MinIO Console (removed from MinIO CE
+      # in May 2025). Browse objects at http://localhost:8888 .
+      - "${SEAWEEDFS_FILER_PORT:-8888}:8888"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-givernance}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-givernance_dev}
-      # Server-side AES256 encryption requires KMS-equivalent backing on
-      # MinIO (Scaleway/AWS S3 don't — they manage SSE-S3 keys natively).
-      # Without this, every PDF upload from the worker errors with
-      # "NotImplemented: Server side encryption specified but KMS is not
-      # configured" since the code path uses `ServerSideEncryption: "AES256"`.
-      # Format: <key-name>:<base64-encoded-32-byte-secret>. Local-only
-      # throwaway value — never used in prod, where Scaleway handles KMS.
-      MINIO_KMS_SECRET_KEY: "givernance-kms-dev:cZvoSZTVWEOt2MK+fmq45uqxPT7gEC3btKU+2xFh0zk="
-    command: server /data --console-address ":9001"
+      # SSE-S3 Key-Encryption-Key. The worker sets `ServerSideEncryption:
+      # "AES256"` on every receipt/campaign/report PutObject; SeaweedFS
+      # derives the envelope-encryption master key (KEK) from this passphrase
+      # via HKDF. Replaces MinIO's `MINIO_KMS_SECRET_KEY`. Local-only
+      # throwaway — never used in prod (Scaleway manages SSE-S3 keys
+      # natively). The KEK must be STABLE across restarts wherever data
+      # persists (staging) or previously-encrypted objects become unreadable.
+      WEED_S3_SSE_KEY: ${SEAWEEDFS_SSE_KEY:-givernance-dev-sse-kek-do-not-use-in-prod}
+    # `-ip.bind=0.0.0.0` makes the gateway listen on all interfaces so the
+    # published host port + cross-container access both work; the advertised
+    # IP is auto-detected (the container's network IP, reachable in-network).
+    # `-s3.config` is the single source of truth for credentials + the
+    # `anonymous Read:branding` identity that makes the branding bucket
+    # public-read (ADR-023) — there is no `mc anonymous` on SeaweedFS.
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3config.json -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=128
     volumes:
-      - miniodata:/data
+      - seaweedfsdata:/data
+      - ./infra/seaweedfs/s3config.json:/etc/seaweedfs/s3config.json:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8333/status || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # One-shot init container that creates the buckets the API + worker
-  # write to. Without it, the receipt-generation job DLQs with
-  # `NoSuchBucket: The specified bucket does not exist` on the very
-  # first donation. Idempotent (`mc mb --ignore-existing`), so safe on
-  # every `docker compose up`.
-  minio-init:
-    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+  # One-shot init container that creates the buckets the API + worker write
+  # to and applies per-bucket lifecycle (ADR-034 — replaces the MinIO `mc`
+  # init). SeaweedFS auto-creates a bucket on first PutObject, so this is
+  # belt-and-suspenders for bucket existence, but the lifecycle expiry rules
+  # (90d bulk-imports, 365d reports, 1d abort-incomplete-multipart) MUST be
+  # applied explicitly via the S3 API — `weed shell` has no expiry command.
+  # Public-read for `branding` is NOT set here: it is the static `anonymous`
+  # identity in infra/seaweedfs/s3config.json applied at gateway start, so
+  # every other bucket denies anonymous reads structurally (no race, no
+  # copy-pasted-`mc anonymous set` foot-gun). Idempotent — safe on every
+  # `docker compose up`. Mirrors how the prod Scaleway buckets are
+  # provisioned (`aws s3api …`).
+  seaweedfs-init:
+    image: amazon/aws-cli:latest
     depends_on:
-      minio:
+      seaweedfs:
         condition: service_healthy
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-givernance}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-givernance_dev}
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-givernance}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-givernance_dev}
+      S3_REGION: ${S3_REGION:-fr-par}
       S3_RECEIPTS_BUCKET: ${S3_RECEIPTS_BUCKET:-receipts}
       S3_CAMPAIGNS_BUCKET: ${S3_CAMPAIGNS_BUCKET:-campaigns}
-      # Org-branding bucket (Epic #286) — public-read for donor-facing
-      # surfaces (Keycloak login template, donation page hero).
+      # Org-branding bucket (Epic #286) — public-read (via s3config.json
+      # anonymous identity) for donor-facing surfaces.
       S3_BRANDING_BUCKET: ${S3_BRANDING_BUCKET:-branding}
-      # Bulk-import upload bucket (Epic #373) — **private**. Holds
-      # operator-uploaded CSV/Excel files with PII (donor names,
-      # emails, addresses). Served back through the API only; no
-      # presigned URLs, no public-read. 90-day lifecycle matches the
-      # row_data retention in `bulk_import_results` (see docs/26 §5).
+      # Bulk-import upload bucket (Epic #373) — **private**. Operator CSV/
+      # Excel with PII; 90-day lifecycle matches bulk_import_results retention.
       S3_BULK_IMPORT_BUCKET: ${S3_BULK_IMPORT_BUCKET:-bulk-imports}
-      # Platform monthly finance reports (issue #443) — **private**.
-      # Cross-tenant aggregated finance PDFs, super-admin only. Served
-      # back through the API stream-through (never presigned URL nor
-      # public-read). ADR-023.
+      # Platform monthly finance reports (issue #443) — **private**, 365-day
+      # lifecycle. ADR-023.
       S3_REPORTS_BUCKET: ${S3_REPORTS_BUCKET:-reports}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        set -e
-        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
-        mc mb --ignore-existing "local/$$S3_RECEIPTS_BUCKET"
-        mc mb --ignore-existing "local/$$S3_CAMPAIGNS_BUCKET"
-        mc mb --ignore-existing "local/$$S3_BRANDING_BUCKET"
-        mc mb --ignore-existing "local/$$S3_BULK_IMPORT_BUCKET"
-        mc mb --ignore-existing "local/$$S3_REPORTS_BUCKET"
-        # GC orphan multipart parts after 1 day. The postal-export worker
-        # streams a ZIP into S3 via @aws-sdk/lib-storage's multipart Upload;
-        # if the source stream is destroyed mid-upload (worker crash, S3
-        # transient error), `Upload.done()` rejects but the parts already
-        # uploaded persist as orphans on the bucket and are billed forever
-        # until garbage-collected. The same lifecycle rule MUST be set on
-        # the prod Scaleway campaigns bucket — see docs/23-postal-campaigns.md
-        # § 3 "Architecture (key design decisions)".
-        # `|| true` keeps idempotency: re-applying an existing rule errors.
-        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_CAMPAIGNS_BUCKET" || true
-        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_RECEIPTS_BUCKET" || true
-        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_BRANDING_BUCKET" || true
-        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_BULK_IMPORT_BUCKET" || true
-        mc ilm rule add --abort-incomplete-multipart-days 1 "local/$$S3_REPORTS_BUCKET" || true
-        # Reports bucket — 12-month retention. Each monthly report is
-        # one ~50 KB PDF; over a year that's ~600 KB. Keep the rolling
-        # 12-month window for board-pack reference, prune anything
-        # older.
-        mc ilm rule add --expire-days 365 "local/$$S3_REPORTS_BUCKET" || true
-        # Reports bucket is private — explicit deny matches prod Scaleway.
-        mc anonymous set none "local/$$S3_REPORTS_BUCKET" || true
-        # Bulk-import bucket — 90-day retention to match the row_data
-        # snapshot retention in `bulk_import_results`. Operators can
-        # re-download files within the window for audit; older files
-        # are auto-pruned. Mirror this on the prod Scaleway bucket.
-        mc ilm rule add --expire-days 90 "local/$$S3_BULK_IMPORT_BUCKET" || true
-        # Branding bucket is public-read at the bucket level — donor-facing
-        # surfaces (Keycloak login template, donation page) hit object
-        # URLs directly with `Cache-Control: public, max-age=31536000,
-        # immutable`. Content-addressed keys make stale-CDN-edge cross-
-        # contamination impossible. This MUST be matched in prod via the
-        # Scaleway Object Storage bucket policy.
-        mc anonymous set download "local/$$S3_BRANDING_BUCKET" || true
-        # Bulk-import bucket is private — explicitly deny anonymous
-        # access. This matches the prod Scaleway policy and prevents an
-        # accidental `mc anonymous set` from a copy-pasted command from
-        # exposing PII-laden CSVs.
-        mc anonymous set none "local/$$S3_BULK_IMPORT_BUCKET" || true
-        echo "MinIO buckets ready (with abort-incomplete-multipart lifecycle): $$S3_RECEIPTS_BUCKET, $$S3_CAMPAIGNS_BUCKET, $$S3_BRANDING_BUCKET, $$S3_BULK_IMPORT_BUCKET"
+    # `amazon/aws-cli` sets `aws` as its entrypoint; override so we can run a
+    # plain shell script. The script is S3-API-only (no aws-cli-isms) so it
+    # is portable to any S3 client during the staging cutover.
+    entrypoint: ["/bin/sh", "/seaweedfs-init.sh"]
+    volumes:
+      - ./infra/seaweedfs/init.sh:/seaweedfs-init.sh:ro
     restart: "no"
 
   mailpit:
@@ -211,7 +185,7 @@ services:
 volumes:
   pgdata:
   redisdata:
-  miniodata:
+  seaweedfsdata:
   mailpitdata:
   caddydata:
   caddyconfig:

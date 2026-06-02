@@ -215,7 +215,7 @@ jobs:
 
       # Pinned to a commit SHA — this action receives `SSH_PRIVATE_KEY`
       # and the surrounding job handles other secrets (`POSTGRES_PASSWORD`,
-      # `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD`), so a third-party action
+      # `REDIS_PASSWORD`, `SEAWEEDFS_S3_SECRET_KEY`), so a third-party action
       # gets a SHA pin instead of a moving tag. SHA below is
       # `webfactory/ssh-agent@v0.10.0` at 2026-05-10; bump intentionally
       # when upgrading.
@@ -226,21 +226,21 @@ jobs:
 
       # Resolve every secret via `staging` env first (with fallbacks for
       # non-load-bearing values) and hand them to the composite action,
-      # which writes `.kamal/secrets` and validates MINIO_KMS_SECRET_KEY.
+      # which writes `.kamal/secrets` and renders the SeaweedFS s3config.
       # Same setup is reused by .github/workflows/staging-accessory-reboot.yml.
       - name: Setup Kamal Secrets
         uses: ./.github/actions/setup-kamal-secrets
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
-          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          SEAWEEDFS_S3_SECRET_KEY: ${{ secrets.SEAWEEDFS_S3_SECRET_KEY }}
           KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
           KEYCLOAK_ADMIN_CLIENT_SECRET: ${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-          MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
+          SEAWEEDFS_SSE_KEY: ${{ secrets.SEAWEEDFS_SSE_KEY }}
           IMPERSONATION_JWT_SECRET: ${{ secrets.IMPERSONATION_JWT_SECRET }}
           KEYCLOAK_DB_PASSWORD: ${{ secrets.KEYCLOAK_DB_PASSWORD }}
           GIVERNANCE_APP_PASSWORD: ${{ secrets.GIVERNANCE_APP_PASSWORD }}
@@ -325,7 +325,7 @@ jobs:
       # actually moved in `config/deploy-staging.yml`, so those edits
       # land on the running container without anyone having to remember
       # to dispatch staging-accessory-reboot.yml — issue #214 dropped
-      # the public `port: 9000` mapping for minio and would have only
+      # the public `port: 9000` mapping for the object store and would have only
       # landed on a fresh VPS otherwise; PR #321 hit the same trap with
       # the redis 7→8 image bump (issue #322).
       #
@@ -337,7 +337,7 @@ jobs:
       #
       # A typical no-config push leaves `accessories_to_reboot` empty
       # and the step is skipped; a single-accessory edit pays one
-      # ~30-60s reboot. Out-of-band secret rotations (MINIO_KMS_SECRET_KEY
+      # ~30-60s reboot. Out-of-band secret rotations (WEED_S3_SSE_KEY
       # etc) still use staging-accessory-reboot.yml — no file changed
       # so paths-filter doesn't fire here.
       #
@@ -357,7 +357,7 @@ jobs:
             # `kamal accessory reboot` issues `kamal-proxy remove`
             # unconditionally, which fails with "service not found" the
             # first time a `proxy:` block is added to an accessory —
-            # the 2026-05-12 MinIO incident. Drive the sequence
+            # the 2026-05-12 object-store-accessory incident. Drive the sequence
             # manually; idempotent for both first-time proxy
             # registration and subsequent reboots. Mirrors the
             # composite action at
@@ -397,51 +397,46 @@ jobs:
       - name: Run DB Seed
         run: bundle exec kamal app exec -c config/deploy-staging.yml --reuse "pnpm --filter @givernance/api run db:seed"
 
-      # Ensure the MinIO buckets the worker writes receipt + campaign PDFs
-      # to actually exist (issue #193 follow-up). Mirrors the local
-      # `minio-init` sidecar in docker-compose.yml. Idempotent — `mc mb
-      # --ignore-existing` is a no-op when buckets are already present.
-      # Runs on the staging VPS via `kamal server exec`, against the
-      # `kamal` Docker network (where the minio accessory lives).
+      # Ensure the SeaweedFS buckets the worker writes to exist + carry their
+      # lifecycle (ADR-034 — replaces the MinIO `mc` provisioning). SeaweedFS
+      # auto-creates a bucket on first PutObject, but the lifecycle expiry
+      # rules (90d bulk-imports, 365d reports, 1d abort-incomplete-multipart)
+      # MUST be applied explicitly via the S3 API — there is no `weed shell`
+      # expiry command. Idempotent (create-bucket tolerates existing, lifecycle
+      # is a PUT). Runs on the staging VPS via `kamal server exec`, against the
+      # `kamal` Docker network where the seaweedfs accessory lives.
       #
-      # The `branding` bucket (Epic #286) is public-read at the bucket
-      # level (ADR-023) — donor-facing surfaces hit object URLs directly,
-      # so we apply `mc anonymous set download` here too, matching the
-      # docker-compose sidecar.
-      #
-      # The `bulk-imports` bucket (Epic #373) is **private** (PII-laden
-      # CSV/Excel uploads). Explicit `mc anonymous set none` plus a
-      # 90-day expiry lifecycle to match the row_data retention in
-      # `bulk_import_results` (docs/26 §5).
-      - name: Ensure MinIO buckets exist
+      # Public-read for `branding` is NOT set here — it is the static
+      # `anonymous Read:branding` identity in the mounted s3config.json
+      # (ADR-023), so every other bucket denies anonymous reads structurally.
+      # The aws-cli image is the same S3 client used everywhere; the inner
+      # script is the repo's infra/seaweedfs/init.sh, kept in lockstep.
+      - name: Ensure SeaweedFS buckets exist
         env:
-          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD || 'staging_minio_123' }}
+          SEAWEEDFS_S3_SECRET_KEY: ${{ secrets.SEAWEEDFS_S3_SECRET_KEY }}
           S3_RECEIPTS_BUCKET: ${{ secrets.S3_RECEIPTS_BUCKET || 'receipts' }}
           S3_CAMPAIGNS_BUCKET: ${{ secrets.S3_CAMPAIGNS_BUCKET || 'campaigns' }}
           S3_BRANDING_BUCKET: ${{ secrets.S3_BRANDING_BUCKET || 'branding' }}
           S3_BULK_IMPORT_BUCKET: ${{ secrets.S3_BULK_IMPORT_BUCKET || 'bulk-imports' }}
+          S3_REPORTS_BUCKET: ${{ secrets.S3_REPORTS_BUCKET || 'reports' }}
         run: |
-          # Build the remote command in a variable so the password expansion
-          # happens here on the runner, not on the VPS shell parsing.
-          # The inner `sh -c '...'` gets the password from the docker `-e`
-          # env, not the command line — so it doesn't show up in `ps aux`.
-          # `--entrypoint sh` is required because recent minio/mc images set
-          # `mc` as the entrypoint, which would parse `sh -c ...` as a (non-
-          # existent) `mc sh` subcommand. Pin matches docker-compose.yml.
-          REMOTE_CMD="docker run --rm --network kamal \
-            -e MINIO_PASS='${MINIO_ROOT_PASSWORD}' \
-            --entrypoint sh \
-            minio/mc:RELEASE.2024-11-21T17-21-54Z \
-            -c 'mc alias set local http://givernance-minio:9000 admin \"\$MINIO_PASS\" \
-                && mc mb --ignore-existing local/${S3_RECEIPTS_BUCKET} \
-                && mc mb --ignore-existing local/${S3_CAMPAIGNS_BUCKET} \
-                && mc mb --ignore-existing local/${S3_BRANDING_BUCKET} \
-                && mc mb --ignore-existing local/${S3_BULK_IMPORT_BUCKET} \
-                && mc anonymous set download local/${S3_BRANDING_BUCKET} \
-                && mc anonymous set none local/${S3_BULK_IMPORT_BUCKET} \
-                && mc ilm rule add --expire-days 90 local/${S3_BULK_IMPORT_BUCKET} || true \
-                && echo MinIO buckets ready: ${S3_RECEIPTS_BUCKET}, ${S3_CAMPAIGNS_BUCKET}, ${S3_BRANDING_BUCKET}, ${S3_BULK_IMPORT_BUCKET}'"
-          bundle exec kamal server exec -c config/deploy-staging.yml "$REMOTE_CMD"
+          # The secret reaches the inner container via docker `-e`, not the
+          # command line, so it doesn't show up in `ps aux`. `--entrypoint sh`
+          # overrides aws-cli's default `aws` entrypoint so we can run the
+          # init script piped over stdin (the script lives in the repo, not on
+          # the VPS, so we cat it into the remote `docker run -i`).
+          REMOTE_CMD="docker run --rm -i --network kamal \
+            -e S3_ENDPOINT='http://givernance-seaweedfs:8333' \
+            -e S3_ACCESS_KEY_ID='admin' \
+            -e S3_SECRET_ACCESS_KEY='${SEAWEEDFS_S3_SECRET_KEY}' \
+            -e S3_REGION='fr-par' \
+            -e S3_RECEIPTS_BUCKET='${S3_RECEIPTS_BUCKET}' \
+            -e S3_CAMPAIGNS_BUCKET='${S3_CAMPAIGNS_BUCKET}' \
+            -e S3_BRANDING_BUCKET='${S3_BRANDING_BUCKET}' \
+            -e S3_BULK_IMPORT_BUCKET='${S3_BULK_IMPORT_BUCKET}' \
+            -e S3_REPORTS_BUCKET='${S3_REPORTS_BUCKET}' \
+            --entrypoint sh amazon/aws-cli:latest -s"
+          bundle exec kamal server exec -c config/deploy-staging.yml "$REMOTE_CMD" < infra/seaweedfs/init.sh
 
       # The sync script reconciles the live realm (mappers, scopes, role
       # assignments) against the source-of-truth in scripts/keycloak-sync-realm.sh.

@@ -1,0 +1,4 @@
+# Rendered at deploy time by .github/actions/setup-kamal-secrets from the
+# SEAWEEDFS_S3_SECRET_KEY secret (ADR-034). Carries the staging S3 identity
+# secret + the anonymous Read:branding identity — NEVER commit it.
+s3config.staging.json

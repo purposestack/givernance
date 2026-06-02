@@ -1,4 +1,4 @@
-/** S3/MinIO client for fetching receipt PDFs server-side */
+/** S3 client for fetching receipt PDFs server-side (SeaweedFS self-hosted / Scaleway prod) */
 
 import type { Readable } from "node:stream";
 import {
@@ -32,7 +32,7 @@ const s3 = new S3Client({
  *
  * The route streams this through the API instead of redirecting the browser
  * to a presigned URL because (a) presigned URLs bake the S3 hostname into
- * the SigV4 signature, and on staging that's `givernance-minio:9000` — only
+ * the SigV4 signature, and on staging that's `givernance-seaweedfs:8333` — only
  * resolvable inside the Docker network, and (b) the donor-visible URL must
  * stay on the app's own apex/subdomain to keep the trust path consistent.
  * See issue #214 for the design decision and rejected alternatives.

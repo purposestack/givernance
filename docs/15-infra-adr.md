@@ -35,3 +35,4 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-031: In-app Notification Centre — delivery + outbox fanout (SSE + polling fallback)](./adrs/adr-031-notifications-delivery-and-fanout.md)
 - [ADR-032: Multi-Currency Strategy — Currency Layers, Ledger Design, FX Rate Policy](./adrs/adr-032-multi-currency-strategy.md)
 - [ADR-033: Advanced Constituent Filter Architecture — query DSL, pattern detection, registry-driven fields](./adrs/adr-033-advanced-filter-architecture.md)
+- [ADR-034: SeaweedFS over MinIO for Self-Hosted / Local-Dev / Staging Object Storage](./adrs/adr-034-seaweedfs-over-minio-for-self-hosted-object-storage.md)

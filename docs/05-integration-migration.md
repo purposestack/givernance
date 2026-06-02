@@ -225,7 +225,7 @@ The Epic #286 implementation populates the `logo_url` attribute that `infra/keyc
 
 **Supported backends**:
 - AWS S3 (managed SaaS deployment)
-- MinIO (self-hosted deployment)
+- SeaweedFS (self-hosted deployment)
 - Cloudflare R2 (alternative managed)
 
 **Bucket structure**:

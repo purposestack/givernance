@@ -35,7 +35,7 @@ sequenceDiagram
     participant API as Fastify (api)
     participant DB as Postgres
     participant Worker as BullMQ worker
-    participant S3 as Object storage<br/>(MinIO / Scaleway)
+    participant S3 as Object storage<br/>(SeaweedFS / Scaleway)
     actor Donor
 
     Note over Op,Web: 1. Build the recipient list
@@ -348,7 +348,7 @@ flowchart LR
         ZIP[archiver]
     end
 
-    subgraph Storage["Object storage<br/>(MinIO / Scaleway)"]
+    subgraph Storage["Object storage<br/>(SeaweedFS / Scaleway)"]
         S3[(campaigns bucket)]
     end
 
@@ -390,7 +390,7 @@ flowchart LR
 | 7 | **`PostalCampaignSection` wrapper** | Two sibling client components (`CampaignMembersCard`, `PostalExportPanel`) share live state (`memberCount`) without lifting it to the server-rendered parent |
 | 8 | **Worker is idempotent under retry** (mig 0040) | A Kamal pod crash mid-export used to leave stranded QR rows + a bricked ZIP. We now backlink each minted code to its `export_id` and SELECT existing rows on retry — the same tokens that were printed end up in the ZIP regardless of how many BullMQ attempts the job took |
 | 9 | **QR-attributed donations emit an asymmetric audit log** | Mirrors the `WEBHOOK:charge.refunded` pattern: when the Stripe webhook reconciles a postal-scanned gift, we write `audit_logs` with `user_id`/`actor_id = NULL` and the `qr_code_id` in `new_values` so a forensic reader can join print → scan → donate without trusting Stripe metadata in isolation |
-| 10 | **Bucket lifecycle: `AbortIncompleteMultipartUpload` after 1 day** | The `@aws-sdk/lib-storage` multipart upload may leak orphan parts when the source stream is destroyed mid-upload (worker crash, S3 transient error, BullMQ kill). Without a bucket-level lifecycle rule, those parts persist forever and bill against the tenant's storage. Configured in `docker-compose.yml` (`minio-init`) for dev — **MUST be replicated on the prod Scaleway `campaigns` bucket** during infra setup |
+| 10 | **Bucket lifecycle: `AbortIncompleteMultipartUpload` after 1 day** | The `@aws-sdk/lib-storage` multipart upload may leak orphan parts when the source stream is destroyed mid-upload (worker crash, S3 transient error, BullMQ kill). Without a bucket-level lifecycle rule, those parts persist forever and bill against the tenant's storage. Configured in `docker-compose.yml` (`seaweedfs-init`, see [ADR-034](./adrs/adr-034-seaweedfs-over-minio-for-self-hosted-object-storage.md)) for dev — **MUST be replicated on the prod Scaleway `campaigns` bucket** during infra setup |
 | 11 | **`renderPdfBuffer` accumulates each PDF in RAM before archive append** | A single PDF is ~50KB; the worker is sequential (decision #4) so the transient peak is bounded by one letter at a time. Acceptable for MVP volumes (<1000 recipients/campaign). **Refactor target before the first 10k-recipient real campaign** — `archive.append(pdfStream, …)` accepts a Readable directly, removing the intermediate `Buffer.concat`. Tracked as a follow-up |
 | 12 | **`ON DELETE CASCADE` on `campaign_constituents.campaign_id`** | Deleting a campaign drops its membership rows. The audit trail is preserved at the API layer — the `DELETE /v1/campaigns/:id` route writes a single `audit_logs` row capturing the campaign deletion event; per-row constituent removal events would explode the audit table without forensic value (the join `audit_logs ⨝ campaign_constituents` is impossible after cascade anyway). The alternative (`ON DELETE RESTRICT` + applicative cleanup) breaks campaign deletion entirely when even one constituent is linked, which is hostile to operators |
 

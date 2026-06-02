@@ -1,12 +1,14 @@
 name: Setup Kamal Secrets
 description: >
   Build the `.kamal/secrets` file the staging deploy + accessory-reboot
-  workflows hand to Kamal. Reads the resolved secret values from environment
-  variables the caller workflow exports (so the GH `secrets.*` lookups stay
-  scoped to the caller, which knows its `environment:`). Validates that
-  `MINIO_KMS_SECRET_KEY` decodes to exactly 32 bytes — MinIO refuses to boot
-  on any other length, and a bad fallback masquerading as a valid secret was
-  the root cause of the 2026-04-29 staging incident (issue #211).
+  workflows hand to Kamal, and render the SeaweedFS S3 identity config
+  (`config/seaweedfs/s3config.staging.json`) the `seaweedfs` accessory mounts
+  (ADR-034). Reads the resolved secret values from environment variables the
+  caller workflow exports (so the GH `secrets.*` lookups stay scoped to the
+  caller, which knows its `environment:`). No length validation is needed for
+  the SSE key — SeaweedFS derives the KEK from any passphrase via HKDF (unlike
+  MinIO's old 32-byte-base64 `MINIO_KMS_SECRET_KEY`, whose bad-length fallback
+  caused the 2026-04-29 staging incident, issue #211).
 
   Single source of truth for the secrets bag: deploy-staging.yml and
   staging-accessory-reboot.yml both `uses: ./.github/actions/setup-kamal-secrets`,
@@ -38,7 +40,10 @@ runs:
         # Fork-developer setup steps live in `docs/dev/staging-secrets-setup.md`.
         PG_PASS="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
         REDIS_PASS="${REDIS_PASSWORD:?REDIS_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
-        MINIO_PASS="${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
+        # SeaweedFS S3 secret-access-key (ADR-034 — replaces MINIO_ROOT_PASSWORD).
+        # Used BOTH as the app `S3_SECRET_ACCESS_KEY` and as the `admin` identity
+        # secret in the rendered config/seaweedfs/s3config.staging.json below.
+        SEAWEED_SECRET="${SEAWEEDFS_S3_SECRET_KEY:?SEAWEEDFS_S3_SECRET_KEY is required — set it in Settings → Environments → staging → Secrets (generate with 'openssl rand -hex 24'). See docs/dev/staging-secrets-setup.md.}"
         KC_PASS="${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
         KC_CLIENT_SECRET="${KEYCLOAK_ADMIN_CLIENT_SECRET:?KEYCLOAK_ADMIN_CLIENT_SECRET is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
         SESSION_SEC="${SESSION_SECRET:?SESSION_SECRET is required — set it in Settings → Environments → staging → Secrets. See docs/dev/staging-secrets-setup.md.}"
@@ -82,20 +87,14 @@ runs:
         # password set anywhere in deploy config — and RLS was silently
         # bypassed across the entire stack.
         APP_PASS="${GIVERNANCE_APP_PASSWORD:?GIVERNANCE_APP_PASSWORD is required — set it in Settings → Environments → staging → Secrets (generate with 'openssl rand -hex 24'). See docs/dev/staging-secrets-setup.md.}"
-        # MinIO server-side AES256 encryption key. Format
-        # `<key-name>:<base64-32-byte-secret>`; generate with
-        # `openssl rand -base64 32` and prefix with `<keyname>:`. The
-        # base64 portion MUST decode to exactly 32 bytes — the validation
-        # step below enforces this; the 2026-04-29 outage (#211) was
-        # caused by a wrong-length value masquerading as valid.
-        MINIO_KMS="${MINIO_KMS_SECRET_KEY:?MINIO_KMS_SECRET_KEY is required — set it in Settings → Environments → staging → Secrets. Format: <key-name>:<base64-32-byte-secret>. See docs/dev/staging-secrets-setup.md.}"
-
-        KMS_BASE64="${MINIO_KMS#*:}"
-        KMS_LEN=$(printf '%s' "$KMS_BASE64" | base64 -d 2>/dev/null | wc -c | tr -d ' ')
-        if [ "$KMS_LEN" != "32" ]; then
-          echo "::error::MINIO_KMS_SECRET_KEY base64 portion decodes to $KMS_LEN bytes, MinIO requires exactly 32. Regenerate with 'openssl rand -base64 32' and update the GH secret (or the fallback in this action)." >&2
-          exit 1
-        fi
+        # SeaweedFS SSE-S3 Key-Encryption-Key passphrase (ADR-034 — replaces
+        # MINIO_KMS_SECRET_KEY). SeaweedFS derives the AES-256 KEK from this
+        # via HKDF, so there is NO 32-byte-base64 length constraint to validate
+        # (the old MINIO_KMS 32-byte check + the 2026-04-29 #211 outage class
+        # are gone). Any sufficiently-random string works; `openssl rand -hex 32`
+        # is the recommendation. MUST stay STABLE across reboots or previously-
+        # encrypted objects become unreadable.
+        SEAWEED_SSE_KEY="${SEAWEEDFS_SSE_KEY:?SEAWEEDFS_SSE_KEY is required — set it in Settings → Environments → staging → Secrets (generate with 'openssl rand -hex 32'). See docs/dev/staging-secrets-setup.md.}"
 
         # URL-encode passwords before interpolating them into URIs (issue #335).
         # `pg-connection-string` (used by drizzle-kit AND `pg.Pool`) and
@@ -115,8 +114,7 @@ runs:
         GITHUB_TOKEN=${GITHUB_TOKEN}
         POSTGRES_PASSWORD=$PG_PASS
         REDIS_PASSWORD=$REDIS_PASS
-        MINIO_ROOT_PASSWORD=$MINIO_PASS
-        MINIO_KMS_SECRET_KEY=$MINIO_KMS
+        WEED_S3_SSE_KEY=$SEAWEED_SSE_KEY
         KEYCLOAK_ADMIN_PASSWORD=$KC_PASS
         SESSION_SECRET=$SESSION_SEC
         KC_DB_PASSWORD=$KEYCLOAK_DB_PASS
@@ -124,11 +122,39 @@ runs:
         DATABASE_URL_APP=postgres://givernance_app:$APP_PASS_ENC@givernance-postgres:5432/givernance_staging
         GIVERNANCE_APP_PASSWORD=$APP_PASS
         REDIS_URL=redis://:$REDIS_PASS_ENC@givernance-redis:6379
-        S3_SECRET_ACCESS_KEY=$MINIO_PASS
+        S3_SECRET_ACCESS_KEY=$SEAWEED_SECRET
         KEYCLOAK_ADMIN_CLIENT_SECRET=$KC_CLIENT_SECRET
         RESEND_API_KEY=$RESEND_KEY
         STRIPE_SECRET_KEY=$STRIPE_SECRET
         STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SEC
         IMPERSONATION_JWT_SECRET=$IMPERSONATION_JWT
         KEYCLOAK_DB_PASSWORD=$KEYCLOAK_DB_PASS
+        EOF
+
+        # Render the SeaweedFS S3 identity config the `seaweedfs` accessory
+        # mounts via `files:` (ADR-034). Single source of truth for who can
+        # read/write the S3 gateway and which bucket is public-read:
+        #   - `admin` identity → full access, secret = SEAWEEDFS_S3_SECRET_KEY
+        #     (the same secret the apps use as S3_SECRET_ACCESS_KEY, so the
+        #     app credentials and the gateway's accepted credentials match).
+        #   - `anonymous` identity → `Read:branding` ONLY, so the public-read
+        #     branding bucket works through the assets.* proxy while every
+        #     other bucket denies anonymous access (ADR-023). Gitignored.
+        mkdir -p config/seaweedfs
+        cat <<EOF > config/seaweedfs/s3config.staging.json
+        {
+          "identities": [
+            {
+              "name": "admin",
+              "credentials": [
+                { "accessKey": "admin", "secretKey": "$SEAWEED_SECRET" }
+              ],
+              "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+            },
+            {
+              "name": "anonymous",
+              "actions": ["Read:branding"]
+            }
+          ]
+        }
         EOF

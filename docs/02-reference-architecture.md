@@ -137,10 +137,10 @@ See: /diagrams/container.mmd
 - Brute-force protection, MFA enforcement by role
 - Retained in all deployment modes — no managed alternative covers the full feature set (SAML 2.0, magic-link, MFA by role). See [ADR-007](./15-infra-adr.md#adr-007-reject-convexdev-and-supabase-as-all-in-one-backend-replacements).
 
-#### `storage` (Cloudflare R2 / MinIO)
+#### `storage` (Scaleway Object Storage / SeaweedFS)
 - Stores: PDF receipts, bulk export files, imported constituent lists, document attachments
 - Lifecycle policy: exports deleted after 7 days; receipts retained 7 years
-- **Self-hosted deployments**: [MinIO](https://min.io) (S3-compatible, Docker Compose)
+- **Self-hosted deployments**: [SeaweedFS](https://github.com/seaweedfs/seaweedfs) (S3-compatible on port 8333, Docker Compose) — see [ADR-034](./adrs/adr-034-seaweedfs-over-minio-for-self-hosted-object-storage.md)
 - **SaaS managed deployment**: [Scaleway Object Storage](https://www.scaleway.com/en/object-storage/) — S3-compatible API, EU storage, native GDPR coverage. See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
 
 #### `nats` ⚠️ Phase 4+ only
@@ -451,7 +451,7 @@ services:
   pgbouncer:   pgbouncer/pgbouncer:latest
   redis:       redis:8-alpine
   keycloak:    keycloak/keycloak:26
-  minio:       minio/minio:latest
+  seaweedfs:   chrislusf/seaweedfs:4.31
   caddy:       caddy:2-alpine      # TLS termination + reverse proxy
 ```
 
@@ -486,7 +486,7 @@ Deployment: Kamal on Scaleway EU VMs. TLS via Caddy. All services under single S
 |---|---|---|---|
 | PostgreSQL | Self-hosted 17 + PgBouncer | Scaleway Managed PostgreSQL EU | Scaleway Managed PostgreSQL EU |
 | Redis / Cache | Self-hosted Redis 8 | Scaleway Managed Redis EU | Scaleway Managed Redis EU |
-| Object Storage | MinIO | Scaleway Object Storage EU | Scaleway Object Storage EU |
+| Object Storage | SeaweedFS | Scaleway Object Storage EU | Scaleway Object Storage EU |
 | Event bus | BullMQ via outbox (Redis) | BullMQ via outbox (Redis) | NATS JetStream + BullMQ |
 | Auth | Self-hosted Keycloak 26 | Self-hosted Keycloak 26 (Scaleway VM) | Self-hosted Keycloak 26 (Scaleway VM) |
 | Observability | Self-managed (Prometheus + Grafana) | Scaleway Cockpit (Grafana + Loki + Mimir + Tempo) | Scaleway Cockpit |

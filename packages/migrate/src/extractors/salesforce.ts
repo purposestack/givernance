@@ -5,7 +5,7 @@ import { GetObjectCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/clien
 import { parse } from "csv-parse";
 
 const s3 = new S3Client({
-  endpoint: process.env.S3_ENDPOINT ?? "http://localhost:9000",
+  endpoint: process.env.S3_ENDPOINT ?? "http://localhost:8333",
   region: process.env.S3_REGION ?? "us-east-1",
   forcePathStyle: true,
 });
