@@ -37,7 +37,7 @@ You are the principal platform architect for Givernance. You own the system arch
 | DB pooling | **PgBouncer** (transaction mode) | Required for connection-pooling in serverless/multi-instance deployments |
 | Cache / job broker | **Redis 8** | Session store, rate limiting, BullMQ job queues (SaaS: Scaleway Managed Redis EU · Self-hosted: Redis 8 / Valkey) |
 | Search | **PostgreSQL FTS + pg_trgm** | Sufficient for <1M constituents; Meilisearch add-on for larger |
-| File storage | **Scaleway Object Storage EU** (SaaS) · **MinIO** (self-hosted) | Documents, exports, receipts — S3-compatible API |
+| File storage | **Scaleway Object Storage EU** (SaaS) · **SeaweedFS** (self-hosted) | Documents, exports, receipts — S3-compatible API |
 | Time-series (future) | **TimescaleDB** extension | Impact KPI trends, donation trends |
 
 ### Infrastructure
@@ -78,7 +78,7 @@ You are the principal platform architect for Givernance. You own the system arch
 4. **Every mutation emits a domain event** to the outbox table (transactional outbox pattern)
 5. **CQRS-lite**: separate read models (views/materialized views) from write models
 6. **API-first**: every UI action goes through the API; no direct DB from frontend
-7. **Offline-capable exports**: reports generate async, stored in R2/MinIO, fetched by polling or webhook
+7. **Offline-capable exports**: reports generate async, stored in Scaleway Object Storage / SeaweedFS, fetched by polling or webhook
 8. **Template deployments**: org onboarding creates schema, seeds roles, runs org-level config from a versioned template
 9. **Shared package as single source of truth**: `@givernance/shared` owns Drizzle schema, Zod validators, domain event types, and BullMQ job type definitions — no duplication across packages
 

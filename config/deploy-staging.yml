@@ -69,7 +69,7 @@ env:
     # so we route through the proxy on the same VM.
     API_URL: https://api.staging.givernance.org
     NEXT_PUBLIC_KEYCLOAK_URL: https://auth.staging.givernance.org
-    S3_ENDPOINT: http://givernance-minio:9000
+    S3_ENDPOINT: http://givernance-seaweedfs:8333
     S3_ACCESS_KEY_ID: admin
     # Browser-reachable base for the `branding` (public-read, ADR-023)
     # bucket. The default in `brandingPublicUrl()` falls back to
@@ -77,7 +77,7 @@ env:
     # where MinIO is published on the host, but unresolvable from the
     # browser on staging where the accessory only lives on the internal
     # `kamal` network. We front bucket reads through kamal-proxy on
-    # `assets.staging.givernance.org` (see the minio accessory's `proxy:`
+    # `assets.staging.givernance.org` (see the seaweedfs accessory's `proxy:`
     # block below); same hostname serves the donation page hero and the
     # Keycloak login template's `organization.attributes['logo_url']`,
     # so the KC HTTPS-only guard accepts it without a CDN.
@@ -126,7 +126,6 @@ env:
   secret:
     - POSTGRES_PASSWORD
     - REDIS_PASSWORD
-    - MINIO_ROOT_PASSWORD
     - KEYCLOAK_ADMIN_PASSWORD
     - SESSION_SECRET
     - DATABASE_URL
@@ -286,68 +285,78 @@ accessories:
     cmd: sh /usr/local/bin/start-redis.sh
     directories:
       - data/redis:/data
-  minio:
-    image: minio/minio:latest
+  seaweedfs:
+    # ADR-034 — SeaweedFS replaces MinIO (Apache 2.0, actively maintained;
+    # MinIO entered maintenance-mode with no security patches in Dec 2025).
+    # Production (SaaS) is unaffected — it stays on Scaleway Object Storage
+    # (ADR-009). Single-node `weed server -s3`: master(9333)+volume(8080)+
+    # filer(8888)+S3 gateway(8333).
+    image: chrislusf/seaweedfs:4.31
     host: <%= ENV["STAGING_VPS_IP"] %>
-    # No `port:` publishing — MinIO's S3 API stays off the public
-    # internet. Receipts + campaigns use the API streaming endpoints
-    # (issue #214) so no donor browser needs raw 9000 access for them.
+    # No `port:` publishing — the S3 API stays off the public internet at
+    # givernance-seaweedfs:8333 on the kamal network. Receipts + campaigns +
+    # reports + bulk-imports are served via the API streaming endpoints
+    # (issue #214) so no donor browser needs raw 8333 access for them.
     #
-    # The `branding` bucket (Epic #286 / ADR-023) is a deliberate
-    # exception: it's public-read at the bucket level so donor-facing
-    # surfaces (donation page hero, Keycloak login template logo) can
-    # fetch directly with `Cache-Control: public, max-age=31536000,
-    # immutable` and a future CDN edge can cache content-addressed
-    # keys. We expose that read path through kamal-proxy on
-    # `assets.staging.givernance.org` — the proxy forwards to MinIO's
-    # S3 API, and MinIO's own per-bucket ACLs do the filtering:
-    #   - `branding`     → anonymous GetObject allowed (mc anonymous
-    #                      set download, applied in the deploy workflow)
-    #   - `receipts`     → 403 anonymous (S3-auth required)
-    #   - `campaigns`    → 403 anonymous (S3-auth required)
-    # The console port (9001) is NOT exposed by the proxy (only
-    # `app_port: 9000`) so the MinIO admin UI stays internal.
+    # The `branding` bucket (Epic #286 / ADR-023) is a deliberate exception:
+    # it's public-read so donor-facing surfaces (donation page hero, Keycloak
+    # login template logo) can fetch directly with `Cache-Control: public,
+    # max-age=31536000, immutable` and a future CDN edge can cache content-
+    # addressed keys. We expose that read path through kamal-proxy on
+    # `assets.staging.givernance.org` → the S3 gateway. Filtering is done by
+    # the SeaweedFS identities in the mounted s3config.json (ADR-034), NOT by
+    # runtime ACLs:
+    #   - `branding`  → anonymous GetObject allowed (the `anonymous`
+    #                   identity grants `Read:branding` and nothing else)
+    #   - everything else → 403 anonymous (no anonymous identity covers it,
+    #                   S3-auth required) — an accidental public bulk-imports
+    #                   leak (donor PII) is structurally impossible.
+    # The filer UI (8888) is NOT exposed by the proxy (only `app_port: 8333`)
+    # so the object browser stays internal.
     #
-    # When `deploy-prod.yml` lands, mirror this exactly: a public
-    # hostname (or a CDN in front of the bucket) for `branding`, no
-    # public path to receipts/campaigns.
+    # When `deploy-prod.yml` lands, mirror this exactly: a public hostname
+    # (or a CDN in front of the bucket) for `branding`, no public path to the
+    # private buckets.
     #
-    # Note (2026-05-12): the first deploy that added this `proxy:`
-    # block on an already-running MinIO accessory failed because
-    # `kamal accessory reboot` issues `kamal-proxy remove` even when
-    # nothing is registered yet ("service not found"). The reboot step
-    # in `.github/workflows/deploy-staging.yml` + the composite action
-    # `.github/actions/reboot-kamal-accessory/action.yml` now drive
-    # the sequence manually; this comment also tickles the per-
-    # accessory subtree-diff gate so MinIO actually re-bootstraps.
+    # Note (2026-05-12, carried from MinIO): the first deploy that adds a
+    # `proxy:` block on an already-running accessory fails because
+    # `kamal accessory reboot` issues `kamal-proxy remove` even when nothing
+    # is registered yet ("service not found"). The reboot step in
+    # `.github/workflows/deploy-staging.yml` + the composite action
+    # `.github/actions/reboot-kamal-accessory/action.yml` drive the sequence
+    # manually; this comment also tickles the per-accessory subtree-diff gate
+    # so the accessory actually re-bootstraps.
     proxy:
       host: assets.staging.givernance.org
       ssl: true
-      app_port: 9000
+      app_port: 8333
       healthcheck:
-        path: /minio/health/live
+        path: /status
     env:
-      clear:
-        MINIO_ROOT_USER: admin
       secret:
-        - MINIO_ROOT_PASSWORD
-        # The worker uploads receipt + campaign PDFs with
-        # `ServerSideEncryption: "AES256"`. MinIO refuses that header
-        # without a KMS-equivalent backing key (Scaleway / AWS S3 manage
-        # SSE-S3 keys natively, MinIO doesn't). Without this every PDF
-        # upload DLQs with `NotImplemented: Server side encryption
-        # specified but KMS is not configured`. Format: `<key-name>:
-        # <base64-encoded-32-byte-secret>`. Generated with
-        # `openssl rand -base64 32`; rotate by changing the GitHub secret
-        # and redeploying — existing-encrypted-objects survive the rotation
-        # only if the previous key is added as a fallback (we don't, since
-        # staging data is non-load-bearing; if you keep PDFs across a
-        # rotation, MinIO's `MINIO_KMS_AUTO_ENCRYPTION` is the option to
-        # configure backwards compat).
-        - MINIO_KMS_SECRET_KEY
+        # SSE-S3 Key-Encryption-Key. The worker uploads receipt/campaign/
+        # report PDFs with `ServerSideEncryption: "AES256"`; SeaweedFS derives
+        # the envelope-encryption master key (KEK) from this passphrase (HKDF)
+        # so those PutObjects succeed (ADR-034). Replaces MinIO's
+        # `MINIO_KMS_SECRET_KEY` — no 32-byte-base64 length constraint.
+        # MUST stay STABLE across reboots or previously-encrypted objects
+        # become unreadable (same property the old KMS key had). Rotate by
+        # changing the GH secret + re-encrypting; staging data is non-load-
+        # bearing so a rotation just orphans old encrypted blobs.
+        - WEED_S3_SSE_KEY
+    files:
+      # Rendered at deploy time by `.github/actions/setup-kamal-secrets` from
+      # the `SEAWEEDFS_S3_SECRET_KEY` secret — carries the `admin` S3 identity
+      # (same secret the apps use as `S3_SECRET_ACCESS_KEY`) and the
+      # `anonymous Read:branding` identity. Gitignored; never committed with a
+      # real secret. See docs/runbooks/minio-to-seaweedfs-cutover.md.
+      - config/seaweedfs/s3config.staging.json:/etc/seaweedfs/s3config.json
     directories:
-      - data/minio:/data
-    cmd: server /data --console-address ":9001"
+      - data/seaweedfs:/data
+    # `-ip.bind=0.0.0.0` so the gateway listens on all interfaces (kamal-proxy
+    # + cross-container both reach it); advertised IP is the auto-detected
+    # container IP, reachable on the kamal network.
+    cmd: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3config.json -ip.bind=0.0.0.0
   keycloak:
     image: ghcr.io/purposestack/givernance-keycloak:latest
     host: <%= ENV["STAGING_VPS_IP"] %>

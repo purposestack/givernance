@@ -65,7 +65,7 @@ const EnvSchema = Type.Object({
    * Base URL the Keycloak login template uses to build the
    * `organization.attributes['logo_url']` value (Epic #286 / docs/24).
    * Defaults to `${S3_ENDPOINT}/${S3_BRANDING_BUCKET}` so local dev
-   * "just works" against MinIO. Production overrides this with the
+   * "just works" against SeaweedFS. Production overrides this with the
    * public CDN base (e.g. `https://cdn.givernance.eu/branding`) so the
    * KC template's HTTPS-only guard accepts the rendered URL.
    */

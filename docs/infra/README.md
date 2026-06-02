@@ -36,7 +36,7 @@ docker compose up -d
 If you already have a `pgdata` volume from before the Keycloak DB split (ADR-017), the init script in `infra/postgres/init/` will **not** run — the Postgres image only executes `/docker-entrypoint-initdb.d/*` on an empty data directory. You'll see Keycloak start up and fail to connect to `givernance_keycloak`, and `./scripts/dev-up.sh` now fails fast with a pointer back to this section rather than hanging on the readiness probe. Reset the local volumes once:
 
 ```bash
-docker compose down -v   # wipes pgdata, redisdata, miniodata, mailpitdata
+docker compose down -v   # wipes pgdata, redisdata, seaweedfsdata, mailpitdata
 ./scripts/dev-up.sh      # recreates everything, including givernance_keycloak
 ```
 
@@ -49,7 +49,7 @@ This is safe in dev because **all state is reproducible from fixtures and migrat
 | PostgreSQL 17 | `localhost:5432` | Shared instance hosting the `givernance` and `givernance_keycloak` databases — see [Databases](#databases) |
 | Redis 8 | `localhost:6379` | Cache, rate limiting |
 | Keycloak 26 | `http://localhost:8080` | OIDC/SAML identity provider with Organizations enabled (ADR-016 / issue #114). Admin: `admin`/`admin` |
-| MinIO | `http://localhost:9000` (API), `http://localhost:9001` (Console) | S3-compatible object storage (user: `givernance`/`givernance_dev`) |
+| SeaweedFS | `http://localhost:8333` (S3 API), `http://localhost:8888` (filer UI) | S3-compatible object storage (ADR-034); creds `givernance`/`givernance_dev` |
 | Mailpit | `localhost:1025` (SMTP), `http://localhost:8025` (UI) | Local email capture and testing |
 | Caddy | `localhost:3000`, `localhost:3001` | Reverse proxy (optional, `--profile proxy`) |
 
@@ -103,7 +103,7 @@ The application reads connection strings from environment variables. See `.env.e
 ```
 DATABASE_URL=postgresql://givernance:givernance_dev@localhost:5432/givernance
 REDIS_URL=redis://localhost:6379
-S3_ENDPOINT=http://localhost:9000
+S3_ENDPOINT=http://localhost:8333
 SMTP_HOST=localhost
 SMTP_PORT=1025
 ```
@@ -185,7 +185,7 @@ See [ADR-009](../15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud
 |-----------|-----------------|------------------|
 | Database | Managed PostgreSQL EU (PAR/AMS) | PostgreSQL 17 (Docker) |
 | Cache / Rate Limiting | Managed Redis EU | Redis 8 (Docker) |
-| Object Storage | Scaleway Object Storage (S3-compatible) | MinIO (Docker) |
+| Object Storage | Scaleway Object Storage (S3-compatible) | SeaweedFS (Docker) |
 | Auth | Keycloak on Scaleway VM | Keycloak (Docker) |
 | Observability | Cockpit (Grafana + Loki + Mimir + Tempo) | — (local: stdout logs) |
 | AI Inference | Scaleway Generative APIs (Mistral, Llama 3.1) | — (optional, not in local stack) |
@@ -196,7 +196,7 @@ See [ADR-009](../15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud
 - **Data residency**: All data stored and processed in EU (France / Netherlands).
 - **Single DPA**: One contract with Scaleway covers compute, database, storage, cache, inference, and observability.
 - **Art. 9 special category data**: Beneficiary case notes and medical/social status processed via Scaleway Generative APIs — EU-only inference, no data leaves EU jurisdiction.
-- **Self-hosted option**: NPOs requiring on-premises deployment use the same Docker Compose stack with their own PostgreSQL, Redis, MinIO, and Keycloak instances.
+- **Self-hosted option**: NPOs requiring on-premises deployment use the same Docker Compose stack with their own PostgreSQL, Redis, SeaweedFS, and Keycloak instances.
 
 ### Cost Estimates
 
@@ -215,7 +215,7 @@ For NPOs that need on-premises infrastructure, the same Docker Compose file serv
 ```
 PostgreSQL 17 + PgBouncer
 Redis 8
-MinIO (S3-compatible storage)
+SeaweedFS (S3-compatible storage)
 Keycloak 26 (OIDC/SAML with Organizations)
 Caddy (reverse proxy + TLS)
 ```
@@ -224,7 +224,7 @@ Production self-hosted deployments should add:
 - TLS certificates (Caddy handles automatic HTTPS via Let's Encrypt)
 - Database backups (pg_dump cron or WAL archiving)
 - Redis persistence configuration
-- MinIO replication for storage durability
+- SeaweedFS replication for storage durability
 
 ### Staging build cache (GHCR)
 

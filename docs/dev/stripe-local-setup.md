@@ -238,10 +238,11 @@ gh secret set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY --env staging \
 gh secret set STRIPE_WEBHOOK_SECRET --env staging \
   --repo purposestack/givernance --body "whsec_…"
 
-# 3. MinIO KMS key for AES256 server-side encryption. Worker DLQs every
-#    receipt PDF without this. Generate fresh:
-gh secret set MINIO_KMS_SECRET_KEY --env staging \
-  --repo purposestack/givernance --body "staging-kms:$(openssl rand -base64 32)"
+# 3. SeaweedFS SSE-S3 KEK passphrase for AES256 server-side encryption. Worker
+#    DLQs every receipt PDF without this. Generate fresh (no length constraint —
+#    SeaweedFS HKDF-derives the KEK; see ADR-034):
+gh secret set SEAWEEDFS_SSE_KEY --env staging \
+  --repo purposestack/givernance --body "$(openssl rand -hex 32)"
 
 # 4. Optional — bucket name overrides. These aren't secrets; prefer
 #    environment variables over secrets so they show in plaintext in the
@@ -252,7 +253,7 @@ gh secret set MINIO_KMS_SECRET_KEY --env staging \
 
 The IDE will lint these as "Context access might be invalid" until they're registered — soft warning, deploys succeed regardless. The fallbacks in the workflow are deliberate so deploys never fail on a missing secret; the user-facing surface (donor sees "Stripe is not configured" or 502 on Continue to payment) is what tells you something's misconfigured.
 
-> **Existing un-prefixed secrets stay repo-level for now.** A handful of secrets pre-date the environment-scoping switch (`POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `SESSION_SECRET`, `KEYCLOAK_ADMIN_CLIENT_SECRET`). They still resolve via repo-level fallback, so the deploy keeps working. Migrating them to the staging environment is a separate hygiene task — atomic per secret: register the new value in the environment, redeploy to confirm, then unset the repo-level one. Don't piecemeal-rename alongside other work.
+> **Existing un-prefixed secrets stay repo-level for now.** A handful of secrets pre-date the environment-scoping switch (`POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `SESSION_SECRET`, `KEYCLOAK_ADMIN_CLIENT_SECRET`). (The object-store secrets were re-minted as `SEAWEEDFS_S3_SECRET_KEY` / `SEAWEEDFS_SSE_KEY` in the ADR-034 migration and are env-scoped from the start.) They still resolve via repo-level fallback, so the deploy keeps working. Migrating them to the staging environment is a separate hygiene task — atomic per secret: register the new value in the environment, redeploy to confirm, then unset the repo-level one. Don't piecemeal-rename alongside other work.
 
 ### Step 2 — register the staging Stripe webhook endpoint
 
@@ -282,10 +283,10 @@ Same as the local-dev step 2, but in test mode against your staging Stripe accou
 The deploy workflow does the rest:
 
 - Builds the Docker image with `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` baked in (Next.js inlines `NEXT_PUBLIC_*` at build time, so this CAN'T be done at runtime — see Dockerfile + `config/deploy-staging.yml` `builder.args`).
-- Writes the runtime secrets (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `MINIO_KMS_SECRET_KEY`) to `.kamal/secrets`.
-- Restarts the MinIO accessory with the KMS key configured.
+- Writes the runtime secrets (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `SEAWEEDFS_SSE_KEY`) to `.kamal/secrets`.
+- Restarts the SeaweedFS accessory with the SSE-S3 KEK passphrase configured.
 - Runs `db:migrate` + `db:seed` — same as before.
-- **New**: runs an idempotent bucket-creation step (`mc mb --ignore-existing`) so the worker has somewhere to upload receipts on the very first donation.
+- **New**: runs an idempotent bucket-creation + lifecycle step (the SeaweedFS init script via `aws s3api`, ADR-034) so the worker has somewhere to upload receipts on the very first donation.
 
 After deploy, smoke-test by:
 
@@ -298,13 +299,11 @@ After deploy, smoke-test by:
 ### Rotating staging credentials
 
 - **Stripe keys**: regenerate in the dashboard, update both `gh secret set …` values, redeploy.
-- **MINIO_KMS_SECRET_KEY**: generate a new value, update the secret, redeploy. **Existing receipts encrypted with the old key won't be readable** — staging data is non-load-bearing so this is acceptable; production rotation will need MinIO's `MINIO_KMS_AUTO_ENCRYPTION` config to keep both keys mounted.
-
-  The `Deploy to Staging` workflow validates that the resolved value (secret OR fallback) decodes to exactly 32 bytes; a mismatch fails the deploy with `MINIO_KMS_SECRET_KEY base64 portion decodes to N bytes, MinIO requires exactly 32`. Catches both a botched fallback edit and a malformed `gh secret set` value (issue #211).
+- **SEAWEEDFS_SSE_KEY**: generate a new value, update the secret, redeploy. **Existing receipts encrypted with the old KEK won't be readable** — staging data is non-load-bearing so this is acceptable; production rotation needs a re-encryption migration to keep old objects readable. SeaweedFS HKDF-derives the KEK, so there is no length constraint on the passphrase (see [ADR-034](../adrs/adr-034-seaweedfs-over-minio-for-self-hosted-object-storage.md)).
 
 ### Rotating an accessory env var without a full setup
 
-`kamal deploy` (the per-push staging flow) only rolls app containers — `web`, `api`, `worker`, `relay`. Accessories (`postgres`, `redis`, `minio`, `keycloak`) keep running with whatever env they were last booted with. So when you rotate an accessory secret (e.g. `MINIO_KMS_SECRET_KEY`, `KEYCLOAK_ADMIN_PASSWORD`) or bump an accessory image for a CVE patch, the per-push deploy will *not* pick it up.
+`kamal deploy` (the per-push staging flow) only rolls app containers — `web`, `api`, `worker`, `relay`. Accessories (`postgres`, `redis`, `seaweedfs`, `keycloak`) keep running with whatever env they were last booted with. So when you rotate an accessory secret (e.g. `SEAWEEDFS_SSE_KEY`, `KEYCLOAK_ADMIN_PASSWORD`) or bump an accessory image for a CVE patch, the per-push deploy will *not* pick it up.
 
 Use **`Reboot Staging Accessory`** (`.github/workflows/staging-accessory-reboot.yml`) — `Actions → Reboot Staging Accessory → Run workflow`, pick the accessory, type its name into the confirm field. The workflow reuses the same secrets bag as the deploy (single source of truth in `.github/actions/setup-kamal-secrets/action.yml`), then runs `kamal accessory reboot <name>`. This is the path that would have closed the 2026-04-29 incident in one click instead of an SSH session (issue #212).
 

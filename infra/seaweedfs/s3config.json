@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "SeaweedFS S3 identity config (ADR-034). Mounted into the dev/self-hosted",
+    "seaweedfs container via `-s3.config`. This file is the SINGLE source of",
+    "truth for who can read/write the S3 gateway and which bucket is public-read.",
+    "",
+    "Per ADR-023 (one bucket per visibility class): the `branding` bucket is",
+    "donor-public, every other bucket (receipts, campaigns, bulk-imports,",
+    "reports, and the future bank-statements) is private. Public-read is granted",
+    "by the `anonymous` identity scoped to `Read:branding` — NOT by a runtime",
+    "ACL call (there is no `mc anonymous set` on SeaweedFS). Anonymous reads on",
+    "any other bucket are denied because no anonymous identity covers them — an",
+    "accidental public bulk-imports leak (donor PII → GDPR incident) is",
+    "structurally impossible here.",
+    "",
+    "Credentials below are the LOCAL-DEV throwaway pair (must match",
+    "S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY in .env.example). Staging/prod-self-",
+    "hosted render their own copy of this file from a secret at deploy time —",
+    "see docs/runbooks/minio-to-seaweedfs-cutover.md."
+  ],
+  "identities": [
+    {
+      "name": "givernance",
+      "credentials": [
+        { "accessKey": "givernance", "secretKey": "givernance_dev" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    },
+    {
+      "name": "anonymous",
+      "actions": ["Read:branding"]
+    }
+  ]
+}

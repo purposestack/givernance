@@ -16,7 +16,7 @@ This shipped MVP gives super-admins a one-click "Rapport mensuel" button on `/ad
 1. Resolves the most recent fully-completed calendar month (default; an explicit `month` body param re-runs an older period).
 2. Freezes the full `SummaryServiceResult` payload into a `kpi_snapshot` JSONB column.
 3. Streams a PDFKit render into the private `reports` bucket.
-4. Returns a same-host URL the browser can download from (streamed through the API per issue #214 — no presigned URLs that leak the MinIO hostname into a SigV4 signature).
+4. Returns a same-host URL the browser can download from (streamed through the API per issue #214 — no presigned URLs that leak the object-store hostname into a SigV4 signature).
 
 Same-month re-clicks are idempotent (one PDF per month). The `kpi_snapshot` is the canonical record of what numbers the super-admin saw, decoupled from later schema/SQL drift.
 
@@ -153,4 +153,4 @@ Two non-manual paths feed into the same `requestMonthlyReport()` flow:
 
 - **DLQ candidate signal**: the dashboard's polling loop runs for up to ~2 min (60 × 2 s). If the row is still `pending` after that, BullMQ has likely failed three times and the job is in the `failed` set — check Loki logs filtered by `worker=platform_reports, dlq=true`.
 - **Re-running a failed month**: just re-POST. The partial unique index allows it; the existing `failed` row stays as a forensic record.
-- **Local dev**: the bucket is provisioned automatically by the MinIO init container (every `S3_*_BUCKET` in the env schema gets created on boot). If you renamed the env var, restart the `givernance-minio` container.
+- **Local dev**: the bucket is provisioned automatically by the SeaweedFS init container (every `S3_*_BUCKET` in the env schema gets created on boot). If you renamed the env var, restart the `givernance-seaweedfs` container.

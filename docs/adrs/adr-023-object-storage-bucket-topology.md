@@ -1,6 +1,6 @@
 ## ADR-023: Object Storage Bucket Topology — One Bucket per Visibility Class, Per-Tenant Key Prefix
 
-**Status**: Accepted (Epic #286, 2026-05-05) · **Amended 2026-05-07** to add the `bank-statements` private bucket — see ADR-028.
+**Status**: Accepted (Epic #286, 2026-05-05) · **Amended 2026-05-07** to add the `bank-statements` private bucket — see ADR-028. · **Amended 2026-06-02** (issue #462 / ADR-034): the self-hosted / dev / staging object store moved from MinIO to SeaweedFS. The **topology below is unchanged** — only the provisioning mechanism differs (see the provisioning note in Consequences).
 **Related**: ADR-013 (frontend type boundary, no Node-only deps in shared), ADR-017 (one logical DB per tool — applied analogously to buckets), ADR-028 (camt.053 ingestion — `bank-statements` bucket), `docs/24-branding-assets.md`, `docs/25-swiss-qr-bill.md`, `docs/06-security-compliance.md`
 
 ### Context
@@ -104,9 +104,10 @@ Distinct **lifecycle policy** is therefore a sufficient condition to fork a new 
 
 ### Consequences
 
+- **Provisioning mechanism (ADR-034 amendment).** On the self-hosted / dev / staging tiers the store is now **SeaweedFS** (was MinIO). There is no `mc`. Buckets + per-bucket lifecycle expiry are applied via the **S3 API** (`CreateBucket` + `PutBucketLifecycleConfiguration`, see [`infra/seaweedfs/init.sh`](../../infra/seaweedfs/init.sh)) — `weed shell` has no lifecycle-expiry command. Crucially, **public-read for `branding` is no longer a runtime ACL call** (`mc anonymous set download`); it is a static `anonymous` identity scoped to `Read:branding` in the SeaweedFS S3 config JSON ([`infra/seaweedfs/s3config.json`](../../infra/seaweedfs/s3config.json)), applied at gateway start. Every other bucket has no anonymous identity, so it denies anonymous reads **structurally** — the "branding public, everything else private" invariant holds by construction, with no init-container race and no copy-pasted-`mc anonymous set` foot-gun. Production (Scaleway) still provisions ACLs/lifecycle via its own bucket-policy + `aws s3api` path.
 - **Every new asset class first picks a visibility class** (public / private / archive). Reviewers reject co-mingling on PR review. The CLAUDE.md hard rule "🛑 One Bucket per Visibility Class (ADR-023)" mirrors the ADR-017 rule for logical DBs.
 - **`branding` bucket lifecycle requires nightly orphan-GC.** Soft-deleted `org_branding_assets` rows must have their S3 keys swept on a schedule (the worker job is owned by Phase 1).
-- **`next/image` `images.remotePatterns`** must include the Scaleway Object Storage hostname AND the dev MinIO hostname; both ship in the Phase 1 implementation.
+- **`next/image` `images.remotePatterns`** must include the Scaleway Object Storage hostname AND the dev SeaweedFS hostname (`localhost:8333` / `seaweedfs`, ADR-034); both ship in the Phase 1 implementation.
 - **Donor-facing pages disable Next image optimizer.** The variant served IS already at the right size; proxying through `/_next/image` for an anonymous donor wastes proxy bandwidth and breaks `immutable` caching at the edge.
 
 ### Revisit criteria

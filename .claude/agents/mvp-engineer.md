@@ -23,7 +23,7 @@ You are the full-stack implementation engineer for Givernance Phase 1 MVP. You w
 | Background jobs | BullMQ 5 (Redis) |
 | Database | PostgreSQL 17, multi-tenant via RLS |
 | Auth | Keycloak 24 — JWT Bearer tokens validated in Fastify preHandler hooks |
-| Storage | Scaleway Object Storage EU (SaaS) / MinIO (self-hosted) — S3-compatible |
+| Storage | Scaleway Object Storage EU (SaaS) / SeaweedFS (self-hosted) — S3-compatible |
 | Email | Resend (primary), Brevo (bulk) |
 | Payments | Stripe Connect |
 | Monorepo | pnpm workspaces — packages: `shared`, `api`, `worker`, `migrate` |
@@ -147,7 +147,7 @@ export function createDonationReceiptWorker(connection: Redis) {
     'donation-receipt',
     async (job: Job<DonationReceiptJobPayload>) => {
       // 1. Generate PDF
-      // 2. Upload to R2/MinIO
+      // 2. Upload to Scaleway Object Storage / SeaweedFS
       // 3. Send email via Resend
       // 4. Update donation record with receipt_url
     },

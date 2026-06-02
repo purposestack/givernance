@@ -27,8 +27,8 @@ const nextConfig: NextConfig = {
    *   - `s3.fr-par.scw.cloud`    Scaleway Paris region direct S3 endpoint
    *                              (production + staging — both buckets sit
    *                              under this exact subdomain)
-   *   - `localhost:9000`         dev MinIO via host networking
-   *   - `minio`                  dev MinIO inside docker-compose network
+   *   - `localhost:8333`         dev SeaweedFS via host networking (ADR-034)
+   *   - `seaweedfs`              dev SeaweedFS inside docker-compose network
    *
    * The previous `**.scw.cloud` wildcard was rejected in PR #287 review
    * (major 5): Scaleway is multi-tenant, so a wildcard match would let
@@ -49,8 +49,8 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "s3.fr-par.scw.cloud", pathname: "/**" },
       // Future: { protocol: "https", hostname: "cdn.givernance.eu", pathname: "/**" },
-      { protocol: "http", hostname: "localhost", port: "9000", pathname: "/**" },
-      { protocol: "http", hostname: "minio", pathname: "/**" },
+      { protocol: "http", hostname: "localhost", port: "8333", pathname: "/**" },
+      { protocol: "http", hostname: "seaweedfs", pathname: "/**" },
     ],
   },
 };

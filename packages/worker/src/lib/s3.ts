@@ -1,4 +1,4 @@
-/** S3/MinIO client for uploading generated files (supports streaming) */
+/** S3 client for uploading generated files (streaming; SeaweedFS self-hosted / Scaleway prod) */
 
 import type { Readable } from "node:stream";
 import { S3Client } from "@aws-sdk/client-s3";
@@ -36,7 +36,7 @@ export async function streamPdfToS3(
       ContentType: "application/pdf",
       ServerSideEncryption: "AES256",
       // Belt-and-suspenders: bucket defaults are private on both Scaleway
-      // Object Storage and our MinIO setup, but an object-level ACL guarantees
+      // Object Storage and our SeaweedFS setup, but an object-level ACL guarantees
       // that a future bucket-policy mistake (e.g. public-read ACL at bucket
       // scope) cannot accidentally expose tax receipts or campaign letters.
       ACL: "private",

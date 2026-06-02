@@ -16,7 +16,7 @@ Before writing Phase 1 code, verify:
 - TypeScript monorepo scaffolding (pnpm workspaces, tsconfig, Drizzle schema baseline)
 - CI/CD + infra baseline
 - **Infra (SaaS)**: Scaleway Managed PostgreSQL EU, Scaleway Managed Redis EU, Scaleway Object Storage EU — all under single Scaleway GDPR DPA (~67€/month). Observability via Scaleway Cockpit (Grafana + Loki + Mimir + Tempo, free for Scaleway-native data). See [ADR-009](./15-infra-adr.md#adr-009--scaleway-as-primary-saas-managed-cloud-provider).
-- **Infra (self-hosted)**: Docker Compose (Postgres 17, Redis 8, MinIO, Keycloak, Caddy)
+- **Infra (self-hosted)**: Docker Compose (Postgres 17, Redis 8, SeaweedFS, Keycloak, Caddy)
 - **Event bus**: BullMQ + Redis via transactional outbox — NATS deferred to Phase 4 (see ADR-005)
 
 ## Phase 1 (8 weeks): Fundraising Core — Donor Management MVP
@@ -49,7 +49,7 @@ The core transaction and the primary fundraising channel. Postal campaigns repre
 - **Bank Accounts settings** (Epic [#318](https://github.com/purposestack/givernance/issues/318)): org-scoped CRUD (IBAN / QR-IBAN, holder, bank); a campaign optionally links to one bank account, presence enables Swiss QR-bill mode.
 - **camt.053 import + reconciliation** (Epic [#318](https://github.com/purposestack/givernance/issues/318)): operator uploads daily ISO 20022 statement; worker matches QRR/SCOR back to campaign + recipient and creates the donation row; unmatched credits surface in a manual queue. See [ADR-028](./adrs/adr-028-camt053-ingestion.md).
 
-**Done when**: A donation can be recorded, triggers a BullMQ job, generates a PDF receipt stored in R2/MinIO, and the constituent's donation history is updated. A campaign can generate batch PDFs with individual QR codes for all selected constituents. A door-drop campaign can target a zone and generate generic letters. A Swiss campaign linked to a bank account generates per-letter QR-bill PDFs and reconciles incoming camt.053 credits to donations.
+**Done when**: A donation can be recorded, triggers a BullMQ job, generates a PDF receipt stored in Scaleway Object Storage / SeaweedFS, and the constituent's donation history is updated. A campaign can generate batch PDFs with individual QR codes for all selected constituents. A door-drop campaign can target a zone and generate generic letters. A Swiss campaign linked to a bank account generates per-letter QR-bill PDFs and reconciles incoming camt.053 credits to donations.
 
 ### Sprint 3 (Weeks 4–6): Campaigns + Donor Lifecycle + Online Donations
 Grouping mechanism, reporting foundation, and the second fundraising channel (~20% of donations).

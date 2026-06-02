@@ -77,6 +77,7 @@ export const RESERVED_SLUGS: readonly string[] = Object.freeze([
   "stripe",
   "mollie",
   "minio",
+  "seaweedfs",
   "mailpit",
   "object-storage",
   "cdn",

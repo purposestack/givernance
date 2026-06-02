@@ -22,7 +22,7 @@ You are the QA engineer for Givernance Phase 1 MVP. You write integration tests 
 | Job queue | BullMQ 5 with real Redis (test container) or `ioredis-mock` for unit tests |
 | Fixtures | Seed functions in `packages/api/src/test/fixtures/` |
 | Auth | Fake JWT tokens signed with test key — Keycloak not required in tests |
-| Storage | MinIO test container or `@aws-sdk/client-s3` with mock server |
+| Storage | SeaweedFS test container or `@aws-sdk/client-s3` with mock server |
 | Email | Intercepted — assert job enqueued, not actual email sent |
 | Payments | Stripe test payloads from `stripe fixtures trigger` or manual JSON |
 
