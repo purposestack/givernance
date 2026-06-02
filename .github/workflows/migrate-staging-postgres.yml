@@ -143,7 +143,7 @@ jobs:
 
       # Pinned to a commit SHA — this action receives `SSH_PRIVATE_KEY`
       # and the surrounding job handles other secrets (`POSTGRES_PASSWORD`,
-      # `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD`), so a third-party action
+      # `REDIS_PASSWORD`, `SEAWEEDFS_S3_SECRET_KEY`), so a third-party action
       # gets a SHA pin instead of a moving tag. SHA below is
       # `webfactory/ssh-agent@v0.10.0` at 2026-05-10; bump intentionally
       # when upgrading.
@@ -157,14 +157,14 @@ jobs:
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
-          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          SEAWEEDFS_S3_SECRET_KEY: ${{ secrets.SEAWEEDFS_S3_SECRET_KEY }}
           KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
           KEYCLOAK_ADMIN_CLIENT_SECRET: ${{ secrets.KEYCLOAK_ADMIN_CLIENT_SECRET }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-          MINIO_KMS_SECRET_KEY: ${{ secrets.MINIO_KMS_SECRET_KEY }}
+          SEAWEEDFS_SSE_KEY: ${{ secrets.SEAWEEDFS_SSE_KEY }}
           IMPERSONATION_JWT_SECRET: ${{ secrets.IMPERSONATION_JWT_SECRET }}
           KEYCLOAK_DB_PASSWORD: ${{ secrets.KEYCLOAK_DB_PASSWORD }}
           GIVERNANCE_APP_PASSWORD: ${{ secrets.GIVERNANCE_APP_PASSWORD }}

@@ -420,11 +420,18 @@ jobs:
           S3_BULK_IMPORT_BUCKET: ${{ secrets.S3_BULK_IMPORT_BUCKET || 'bulk-imports' }}
           S3_REPORTS_BUCKET: ${{ secrets.S3_REPORTS_BUCKET || 'reports' }}
         run: |
-          # The secret reaches the inner container via docker `-e`, not the
-          # command line, so it doesn't show up in `ps aux`. `--entrypoint sh`
-          # overrides aws-cli's default `aws` entrypoint so we can run the
-          # init script piped over stdin (the script lives in the repo, not on
-          # the VPS, so we cat it into the remote `docker run -i`).
+          # `--entrypoint sh` overrides aws-cli's default `aws` entrypoint so we
+          # can run the init script piped over stdin (the script lives in the
+          # repo, not on the VPS, so `kamal server exec … < init.sh` forwards it
+          # over SSH into the remote `docker run -i … -s`).
+          # NOTE: the secret is interpolated into `REMOTE_CMD` and therefore
+          # lands on the VPS `docker run -e S3_SECRET_ACCESS_KEY='…'` argv —
+          # briefly visible via `ps aux`/`/proc` to a local user for the
+          # seconds the init container runs. Accepted: the staging VPS is
+          # single-tenant + operator-controlled, the window is seconds, and GH
+          # masks the value in the Actions log (it travels over SSH, not the
+          # runner log). Harden to an `--env-file` (umask 077, rm-after) if the
+          # VPS ever becomes multi-tenant.
           REMOTE_CMD="docker run --rm -i --network kamal \
             -e S3_ENDPOINT='http://givernance-seaweedfs:8333' \
             -e S3_ACCESS_KEY_ID='admin' \

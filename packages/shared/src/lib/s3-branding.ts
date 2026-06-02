@@ -27,9 +27,9 @@
  *   - We do NOT set `ACL: private` on these uploads (would override the
  *     bucket-level policy and 403 the donor).
  *   - We do NOT set SSE — encryption-at-rest is enabled at the bucket
- *     level (Scaleway default + SeaweedFS/MinIO infra); a per-object
- *     override would force a key dance for a value that is, by design,
- *     public.
+ *     level (Scaleway default + SeaweedFS via the `WEED_S3_SSE_KEY` KEK,
+ *     ADR-034); a per-object override would force a key dance for a value
+ *     that is, by design, public.
  */
 
 import type { Readable } from "node:stream";
@@ -138,7 +138,7 @@ export async function deleteBrandingPrefix(
 
 /**
  * Compose the public URL of a branding object. Defaults to
- * `${endpoint}/${brandingBucket}/${key}` so local dev (MinIO/SeaweedFS)
+ * `${endpoint}/${brandingBucket}/${key}` so local dev (SeaweedFS, ADR-034)
  * works without configuration. Production overrides via `publicUrlBase`
  * (sourced from `KEYCLOAK_LOGO_PUBLIC_URL_BASE`) to point at the CDN.
  */
