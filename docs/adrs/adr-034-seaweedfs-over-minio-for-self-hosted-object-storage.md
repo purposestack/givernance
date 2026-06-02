@@ -21,7 +21,7 @@ For a GDPR-native product we ship to NPOs who **self-host**, depending on an aba
 
 The application talks pure S3 via `@aws-sdk/client-s3` v3 with `forcePathStyle: true` (`packages/api/src/lib/s3.ts`, `packages/worker/src/lib/s3.ts`). There are no `minio` SDK imports. The migration is therefore **infra + config + provisioning + docs only**; the S3 client code is untouched and the `ServerSideEncryption: "AES256"` header path stays identical to the Scaleway prod path.
 
-Pinned version: **`chrislusf/seaweedfs:4.31`** (latest stable as of 2026-06-02). Single-node run is `weed server -s3`, which brings up master (9333), volume (8080), filer (8888) and the **S3 gateway on 8333** (MinIO listened on 9000).
+Pinned version: **`chrislusf/seaweedfs:4.31`** (latest stable as of 2026-06-02). Single-node run is `weed server -s3` (plus `-s3.config` for identities/ACLs, `-ip.bind=0.0.0.0`, and an `aws s3api` init for buckets+lifecycle — see [`docker-compose.yml`](../../docker-compose.yml) / [`infra/seaweedfs/`](../../infra/seaweedfs/)), which brings up master (9333), volume (8080), filer (8888) and the **S3 gateway on 8333** (MinIO listened on 9000).
 
 ### Alternatives matrix
 

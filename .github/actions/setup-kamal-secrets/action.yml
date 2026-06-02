@@ -10,9 +10,10 @@ description: >
   MinIO's old 32-byte-base64 `MINIO_KMS_SECRET_KEY`, whose bad-length fallback
   caused the 2026-04-29 staging incident, issue #211).
 
-  Single source of truth for the secrets bag: deploy-staging.yml and
-  staging-accessory-reboot.yml both `uses: ./.github/actions/setup-kamal-secrets`,
-  so a future change to the bag (new var, rotation policy) lands in one place.
+  Single source of truth for the secrets bag: deploy-staging.yml,
+  staging-accessory-reboot.yml, and migrate-staging-postgres.yml all
+  `uses: ./.github/actions/setup-kamal-secrets`, so a future change to the bag
+  (new var, rotation policy) lands in one place.
 
 runs:
   using: composite
