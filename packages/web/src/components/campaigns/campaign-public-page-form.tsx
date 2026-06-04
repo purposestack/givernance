@@ -88,10 +88,10 @@ type ThemeColorLabelKey = "primary" | "secondary" | "tertiary" | "emerald" | "sl
 const DEFAULT_THEME_COLOR = CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES[0];
 
 const THEME_COLORS: Array<{ value: ThemeColorValue; labelKey: ThemeColorLabelKey }> = [
-  { value: "#096447", labelKey: "primary" },
-  { value: "#006C48", labelKey: "secondary" },
+  { value: "#08675b", labelKey: "primary" },
+  { value: "#0a6b5e", labelKey: "secondary" },
   { value: "#864700", labelKey: "tertiary" },
-  { value: "#005138", labelKey: "emerald" },
+  { value: "#00514a", labelKey: "emerald" },
   { value: "#3F4943", labelKey: "slate" },
 ];
 

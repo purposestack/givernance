@@ -55,8 +55,8 @@ interface InitialLetterAvatarProps {
  * the brand-colour overrides scope the cascade tightly.
  */
 const PALETTE: Array<{ bg: string; ring: string }> = [
-  // 1. Brand green (Material You primary fixed) — `#096447` AA ratio 6.6
-  { bg: "var(--color-primary, #096447)", ring: "var(--color-primary-container, #b3f1cf)" },
+  // 1. Brand teal (Material You primary fixed) — `#08675b` AA ratio 6.6
+  { bg: "var(--color-primary, #08675b)", ring: "var(--color-primary-container, #b3f1cf)" },
   // 2. Indigo
   { bg: "var(--color-indigo, #5b4fd4)", ring: "var(--color-indigo-light, #ede9fe)" },
   // 3. Sky

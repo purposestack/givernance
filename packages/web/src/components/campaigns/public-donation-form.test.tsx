@@ -31,7 +31,7 @@ describe("PublicDonationForm", () => {
     render(
       <PublicDonationForm
         campaignId="11111111-1111-4111-8111-111111111111"
-        colorPrimary="#096447"
+        colorPrimary="#08675b"
         locale="en"
         goalAmountCents={50000}
         publishableKey={null}
@@ -58,7 +58,7 @@ describe("PublicDonationForm", () => {
     render(
       <PublicDonationForm
         campaignId="11111111-1111-4111-8111-111111111111"
-        colorPrimary="#096447"
+        colorPrimary="#08675b"
         locale="en"
         goalAmountCents={50000}
         publishableKey="pk_test_dummy"
@@ -106,7 +106,7 @@ describe("PublicDonationForm", () => {
     render(
       <PublicDonationForm
         campaignId="11111111-1111-4111-8111-111111111111"
-        colorPrimary="#096447"
+        colorPrimary="#08675b"
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"
@@ -145,7 +145,7 @@ describe("PublicDonationForm", () => {
     render(
       <PublicDonationForm
         campaignId="11111111-1111-4111-8111-111111111111"
-        colorPrimary="#096447"
+        colorPrimary="#08675b"
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"
@@ -177,7 +177,7 @@ describe("PublicDonationForm", () => {
     render(
       <PublicDonationForm
         campaignId="11111111-1111-4111-8111-111111111111"
-        colorPrimary="#096447"
+        colorPrimary="#08675b"
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_live_real_key"
@@ -207,7 +207,7 @@ describe("PublicDonationForm", () => {
     render(
       <PublicDonationForm
         campaignId="11111111-1111-4111-8111-111111111111"
-        colorPrimary="#096447"
+        colorPrimary="#08675b"
         locale="en"
         goalAmountCents={null}
         publishableKey={null}
@@ -240,7 +240,7 @@ describe("PublicDonationForm", () => {
     render(
       <PublicDonationForm
         campaignId="11111111-1111-4111-8111-111111111111"
-        colorPrimary="#096447"
+        colorPrimary="#08675b"
         locale="en"
         goalAmountCents={null}
         publishableKey={null}
@@ -280,7 +280,7 @@ describe("PublicDonationForm", () => {
     render(
       <PublicDonationForm
         campaignId="11111111-1111-4111-8111-111111111111"
-        colorPrimary="#096447"
+        colorPrimary="#08675b"
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"
@@ -326,7 +326,7 @@ describe("PublicDonationForm", () => {
     render(
       <PublicDonationForm
         campaignId="11111111-1111-4111-8111-111111111111"
-        colorPrimary="#096447"
+        colorPrimary="#08675b"
         locale="en"
         goalAmountCents={null}
         publishableKey="pk_test_dummy"

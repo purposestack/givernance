@@ -50,7 +50,7 @@ interface TopbarProps {
 }
 
 const avatarTriggerClasses =
-  "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary outline-none transition-shadow duration-normal ease-out hover:shadow-[0_0_0_4px_rgba(9,100,71,0.10)] data-[state=open]:shadow-[0_0_0_4px_rgba(9,100,71,0.15)] focus-visible:shadow-ring";
+  "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary outline-none transition-shadow duration-normal ease-out hover:shadow-[0_0_0_4px_rgba(8,103,91,0.10)] data-[state=open]:shadow-[0_0_0_4px_rgba(8,103,91,0.15)] focus-visible:shadow-ring";
 
 export function Topbar({
   title,

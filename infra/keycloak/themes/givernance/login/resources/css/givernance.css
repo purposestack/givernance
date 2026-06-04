@@ -1,6 +1,7 @@
 /*
  * Givernance — Keycloak Login Theme
- * Design tokens mirror packages/web/src/app/globals.css (Material You warm palette).
+ * Design tokens mirror packages/web/src/app/globals.css (2026 rebrand: teal brand
+ * + ember coral accent, Sora/Manrope fonts, three-cube logo).
  * Per-org overrides are injected via <style> in template.ftl from Organization attributes.
  */
 
@@ -13,11 +14,11 @@
  * fetched only when the page contains characters outside the latin range.
  */
 
-/* Inter Variable — latin */
+/* Manrope Variable — latin (body / UI, replaces Inter in the 2026 rebrand) */
 @font-face {
-  font-family: 'Inter';
-  src: url('../fonts/inter-latin.woff2') format('woff2');
-  font-weight: 400 600;
+  font-family: 'Manrope';
+  src: url('../fonts/manrope-latin.woff2') format('woff2');
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
@@ -25,11 +26,11 @@
                  U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* Inter Variable — latin-ext */
+/* Manrope Variable — latin-ext */
 @font-face {
-  font-family: 'Inter';
-  src: url('../fonts/inter-latin-ext.woff2') format('woff2');
-  font-weight: 400 600;
+  font-family: 'Manrope';
+  src: url('../fonts/manrope-latin-ext.woff2') format('woff2');
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
@@ -37,11 +38,11 @@
                  U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
-/* Newsreader Regular — latin */
+/* Sora Variable — latin (display / headings + brand wordmark, replaces Newsreader) */
 @font-face {
-  font-family: 'Newsreader';
-  src: url('../fonts/newsreader-400-latin.woff2') format('woff2');
-  font-weight: 400;
+  font-family: 'Sora';
+  src: url('../fonts/sora-latin.woff2') format('woff2');
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
@@ -49,35 +50,11 @@
                  U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* Newsreader Regular — latin-ext */
+/* Sora Variable — latin-ext */
 @font-face {
-  font-family: 'Newsreader';
-  src: url('../fonts/newsreader-400-latin-ext.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-                 U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
-                 U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-
-/* Newsreader SemiBold — latin (kept for the brand wordmark in .gv-brand-name) */
-@font-face {
-  font-family: 'Newsreader';
-  src: url('../fonts/newsreader-600-latin.woff2') format('woff2');
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-                 U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
-                 U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-/* Newsreader SemiBold — latin-ext */
-@font-face {
-  font-family: 'Newsreader';
-  src: url('../fonts/newsreader-600-latin-ext.woff2') format('woff2');
-  font-weight: 600;
+  font-family: 'Sora';
+  src: url('../fonts/sora-latin-ext.woff2') format('woff2');
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
@@ -91,9 +68,9 @@
 /* ── Design tokens ── */
 :root {
   /* Primary — overridable per org via template.ftl */
-  --gv-primary:       #096447;
-  --gv-primary-hover: #005138;
-  --gv-primary-ring:  rgba(9, 100, 71, 0.12);
+  --gv-primary:       #08675b;
+  --gv-primary-hover: #00514a;
+  --gv-primary-ring:  rgba(8, 103, 91, 0.12);
 
   /* Surface */
   --gv-bg:            #fcfbf9;
@@ -135,7 +112,7 @@
 html { font-size: 16px; }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: 'Manrope', system-ui, -apple-system, sans-serif;
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--gv-text);
@@ -181,7 +158,7 @@ body {
   background: var(--gv-surface);
   border-radius: var(--gv-radius-card);
   padding: 40px;
-  box-shadow: 0 0 0 1px rgba(190, 201, 193, 0.15), 0 4px 16px rgba(9, 100, 71, 0.08);
+  box-shadow: 0 0 0 1px rgba(190, 201, 193, 0.15), 0 4px 16px rgba(8, 103, 91, 0.08);
 }
 
 /* ── Header: logo + brand ── */
@@ -206,7 +183,7 @@ body {
 }
 
 .gv-brand-name {
-  font-family: 'Newsreader', Georgia, serif;
+  font-family: 'Sora', system-ui, -apple-system, sans-serif;
   font-size: 1.75rem;
   font-weight: 600;
   color: var(--gv-text);
@@ -231,9 +208,9 @@ body {
    packages/web/src/app/(auth)/login/page.tsx). Tailwind v4 preflight
    resets h1 font-weight to `inherit`, so the SPA title lands at the
    body's regular (400) weight — we mirror that here with the bundled
-   Newsreader-400 face. */
+   Sora-400 face. */
 .gv-auth-title {
-  font-family: 'Newsreader', Georgia, serif;
+  font-family: 'Sora', system-ui, -apple-system, sans-serif;
   font-size: 1.25rem;
   font-weight: 400;
   color: var(--gv-text);
@@ -475,12 +452,12 @@ body {
 .gv-btn--primary {
   background: var(--gv-primary);
   color: #ffffff;
-  box-shadow: 0 1px 3px rgba(9, 100, 71, 0.15), 0 1px 2px rgba(9, 100, 71, 0.10);
+  box-shadow: 0 1px 3px rgba(8, 103, 91, 0.15), 0 1px 2px rgba(8, 103, 91, 0.10);
 }
 
 .gv-btn--primary:hover {
   background: var(--gv-primary-hover);
-  box-shadow: 0 4px 16px rgba(9, 100, 71, 0.20);
+  box-shadow: 0 4px 16px rgba(8, 103, 91, 0.20);
 }
 
 .gv-btn--secondary {
@@ -532,7 +509,7 @@ body {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: rgba(9, 100, 71, 0.08);
+  background: rgba(8, 103, 91, 0.08);
   margin: 0 auto 20px;
   color: var(--gv-primary);
 }

@@ -245,10 +245,10 @@ export const CampaignCreateSchema = Type.Object({
 export const CampaignUpdateSchema = Type.Partial(CampaignCreateSchema);
 
 export const CAMPAIGN_PUBLIC_PAGE_COLOR_VALUES = [
-  "#096447",
-  "#006C48",
+  "#08675b",
+  "#0a6b5e",
   "#864700",
-  "#005138",
+  "#00514a",
   "#3F4943",
 ] as const;
 

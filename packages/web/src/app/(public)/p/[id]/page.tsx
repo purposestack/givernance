@@ -21,7 +21,7 @@ interface PublicCampaignPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-const DEFAULT_THEME_COLOR = "#096447";
+const DEFAULT_THEME_COLOR = "#08675b";
 
 /**
  * Postal QR token shape: nanoid base64url, 10–32 chars (matches the
@@ -236,7 +236,7 @@ function renderHardcodedLayout(args: {
     progressPercent,
   } = args;
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(9,100,71,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(8,103,91,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-8 sm:py-6 lg:px-10 lg:py-10">
         <div className="flex justify-end">
           <Badge variant="info">

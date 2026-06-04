@@ -63,7 +63,7 @@
   margin-top: 6px;
 }
 
-.badge.risk-badge--ok    { color: var(--color-primary);  background: var(--color-primary-50, rgba(9,100,71,0.08)); }
+.badge.risk-badge--ok    { color: var(--color-primary);  background: var(--color-primary-50, rgba(8,103,91,0.08)); }
 .badge.risk-badge--watch { color: var(--color-tertiary); background: rgba(134, 71, 0, 0.1); }
 .badge.risk-badge--alert { color: var(--color-error);    background: var(--color-error-container); }
 
