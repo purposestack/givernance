@@ -79,8 +79,8 @@
 
   <!-- Stats -->
   <div class="stats">
-    <div class="stat"><div class="stat-num">92</div><div class="stat-label">Écrans</div></div>
-    <div class="stat"><div class="stat-num">17</div><div class="stat-label">Modules</div></div>
+    <div class="stat"><div class="stat-num">97</div><div class="stat-label">Écrans</div></div>
+    <div class="stat"><div class="stat-num">18</div><div class="stat-label">Modules</div></div>
     <div class="stat"><div class="stat-num">MUST+SHOULD</div><div class="stat-label">Priorités couvertes</div></div>
     <div class="stat"><div class="stat-num">WCAG 2.1</div><div class="stat-label">AA conforme</div></div>
   </div>
@@ -189,6 +189,24 @@
       <a href="campaigns/door-drop.html" class="card"><div class="card-top"><span class="card-id">CAMP-006</span><span class="card-should">SHOULD</span></div><div class="card-title">Campagne door-drop</div><div class="card-desc">Ciblage zone géographique, lettre générique, suivi ROI, capture nouveaux constituants.</div><div class="card-arrow">Voir →</div></a>
       <a href="campaigns/qr-tracking.html" class="card"><div class="card-top"><span class="card-id">CAMP-007</span><span class="card-must">MUST</span></div><div class="card-title">Suivi QR codes &amp; paiements</div><div class="card-desc">Tableau de bord matching QR/paiement, statuts, ROI campagne.</div><div class="card-arrow">Voir →</div></a>
       <a href="campaigns/public-page-editor.html" class="card"><div class="card-top"><span class="card-id">CAMP-008</span><span class="card-should">SHOULD</span></div><div class="card-title">Page publique de don</div><div class="card-desc">Page partageable par campagne, formulaire Stripe embed, config widget.</div><div class="card-arrow">Voir →</div></a>
+    </div>
+  </div>
+
+  <!-- ── SWISS QR-BILL (Epic #318) ── -->
+  <div class="module">
+    <div class="module-header">
+      <span class="module-emoji"><span class="material-symbols-outlined" style="font-size:22px;color:var(--color-primary);">qr_code_2</span></span>
+      <h2 class="module-title">Swiss QR-bill (Suisse)</h2>
+      <span class="module-count">7 écrans · Epic #318</span>
+    </div>
+    <div class="screens">
+      <a href="settings/bank-accounts-list.html" class="card"><div class="card-top"><span class="card-id">SWISS-001</span><span class="card-must">MUST</span></div><div class="card-title">Comptes bancaires — Liste</div><div class="card-desc">Comptes opérationnels CH (QR-IBAN / IBAN regular), holder, devise, archive.</div><div class="card-arrow">Voir →</div></a>
+      <a href="settings/bank-accounts-form.html" class="card"><div class="card-top"><span class="card-id">SWISS-002</span><span class="card-must">MUST</span></div><div class="card-title">Compte bancaire — Création / édition</div><div class="card-desc">IBAN + adresse holder structurée (IG QR-bill v2.4), dérivation auto QRR/SCOR.</div><div class="card-arrow">Voir →</div></a>
+      <a href="settings/bank-account-detail.html" class="card"><div class="card-top"><span class="card-id">SWISS-003</span><span class="card-must">MUST</span></div><div class="card-title">Compte bancaire — Détail &amp; camt.053</div><div class="card-desc">Upload camt.053, table relevés, carte santé réconciliation 90 j, file unreconciled.</div><div class="card-arrow">Voir →</div></a>
+      <a href="settings/bank-statement-detail.html" class="card"><div class="card-top"><span class="card-id">SWISS-004</span><span class="card-must">MUST</span></div><div class="card-title">Relevé camt.053 — Détail</div><div class="card-desc">Méta MsgId, KPIs, table des entrées créditrices, variantes échec XSD / IBAN étranger.</div><div class="card-arrow">Voir →</div></a>
+      <a href="settings/camt-unreconciled-queue.html" class="card"><div class="card-top"><span class="card-id">SWISS-005</span><span class="card-must">MUST</span></div><div class="card-title">File des crédits non rapprochés</div><div class="card-desc">Filtres + chips raison, drawer de résolution (link / create constituent / write-off), bulk.</div><div class="card-arrow">Voir →</div></a>
+      <a href="settings/camt053-upload-flow.html" class="card"><div class="card-top"><span class="card-id">SWISS-006</span><span class="card-must">MUST</span></div><div class="card-title">Flux upload camt.053 — Micro-états</div><div class="card-desc">5 étapes idle → dragging → uploading → processing → result (4 variantes terminales).</div><div class="card-arrow">Voir →</div></a>
+      <a href="campaigns/postal/campaign-tracking-swiss-rail.html" class="card"><div class="card-top"><span class="card-id">SWISS-007</span><span class="card-must">MUST</span></div><div class="card-title">Suivi campagne — Rail suisse</div><div class="card-desc">Entonnoir printed → scanned → paid, 3 variantes (Mixed, Pure-Swiss, Door-drop).</div><div class="card-arrow">Voir →</div></a>
     </div>
   </div>
 

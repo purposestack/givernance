@@ -90,6 +90,28 @@ Reopen this ADR when:
 - A future tenant operates a non-Swiss EU bank (SEPA-only). The parser interface accepts SEPA-shaped camt.053 already; the reconciliation logic is reference-keyed and bank-agnostic. The pretext to revisit is operator UX (multi-bank-per-campaign, FX handling), not the ingestion layer.
 - **Bank-by-bank donor-data variance reaches the long tail.** The reconciler extracts donor name + postal address from `RltdPties.Dbtr.PstlAdr` (structured) with a fallback heuristic on `AdrLine` (free-form) per `docs/25-swiss-qr-bill.md` §5.5. Production data will expose per-bank quirks — PostFinance vs UBS vs Raiffeisen address ordering, compound surname splits, free-form `AdrLine` rendering. Once the deterministic parser hits its tail, evolve to an LLM normalisation layer (Scaleway Generative APIs, EU residency) per `docs/25` §5.6. That's a separate ADR (`adr-029-ai-camt053-normalisation.md`, TBD) and a separate epic; this ADR's parser + validator + idempotency are unchanged. The principle is **deterministic-first, AI-enrichment-only-on-low-confidence** — never silently rewrite a deterministic-extracted field with an LLM-normalised one.
 
+### Implementation notes (PR #5 — 2026-05-12)
+
+The original Decision section above is preserved verbatim; this subsection records the implementation choices PR #5 actually made where the original Decision was either silent or non-prescriptive. Reading order: Context → Decision → Consequences → Rejected alternatives → Revisit criteria → *these notes*.
+
+- **Reversal backlink column** — the original Decision wording referenced `donations.parent_id` for the reversal linkage. PR #5 instead introduces a dedicated nullable FK column `donations.reverses_donation_id` (FK → `donations.id`, `ON DELETE SET NULL`) for the 1:1 reversal backlink. Rationale: the `parent_id` pattern is already in use on `campaigns` as a recursive-tree shape (parent → child → grandchild); a refund is a flat 1:1 backlink, not a tree. A dedicated column keeps the semantics explicit and lets the operator's audit query (`SELECT … WHERE reverses_donation_id = $original.id`) read cleanly without overloading the recursive-tree convention. The reversal row carries `amount_cents = -original.amount_cents`, `status='refunded'`, and the same `swiss_qr_reference_id` as the original. The original row is never mutated. Documented in `docs/25-swiss-qr-bill.md` §5.2.
+- **Per-TxDtls granularity** — `camt_credit_entries` writes one row per `NtryDtls.TxDtls`, not per `Ntry`. Some banks batch multiple TxDtls under a single Ntry; per-TxDtls granularity preserves the donation-level audit trail. Documented in §5.4 step 4.a.
+- **Partial-match handling** — match-by-amount is NEVER a reason to leave a credit unreconciled. When the printed expected amount is non-zero and the credited amount differs, the donation is STILL booked AND a `camt_unreconciled_entries(reason='partial_match', status='resolved')` row is written for the same credit entry so the operator surfaces the discrepancy in the queue. This is the only case where one credit entry creates both a donation and an unreconciled row. Documented in §5.4 step 4.d.
+- **Rejected-XML storage** — XSD failures, unsupported schema versions, and foreign-IBAN file-level rejections all persist the raw XML to `{org_id}/camt053/rejected/{yyyy}/{mm}/{uuid}.xml` (same `bank-statements` bucket, same 10-year lifecycle) so the operator can audit *why* a file was rejected. The `camt_statements.status='failed'` row carries the rejection reason in `error`; structured logs at WARN/ERROR carry the parse details. Documented in `docs/25` §7.
+
+These notes do NOT amend the Decision — they pin the concrete shape PR #5 ships where the original wording was a sketch.
+
+### Parser library — fast-xml-parser (PR #5)
+
+PR #5 ships `fast-xml-parser` as the primary parser instead of `libxmljs2` mentioned in the original Decision. Rationale:
+
+- The §5.5 enrichment matrix needs deterministic access to `RltdPties.Dbtr.{Nm, PstlAdr.{StrtNm, BldgNb, PstCd, TwnNm, Ctry}, PstlAdr.AdrLine[]}` as bare data structures. `fast-xml-parser` exposes them directly; an iso20022.js-style wrapper would mediate through a typed surface that adds latency to per-field access.
+- libxmljs2 carries a native libxml2 binding. fast-xml-parser is pure JS; one fewer build-environment concern (matters for the `pnpm test` matrix and for future Bun/Deno experimentation).
+- **XXE / billion-laughs hardening:** fast-xml-parser disables DTD/entity resolution by default — the threat model that motivated libxmljs2's parse-flag tuning is mitigated by parser choice. If we ever swap back, the original Decision's hardening flags still apply.
+- The parser interface in `packages/worker/src/services/camt053-parser.ts` exposes a swap-friendly surface: parser function + typed output. iso20022.js or libxmljs2 can replace fast-xml-parser as a single-file change.
+
+XSD validation against the `camt.053.001.{04,08}.xsd` schemas is intentionally deferred — the parser's structural validation (namespace + root tag + required-field presence) already catches malformed XML, missing-namespace, and missing-required-field defects. Adding XSD on top is a future hardening if production sees XSD-passing-but-semantically-broken files.
+
 ### References
 
 - [Swiss Implementation Guidelines for Cash Management (camt) — SPS 2026 v2.3](https://www.six-group.com/dam/download/banking-services/standardization/sps/ig-cash-management-sps-2026-en.pdf)

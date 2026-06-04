@@ -568,6 +568,20 @@
       "when": 1938180000000,
       "tag": "0080_platform_admins_locale",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1948180000000,
+      "tag": "0081_camt053_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1958180000000,
+      "tag": "0082_camt053_reversal_partial_match",
+      "breakpoints": true
     }
   ]
 }

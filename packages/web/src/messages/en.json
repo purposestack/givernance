@@ -1793,6 +1793,251 @@
           "created": "Bank account created.",
           "updated": "Bank account updated."
         }
+      },
+      "detail": {
+        "breadcrumbBankAccounts": "Bank accounts",
+        "actions": {
+          "back": "Back",
+          "edit": "Edit"
+        },
+        "accountCard": {
+          "title": "Account details",
+          "description": "IBAN, holder address, and reference mode. These fields print on every QR-bill issued from this account.",
+          "iban": "IBAN",
+          "referenceMode": "Reference mode",
+          "referenceModeQrr": "QRR (27-digit, mod-10)",
+          "referenceModeScor": "SCOR (RF + mod-97)",
+          "currency": "Currency",
+          "bic": "BIC",
+          "holderName": "Holder",
+          "holderAddress": "Holder address"
+        },
+        "statementsHeading": {
+          "title": "camt.053 statements",
+          "lead": "Upload bank statements exported from your e-banking portal. Givernance XSD-validates, deduplicates by GrpHdr.MsgId, and reconciles credits against open Swiss QR-bill references."
+        },
+        "statementsSection": {
+          "title": "Upload & recent statements",
+          "description": "Drop a camt.053 XML file here, or click to browse. PostFinance e-banking → \"Documents\" → \"Account statement camt.053\".",
+          "dropZone": {
+            "lead": "Drop a camt.053 XML file here, or click to browse",
+            "hint": ".xml only · 50 MB max · ISO 20022 camt.053.001.08",
+            "cta": "Choose file",
+            "aria": "Upload camt.053 XML statement",
+            "fileInputLabel": "camt.053 file picker",
+            "uploading": "Uploading…",
+            "uploadingHint": "Streaming to the bank-statements bucket. Reconciliation starts automatically."
+          },
+          "empty": {
+            "title": "Upload your first bank statement to start auto-matching donations",
+            "body": "Export camt.053 from your e-banking portal weekly. Givernance matches structured QRR/SCOR references on credit entries and creates donation rows automatically — no manual reconciliation for ~95% of entries."
+          },
+          "table": {
+            "filename": "Filename",
+            "uploaded": "Uploaded",
+            "processed": "Processed",
+            "status": "Status",
+            "matchRate": "Match rate",
+            "actions": "Row actions",
+            "downloadXml": "Download original XML",
+            "open": "Open",
+            "matchInline": {
+              "inflight": "in flight…",
+              "failed": "malformed"
+            }
+          },
+          "statusPill": {
+            "pending": "Pending",
+            "processing": "Processing",
+            "processed": "Processed",
+            "failed": "Failed",
+            "duplicate": "Duplicate"
+          },
+          "validation": {
+            "notXml": "Only .xml files are accepted (ISO 20022 camt.053).",
+            "tooLarge": "File exceeds the 50 MB cap."
+          },
+          "toasts": {
+            "uploadAccepted": "Statement queued — processing starts within seconds.",
+            "uploadFailed": "Upload failed. Please try again.",
+            "processed": "Statement processed · {matched} matched · {unmatched} unreconciled",
+            "failed": "Statement import failed ({code})."
+          }
+        },
+        "reconciliationHealthCard": {
+          "title": "Reconciliation health",
+          "lead": "Last 90 days",
+          "emptyLead": "Upload your first camt.053 statement to populate this card.",
+          "rows": {
+            "statements": "Statements imported",
+            "lastImport": "Last import",
+            "credits": "Credits 90 d",
+            "matched": "Matched",
+            "unmatched": "Unreconciled",
+            "never": "Never"
+          },
+          "cta": {
+            "review": "Review unreconciled queue",
+            "allClean": "No backlog · all credits matched",
+            "aria": "{count, plural, =0 {No unreconciled credits} one {1 unreconciled credit} other {# unreconciled credits}}"
+          }
+        }
+      }
+    },
+    "camtStatements": {
+      "detail": {
+        "titleFallback": "Statement {id}",
+        "breadcrumbBankAccounts": "Bank accounts",
+        "breadcrumbStatement": "Statement",
+        "actions": {
+          "back": "Back",
+          "download": "Download XML"
+        },
+        "metadata": {
+          "title": "Statement metadata",
+          "description": "Parsed from the ISO 20022 envelope at import time. Retention 10 years per Swiss CO Art. 958f.",
+          "msgId": "GrpHdr.MsgId",
+          "iban": "Acct.Id.IBAN",
+          "tenantAccount": "tenant account",
+          "uploaded": "Uploaded",
+          "processed": "Processed",
+          "bookingPeriod": "Booking period",
+          "retention": "Retention",
+          "retentionValue": "10 yr (Swiss CO Art. 958f)"
+        },
+        "kpis": {
+          "creditEntries": "Credit entries",
+          "creditEntriesHint": "{total} booked",
+          "matched": "Matched",
+          "unreconciled": "Unreconciled",
+          "unreconciledHint": "Pending operator review"
+        },
+        "unreconciledCard": {
+          "title": "Operator review needed",
+          "description": "{count} credit entries on this statement need manual reconciliation. Resolve them in the unreconciled queue.",
+          "cta": "Open unreconciled queue →"
+        }
+      }
+    },
+    "camtUnreconciled": {
+      "page": {
+        "title": "Unreconciled credits",
+        "subtitle": "Bank credits that couldn't be matched automatically to a donation. Resolve each one by linking to an existing donation, creating a constituent + donation from the camt.053 debtor block, or writing it off (with a reason for the audit log).",
+        "breadcrumb": "Unreconciled queue"
+      },
+      "filters": {
+        "bankAccount": "Bank account",
+        "allAccounts": "All ({count})",
+        "status": "Status",
+        "clear": "Clear filters"
+      },
+      "reasonChips": {
+        "all": "All"
+      },
+      "reason": {
+        "invalid_ref": "Invalid ref",
+        "no_match": "No match",
+        "no_debtor_info": "No debtor info",
+        "orphan_reversal": "Orphan reversal",
+        "partial_match": "Partial match"
+      },
+      "status": {
+        "pending": "Pending",
+        "resolved": "Resolved",
+        "written_off": "Written off"
+      },
+      "table": {
+        "amount": "Amount",
+        "valueDate": "Value date",
+        "debtor": "Debtor",
+        "reference": "Reference (raw)",
+        "reason": "Reason",
+        "status": "Status",
+        "actions": "Resolve",
+        "resolve": "Resolve →",
+        "refMissing": "— (no structured ref)",
+        "selectRowLabel": "Select row for bulk action"
+      },
+      "footer": {
+        "showing": "Showing {count} of {total}"
+      },
+      "bulk": {
+        "selectedLabel": "entries selected · all reason {reason}",
+        "writeOffCta": "Bulk write off {count} entries",
+        "clearSelection": "Clear selection",
+        "notePrompt": "Audit-log note (≥ 5 chars). Applied to every selected entry.",
+        "noteRequired": "Bulk write-off requires a note of at least 5 characters.",
+        "successToast": "{count} entries written off.",
+        "partialFailureToast": "{count} entries could not be written off."
+      },
+      "empty": {
+        "titlePending": "No unreconciled credits",
+        "bodyPending": "Every camt.053 entry matched cleanly to an open Swiss QR-bill reference. The reconciler will surface new exceptions here the next time you upload a statement.",
+        "titleOther": "No entries match the current filter",
+        "bodyOther": "Try the pending filter to see operator backlog, or clear the filters to widen the view."
+      },
+      "drawer": {
+        "title": "Resolve unreconciled credit",
+        "subtitle": "{amount} received {date}",
+        "close": "Close",
+        "actionsLabel": "Resolution choice",
+        "noteLabel": "Audit note",
+        "notePlaceholder": "What did you decide and why?",
+        "noteHint": "Stored on audit_logs.resolutionNote. Minimum 5 characters.",
+        "cancel": "Cancel",
+        "submitting": "Submitting…",
+        "confirm": {
+          "link": "Link to donation",
+          "create_constituent_and_donation": "Create constituent + donation",
+          "write_off": "Write off"
+        },
+        "actions": {
+          "link": {
+            "title": "Link to existing donation",
+            "description": "Use if this credit corresponds to a donation already recorded manually (e.g. donor told you on the phone)."
+          },
+          "create": {
+            "title": "Create constituent + donation",
+            "description": "New donor for this organisation. Pre-filled from RltdPties.Dbtr per docs/25 §5.5."
+          },
+          "writeOff": {
+            "title": "Write off",
+            "description": "Use for genuine refunds, duplicate payments, or operationally-out-of-scope credits. Captures a free-text reason in the audit log."
+          }
+        },
+        "summary": {
+          "debtor": "Debtor",
+          "debtorIban": "Debtor IBAN",
+          "ref": "Structured ref",
+          "statementMsgId": "Statement MsgId"
+        },
+        "link": {
+          "donationIdLabel": "Donation ID",
+          "donationIdPlaceholder": "11111111-1111-…",
+          "donationIdHint": "Paste the UUID of the donation you want to attach this credit to. Future: autocomplete by amount + campaign."
+        },
+        "create": {
+          "constituentIdLabel": "Constituent ID",
+          "constituentIdPlaceholder": "22222222-2222-…",
+          "constituentIdHint": "Paste the UUID of the constituent to attach the new donation to. Future: search by name + IBAN.",
+          "prefill": {
+            "title": "Pre-filled from camt.053 (§5.5 extraction)",
+            "debtorName": "Debtor name",
+            "paymentSourceIban": "Payment-source IBAN",
+            "structuredRef": "Structured ref"
+          }
+        },
+        "validation": {
+          "donationIdRequired": "Donation ID is required for the link action.",
+          "constituentIdRequired": "Constituent ID is required for the create action.",
+          "noteTooShort": "Audit note must be at least 5 characters.",
+          "submitFailed": "Resolution failed. Please try again."
+        }
+      },
+      "toasts": {
+        "fetchFailed": "Could not load the unreconciled queue.",
+        "resolveSuccess": "Credit entry resolved.",
+        "writeOffSuccess": "Credit entry written off."
       }
     },
     "tenant": {
@@ -2934,6 +3179,31 @@
           "scannedCodesHint": "Codes scanned at least once",
           "attributedAmount": "Reconciled donations",
           "attributedAmountHint": "{count, plural, =0 {No gifts yet} one {# gift} other {# gifts}}"
+        },
+        "swissRail": {
+          "badge": "Swiss QR-bill",
+          "printed": "Letters printed",
+          "printedHint": "= constituents on mailing list",
+          "distributed": "Letters distributed",
+          "distributedHint": "campaign_postal_exports.printed_count",
+          "scanned": "Letters scanned",
+          "scannedHint": "campaign_qr_codes.scanned_at NOT NULL",
+          "paidViaStripe": "paid via Stripe",
+          "paidViaQrBill": "paid via QR-bill",
+          "paidDoorDrop": "Distinct donors paid",
+          "scannedNotPaid": "scanned but not paid",
+          "tagStripe": "Stripe rail",
+          "tagSwiss": "camt.053 rail",
+          "tagRemarket": "remarket",
+          "partialMatchBadge": "Partial match",
+          "partialMatchBody": "{count} donations adjusted the printed amount — review on the donation detail page.",
+          "footer": {
+            "pendingLabel": "Pending camt review",
+            "pendingValue": "{count} unreconciled →",
+            "pendingValueZero": "0 unreconciled",
+            "lastImportLabel": "Last bank statement import",
+            "lastImportNever": "No statements imported yet"
+          }
         }
       }
     },

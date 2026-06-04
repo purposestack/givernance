@@ -121,12 +121,27 @@ const PostalExportRow = Type.Object({
   completedAt: Type.Union([Type.Null(), Type.String()]),
 });
 
+const SwissRailStatsSchema = Type.Object({
+  totalQrBills: Type.Integer(),
+  paidQrBills: Type.Integer(),
+  paidQrBillAmountCents: Type.Integer(),
+  pendingQrBills: Type.Union([Type.Integer(), Type.Null()]),
+  partialMatchCount: Type.Integer(),
+  unreconciledCount: Type.Integer(),
+  lastStatementImportedAt: Type.Union([Type.String(), Type.Null()]),
+});
+
 const QrStatsResponse = Type.Object({
   campaignId: UuidSchema,
   totalCodes: Type.Integer(),
   scannedCodes: Type.Integer(),
   qrAttributedDonations: Type.Integer(),
   qrAttributedAmountCents: Type.Integer(),
+  /**
+   * Swiss QR-bill rail block (Epic #318, docs/25 §5.3). Null when the
+   * campaign has no linked bank account — standard French-rail campaign.
+   */
+  swissRail: Type.Union([SwissRailStatsSchema, Type.Null()]),
 });
 
 const PreviewBody = Type.Object({

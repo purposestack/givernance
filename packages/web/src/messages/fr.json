@@ -1793,6 +1793,251 @@
           "created": "Compte bancaire créé.",
           "updated": "Compte bancaire mis à jour."
         }
+      },
+      "detail": {
+        "breadcrumbBankAccounts": "Comptes bancaires",
+        "actions": {
+          "back": "Retour",
+          "edit": "Modifier"
+        },
+        "accountCard": {
+          "title": "Détails du compte",
+          "description": "IBAN, adresse du titulaire et mode de référence. Ces champs s'impriment sur chaque QR-bill émise depuis ce compte.",
+          "iban": "IBAN",
+          "referenceMode": "Mode de référence",
+          "referenceModeQrr": "QRR (27 chiffres, mod-10)",
+          "referenceModeScor": "SCOR (RF + mod-97)",
+          "currency": "Devise",
+          "bic": "BIC",
+          "holderName": "Titulaire",
+          "holderAddress": "Adresse du titulaire"
+        },
+        "statementsHeading": {
+          "title": "Relevés camt.053",
+          "lead": "Importez les relevés bancaires exportés depuis votre portail e-banking. Givernance valide le XSD, dédoublonne par GrpHdr.MsgId et réconcilie les crédits avec les références QR-bill ouvertes."
+        },
+        "statementsSection": {
+          "title": "Importer & relevés récents",
+          "description": "Déposez un fichier camt.053 XML ici ou cliquez pour parcourir. PostFinance e-banking → \"Documents\" → \"Relevé de compte camt.053\".",
+          "dropZone": {
+            "lead": "Déposez un fichier camt.053 XML ici, ou cliquez pour parcourir",
+            "hint": ".xml uniquement · 50 Mo max · ISO 20022 camt.053.001.08",
+            "cta": "Choisir un fichier",
+            "aria": "Importer un relevé camt.053 XML",
+            "fileInputLabel": "Sélecteur de fichier camt.053",
+            "uploading": "Importation…",
+            "uploadingHint": "Transfert vers le bucket bank-statements. La réconciliation démarre automatiquement."
+          },
+          "empty": {
+            "title": "Importez votre premier relevé bancaire pour démarrer la correspondance automatique des dons",
+            "body": "Exportez chaque semaine le camt.053 depuis votre e-banking. Givernance fait correspondre les références structurées QRR/SCOR aux dons et crée automatiquement les lignes — aucune réconciliation manuelle pour environ 95 % des entrées."
+          },
+          "table": {
+            "filename": "Nom de fichier",
+            "uploaded": "Importé",
+            "processed": "Traité",
+            "status": "Statut",
+            "matchRate": "Taux de correspondance",
+            "actions": "Actions de la ligne",
+            "downloadXml": "Télécharger le XML original",
+            "open": "Ouvrir",
+            "matchInline": {
+              "inflight": "en cours…",
+              "failed": "malformé"
+            }
+          },
+          "statusPill": {
+            "pending": "En attente",
+            "processing": "Traitement",
+            "processed": "Traité",
+            "failed": "Échec",
+            "duplicate": "Doublon"
+          },
+          "validation": {
+            "notXml": "Seuls les fichiers .xml sont acceptés (ISO 20022 camt.053).",
+            "tooLarge": "Le fichier dépasse la limite de 50 Mo."
+          },
+          "toasts": {
+            "uploadAccepted": "Relevé en file d'attente — le traitement démarre dans quelques secondes.",
+            "uploadFailed": "Échec de l'importation. Veuillez réessayer.",
+            "processed": "Relevé traité · {matched} appariés · {unmatched} non réconciliés",
+            "failed": "Échec d'importation du relevé ({code})."
+          }
+        },
+        "reconciliationHealthCard": {
+          "title": "Santé de la réconciliation",
+          "lead": "90 derniers jours",
+          "emptyLead": "Importez votre premier relevé camt.053 pour alimenter cette carte.",
+          "rows": {
+            "statements": "Relevés importés",
+            "lastImport": "Dernier import",
+            "credits": "Crédits 90 j",
+            "matched": "Appariés",
+            "unmatched": "Non réconciliés",
+            "never": "Jamais"
+          },
+          "cta": {
+            "review": "Examiner la file non réconciliée",
+            "allClean": "Pas de file d'attente · tous les crédits appariés",
+            "aria": "{count, plural, =0 {Aucun crédit non réconcilié} one {1 crédit non réconcilié} other {# crédits non réconciliés}}"
+          }
+        }
+      }
+    },
+    "camtStatements": {
+      "detail": {
+        "titleFallback": "Relevé {id}",
+        "breadcrumbBankAccounts": "Comptes bancaires",
+        "breadcrumbStatement": "Relevé",
+        "actions": {
+          "back": "Retour",
+          "download": "Télécharger XML"
+        },
+        "metadata": {
+          "title": "Métadonnées du relevé",
+          "description": "Extraites de l'enveloppe ISO 20022 à l'import. Rétention de 10 ans (Code des obligations suisse, art. 958f).",
+          "msgId": "GrpHdr.MsgId",
+          "iban": "Acct.Id.IBAN",
+          "tenantAccount": "compte tenant",
+          "uploaded": "Importé",
+          "processed": "Traité",
+          "bookingPeriod": "Période comptable",
+          "retention": "Rétention",
+          "retentionValue": "10 ans (CO suisse art. 958f)"
+        },
+        "kpis": {
+          "creditEntries": "Entrées de crédit",
+          "creditEntriesHint": "{total} enregistrés",
+          "matched": "Appariés",
+          "unreconciled": "Non réconciliés",
+          "unreconciledHint": "En attente de revue opérateur"
+        },
+        "unreconciledCard": {
+          "title": "Revue opérateur requise",
+          "description": "{count} entrées de crédit sur ce relevé nécessitent une réconciliation manuelle. Résolvez-les dans la file d'attente non réconciliée.",
+          "cta": "Ouvrir la file non réconciliée →"
+        }
+      }
+    },
+    "camtUnreconciled": {
+      "page": {
+        "title": "Crédits non réconciliés",
+        "subtitle": "Crédits bancaires qui n'ont pas pu être appariés automatiquement à un don. Résolvez chaque entrée en la liant à un don existant, en créant un constituant + un don à partir du bloc débiteur camt.053, ou en l'amortissant (avec un motif pour le journal d'audit).",
+        "breadcrumb": "File non réconciliée"
+      },
+      "filters": {
+        "bankAccount": "Compte bancaire",
+        "allAccounts": "Tous ({count})",
+        "status": "Statut",
+        "clear": "Effacer les filtres"
+      },
+      "reasonChips": {
+        "all": "Tous"
+      },
+      "reason": {
+        "invalid_ref": "Réf. invalide",
+        "no_match": "Aucune correspondance",
+        "no_debtor_info": "Pas d'info débiteur",
+        "orphan_reversal": "Annulation orpheline",
+        "partial_match": "Correspondance partielle"
+      },
+      "status": {
+        "pending": "En attente",
+        "resolved": "Résolu",
+        "written_off": "Amorti"
+      },
+      "table": {
+        "amount": "Montant",
+        "valueDate": "Date valeur",
+        "debtor": "Débiteur",
+        "reference": "Référence (brute)",
+        "reason": "Motif",
+        "status": "Statut",
+        "actions": "Résoudre",
+        "resolve": "Résoudre →",
+        "refMissing": "— (pas de référence structurée)",
+        "selectRowLabel": "Sélectionner la ligne pour action groupée"
+      },
+      "footer": {
+        "showing": "Affichage {count} sur {total}"
+      },
+      "bulk": {
+        "selectedLabel": "entrées sélectionnées · toutes au motif {reason}",
+        "writeOffCta": "Amortir en lot {count} entrées",
+        "clearSelection": "Effacer la sélection",
+        "notePrompt": "Note d'audit (≥ 5 caractères). Appliquée à chaque entrée sélectionnée.",
+        "noteRequired": "L'amortissement en lot requiert une note d'au moins 5 caractères.",
+        "successToast": "{count} entrées amorties.",
+        "partialFailureToast": "{count} entrées n'ont pas pu être amorties."
+      },
+      "empty": {
+        "titlePending": "Aucun crédit non réconcilié",
+        "bodyPending": "Toutes les entrées camt.053 ont été appariées proprement à une référence QR-bill ouverte. Le réconciliateur fera apparaître ici les prochaines exceptions lors de votre prochain import de relevé.",
+        "titleOther": "Aucune entrée ne correspond au filtre actuel",
+        "bodyOther": "Essayez le filtre \"En attente\" pour voir l'arriéré opérateur, ou effacez les filtres pour élargir la vue."
+      },
+      "drawer": {
+        "title": "Résoudre le crédit non réconcilié",
+        "subtitle": "{amount} reçus le {date}",
+        "close": "Fermer",
+        "actionsLabel": "Choix de résolution",
+        "noteLabel": "Note d'audit",
+        "notePlaceholder": "Quelle décision avez-vous prise et pourquoi ?",
+        "noteHint": "Enregistrée dans audit_logs.resolutionNote. Minimum 5 caractères.",
+        "cancel": "Annuler",
+        "submitting": "Envoi…",
+        "confirm": {
+          "link": "Lier au don",
+          "create_constituent_and_donation": "Créer constituant + don",
+          "write_off": "Amortir"
+        },
+        "actions": {
+          "link": {
+            "title": "Lier à un don existant",
+            "description": "À utiliser si ce crédit correspond à un don déjà enregistré manuellement (par exemple, le donateur vous l'a annoncé par téléphone)."
+          },
+          "create": {
+            "title": "Créer constituant + don",
+            "description": "Nouveau donateur pour cette organisation. Pré-rempli depuis RltdPties.Dbtr selon docs/25 §5.5."
+          },
+          "writeOff": {
+            "title": "Amortir",
+            "description": "À utiliser pour les vrais remboursements, paiements en double ou crédits hors périmètre. Capture un motif libre dans le journal d'audit."
+          }
+        },
+        "summary": {
+          "debtor": "Débiteur",
+          "debtorIban": "IBAN débiteur",
+          "ref": "Référence structurée",
+          "statementMsgId": "MsgId du relevé"
+        },
+        "link": {
+          "donationIdLabel": "ID du don",
+          "donationIdPlaceholder": "11111111-1111-…",
+          "donationIdHint": "Collez l'UUID du don auquel rattacher ce crédit. À venir : autocomplétion par montant + campagne."
+        },
+        "create": {
+          "constituentIdLabel": "ID du constituant",
+          "constituentIdPlaceholder": "22222222-2222-…",
+          "constituentIdHint": "Collez l'UUID du constituant auquel rattacher le nouveau don. À venir : recherche par nom + IBAN.",
+          "prefill": {
+            "title": "Pré-rempli depuis camt.053 (extraction §5.5)",
+            "debtorName": "Nom du débiteur",
+            "paymentSourceIban": "IBAN source de paiement",
+            "structuredRef": "Référence structurée"
+          }
+        },
+        "validation": {
+          "donationIdRequired": "L'ID du don est requis pour l'action de liaison.",
+          "constituentIdRequired": "L'ID du constituant est requis pour l'action de création.",
+          "noteTooShort": "La note d'audit doit faire au moins 5 caractères.",
+          "submitFailed": "Échec de la résolution. Veuillez réessayer."
+        }
+      },
+      "toasts": {
+        "fetchFailed": "Impossible de charger la file non réconciliée.",
+        "resolveSuccess": "Crédit résolu.",
+        "writeOffSuccess": "Crédit amorti."
       }
     },
     "tenant": {
@@ -2934,6 +3179,31 @@
           "scannedCodesHint": "Codes scannés au moins une fois",
           "attributedAmount": "Dons réconciliés",
           "attributedAmountHint": "{count, plural, =0 {Aucun don} one {# don} other {# dons}}"
+        },
+        "swissRail": {
+          "badge": "QR-bill suisse",
+          "printed": "Lettres imprimées",
+          "printedHint": "= constituants sur la liste d'envoi",
+          "distributed": "Lettres distribuées",
+          "distributedHint": "campaign_postal_exports.printed_count",
+          "scanned": "Lettres scannées",
+          "scannedHint": "campaign_qr_codes.scanned_at NOT NULL",
+          "paidViaStripe": "payés via Stripe",
+          "paidViaQrBill": "payés via QR-bill",
+          "paidDoorDrop": "Donateurs distincts ayant payé",
+          "scannedNotPaid": "scannés sans paiement",
+          "tagStripe": "Rail Stripe",
+          "tagSwiss": "Rail camt.053",
+          "tagRemarket": "remarketing",
+          "partialMatchBadge": "Correspondance partielle",
+          "partialMatchBody": "{count} dons ont ajusté le montant imprimé — vérifiez sur la page de détail du don.",
+          "footer": {
+            "pendingLabel": "Revue camt en attente",
+            "pendingValue": "{count} non réconciliés →",
+            "pendingValueZero": "0 non réconcilié",
+            "lastImportLabel": "Dernier import de relevé bancaire",
+            "lastImportNever": "Aucun relevé importé"
+          }
         }
       }
     },

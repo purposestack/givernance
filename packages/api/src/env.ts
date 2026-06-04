@@ -59,6 +59,16 @@ const EnvSchema = Type.Object({
    * #214); never via presigned URL nor public-read. ADR-023.
    */
   S3_REPORTS_BUCKET: Type.String({ minLength: 1, default: "reports" }),
+  /**
+   * S3 bucket for ISO 20022 camt.053 bank-statement uploads + their
+   * derived rejection blobs (Epic #318, ADR-023 amendment + ADR-028).
+   * **Private**, signed URLs only; 10-year retention (Swiss CO Art.
+   * 958f); SSE-S3 at rest; versioning + MFA-delete enabled at the
+   * bucket level. Keys are tenant-prefixed
+   * (`{org_id}/camt053/{yyyy}/{mm}/{filename}` for accepted uploads,
+   * `{org_id}/camt053/rejected/...` for foreign-IBAN / XSD-fail).
+   */
+  S3_BANK_STATEMENTS_BUCKET: Type.String({ minLength: 1, default: "bank-statements" }),
   /** S3 region */
   S3_REGION: Type.String({ minLength: 1, default: "us-east-1" }),
   /**

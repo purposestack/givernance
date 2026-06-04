@@ -18,6 +18,7 @@ export {
 // ─── Swiss QR-bill (Epic #318) ──────────────────────────────────────────────
 
 export {
+  canonicaliseReference,
   classifyIban,
   computeQrr,
   computeScor,

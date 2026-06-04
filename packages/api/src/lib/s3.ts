@@ -2,12 +2,15 @@
 
 import type { Readable } from "node:stream";
 import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../env.js";
 
 const s3 = new S3Client({
@@ -286,6 +289,123 @@ export async function deleteBulkImportObject(key: string): Promise<void> {
     new DeleteObjectsCommand({
       Bucket: env.S3_BULK_IMPORT_BUCKET,
       Delete: { Objects: [{ Key: key }], Quiet: true },
+    }),
+  );
+}
+
+// ─── Bank-statements bucket helpers (Epic #318 PR #5) ──────────────────────
+//
+// **Private** bucket — signed URLs only, no public ACL, 10-yr Swiss CO
+// Art. 958f retention. Keyed `{org_id}/camt053/{yyyy}/{mm}/{filename}`
+// for accepted uploads, `{org_id}/camt053/rejected/{yyyy}/{mm}/{uuid}.xml`
+// for XSD-fail / foreign-IBAN rejects. See ADR-023 amendment + ADR-028.
+
+/** Build the canonical S3 key for an accepted camt.053 upload. */
+export function bankStatementKey(args: {
+  orgId: string;
+  year: number;
+  month: number;
+  filename: string;
+}): string {
+  const mm = String(args.month).padStart(2, "0");
+  return `${args.orgId}/camt053/${args.year}/${mm}/${args.filename}`;
+}
+
+/** Build the canonical S3 key for a rejected (XSD-fail / foreign-IBAN) upload. */
+export function bankStatementRejectedKey(args: {
+  orgId: string;
+  year: number;
+  month: number;
+  uuid: string;
+}): string {
+  const mm = String(args.month).padStart(2, "0");
+  return `${args.orgId}/camt053/rejected/${args.year}/${mm}/${args.uuid}.xml`;
+}
+
+/** Upload a raw camt.053 XML to the private `bank-statements` bucket. */
+export async function putBankStatement(args: {
+  key: string;
+  body: Buffer;
+  contentType: string;
+}): Promise<string> {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: env.S3_BANK_STATEMENTS_BUCKET,
+      Key: args.key,
+      Body: args.body,
+      ContentType: args.contentType,
+      ServerSideEncryption: "AES256",
+      ACL: "private",
+    }),
+  );
+  return args.key;
+}
+
+/** Fetch an uploaded camt.053 XML as a Buffer. Returns null on 404. */
+export async function getBankStatement(key: string): Promise<Buffer | null> {
+  try {
+    const out = await s3.send(
+      new GetObjectCommand({
+        Bucket: env.S3_BANK_STATEMENTS_BUCKET,
+        Key: key,
+      }),
+    );
+    const body = out.Body as Readable | undefined;
+    if (!body) return null;
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks);
+  } catch (err) {
+    const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
+    if (e?.name === "NoSuchKey" || e?.$metadata?.httpStatusCode === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Generate a short-lived signed URL for an accepted camt.053 upload.
+ * Default TTL is 5 minutes — long enough for the browser to follow the
+ * redirect, short enough to bound exposure if the URL leaks through a
+ * browser-history dump.
+ */
+export async function getBankStatementSignedUrl(args: {
+  key: string;
+  ttlSec?: number;
+}): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: env.S3_BANK_STATEMENTS_BUCKET,
+    Key: args.key,
+  });
+  return getSignedUrl(s3, command, { expiresIn: args.ttlSec ?? 300 });
+}
+
+/**
+ * Server-side copy an accepted upload into the `rejected/` prefix and
+ * delete the original. Used by the worker on XSD-fail / foreign-IBAN
+ * (the file stays in the bucket for the full 10-yr retention, just
+ * relocated under a key prefix the operator can audit separately).
+ */
+export async function moveBankStatementToRejected(args: {
+  srcKey: string;
+  dstKey: string;
+}): Promise<void> {
+  await s3.send(
+    new CopyObjectCommand({
+      Bucket: env.S3_BANK_STATEMENTS_BUCKET,
+      CopySource: `${env.S3_BANK_STATEMENTS_BUCKET}/${args.srcKey}`,
+      Key: args.dstKey,
+      ServerSideEncryption: "AES256",
+      ACL: "private",
+    }),
+  );
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: env.S3_BANK_STATEMENTS_BUCKET,
+      Key: args.srcKey,
     }),
   );
 }

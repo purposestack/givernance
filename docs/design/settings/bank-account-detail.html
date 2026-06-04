@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Givernance — Settings — Bank account detail (camt.053)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/base.css">
+  <style>
+    /* ── Settings → Bank account detail with camt.053 (Epic #318 PR #5) ── */
+    body { background: var(--color-background); }
+    .layout { display: grid; grid-template-columns: 280px 1fr; max-width: 1480px; margin: 0 auto; gap: var(--space-8); padding: var(--space-6) var(--space-6); }
+
+    /* Annotations rail */
+    .annotations { position: sticky; top: var(--space-6); align-self: flex-start; max-height: calc(100vh - 48px); overflow-y: auto; padding-right: var(--space-3); }
+    .annotations h2 { font-family: var(--font-heading); font-size: var(--text-xl); color: var(--color-text); margin-bottom: var(--space-2); }
+    .annotations .lead { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: var(--leading-relaxed); margin-bottom: var(--space-5); }
+    .anno { margin-bottom: var(--space-5); padding-left: var(--space-3); border-left: 2px solid var(--color-primary); }
+    .anno h3 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); font-weight: var(--weight-semi); color: var(--color-text); margin-bottom: 4px; }
+    .anno p { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: var(--leading-relaxed); }
+    .anno code { font-family: var(--font-mono); font-size: 11px; background: var(--color-surface-container); padding: 1px 4px; border-radius: 3px; color: var(--color-text); }
+    .anno.warn { border-left-color: var(--color-tertiary-container); }
+    .anno.gdpr { border-left-color: var(--color-indigo); }
+
+    /* Page */
+    .page { min-width: 0; }
+    .breadcrumb { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2); }
+    .breadcrumb a { color: var(--color-primary); text-decoration: none; }
+    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+    .page-header h1 { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); margin: var(--space-1) 0; }
+    .page-header .sub { color: var(--color-text-secondary); font-size: var(--text-sm); max-width: 70ch; }
+
+    .grid-main { display: grid; grid-template-columns: 1fr 320px; gap: var(--space-6); }
+
+    .card { background: var(--color-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+    .card-header { padding: var(--space-5) var(--space-5) var(--space-3); display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
+    .card-header h2 { font-family: var(--font-heading); font-size: var(--text-xl); color: var(--color-text); margin: 0; }
+    .card-header .help { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 4px; max-width: 60ch; }
+    .card-body { padding: 0 var(--space-5) var(--space-5); }
+
+    /* Account info card */
+    .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3) var(--space-5); margin-top: var(--space-3); }
+    .kv .k { font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); font-weight: var(--weight-semi); margin-bottom: 2px; }
+    .kv .v { font-size: var(--text-sm); color: var(--color-text); }
+    .kv .v.mono { font-family: var(--font-mono); }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px var(--space-2); border-radius: var(--radius-pill); font-size: 11px; font-weight: var(--weight-semi); }
+    .badge-qr { background: #DCFCE7; color: #166534; }
+    .badge-iban { background: #DBEAFE; color: #1E40AF; }
+    .badge-success { background: var(--color-green-light); color: var(--color-green-text); }
+    .badge-warn { background: var(--color-amber-light); color: var(--color-amber-text); }
+    .badge-error { background: var(--color-error-container); color: var(--color-on-error-container); }
+    .badge-info { background: var(--color-sky-light); color: var(--color-sky-text); }
+    .badge-neutral { background: var(--color-surface-container); color: var(--color-text-secondary); }
+    .badge-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+    /* Upload zone */
+    .upload-zone { margin-top: var(--space-4); border: 1.5px dashed var(--color-border); border-radius: var(--radius-lg); padding: var(--space-6); text-align: center; background: var(--color-surface-container-low); transition: all 150ms ease; cursor: pointer; }
+    .upload-zone:hover { border-color: var(--color-primary); background: var(--color-primary-50); }
+    .upload-zone .icon { font-size: 28px; color: var(--color-primary); margin-bottom: var(--space-2); }
+    .upload-zone .lead { font-size: var(--text-sm); color: var(--color-text); font-weight: var(--weight-medium); }
+    .upload-zone .hint { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 4px; }
+    .upload-zone .btn-inline { display: inline-block; margin-top: var(--space-3); background: var(--color-primary); color: var(--color-on-primary); border: none; padding: 8px var(--space-4); border-radius: var(--radius-button); font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer; }
+
+    /* Statements table */
+    table.statements { width: 100%; border-collapse: collapse; font-size: var(--text-sm); margin-top: var(--space-4); }
+    table.statements thead th { text-align: left; background: var(--color-surface-container-low); color: var(--color-text-secondary); font-weight: var(--weight-medium); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+    table.statements tbody td { padding: var(--space-3); border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+    table.statements tbody tr:last-child td { border-bottom: 0; }
+    table.statements tbody tr:hover { background: var(--color-surface-container-low); cursor: pointer; }
+    .filename { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }
+    .ts { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .match-bar { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--text-xs); }
+    .match-bar .meter { width: 60px; height: 6px; border-radius: 3px; background: var(--color-surface-container); overflow: hidden; }
+    .match-bar .meter > span { display: block; height: 100%; background: var(--color-primary); }
+    .row-actions { display: inline-flex; gap: var(--space-1); }
+    .row-actions button { background: transparent; border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 3px 8px; font-size: 11px; cursor: pointer; color: var(--color-text-secondary); }
+    .row-actions button:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+    /* Empty state */
+    .empty-state { padding: var(--space-8) var(--space-4); text-align: center; background: var(--color-surface-container-low); border-radius: var(--radius-md); margin-top: var(--space-4); border: 1px dashed var(--color-border); }
+    .empty-state .icon { font-size: 32px; margin-bottom: var(--space-2); }
+    .empty-state h3 { font-size: var(--text-base); color: var(--color-text); margin-bottom: 4px; font-weight: var(--weight-semi); }
+    .empty-state p { font-size: var(--text-xs); color: var(--color-text-secondary); max-width: 48ch; margin: 0 auto; line-height: var(--leading-relaxed); }
+
+    /* Health card (right rail) */
+    .health-card { background: var(--color-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-5); }
+    .health-card h2 { font-family: var(--font-heading); font-size: var(--text-lg); color: var(--color-text); margin-bottom: 4px; }
+    .health-card .lead { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-4); }
+    .health-metric { display: flex; justify-content: space-between; align-items: baseline; padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
+    .health-metric:last-of-type { border-bottom: 0; padding-bottom: 0; }
+    .health-metric .label { font-size: var(--text-xs); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+    .health-metric .value { font-family: var(--font-mono); font-size: var(--text-lg); color: var(--color-text); font-weight: var(--weight-medium); }
+    .health-metric.split .value-block { text-align: right; }
+    .health-metric.split .value-block .v-main { font-family: var(--font-mono); font-size: var(--text-base); color: var(--color-text); }
+    .health-metric.split .value-block .v-sub { font-size: 11px; color: var(--color-text-muted); }
+    .health-cta { margin-top: var(--space-4); width: 100%; background: var(--color-primary); color: var(--color-on-primary); border: none; padding: 10px var(--space-4); border-radius: var(--radius-button); font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+    .health-cta:hover { background: var(--color-primary-hover); }
+    .health-cta .count-pill { background: rgba(255,255,255,0.18); padding: 2px 8px; border-radius: var(--radius-pill); font-family: var(--font-mono); font-size: 11px; }
+    .health-cta.empty-state-cta { background: var(--color-surface-container); color: var(--color-text-secondary); }
+    .health-cta.empty-state-cta:hover { background: var(--color-surface-container-high); }
+
+    /* Section title between cards */
+    .section-title { margin-top: var(--space-8); margin-bottom: var(--space-3); display: flex; align-items: baseline; justify-content: space-between; }
+    .section-title h2 { font-family: var(--font-heading); font-size: var(--text-2xl); color: var(--color-text); }
+    .section-title .meta { font-size: var(--text-xs); color: var(--color-text-muted); font-family: var(--font-mono); }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .annotations { position: static; max-height: none; }
+      .grid-main { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ============================================================
+         Annotations rail (left)
+         ============================================================ -->
+    <aside class="annotations" aria-label="Mockup annotations">
+      <h2>Bank account · camt.053</h2>
+      <p class="lead">Cross-campaign operator surface. The operator-admin lands here to upload bank statements that feed the Swiss QR-bill reconciliation pipeline.</p>
+
+      <div class="anno">
+        <h3>States covered</h3>
+        <p>Idle table · pending · imported · processing · processed · failed · duplicate · empty (no statements).</p>
+      </div>
+
+      <div class="anno">
+        <h3>API endpoints touched</h3>
+        <p><code>POST /v1/bank-accounts/:id/statements</code> (multipart, ≤ 50 MB, <code>.xml</code> only)<br>
+        <code>GET /v1/camt-statements</code> (list)<br>
+        <code>GET /v1/camt-statements/:id/download</code> (signed URL)<br>
+        <code>GET /v1/bank-accounts/:id/reconciliation-health</code> (right-rail card)<br>
+        all guarded by <code>requireOrgAdmin</code> per §6.</p>
+      </div>
+
+      <div class="anno warn">
+        <h3>Status pill semantics (§5.1)</h3>
+        <p><code>pending</code> = file accepted, in outbox · <code>imported</code> = XSD-valid, entries persisted · <code>processing</code> = reconciler running · <code>processed</code> = done · <code>failed</code> = XSD invalid or foreign IBAN · <code>duplicate</code> = same MsgId already imported (idempotency short-circuit).</p>
+      </div>
+
+      <div class="anno gdpr">
+        <h3>GDPR posture (§7)</h3>
+        <p>IBAN truncated to last 4 (<code>CH··· 8901·2</code>) on listing views; full IBAN only on the form. Raw XML stored in the <code>bank-statements</code> private bucket with signed-URL access only; 10-yr retention per Swiss CO Art. 958f.</p>
+      </div>
+
+      <div class="anno">
+        <h3>Health card data source</h3>
+        <p>Rolling 90-day aggregate from <code>camt_statements</code> + <code>camt_credit_entries</code> + <code>camt_unreconciled_entries</code>. Cached 60 s; refreshes on any new upload.</p>
+      </div>
+
+      <div class="anno">
+        <h3>Drill-down</h3>
+        <p>Clicking a row opens <code>bank-statement-detail.html</code>. Clicking the queue CTA opens <code>camt-unreconciled-queue.html</code> filtered to this bank account.</p>
+      </div>
+    </aside>
+
+    <!-- ============================================================
+         Main page
+         ============================================================ -->
+    <main class="page">
+      <div class="breadcrumb"><a href="#">Dashboard</a> / <a href="#">Settings</a> / <a href="bank-accounts-list.html">Bank accounts</a> / PostFinance · CH•••8901·2</div>
+      <div class="page-header">
+        <div>
+          <h1>PostFinance</h1>
+          <p class="sub">QR-IBAN · CHF · holder Association Givernance Demo · Rue de la Paix 12, 1003 Lausanne · BIC POFICHBEXXX. Used by 4 active campaigns.</p>
+        </div>
+      </div>
+
+      <!-- Account info card -->
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <h2>Account details</h2>
+            <p class="help">IBAN, holder address, and reference mode. These fields print on every QR-bill issued from this account.</p>
+          </div>
+          <div class="row-actions"><button type="button">Edit</button></div>
+        </div>
+        <div class="card-body">
+          <div class="kv-grid">
+            <div class="kv">
+              <div class="k">IBAN</div>
+              <div class="v mono">CH•••8901·2 <span class="badge badge-qr">QR-IBAN</span></div>
+            </div>
+            <div class="kv">
+              <div class="k">Reference mode</div>
+              <div class="v">QRR (27-digit, mod-10)</div>
+            </div>
+            <div class="kv">
+              <div class="k">Currency</div>
+              <div class="v">CHF</div>
+            </div>
+            <div class="kv">
+              <div class="k">BIC</div>
+              <div class="v mono">POFICHBEXXX</div>
+            </div>
+            <div class="kv">
+              <div class="k">Holder</div>
+              <div class="v">Association Givernance Demo</div>
+            </div>
+            <div class="kv">
+              <div class="k">Holder address</div>
+              <div class="v">Rue de la Paix 12 · 1003 Lausanne · CH</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Two-column: statements + health card -->
+      <div class="section-title">
+        <h2>camt.053 statements</h2>
+        <span class="meta">12 statements · last import 2026-05-06 09:12</span>
+      </div>
+
+      <div class="grid-main">
+        <!-- Left: statements card -->
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h2 style="font-size: var(--text-lg);">Upload &amp; recent statements</h2>
+              <p class="help">PostFinance e-banking → "Documents" → "Account statement camt.053". Drop the XML below; we XSD-validate, deduplicate by <code style="font-family:var(--font-mono);font-size:11px;">GrpHdr.MsgId</code>, and reconcile against open QR-bill references.</p>
+            </div>
+          </div>
+          <div class="card-body">
+
+            <!-- Upload zone -->
+            <div class="upload-zone" role="button" tabindex="0" aria-label="Upload camt.053 XML statement">
+              <div class="icon">⬆</div>
+              <div class="lead">Drop a camt.053 XML file here, or click to browse</div>
+              <div class="hint">.xml only · 50 MB max · ISO 20022 camt.053.001.08</div>
+              <button class="btn-inline" type="button">Choose file</button>
+            </div>
+
+            <!-- Statements table -->
+            <table class="statements" aria-label="Recent camt.053 statements">
+              <thead>
+                <tr>
+                  <th style="width: 30%;">Filename</th>
+                  <th>Uploaded</th>
+                  <th>Processed</th>
+                  <th>Status</th>
+                  <th>Match rate</th>
+                  <th aria-label="Row actions"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="filename">camt053_20260506_001.xml</td>
+                  <td class="ts">2026-05-06 09:12</td>
+                  <td class="ts">2026-05-06 09:13</td>
+                  <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Processed</span></td>
+                  <td>
+                    <div class="match-bar">
+                      <div class="meter"><span style="width:93%;"></span></div>
+                      <span>13 / 14</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button title="Download original XML (signed URL)">↓ XML</button>
+                      <button title="Open statement detail">Open</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="filename">camt053_20260505_001.xml</td>
+                  <td class="ts">2026-05-05 09:08</td>
+                  <td class="ts">2026-05-05 09:09</td>
+                  <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Processed</span></td>
+                  <td>
+                    <div class="match-bar">
+                      <div class="meter"><span style="width:80%;"></span></div>
+                      <span>8 / 10</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button>↓ XML</button>
+                      <button>Open</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="filename">camt053_20260504_001.xml</td>
+                  <td class="ts">2026-05-04 14:33</td>
+                  <td class="ts">—</td>
+                  <td><span class="badge badge-info"><span class="badge-dot" style="background:var(--color-sky-text)"></span> Processing</span></td>
+                  <td><span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-muted);">in flight…</span></td>
+                  <td>
+                    <div class="row-actions">
+                      <button>↓ XML</button>
+                      <button disabled style="opacity:0.5;cursor:not-allowed;">Open</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="filename">camt053_20260503_001.xml</td>
+                  <td class="ts">2026-05-03 09:12</td>
+                  <td class="ts">2026-05-03 09:12</td>
+                  <td><span class="badge badge-neutral"><span class="badge-dot" style="background:var(--color-text-muted)"></span> Duplicate</span></td>
+                  <td><span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-muted);">— (re-import)</span></td>
+                  <td>
+                    <div class="row-actions">
+                      <button>↓ XML</button>
+                      <button>Open</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="filename">camt053_20260502_corrupted.xml</td>
+                  <td class="ts">2026-05-02 16:44</td>
+                  <td class="ts">2026-05-02 16:44</td>
+                  <td><span class="badge badge-error"><span class="badge-dot" style="background:var(--color-on-error-container)"></span> Failed (XSD)</span></td>
+                  <td><span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-on-error-container);">malformed</span></td>
+                  <td>
+                    <div class="row-actions">
+                      <button>↓ XML</button>
+                      <button>Inspect</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="filename">camt053_20260501_001.xml</td>
+                  <td class="ts">2026-05-01 09:05</td>
+                  <td class="ts">2026-05-01 09:06</td>
+                  <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Processed</span></td>
+                  <td>
+                    <div class="match-bar">
+                      <div class="meter"><span style="width:100%;"></span></div>
+                      <span>22 / 22</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button>↓ XML</button>
+                      <button>Open</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style="margin-top: var(--space-3); display: flex; justify-content: space-between; align-items: center; font-size: var(--text-xs); color: var(--color-text-muted);">
+              <span>Showing 6 of 12 statements</span>
+              <a href="#" style="color: var(--color-primary); text-decoration: none; font-weight: var(--weight-medium);">View all →</a>
+            </div>
+
+            <!-- Variant: empty state preview (small below) -->
+            <div style="margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px dashed var(--color-border);">
+              <div style="font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); font-weight: var(--weight-semi); margin-bottom: var(--space-2);">Empty state (no statements yet)</div>
+              <div class="empty-state">
+                <div class="icon">📥</div>
+                <h3>Upload your first bank statement to start auto-matching donations</h3>
+                <p>Export camt.053 from PostFinance e-banking weekly. Givernance matches structured QRR/SCOR references on credit entries and creates donation rows automatically — no manual reconciliation for ~95% of entries.</p>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Right rail: reconciliation health card -->
+        <aside>
+          <section class="health-card">
+            <h2>Reconciliation health</h2>
+            <p class="lead">Last 90 days · refreshed 60 s ago</p>
+
+            <div class="health-metric">
+              <span class="label">Statements imported</span>
+              <span class="value">12</span>
+            </div>
+            <div class="health-metric">
+              <span class="label">Last import</span>
+              <span class="value" style="font-size: var(--text-sm);">2026-05-06 09:12</span>
+            </div>
+            <div class="health-metric split">
+              <span class="label">Credits 90 d</span>
+              <div class="value-block">
+                <div class="v-main">147</div>
+                <div class="v-sub">CHF 28 940</div>
+              </div>
+            </div>
+            <div class="health-metric split">
+              <span class="label">Matched</span>
+              <div class="value-block">
+                <div class="v-main" style="color: var(--color-green-text);">141 (96%)</div>
+                <div class="v-sub">CHF 27 685</div>
+              </div>
+            </div>
+            <div class="health-metric split">
+              <span class="label">Unreconciled</span>
+              <div class="value-block">
+                <div class="v-main" style="color: var(--color-amber-text);">3</div>
+                <div class="v-sub">CHF 1 105</div>
+              </div>
+            </div>
+            <div class="health-metric split">
+              <span class="label">Written off</span>
+              <div class="value-block">
+                <div class="v-main" style="color: var(--color-text-muted);">3</div>
+                <div class="v-sub">CHF 150</div>
+              </div>
+            </div>
+
+            <button class="health-cta" type="button">
+              <span>Review unreconciled queue</span>
+              <span class="count-pill">3</span>
+            </button>
+          </section>
+
+          <!-- Variant: empty state -->
+          <section class="health-card" style="margin-top: var(--space-4);">
+            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); font-weight: var(--weight-semi); margin-bottom: var(--space-2);">Variant — clean queue</div>
+            <h2>Reconciliation health</h2>
+            <p class="lead">Last 90 days · 0 unreconciled</p>
+            <div class="health-metric split">
+              <span class="label">Matched</span>
+              <div class="value-block">
+                <div class="v-main" style="color: var(--color-green-text);">100%</div>
+                <div class="v-sub">147 / 147 credits</div>
+              </div>
+            </div>
+            <button class="health-cta empty-state-cta" type="button" disabled>
+              <span>No backlog · all credits matched</span>
+              <span class="count-pill" style="background: rgba(0,0,0,0.06); color: var(--color-text-muted);">0</span>
+            </button>
+          </section>
+        </aside>
+      </div>
+
+    </main>
+  </div>
+</body>
+</html>

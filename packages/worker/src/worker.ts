@@ -2,6 +2,7 @@
 
 import {
   BRANDING_EVENT_TYPES,
+  CAMT_JOB_NAMES,
   FINANCE_DASHBOARD_JOBS,
   NOTIFICATIONS_DIGEST_JOBS,
   QUEUE_NAMES,
@@ -19,6 +20,8 @@ import { processBrandingActivateLogo } from "./processors/branding-activate-logo
 import { processBrandingGcAsset } from "./processors/branding-gc-asset.js";
 import { processBrandingAsset } from "./processors/branding-process-asset.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
+import { processCamt053Import } from "./processors/camt053-import.js";
+import { processCamt053Reconcile } from "./processors/camt053-reconcile.js";
 import { processConstituentCountRefresh } from "./processors/finance-constituent-count-refresh.js";
 import { processSurveyRetention } from "./processors/finance-survey-retention.js";
 import { processSurveySend } from "./processors/finance-survey-send.js";
@@ -91,6 +94,7 @@ const financeDashboardQueue = new Queue(QUEUE_NAMES.FINANCE_DASHBOARD, {
     removeOnFail: { count: 50 },
   },
 });
+const camtQueue = new Queue(QUEUE_NAMES.CAMT, { connection: queueConnection });
 
 /**
  * Register the nightly provisional-admin expire job.
@@ -396,6 +400,34 @@ async function processDomainEvent(job: Job): Promise<void> {
       return;
     }
 
+    case "camt053-import": {
+      await camtQueue.add(
+        CAMT_JOB_NAMES.IMPORT,
+        {
+          statementId: decision.statementId,
+          bankAccountId: decision.bankAccountId,
+          orgId: decision.orgId,
+          traceparent: decision.traceparent,
+        },
+        { jobId: `camt053-import-${decision.statementId}` },
+      );
+      log.info(
+        { statementId: decision.statementId, bankAccountId: decision.bankAccountId },
+        "Enqueued camt053 import",
+      );
+      return;
+    }
+
+    case "camt053-reconcile": {
+      await camtQueue.add(
+        CAMT_JOB_NAMES.RECONCILE,
+        { statementId: decision.statementId, traceparent: decision.traceparent },
+        { jobId: `camt053-reconcile-${decision.statementId}` },
+      );
+      log.info({ statementId: decision.statementId }, "Enqueued camt053 reconcile");
+      return;
+    }
+
     case "keycloak-sync-org-logo": {
       await keycloakSyncQueue.add(
         BRANDING_EVENT_TYPES.KEYCLOAK_SYNC_ORG_LOGO,
@@ -579,6 +611,31 @@ function startWorkers() {
     },
   );
 
+  // ── camt.053 ingestion + reconciliation queue (Epic #318 PR #5) ────
+  // Two job names share the queue: import (XSD-validate + persist) and
+  // reconcile (match + create donations). Concurrency-1 — each job
+  // pulls a multipart S3 fetch + sequential DB inserts; scale via pods.
+  const camtWorker = new Worker(
+    QUEUE_NAMES.CAMT,
+    async (job: Job) => {
+      // biome-ignore lint/suspicious/noExplicitAny: BullMQ Job is heterogeneously typed at runtime
+      const j = job as Job<any>;
+      if (j.name === CAMT_JOB_NAMES.IMPORT) {
+        return processCamt053Import(j);
+      }
+      if (j.name === CAMT_JOB_NAMES.RECONCILE) {
+        return processCamt053Reconcile(j);
+      }
+      logger.warn({ jobName: j.name }, "Unknown camt job — skipping");
+      return null;
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 1,
+      ...defaultJobOpts,
+    },
+  );
+
   const keycloakSyncWorker = new Worker(
     QUEUE_NAMES.KEYCLOAK_SYNC,
     async (job: Job) => {
@@ -676,6 +733,7 @@ function startWorkers() {
     bulkImportWorker,
     financeDashboardWorker,
     platformReportsWorker,
+    camtWorker,
   ];
 
   for (const w of workers) {

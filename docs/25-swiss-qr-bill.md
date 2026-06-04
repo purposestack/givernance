@@ -376,7 +376,17 @@ erDiagram
     donations {
         uuid swiss_qr_reference_id FK "nullable, set by reconciliation"
         uuid camt_credit_entry_id FK "nullable"
+        uuid reverses_donation_id FK "nullable; set on the reversal row when Ntry.RvslInd=true — see §5.2"
         enum payment_source "stripe | camt053 | manual"
+        enum status "cleared | refunded | failed (existing enum, reused for reversals)"
+        int amount_cents "negative on reversal rows by convention"
+    }
+
+    constituents {
+        uuid id PK
+        string paymentSourceIban "nullable; secondary match key from camt.053 RltdPties.DbtrAcct.Id.IBAN — extracted by PR #5 reconciler"
+        enum dataSource "camt053 | manual | public_form | csv_import — provenance flag, set at row creation"
+        enum identityCompleteness "full | partial | minimal — derived at write-time, see §5.5"
     }
 ```
 
@@ -601,9 +611,19 @@ flowchart TD
     A -->|BOOK| B{RvslInd?}
     B -->|true| C{Original donation<br/>exists?}
     B -->|false| Norm[Normal reconciliation path<br/>see §5.1]
-    C -->|yes| D[INSERT donation reversal<br/>+ link to original via donations.parent_id<br/>+ emit donation.refunded]
+    C -->|yes| D[INSERT reversal donation<br/>+ link to original via donations.reverses_donation_id<br/>+ status='refunded'<br/>+ emit donation.refunded]
     C -->|no| E[INSERT camt_unreconciled_entries<br/>reason=orphan_reversal]
 ```
+
+**Reversal mechanics — concrete shape for the backend implementation.**
+
+1. **Detection**: a reversal entry has `Ntry.RvslInd=true` AND the structured reference (QRR/SCOR) resolves to an existing `swiss_qr_references` row that already has a matched (non-reversed, non-refunded) `donations` row.
+2. **New donation row** — the reversal is modelled as a **second `donations` row** with `amount_cents = -original.amount_cents` (negative), `status='refunded'` (existing enum value — does not require a migration), `payment_source='camt053'`, `swiss_qr_reference_id` set to the same reference as the original, and `camt_credit_entry_id` set to the reversal entry. This keeps the financial sign convention symmetric with Stripe refunds and lets every aggregate query (`SUM(amount_cents)` on the campaign) settle to the net amount without special-casing the reversal sign.
+3. **Linking back to the original** — a new nullable column `donations.reverses_donation_id` (FK → `donations.id`, `ON DELETE SET NULL`) is added by PR #5. The reversal row sets `reverses_donation_id` to the original's id; the original row's `reverses_donation_id` stays NULL. **Rationale**: re-using the existing `campaigns.parent_id` shape was tempting but `parent_id` is a recursive-tree pattern (parent→child→grandchild); a refund is a 1:1 backlink, not a tree. A dedicated `reverses_donation_id` keeps the semantics explicit and lets the operator's audit query (`SELECT … WHERE reverses_donation_id = $original.id`) read cleanly.
+4. **Idempotency of the reversal itself** — the entry-level idempotency key (§5.4) prevents double-booking if the bank re-emits the reversal entry on a re-upload; the partial-unique index on `donations_org_payment_uniq` already covers the donation side via `paymentRef = AcctSvcrRef`.
+5. **Original donation row is NEVER mutated** — its `status` stays `cleared`; the reversal is additive. Downstream consumers (receipt-PDF generator, annual statement) filter by `status='cleared' AND reverses_donation_id IS NULL` to get the net non-refunded set.
+6. **Orphan reversals** (the reversed reference has no matching donation, e.g. the original credit was never reconciled or was manually written off) → `camt_unreconciled_entries(reason='orphan_reversal')`. The operator decides whether to write it off or chase it manually.
+7. **Outbox event** — `donation.refunded` is emitted with `{ donationId: reversal.id, reversesDonationId: original.id, amountCents: -original.amount_cents }` so downstream consumers (receipt-revocation worker, annual-statement re-rendering) react via the existing event-bus contract.
 
 ### 5.3 Tracking widget — full 3-stage funnel (printed → scanned → paid)
 
@@ -681,42 +701,106 @@ A second surface lives at `/settings/bank-accounts/:id` (cross-campaign view): i
 
 ```
 Per uploaded statement:
-  1. XSD-validate against camt.053.001.08.xsd → reject malformed
-  2. Read GrpHdr.MsgId
+  1. Detect schema version from Document/@xmlns
+     → if namespace ∉ {camt.053.001.04, camt.053.001.08}:
+         reject with status=failed, error='camt_unsupported_version'
+  2. XSD-validate against the matching .xsd bundle (.04 OR .08) — reject malformed
+  3. Read GrpHdr.MsgId
      → if (org_id, msg_id) already in camt_statements: short-circuit (re-import)
-  3. For each Stmt:
+  4. For each Stmt:
      - Read Acct.Id.IBAN → MUST match a tenant bank_account.iban
-       (else: reject the whole file — GDPR safety, foreign IBAN)
+       (else: reject the whole file — GDPR safety, foreign IBAN;
+        store the rejected XML under {org_id}/camt053/rejected/{yyyy}/{mm}/{uuid}.xml)
      - For each Ntry where CdtDbtInd = CRDT and Sts = BOOK:
-        a. idempotency_key = (msg_id, AcctSvcrRef)
-           if seen in camt_credit_entries → skip
-        b. Walk NtryDtls.TxDtls (1..n — banks may batch):
-           - Extract RmtInf.Strd.CdtrRefInf.Ref + Tp.CdOrPrtry
-           - Validate format (QRR mod-10 OR SCOR mod-97) → if invalid, mark unreconciled
-        c. Lookup swiss_qr_references.reference = $1
-           AND swiss_qr_references.bank_account_id = $2
-           → resolve (campaignId, constituentId)
-        d. Capture: amount, currency, value_date, booking_date, donor name+IBAN
-        e. INSERT camt_credit_entries (always, matched or not)
-        f. If matched:
+        a. **Granularity rule** — one `camt_credit_entries` row per TxDtls,
+           NOT per Ntry. ISO 20022 allows a single Ntry to batch multiple
+           TxDtls (e.g. a bank-side aggregation of two same-day donations
+           to the same beneficiary). Each TxDtls carries its own
+           AcctSvcrRef-equivalent (Refs.AcctSvcrRef, often duplicated from
+           the Ntry-level value when the Ntry is 1:1 with a single TxDtls)
+           and its own RmtInf. The reconciler walks NtryDtls.TxDtls[*]
+           and inserts one credit entry per element.
+        b. For each TxDtls:
+           i.   idempotency_key = (org_id, statement_id, AcctSvcrRef,
+                COALESCE(EndToEndId, ''))
+                — if matches an existing camt_credit_entries row → skip
+           ii.  Extract RmtInf.Strd.CdtrRefInf.Ref + Tp.CdOrPrtry
+                → reference type:
+                  - Tp.CdOrPrtry.Prtry = "QRR" → QRR (27 digits, mod-10)
+                  - Tp.CdOrPrtry.Cd     = "SCOR" → SCOR (RF + mod-97)
+                  - other / missing → mark as no-structured-ref
+           iii. Validate format:
+                - QRR: exactly 27 digits + mod-10 recursive check passes
+                - SCOR: starts with 'RF' + 2 mod-97 check digits + ≤ 21 alphanum
+                → if invalid format, mark unreconciled (reason='invalid_ref')
+                  AND still INSERT the credit entry (step c) for the audit trail
+           iv.  If valid format:
+                Lookup swiss_qr_references
+                  WHERE reference = $ref
+                    AND bank_account_id = $statement.bank_account_id
+                  → resolve (campaignId, constituentId, expectedAmountCents)
+                If no row found: mark unreconciled (reason='no_match')
+        c. INSERT camt_credit_entries (always — matched or not — for the audit trail)
+           with { amount, currency, value_date, booking_date, debtor_name,
+                  debtor_iban, structured_ref, acct_svcr_ref, end_to_end_id }
+        d. If matched:
            - Constituent resolution:
                if ref.constituent_id IS NOT NULL (personalized rail):
                  → use it; cross-check debtor name+IBAN as a QA signal
-                   (mismatch → log warning, do not block)
+                   (mismatch → log warning at WARN level, do not block;
+                    edge case: donor used a different account for this payment)
                else (door-drop rail, ref.constituent_id IS NULL):
                  → find_or_create_constituent(orgId, debtor name + IBAN
                    from camt.053 RltdPties.Dbtr / DbtrAcct.Id.IBAN)
                  → if debtor info is missing/anonymised (rare, mostly TWINT):
-                   mark unreconciled (reason=no_debtor_info) for operator review
-           - INSERT donations { campaign_id, constituent_id, swiss_qr_reference_id, payment_source='camt053', payment_ref=AcctSvcrRef }
+                   mark unreconciled (reason='no_debtor_info') for operator review;
+                   do NOT create a donation — operator decides whether to attribute
+                   manually or write off
+           - **Partial-match handling** — match-by-amount is NEVER the reason for
+             unreconciliation. If `expectedAmountCents > 0` AND
+             `entry.amount_cents != expectedAmountCents`:
+                * STILL create the donation
+                * Set a partial_match flag (surfaced in §5.3 metrics + audit query —
+                  the flag lives as a `camt_unreconciled_entries(reason='partial_match',
+                  status='resolved')` row for the same credit entry so the operator
+                  sees the discrepancy in the queue but the donation is already booked.
+                  This is the only case where one credit entry creates BOTH a donation
+                  AND an unreconciled row.)
+             If `expectedAmountCents = 0` (donor-fills printed-blank amount):
+                  no partial_match flag — every amount is "as expected"
+           - INSERT donations { campaign_id, constituent_id, swiss_qr_reference_id,
+             camt_credit_entry_id, amount_cents=entry.amount_cents,
+             payment_source='camt053', payment_ref=AcctSvcrRef }
+           - UPDATE camt_credit_entries SET donation_id = donations.id
            - emit outbox 'donation.created' (existing flow downstream: receipt PDF, etc.)
-        g. If unmatched (no QR ref / invalid ref / amount diff > tolerance):
-           - INSERT camt_unreconciled_entries (status=pending)
-  4. UPDATE camt_statements SET status=processed, matched_credits, unmatched_credits
-  5. Emit outbox 'camt053.processed'
+        e. If unmatched (no_match / invalid_ref / no_debtor_info / orphan_reversal):
+           - INSERT camt_unreconciled_entries (status='pending')
+  5. UPDATE camt_statements SET status=processed, matched_credits, unmatched_credits
+  6. Emit outbox 'camt053.processed'
 ```
 
-**Reversal entries** (`Ntry.RvslInd = true`) reverse the prior donation rather than double-book. **Pending entries** (`Sts != BOOK`) are skipped and re-evaluated on next statement upload.
+**Reversal entries** (`Ntry.RvslInd = true`) reverse the prior donation rather than double-book — see §5.2 for the concrete reversal mechanics (`donations.reverses_donation_id`, negative `amount_cents`, `status='refunded'`). **Pending entries** (`Sts != BOOK`) are skipped and re-evaluated on next statement upload; the entry-level idempotency key (step 4.b.i) catches the eventual `BOOK` re-emission without double-booking.
+
+### 5.4.bis Statement state machine
+
+`camt_statements.status` (enum `camt_statement_status`) transitions:
+
+`pending` (upload landed, outbox emitted) →
+  `processing` (worker dequeued; structural validation passed; persist loop running) →
+  `processed` (reconciler ran; matched/unmatched counts written; outbox `camt053.processed` emitted)
+
+Failure path is a single terminal state:
+- `failed` — set on every rejection. The `error` column carries a structured `<code>:<message>` discriminator the UI parses to distinguish failure classes:
+  - `duplicate_msg_id:…` — `GrpHdr.MsgId` already seen on a different statement row. Original entries untouched; file kept in main bucket for audit.
+  - `foreign_iban:…` — `Acct.Id.IBAN` not registered in the tenant's `bank_accounts`. File moved to `rejected/` prefix.
+  - `camt_unsupported_version:…` — `Document/@xmlns` not in `{camt.053.001.04, camt.053.001.08}`. File moved to `rejected/` prefix.
+  - `parse_error:…` / `missing_required_field:…` — structural validation failed. File moved to `rejected/` prefix.
+
+The UI poller (operator upload progress widget) binds to the 3-state happy path (`pending → processing → processed`) plus the single terminal `failed` state, and parses `error` to render the failure class.
+
+> A future refactor may split `failed` into a `duplicate` terminal status so the UI can render duplicates as an informational state rather than an error (a re-uploaded statement is operator-recoverable, not a defect). That's a follow-up ENUM addition; the present shape collapses every rejection class into `failed + error_code` for forward compatibility.
+
+**`paymentSource` vs `paymentMethod` on camt.053 donations.** Every donation that flowed through the camt.053 rail carries `payment_source='camt053'`. The `payment_method` discriminates auto-reconciled (`payment_method='camt053'`) from operator-resolved (`payment_method='camt053_manual'`) — useful for reporting "auto-match rate" without re-deriving from `camt_unreconciled_entries`. Operator-resolved donations are still camt-rail provenance and inherit the same retention rule.
 
 ### 5.5 Constituent enrichment from camt.053 — what we extract and how
 
@@ -759,6 +843,29 @@ RltdPties.Dbtr.PstlAdr.AdrLine[*]  → heuristic parser:
 RltdPties.DbtrAcct.Id.IBAN         → constituents.paymentSourceIban (NEW field, PR #5 schema)
                                      — secondary match key for re-imports + cross-tenant collisions
 ```
+
+#### Edge cases — name-split + address-parsing algorithm
+
+The "last space" name-split rule is intentionally simple, but the order of operations and the compound-surname carve-out matter. The deterministic parser applies the following steps in order:
+
+1. **Trim leading/trailing whitespace** from `Dbtr.Nm` before any split (`"  M. Jean Dupont  "` → `"M. Jean Dupont"`).
+2. **Strip the leading title prefix** if it matches a closed list (case-insensitive, trailing dot optional): `M.`, `Mme`, `Mlle`, `Dr.`, `Dr. med.`, `Prof.`, `Mr.`, `Mrs.`, `Ms.` — the prefix is dropped and not stored anywhere in MVP (PR #5 ships no `salutation` column; the future AI normalisation layer in §5.6 will surface this signal). Tokens beyond this closed list (e.g. `"Herr"`, `"Madame"`, French/German aristocratic prefixes) are left in place; they fall to the AI layer.
+3. **Then** apply the last-space split: everything after the last single space → `lastName`; everything before → `firstName`. Compound or hyphenated tokens on either side stay intact:
+   - `"Pia-Maria Rutschmann-Schnyder"` → `firstName='Pia-Maria'`, `lastName='Rutschmann-Schnyder'` (hyphens are NOT word boundaries for this split — the split is strictly on a single ASCII space)
+   - `"Jean Dupont"` → `firstName='Jean'`, `lastName='Dupont'`
+   - `"Jean Pierre Dupont"` → `firstName='Jean Pierre'`, `lastName='Dupont'` (everything before the last space is the firstName)
+   - `"Dupont"` (single token, no space) → `firstName=NULL`, `lastName='Dupont'` (and `identityCompleteness` falls to `minimal` or `partial` depending on contact-info presence)
+4. **Aristocratic / Asian / van-der particles are KNOWN false-positives** (`"Wong Wei Ming"` becomes `firstName='Wong Wei'`, `lastName='Ming'`, which is wrong). The deterministic parser does NOT attempt to detect these — they're left as data the operator can correct manually, and they're the headline use case for the §5.6 AI normalisation layer.
+
+**Address-line free-form fallback (`AdrLine`)** — when `StrtNm`/`PstCd`/`TwnNm` are absent and only `AdrLine[*]` is present:
+
+1. Iterate the lines from last to first.
+2. The first line matching `/^(\d{4,5})\s+(.+)$/` is treated as `"{postCode} {city}"` — captures into `postalCode` + `city`. Stop here.
+3. The line immediately before the postal-code line → `addressLine1` (street + building number, kept as one string).
+4. Any line(s) further up → `addressLine2` (rare; typically present for c/o or organisational sub-units). Multiple lines are joined with a single space.
+5. If no line matches the postal-code regex, all `AdrLine` content is concatenated into `addressLine1` and the row is flagged `identityCompleteness='partial'` (no parseable address).
+
+This fallback IS permanent infrastructure per the SWIFT-Nov-2026 exemption note above — camt.053 is out of scope for the unstructured-address removal, so we cannot retire the parser after the migration date.
 
 #### Idempotent enrichment on re-import
 
@@ -851,11 +958,15 @@ Every sensitive mutation lands in `audit_logs` (same shape as `docs/19-impersona
 | Update bank account | `bank_account` | `update` | Field-level diff (excluding `iban` — re-creation only) |
 | Soft-delete bank account | `bank_account` | `soft_delete` | `{ deletedAt }` |
 | Upload camt.053 | `camt_statement` | `upload` | `{ msgId, bankAccountId, s3Path, fileSize }` |
-| Resolve unreconciled | `camt_unreconciled_entry` | `resolve` | `{ resolutionNote, linkedDonationId }` |
+| Download camt.053 | `camt_statement` | `download` | `{ statementId, msgId }` — the raw XML contains donor IBAN + name on every credit line. Downloads are operator-PII access events and must be auditable per `docs/06` §audit-trail. The signed URL minted by `GET /v1/camt-statements/:id/download` writes one row per mint; replays via the returned URL within its TTL are NOT re-audited (Scaleway access log captures them at the bucket layer) |
+| Resolve unreconciled (manual link) | `camt_unreconciled_entry` | `resolve` | `{ resolutionNote, linkedCampaignId, linkedConstituentId, createdDonationId }` — operator picked a campaign + constituent and the reconciler created a fresh `donations` row from the unreconciled entry |
+| Link unreconciled to existing donation | `camt_unreconciled_entry` | `link` | `{ resolutionNote, linkedDonationId }` — operator attached the orphan credit to a donation that already exists (e.g. a manual Stripe-rail row the donor double-paid via bank transfer). Distinct from `resolve` because no new donation is created — the existing one gets `camt_credit_entry_id` set |
 | Write off unreconciled | `camt_unreconciled_entry` | `write_off` | `{ resolutionNote }` |
 | Link campaign ↔ bank account | `campaign` | `update` | `{ bankAccountId: { from, to }, qrReferenceMode }` |
 
 The `actor_id` is the impersonation-aware `effective_actor_id` per `docs/19` §5 — operator-via-support audits double-attribute correctly.
+
+**System-level transitions are NOT audit_logs rows.** A `camt053.failed` state transition (XSD-invalid file, unsupported schema version, foreign-IBAN rejection) is recorded as a structured log event (`event=camt053_import_failed`, `statement_id`, `reason`, `org_id`) per `docs/17-log-management.md`, NOT as an `audit_logs` row. `audit_logs` is reserved for operator-initiated mutations (an upload that fails XSD validation is still recorded — the failure is what's distinct, and that's the worker's structured log surface, not an operator action). The forensic trail is therefore: `audit_logs` carries the operator's "I uploaded a file" + later "I downloaded it", structured logs carry the worker's "it was rejected because…", and the two correlate via `statement_id`.
 
 ## 8. Future work (explicitly out of scope for this epic)
 

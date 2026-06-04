@@ -43,6 +43,19 @@ export interface RoutingInput {
 
 export type RoutingDecision =
   | {
+      kind: "camt053-import";
+      statementId: string;
+      bankAccountId: string;
+      orgId: string;
+      traceparent?: string;
+    }
+  | {
+      kind: "camt053-reconcile";
+      statementId: string;
+      orgId: string;
+      traceparent?: string;
+    }
+  | {
       kind: "donation-receipt";
       donationId: string;
       orgId: string;
@@ -136,6 +149,25 @@ export type RoutingDecision =
 
 export function routeDomainEvent(input: RoutingInput): RoutingDecision {
   const { id, tenantId, type, payload, traceparent } = input;
+
+  if (type === "camt053.uploaded") {
+    return {
+      kind: "camt053-import",
+      statementId: payload.statementId as string,
+      bankAccountId: payload.bankAccountId as string,
+      orgId: tenantId,
+      traceparent,
+    };
+  }
+
+  if (type === "camt053.imported") {
+    return {
+      kind: "camt053-reconcile",
+      statementId: payload.statementId as string,
+      orgId: tenantId,
+      traceparent,
+    };
+  }
 
   if (type === "donation.created") {
     return {

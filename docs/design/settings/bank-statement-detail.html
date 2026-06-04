@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Givernance — Settings — Bank statement detail</title>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/base.css">
+  <style>
+    /* ── Settings → Bank statement detail (Epic #318 PR #5) ── */
+    body { background: var(--color-background); }
+    .layout { display: grid; grid-template-columns: 280px 1fr; max-width: 1480px; margin: 0 auto; gap: var(--space-8); padding: var(--space-6) var(--space-6); }
+
+    /* Annotations rail */
+    .annotations { position: sticky; top: var(--space-6); align-self: flex-start; max-height: calc(100vh - 48px); overflow-y: auto; padding-right: var(--space-3); }
+    .annotations h2 { font-family: var(--font-heading); font-size: var(--text-xl); color: var(--color-text); margin-bottom: var(--space-2); }
+    .annotations .lead { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: var(--leading-relaxed); margin-bottom: var(--space-5); }
+    .anno { margin-bottom: var(--space-5); padding-left: var(--space-3); border-left: 2px solid var(--color-primary); }
+    .anno h3 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); font-weight: var(--weight-semi); color: var(--color-text); margin-bottom: 4px; }
+    .anno p { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: var(--leading-relaxed); }
+    .anno code { font-family: var(--font-mono); font-size: 11px; background: var(--color-surface-container); padding: 1px 4px; border-radius: 3px; color: var(--color-text); }
+    .anno.warn { border-left-color: var(--color-tertiary-container); }
+    .anno.gdpr { border-left-color: var(--color-indigo); }
+
+    /* Page */
+    .page { min-width: 0; }
+    .breadcrumb { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2); }
+    .breadcrumb a { color: var(--color-primary); text-decoration: none; }
+    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+    .page-header h1 { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); margin: var(--space-1) 0; }
+    .page-header .sub { color: var(--color-text-secondary); font-size: var(--text-sm); max-width: 70ch; }
+    .header-actions { display: inline-flex; gap: var(--space-2); }
+    .btn { height: 36px; padding: 0 var(--space-4); border-radius: var(--radius-button); font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer; border: 1px solid var(--color-border); background: var(--color-white); color: var(--color-text); }
+    .btn.btn-primary { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
+
+    /* Summary card */
+    .summary-card { background: var(--color-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-5); margin-bottom: var(--space-5); }
+    .summary-card h2 { font-family: var(--font-heading); font-size: var(--text-lg); color: var(--color-text); margin-bottom: var(--space-3); }
+    .kv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3) var(--space-5); }
+    .kv .k { font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); font-weight: var(--weight-semi); margin-bottom: 2px; }
+    .kv .v { font-size: var(--text-sm); color: var(--color-text); }
+    .kv .v.mono { font-family: var(--font-mono); font-size: var(--text-xs); }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px var(--space-2); border-radius: var(--radius-pill); font-size: 11px; font-weight: var(--weight-semi); }
+    .badge-success { background: var(--color-green-light); color: var(--color-green-text); }
+    .badge-warn { background: var(--color-amber-light); color: var(--color-amber-text); }
+    .badge-error { background: var(--color-error-container); color: var(--color-on-error-container); }
+    .badge-info { background: var(--color-sky-light); color: var(--color-sky-text); }
+    .badge-neutral { background: var(--color-surface-container); color: var(--color-text-secondary); }
+    .badge-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+    /* KPI strip */
+    .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); margin-bottom: var(--space-5); }
+    .kpi { background: var(--color-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-4); }
+    .kpi .label { font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-text-muted); font-weight: var(--weight-semi); }
+    .kpi .value { font-family: var(--font-heading); font-size: var(--text-3xl); color: var(--color-text); margin-top: 4px; line-height: 1.1; }
+    .kpi .sub { font-size: 11px; color: var(--color-text-muted); margin-top: 4px; font-family: var(--font-mono); }
+    .kpi.green .value { color: var(--color-green-text); }
+    .kpi.amber .value { color: var(--color-amber-text); }
+
+    /* Filter bar */
+    .filter-bar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-5); background: var(--color-surface-container-low); border-bottom: 1px solid var(--color-border); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+    .filter-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-white); font-size: var(--text-xs); color: var(--color-text-secondary); cursor: pointer; }
+    .filter-chip.active { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
+    .filter-chip .count { font-family: var(--font-mono); }
+
+    /* Table */
+    .table-card { background: var(--color-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); overflow: hidden; }
+    table.entries { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+    table.entries thead th { text-align: left; background: var(--color-surface-container-low); color: var(--color-text-secondary); font-weight: var(--weight-medium); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+    table.entries tbody td { padding: var(--space-3); border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+    table.entries tbody tr:last-child td { border-bottom: 0; }
+    table.entries tbody tr:hover { background: var(--color-surface-container-low); }
+    table.entries .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+    table.entries .ref { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); letter-spacing: 0.02em; }
+    table.entries .iban-mask { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); }
+    table.entries .donor { font-weight: var(--weight-medium); color: var(--color-text); }
+    table.entries .link { color: var(--color-primary); text-decoration: none; font-weight: var(--weight-medium); font-size: var(--text-xs); }
+    table.entries .link:hover { text-decoration: underline; }
+    table.entries .unreconciled { color: var(--color-amber-text); font-size: var(--text-xs); font-weight: var(--weight-medium); }
+
+    /* Alert (failure) */
+    .alert { padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); margin-bottom: var(--space-5); display: flex; gap: var(--space-3); align-items: flex-start; }
+    .alert.error { background: var(--color-error-container); border-left: 3px solid var(--color-error); color: var(--color-on-error-container); }
+    .alert .icon { font-size: 20px; flex-shrink: 0; }
+    .alert h3 { font-size: var(--text-sm); font-weight: var(--weight-semi); margin-bottom: 4px; color: var(--color-on-error-container); }
+    .alert p { font-size: var(--text-xs); line-height: var(--leading-relaxed); color: var(--color-on-error-container); margin-bottom: var(--space-2); }
+    .alert .alert-actions { display: inline-flex; gap: var(--space-2); }
+    .alert .alert-actions button { background: var(--color-white); color: var(--color-on-error-container); border: 1px solid var(--color-error); padding: 6px 12px; font-size: 11px; font-weight: var(--weight-medium); border-radius: var(--radius-button); cursor: pointer; }
+    .alert details { font-size: 11px; margin-top: var(--space-2); }
+    .alert details pre { font-family: var(--font-mono); font-size: 11px; background: rgba(255,255,255,0.55); padding: var(--space-2); border-radius: 4px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+
+    /* Section divider variant */
+    .variant-label { margin-top: var(--space-10); margin-bottom: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-surface-container); border-left: 3px solid var(--color-tertiary-container); border-radius: var(--radius-md); font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-wide); font-weight: var(--weight-semi); color: var(--color-text); }
+    .variant-label .desc { display: block; text-transform: none; letter-spacing: normal; font-weight: var(--weight-regular); color: var(--color-text-secondary); margin-top: 4px; font-size: 11px; }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .annotations { position: static; max-height: none; }
+      .kv-grid { grid-template-columns: 1fr; }
+      .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ============================================================
+         Annotations rail (left)
+         ============================================================ -->
+    <aside class="annotations" aria-label="Mockup annotations">
+      <h2>Statement detail</h2>
+      <p class="lead">One imported camt.053 file, fully decomposed. Every <code>Ntry</code> with <code>CdtDbtInd = CRDT</code> and <code>Sts = BOOK</code> becomes a row. Reversals and pending entries handled per §5.2.</p>
+
+      <div class="anno">
+        <h3>States covered</h3>
+        <p>Processed (happy) · processing · failed (XSD invalid) · failed (foreign IBAN, redirect prompt) · per-row matched / unreconciled.</p>
+      </div>
+
+      <div class="anno">
+        <h3>API endpoints touched</h3>
+        <p><code>GET /v1/camt-statements/:id</code> (summary + entries)<br>
+        <code>GET /v1/camt-statements/:id/download</code> (signed URL, 10-yr retention)<br>
+        <code>POST /v1/camt-unreconciled/:id/resolve</code> (inline resolve action)<br>
+        all <code>requireOrgAdmin</code>.</p>
+      </div>
+
+      <div class="anno warn">
+        <h3>Entry filtering (§5.4)</h3>
+        <p>Only <code>CRDT</code>+<code>BOOK</code> entries are shown. <code>PDNG</code> entries are skipped silently — they re-appear once booked. Reversals (<code>RvslInd = true</code>) display as a negative-amount row linked to the original donation.</p>
+      </div>
+
+      <div class="anno gdpr">
+        <h3>GDPR posture (§7)</h3>
+        <p>Debtor IBAN masked to last 4: <code>CH··· 5295·7</code>. Debtor name + address shown only to <code>org_admin</code> (per §6 permissions matrix). Full structured Dbtr block is in the raw XML; click the download CTA to inspect (signed URL, audited).</p>
+      </div>
+
+      <div class="anno">
+        <h3>Resolve drawer</h3>
+        <p>Inline "Resolve →" on unreconciled rows opens the same drawer as on the cross-bank queue — see <code>camt-unreconciled-queue.html</code>.</p>
+      </div>
+
+      <div class="anno warn">
+        <h3>Failure handling</h3>
+        <p>XSD-invalid files: full <code>libxmljs2</code> error surfaced (line + column + diagnostic). Foreign-IBAN files: prompt to switch tab to the matching tenant bank account — never silently accepted.</p>
+      </div>
+    </aside>
+
+    <!-- ============================================================
+         Main page
+         ============================================================ -->
+    <main class="page">
+      <div class="breadcrumb"><a href="#">Dashboard</a> / <a href="#">Settings</a> / <a href="bank-accounts-list.html">Bank accounts</a> / <a href="bank-account-detail.html">PostFinance · CH•••8901·2</a> / camt053_20260506_001.xml</div>
+      <div class="page-header">
+        <div>
+          <h1>Statement · 2026-05-06</h1>
+          <p class="sub">PostFinance · CH•••8901·2 · 14 credit entries · CHF 3 450.00 booked · imported by Léa Bonnard (Org admin) on 2026-05-06 at 09:12 UTC.</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn">↓ Download XML</button>
+          <button class="btn btn-primary">Re-trigger reconciler</button>
+        </div>
+      </div>
+
+      <!-- Summary card -->
+      <section class="summary-card">
+        <h2>Statement metadata</h2>
+        <div class="kv-grid">
+          <div class="kv">
+            <div class="k">GrpHdr.MsgId</div>
+            <div class="v mono">2026050609000123-PF-CHF</div>
+          </div>
+          <div class="kv">
+            <div class="k">Acct.Id.IBAN</div>
+            <div class="v mono">CH•••8901·2 <span class="badge badge-info" style="margin-left:6px;">tenant account</span></div>
+          </div>
+          <div class="kv">
+            <div class="k">Status</div>
+            <div class="v"><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Processed</span></div>
+          </div>
+          <div class="kv">
+            <div class="k">Booking period</div>
+            <div class="v mono">2026-05-05 → 2026-05-06</div>
+          </div>
+          <div class="kv">
+            <div class="k">Uploaded</div>
+            <div class="v">Léa Bonnard · 2026-05-06 09:12</div>
+          </div>
+          <div class="kv">
+            <div class="k">Processed</div>
+            <div class="v">2026-05-06 09:13 (1 s queue lag)</div>
+          </div>
+          <div class="kv">
+            <div class="k">File</div>
+            <div class="v mono">camt053_20260506_001.xml · 42 KB</div>
+          </div>
+          <div class="kv">
+            <div class="k">XSD schema</div>
+            <div class="v mono">camt.053.001.08</div>
+          </div>
+          <div class="kv">
+            <div class="k">Retention</div>
+            <div class="v">10 yr (Swiss CO Art. 958f)</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- KPI strip -->
+      <div class="kpi-strip">
+        <div class="kpi">
+          <div class="label">Credit entries</div>
+          <div class="value">14</div>
+          <div class="sub">CHF 3 450.00</div>
+        </div>
+        <div class="kpi green">
+          <div class="label">Matched</div>
+          <div class="value">13</div>
+          <div class="sub">CHF 3 285.00 · 93%</div>
+        </div>
+        <div class="kpi amber">
+          <div class="label">Unreconciled</div>
+          <div class="value">1</div>
+          <div class="sub">CHF 165.00 · 7%</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Reversals</div>
+          <div class="value" style="color: var(--color-text-muted);">0</div>
+          <div class="sub">no RvslInd entries</div>
+        </div>
+      </div>
+
+      <!-- Filter + table -->
+      <section class="table-card">
+        <div class="filter-bar">
+          <span class="filter-chip active">All <span class="count">14</span></span>
+          <span class="filter-chip">Matched <span class="count">13</span></span>
+          <span class="filter-chip">Unreconciled <span class="count">1</span></span>
+          <span style="margin-left: auto; font-size: 11px; color: var(--color-text-muted); font-family: var(--font-mono);">sorted by value date · most recent first</span>
+        </div>
+
+        <table class="entries" aria-label="Camt.053 credit entries">
+          <thead>
+            <tr>
+              <th class="num" style="width: 90px;">Amount</th>
+              <th style="width: 60px;">Ccy</th>
+              <th style="width: 110px;">Value date</th>
+              <th style="width: 170px;">Debtor</th>
+              <th style="width: 110px;">IBAN</th>
+              <th style="width: 200px;">Reference</th>
+              <th>Matched to</th>
+              <th aria-label="Row actions"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="num">500.00</td>
+              <td>CHF</td>
+              <td class="ref">2026-05-05</td>
+              <td class="donor">Marie-Claire Fontaine</td>
+              <td class="iban-mask">CH•••5295·7</td>
+              <td class="ref">21 00000 00003 13947 14300 09017</td>
+              <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Hiver 2026 · Fontaine</span></td>
+              <td><a href="#" class="link">View donation →</a></td>
+            </tr>
+            <tr>
+              <td class="num">200.00</td>
+              <td>CHF</td>
+              <td class="ref">2026-05-05</td>
+              <td class="donor">Ahmed Benali</td>
+              <td class="iban-mask">CH•••0123·4</td>
+              <td class="ref">21 00000 00003 13948 14300 09024</td>
+              <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Hiver 2026 · Benali</span></td>
+              <td><a href="#" class="link">View donation →</a></td>
+            </tr>
+            <tr>
+              <td class="num">350.00</td>
+              <td>CHF</td>
+              <td class="ref">2026-05-05</td>
+              <td class="donor">Sophie Lemaire</td>
+              <td class="iban-mask">CH•••0089·1</td>
+              <td class="ref">21 00000 00003 13949 14300 09031</td>
+              <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Hiver 2026 · Lemaire</span></td>
+              <td><a href="#" class="link">View donation →</a></td>
+            </tr>
+            <tr>
+              <td class="num">120.00</td>
+              <td>CHF</td>
+              <td class="ref">2026-05-05</td>
+              <td class="donor">Jean-Claude Martin</td>
+              <td class="iban-mask">CH•••0156·9</td>
+              <td class="ref">21 00000 00003 13950 14300 09048</td>
+              <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Hiver 2026 · Martin</span></td>
+              <td><a href="#" class="link">View donation →</a></td>
+            </tr>
+            <tr>
+              <td class="num">75.00</td>
+              <td>CHF</td>
+              <td class="ref">2026-05-06</td>
+              <td class="donor">Catherine Dubois</td>
+              <td class="iban-mask">CH•••0178·3</td>
+              <td class="ref">21 00000 00003 13951 14300 09055</td>
+              <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Hiver 2026 · Dubois</span></td>
+              <td><a href="#" class="link">View donation →</a></td>
+            </tr>
+            <tr style="background: rgba(255, 251, 235, 0.4);">
+              <td class="num">165.00</td>
+              <td>CHF</td>
+              <td class="ref">2026-05-06</td>
+              <td class="donor">Family Müller-Weber</td>
+              <td class="iban-mask">CH•••7712·8</td>
+              <td class="ref" style="color: var(--color-amber-text);">21 00000 00003 13999 99999 99999 <span style="font-size:10px;">(mod-10 fail)</span></td>
+              <td><span class="badge badge-warn"><span class="badge-dot" style="background:var(--color-amber-text)"></span> Unreconciled · invalid ref</span></td>
+              <td><a href="#" class="link unreconciled">Resolve →</a></td>
+            </tr>
+            <tr>
+              <td class="num">90.00</td>
+              <td>CHF</td>
+              <td class="ref">2026-05-06</td>
+              <td class="donor">Pierre Duval</td>
+              <td class="iban-mask">CH•••0234·6</td>
+              <td class="ref">21 00000 00003 13952 14300 09062</td>
+              <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Hiver 2026 · Duval</span></td>
+              <td><a href="#" class="link">View donation →</a></td>
+            </tr>
+            <tr>
+              <td class="num">1 500.00</td>
+              <td>CHF</td>
+              <td class="ref">2026-05-06</td>
+              <td class="donor">Lemaire Foundation</td>
+              <td class="iban-mask">CH•••4421·2</td>
+              <td class="ref">RF18 5390 0754 7034</td>
+              <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Major gifts 2026 · SCOR</span></td>
+              <td><a href="#" class="link">View donation →</a></td>
+            </tr>
+            <tr>
+              <td class="num">50.00</td>
+              <td>CHF</td>
+              <td class="ref">2026-05-06</td>
+              <td class="donor">Léa Bernard</td>
+              <td class="iban-mask">CH•••0445·8</td>
+              <td class="ref">21 00000 00003 13953 14300 09079</td>
+              <td><span class="badge badge-success"><span class="badge-dot" style="background:#15803D"></span> Hiver 2026 · Bernard</span></td>
+              <td><a href="#" class="link">View donation →</a></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="padding: var(--space-3) var(--space-5); border-top: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--color-text-muted);">
+          <span>Showing 9 of 14 entries</span>
+          <a href="#" style="color: var(--color-primary); text-decoration: none; font-weight: var(--weight-medium);">View all →</a>
+        </div>
+      </section>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Variant 2 — XSD-validation failure
+           ────────────────────────────────────────────────────────── -->
+      <div class="variant-label">
+        Variant — XSD validation failure
+        <span class="desc">Same page surface when the uploaded file isn't a valid ISO 20022 camt.053. The summary card collapses; the alert is the only actionable surface.</span>
+      </div>
+
+      <section class="summary-card">
+        <h2>Statement metadata</h2>
+        <div class="kv-grid">
+          <div class="kv">
+            <div class="k">File</div>
+            <div class="v mono">camt053_20260502_corrupted.xml · 38 KB</div>
+          </div>
+          <div class="kv">
+            <div class="k">Status</div>
+            <div class="v"><span class="badge badge-error"><span class="badge-dot" style="background:var(--color-on-error-container)"></span> Failed — XSD invalid</span></div>
+          </div>
+          <div class="kv">
+            <div class="k">Uploaded</div>
+            <div class="v">Léa Bonnard · 2026-05-02 16:44</div>
+          </div>
+          <div class="kv">
+            <div class="k">Bank account</div>
+            <div class="v mono">PostFinance · CH•••8901·2</div>
+          </div>
+          <div class="kv">
+            <div class="k">XSD schema</div>
+            <div class="v mono">camt.053.001.08</div>
+          </div>
+          <div class="kv">
+            <div class="k">S3 path</div>
+            <div class="v mono">{org_id}/camt053/rejected/2026/05/8f2c…xml</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="alert error" role="alert">
+        <span class="icon">⚠</span>
+        <div style="flex: 1;">
+          <h3>This file isn't a valid ISO 20022 camt.053 statement</h3>
+          <p>Givernance validates every uploaded statement against the official camt.053.001.08 XSD before reading any entries. This file failed schema validation, so no donations were created and no entries were inserted into <code style="font-family:var(--font-mono);font-size:11px;">camt_credit_entries</code>. The raw XML is preserved in the rejected-archive prefix for 10 years so you can audit why it was refused.</p>
+          <details>
+            <summary style="cursor: pointer; font-weight: var(--weight-medium);">View XSD diagnostic</summary>
+            <pre>Schemas validity error : Element '{urn:iso:std:iso:20022:tech:xsd:camt.053.001.08}Stmt': This element is not expected. Expected is ( {urn:iso:std:iso:20022:tech:xsd:camt.053.001.08}GrpHdr ).
+Line 42, column 5</pre>
+          </details>
+          <div class="alert-actions" style="margin-top: var(--space-3);">
+            <button>↓ Download original to inspect</button>
+            <button>Move to rejected archive</button>
+            <button>Contact support</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ──────────────────────────────────────────────────────────
+           Variant 3 — Foreign IBAN rejection
+           ────────────────────────────────────────────────────────── -->
+      <div class="variant-label">
+        Variant — Foreign-IBAN rejection (§7 GDPR safety)
+        <span class="desc">The file referenced an IBAN that isn't registered under this tenant. Rejected outright; offers to switch tab to the correct account if it exists.</span>
+      </div>
+
+      <div class="alert error" role="alert">
+        <span class="icon">🚫</span>
+        <div style="flex: 1;">
+          <h3>This statement is for a different bank account</h3>
+          <p>The file's <code style="font-family:var(--font-mono);font-size:11px;">Acct.Id.IBAN</code> is <code style="font-family:var(--font-mono);font-size:11px;">CH•••5295·7</code> — not <code style="font-family:var(--font-mono);font-size:11px;">CH•••8901·2</code> (this account). Givernance never processes statements for IBANs outside the tenant's registered <code style="font-family:var(--font-mono);font-size:11px;">bank_accounts</code> to prevent accidentally importing a third party's data.</p>
+          <div class="alert-actions" style="margin-top: var(--space-3);">
+            <button style="background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary);">Switch to UBS · CH•••5295·7</button>
+            <button>↓ Download original</button>
+            <button>Move to rejected archive</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</body>
+</html>
