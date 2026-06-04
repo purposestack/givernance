@@ -51,7 +51,7 @@ const ICON_TYPES: readonly IconType[] = [
 ];
 
 const COLORS = {
-  primary: "#2E7D5E",
+  primary: "#2e7d72",
   primaryLight: "#4CAF82",
   peach: "#E8A87C",
 };

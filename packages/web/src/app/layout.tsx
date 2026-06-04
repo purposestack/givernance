@@ -1,25 +1,28 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
+import { IBM_Plex_Mono, Manrope, Sora } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import "./globals.css";
 
-const inter = Inter({
+// Body / UI text.
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-manrope",
   display: "swap",
 });
 
-const newsreader = Newsreader({
+// Display / headings.
+const sora = Sora({
   subsets: ["latin"],
-  variable: "--font-newsreader",
-  style: ["normal", "italic"],
+  variable: "--font-sora",
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+// Labels / numeric / code.
+const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
+  weight: ["400", "500"],
+  variable: "--font-ibm-plex-mono",
   display: "swap",
 });
 
@@ -37,10 +40,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const t = await getTranslations("common");
 
   return (
-    <html
-      lang={locale}
-      className={`${inter.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
-    >
+    <html lang={locale} className={`${sora.variable} ${manrope.variable} ${ibmPlexMono.variable}`}>
       <head>
         {/* Material Symbols Outlined — variable icon font.
             next/font can't enumerate the icon ligature set, so we load

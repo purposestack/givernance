@@ -5,8 +5,8 @@ import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
 
-const PRIMARY_THEME_COLOR = "#096447";
-const SECONDARY_THEME_COLOR = "#006C48";
+const PRIMARY_THEME_COLOR = "#08675b";
+const SECONDARY_THEME_COLOR = "#0a6b5e";
 const TERTIARY_THEME_COLOR = "#864700";
 
 // vi.hoisted runs before vi.mock hoisting

@@ -43,7 +43,7 @@ describe("KPISparkline", () => {
           { x: 2, y: 3 },
         ]}
         color="var(--color-primary)"
-        fillTint="rgba(9,100,71,0.08)"
+        fillTint="rgba(8,103,91,0.08)"
       />,
     );
     expect(container.querySelector(".recharts-area")).not.toBeNull();

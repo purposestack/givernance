@@ -94,7 +94,7 @@ export interface PlatformReportPdfInput {
 }
 
 // ─── Brand palette — mirror packages/web/src/app/globals.css ──────────────
-const COLOR_PRIMARY = "#096447";
+const COLOR_PRIMARY = "#08675b";
 const COLOR_ON_SURFACE = "#1c1b1a";
 const COLOR_ON_SURFACE_VARIANT = "#42403e";
 const COLOR_OUTLINE = "#72706e";

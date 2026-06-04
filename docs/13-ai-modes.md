@@ -23,7 +23,7 @@ graph LR
     B --> C[Mode 3<br/>Autopilote IA]
 
     style A fill:#F2F0EC,stroke:#E4E0D9,color:#1C1B19
-    style B fill:#2E7D5E,stroke:#1A5240,color:#FAFAF8
+    style B fill:#08675b,stroke:#1A5240,color:#FAFAF8
     style C fill:#5B4FD4,stroke:#1A5240,color:#FAFAF8
 ```
 

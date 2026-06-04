@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Givernance Design System</title>
@@ -810,7 +810,7 @@
          ============================================================ -->
     <header class="ds-hero">
       <h1 class="ds-hero-title">Givernance Design System</h1>
-      <p class="ds-hero-subtitle">Tokens et composants alignés sur l'app shell MVP — palette Material You warm, typo Newsreader + Inter.</p>
+      <p class="ds-hero-subtitle">Tokens et composants alignés sur l'app shell MVP — palette teal + accent corail, typo Sora + Manrope.</p>
       <p class="ds-hero-meta">
         Source de vérité : <code>shared/tokens.css</code> + <code>shared/base.css</code> &middot; reflétés dans <code>packages/web/src/app/globals.css</code>.
       </p>
@@ -856,23 +856,23 @@
     <!-- LOGO SECTION -->
     <section class="ds-section" id="logo">
       <h2 class="ds-section-title">Logo &amp; identité de marque</h2>
-      <p class="ds-section-desc">Le logo Givernance — un oiseau en plein vol évoquant élévation, mouvement et liberté retrouvée pour les associations. Trois variantes pour s'adapter à chaque contexte.</p>
+      <p class="ds-section-desc">Le logo Givernance — trois cubes isométriques entrelacés, en teal et corail, évoquant structure, transparence et coopération entre acteurs. Trois variantes pour s'adapter à chaque contexte.</p>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-6);margin-top:var(--space-6);">
 
-        <!-- Vert — fonds clairs -->
+        <!-- Couleur — fonds clairs -->
         <div style="background:var(--color-surface-container-high);border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);border:1px solid var(--color-border);">
-          <img src="shared/assets/givernance-logo.svg" alt="Logo Givernance vert" style="width:80px;height:80px;object-fit:contain;">
+          <img src="shared/assets/givernance-logo.svg" alt="Logo Givernance — cubes teal et corail" style="width:80px;height:80px;object-fit:contain;">
           <div style="text-align:center;">
-            <div style="font-weight:var(--weight-semi);font-size:var(--text-sm);color:var(--color-text);">Vert</div>
+            <div style="font-weight:var(--weight-semi);font-size:var(--text-sm);color:var(--color-text);">Couleur</div>
             <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px;">Fonds clairs · Sidebar · Défaut</div>
-            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;">var(--color-primary)</code>
+            <code class="ds-token" style="margin-top:var(--space-2);display:inline-block;">teal #008570 + corail #ec6a66</code>
           </div>
         </div>
 
         <!-- Noir — fonds blancs -->
         <div style="background:var(--color-white);border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);border:1px solid var(--color-border);">
-          <img src="shared/assets/givernance-logo.svg" alt="Logo Givernance noir" style="width:80px;height:80px;object-fit:contain;filter:grayscale(100%) brightness(0.2);">
+          <img src="shared/assets/givernance-logo.svg" alt="Logo Givernance monochrome" style="width:80px;height:80px;object-fit:contain;filter:grayscale(100%) brightness(0.2);">
           <div style="text-align:center;">
             <div style="font-weight:var(--weight-semi);font-size:var(--text-sm);color:var(--color-text);">Noir</div>
             <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px;">Print · Email mono · Documents</div>
@@ -882,7 +882,7 @@
 
         <!-- Blanc — fonds sombres -->
         <div style="background:var(--color-primary);border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;align-items:center;gap:var(--space-4);">
-          <img src="shared/assets/givernance-logo.svg" alt="Logo Givernance blanc" style="width:80px;height:80px;object-fit:contain;filter:brightness(0) invert(1);">
+          <img src="shared/assets/givernance-logo.svg" alt="Logo Givernance en réserve blanche" style="width:80px;height:80px;object-fit:contain;filter:brightness(0) invert(1);">
           <div style="text-align:center;">
             <div style="font-weight:var(--weight-semi);font-size:var(--text-sm);color:var(--color-on-primary);">Blanc</div>
             <div style="font-size:var(--text-xs);color:rgba(255,255,255,0.7);margin-top:2px;">Fonds sombres · Hero · Splash</div>
@@ -894,11 +894,11 @@
 
       <h3 class="ds-section-subtitle" style="margin-top:var(--space-10);">Règles d'usage</h3>
       <ul style="font-size:var(--text-sm);color:var(--color-text-secondary);line-height:1.8;padding-left:var(--space-5);">
-        <li>Toujours utiliser la version <strong>vert</strong> sur fond clair (sidebar, cards, favicon, app shell).</li>
+        <li>Toujours utiliser la version <strong>couleur</strong> (teal + corail) sur fond clair (sidebar, cards, favicon, app shell).</li>
         <li>Utiliser la version <strong>noir</strong> pour le print, les emails monochromes, ou tout document à fort contraste.</li>
-        <li>Utiliser la version <strong>blanc</strong> sur fond primaire vert ou sur tout fond sombre.</li>
-        <li>Ne jamais déformer, recadrer ou recolorer le logo manuellement — toujours partir du SVG source.</li>
-        <li>Taille minimale recommandée : <strong>32×32px</strong>. Marge de réserve : équivalente à la hauteur de l'oiseau.</li>
+        <li>Utiliser la version <strong>blanc</strong> sur fond teal primaire ou sur tout fond sombre.</li>
+        <li>Ne jamais déformer, recadrer ou recolorer le logo manuellement — toujours partir du SVG source (les cubes teal <code class="ds-token">#008570</code> + corail <code class="ds-token">#ec6a66</code>).</li>
+        <li>Taille minimale recommandée : <strong>32×32px</strong>. Marge de réserve : équivalente à la hauteur d'un cube.</li>
       </ul>
     </section>
 
@@ -911,7 +911,7 @@
         <div class="ds-principle">
           <div class="ds-principle-icon" aria-hidden="true">&#9829;</div>
           <div class="ds-principle-name">Warm</div>
-          <div class="ds-principle-desc">Colors, typography, and language that feel human, not institutional. Organic greens, warm neutrals, editorial serif headings.</div>
+          <div class="ds-principle-desc">Colors, typography, and language that feel human, not institutional. Calm teal, a coral accent, warm neutrals, and geometric Sora headings.</div>
         </div>
         <div class="ds-principle">
           <div class="ds-principle-icon" aria-hidden="true">&#9672;</div>
@@ -944,62 +944,84 @@
 
       <!-- Primary Palette -->
       <h3 class="ds-section-subtitle">Primary Palette</h3>
-      <p class="ds-section-desc">The brand green family &mdash; used for CTAs, active states, and brand identity. Derived from Givernance Green <code class="ds-token">#2E7D5E</code>.</p>
+      <p class="ds-section-desc">The brand teal family &mdash; used for CTAs, active states, and brand identity. Anchored on Givernance Teal <code class="ds-token">#08675B</code> (brand mark teal <code class="ds-token">#008570</code>).</p>
       <div class="ds-swatches">
         <div class="ds-swatch">
-          <div class="ds-swatch-color" style="background: #2E7D5E;"></div>
+          <div class="ds-swatch-color" style="background: #08675B;"></div>
           <div class="ds-swatch-info">
             <div class="ds-swatch-name">Primary</div>
-            <div class="ds-swatch-hex">#2E7D5E</div>
+            <div class="ds-swatch-hex">#08675B</div>
             <span class="ds-swatch-token">--color-primary</span>
           </div>
         </div>
         <div class="ds-swatch">
-          <div class="ds-swatch-color" style="background: #4CAF82;"></div>
+          <div class="ds-swatch-color" style="background: #88D6C6;"></div>
           <div class="ds-swatch-info">
             <div class="ds-swatch-name">Primary Light</div>
-            <div class="ds-swatch-hex">#4CAF82</div>
+            <div class="ds-swatch-hex">#88D6C6</div>
             <span class="ds-swatch-token">--color-primary-light</span>
           </div>
         </div>
         <div class="ds-swatch">
-          <div class="ds-swatch-color" style="background: #1A5240;"></div>
+          <div class="ds-swatch-color" style="background: #00514A;"></div>
           <div class="ds-swatch-info">
             <div class="ds-swatch-name">Primary Dark</div>
-            <div class="ds-swatch-hex">#1A5240</div>
+            <div class="ds-swatch-hex">#00514A</div>
             <span class="ds-swatch-token">--color-primary-dark</span>
           </div>
         </div>
         <div class="ds-swatch">
-          <div class="ds-swatch-color" style="background: #E8F5EE;"></div>
+          <div class="ds-swatch-color" style="background: rgba(8, 103, 91, 0.08);"></div>
           <div class="ds-swatch-info">
             <div class="ds-swatch-name">Primary 50</div>
-            <div class="ds-swatch-hex">#E8F5EE</div>
+            <div class="ds-swatch-hex">rgba(8,103,91,.08)</div>
             <span class="ds-swatch-token">--color-primary-50</span>
           </div>
         </div>
         <div class="ds-swatch">
-          <div class="ds-swatch-color" style="background: #C8E6D7;"></div>
+          <div class="ds-swatch-color" style="background: rgba(8, 103, 91, 0.12);"></div>
           <div class="ds-swatch-info">
             <div class="ds-swatch-name">Primary 100</div>
-            <div class="ds-swatch-hex">#C8E6D7</div>
+            <div class="ds-swatch-hex">rgba(8,103,91,.12)</div>
             <span class="ds-swatch-token">--color-primary-100</span>
           </div>
         </div>
         <div class="ds-swatch">
-          <div class="ds-swatch-color" style="background: #267052;"></div>
+          <div class="ds-swatch-color" style="background: #00514A;"></div>
           <div class="ds-swatch-info">
             <div class="ds-swatch-name">Primary Hover</div>
-            <div class="ds-swatch-hex">#267052</div>
+            <div class="ds-swatch-hex">#00514A</div>
             <span class="ds-swatch-token">--color-primary-hover</span>
           </div>
         </div>
         <div class="ds-swatch">
-          <div class="ds-swatch-color" style="background: #1F5C44;"></div>
+          <div class="ds-swatch-color" style="background: #04332E;"></div>
           <div class="ds-swatch-info">
             <div class="ds-swatch-name">Primary Active</div>
-            <div class="ds-swatch-hex">#1F5C44</div>
+            <div class="ds-swatch-hex">#04332E</div>
             <span class="ds-swatch-token">--color-primary-active</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ember Accent -->
+      <h3 class="ds-section-subtitle">Ember (accent)</h3>
+      <p class="ds-section-desc">The coral accent that pairs with the teal in the brand mark. Brand accent &mdash; logo &amp; brand moments, not a status colour.</p>
+      <div class="ds-swatches">
+        <div class="ds-swatch">
+          <div class="ds-swatch-color" style="background: #EC6A66;"></div>
+          <div class="ds-swatch-info">
+            <div class="ds-swatch-name">Ember</div>
+            <div class="ds-swatch-hex">#EC6A66</div>
+            <span class="ds-swatch-token">brand accent — not a status colour</span>
+          </div>
+        </div>
+        <div class="ds-swatch">
+          <div class="ds-swatch-color" style="background: #B52E29;"></div>
+          <div class="ds-swatch-info">
+            <div class="ds-swatch-name">Ember Text</div>
+            <div class="ds-swatch-hex">#B52E29</div>
+            <span class="ds-swatch-token">AA text on light</span>
           </div>
         </div>
       </div>
@@ -1045,10 +1067,10 @@
       <p class="ds-section-desc">Status colors always paired with icons and text labels &mdash; color is never the sole information carrier (WCAG 1.4.1).</p>
       <div class="ds-swatches">
         <div class="ds-swatch">
-          <div class="ds-swatch-color" style="background: #4CAF82;"></div>
+          <div class="ds-swatch-color" style="background: #16A34A;"></div>
           <div class="ds-swatch-info">
             <div class="ds-swatch-name">Success (Green)</div>
-            <div class="ds-swatch-hex">#4CAF82</div>
+            <div class="ds-swatch-hex">#16A34A</div>
             <span class="ds-swatch-token">--color-success</span>
           </div>
         </div>
@@ -1249,16 +1271,22 @@
           </thead>
           <tbody>
             <tr>
-              <td>Primary Dark <code class="ds-token">#1A5240</code> on White</td>
-              <td><span class="ds-contrast-sample" style="background: #fff; color: #1A5240; border: 1px solid #E2E5E9;">Aa</span></td>
-              <td><code class="ds-token">~7.5:1</code></td>
+              <td>Primary Dark <code class="ds-token">#00514A</code> on White</td>
+              <td><span class="ds-contrast-sample" style="background: #fff; color: #00514A; border: 1px solid #E2E5E9;">Aa</span></td>
+              <td><code class="ds-token">~7.9:1</code></td>
               <td><span class="ds-contrast-pass ds-contrast-pass--aaa">AAA Pass</span></td>
             </tr>
             <tr>
-              <td>Primary <code class="ds-token">#2E7D5E</code> on White</td>
-              <td><span class="ds-contrast-sample" style="background: #fff; color: #2E7D5E; border: 1px solid #E2E5E9;">Aa</span></td>
-              <td><code class="ds-token">~4.6:1</code></td>
-              <td><span class="ds-contrast-pass ds-contrast-pass--aa">AA Pass (large text)</span></td>
+              <td>Primary <code class="ds-token">#08675B</code> on White</td>
+              <td><span class="ds-contrast-sample" style="background: #fff; color: #08675B; border: 1px solid #E2E5E9;">Aa</span></td>
+              <td><code class="ds-token">~5.4:1</code></td>
+              <td><span class="ds-contrast-pass ds-contrast-pass--aa">AA Pass</span></td>
+            </tr>
+            <tr>
+              <td>Ember Text <code class="ds-token">#B52E29</code> on White</td>
+              <td><span class="ds-contrast-sample" style="background: #fff; color: #B52E29; border: 1px solid #E2E5E9;">Aa</span></td>
+              <td><code class="ds-token">~5.5:1</code></td>
+              <td><span class="ds-contrast-pass ds-contrast-pass--aa">AA Pass</span></td>
             </tr>
             <tr>
               <td>Neutral 900 <code class="ds-token">#111827</code> on Neutral 50 <code class="ds-token">#F8F9FA</code></td>
@@ -1286,30 +1314,30 @@
       <!-- Font Specimens -->
       <h3 class="ds-section-subtitle">Font Specimens</h3>
       <div class="ds-type-specimen">
-        <div class="ds-type-specimen-name">Instrument Serif &mdash; Headings</div>
+        <div class="ds-type-specimen-name">Sora &mdash; Display / Headings</div>
         <div class="ds-type-specimen-sample" style="font-family: var(--font-heading); font-size: var(--text-3xl);">
           The quick brown fox jumps over the lazy dog
         </div>
         <div style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
-          --font-heading: 'Instrument Serif', 'Lora', Georgia, 'Times New Roman', serif
+          --font-heading: 'Sora', system-ui, -apple-system, sans-serif
         </div>
       </div>
       <div class="ds-type-specimen">
-        <div class="ds-type-specimen-name">Inter &mdash; Body / UI</div>
+        <div class="ds-type-specimen-name">Manrope &mdash; Body / UI</div>
         <div class="ds-type-specimen-sample" style="font-family: var(--font-body); font-size: var(--text-md);">
           The quick brown fox jumps over the lazy dog. 0123456789 &mdash; ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz
         </div>
         <div style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
-          --font-body: 'Inter', system-ui, -apple-system, sans-serif
+          --font-body: 'Manrope', system-ui, -apple-system, sans-serif
         </div>
       </div>
       <div class="ds-type-specimen">
-        <div class="ds-type-specimen-name">JetBrains Mono &mdash; Code / Data</div>
+        <div class="ds-type-specimen-name">IBM Plex Mono &mdash; Code / Data</div>
         <div class="ds-type-specimen-sample" style="font-family: var(--font-mono); font-size: var(--text-base);">
           const donation = { amount: 2500, currency: "EUR" }; // 0123456789
         </div>
         <div style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
-          --font-mono: 'JetBrains Mono', 'Fira Code', monospace
+          --font-mono: 'IBM Plex Mono', 'Fira Code', monospace
         </div>
       </div>
 
@@ -2676,7 +2704,7 @@
          FOOTER
          ============================================================ -->
     <footer class="ds-footer">
-      Givernance Design System v2.0 &mdash; Last updated 2026-03-17
+      Givernance Design System v3.0 (2026 teal rebrand) &mdash; Last updated 2026-06-04
     </footer>
 
   </div>

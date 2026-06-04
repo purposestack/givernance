@@ -42,7 +42,7 @@ describe("PublicCampaignPage", () => {
       title: "Spring appeal",
       description: "Support the mission",
       goalAmountCents: 0,
-      colorPrimary: "#096447",
+      colorPrimary: "#08675b",
       defaultCurrency: "EUR",
     });
 

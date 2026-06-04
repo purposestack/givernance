@@ -1,48 +1,40 @@
+// Givernance brand mark — three interlocking isometric cubes (teal + coral).
+// 2026 rebrand (website PR #24). The fill colours are fixed brand values, not
+// design tokens: teal #008570 + coral #ec6a66. Canonical copy also lives at
+// docs/design/shared/assets/givernance-logo.svg (favicon / mockups) — keep the
+// two in sync.
+const TEAL = "#008570";
+const CORAL = "#ec6a66";
+
+// Shared cube geometry — one body path (teal) + one cap path (coral), placed
+// three times via the transforms below to form the interlocking trio.
+const CUBE_BODY =
+  "M440,162.652L440,349.573C440,356.022 436.55,361.979 430.955,365.187L362.648,404.364C357.101,407.545 350.284,407.545 344.737,404.364L276.429,365.187C270.835,361.979 267.385,356.022 267.385,349.573L267.385,271.461C267.385,264.993 270.854,259.023 276.474,255.821L372.692,201L372.692,200.782L440,162.652Z";
+const CUBE_CAP =
+  "M372.692,200.782L372.692,101L422.049,129.598C433.16,136.036 440,147.906 440,160.747L440,162.652L372.692,200.782Z";
+
+const CUBE_TRANSFORMS = [
+  "matrix(1.000819,0,0,1.000819,0.018136,-0.082685)",
+  "matrix(-0.495948,-0.859007,0.859007,-0.495948,158.15141,586.415061)",
+  "matrix(-0.500409,0.866734,-0.866734,-0.500409,592.049884,158.497743)",
+];
+
 export function Logo({ className }: { className?: string }) {
   return (
     <svg
-      viewBox="0 0 256 256"
+      viewBox="0 0 500 500"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden="true"
       focusable="false"
     >
-      <defs>
-        <linearGradient
-          id="logo-bird"
-          x1="0"
-          y1="0"
-          x2="256"
-          y2="200"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0%" stopColor="#A5DEC2" />
-          <stop offset="50%" stopColor="#55C6AF" />
-          <stop offset="100%" stopColor="#2E7D5E" />
-        </linearGradient>
-        <linearGradient
-          id="logo-hand"
-          x1="40"
-          y1="140"
-          x2="220"
-          y2="256"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0%" stopColor="#F88B71" />
-          <stop offset="100%" stopColor="#EC6A66" />
-        </linearGradient>
-      </defs>
-      <g transform="translate(0,256) scale(0.1,-0.1)">
-        <path
-          d="M62 2528 c-6 -18 -14 -49 -17 -68 -3 -19 -11 -53 -17 -75 -34 -129 -30 -490 7 -594 8 -22 13 -41 11 -41 -9 0 49 -152 84 -222 65 -129 138 -228 252 -340 59 -60 112 -108 117 -108 5 0 16 -6 24 -14 51 -51 335 -196 384 -196 12 0 27 41 38 103 3 21 8 44 11 52 4 9 -32 31 -108 68 -239 117 -420 298 -528 531 -36 78 -51 124 -80 244 -24 102 -29 352 -7 352 7 0 44 -21 82 -46 65 -42 211 -127 350 -204 33 -19 123 -65 200 -103 342 -171 536 -295 632 -403 113 -126 168 -299 132 -413 -22 -69 -43 -116 -71 -158 -15 -23 -28 -46 -28 -51 0 -12 66 -27 158 -38 72 -8 58 -19 151 116 52 76 141 275 141 317 0 15 59 138 84 175 26 40 103 85 176 104 51 13 91 15 188 11 74 -4 122 -2 122 4 0 11 -152 125 -179 134 -11 3 -30 27 -42 52 -65 134 -234 202 -431 173 -91 -13 -141 -30 -208 -72 -119 -73 -146 -88 -165 -88 -24 0 -41 9 -225 115 -74 42 -214 117 -310 165 -184 91 -411 215 -459 250 -16 11 -32 20 -35 20 -3 0 -58 35 -122 78 -159 106 -153 101 -221 155 -34 26 -65 47 -70 47 -5 0 -14 -15 -21 -32z"
-          fill="url(#logo-bird)"
-        />
-        <path
-          d="M2290 743 c-42 -8 -159 -68 -270 -138 -202 -127 -374 -212 -510 -252 -84 -25 -299 -22 -409 6 -46 11 -85 21 -87 21 -2 0 -4 4 -4 10 0 13 87 56 130 64 19 3 107 13 195 21 141 13 167 19 222 45 63 31 123 90 123 122 0 23 -12 25 -215 38 -93 6 -181 13 -195 16 -147 26 -456 31 -581 9 -215 -37 -373 -117 -509 -256 -81 -82 -154 -215 -165 -299 -13 -99 -16 -138 -8 -143 4 -2 41 9 81 25 128 51 229 68 382 64 130 -4 173 -9 475 -57 181 -28 415 -31 525 -7 194 44 323 108 585 292 16 11 55 40 85 64 66 51 48 37 200 151 205 155 219 166 219 172 3 25 -191 48 -269 32z"
-          fill="url(#logo-hand)"
-        />
-      </g>
+      {CUBE_TRANSFORMS.map((transform) => (
+        <g key={transform} transform={transform}>
+          <path d={CUBE_BODY} fill={TEAL} />
+          <path d={CUBE_CAP} fill={CORAL} />
+        </g>
+      ))}
     </svg>
   );
 }

@@ -40,17 +40,29 @@ Givernance's visual identity should communicate:
 
 ### 2.2 Color palette
 
+> **2026 rebrand (website PR #24)**: green → teal, phoenix → cube, Newsreader/Inter/JetBrains → Sora/Manrope/IBM Plex Mono. The brand primary moved from Givernance Green to a teal family, and **Ember coral** was introduced as a second brand colour. The success/error/warning/info semantic palette is unchanged.
+
 #### Core palette
 
 | Role | Name | Token | Hex | Usage |
 |---|---|---|---|---|
-| Primary | Givernance Green | `--color-primary` | `#2E7D5E` | Brand identity, CTAs, active nav states |
-| Primary light | Sage | `--color-primary-light` | `#4CAF82` | Success badges (with icon) |
-| Primary dark | Forest | `--color-primary-dark` | `#1A5240` | Text on light bg, deep brand accents |
-| Primary hover | — | `--color-primary-hover` | `#267052` | Button/link hover states |
-| Primary active | — | `--color-primary-active` | `#1F5C44` | Button/link pressed states |
-| Primary 50 | Mint | `--color-primary-50` | `#E8F5EE` | Focus rings, success backgrounds |
-| Primary 100 | — | `--color-primary-100` | `#C8E6D7` | Subtle borders, success alert borders |
+| Primary | Givernance Teal | `--color-primary` | `#08675B` | Brand identity, CTAs, active nav states |
+| Secondary | Teal | `--color-secondary` | `#0A6B5E` | Secondary brand surfaces, accents |
+| Primary container | — | `--color-primary-container` | `#2E7D72` | Tonal container fills |
+| Surface tint | — | `--color-surface-tint` | `#0A6B5E` | Material You surface tinting |
+| Primary dark | Deep Teal | `--color-primary-dark` | `#00514A` | Text on light bg, deep brand accents, hover |
+| Primary active | — | `--color-primary-active` | `#04332E` | Button/link pressed states |
+| Primary 50 | Mint | `--color-primary-50` | `#D1FFF4` | Focus rings, brand-tint backgrounds |
+| Primary 100 | — | `--color-primary-100` | `#A4F3E4` | Subtle borders, brand-tint alert borders |
+
+#### Ember coral — brand accent
+
+| Role | Name | Token | Hex | Usage |
+|---|---|---|---|---|
+| Accent | Ember coral | `--color-accent` | `#EC6A66` | Second brand colour — logo cube accent, brand moments, illustration highlights |
+| Accent text | Ember text | — | `#B52E29` | AA-contrast text/icon variant of ember on light surfaces |
+
+**Ember coral is a brand colour, not a status colour.** It pairs with the teal primary in the logo and across brand-led surfaces (marketing, hero illustrations, the cube mark). It must **never** be used to signal success, warning, error, or any semantic state — those keep their dedicated palette below. The teal brand anchor used in the logo and strong brand contexts is `#008570`.
 
 #### Neutral palette (cool sophisticated gray)
 
@@ -93,7 +105,7 @@ Givernance's visual identity should communicate:
 | `--color-surface-sunken` | `var(--color-neutral-100)` = `#F1F3F5` | Inset/recessed areas |
 | `--color-overlay` | `rgba(17, 24, 39, 0.5)` | Modal/drawer backdrops |
 
-**Rationale**: Cool sophisticated grays paired with organic greens evoke trust, professionalism, and care. Error and destructive states use **red** (`#DC2626`) — a universally understood danger signal. Red is always paired with icons and text labels to ensure accessibility for all color vision types. Indigo is retained as a decorative accent, not a semantic signal.
+**Rationale**: Cool sophisticated grays paired with the teal primary evoke trust, professionalism, and care; ember coral adds warmth and human energy at brand moments without ever standing in for a status signal. Error and destructive states use **red** (`#DC2626`) — a universally understood danger signal. Red is always paired with icons and text labels to ensure accessibility for all color vision types. Indigo is retained as a decorative accent, not a semantic signal.
 
 ### 2.2.1 Color accessibility constraints
 
@@ -110,22 +122,33 @@ Givernance's visual identity should communicate:
 
 | Combination | Ratio | Rating |
 |---|---|---|
-| Forest `#1A5240` on white | ~7.5:1 | AAA |
-| Primary `#2E7D5E` on white | ~4.6:1 | AA (large text) |
+| Deep Teal `#00514A` on white | ~7.5:1 | AAA |
+| Primary `#08675B` on white | ~5.5:1 | AA |
+| Ember text `#B52E29` on white | ~4.9:1 | AA |
 | Ink `#111827` on Cloud `#F8F9FA` | ~15:1 | AAA |
 | Red `#DC2626` on white | ~4.5:1 | AA |
 | Red Dark `#991B1B` on white | ~7.8:1 | AAA |
 
 **Colorblind simulation**: Every UI screen must be reviewed through a deuteranopia simulation before design handoff.
 
+### 2.2.2 Logo / brand-mark
+
+The Givernance brand mark is **three interlocking isometric cubes** rendered in the brand teal (`#008570`) with an ember coral (`#EC6A66`) accent face. The cubes read as building blocks — composable, structural, civic — and the interlock evokes the relationships at the heart of a CRM (people, organizations, households fitting together).
+
+- **Source of truth**: the React component [`packages/web/src/components/shared/logo.tsx`](../packages/web/src/components/shared/logo.tsx) and the canonical asset [`docs/design/shared/assets/givernance-logo.svg`](./design/shared/assets/givernance-logo.svg) (mirrored to `packages/web/public/givernance-logo.svg`). Never hand-redraw the mark; always inline the component or `<img>`-reference the SVG.
+- **Colours**: teal `#008570` + coral `#EC6A66` only. Do not recolour the cube to a status palette.
+- **Scope**: use the cube wherever a surface shows the **Givernance** brand (top bar, login, marketing). A donor- or NPO-facing tenant logo slot is **not** the Givernance mark — those render the tenant's own logo (or the colored-initial fallback in §8.1) and must be left untouched.
+
+> The previous mark — a phoenix formed from a bird rising out of an offering hand — was retired in the 2026 rebrand (website PR #24) and must no longer appear anywhere in the product or docs.
+
 ### 2.3 Typography
 
 | Role | Font | Token | Weights | Size range |
 |---|---|---|---|---|
-| Headings | **Instrument Serif** (Lora fallback) | `--font-heading` | 400 | 20–48px |
-| Body / UI | **Inter** | `--font-body` | 300, 400, 500, 600, 700 | 11–16px |
-| Data / numbers | **JetBrains Mono** | `--font-mono` | 400, 500 | 11–14px |
-| Labels | Inter | — | 500, uppercase, tracked | 11–13px |
+| Display / headings | **Sora** | `--font-heading` | 400, 500, 600, 700 | 20–48px |
+| Body / UI | **Manrope** | `--font-body` | 300, 400, 500, 600, 700 | 11–16px |
+| Data / numbers / code | **IBM Plex Mono** | `--font-mono` | 400, 500 | 11–14px |
+| Labels | IBM Plex Mono | — | 500, uppercase, tracked | 11–13px |
 
 **Type scale** (all sizes available as tokens):
 
@@ -155,7 +178,7 @@ Givernance's visual identity should communicate:
 - `--leading-normal: 1.5` — body text (default)
 - `--leading-relaxed: 1.75` — long-form reading
 
-**Rationale**: A serif heading font adds warmth and editorial quality without sacrificing readability. Inter is the gold standard for UI legibility. Monospace for financial and data fields improves scanability.
+**Rationale**: **Sora** is a geometric grotesque with a confident, modern character that gives headings a distinct brand voice while staying highly readable. **Manrope** is a clean, slightly rounded sans-serif tuned for UI legibility at small sizes — warm without being soft. **IBM Plex Mono** for financial, numeric, and code fields improves scanability and column alignment while echoing the brand's open, civic-minded tone.
 
 ### 2.4 Iconography
 
@@ -298,7 +321,7 @@ Sidebar (primary)
 └── Settings (org admin only)
 ```
 
-- Active section highlighted with a left accent bar (white on green sidebar)
+- Active section highlighted with a left accent bar (white on teal sidebar)
 - Subtle `rgba(255,255,255,0.15)` background for active items
 - Breadcrumbs on every sub-page
 - Global search (`Cmd+K`) across all entity types

@@ -17,7 +17,7 @@
   "use strict";
 
   var COLORS = {
-    primary: "#2E7D5E",
+    primary: "#08675b",
     primaryLight: "#4CAF82",
     peach: "#E8A87C",
   };

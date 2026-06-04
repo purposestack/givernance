@@ -14,7 +14,7 @@ describe("CampaignPublicPageForm", () => {
         campaignId: "11111111-1111-4111-8111-111111111111",
         title: "Spring Appeal",
         description: null,
-        colorPrimary: "#096447",
+        colorPrimary: "#08675b",
         goalAmountCents: null,
         status: "draft",
         publicPageStyle: null,

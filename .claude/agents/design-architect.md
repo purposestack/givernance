@@ -141,7 +141,7 @@ The palette deliberately replaces red/terracotta with **indigo** for destructive
 
 | Semantic | Token | Hex |
 |---|---|---|
-| Brand / CTA | `color-primary` | `#2E7D5E` |
+| Brand / CTA | `color-primary` | `#08675b` |
 | Success (with icon) | `color-primary-light` | `#4CAF82` |
 | Warning | `color-accent-amber` | `#D97706` |
 | Error / Destructive | `color-accent-indigo` | `#5B4FD4` |
