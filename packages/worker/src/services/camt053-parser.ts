@@ -24,6 +24,7 @@
  * not `Document` (rules out HTML / SOAP / random XML).
  */
 
+import { canonicaliseReference } from "@givernance/shared/validators";
 import { XMLParser } from "fast-xml-parser";
 
 /** Accepted ISO 20022 camt.053 namespace URIs. */
@@ -221,7 +222,11 @@ function parseStructuredRef(txDtls: unknown): {
       type = pickText(cop.Prtry) ?? pickText(cop.Cd);
     }
   }
-  return { ref: ref ? ref.replace(/\s+/g, "") : null, type };
+  // Canonicalise (strip whitespace + uppercase) so the persisted
+  // `camt_credit_entries.structured_ref` matches the uppercase row stored
+  // via `computeScor` regardless of the case the bank emitted (SCOR is
+  // case-insensitive per ISO 11649; QRR is numeric so this is a no-op).
+  return { ref: ref ? canonicaliseReference(ref) : null, type };
 }
 
 function parseEndToEndId(txDtls: unknown): string | null {

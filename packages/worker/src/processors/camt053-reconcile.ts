@@ -45,7 +45,7 @@ import {
   outboxEvents,
   swissQrReferences,
 } from "@givernance/shared/schema";
-import { isValidQrr, isValidScor } from "@givernance/shared/validators";
+import { canonicaliseReference, isValidQrr, isValidScor } from "@givernance/shared/validators";
 import type { Job } from "bullmq";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
@@ -361,7 +361,7 @@ async function handleReversal(args: {
 }
 
 function isValidStructuredRef(ref: string): boolean {
-  const canon = ref.replace(/\s+/g, "");
+  const canon = canonicaliseReference(ref);
   return isValidQrr(canon) || isValidScor(canon);
 }
 
@@ -389,7 +389,7 @@ async function loadSwissQrReference(args: {
         and(
           eq(swissQrReferences.orgId, orgId),
           eq(swissQrReferences.bankAccountId, bankAccountId),
-          eq(swissQrReferences.reference, reference.replace(/\s+/g, "")),
+          eq(swissQrReferences.reference, canonicaliseReference(reference)),
         ),
       );
     if (!row) return null;
@@ -831,7 +831,7 @@ async function findOriginalDonationForReversal(args: {
       .where(
         and(
           eq(donations.orgId, orgId),
-          eq(swissQrReferences.reference, reference.replace(/\s+/g, "")),
+          eq(swissQrReferences.reference, canonicaliseReference(reference)),
           eq(donations.amountCents, amountCents),
           eq(donations.status, "cleared"),
           isNull(donations.reversesDonationId),

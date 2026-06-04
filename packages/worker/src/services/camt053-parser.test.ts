@@ -85,6 +85,45 @@ describe("parseCamt053 — happy path", () => {
     });
   });
 
+  it("canonicalises a SCOR reference — uppercases + strips whitespace", () => {
+    // SCOR (ISO 11649 RF) is case-insensitive; a bank may emit it lower/
+    // mixed-case and/or space-grouped. The parser must canonicalise to
+    // the uppercase, no-whitespace form so it matches the row stored via
+    // `computeScor` (which is always uppercase). Otherwise a valid,
+    // known reference is wrongly routed to the unreconciled queue.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">
+  <BkToCstmrStmt>
+    <GrpHdr><MsgId>MSG-SCOR</MsgId></GrpHdr>
+    <Stmt>
+      <Acct><Id><IBAN>CH9300762011623852957</IBAN></Id></Acct>
+      <Ntry>
+        <AcctSvcrRef>REF-SCOR</AcctSvcrRef>
+        <Amt Ccy="CHF">50.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <ValDt><Dt>2026-05-11</Dt></ValDt>
+        <NtryDtls>
+          <TxDtls>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Tp><CdOrPrtry><Prtry>SCOR</Prtry></CdOrPrtry></Tp>
+                  <Ref>rf18 5390 0754 7034</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>`;
+    const entry = parseCamt053(xml).statements[0]!.entries[0]!;
+    expect(entry.structuredRef).toBe("RF18539007547034");
+    expect(entry.structuredRefType).toBe("SCOR");
+  });
+
   it("amounts with no decimal place still parse as cents", () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">

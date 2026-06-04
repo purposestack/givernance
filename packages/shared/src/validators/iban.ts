@@ -22,6 +22,21 @@ function normalise(input: string): string {
 }
 
 /**
+ * Canonical form of a Swiss QR-bill / ISO 11649 payment reference for
+ * BOTH storage and comparison: whitespace stripped, uppercased.
+ *
+ * QRR is 27 numeric digits (uppercasing is a no-op). SCOR (`RF…`) is
+ * defined case-insensitively by ISO 11649 but canonically uppercase, so
+ * a bank that emits a lower/mixed-case `RF` reference in its camt.053
+ * must still match the uppercase row we stored via `computeScor`. Every
+ * reference comparison in the reconciler MUST go through this so matching
+ * stays case-agnostic end-to-end. Mirrors the internal `normalise`.
+ */
+export function canonicaliseReference(input: string): string {
+  return normalise(input);
+}
+
+/**
  * Compute ISO 7064 mod-97 over an alphanumeric string. Letters map to
  * `A=10, B=11, ..., Z=35`. Runs the modulo per character (the *expanded*
  * decimal of a full IBAN would overflow Number.MAX_SAFE_INTEGER, but
