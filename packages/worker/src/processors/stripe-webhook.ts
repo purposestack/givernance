@@ -26,7 +26,7 @@ import { jobLogger } from "../lib/logger.js";
  * Pin the Stripe API version explicitly — same constant as the API's
  * `payments/service.ts`. Keep them in sync when bumping the SDK.
  */
-const STRIPE_API_VERSION = "2026-04-22.dahlia" as const;
+const STRIPE_API_VERSION = "2026-05-27.dahlia" as const;
 
 /** Lazily initialized Stripe client for balance_transaction look-ups */
 let stripeClient: Stripe | null = null;
