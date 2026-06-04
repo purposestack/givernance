@@ -185,7 +185,16 @@ export interface ResolveInput {
   resolutionNote: string;
   donationId?: string;
   constituentId?: string;
+  /**
+   * Resolved `users.id` row UUID (`request.auth.userRowId`) — written to
+   * the `camt_unreconciled_entries.resolved_by` FK. Epic #363 split
+   * `users.id` from the Keycloak `sub`, so the JWT subject is NOT a valid
+   * `users.id`. `null` for actors with no tenant `users` row.
+   */
+  resolvedByRowId: string | null;
+  /** JWT `sub` (Keycloak id) — recorded on the varchar `audit_logs.user_id`. */
   resolvedByUserId: string | null;
+  /** RFC 8693 `act.sub` (impersonator Keycloak id) for the audit row. */
   effectiveActorId: string | null;
 }
 
@@ -392,7 +401,9 @@ export async function resolveCamtUnreconciled(
       .update(camtUnreconciledEntries)
       .set({
         status: newStatus,
-        resolvedBy: input.effectiveActorId ?? input.resolvedByUserId,
+        // FK → users.id — must be the resolved row id (Epic #363 split
+        // users.id from the JWT sub); the audit row keeps the sub + act.sub.
+        resolvedBy: input.resolvedByRowId,
         resolvedAt: new Date(),
         resolutionNote: input.resolutionNote,
         linkedDonationId,

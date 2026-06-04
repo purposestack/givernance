@@ -47,7 +47,23 @@ export interface CamtUploadInput {
   filename: string;
   contentType: string;
   body: Buffer;
+  /**
+   * Resolved `users.id` row UUID of the authenticated tenant user
+   * (`request.auth.userRowId`). This is what lands in the
+   * `camt_statements.uploaded_by` FK. Distinct from `uploadedByUserId`
+   * below — Epic #363 deliberately split `users.id` from the Keycloak
+   * `sub`, so the JWT subject is NOT a valid `users.id` and writing it
+   * here trips the FK. `null` for actors with no tenant `users` row
+   * (e.g. super-admins).
+   */
+  uploadedByRowId: string | null;
+  /**
+   * JWT `sub` (Keycloak id) of the subject — recorded on the `audit_logs`
+   * row's varchar `user_id`, NOT a `users.id` FK. Keep distinct from
+   * `uploadedByRowId`.
+   */
   uploadedByUserId: string | null;
+  /** RFC 8693 `act.sub` (impersonator Keycloak id) for the audit row. */
   effectiveActorId?: string | null;
 }
 
@@ -157,7 +173,10 @@ export async function uploadCamtStatement(input: CamtUploadInput): Promise<CamtU
         // suffix + millis to stay under the cap.
         msgId: `__pending_${now.getTime()}_${Math.random().toString(36).slice(2, 10)}`,
         status: "pending",
-        uploadedBy: input.effectiveActorId ?? input.uploadedByUserId,
+        // FK → users.id. Must be the resolved row id (Epic #363 split
+        // users.id from the JWT sub); the audit row below keeps the sub
+        // + act.sub for double-attribution.
+        uploadedBy: input.uploadedByRowId,
       })
       .returning({ id: camtStatements.id });
     if (!inserted) throw new Error("camt_statements insert returned no row");

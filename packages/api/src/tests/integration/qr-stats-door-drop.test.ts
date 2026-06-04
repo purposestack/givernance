@@ -33,8 +33,8 @@ import {
 } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "../../lib/db.js";
 import { getCampaignQrStats } from "../../modules/campaigns/qr-stats-service.js";
+import { db } from "../helpers/db.js";
 
 const ORG_ID = "00000000-0000-0000-0000-0000000d055f";
 const BANK_ACCT_IBAN = "CH9300762011623852957";

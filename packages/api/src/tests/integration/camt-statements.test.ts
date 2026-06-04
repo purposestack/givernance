@@ -23,7 +23,7 @@ import {
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { db } from "../../lib/db.js";
+import { db } from "../helpers/db.js";
 
 const MULTIPART_BOUNDARY = "----GivernanceCamtTestBoundary";
 

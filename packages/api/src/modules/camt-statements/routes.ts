@@ -201,6 +201,7 @@ async function handleUploadStatement(
       filename: fileResult.file.filename,
       contentType: fileResult.file.mimetype,
       body: fileResult.buffer,
+      uploadedByRowId: request.auth?.userRowId ?? null,
       uploadedByUserId: request.auth?.userId ?? null,
       effectiveActorId: request.auth?.act?.sub ?? null,
     });
@@ -482,6 +483,7 @@ export async function camtStatementsRoutes(app: FastifyInstance) {
           resolutionNote: body.resolutionNote,
           donationId: body.donationId,
           constituentId: body.constituentId,
+          resolvedByRowId: request.auth?.userRowId ?? null,
           resolvedByUserId: request.auth?.userId ?? null,
           effectiveActorId: request.auth?.act?.sub ?? null,
         });
