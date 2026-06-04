@@ -31,7 +31,7 @@ import {
 import { Type } from "@sinclair/typebox";
 import { and, eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { db } from "../../lib/db.js";
+import { systemDb } from "../../lib/db.js";
 import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { redis } from "../../lib/redis.js";
 import { DataResponse, ErrorResponses, IdParams, problemDetail } from "../../lib/schemas.js";
@@ -83,8 +83,10 @@ export async function checkoutConfigRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params;
 
-      // 1. Verify the campaign exists (public — no org_id filter).
-      const [campaign] = await db
+      // systemDb: public endpoint — no authenticated tenant context, so RLS would
+      // block all reads via the app pool. Lookups are by PK (campaignId) with no
+      // cross-tenant data exposure (campaign IDs are unguessable UUIDs).
+      const [campaign] = await systemDb
         .select({ id: campaigns.id })
         .from(campaigns)
         .where(eq(campaigns.id, id))
@@ -95,7 +97,7 @@ export async function checkoutConfigRoutes(app: FastifyInstance) {
       }
 
       // 2. Resolve the online-default fund routing entry for this campaign.
-      const [routing] = await db
+      const [routing] = await systemDb
         .select({ fundId: campaignFunds.fundId })
         .from(campaignFunds)
         .where(and(eq(campaignFunds.campaignId, id), eq(campaignFunds.isOnlineDefault, true)))
@@ -114,7 +116,7 @@ export async function checkoutConfigRoutes(app: FastifyInstance) {
       }
 
       // 3. Resolve the bank account linked to the fund (settlement currency source).
-      const [fund] = await db
+      const [fund] = await systemDb
         .select({ bankAccountId: funds.bankAccountId })
         .from(funds)
         .where(eq(funds.id, routing.fundId))
@@ -133,7 +135,7 @@ export async function checkoutConfigRoutes(app: FastifyInstance) {
       }
 
       // 4. Read the settlement currency from the bank account.
-      const [bankAccount] = await db
+      const [bankAccount] = await systemDb
         .select({ currency: bankAccounts.currency })
         .from(bankAccounts)
         .where(eq(bankAccounts.id, fund.bankAccountId))
@@ -166,7 +168,7 @@ export async function checkoutConfigRoutes(app: FastifyInstance) {
         settlementCurrency,
       ];
 
-      const enabledRows = await db
+      const enabledRows = await systemDb
         .select({ code: currencyMetadata.code })
         .from(currencyMetadata)
         .where(

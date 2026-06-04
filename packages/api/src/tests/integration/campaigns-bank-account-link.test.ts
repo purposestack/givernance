@@ -59,6 +59,9 @@ beforeAll(async () => {
   // reference bank accounts; delete them before attempting to delete
   // bank_accounts to avoid a FK constraint violation.
   await db.execute(sql`DELETE FROM campaign_funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  await db.execute(
+    sql`DELETE FROM donation_allocations WHERE fund_id IN (SELECT id FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B}))`,
+  );
   await db.execute(sql`DELETE FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
   await db.execute(sql`DELETE FROM bank_accounts WHERE org_id IN (${ORG_A}, ${ORG_B})`);
 
