@@ -17,6 +17,7 @@ const badgeVariants = cva(
         error: "bg-error-container text-on-error-container",
         info: "bg-secondary-fixed text-on-secondary-fixed-variant",
         neutral: "bg-surface-container-highest text-on-surface-variant",
+        accent: "bg-ember/15 text-ember-text",
       },
       shape: {
         pill: "rounded-[var(--radius-pill)]",

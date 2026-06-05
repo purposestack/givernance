@@ -66,7 +66,7 @@ export function ProvisionalAdminBanner({ info }: Props) {
 
   return (
     <div
-      className="flex flex-wrap items-center justify-center gap-3 border-b border-amber-border bg-amber-light px-4 py-2 text-sm font-medium text-amber-text"
+      className="flex flex-wrap items-center justify-center gap-3 border-b border-amber-border bg-[var(--color-banner-warning-bg)] px-4 py-2 text-sm font-medium text-amber-text"
       role="status"
       aria-live="polite"
     >

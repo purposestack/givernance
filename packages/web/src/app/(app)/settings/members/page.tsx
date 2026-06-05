@@ -107,7 +107,7 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
         // Review D8 — single combined empty state for a fresh tenant
         // ("one screen, one CTA"). Once either list is non-empty the
         // page falls through to the two-section layout below.
-        <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
           <EmptyState
             icon={UserPlus}
             title={t("combinedEmpty.title")}
@@ -132,7 +132,7 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
                   currentUserKeycloakId={auth.userId}
                 />
               ) : (
-                <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+                <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
                   <EmptyState
                     icon={Users}
                     title={t("membersSection.empty.title")}
@@ -167,7 +167,7 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
                 canManageMembers={canManageMembers}
               />
             ) : (
-              <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+              <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
                 <EmptyState
                   icon={Users}
                   title={t("invitationsSection.empty.title")}

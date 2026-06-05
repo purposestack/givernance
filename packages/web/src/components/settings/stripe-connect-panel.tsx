@@ -85,7 +85,7 @@ export function StripeConnectPanel({ canManageTenant }: StripeConnectPanelProps)
   }
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+    <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 rounded-full bg-surface-container px-3 py-1 text-xs font-medium text-on-surface-variant">

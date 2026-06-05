@@ -75,7 +75,7 @@ export function BankAccountsTable({ bankAccounts, canManage }: BankAccountsTable
 
   return (
     <>
-      <div className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card">
+      <div className="overflow-hidden rounded-2xl bg-surface-container-lowest border border-border-brand">
         <table className="w-full text-sm">
           <thead className="border-b border-outline-variant bg-surface-container">
             <tr>

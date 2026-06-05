@@ -104,7 +104,18 @@
   --color-border-strong: var(--color-outline);
   --color-white: #ffffff;
   --color-black: #000000;
-  --color-overlay: rgba(30, 27, 22, 0.5);
+  /* Modal scrim. Softened from 0.5 → 0.32 (and onto the warm ink 28,27,25) so
+     dialogs veil the page rather than slab it in near-black — the "violent
+     contrast" the post-login cohesion pass set out to calm. Consumed as
+     `bg-overlay`; replaces the raw `rgba(30,27,22,0.5)` literals that used to
+     live inline in dialog.tsx / alert-dialog.tsx. */
+  --color-overlay: rgba(28, 27, 25, 0.32);
+  /* Soft full-bleed banner fills (impersonation + provisional-admin). Replace
+     the saturated --color-amber-light / --color-error-light fills; the AA text
+     tokens stay, so the lighter fill only raises the contrast ratio. The amber
+     value matches the proven `.stale-banner--soon` fill. */
+  --color-banner-warning-bg: rgba(134, 71, 0, 0.07);
+  --color-banner-danger-bg: rgba(186, 26, 26, 0.06);
 
   /* ── Legacy compat — mapped to Material You ── */
   --color-surface-alt: var(--color-surface-container-low);
@@ -308,8 +319,15 @@
   --shadow-2xl: 0 16px 48px rgba(0, 0, 0, 0.16);
   --shadow-card: 0 0 0 1px rgba(190, 201, 193, 0.1);
   --shadow-kpi: 0 0 0 1px rgba(190, 201, 193, 0.1);
-  --shadow-elevated: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.12);
+  /* Single canonical floating-overlay shadow (warm ink, soft). Used by every
+     genuinely-floating surface — dropdown, popover, select content, dialog,
+     tooltip, toast, the mobile sidebar drawer. Resting surfaces (cards, tables,
+     panels) are FLAT with a teal hairline instead; see the post-login cohesion
+     pass. `--shadow-elevated` / `--shadow-modal` alias onto this so existing
+     call-sites converge without a sweep. */
+  --shadow-overlay: 0 8px 24px -8px rgba(28, 27, 25, 0.12), 0 2px 6px -2px rgba(28, 27, 25, 0.06);
+  --shadow-elevated: var(--shadow-overlay);
+  --shadow-modal: var(--shadow-overlay);
   --shadow-card-hover: 0 2px 8px rgba(0, 0, 0, 0.08);
   --shadow-button: 0 4px 16px rgba(8, 103, 91, 0.1);
   --shadow-ring: 0 0 0 2px var(--color-white), 0 0 0 4px var(--color-primary);
@@ -341,7 +359,7 @@
   --sidebar-collapsed: 64px;
   --topbar-height: 80px;
   --topbar-bg: rgba(252, 251, 249, 0.85); /* Ultra light translucent */
-  --topbar-border: rgba(148, 163, 184, 0.10); /* Cooler, lighter border */
+  --topbar-border: oklch(0.545 0.115 178 / 0.12); /* Teal hairline — sibling of --color-border-brand, matches the sidebar edge + card borders */
   --content-padding: 40px;
   --content-max: 1280px;
   --form-max: 800px;

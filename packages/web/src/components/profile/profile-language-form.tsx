@@ -87,7 +87,7 @@ export function ProfileLanguageForm({ initial }: ProfileLanguageFormProps) {
   }
 
   return (
-    <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+    <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
       <div className="max-w-3xl">
         <h2 className="font-heading text-2xl leading-tight text-on-surface">{t("title")}</h2>
         <p className="mt-2 text-sm leading-6 text-on-surface-variant">{t("description")}</p>

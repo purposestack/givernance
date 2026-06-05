@@ -60,7 +60,7 @@ export default async function BankAccountsPage() {
       {hasAny ? (
         <BankAccountsTable bankAccounts={result.data} canManage={canManage} />
       ) : (
-        <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
           <EmptyState
             icon={Banknote}
             title={t("empty.title")}

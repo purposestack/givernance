@@ -36,7 +36,7 @@ export const TabsTrigger = forwardRef<
       "rounded-[var(--radius-sm)] transition-colors duration-normal ease-out",
       "focus-visible:outline-none focus-visible:shadow-ring",
       "disabled:pointer-events-none disabled:opacity-50",
-      "data-[state=active]:bg-surface-container-lowest data-[state=active]:text-on-surface data-[state=active]:shadow-xs",
+      "data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary data-[state=active]:font-semibold",
       className,
     )}
     {...props}

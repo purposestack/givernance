@@ -42,7 +42,7 @@ export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowEle
   return (
     <tr
       className={cn(
-        "border-t border-outline-variant/70 align-middle transition-colors hover:bg-surface-container-low/50",
+        "border-t border-border-brand align-middle transition-colors duration-normal ease-out hover:bg-surface-container-low/50",
         className,
       )}
       {...props}

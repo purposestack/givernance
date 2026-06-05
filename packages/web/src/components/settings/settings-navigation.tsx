@@ -67,7 +67,7 @@ export function SettingsNavigation({
 
   return (
     <nav aria-label={t("label")} className="overflow-x-auto">
-      <div className="inline-flex min-w-full gap-2 rounded-2xl bg-surface-container p-2 shadow-card">
+      <div className="inline-flex min-w-full gap-2 rounded-2xl bg-surface-container p-2 border border-border-brand">
         {items.map((item) => {
           const isActive = item.match(pathname);
           return (
@@ -78,7 +78,7 @@ export function SettingsNavigation({
               className={cn(
                 "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition-colors sm:flex-none",
                 isActive
-                  ? "bg-surface-container-lowest text-on-surface shadow-card"
+                  ? "bg-surface-container-lowest text-primary"
                   : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface",
               )}
             >

@@ -191,7 +191,7 @@ export function ConstituentForm(props: ConstituentFormProps) {
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="rounded-2xl bg-surface-container-lowest px-6 shadow-card"
+          className="rounded-2xl bg-surface-container-lowest px-6 border border-border-brand"
           noValidate
         >
           <FormSection

@@ -173,7 +173,7 @@ export function CampaignPublicPageForm({
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="rounded-2xl bg-surface-container-lowest px-5 shadow-card sm:px-6"
+          className="rounded-2xl bg-surface-container-lowest px-5 border border-border-brand sm:px-6"
           noValidate
         >
           {publicPageStylesEnabled ? (
@@ -421,7 +421,7 @@ function CampaignPublicPagePreview({
   if (publicPageStyle !== null) {
     return (
       <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-        <section className="rounded-2xl bg-surface-container-lowest p-3 shadow-card">
+        <section className="rounded-2xl bg-surface-container-lowest p-3 border border-border-brand">
           <div className="mb-3 flex items-center justify-between gap-3 px-2">
             <h2 className="font-heading text-base text-on-surface">{t("title")}</h2>
             <Badge variant={status === "published" ? "success" : "neutral"}>
@@ -495,7 +495,7 @@ function CampaignPublicPagePreview({
 
   return (
     <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-      <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+      <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 className="font-heading text-xl text-on-surface">{t("title")}</h2>
@@ -506,7 +506,7 @@ function CampaignPublicPagePreview({
           </Badge>
         </div>
 
-        <div className="overflow-hidden rounded-[28px] border border-outline-variant bg-surface shadow-card">
+        <div className="overflow-hidden rounded-[28px] border border-outline-variant bg-surface">
           <div
             className="px-5 py-5 sm:px-6"
             style={{

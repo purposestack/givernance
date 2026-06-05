@@ -104,8 +104,8 @@ export function ImpersonationBanner({ impersonation, userName }: ImpersonationBa
   // for legacy single-mode tokens that don't carry `mode`.
   const isPure = impersonation.mode === "impersonation";
   const containerClass = isPure
-    ? "flex items-center justify-center gap-3 border-b border-error-border bg-error-light px-4 py-2 text-sm font-medium text-error-text"
-    : "flex items-center justify-center gap-3 border-b border-amber-border bg-amber-light px-4 py-2 text-sm font-medium text-amber-text";
+    ? "flex items-center justify-center gap-3 border-b border-error-border bg-[var(--color-banner-danger-bg)] px-4 py-2 text-sm font-medium text-error-text"
+    : "flex items-center justify-center gap-3 border-b border-amber-border bg-[var(--color-banner-warning-bg)] px-4 py-2 text-sm font-medium text-amber-text";
   const badgeClass = isPure
     ? "rounded bg-error-text/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-error-text"
     : "rounded bg-amber-dark/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-dark";

@@ -32,7 +32,7 @@ Command.displayName = CommandPrimitive.displayName;
 export function CommandDialog({ children, ...props }: ComponentPropsWithoutRef<typeof Dialog>) {
   return (
     <Dialog {...props}>
-      <DialogContent className="overflow-hidden p-0 shadow-modal">
+      <DialogContent className="overflow-hidden p-0 shadow-overlay">
         <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-on-surface-variant [&_[cmdk-input]]:h-12">
           {children}
         </Command>
@@ -45,10 +45,7 @@ export const CommandInput = forwardRef<
   ElementRef<typeof CommandPrimitive.Input>,
   ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
 >(({ className, ...props }, ref) => (
-  <div
-    className="flex items-center gap-2 border-b border-outline-variant px-3"
-    cmdk-input-wrapper=""
-  >
+  <div className="flex items-center gap-2 border-b border-border-brand px-3" cmdk-input-wrapper="">
     <Search size={16} className="shrink-0 text-on-surface-variant opacity-60" aria-hidden="true" />
     <CommandPrimitive.Input
       ref={ref}

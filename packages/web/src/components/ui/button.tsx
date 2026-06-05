@@ -25,7 +25,7 @@ const buttonVariants = cva(
         // `secondary` for a neutral middle action and `primary` for the
         // confirming action so the three tiers stay visually distinct.
         outline:
-          "border border-outline-variant bg-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
+          "border border-border-brand bg-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         ghost:
           "bg-transparent text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         destructive: "bg-error text-on-error hover:bg-error-hover",

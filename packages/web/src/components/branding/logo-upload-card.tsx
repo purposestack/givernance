@@ -216,7 +216,9 @@ export function LogoUploadCard({
 
   const Wrapper = variant === "embedded" ? "div" : "section";
   const wrapperClass =
-    variant === "embedded" ? "" : "rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6";
+    variant === "embedded"
+      ? ""
+      : "rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6";
 
   return (
     <Wrapper className={wrapperClass}>

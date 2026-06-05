@@ -70,7 +70,7 @@ function BulkImportResultsBody({ jobId }: BulkImportResultsProps) {
         {filtered.length === 0 ? (
           <p className="py-6 text-center text-sm text-on-surface-variant">{t("empty")}</p>
         ) : (
-          <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+          <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
             <Table>
               <TableHeader>
                 <TableRow>

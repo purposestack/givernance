@@ -17,7 +17,7 @@ export function FormSection({
   return (
     <section
       className={cn(
-        "grid gap-6 border-b border-outline-variant py-8 last:border-b-0",
+        "grid gap-6 border-b border-border-brand py-8 last:border-b-0",
         "md:grid-cols-[minmax(0,240px)_minmax(0,1fr)]",
         className,
       )}

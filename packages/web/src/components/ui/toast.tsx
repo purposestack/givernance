@@ -13,7 +13,7 @@ export function Toaster({ position = "bottom-right", ...props }: ToasterProps) {
       toastOptions={{
         classNames: {
           toast:
-            "group toast !bg-surface-container-lowest !text-on-surface !border !border-outline-variant !rounded-[var(--radius-md)] !shadow-elevated !font-body",
+            "group toast !bg-surface-container-lowest !text-on-surface !border !border-border-brand !rounded-[var(--radius-md)] !shadow-overlay !font-body",
           title: "!font-medium !text-on-surface",
           description: "!text-on-surface-variant",
           actionButton: "!bg-primary !text-on-primary",

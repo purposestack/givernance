@@ -82,8 +82,8 @@ export const SelectContent = forwardRef<
         // hiding the options. (Issue #153 follow-up.)
         "relative z-[var(--z-popover)] max-h-96 min-w-[8rem] overflow-hidden",
         "bg-surface-container-lowest text-on-surface",
-        "border border-outline-variant rounded-[var(--radius-md)]",
-        "shadow-elevated",
+        "border border-border-brand rounded-[var(--radius-md)]",
+        "shadow-overlay",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         position === "popper" &&
@@ -129,7 +129,7 @@ export const SelectItem = forwardRef<
     className={cn(
       "relative flex w-full cursor-default select-none items-center",
       "py-1.5 pl-8 pr-2 text-sm rounded-[var(--radius-sm)]",
-      "outline-none",
+      "outline-none transition-colors duration-normal ease-out",
       "focus:bg-surface-container text-on-surface",
       "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,
@@ -152,7 +152,7 @@ export const SelectSeparator = forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Separator
     ref={ref}
-    className={cn("-mx-1 my-1 h-px bg-outline-variant", className)}
+    className={cn("-mx-1 my-1 h-px bg-border-brand", className)}
     {...props}
   />
 ));

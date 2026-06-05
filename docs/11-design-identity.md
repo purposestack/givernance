@@ -246,6 +246,20 @@ The pre-auth screens (login, signup, forgot/reset-password, invite-accept) and t
 
 Implemented in `packages/web/src/components/auth/auth-waves.tsx` + `auth-card.tsx` + the `(auth)` layout (SPA) and `infra/keycloak/themes/givernance/login/` (`template.ftl` markup + `givernance.css`). The previous interactive canvas icon-rain background was retired here.
 
+### 2.10 Post-login continuity — the cohesion conventions
+
+The authenticated app must read as **one continuous surface with the login card and the marketing hero**, not a stack of floating panels. The login card (§2.9) is the in-app gold standard. Seven north-star rules:
+
+1. **Flat surfaces.** Cards, panels, table containers, and tabs sit *in* the page — no drop shadow on a resting surface. Separation comes from a hairline, not elevation.
+2. **Teal-16% hairline is the surface-separation border.** `--color-border-brand` (`oklch(0.545 0.115 178 / 0.16)`) borders every card / panel / section / table container / resting overlay — the in-app equivalent of the marketing site's `--color-border`.
+3. **Warm-grey outline is reserved for form controls only.** `--color-outline-variant` (`#c3c1bc`) is the border for input / textarea / select-trigger / checkbox / radio. That is the *only* correct grey-hairline use — a control wants a firmer edge than a surface.
+4. **Soft shadow is reserved for genuinely-floating overlays.** One token, `--shadow-overlay`, on dropdown / popover / select-content / dialog / tooltip / toast / the mobile sidebar drawer. `--shadow-elevated` and `--shadow-modal` alias onto it; the old `--shadow-card` / `--shadow-kpi` grey rings are retired on resting surfaces.
+5. **Softened contrast.** The "violence" was never text contrast (which passes AA) — it was heavy shadows, the raw `rgba(30,27,22,0.5)` modal scrim (now `--color-overlay` = `rgba(28,27,25,0.32)`), and saturated full-bleed banner fills (now soft `--color-banner-warning-bg` / `--color-banner-danger-bg`). Text tokens are unchanged, so every AA ratio is preserved or improved.
+6. **Ember is a rare positive/brand accent only** (`bg-ember/15 text-ember-text`, the `accent` Badge variant). Never a status colour, never a default CTA — default actions stay teal `--color-primary`.
+7. **One interaction curve, one duration.** All hover/press feedback uses `transition-colors duration-normal ease-out` (150ms, `cubic-bezier(0.16, 1, 0.3, 1)`); focus is the instant `focus-visible:shadow-ring`. The global `prefers-reduced-motion` block neutralises it.
+
+**Two firm conventions for reviewers:** (1) `border-border-brand` for surfaces / `border-outline-variant` for inputs only; (2) `shadow-overlay` for floating overlays only — resting surfaces are flat. Applied across `components/ui/*`, `components/layout/*`, `components/shared/*`, and the operator screens under `app/(app)/**`. Donor-facing surfaces (`archetypes/**`, `app/(public)/**`, the donor donation form) keep their own per-template identities and are intentionally **out of scope**.
+
 ---
 
 ## 3. UI system & component design

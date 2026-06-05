@@ -133,7 +133,7 @@ export function Topbar({
       </button>
 
       <div className="flex min-w-0 items-center gap-2 text-sm">
-        <div className="flex items-center rounded-md bg-primary-fixed/30 px-3 py-1 text-on-primary-fixed-variant shadow-sm border border-primary-fixed/50">
+        <div className="flex items-center rounded-md bg-primary-fixed/30 px-3 py-1 text-on-primary-fixed-variant border border-primary-fixed/50">
           <span className="truncate font-medium">{title ?? t("breadcrumbDefault")}</span>
         </div>
       </div>
@@ -153,7 +153,7 @@ export function Topbar({
           onClick={onCommandPaletteOpen}
           aria-label={tPalette("openTrigger")}
           aria-haspopup="dialog"
-          className="relative mx-auto hidden h-10 max-w-[400px] flex-1 cursor-text items-center gap-2 rounded-pill border border-[var(--color-border-light)] bg-surface-container-lowest pl-3.5 pr-2.5 text-left text-sm text-text-muted hover:text-text focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring md:flex"
+          className="relative mx-auto hidden h-10 max-w-[400px] flex-1 cursor-text items-center gap-2 rounded-pill border border-border-brand bg-surface-container-lowest pl-3.5 pr-2.5 text-left text-sm text-text-muted hover:text-text focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring md:flex"
         >
           <Search size={16} aria-hidden="true" />
           <span className="flex-1 truncate">{tPalette("placeholder")}</span>
