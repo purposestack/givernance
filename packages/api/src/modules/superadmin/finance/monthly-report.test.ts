@@ -6,7 +6,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { nextMonthlyFire } from "./auto-monthly-cron.js";
 import {
   lastNMonths,
   MonthValidationError,
@@ -112,27 +111,5 @@ describe("lastNMonths (backfill window)", () => {
   it("N=1 → just the previous month", () => {
     const now = new Date("2026-05-25T12:00:00Z");
     expect(lastNMonths(1, now)).toEqual(["2026-04"]);
-  });
-});
-
-describe("nextMonthlyFire (auto-cron)", () => {
-  it("from mid-month → fires on the 1st of next month at 03:30 UTC", () => {
-    const now = new Date("2026-05-15T12:00:00Z");
-    expect(nextMonthlyFire(now).toISOString()).toBe("2026-06-01T03:30:00.000Z");
-  });
-
-  it("from the 1st at midnight → fires same day at 03:30 UTC", () => {
-    const now = new Date("2026-06-01T00:00:00Z");
-    expect(nextMonthlyFire(now).toISOString()).toBe("2026-06-01T03:30:00.000Z");
-  });
-
-  it("from the 1st just after 03:30 → fires on the 1st of NEXT month", () => {
-    const now = new Date("2026-06-01T03:31:00Z");
-    expect(nextMonthlyFire(now).toISOString()).toBe("2026-07-01T03:30:00.000Z");
-  });
-
-  it("December rollover → fires on Jan 1 of next year", () => {
-    const now = new Date("2026-12-20T12:00:00Z");
-    expect(nextMonthlyFire(now).toISOString()).toBe("2027-01-01T03:30:00.000Z");
   });
 });

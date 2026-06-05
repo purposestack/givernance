@@ -345,6 +345,22 @@ export const NOTIFICATIONS_DIGEST_JOBS = {
   DAILY: "notifications.digest_daily",
 } as const;
 
+/**
+ * Job names inside the PLATFORM_REPORTS queue.
+ *
+ *  - MONTHLY_AUTO_TRIGGER — cron-fired on the 1st of each month at
+ *    03:30 UTC, and once at worker startup for the boot-time backfill.
+ *    The processor checks the `admin.finance_dashboard` flag, resolves
+ *    the previous calendar month, idempotently inserts a pending row
+ *    (with kpi_snapshot), and enqueues GENERATE_PDF.
+ *  - GENERATE_PDF — one job per `platform_finance_reports` row;
+ *    renders the PDF from the pre-built kpi_snapshot and uploads to S3.
+ */
+export const PLATFORM_REPORTS_JOBS = {
+  MONTHLY_AUTO_TRIGGER: "platform_reports.monthly_auto_trigger",
+  GENERATE_PDF: "generate-monthly-finance-report",
+} as const;
+
 /** Repeatable job names inside TENANT_LIFECYCLE queue. */
 export const TENANT_LIFECYCLE_JOBS = {
   PROVISIONAL_ADMIN_EXPIRE: "tenant.provisional-admin-expire",
