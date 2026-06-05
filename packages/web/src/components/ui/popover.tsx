@@ -21,8 +21,8 @@ export const PopoverContent = forwardRef<
       className={cn(
         "z-[var(--z-popover)] w-72 p-4",
         "bg-surface-container-lowest text-on-surface",
-        "border border-outline-variant rounded-[var(--radius-md)]",
-        "shadow-elevated outline-none",
+        "border border-border-brand rounded-[var(--radius-md)]",
+        "shadow-overlay outline-none",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className,

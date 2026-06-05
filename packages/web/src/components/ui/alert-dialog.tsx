@@ -20,7 +20,7 @@ export const AlertDialogOverlay = forwardRef<
   <AlertDialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-[var(--z-modal)] bg-[rgba(30,27,22,0.5)]",
+      "fixed inset-0 z-[var(--z-modal)] bg-overlay",
       "data-[state=open]:animate-in data-[state=closed]:animate-out",
       "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
@@ -45,8 +45,8 @@ export const AlertDialogContent = forwardRef<
         // 2026-05-26 "la dialog box fait plate").
         "w-full max-w-lg p-8",
         "bg-surface-container-lowest text-on-surface",
-        "border border-outline-variant rounded-[var(--radius-lg)]",
-        "shadow-modal",
+        "border border-border-brand rounded-[var(--radius-lg)]",
+        "shadow-overlay",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         "focus:outline-none",

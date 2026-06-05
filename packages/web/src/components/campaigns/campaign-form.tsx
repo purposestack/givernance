@@ -231,7 +231,7 @@ export function CampaignForm(props: CampaignFormProps) {
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className="rounded-2xl bg-surface-container-lowest px-5 shadow-card sm:px-6"
+        className="rounded-2xl bg-surface-container-lowest px-5 border border-border-brand sm:px-6"
         noValidate
       >
         <FormSection

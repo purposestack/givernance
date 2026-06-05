@@ -21,7 +21,7 @@ export const TooltipContent = forwardRef<
         "z-[var(--z-tooltip)] overflow-hidden",
         "px-2.5 py-1.5 text-xs",
         "bg-inverse-surface text-inverse-on-surface",
-        "rounded-[var(--radius-sm)] shadow-elevated",
+        "rounded-[var(--radius-sm)] shadow-overlay",
         "data-[state=delayed-open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=delayed-open]:fade-in-0",
         className,

@@ -94,7 +94,7 @@ export default async function FundsPage({ searchParams }: FundsPageProps) {
           order={order}
         />
       ) : (
-        <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
           <EmptyState
             icon={PiggyBank}
             title={t("empty.title")}

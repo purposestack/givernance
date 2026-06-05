@@ -260,7 +260,7 @@ function ProfileCard({
   return (
     <section
       aria-label={labels.ariaLabel}
-      className="mb-6 flex flex-col gap-5 rounded-2xl bg-surface-container-lowest p-6 shadow-card md:flex-row md:items-start"
+      className="mb-6 flex flex-col gap-5 rounded-2xl bg-surface-container-lowest p-6 border border-border-brand md:flex-row md:items-start"
     >
       <div
         aria-hidden="true"
@@ -393,7 +393,7 @@ function AiSuggestionCard({
   return (
     <section
       aria-label={labels.ariaLabel}
-      className="mb-6 rounded-2xl border border-primary/20 bg-primary-50/40 p-5 shadow-card"
+      className="mb-6 rounded-2xl border border-primary/20 bg-primary-50/40 p-5"
     >
       <div className="flex items-center gap-2 text-primary">
         <Sparkles size={16} aria-hidden="true" />
@@ -438,7 +438,7 @@ function OverviewTab({
 
   return (
     <section
-      className="rounded-2xl bg-surface-container-lowest p-6 shadow-card"
+      className="rounded-2xl bg-surface-container-lowest p-6 border border-border-brand"
       aria-label={labels.ariaLabel}
     >
       <h2 className="font-heading text-xl text-on-surface">{labels.title}</h2>
@@ -485,7 +485,7 @@ function TimelineTab({
 }) {
   return (
     <section
-      className="rounded-2xl bg-surface-container-lowest p-6 shadow-card"
+      className="rounded-2xl bg-surface-container-lowest p-6 border border-border-brand"
       aria-label={labels.ariaLabel}
     >
       <h2 className="font-heading text-xl text-on-surface">{labels.title}</h2>

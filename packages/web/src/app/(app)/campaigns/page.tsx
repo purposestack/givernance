@@ -131,7 +131,7 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
           order={order}
         />
       ) : (
-        <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
           <EmptyState icon={Megaphone} title={t("empty.title")} description={t("empty.seedHint")} />
         </div>
       )}

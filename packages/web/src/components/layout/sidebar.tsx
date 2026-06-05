@@ -189,8 +189,8 @@ export function Sidebar({
       {/* Sidebar */}
       <aside
         id="sidebar-nav"
-        className={`fixed top-0 left-0 z-[var(--z-modal)] flex h-screen w-[var(--sidebar-width)] flex-col overflow-y-auto overflow-x-hidden bg-surface-container-lowest transition-transform duration-slow ease-out md:z-[var(--z-sticky)] md:translate-x-0 ${
-          open ? "translate-x-0 shadow-2xl" : "-translate-x-full"
+        className={`fixed top-0 left-0 z-[var(--z-modal)] flex h-screen w-[var(--sidebar-width)] flex-col overflow-y-auto overflow-x-hidden border-r border-border-brand bg-surface-container-lowest transition-transform duration-slow ease-out md:z-[var(--z-sticky)] md:translate-x-0 ${
+          open ? "translate-x-0 shadow-overlay" : "-translate-x-full"
         }`}
         aria-label={t("mainNav")}
       >
@@ -222,7 +222,7 @@ export function Sidebar({
                   onClick={() => {
                     handleMobileClose();
                   }}
-                  className={`flex items-center gap-4 rounded-lg px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                  className={`flex items-center gap-4 rounded-[var(--radius-lg)] px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:outline-none focus-visible:shadow-ring ${
                     isActive
                       ? "bg-surface-container font-medium text-primary"
                       : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
@@ -263,7 +263,7 @@ export function Sidebar({
                     key={item.href}
                     href={item.href}
                     onClick={handleMobileClose}
-                    className={`flex items-center gap-4 rounded-lg px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                    className={`flex items-center gap-4 rounded-[var(--radius-lg)] px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:outline-none focus-visible:shadow-ring ${
                       isActive
                         ? "bg-surface-container font-medium text-primary"
                         : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"

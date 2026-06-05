@@ -64,7 +64,7 @@ function BulkImportHistoryBody() {
   }
 
   return (
-    <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+    <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
       <Table>
         <TableHeader>
           <TableRow>

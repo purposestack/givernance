@@ -19,7 +19,7 @@ export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
 const itemBase =
-  "relative flex min-h-10 cursor-default select-none items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-sm font-medium outline-none transition-colors focus:bg-surface-container data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+  "relative flex min-h-10 cursor-default select-none items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-sm font-medium outline-none transition-colors duration-normal ease-out focus:bg-surface-container data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
 export const DropdownMenuSubTrigger = forwardRef<
   ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
@@ -45,7 +45,7 @@ export const DropdownMenuSubContent = forwardRef<
     className={cn(
       "z-[var(--z-popover)] min-w-[12rem] overflow-hidden p-1.5",
       "bg-surface-container-lowest text-on-surface",
-      "border border-outline-variant rounded-[var(--radius-md)] shadow-elevated",
+      "border border-border-brand rounded-[var(--radius-md)] shadow-overlay",
       "data-[state=open]:animate-in data-[state=closed]:animate-out",
       "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
@@ -66,7 +66,7 @@ export const DropdownMenuContent = forwardRef<
       className={cn(
         "z-[var(--z-popover)] min-w-[12rem] overflow-hidden p-1.5",
         "bg-surface-container-lowest text-on-surface",
-        "border border-outline-variant rounded-[var(--radius-md)] shadow-elevated",
+        "border border-border-brand rounded-[var(--radius-md)] shadow-overlay",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className,
@@ -146,7 +146,7 @@ export const DropdownMenuSeparator = forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Separator
     ref={ref}
-    className={cn("-mx-1.5 my-1.5 h-px bg-outline-variant", className)}
+    className={cn("-mx-1.5 my-1.5 h-px bg-border-brand", className)}
     {...props}
   />
 ));

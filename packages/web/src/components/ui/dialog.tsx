@@ -23,7 +23,7 @@ export const DialogOverlay = forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-[var(--z-modal)] bg-[rgba(30,27,22,0.5)]",
+      "fixed inset-0 z-[var(--z-modal)] bg-overlay",
       "data-[state=open]:animate-in data-[state=closed]:animate-out",
       "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
@@ -45,8 +45,8 @@ export const DialogContent = forwardRef<
         "fixed left-1/2 top-1/2 z-[var(--z-modal)] -translate-x-1/2 -translate-y-1/2",
         "w-full max-w-lg p-6",
         "bg-surface-container-lowest text-on-surface",
-        "border border-outline-variant rounded-[var(--radius-lg)]",
-        "shadow-modal",
+        "border border-border-brand rounded-[var(--radius-lg)]",
+        "shadow-overlay",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         "focus:outline-none",

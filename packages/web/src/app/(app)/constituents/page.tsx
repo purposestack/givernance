@@ -161,7 +161,7 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
           order={order}
         />
       ) : (
-        <div className="rounded-2xl bg-surface-container-lowest shadow-card">
+        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
           <EmptyState icon={Users} title={t("empty.title")} description={t("empty.seedHint")} />
         </div>
       )}

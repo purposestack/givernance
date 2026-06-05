@@ -20,7 +20,7 @@ export function FilterBar({
     <div
       className={cn(
         "flex flex-wrap items-center gap-3",
-        "bg-surface-container-lowest border border-outline-variant rounded-[var(--radius-md)]",
+        "bg-surface-container-lowest border border-border-brand rounded-[var(--radius-md)]",
         "px-4 py-3",
         className,
       )}

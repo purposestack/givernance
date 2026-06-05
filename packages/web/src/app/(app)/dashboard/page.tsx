@@ -138,7 +138,7 @@ export default async function DashboardPage() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+        <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
           <SectionHeader
             title={t("recentDonations.title")}
             actionHref="/donations"
@@ -161,7 +161,7 @@ export default async function DashboardPage() {
         </section>
 
         {canWrite ? (
-          <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+          <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
             <SectionHeader
               title={t("quickActions.title")}
               description={t("quickActions.description")}
@@ -176,7 +176,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+        <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
           <SectionHeader
             title={t("campaigns.title")}
             actionHref="/campaigns"
@@ -199,7 +199,7 @@ export default async function DashboardPage() {
         </section>
 
         <div className="space-y-6">
-          <section className="rounded-2xl border border-primary/20 bg-ai-bg p-5 shadow-card sm:p-6">
+          <section className="rounded-2xl border border-primary/20 bg-ai-bg p-5 sm:p-6">
             <div className="flex items-center gap-2 text-ai-text">
               <Lightbulb size={18} aria-hidden="true" />
               <h2 className="font-heading text-xl leading-tight">{t("aiSuggestion.title")}</h2>
@@ -207,7 +207,7 @@ export default async function DashboardPage() {
             <p className="mt-3 text-sm leading-relaxed text-on-surface">{t("aiSuggestion.body")}</p>
           </section>
 
-          <section className="rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-6">
+          <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
             <SectionHeader
               title={t("onboarding.title")}
               description={t("onboarding.description")}
@@ -326,7 +326,7 @@ function StatCard({
   };
 
   return (
-    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 shadow-card">
+    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 border border-border-brand">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-on-surface-variant">{label}</p>
         <div className="flex items-center gap-2">

@@ -176,12 +176,12 @@ export function DataTable<TData>({
       // `aria-busy` on the table together cover sighted and SR users.
       data-pending={isPending || undefined}
       className={cn(
-        "overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card transition-opacity duration-normal",
+        "overflow-hidden rounded-2xl border border-border-brand bg-surface-container-lowest transition-opacity duration-normal",
         "data-[pending=true]:pointer-events-none data-[pending=true]:opacity-60",
         className,
       )}
     >
-      <div className="flex flex-col gap-3 border-b border-outline-variant px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-border-brand px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-on-surface-variant">
           {/*
            * Review D6 — when the table has no `pagination` prop, suppress
@@ -210,7 +210,7 @@ export function DataTable<TData>({
             type="button"
             onClick={() => setDensity("comfortable")}
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-normal ease-out",
+              "flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-normal ease-out",
               "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
               density === "comfortable"
                 ? "bg-surface-container text-on-surface"
@@ -226,7 +226,7 @@ export function DataTable<TData>({
             type="button"
             onClick={() => setDensity("compact")}
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-normal ease-out",
+              "flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-normal ease-out",
               "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
               density === "compact"
                 ? "bg-surface-container text-on-surface"
@@ -259,7 +259,7 @@ export function DataTable<TData>({
                   key={row.id}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
-                    "border-t border-outline-variant transition-colors duration-normal ease-out hover:bg-surface-container-low",
+                    "border-t border-border-brand transition-colors duration-normal ease-out hover:bg-surface-container-low",
                     onRowClick && "cursor-pointer",
                   )}
                 >
@@ -294,7 +294,7 @@ export function DataTable<TData>({
       </div>
 
       {hasRows && pagination && onPageChange ? (
-        <div className="flex flex-col gap-3 border-t border-outline-variant px-5 py-3 text-sm text-on-surface-variant sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-t border-border-brand px-5 py-3 text-sm text-on-surface-variant sm:flex-row sm:items-center sm:justify-between">
           <span>
             {t("pageOf", { page: pagination.page, totalPages: Math.max(pagination.totalPages, 1) })}
           </span>
