@@ -36,7 +36,6 @@ import { reportsRoutes } from "./modules/reports/routes.js";
 import { searchRoutes } from "./modules/search/routes.js";
 import { sessionRoutes } from "./modules/session/routes.js";
 import { signupRoutes } from "./modules/signup/routes.js";
-import { startMonthlyReportScheduler } from "./modules/superadmin/finance/auto-monthly-cron.js";
 import { superadminFinanceRoutes } from "./modules/superadmin/finance/routes.js";
 import { tenantAdminRoutes } from "./modules/tenant-admin/routes.js";
 import { tenantRoutes } from "./modules/tenants/routes.js";
@@ -60,14 +59,6 @@ export interface CreateServerOpts {
    * Issue #182 (rbac-denial-logs).
    */
   onLogLine?: (line: string) => void;
-  /**
-   * Test-only: when true, the in-process monthly report scheduler
-   * (issue #443) is NOT started. Production callers pass nothing and
-   * get the scheduler. Test suites set this to true so the
-   * boot-time backfill doesn't try to enqueue jobs against a fresh
-   * test Postgres before fixtures land.
-   */
-  disableSchedulers?: boolean;
 }
 
 /** Create and configure the Fastify server instance */
@@ -223,24 +214,6 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(disputeRoutes, { prefix: "/v1" });
   await app.register(dashboardRoutes, { prefix: "/v1" });
   await app.register(superadminFinanceRoutes, { prefix: "/v1" });
-
-  // Issue #443 — start the in-process monthly report scheduler
-  // (boot-time backfill of the last 12 months + recurring fire on the
-  // 1st of each month at 03:30 UTC). Gated by the
-  // `ADMIN_FINANCE_DASHBOARD` flag at fire time. Defaults to OFF
-  // under `NODE_ENV=test` so the fire-and-forget backfill doesn't
-  // race the per-test fixture cleanup; the manual + backfill HTTP
-  // routes are still exercised by integration tests.
-  const schedulerEnabled =
-    opts.disableSchedulers === undefined
-      ? process.env.NODE_ENV !== "test"
-      : !opts.disableSchedulers;
-  if (schedulerEnabled) {
-    const handle = startMonthlyReportScheduler(app.log);
-    app.addHook("onClose", async () => {
-      handle.cancel();
-    });
-  }
 
   return app;
 }

@@ -4,6 +4,7 @@ import {
   BRANDING_EVENT_TYPES,
   FINANCE_DASHBOARD_JOBS,
   NOTIFICATIONS_DIGEST_JOBS,
+  PLATFORM_REPORTS_JOBS,
   QUEUE_NAMES,
   TENANT_LIFECYCLE_JOBS,
 } from "@givernance/shared/jobs";
@@ -29,6 +30,10 @@ import { processKeycloakSyncOrgLogo } from "./processors/keycloak-sync-org-logo.
 import { processNotificationsEmailDigest } from "./processors/notifications-email-digest.js";
 import { fanoutNotifications } from "./processors/notifications-fanout.js";
 import { processPlatformAdminInviteEmail } from "./processors/platform-admin-invite-email.js";
+import {
+  type PlatformReportTriggerPayload,
+  processPlatformReportAutoTrigger,
+} from "./processors/platform-report-trigger.js";
 import { processGeneratePostalExport } from "./processors/postal-export.js";
 import { processBulkImport } from "./processors/process-bulk-import.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
@@ -83,6 +88,22 @@ const bulkImportQueue = new Queue(QUEUE_NAMES.BULK_IMPORT, { connection: queueCo
 // transient PG flakes get exponential backoff, but the cron tick
 // retries cleanly on the next interval if all attempts fail.
 const financeDashboardQueue = new Queue(QUEUE_NAMES.FINANCE_DASHBOARD, {
+  connection: queueConnection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 60_000 },
+    removeOnComplete: { count: 10 },
+    removeOnFail: { count: 50 },
+  },
+});
+
+// #443 — Monthly platform finance report auto-trigger queue. Carries
+// two job names: MONTHLY_AUTO_TRIGGER (cron + boot backfill) and
+// GENERATE_PDF (one job per platform_finance_reports row). Retry policy
+// mirrors the finance-dashboard queue — exponential backoff on transient
+// PG / S3 flakes; cron retries at the next monthly tick if all attempts
+// exhaust.
+const platformReportsQueue = new Queue(QUEUE_NAMES.PLATFORM_REPORTS, {
   connection: queueConnection,
   defaultJobOptions: {
     attempts: 3,
@@ -173,6 +194,36 @@ async function scheduleRepeatableJobs() {
       repeat: { pattern: "0 4 * * 0", tz: "UTC" },
       removeOnComplete: { count: 10 },
       removeOnFail: { count: 50 },
+    },
+  );
+
+  // #443 — Monthly platform finance report auto-trigger. Fires at
+  // 03:30 UTC on the 1st of each month (after the nightly crons settle,
+  // before the EU morning login window). `jobId` is fixed so worker
+  // restarts don't fan-out to duplicate repeatable schedules.
+  await platformReportsQueue.add(
+    PLATFORM_REPORTS_JOBS.MONTHLY_AUTO_TRIGGER,
+    { mode: "single" } satisfies PlatformReportTriggerPayload,
+    {
+      jobId: "platform-report-auto-trigger-monthly",
+      repeat: { pattern: "30 3 1 * *", tz: "UTC" },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+
+  // One-shot boot-time backfill — checks the last 12 calendar months and
+  // idempotently enqueues any that are missing. `jobId` includes a
+  // timestamp so each worker restart triggers its own warm-up (consistent
+  // with the fx_cache startup pattern). The processor early-returns when
+  // all 12 months already have live rows, making this a safe no-op.
+  await platformReportsQueue.add(
+    PLATFORM_REPORTS_JOBS.MONTHLY_AUTO_TRIGGER,
+    { mode: "backfill" } satisfies PlatformReportTriggerPayload,
+    {
+      jobId: `platform-report-backfill-startup-${Date.now()}`,
+      removeOnComplete: { count: 5 },
+      removeOnFail: { count: 20 },
     },
   );
 }
@@ -650,10 +701,14 @@ function startWorkers() {
   // in-flight job per month anyway.
   const platformReportsWorker = new Worker(
     QUEUE_NAMES.PLATFORM_REPORTS,
-    (job) =>
-      processGenerateMonthlyFinanceReport(
+    async (job: Job) => {
+      if (job.name === PLATFORM_REPORTS_JOBS.MONTHLY_AUTO_TRIGGER) {
+        return processPlatformReportAutoTrigger(job as Job<PlatformReportTriggerPayload>);
+      }
+      return processGenerateMonthlyFinanceReport(
         job as Job<{ reportId: string; month: string; traceparent?: string }>,
-      ),
+      );
+    },
     {
       connection: createRedisConnection(),
       concurrency: 1,
