@@ -31,7 +31,9 @@ container comes up healthy seconds later.
 
 ## 1. Confirm the diagnosis (read-only)
 
-SSH: `ssh -i ~/.ssh/givernance-dev-scaleway root@<STAGING_VPS_IP>` (185.186.76.104).
+SSH: `ssh -i ~/.ssh/givernance-dev-scaleway root@<STAGING_VPS_IP>`. The staging
+VPS IP is the `STAGING_VPS_IP` deploy secret (GitHub Actions / your local
+`.kamal/secrets`) — it is intentionally **not** committed here.
 
 ```sh
 # 1. Route table — is there a row for givernance-keycloak?
