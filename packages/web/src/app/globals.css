@@ -17,6 +17,11 @@
   --color-surface-variant: #e4e0d9;
   --color-surface-dim: #dedbd4;
   --color-surface-bright: #fcfbf9;
+  /* Cream — the marketing site's hero/first-section page background
+     (website PR #24, src/app/globals.css `--color-cream`). Used verbatim
+     as the auth-page background so login sits in the continuation of the
+     marketing hero. Warmer than --color-background (#fcfbf9) by design. */
+  --color-cream: oklch(0.965 0.012 86);
 
   --color-primary: #08675b;
   --color-primary-container: #2e7d72;
@@ -46,6 +51,14 @@
   --color-ember-text: #b52e29;
   --color-accent: var(--color-ember);
   --color-accent-text: var(--color-ember-text);
+
+  /* ── Marketing-hero continuation (auth pages) ──
+     `wave-deep` is the teal the marketing hero's filigree waves fade from
+     (website `--color-deep`); `border-brand` is the teal-16% hairline the
+     marketing dashboard card uses for its border (website `--color-border`).
+     Both are reused verbatim on the auth surface (waves + flat card). */
+  --color-wave-deep: oklch(0.545 0.115 178);
+  --color-border-brand: oklch(0.545 0.115 178 / 0.16);
 
   --color-tertiary: #864700;
   --color-tertiary-container: #aa5b00;
@@ -440,6 +453,28 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ── Auth-page filigree waves ──
+   Mirrors the marketing hero's drifting-wave backdrop (website
+   src/app/globals.css `wave-drift` + `.hero-wave-line`). The SVG markup
+   lives in components/auth/auth-waves.tsx; this only owns the animation.
+   The global reduced-motion block above already freezes the drift. */
+@keyframes wave-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-400px, 0, 0);
+  }
+}
+.auth-waves {
+  transform: translateZ(0);
+}
+.auth-wave-line {
+  animation: wave-drift linear infinite;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
 }
 
 /* ── Focus styles ── */
