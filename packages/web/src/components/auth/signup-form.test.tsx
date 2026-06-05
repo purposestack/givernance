@@ -51,11 +51,19 @@ vi.mock("next-intl", async () => {
 import { SignupForm } from "./signup-form";
 
 describe("SignupForm", () => {
-  it("keeps the workspace URL field on a single column for readability", () => {
+  it("renders the workspace URL with an inline .givernance.org suffix on the right of the input", () => {
     render(<SignupForm />);
 
-    const wrapper = screen.getByText("givernance.app/").parentElement;
-    expect(wrapper).toHaveClass("flex-col");
-    expect(wrapper).not.toHaveClass("sm:flex-row");
+    const suffix = screen.getByText(".givernance.org");
+    const wrapper = suffix.parentElement;
+
+    // The addon is laid out as a horizontal flex row (not a stacked prefix),
+    // so the editable input top-aligns with the other fields.
+    expect(wrapper).toHaveClass("flex", "items-stretch");
+    expect(wrapper).not.toHaveClass("flex-col");
+
+    // The suffix sits AFTER the input (input first, suffix last in DOM order).
+    expect(wrapper?.querySelector("input")).not.toBeNull();
+    expect(wrapper?.lastElementChild).toBe(suffix);
   });
 });

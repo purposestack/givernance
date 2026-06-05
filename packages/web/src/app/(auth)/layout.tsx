@@ -6,21 +6,23 @@
  * invite/accept, forgot-password) inherits it without each page managing its own.
  */
 import { getTranslations } from "next-intl/server";
-import { AuthBackground } from "@/components/auth/auth-background";
+import { AuthWaves } from "@/components/auth/auth-waves";
 import { LocalePicker } from "@/components/auth/locale-picker";
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations("common");
 
-  // main is intentionally transparent — body already paints bg-background,
-  // and AuthBackground layers a fixed icon-rain animation behind every
-  // pre-auth screen (login, signup, invite/accept, forgot-password, …).
+  // AuthWaves is a single fixed -z-10 layer that paints BOTH the marketing
+  // hero's cream background AND the drifting filigree waves, so the pre-auth
+  // screens sit in the continuation of the marketing site. main is kept
+  // transparent on purpose: an opaque bg here (step-3 block background) would
+  // paint over the negative-z wave layer and hide it.
   return (
     <main
       id="main-content"
       className="flex min-h-screen flex-col items-center justify-center gap-8 p-6"
     >
-      <AuthBackground />
+      <AuthWaves />
       {children}
 
       {/* Locale picker — below the card, above the footer on all pre-auth pages */}

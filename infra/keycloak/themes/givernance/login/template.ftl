@@ -70,13 +70,38 @@
   </style>
 </head>
 <body>
-<#-- Decorative full-viewport icon-rain background. Self-hosted JS (no
-     external requests) so the Keycloak login matches the SPA login page
-     while remaining GDPR-compliant (LG München ruling on third-party
-     scripts/fonts). aria-hidden + tabindex=-1 keep it out of AT trees and
-     focus order. -->
-<canvas id="gv-auth-bg" class="gv-bg-canvas" aria-hidden="true" tabindex="-1"></canvas>
-<script src="${url.resourcesPath}/js/auth-background.js"></script>
+<#-- Decorative filigree-wave backdrop — a faithful port of the marketing
+     site's hero waves (givernance-website, src/components/home/hero.tsx) and
+     the SPA auth background (packages/web components/auth/auth-waves.tsx). Pure
+     inline SVG + CSS animation (.gv-wave-line / wave-drift in givernance.css):
+     no external requests and no JS, so the login stays GDPR-clean (LG München
+     ruling on third-party scripts/fonts) while sitting in the continuation of
+     the marketing hero. aria-hidden keeps it out of AT trees. The wave lines
+     are emitted with ?c (computer number format) so a French/locale decimal
+     comma can never sneak into the inline CSS. -->
+<div class="gv-wave-bg" aria-hidden="true">
+  <svg class="gv-hero-waves" viewBox="0 0 800 900" preserveAspectRatio="xMaxYMid slice"
+       xmlns="http://www.w3.org/2000/svg" focusable="false">
+    <defs>
+      <linearGradient id="gvWaveFade" x1="0" x2="1" y1="0" y2="0">
+        <stop offset="0%" stop-color="var(--gv-wave-deep)" stop-opacity="0"/>
+        <stop offset="70%" stop-color="var(--gv-wave-deep)" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="var(--gv-ember)" stop-opacity="0.35"/>
+      </linearGradient>
+      <path id="gv-wave-path"
+            d="M-200,450 C-50,380 50,520 200,450 C350,380 450,520 600,450 C750,380 850,520 1000,450 C1150,380 1250,520 1400,450"/>
+    </defs>
+    <g fill="none" stroke="url(#gvWaveFade)" stroke-width="0.9" stroke-linecap="round">
+      <#list 0..13 as i>
+      <g transform="translate(0 ${((i - 6.5) * 42)?c})">
+        <use href="#gv-wave-path" class="gv-wave-line"
+             style="opacity:${(0.55 + (i % 3) * 0.15)?c};animation-delay:${(i * -2)?c}s;animation-duration:${(28 + (i % 3) * 4)?c}s"/>
+      </g>
+      </#list>
+    </g>
+  </svg>
+  <span class="gv-ember-glow"></span>
+</div>
 
 <div class="gv-auth-page">
   <div class="gv-auth-card">

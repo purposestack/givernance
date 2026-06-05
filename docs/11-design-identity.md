@@ -1,7 +1,7 @@
 # 11 — Design Identity, UI & UX
 
 > **Givernance NPO Platform** — A platform that feels like it was built for people, not for systems.
-> Last updated: 2026-03-17
+> Last updated: 2026-06-05
 
 ---
 
@@ -235,6 +235,16 @@ All shadows use cool-tinted `rgba(17, 24, 39, ...)` instead of pure black for a 
 4px base grid. All spacing values available as `--space-{n}` tokens:
 
 `0` · `1px` · `2px` · `4px` · `6px` · `8px` · `12px` · `16px` · `20px` · `24px` · `32px` · `40px` · `48px` · `56px` · `64px` · `72px` · `80px` · `96px`
+
+### 2.9 Auth surface — marketing continuity
+
+The pre-auth screens (login, signup, forgot/reset-password, invite-accept) and the Keycloak login theme are styled as a **continuation of the marketing site's hero** (website PR #24), not as a standalone product chrome. Three rules:
+
+- **Background** — the marketing hero's cream (`--color-cream` = `oklch(0.965 0.012 86)`), warmer than the in-app `--color-background` (`#fcfbf9`). Used verbatim on the auth surface only.
+- **Filigree waves** — a faithful port of the hero's drifting-wave backdrop: right-anchored inline SVG, teal→ember gradient (`--color-wave-deep` → `--color-ember`), `wave-drift` keyframe, plus a soft top-right ember glow. Pure SVG + CSS (no canvas, no JS) so the Keycloak theme stays GDPR-clean (LG München — no third-party scripts/fonts). Frozen under `prefers-reduced-motion`.
+- **Flat card** — the auth card mirrors the marketing hero's dashboard card: a teal-16% hairline border (`--color-border-brand` = `oklch(0.545 0.115 178 / 0.16)`) and **no box-shadow**. It reads as part of the page, not a floating elevated panel.
+
+Implemented in `packages/web/src/components/auth/auth-waves.tsx` + `auth-card.tsx` + the `(auth)` layout (SPA) and `infra/keycloak/themes/givernance/login/` (`template.ftl` markup + `givernance.css`). The previous interactive canvas icon-rain background was retired here.
 
 ---
 

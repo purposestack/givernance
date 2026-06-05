@@ -72,8 +72,17 @@
   --gv-primary-hover: #00514a;
   --gv-primary-ring:  rgba(8, 103, 91, 0.12);
 
-  /* Surface */
-  --gv-bg:            #fcfbf9;
+  /* Marketing-hero continuation: `wave-deep` is the teal the hero waves fade
+     from (website --color-deep); `ember` is the coral accent stop + glow;
+     `border-brand` is the teal-16% hairline the marketing dashboard card uses
+     (website --color-border). Mirrors packages/web/src/app/globals.css. */
+  --gv-wave-deep:     oklch(0.545 0.115 178);
+  --gv-ember:         #ec6a66;
+  --gv-border-brand:  oklch(0.545 0.115 178 / 0.16);
+
+  /* Surface — cream matches the marketing hero's first-section background
+     (website --color-cream) so login continues the marketing site. */
+  --gv-bg:            oklch(0.965 0.012 86);
   --gv-surface:       #ffffff;
   --gv-surface-low:   #f9f8f6;
   --gv-surface-high:  #ebe8e2;
@@ -122,20 +131,51 @@ body {
   min-height: 100dvh;
 }
 
-/* ── Decorative background canvas ──
-   Full-viewport icon-rain animation, driven by resources/js/auth-background.js.
-   Sits behind the auth card; pointer-events disabled so it can't intercept
-   clicks. The body remains opaque (--gv-bg) so reduced-motion users with the
-   canvas hidden still see the brand background colour. */
-.gv-bg-canvas {
+/* ── Decorative filigree-wave background ──
+   Faithful port of the marketing hero's drifting waves (markup in
+   template.ftl). Fixed full-viewport layer behind the auth card;
+   pointer-events disabled so it can't intercept clicks. The body stays
+   opaque (--gv-bg cream) so reduced-motion users still get the brand
+   background colour even with the drift frozen. */
+.gv-wave-bg {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   z-index: 0;
   pointer-events: none;
-  display: block;
+  overflow: hidden;
+}
+
+.gv-hero-waves {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60%;
+  height: 100%;
+  transform: translateZ(0);
+}
+
+.gv-wave-line {
+  animation: wave-drift linear infinite;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Soft ember glow, top-right — mirrors the marketing hero's blurred blob. */
+.gv-ember-glow {
+  position: absolute;
+  top: 10%;
+  right: -15%;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: var(--gv-ember);
+  opacity: 0.15;
+  filter: blur(140px);
+}
+
+@keyframes wave-drift {
+  0%   { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-400px, 0, 0); }
 }
 
 /* ── Page layout ── */
@@ -151,14 +191,17 @@ body {
   gap: 24px;
 }
 
-/* ── Card ── */
+/* ── Card ──
+   Mirrors the marketing hero's dashboard card: a flat surface with a
+   teal-16% hairline border and NO box-shadow, so the login reads as a
+   continuation of the marketing hero rather than a floating elevated panel. */
 .gv-auth-card {
   width: 100%;
   max-width: 440px;
   background: var(--gv-surface);
+  border: 1px solid var(--gv-border-brand);
   border-radius: var(--gv-radius-card);
   padding: 40px;
-  box-shadow: 0 0 0 1px rgba(190, 201, 193, 0.15), 0 4px 16px rgba(8, 103, 91, 0.08);
 }
 
 /* ── Header: logo + brand ── */

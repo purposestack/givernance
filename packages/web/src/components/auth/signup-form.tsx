@@ -386,11 +386,16 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
               render={({ field }) => (
                 <FormItem>
                   <FormLabel required>{t("fields.slug")}</FormLabel>
-                  <div className="flex flex-col gap-2">
-                    <span className="shrink-0 text-sm text-text-muted">givernance.app/</span>
+                  {/* Inline suffix addon: the `.givernance.org` segment is
+                      attached to the RIGHT edge of the input (shared border, no
+                      gap). The workspace lives at `{slug}.givernance.org`, so
+                      the suffix reads naturally after the editable slug while
+                      keeping the input top-aligned with the other fields. */}
+                  <div className="flex items-stretch">
                     <FormControl>
                       <Input
                         {...field}
+                        className="rounded-r-none"
                         maxLength={50}
                         pattern="^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$"
                         onChange={(event) => {
@@ -401,6 +406,9 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
                         }}
                       />
                     </FormControl>
+                    <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-r-[var(--radius-input)] border border-l-0 border-outline-variant bg-surface-container-low px-3 text-sm text-text-muted">
+                      .givernance.org
+                    </span>
                   </div>
                   <p className="text-xs text-text-muted">
                     {slugState.kind === "taken" ? (
@@ -563,7 +571,7 @@ export function SignupForm({ defaultCountry = "FR", captchaSiteKey }: SignupForm
               control={form.control}
               name="legalType"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className="lg:col-span-2">
                   <FormLabel>{t("fields.legalType")}</FormLabel>
                   <Select value={field.value} onValueChange={(value) => field.onChange(value)}>
                     <FormControl>
