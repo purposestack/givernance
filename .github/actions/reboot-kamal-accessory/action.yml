@@ -81,6 +81,62 @@ runs:
            docker container rm -f givernance-${ACC} >/dev/null 2>&1 || true"
         bundle exec kamal accessory boot "$ACC" -c "$CFG"
 
+    # Self-healing safety net for the kamal-proxy route (2026-06-05 incident).
+    # `kamal accessory boot` registers the route as part of boot, but that
+    # registration health-checks the target within kamal-proxy's deploy_timeout.
+    # A slow-booting proxied accessory — Keycloak re-imports its realm + runs
+    # Liquibase on every boot — can miss that window on an unlucky cold start, so
+    # `kamal-proxy remove` runs but the re-`deploy` times out, leaving the host
+    # un-routed (kamal-proxy 404 + TLS SNI error) while the container is healthy
+    # seconds later. The `deploy_timeout: 120` bump in config/deploy-staging.yml is
+    # the primary fix; this is the belt-and-suspenders: if the route is STILL
+    # missing after boot, reboot once more via kamal (config-driven, so the bumped
+    # timeout applies and no proxy params are duplicated here). The retry's second
+    # boot is fast — the realm is already in the DB — so registration succeeds.
+    # Runs `if: always()` but is a no-op on the happy path (route present → exits
+    # early) and only ever touches accessories that declare a `proxy:` block, so a
+    # stateful accessory (postgres/redis) is never rebooted by this guard.
+    - name: Self-heal kamal-proxy route if boot left it un-registered
+      if: always()
+      shell: bash
+      run: |
+        set -uo pipefail
+        ACC="${{ inputs.accessory }}"
+        CFG="${{ inputs.config }}"
+        SVC="givernance-${ACC}"
+
+        # Only accessories with a proxy: block get a route. Skip the rest so we
+        # never reboot a stateful accessory just because it isn't in the proxy
+        # table. Any parse error => skip (safe default).
+        if ! ACC="$ACC" CFG="$CFG" ruby -e '
+              require "erb"; require "yaml"
+              cfg = YAML.load(ERB.new(File.read(ENV["CFG"])).result)
+              exit(cfg.dig("accessories", ENV["ACC"], "proxy") ? 0 : 1)
+            ' 2>/dev/null; then
+          echo "Accessory '$ACC' has no proxy: block — no route to verify."
+          exit 0
+        fi
+
+        if bundle exec kamal server exec -c "$CFG" \
+             "docker exec kamal-proxy kamal-proxy list | grep -qF '$SVC'"; then
+          echo "Route '$SVC' is registered — OK."
+          exit 0
+        fi
+
+        echo "::warning::kamal-proxy route '$SVC' missing after boot — self-healing with one more reboot."
+        bundle exec kamal server exec -c "$CFG" \
+          "docker exec kamal-proxy kamal-proxy remove $SVC >/dev/null 2>&1 || true; \
+           docker container rm -f $SVC >/dev/null 2>&1 || true"
+        bundle exec kamal accessory boot "$ACC" -c "$CFG"
+
+        if bundle exec kamal server exec -c "$CFG" \
+             "docker exec kamal-proxy kamal-proxy list | grep -qF '$SVC'"; then
+          echo "Route '$SVC' registered after self-heal."
+        else
+          echo "::error::Route '$SVC' STILL missing after self-heal reboot — manual recovery: docs/runbooks/keycloak-proxy-route-recovery.md"
+          exit 1
+        fi
+
     # Scoped to "the reboot itself failed" rather than `if: failure()`,
     # which would also fire on any earlier failure in the parent job and
     # produce confusing logs from an accessory we never tried to touch.

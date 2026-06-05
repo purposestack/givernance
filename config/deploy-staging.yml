@@ -355,6 +355,17 @@ accessories:
       host: auth.staging.givernance.org
       ssl: true
       app_port: 8080
+      # Keycloak re-imports the realm JSON + runs Liquibase migrations on every
+      # boot (KC_IMPORT_STRATEGY=OVERWRITE_EXISTING below), so the master-realm
+      # well-known endpoint can take well over kamal-proxy's default 30s
+      # deploy-timeout to answer on a cold boot. When it does, `kamal accessory
+      # boot` (which `kamal-proxy remove`s then re-`deploy`s the route) times out
+      # registering the route — leaving auth.staging.givernance.org un-routed
+      # (kamal-proxy 404 + TLS SNI `internal error`) even though the container
+      # comes up healthy seconds later. Incident 2026-06-05, deploy aa8f8f01.
+      # Give the registration room to outlast the realm import. Recovery +
+      # rationale: docs/runbooks/keycloak-proxy-route-recovery.md.
+      deploy_timeout: 120
       healthcheck:
         path: /realms/master/.well-known/openid-configuration
     env:
