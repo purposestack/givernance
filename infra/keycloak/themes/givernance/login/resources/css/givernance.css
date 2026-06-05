@@ -225,10 +225,15 @@ body {
   flex-shrink: 0;
 }
 
+/* Mirrors the SPA AuthLogo wordmark (packages/web components/auth/auth-logo.tsx:
+   `font-heading text-3xl tracking-tight`) — Sora at the body's regular 400
+   weight (NOT 600), --text-3xl = 2rem, --tracking-tight = -0.02em. Keeping the
+   weight at 400 is what makes the Keycloak wordmark match the SPA login instead
+   of rendering bold. */
 .gv-brand-name {
   font-family: 'Sora', system-ui, -apple-system, sans-serif;
-  font-size: 1.75rem;
-  font-weight: 600;
+  font-size: 2rem;
+  font-weight: 400;
   color: var(--gv-text);
   letter-spacing: -0.02em;
 }
