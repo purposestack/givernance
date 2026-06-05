@@ -17,9 +17,9 @@
     "db:seed:funds": "tsx --env-file=../../.env scripts/seed-funds.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1057.0",
-    "@aws-sdk/lib-storage": "^3.1057.0",
-    "@aws-sdk/s3-request-presigner": "^3.1057.0",
+    "@aws-sdk/client-s3": "^3.1062.0",
+    "@aws-sdk/lib-storage": "^3.1062.0",
+    "@aws-sdk/s3-request-presigner": "^3.1062.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^10.0.0",
@@ -29,15 +29,15 @@
     "@givernance/shared": "workspace:*",
     "@sinclair/typebox": "^0.34.12",
     "archiver": "^7.0.1",
-    "bullmq": "^5.77.6",
+    "bullmq": "^5.78.0",
     "csv-parse": "^6.2.1",
-    "dompurify": "^3.4.7",
+    "dompurify": "^3.4.8",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "fastify": "^5.8.5",
     "fastify-plugin": "^5.0.1",
     "file-type": "^22.0.1",
-    "ioredis": "^5.11.0",
+    "ioredis": "^5.11.1",
     "jose": "^6.2.3",
     "jsdom": "^29.1.1",
     "lru-cache": "^11.5.1",
@@ -58,7 +58,7 @@
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
     "drizzle-kit": "^0.31.10",
-    "tsx": "^4.22.0",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }
 }
