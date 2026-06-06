@@ -333,6 +333,17 @@ Valid uses for Organization attributes: non-sensitive identifiers (`org_id`, slu
 
 Reference: [`packages/api/src/modules/superadmin/finance/routes.ts`](packages/api/src/modules/superadmin/finance/routes.ts) (route), [`packages/api/src/tests/integration/superadmin-finance.test.ts`](packages/api/src/tests/integration/superadmin-finance.test.ts) (test pattern), [`packages/web/src/services/SuperAdminFinanceService.ts`](packages/web/src/services/SuperAdminFinanceService.ts) (client wiring).
 
+### 🛑 Kamal config keys must be valid for the PINNED Kamal version
+
+**Never add or rename a key in `config/deploy-*.yml` without confirming it exists in the Kamal version pinned in [`Gemfile.lock`](Gemfile.lock).** Kamal validates the ENTIRE config at parse time: a single unknown key aborts **every** `kamal deploy` / `kamal setup` before any container moves — and the error names only the offending key, never the fix, so it reads like an unrelated outage and blocks PRs whose only crime was triggering a deploy.
+
+**Why this is a hard rule**: on 2026-06-06 a `deploy_timeout: 120` was added to `accessories.keycloak.proxy` — a key that exists in Kamal's docs / newer releases but **not** in the pinned 2.11. Every staging deploy then failed for days with `ConfigurationError: accessories/keycloak/proxy: unknown key: deploy_timeout`, silently, including unrelated merges. The YAML was valid; the **schema** wasn't.
+
+**Before touching a Kamal config key:**
+- Verify it against the installed gem, not a blog post / newer-version docs / an LLM suggestion: `grep -rn "<key>" "$(bundle show kamal)/lib/kamal/configuration/"`, or read the release notes for the **exact** pinned version. Proxy/accessory keys differ across Kamal majors *and* minors.
+- A config-only change still needs a real or dry-run `kamal deploy` (or `kamal config`) to catch parse errors — `actionlint` and YAML-lint will pass on a valid-YAML-but-invalid-schema file.
+- The same applies to any tool whose config is schema-validated at load (Drizzle, Biome, Vitest, GitHub Actions reusable-workflow inputs): pin-aware key validation, not "looks plausible".
+
 ---
 
 ## 🛑 DEV PROCESS (CRITICAL FOR CI)
