@@ -1534,6 +1534,13 @@ async function seedSurveyInvitationsForTenant(
       channel: i % 4 === 0 ? "in_app" : "email",
       invitedAt: new Date(invitedAtBase.getTime() + i * 60 * 60 * 1000),
       expiresAt: new Date(invitedAtBase.getTime() + (i + 30) * 24 * 60 * 60 * 1000),
+      // The first `responseCount` invitations get a seeded response below, so
+      // mark them opened at that response's submit time — mirroring the real
+      // respond flow (survey-respond.ts sets opened_at on submit). Without
+      // this, a responded invitation keeps opened_at = NULL and the in-app
+      // "pending" query resurfaces it at login even though a response already
+      // exists, so re-submitting 409s. Unanswered invitations stay NULL.
+      openedAt: i < s.responseCount ? new Date(invitedAtBase.getTime() + i * 2 * 60 * 60 * 1000) : null,
     }));
     const insertedInvitations = await systemDb
       .insert(surveyInvitations)
