@@ -356,16 +356,24 @@ accessories:
       ssl: true
       app_port: 8080
       # Keycloak re-imports the realm JSON + runs Liquibase migrations on every
-      # boot (KC_IMPORT_STRATEGY=OVERWRITE_EXISTING below), so the master-realm
-      # well-known endpoint can take well over kamal-proxy's default 30s
-      # deploy-timeout to answer on a cold boot. When it does, `kamal accessory
-      # boot` (which `kamal-proxy remove`s then re-`deploy`s the route) times out
-      # registering the route — leaving auth.staging.givernance.org un-routed
-      # (kamal-proxy 404 + TLS SNI `internal error`) even though the container
-      # comes up healthy seconds later. Incident 2026-06-05, deploy aa8f8f01.
-      # Give the registration room to outlast the realm import. Recovery +
-      # rationale: docs/runbooks/keycloak-proxy-route-recovery.md.
-      deploy_timeout: 120
+      # boot (KC_IMPORT_STRATEGY=OVERWRITE_EXISTING below). On the 2026-06-05
+      # incident (deploy aa8f8f01) the master-realm well-known endpoint took
+      # longer than kamal-proxy's default 30s deploy-timeout to answer, so
+      # `kamal accessory boot` timed out re-registering the `auth.*` route.
+      #
+      # A `deploy_timeout: 120` was added here (commit f27e4934) to widen that
+      # window — but `deploy_timeout` is NOT a valid Kamal 2.11 accessory-proxy
+      # key: it aborts EVERY `kamal deploy` at config-parse time with
+      # `ConfigurationError: accessories/keycloak/proxy: unknown key:
+      # deploy_timeout`. So the "fix" silently broke all deploys. Removed.
+      #
+      # The cold boot only blew past 30s because the in-process monthly-report
+      # cron was busy-looping a CPU core (PR #479), inflating Quarkus
+      # augmentation from ~12-15s to 27s. With that root cause fixed, the
+      # default 30s has comfortable margin again. If a longer proxy wait is ever
+      # genuinely needed, use a mechanism the pinned Kamal version actually
+      # accepts (validate against the gem) — not this key. Recovery runbook:
+      # docs/runbooks/keycloak-proxy-route-recovery.md.
       healthcheck:
         path: /realms/master/.well-known/openid-configuration
     env:
