@@ -22,7 +22,7 @@
     "dompurify": "^3.4.8",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
-    "ioredis": "^5.11.1",
+    "ioredis": "^5.11.0",
     "jsdom": "^29.1.1",
     "lru-cache": "^11.5.1",
     "nodemailer": "^8.0.10",
