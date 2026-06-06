@@ -1,15 +1,29 @@
-// Mirror of packages/api/src/modules/superadmin/finance/service.ts.
-// Copied here so the worker's cron-trigger processor can build the
-// kpi_snapshot without importing across package boundaries.
-// Keep in sync with the API original when the aggregation logic changes.
+// #437 — super-admin platform finance summary aggregation.
+//
+// Single module that runs all the SQL aggregations behind the
+// `GET /v1/superadmin/finance/summary` route. Every query goes
+// through the injected `db` handle because the read is platform-wide
+// by design (CROSS-TENANT INTENTIONAL); when the caller filters by
+// `tenantId` every aggregate query STILL carries an explicit
+// `eq(orgId, …)` predicate so RLS remains defence in depth, not the
+// security contract (see CLAUDE.md § "RLS is the safety net…").
+//
+// SHARED (issue #443): `db` is dependency-injected so the API (manual
+// report + dashboard) and the worker (monthly cron) build the SAME
+// snapshot from one implementation — no duplication, no drift. The API
+// passes `systemDb`, the worker passes its owner-pool `db`.
 
 import { sql } from "drizzle-orm";
-import { db as systemDb } from "../../lib/db.js";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type * as schema from "../../schema/index.js";
 import {
   computeMobilisationPerTenant,
   computeMobilisationPlatformAggregate,
 } from "./mobilisation.js";
 import { deltaPercent, type ResolvedPeriod } from "./period.js";
+
+/** Injected Drizzle handle (owner pool — the read is cross-tenant). */
+type FinanceDb = NodePgDatabase<typeof schema>;
 
 const K_ANONYMITY_THRESHOLD = 5;
 
@@ -84,6 +98,9 @@ function toNumber(value: string | number | null | undefined): number {
 function toIso(value: Date | string | null | undefined): string | null {
   if (value == null) return null;
   if (value instanceof Date) return value.toISOString();
+  // Drizzle's `sql<...>` raw queries (e.g. on the survey aggregate view)
+  // return TIMESTAMP columns as strings unless an explicit cast is set.
+  // Normalise both shapes here so callers can rely on ISO-8601 strings.
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
@@ -178,6 +195,7 @@ export interface SummaryServiceResult {
 }
 
 async function aggregateKpis(
+  db: FinanceDb,
   from: Date,
   to: Date,
   filters: SummaryFilters,
@@ -194,19 +212,40 @@ async function aggregateKpis(
       : sql``;
   const tenantFilter = filters.tenantId ? sql`AND d.org_id = ${filters.tenantId}::uuid` : sql``;
 
-  const rows = await systemDb.execute<KpiRow>(sql`
+  // CROSS-TENANT INTENTIONAL: super-admin platform aggregate.
+  // Archived / suspended tenants are excluded everywhere (payment-engineer
+  // re-review BLOCKING in Epic #434) — their historical donations are
+  // out of contract and would skew platform KPIs.
+  const rows = await db.execute<KpiRow>(sql`
     SELECT
-      COALESCE(SUM(d.amount_base_cents) FILTER (WHERE d.status = 'cleared'), 0) AS volume_cents,
-      COALESCE(SUM(d.platform_fee_base_cents) FILTER (WHERE d.status = 'cleared'), 0) AS platform_fee_cents,
-      COALESCE(SUM(d.stripe_fee_cents) FILTER (WHERE d.status = 'cleared' AND d.payment_source = 'stripe'), 0) AS stripe_fee_cents,
-      COUNT(DISTINCT d.constituent_id) FILTER (WHERE d.status = 'cleared') AS donor_count,
-      COALESCE(SUM(d.amount_base_cents) FILTER (WHERE d.refunded_at IS NOT NULL AND d.refunded_at >= ${from} AND d.refunded_at < ${to}), 0) AS refunded_volume_cents,
-      BOOL_OR(d.status = 'cleared' AND d.payment_source = 'stripe' AND d.stripe_fee_cents IS NOT NULL) AS any_stripe_donation
+      COALESCE(SUM(d.amount_base_cents) FILTER (WHERE d.status = 'cleared'), 0)
+        AS volume_cents,
+      COALESCE(SUM(d.platform_fee_base_cents) FILTER (WHERE d.status = 'cleared'), 0)
+        AS platform_fee_cents,
+      COALESCE(SUM(d.stripe_fee_cents)
+        FILTER (WHERE d.status = 'cleared' AND d.payment_source = 'stripe'), 0)
+        AS stripe_fee_cents,
+      COUNT(DISTINCT d.constituent_id) FILTER (WHERE d.status = 'cleared')
+        AS donor_count,
+      COALESCE(SUM(d.amount_base_cents)
+        FILTER (WHERE d.refunded_at IS NOT NULL
+                  AND d.refunded_at >= ${from}
+                  AND d.refunded_at <  ${to}), 0)
+        AS refunded_volume_cents,
+      -- SHOULD-FIX (payment-engineer): require d.status='cleared' so a window
+      -- with only refunded Stripe donations does NOT trigger the Stripe-fee
+      -- tile from refunded data.
+      BOOL_OR(d.status = 'cleared'
+              AND d.payment_source = 'stripe'
+              AND d.stripe_fee_cents IS NOT NULL)
+        AS any_stripe_donation
     FROM donations d
     JOIN tenants t ON t.id = d.org_id
-    WHERE d.donated_at >= ${from} AND d.donated_at < ${to}
+    WHERE d.donated_at >= ${from}
+      AND d.donated_at <  ${to}
       AND t.status NOT IN ('archived', 'suspended')
-      ${currencyFilter} ${tenantFilter}
+      ${currencyFilter}
+      ${tenantFilter}
   `);
 
   const row = rows.rows[0];
@@ -219,19 +258,27 @@ async function aggregateKpis(
   };
 }
 
-async function aggregateRecurringMrr(filters: SummaryFilters): Promise<number> {
+async function aggregateRecurringMrr(db: FinanceDb, filters: SummaryFilters): Promise<number> {
   const tenantFilter = filters.tenantId ? sql`AND p.org_id = ${filters.tenantId}::uuid` : sql``;
-  const rows = await systemDb.execute<MrrRow>(sql`
-    SELECT COALESCE(SUM(CASE p.frequency WHEN 'monthly' THEN p.amount_base_cents::numeric
-      WHEN 'yearly' THEN p.amount_base_cents::numeric / 12 ELSE 0 END), 0) AS recurring_mrr_cents
+  const rows = await db.execute<MrrRow>(sql`
+    SELECT COALESCE(SUM(
+      CASE p.frequency
+        WHEN 'monthly' THEN p.amount_base_cents::numeric
+        WHEN 'yearly'  THEN p.amount_base_cents::numeric / 12
+        ELSE 0
+      END
+    ), 0) AS recurring_mrr_cents
     FROM pledges p
     JOIN tenants t ON t.id = p.org_id
-    WHERE p.status = 'active' AND t.status NOT IN ('archived', 'suspended') ${tenantFilter}
+    WHERE p.status = 'active'
+      AND t.status NOT IN ('archived', 'suspended')
+      ${tenantFilter}
   `);
   return toInt(rows.rows[0]?.recurring_mrr_cents);
 }
 
 async function aggregateActiveTenants(
+  db: FinanceDb,
   from: Date,
   to: Date,
   filters: SummaryFilters,
@@ -241,28 +288,40 @@ async function aggregateActiveTenants(
       ? sql`AND d.currency = ${filters.currency}`
       : sql``;
   const tenantFilter = filters.tenantId ? sql`AND d.org_id = ${filters.tenantId}::uuid` : sql``;
-  const rows = await systemDb.execute<ActiveTenantsRow>(sql`
+  const rows = await db.execute<ActiveTenantsRow>(sql`
     SELECT COUNT(DISTINCT d.org_id) AS active_count
     FROM donations d
     JOIN tenants t ON t.id = d.org_id
-    WHERE d.status = 'cleared' AND d.donated_at >= ${from} AND d.donated_at < ${to}
-      AND t.status NOT IN ('archived', 'suspended') ${currencyFilter} ${tenantFilter}
+    WHERE d.status = 'cleared'
+      AND d.donated_at >= ${from}
+      AND d.donated_at <  ${to}
+      AND t.status NOT IN ('archived', 'suspended')
+      ${currencyFilter}
+      ${tenantFilter}
   `);
   return toInt(rows.rows[0]?.active_count);
 }
 
 async function aggregatePaymentFailureRate(
+  db: FinanceDb,
   from: Date,
   to: Date,
   filters: SummaryFilters,
 ): Promise<number | null> {
   const tenantFilter = filters.tenantId ? sql`AND pa.org_id = ${filters.tenantId}::uuid` : sql``;
-  const rows = await systemDb.execute<FailureRow>(sql`
-    SELECT COUNT(*) AS attempts, COUNT(*) FILTER (WHERE pa.status = 'failed') AS failures
+  // NOTE: payment_attempts is currently Stripe-only; Mollie failure rate is
+  // not surfaced. The Mollie webhook does not write to this table — see
+  // SHOULD-FIX 3 in the Epic #434 payment-engineer re-review.
+  const rows = await db.execute<FailureRow>(sql`
+    SELECT
+      COUNT(*) AS attempts,
+      COUNT(*) FILTER (WHERE pa.status = 'failed') AS failures
     FROM payment_attempts pa
     JOIN tenants t ON t.id = pa.org_id
-    WHERE pa.created_at >= ${from} AND pa.created_at < ${to}
-      AND t.status NOT IN ('archived', 'suspended') ${tenantFilter}
+    WHERE pa.created_at >= ${from}
+      AND pa.created_at <  ${to}
+      AND t.status NOT IN ('archived', 'suspended')
+      ${tenantFilter}
   `);
   const attempts = toInt(rows.rows[0]?.attempts);
   const failures = toInt(rows.rows[0]?.failures);
@@ -270,28 +329,45 @@ async function aggregatePaymentFailureRate(
   return (failures / attempts) * 100;
 }
 
-async function aggregateHhi(from: Date, to: Date, filters: SummaryFilters): Promise<number> {
+async function aggregateHhi(
+  db: FinanceDb,
+  from: Date,
+  to: Date,
+  filters: SummaryFilters,
+): Promise<number> {
   const currencyFilter =
     filters.currency && filters.currency !== "all"
       ? sql`AND d.currency = ${filters.currency}`
       : sql``;
   const tenantFilter = filters.tenantId ? sql`AND d.org_id = ${filters.tenantId}::uuid` : sql``;
-  const rows = await systemDb.execute<HhiRow>(sql`
+  const rows = await db.execute<HhiRow>(sql`
     WITH shares AS (
-      SELECT d.org_id, SUM(d.amount_base_cents)::numeric AS org_volume
-      FROM donations d JOIN tenants t ON t.id = d.org_id
-      WHERE d.status = 'cleared' AND d.donated_at >= ${from} AND d.donated_at < ${to}
-        AND t.status NOT IN ('archived', 'suspended') ${currencyFilter} ${tenantFilter}
+      SELECT
+        d.org_id,
+        SUM(d.amount_base_cents)::numeric AS org_volume
+      FROM donations d
+      JOIN tenants t ON t.id = d.org_id
+      WHERE d.status = 'cleared'
+        AND d.donated_at >= ${from}
+        AND d.donated_at <  ${to}
+        AND t.status NOT IN ('archived', 'suspended')
+        ${currencyFilter}
+        ${tenantFilter}
       GROUP BY d.org_id
     ),
-    total AS (SELECT SUM(org_volume) AS platform_volume FROM shares)
-    SELECT COALESCE(SUM(POW(org_volume / NULLIF((SELECT platform_volume FROM total), 0), 2)), 0) AS hhi
+    total AS (
+      SELECT SUM(org_volume) AS platform_volume FROM shares
+    )
+    SELECT
+      COALESCE(SUM(POW(org_volume / NULLIF((SELECT platform_volume FROM total), 0), 2)), 0)
+        AS hhi
     FROM shares
   `);
   return toNumber(rows.rows[0]?.hhi);
 }
 
 async function aggregateTimeseries(
+  db: FinanceDb,
   from: Date,
   to: Date,
   filters: SummaryFilters,
@@ -301,14 +377,21 @@ async function aggregateTimeseries(
       ? sql`AND d.currency = ${filters.currency}`
       : sql``;
   const tenantFilter = filters.tenantId ? sql`AND d.org_id = ${filters.tenantId}::uuid` : sql``;
-  const rows = await systemDb.execute<TimeseriesRow>(sql`
-    SELECT date_trunc('day', d.donated_at) AS bucket,
+  const rows = await db.execute<TimeseriesRow>(sql`
+    SELECT
+      date_trunc('day', d.donated_at) AS bucket,
       COALESCE(SUM(d.amount_base_cents), 0) AS volume_cents,
       COALESCE(SUM(d.platform_fee_base_cents), 0) AS platform_fee_cents
-    FROM donations d JOIN tenants t ON t.id = d.org_id
-    WHERE d.status = 'cleared' AND d.donated_at >= ${from} AND d.donated_at < ${to}
-      AND t.status NOT IN ('archived', 'suspended') ${currencyFilter} ${tenantFilter}
-    GROUP BY bucket ORDER BY bucket ASC
+    FROM donations d
+    JOIN tenants t ON t.id = d.org_id
+    WHERE d.status = 'cleared'
+      AND d.donated_at >= ${from}
+      AND d.donated_at <  ${to}
+      AND t.status NOT IN ('archived', 'suspended')
+      ${currencyFilter}
+      ${tenantFilter}
+    GROUP BY bucket
+    ORDER BY bucket ASC
   `);
   return rows.rows.map((row) => {
     const bucket = row.bucket instanceof Date ? row.bucket : new Date(String(row.bucket));
@@ -321,6 +404,7 @@ async function aggregateTimeseries(
 }
 
 async function aggregatePerTenant(
+  db: FinanceDb,
   from: Date,
   to: Date,
   filters: SummaryFilters,
@@ -338,16 +422,27 @@ async function aggregatePerTenant(
       ? sql`AND d.currency = ${filters.currency}`
       : sql``;
   const tenantFilter = filters.tenantId ? sql`AND d.org_id = ${filters.tenantId}::uuid` : sql``;
-  const rows = await systemDb.execute<PerTenantRow>(sql`
-    SELECT t.id AS tenant_id, t.name AS tenant_name,
+  const rows = await db.execute<PerTenantRow>(sql`
+    SELECT
+      t.id   AS tenant_id,
+      t.name AS tenant_name,
       COALESCE(SUM(d.amount_base_cents), 0) AS volume_cents,
       COALESCE(SUM(d.platform_fee_base_cents), 0) AS platform_fee_cents,
       COUNT(d.id) AS donation_count
-    FROM tenants t JOIN donations d ON d.org_id = t.id
-    WHERE d.status = 'cleared' AND d.donated_at >= ${from} AND d.donated_at < ${to}
-      AND t.status NOT IN ('archived', 'suspended') ${currencyFilter} ${tenantFilter}
-    GROUP BY t.id, t.name ORDER BY volume_cents DESC
+    FROM tenants t
+    JOIN donations d ON d.org_id = t.id
+    WHERE d.status = 'cleared'
+      AND d.donated_at >= ${from}
+      AND d.donated_at <  ${to}
+      AND t.status NOT IN ('archived', 'suspended')
+      ${currencyFilter}
+      ${tenantFilter}
+    GROUP BY t.id, t.name
+    ORDER BY volume_cents DESC
   `);
+  // K-anonymity: drop rows with donation_count < 5 from the per-tenant
+  // projection. Aggregate KPIs above are unaffected — the suppression
+  // only applies to the row-level breakdown.
   return rows.rows
     .filter((row) => toInt(row.donation_count) >= K_ANONYMITY_THRESHOLD)
     .map((row) => ({
@@ -360,19 +455,26 @@ async function aggregatePerTenant(
 }
 
 async function aggregatePerCurrency(
+  db: FinanceDb,
   from: Date,
   to: Date,
   filters: SummaryFilters,
 ): Promise<Array<{ currency: string; volumeCents: number; donationCount: number }>> {
   const tenantFilter = filters.tenantId ? sql`AND d.org_id = ${filters.tenantId}::uuid` : sql``;
-  const rows = await systemDb.execute<PerCurrencyRow>(sql`
-    SELECT d.currency,
+  const rows = await db.execute<PerCurrencyRow>(sql`
+    SELECT
+      d.currency,
       COALESCE(SUM(d.amount_base_cents), 0) AS volume_cents,
       COUNT(d.id) AS donation_count
-    FROM donations d JOIN tenants t ON t.id = d.org_id
-    WHERE d.status = 'cleared' AND d.donated_at >= ${from} AND d.donated_at < ${to}
-      AND t.status NOT IN ('archived', 'suspended') ${tenantFilter}
-    GROUP BY d.currency ORDER BY volume_cents DESC
+    FROM donations d
+    JOIN tenants t ON t.id = d.org_id
+    WHERE d.status = 'cleared'
+      AND d.donated_at >= ${from}
+      AND d.donated_at <  ${to}
+      AND t.status NOT IN ('archived', 'suspended')
+      ${tenantFilter}
+    GROUP BY d.currency
+    ORDER BY volume_cents DESC
   `);
   return rows.rows.map((row) => ({
     currency: row.currency,
@@ -381,7 +483,10 @@ async function aggregatePerCurrency(
   }));
 }
 
-async function aggregateSurveys(filters: SummaryFilters): Promise<
+async function aggregateSurveys(
+  db: FinanceDb,
+  filters: SummaryFilters,
+): Promise<
   Array<{
     kind: "pmf" | "nps" | "csat";
     slug: string;
@@ -395,29 +500,44 @@ async function aggregateSurveys(filters: SummaryFilters): Promise<
     isStatisticallySignificant: boolean;
   }>
 > {
+  // Survey definitions are platform-wide and live on the surveys table
+  // (no org_id). When tenantId is set we still surface every survey
+  // but the aggregate joins per-tenant against `survey_responses_aggregate`.
   const tenantFilter = filters.tenantId ? sql`AND i.org_id = ${filters.tenantId}::uuid` : sql``;
 
-  const surveyRows = await systemDb.execute<SurveyRow>(sql`
-    SELECT s.id, s.kind, s.slug, s.next_scheduled_at,
+  const surveyRows = await db.execute<SurveyRow>(sql`
+    SELECT
+      s.id,
+      s.kind,
+      s.slug,
+      s.next_scheduled_at,
       COALESCE(invited.invited_count, 0) AS invited_count
     FROM surveys s
     LEFT JOIN LATERAL (
-      SELECT COUNT(*) AS invited_count FROM survey_invitations i
-      WHERE i.survey_id = s.id AND i.deleted_at IS NULL ${tenantFilter}
+      SELECT COUNT(*) AS invited_count
+      FROM survey_invitations i
+      WHERE i.survey_id = s.id
+        AND i.deleted_at IS NULL
+        ${tenantFilter}
     ) invited ON TRUE
-    WHERE s.deleted_at IS NULL AND s.kind IN ('pmf', 'nps', 'csat')
+    WHERE s.deleted_at IS NULL
+      AND s.kind IN ('pmf', 'nps', 'csat')
     ORDER BY s.kind ASC, s.slug ASC
   `);
 
   if (surveyRows.rows.length === 0) return [];
 
-  const aggregateRows = await systemDb.execute<SurveyAggregateRow>(sql`
-    SELECT survey_id,
+  // The aggregate view enforces its own k-anonymity gate (HAVING n>=5).
+  // Per-tenant aggregates are super-admin material; the view is REVOKEd
+  // from the tenant pool — only reachable through the owner pool.
+  const aggregateRows = await db.execute<SurveyAggregateRow>(sql`
+    SELECT
+      survey_id,
       SUM(response_count)::int AS response_count,
-      AVG(pmf_percent) AS pmf_percent,
-      AVG(nps_score) AS nps_score,
-      AVG(csat_score) AS csat_score,
-      MAX(last_collected_at) AS last_collected_at
+      AVG(pmf_percent)        AS pmf_percent,
+      AVG(nps_score)          AS nps_score,
+      AVG(csat_score)         AS csat_score,
+      MAX(last_collected_at)  AS last_collected_at
     FROM survey_responses_aggregate
     ${filters.tenantId ? sql`WHERE org_id = ${filters.tenantId}::uuid` : sql``}
     GROUP BY survey_id
@@ -435,6 +555,9 @@ async function aggregateSurveys(filters: SummaryFilters): Promise<
     .map((row) => {
       const agg = aggregateBySurveyId.get(row.id);
       const responseCount = toInt(agg?.response_count);
+      // Statistical-significance gate mirrors the view's own k>=5
+      // threshold — kept explicit on the wire so the dashboard can
+      // render the "n<5" badge without re-deriving the bound.
       const isStatisticallySignificant = responseCount >= K_ANONYMITY_THRESHOLD;
       return {
         kind: row.kind,
@@ -443,20 +566,34 @@ async function aggregateSurveys(filters: SummaryFilters): Promise<
         nextScheduledAt: toIso(row.next_scheduled_at),
         responseCount,
         invitedCount: toInt(row.invited_count),
-        pmfPercent:
-          isStatisticallySignificant && agg?.pmf_percent != null ? toNumber(agg.pmf_percent) : null,
-        npsScore:
-          isStatisticallySignificant && agg?.nps_score != null ? toNumber(agg.nps_score) : null,
-        csatScore:
-          isStatisticallySignificant && agg?.csat_score != null ? toNumber(agg.csat_score) : null,
+        pmfPercent: isStatisticallySignificant
+          ? agg?.pmf_percent != null
+            ? toNumber(agg.pmf_percent)
+            : null
+          : null,
+        npsScore: isStatisticallySignificant
+          ? agg?.nps_score != null
+            ? toNumber(agg.nps_score)
+            : null
+          : null,
+        csatScore: isStatisticallySignificant
+          ? agg?.csat_score != null
+            ? toNumber(agg.csat_score)
+            : null
+          : null,
         isStatisticallySignificant,
       };
     });
 }
 
-export async function buildFinanceSummary(input: SummaryInput): Promise<SummaryServiceResult> {
+export async function buildFinanceSummary(
+  db: FinanceDb,
+  input: SummaryInput,
+): Promise<SummaryServiceResult> {
   const { period, filters } = input;
 
+  // Run independent aggregates in parallel — Postgres pool sized to 10
+  // on the owner pool so 8 concurrent queries fit comfortably.
   const [
     currentKpis,
     previousKpis,
@@ -471,23 +608,27 @@ export async function buildFinanceSummary(input: SummaryInput): Promise<SummaryS
     mobilisationRows,
     mobilisationAggregate,
   ] = await Promise.all([
-    aggregateKpis(period.from, period.to, filters),
-    aggregateKpis(period.comparisonFrom, period.comparisonTo, filters),
-    aggregateRecurringMrr(filters),
-    aggregateActiveTenants(period.from, period.to, filters),
-    aggregatePaymentFailureRate(period.from, period.to, filters),
-    aggregateHhi(period.from, period.to, filters),
-    aggregateTimeseries(period.from, period.to, filters),
-    aggregatePerTenant(period.from, period.to, filters),
-    aggregatePerCurrency(period.from, period.to, filters),
-    aggregateSurveys(filters),
+    aggregateKpis(db, period.from, period.to, filters),
+    aggregateKpis(db, period.comparisonFrom, period.comparisonTo, filters),
+    aggregateRecurringMrr(db, filters),
+    aggregateActiveTenants(db, period.from, period.to, filters),
+    aggregatePaymentFailureRate(db, period.from, period.to, filters),
+    aggregateHhi(db, period.from, period.to, filters),
+    aggregateTimeseries(db, period.from, period.to, filters),
+    aggregatePerTenant(db, period.from, period.to, filters),
+    aggregatePerCurrency(db, period.from, period.to, filters),
+    aggregateSurveys(db, filters),
     computeMobilisationPerTenant(
+      db,
       { from: period.from, to: period.to },
       filters.tenantId ? { tenantId: filters.tenantId } : {},
     ),
-    computeMobilisationPlatformAggregate({ from: period.from, to: period.to }),
+    computeMobilisationPlatformAggregate(db, { from: period.from, to: period.to }),
   ]);
 
+  // Aggregate mobilisation components across the (non-anonymised) tenant set
+  // for the platform-level component breakdown the dashboard renders next to
+  // the platform grade.
   const componentTotals = mobilisationRows.reduce(
     (acc, row) => {
       if (row.result.isAnonymised) return acc;
@@ -542,6 +683,9 @@ export async function buildFinanceSummary(input: SummaryInput): Promise<SummaryS
           currentKpis.refundedVolumeCents,
           previousKpis.refundedVolumeCents,
         ),
+        // MRR is a current-state metric (active pledges right now), so
+        // the delta to "previous" is meaningless. Wire 0 so the schema
+        // stays a flat number, and the UI omits the delta chip for MRR.
         recurringMrrPercent: 0,
       },
     },
