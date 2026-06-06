@@ -163,14 +163,16 @@ See: /diagrams/container.mmd
 
 ```
 packages/
-├── shared/                  # @givernance/shared — shared types, schemas, utils
+├── shared/                  # @givernance/shared — shared types, schemas, validators + shared business logic
 │   ├── src/
 │   │   ├── schema/          # Drizzle ORM schema definitions (all tables)
 │   │   ├── types/           # Shared TypeScript types
 │   │   ├── events/          # Domain event types (CloudEvents)
 │   │   ├── jobs/            # BullMQ job type definitions
-│   │   └── validators/      # TypeBox schemas for API input validation
-│   └── package.json
+│   │   ├── validators/      # TypeBox schemas for API input validation
+│   │   ├── finance/reporting/ # Finance aggregation + monthly-report orchestration (DB-injected) — #443/#480
+│   │   └── lib/             # Shared infra-agnostic business logic (svg-sanitiser, s3-branding) — #480
+│   └── package.json         # Subpath exports gate the heavy/DB-touching modules (see §4.1)
 ├── api/                     # @givernance/api — Fastify API server
 │   ├── src/
 │   │   ├── server.ts        # Fastify app factory
@@ -216,6 +218,23 @@ packages/
     │   └── loaders/         # Bulk insert via Drizzle
     └── package.json
 ```
+
+### 4.1 Shared business layer (`@givernance/shared`)
+
+`@givernance/shared` is no longer only a passive home for the Drizzle schema, Zod/TypeBox validators, and shared TypeScript types — it also holds **shared business logic** that the API and the worker would otherwise duplicate ([issue #480](https://github.com/purposestack/givernance/issues/480)). Today that is:
+
+- **Finance aggregation + monthly-report orchestration** (`@givernance/shared/finance/reporting`) — one implementation of the super-admin finance snapshot, used by both the API (manual report + dashboard) and the worker (monthly cron + boot backfill).
+- **SVG sanitiser** (`@givernance/shared/lib/svg-sanitiser`) — the org-logo upload sanitiser (DOMPurify/SVG profile + explicit-rejection pre-flight, Epic #286), shared by the API upload handler and the worker rasterisation pipeline so the two paths cannot drift.
+- **S3 branding helpers** (`@givernance/shared/lib/s3-branding`) — `putBrandingObject` / `getBrandingObject` / `deleteBrandingPrefix` / `brandingPublicUrl`.
+
+**Dependency-injection pattern.** Shared business logic that needs infrastructure does **not** import `env` or a module-level DB/S3 singleton. Instead it receives the infra as a parameter:
+
+- DB-touching functions take a `db: NodePgDatabase` (the finance/reporting module).
+- S3-touching functions take an `S3Client` (plus the resolved bucket name / public-URL inputs) — e.g. `putBrandingObject(s3, bucket, key, body, contentType)`.
+
+Each caller passes **its own** connection/client: the API and worker each keep their package-local `S3Client` construction, receipt/campaign/report streaming (`@aws-sdk/lib-storage`), presign logic, and `env` wiring, and expose a thin wrapper that pre-binds those locals before delegating to the shared function — so every existing call site keeps its original signature. This keeps `@givernance/shared` infra-agnostic and unit-testable (no env/DB/S3 singleton to stand up in a test), and means there is exactly **one** implementation of each piece of business logic, with infra ownership staying in the API/worker process that actually holds the connection.
+
+**Subpath-export convention.** These modules are reachable only via **dedicated subpath exports** declared in `packages/shared/package.json` — `@givernance/shared/finance/reporting`, `@givernance/shared/lib/svg-sanitiser`, `@givernance/shared/lib/s3-branding` — and are deliberately **NOT** re-exported from the root barrel (`src/index.ts`). The root barrel is reachable from the `@givernance/web` (Next.js) package; pulling Drizzle-query code, `dompurify`/`jsdom`, or the `@aws-sdk/client-s3` surface into it would leak heavy, server-only dependencies into the browser bundle and violate the frontend type boundary (**ADR-013**). The subpath gate keeps each heavy/DB-touching module importable by the API/worker while invisible to the web build.
 
 ---
 
