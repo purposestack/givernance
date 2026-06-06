@@ -54,7 +54,14 @@ export async function processGenerateMonthlyFinanceReport(job: Job<JobData>): Pr
     .limit(1);
 
   if (!row) {
-    throw new Error(`platform_finance_reports row ${reportId} not found`);
+    // The report row was deleted or superseded after this job was enqueued
+    // (a dev DB re-seed, a tenant/report removal, or a stale job left in
+    // Redis from a prior run). There is nothing to render, so treat it as a
+    // graceful no-op: complete the job rather than throwing, which would
+    // retry 3× and flood the logs for a row that will never come back.
+    log.warn({ reportId, month }, "Report row not found — skipping (deleted/superseded)");
+    job.log(`Report row ${reportId} not found — skipping (deleted/superseded)`);
+    return;
   }
 
   if (row.status === "ready") {
