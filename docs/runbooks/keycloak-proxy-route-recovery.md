@@ -93,21 +93,34 @@ login at `auth.staging…/realms/givernance/protocol/openid-connect/auth?…` wi
 
 ## 3. Durable fix (shipped)
 
-Two changes prevent recurrence:
+> ⚠️ **Correction (2026-06-06):** the original durable fix added a
+> `deploy_timeout: 120` to `accessories.keycloak.proxy`. **`deploy_timeout` is
+> NOT a valid Kamal 2.11 accessory-proxy key** — it aborts EVERY `kamal deploy`
+> at config-parse time (`ConfigurationError: accessories/keycloak/proxy:
+> unknown key: deploy_timeout`), so it silently broke all deploys instead of
+> fixing anything. The key has been **removed**.
 
-1. **`deploy_timeout: 120`** on the `accessories.keycloak.proxy` block in
-   `config/deploy-staging.yml` — gives the route registration room to outlast the
-   realm import (root-cause fix).
+What actually prevents recurrence:
+
+1. **Root-cause fix (PR #479)** — the cold Keycloak boot only blew past
+   kamal-proxy's 30s deploy-timeout because the in-process monthly-report cron
+   was busy-looping a CPU core (a 32-bit `setTimeout` overflow), inflating
+   Quarkus augmentation from ~12-15s to 27s. Moving that cron to a BullMQ
+   repeatable job removed the CPU loop, so the default 30s has comfortable
+   margin again.
 2. **Self-healing step** in `.github/actions/reboot-kamal-accessory/action.yml` —
    after boot, if a proxied accessory's route is missing, it reboots once more via
    kamal (config-driven). No-op on the happy path; only touches accessories with a
    `proxy:` block (never postgres/redis).
 
-When `deploy-prod.yml` lands, mirror `deploy_timeout` on the prod Keycloak proxy
-block (see `docs/runbooks/launch-prod.md`).
+If a longer proxy deploy-wait is ever genuinely needed (e.g. prod), use a
+mechanism the pinned Kamal version actually accepts — validate the key against
+the installed `kamal` gem first. Do **not** re-add `deploy_timeout` to a proxy
+block. When `deploy-prod.yml` lands, do not mirror the (removed) key.
 
 ## 4. Post-mortem log
 
 | Date | Trigger | Symptom | Resolution | Notes |
 |---|---|---|---|---|
-| 2026-06-05 | Deploy `aa8f8f01` (teal-rebrand auth theme) rebooted Keycloak | `auth.staging` 404 + TLS SNI error; route absent from kamal-proxy; KC healthy internally | Manual `kamal-proxy deploy` re-register (§2) | Root-cause fix (`deploy_timeout` + self-heal) shipped same day |
+| 2026-06-05 | Deploy `aa8f8f01` (teal-rebrand auth theme) rebooted Keycloak | `auth.staging` 404 + TLS SNI error; route absent from kamal-proxy; KC healthy internally | Manual `kamal-proxy deploy` re-register (§2) | Same-day "fix" added `deploy_timeout: 120` + self-heal |
+| 2026-06-06 | Every `kamal deploy` aborting | `ConfigurationError: accessories/keycloak/proxy: unknown key: deploy_timeout` | Removed the invalid key; real root cause was the cron CPU-loop (PR #479) | `deploy_timeout` is not a Kamal 2.11 proxy key — it never took effect |
