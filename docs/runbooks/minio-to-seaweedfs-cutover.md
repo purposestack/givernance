@@ -48,7 +48,15 @@ gh workflow run staging-accessory-reboot.yml --ref <branch> -f accessory=seaweed
 
 This boots `givernance-seaweedfs` with `data/seaweedfs:/data` (a NEW, empty bind-mount — MinIO's `data/minio` is untouched) and renders + mounts `config/seaweedfs/s3config.staging.json`. The "Ensure SeaweedFS buckets exist" step in `deploy-staging.yml` creates the buckets + lifecycle.
 
-**Verify the accessory is healthy** before migrating data:
+> ⚠ **EXPECTED FAILURE — the proxy registration will error, and that's fine.** Both the `minio` and `seaweedfs` accessories declare a `proxy:` block claiming the **same public host** (`assets.staging.givernance.org`). kamal-proxy allows exactly **one service per host**, so while MinIO still owns that route the SeaweedFS accessory boot fails its final `kamal-proxy deploy` step with:
+> ```
+> Error: host settings conflict with another service
+> ```
+> The **container itself boots fine** (`docker run` exits 0) and is reachable at `givernance-seaweedfs:8333` on the `kamal` network — only the *public* route registration fails. The public route is not needed for steps 4–5 (data migration uses the internal network). The route is claimed explicitly in **step 5b** (host handoff), after MinIO's route is removed. **Do not** try to make the boot's proxy step succeed here — you can't, until MinIO releases the host.
+>
+> Consequence for the **per-push auto-deploy**: merging the cutover PR triggers a `Deploy to Staging` that (a) rolls the app onto the new (empty) `S3_ENDPOINT` and (b) **goes RED on the accessory-reboot step** for exactly this reason. That red run is expected. Drive steps 4 → 5b → 6 → 7 by hand, then re-run the deploy to land green (MinIO is gone by then, so no conflict). This is the 2026-06-06 incident — see post-mortem.
+
+**Verify the accessory is healthy** before migrating data (use the *internal* status, the public host still routes to MinIO at this point):
 
 ```sh
 ssh givernance-staging "docker exec givernance-seaweedfs curl -sf http://localhost:8333/status && echo OK"
@@ -82,6 +90,22 @@ docker run --rm --network kamal -e AWS_ACCESS_KEY_ID=admin -e AWS_SECRET_ACCESS_
 
 > **SSE note**: objects synced into SeaweedFS are re-encrypted under the SeaweedFS KEK on write (the worker's `AES256` header path); they do not carry MinIO's KMS envelope. Reads after cutover go through the SeaweedFS KEK. No client-side key handling.
 
+> ⚠ **MinIO KMS may refuse to list its own objects (2026-06-06 staging).** The `receipts` bucket sync failed at `ListObjectsV2` with `kms:InvalidCiphertextException: failed to decrypt ciphertext` — MinIO's KMS could no longer decrypt the SSE-KMS object metadata it wrote, so the objects were **unreadable at the source** and could not be migrated. On staging this is acceptable: receipt PDFs are regenerable (re-create the donation) and the app had already begun writing fresh receipts to SeaweedFS. **If this happens against a store with load-bearing receipts (prod self-host), STOP** — do not decommission MinIO; the objects are only recoverable with the original `MINIO_KMS_SECRET_KEY`. Sync the buckets that *do* list cleanly (`campaigns`, `branding`) and triage `receipts` separately before cutover.
+
+### 4b. Provision buckets + lifecycle on SeaweedFS
+
+rclone auto-creates a destination bucket on first write, but (a) empty source buckets are never created and (b) lifecycle rules are never applied. Run the repo's `init.sh` against the live gateway (idempotent — safe to re-run):
+
+```sh
+ssh givernance-staging 'SW=$(docker exec givernance-seaweedfs sh -c "tr -d \" \n\" < /etc/seaweedfs/s3config.json" | grep -o "\"secretKey\":\"[^\"]*\"" | head -1 | sed "s/\"secretKey\":\"//;s/\"//")
+docker run --rm -i --network kamal \
+  -e S3_ENDPOINT=http://givernance-seaweedfs:8333 -e S3_ACCESS_KEY_ID=admin \
+  -e S3_SECRET_ACCESS_KEY="$SW" -e S3_REGION=fr-par \
+  --entrypoint sh amazon/aws-cli:latest -s' < infra/seaweedfs/init.sh
+```
+
+This creates all five buckets (so the empty `bulk-imports` exists) and applies the 90d/365d/abort-mpu lifecycle. Branding public-read is **not** set here — it is the static `anonymous Read:branding` identity in the mounted `s3config.json` (ADR-023).
+
 ## 5. Cut `S3_ENDPOINT` over
 
 `config/deploy-staging.yml` already points the app env at `http://givernance-seaweedfs:8333` (it changed in the same PR). So the cutover happens **when the app containers roll** on the deploy that ships this PR. To be deliberate:
@@ -89,6 +113,26 @@ docker run --rm --network kamal -e AWS_ACCESS_KEY_ID=admin -e AWS_SECRET_ACCESS_
 1. Confirm step 4 verification passed for all five buckets.
 2. Let the `Deploy to Staging` run for the merge complete (it rolls web/api/worker/relay onto the new `S3_ENDPOINT`).
 3. **Pause the BullMQ relay first if you want zero in-flight receipt jobs hitting a half-migrated bucket** — `ssh givernance-staging "docker stop givernance-relay"`, do the endpoint cutover, then `docker start givernance-relay`. (The relay uses `SELECT … FOR UPDATE SKIP LOCKED`, so a brief pause only delays fan-out; nothing is lost.)
+
+### 5b. Host handoff — give `assets.staging.givernance.org` to SeaweedFS
+
+This is the step the original runbook was missing (it caused the 2026-06-06 red deploy). MinIO still owns the public host in kamal-proxy; release it and register SeaweedFS. The container is already running and healthy (step 3), so this is a pure route swap — **no container recreate, the migrated objects are untouched**:
+
+```sh
+ssh givernance-staging 'set -e
+SWID=$(docker ps -q --filter name=givernance-seaweedfs)
+# 1. release the host
+docker exec kamal-proxy kamal-proxy remove givernance-minio
+# 2. claim it for seaweedfs — flags MUST match the accessory proxy block in config/deploy-staging.yml
+docker exec kamal-proxy kamal-proxy deploy givernance-seaweedfs \
+  --target="${SWID}:8333" --host="assets.staging.givernance.org" \
+  --tls --deploy-timeout="30s" --drain-timeout="30s" --health-check-path="/status" \
+  --buffer-requests --buffer-responses \
+  --log-request-header="Cache-Control" --log-request-header="Last-Modified" --log-request-header="User-Agent"
+docker exec kamal-proxy kamal-proxy list'
+```
+
+> The `--target` / `--tls` / `--health-check-path` / buffer / log-header flags are the rendered form of the `proxy:` block on the `seaweedfs` accessory in [`config/deploy-staging.yml`](../../config/deploy-staging.yml). If you changed that block, copy the new flags from a failed `Reboot accessories` log line rather than trusting this snippet. After this, **re-run the (red) deploy** — with MinIO's route gone the accessory-reboot step registers cleanly and the run goes green.
 
 ## 6. Smoke-test on staging
 
@@ -122,15 +166,34 @@ Before the step-5 cutover: trivial — leave MinIO running, app still points at 
 
 _(fill during execution — timestamps, command outputs, surprises)_
 
-- [ ] Spike re-run (only if version bumped) — result:
-- [ ] Secrets set (`SEAWEEDFS_S3_SECRET_KEY`, `SEAWEEDFS_SSE_KEY`) — confirmed via `gh secret list --env staging`:
-- [ ] `seaweedfs` accessory booted + `/status` healthy:
-- [ ] Buckets + lifecycle provisioned (deploy step output):
-- [ ] Object sync per bucket (counts old/new): receipts __/__ · campaigns __/__ · branding __/__ · bulk-imports __/__ · reports __/__
-- [ ] `S3_ENDPOINT` cutover (relay paused? y/n):
-- [ ] Smoke-test results (receipt / branding / bulk-import / report / negative-403):
-- [ ] MinIO decommissioned:
+**2026-06-06 — staging cutover executed (run [27067405970](https://github.com/purposestack/givernance/actions/runs/27067405970))**
+
+- [x] Spike re-run — N/A (pinned `chrislusf/seaweedfs:4.31` unchanged)
+- [x] Secrets set — pre-existing in `staging` env
+- [x] `seaweedfs` accessory booted + `/status` healthy — container `5385f5a6726d` Up, internal `/status` = OK. **Public proxy registration FAILED at boot** with `host settings conflict with another service` (MinIO still owned `assets.staging`) — expected, see post-mortem.
+- [x] Buckets + lifecycle provisioned — ran `infra/seaweedfs/init.sh` by hand (the deploy's "Ensure SeaweedFS buckets exist" step never ran — the deploy died on the earlier accessory-reboot step). All 5 buckets + 90d/365d/abort-mpu lifecycle applied.
+- [x] Object sync per bucket (old/new): receipts **N-A / 3** (MinIO KMS decrypt error — source unreadable; 3 are fresh app writes) · campaigns **12 / 12** · branding **19 / 19** · bulk-imports **0 / 0** (bucket was missing on SeaweedFS until init.sh) · reports **n-a / 0** (never existed on MinIO)
+- [x] `S3_ENDPOINT` cutover — happened automatically when the merge-deploy rolled the app onto `givernance-seaweedfs:8333` (relay not explicitly paused; fresh receipts wrote cleanly)
+- [x] Host handoff (step 5b) — `kamal-proxy remove givernance-minio` → `kamal-proxy deploy givernance-seaweedfs --host=assets.staging…`. Verified: proxy `list` shows seaweedfs owns the host.
+- [x] Smoke-test — anonymous `branding/…/original.jpg` = **200**, anonymous `receipts/…` = **403**, `assets.staging…/status` = **200**.
+- [x] MinIO decommissioned — `docker rm -f givernance-minio`; `~/givernance-minio/data/minio` (6.6M) **preserved** for the rollback window.
+- [x] Deploy re-run triggered to land green (MinIO route gone → no conflict).
 
 ## Post-mortem
 
-_(after completion — what went wrong, what to change in ADR-034 or this runbook, follow-ups filed)_
+**2026-06-06 — cutover via merge-deploy went red; recovered by hand.**
+
+**What went wrong.** Merging the cutover PR triggered the per-push `Deploy to Staging`, which collapsed the runbook's deliberately-manual one-shot into one automated run. Two failures resulted:
+1. **App rolled onto an empty store before migration.** `S3_ENDPOINT` flipped to `givernance-seaweedfs:8333` as the app containers rolled, but the rclone migration (step 4) had not run — so the new store was empty when traffic arrived.
+2. **The deploy went RED on the accessory-reboot step.** Both the `minio` and `seaweedfs` accessories declare a `proxy:` block on the same public host `assets.staging.givernance.org`. kamal-proxy allows one service per host, so SeaweedFS's boot-time `kamal-proxy deploy` failed: `Error: host settings conflict with another service`. The container booted fine; only the public route failed. Because the deploy died here, the downstream "Ensure SeaweedFS buckets exist" step never ran, leaving `bulk-imports` (an empty bucket rclone never creates) absent and no lifecycle rules anywhere.
+
+**Latent issue surfaced.** MinIO's KMS could no longer decrypt its own `receipts` SSE-KMS metadata (`kms:InvalidCiphertextException`) — those objects were unmigratable. Tolerable on staging (regenerable); a hard STOP signal for any prod self-host cutover.
+
+**Recovery (no data loss for `campaigns`/`branding`).** rclone-synced the listable buckets, ran `init.sh` to create the missing bucket + lifecycle, swapped the kamal-proxy route MinIO→SeaweedFS surgically (no container recreate), smoke-tested (200/403/200), removed the MinIO container keeping `data/minio`, re-ran the deploy to land green.
+
+**Changes made to this runbook.**
+- Step 3 now documents the **expected** proxy-conflict failure and that the per-push auto-deploy goes red by design during a same-host accessory swap.
+- New **step 4b** (run `init.sh` for buckets + lifecycle) and **step 5b** (explicit host handoff) — the handoff was entirely missing before.
+- Step 4 now warns about the MinIO-KMS-unreadable-objects failure mode and when it's a STOP.
+
+**Follow-ups for the PROD cutover (`deploy-prod.yml`).** The same-host accessory swap **cannot** be done by a single automated push-deploy — the proxy host can only belong to one accessory at a time. Plan the prod cutover as an explicit operator sequence (migrate → init → route handoff → smoke → decommission), or teach the workflow's "Reboot accessories" step to release a conflicting same-host route before booting the replacement. Do **not** rely on the auto-deploy to do the handoff atomically.
