@@ -1,14 +1,14 @@
 /** S3/MinIO client for uploading generated files (supports streaming) */
 
 import type { Readable } from "node:stream";
-import {
-  DeleteObjectsCommand,
-  GetObjectCommand,
-  ListObjectsV2Command,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import {
+  brandingPublicUrl as brandingPublicUrlShared,
+  deleteBrandingPrefix as deleteBrandingPrefixShared,
+  getBrandingObject as getBrandingObjectShared,
+  putBrandingObject as putBrandingObjectShared,
+} from "@givernance/shared/lib/s3-branding";
 import { env } from "../env.js";
 
 const s3 = new S3Client({
@@ -125,88 +125,39 @@ export async function uploadCampaignZip(
 
 // ─── Branding bucket helpers (Epic #286) ───────────────────────────────────
 //
-// See `packages/api/src/lib/s3.ts` for the full rationale (public-read
-// bucket, content-addressed keys, no per-object ACL/SSE override).
+// The branding-asset implementations live in the shared package
+// (`@givernance/shared/lib/s3-branding`, issue #480) so the worker and the
+// API share ONE copy. The wrappers below pre-bind this package's own `s3`
+// client + `env` bucket/URL config so every existing call site keeps its
+// original signature unchanged. See the shared module for the full
+// public-read / content-addressed-key / no-per-object-ACL rationale.
 
 /**
  * Upload a branding asset (original or derived variant) to the public-
- * read branding bucket. Sets the long-lived immutable cache header
- * because keys are content-addressed.
+ * read branding bucket. Returns the key.
  */
-export async function putBrandingObject(
-  key: string,
-  body: Buffer,
-  contentType: string,
-): Promise<string> {
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: env.S3_BRANDING_BUCKET,
-      Key: key,
-      Body: body,
-      ContentType: contentType,
-      CacheControl: "public, max-age=31536000, immutable",
-    }),
-  );
-  return key;
+export function putBrandingObject(key: string, body: Buffer, contentType: string): Promise<string> {
+  return putBrandingObjectShared(s3, env.S3_BRANDING_BUCKET, key, body, contentType);
 }
 
 /** Fetch a branding object as a Buffer. Returns null on 404. */
-export async function getBrandingObject(key: string): Promise<Buffer | null> {
-  try {
-    const out = await s3.send(
-      new GetObjectCommand({
-        Bucket: env.S3_BRANDING_BUCKET,
-        Key: key,
-      }),
-    );
-    const body = out.Body as Readable | undefined;
-    if (!body) return null;
-    const chunks: Buffer[] = [];
-    for await (const chunk of body) {
-      chunks.push(chunk as Buffer);
-    }
-    return Buffer.concat(chunks);
-  } catch (err) {
-    const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
-    if (e?.name === "NoSuchKey" || e?.$metadata?.httpStatusCode === 404) {
-      return null;
-    }
-    throw err;
-  }
+export function getBrandingObject(key: string): Promise<Buffer | null> {
+  return getBrandingObjectShared(s3, env.S3_BRANDING_BUCKET, key);
 }
 
 /**
  * Delete every object under a prefix. Used by the `branding.gc_asset`
  * worker job to clean up after a soft-deleted asset.
  */
-export async function deleteBrandingPrefix(prefix: string): Promise<number> {
-  let totalDeleted = 0;
-  let continuationToken: string | undefined;
-  do {
-    const list = await s3.send(
-      new ListObjectsV2Command({
-        Bucket: env.S3_BRANDING_BUCKET,
-        Prefix: prefix,
-        ContinuationToken: continuationToken,
-      }),
-    );
-    const objects = (list.Contents ?? []).map((obj) => ({ Key: obj.Key as string }));
-    if (objects.length > 0) {
-      await s3.send(
-        new DeleteObjectsCommand({
-          Bucket: env.S3_BRANDING_BUCKET,
-          Delete: { Objects: objects, Quiet: true },
-        }),
-      );
-      totalDeleted += objects.length;
-    }
-    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
-  } while (continuationToken);
-  return totalDeleted;
+export function deleteBrandingPrefix(prefix: string): Promise<number> {
+  return deleteBrandingPrefixShared(s3, env.S3_BRANDING_BUCKET, prefix);
 }
 
 /** Compose the public URL of a branding object. */
 export function brandingPublicUrl(key: string): string {
-  const base = env.KEYCLOAK_LOGO_PUBLIC_URL_BASE ?? `${env.S3_ENDPOINT}/${env.S3_BRANDING_BUCKET}`;
-  return `${base.replace(/\/+$/, "")}/${key}`;
+  return brandingPublicUrlShared(key, {
+    endpoint: env.S3_ENDPOINT,
+    brandingBucket: env.S3_BRANDING_BUCKET,
+    publicUrlBase: env.KEYCLOAK_LOGO_PUBLIC_URL_BASE,
+  });
 }

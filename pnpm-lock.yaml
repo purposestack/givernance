@@ -227,13 +227,25 @@ importers:
 
   packages/shared:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1057.0
+        version: 3.1062.0
       '@sinclair/typebox':
         specifier: ^0.34.12
         version: 0.34.49
+      dompurify:
+        specifier: ^3.4.7
+        version: 3.4.8
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.20.0)(gel@2.2.0)(pg@8.21.0)
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@1.8.0)
     devDependencies:
+      '@types/jsdom':
+        specifier: ^28.0.3
+        version: 28.0.3
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
