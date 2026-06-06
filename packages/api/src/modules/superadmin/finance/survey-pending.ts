@@ -16,8 +16,8 @@
 // The explicit eq(userId)+eq(orgId) above is the cross-tenant
 // isolation that RLS would otherwise enforce.
 
-import { surveyInvitations, surveys } from "@givernance/shared/schema";
-import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { surveyInvitations, surveyResponses, surveys } from "@givernance/shared/schema";
+import { and, desc, eq, gt, inArray, isNull, notExists } from "drizzle-orm";
 import { systemDb } from "../../../lib/db.js";
 
 /**
@@ -88,6 +88,27 @@ export async function listPendingInvitations(input: {
         isNull(surveyInvitations.dismissedAt),
         isNull(surveyInvitations.deletedAt),
         gt(surveyInvitations.expiresAt, now),
+        // Authoritative "done" signal: an invitation with a (live) response is
+        // never pending, regardless of `opened_at`. `opened_at IS NULL` above
+        // is a softer UX gate (the respond + dismiss flows both set it), but
+        // it can drift from reality — any path that records a response without
+        // also stamping `opened_at` (a seed fixture, a partial write, manual
+        // SQL) would otherwise resurface an already-answered survey at login
+        // and loop the user into a 409 on re-submit. Gating on the response's
+        // existence makes `pending` the exact inverse of the respond flow's
+        // `already_responded` check, so the two can't disagree.
+        notExists(
+          systemDb
+            .select({ id: surveyResponses.id })
+            .from(surveyResponses)
+            .where(
+              and(
+                eq(surveyResponses.invitationId, surveyInvitations.id),
+                eq(surveyResponses.orgId, surveyInvitations.orgId),
+                isNull(surveyResponses.deletedAt),
+              ),
+            ),
+        ),
         isNull(surveys.deletedAt),
         inArray(surveys.kind, ["pmf", "nps", "csat"]),
       ),

@@ -1321,6 +1321,33 @@ describe("GET /v1/surveys/pending", () => {
     );
   });
 
+  it("excludes an invitation that already has a response even when opened_at is NULL (resilient to data drift)", async () => {
+    // The respond flow sets opened_at AND inserts a response in one tx, but a
+    // seed fixture / partial write / manual SQL can leave opened_at NULL while
+    // a response exists. The authoritative "done" signal is the response, not
+    // opened_at: 'pending' must still exclude it, or the user loops
+    // (prompt → respond → 409 already_responded → prompt …). opened_at stays
+    // NULL here — beforeEach reset it and we never call /respond.
+    await systemDb.execute(
+      sql`INSERT INTO survey_responses (invitation_id, org_id, response, submitted_at)
+          VALUES (${pmfInvitationForUserA}, ${ORG_A}, ${'{"category":"very_disappointed"}'}::jsonb, NOW())`,
+    );
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/surveys/pending",
+        headers: authHeader(signToken(app)),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { data: Array<{ invitationId: string }> };
+      expect(body.data.map((r) => r.invitationId)).not.toContain(pmfInvitationForUserA);
+    } finally {
+      await systemDb.execute(
+        sql`DELETE FROM survey_responses WHERE invitation_id = ${pmfInvitationForUserA}`,
+      );
+    }
+  });
+
   it("includes email-channel invitations (modal is the unified response surface)", async () => {
     // Issue #444 follow-up — once the user lands logged-in (whether
     // via the email magic-link CTA or a normal login), the modal
