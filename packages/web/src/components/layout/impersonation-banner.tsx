@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { setImpersonationActive } from "@/lib/api/client-browser";
 import type { ImpersonationInfo } from "@/lib/auth";
 import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
 
@@ -80,6 +81,17 @@ export function ImpersonationBanner({ impersonation, userName }: ImpersonationBa
   // the practical UX is unchanged: the time appears within a frame of
   // hydration completing, just rendered exclusively on the client.
   const [remaining, setRemaining] = useState<string>("");
+
+  // Tell the browser API client whether this is an impersonation session so
+  // it can recover from a mid-session token expiry: a 401 on a client-side
+  // fetch then triggers a full navigation to /admin/impersonation, where the
+  // proxy restores the operator's platform-admin session. Kept independent
+  // of the countdown effect and above the `!impersonation` early-return so
+  // the flag also clears when impersonation ends.
+  useEffect(() => {
+    setImpersonationActive(!!impersonation);
+    return () => setImpersonationActive(false);
+  }, [impersonation]);
 
   useEffect(() => {
     if (!impersonation?.expiresAt) return;
