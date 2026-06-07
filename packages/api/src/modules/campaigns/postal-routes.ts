@@ -47,7 +47,11 @@ import {
 import { getActivePdfLetterhead } from "../branding/logo-cache.js";
 import {
   addCampaignMembers,
+  CAMPAIGN_MEMBER_SORT_FIELDS,
+  type CampaignMemberSortField,
+  type CampaignMemberSortOrder,
   CampaignMembershipError,
+  clearCampaignMembers,
   listCampaignMembers,
   removeCampaignMember,
 } from "./constituents-service.js";
@@ -102,6 +106,10 @@ const AddMembersResult = Type.Object({
   skipped: Type.Integer(),
 });
 
+const ClearMembersResult = Type.Object({
+  removed: Type.Integer(),
+});
+
 const RemoveMemberResult = Type.Object({
   removed: Type.Boolean(),
 });
@@ -149,6 +157,15 @@ const PreviewBody = Type.Object({
   mode: Type.Optional(PostalExportModeSchema),
 });
 
+/** Pagination + optional sort for the members list (sort defaults to `addedAt desc`). */
+const MembersListQuery = Type.Intersect([
+  PaginationQuery,
+  Type.Object({
+    sort: Type.Optional(Type.Union(CAMPAIGN_MEMBER_SORT_FIELDS.map((f) => Type.Literal(f)))),
+    order: Type.Optional(Type.Union([Type.Literal("asc"), Type.Literal("desc")])),
+  }),
+]);
+
 export async function postalCampaignRoutes(app: FastifyInstance) {
   // ─── Campaign ↔ constituent membership ──────────────────────────────
 
@@ -160,7 +177,7 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Campaigns"],
         params: CampaignParams,
-        querystring: PaginationQuery,
+        querystring: MembersListQuery,
         response: { 200: DataArrayResponse(MemberRow), ...ErrorResponses },
       },
     },
@@ -170,10 +187,17 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
       const { id } = request.params as { id: string };
-      const query = request.query as { page?: number; perPage?: number };
+      const query = request.query as {
+        page?: number;
+        perPage?: number;
+        sort?: CampaignMemberSortField;
+        order?: CampaignMemberSortOrder;
+      };
       const result = await listCampaignMembers(orgId, id, {
         page: query.page ?? 1,
         perPage: query.perPage ?? 25,
+        sort: query.sort,
+        order: query.order,
       });
       if (!result) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
@@ -243,6 +267,36 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         constituentId: string;
       };
       const result = await removeCampaignMember(orgId, userId, id, constituentId);
+      if (!result) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+      }
+      return { data: result };
+    },
+  );
+
+  /**
+   * Clear the WHOLE mailing list for this campaign — the "start over"
+   * action. Detaches every linked constituent (the constituents themselves
+   * are untouched). Idempotent: clearing an empty list returns `removed: 0`.
+   */
+  app.delete(
+    "/campaigns/:id/constituents",
+    {
+      preHandler: requireOrgAdmin,
+      schema: {
+        tags: ["Campaigns"],
+        params: CampaignParams,
+        response: { 200: DataResponse(ClearMembersResult), ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      const userId = request.auth?.userId;
+      if (!orgId || !userId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+      const { id } = request.params as { id: string };
+      const result = await clearCampaignMembers(orgId, userId, id);
       if (!result) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }

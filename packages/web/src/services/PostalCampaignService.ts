@@ -9,6 +9,9 @@
 import type { FilterQuery as FilterBuilderQuery } from "@/components/constituents/filters/filter-types";
 import type { ApiClient } from "@/lib/api";
 
+export type CampaignMemberSortField = "name" | "type" | "addedAt";
+export type CampaignMemberSortOrder = "asc" | "desc";
+
 export type PostalExportMode = "door_drop" | "personalized";
 /** Output format (project item #194221573): a ZIP of per-recipient PDFs, or one merged multi-page PDF. */
 export type PostalExportFormat = "zip" | "merged_pdf";
@@ -74,11 +77,18 @@ export const PostalCampaignService = {
   async listMembers(
     client: ApiClient,
     campaignId: string,
-    query: { page?: number; perPage?: number } = {},
+    query: {
+      page?: number;
+      perPage?: number;
+      sort?: CampaignMemberSortField;
+      order?: CampaignMemberSortOrder;
+    } = {},
   ): Promise<{ data: CampaignMember[]; pagination: CampaignMemberPagination }> {
     return client.get<{ data: CampaignMember[]; pagination: CampaignMemberPagination }>(
       `/v1/campaigns/${encodeURIComponent(campaignId)}/constituents`,
-      { params: { page: query.page, perPage: query.perPage } },
+      {
+        params: { page: query.page, perPage: query.perPage, sort: query.sort, order: query.order },
+      },
     );
   },
 
@@ -101,6 +111,14 @@ export const PostalCampaignService = {
   ): Promise<{ removed: boolean }> {
     const response = await client.delete<{ data: { removed: boolean } }>(
       `/v1/campaigns/${encodeURIComponent(campaignId)}/constituents/${encodeURIComponent(constituentId)}`,
+    );
+    return response.data;
+  },
+
+  /** Detach EVERY constituent from the campaign (start over). Returns the count removed. */
+  async clearMembers(client: ApiClient, campaignId: string): Promise<{ removed: number }> {
+    const response = await client.delete<{ data: { removed: number } }>(
+      `/v1/campaigns/${encodeURIComponent(campaignId)}/constituents`,
     );
     return response.data;
   },

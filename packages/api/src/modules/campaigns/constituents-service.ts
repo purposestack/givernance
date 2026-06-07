@@ -12,7 +12,7 @@ import {
   outboxEvents,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 import { resolveInternalUserId } from "../../lib/resolve-user.js";
 
@@ -35,9 +35,38 @@ export interface CampaignMember {
   campaignDonationCents: number;
 }
 
+/** Sortable columns for the campaign members list (mirrors the table headers). */
+export const CAMPAIGN_MEMBER_SORT_FIELDS = ["name", "type", "addedAt"] as const;
+export type CampaignMemberSortField = (typeof CAMPAIGN_MEMBER_SORT_FIELDS)[number];
+export type CampaignMemberSortOrder = "asc" | "desc";
+
 export interface ListMembersQuery {
   page: number;
   perPage: number;
+  /** Defaults to `addedAt` / `desc` — the original "newest first" behaviour. */
+  sort?: CampaignMemberSortField;
+  order?: CampaignMemberSortOrder;
+}
+
+/**
+ * ORDER BY for the members list. `name` sorts on `(firstName, lastName)` to
+ * match the cell's display order (`First Last`) — same rule as the
+ * Constituents page. A stable secondary key (`campaign_constituents.id`)
+ * keeps pagination deterministic when the primary key ties.
+ */
+function memberOrderBy(sort: CampaignMemberSortField, order: CampaignMemberSortOrder) {
+  const dir = order === "asc" ? asc : desc;
+  if (sort === "name") {
+    return [
+      dir(sql`lower(${constituents.firstName})`),
+      dir(sql`lower(${constituents.lastName})`),
+      asc(campaignConstituents.id),
+    ];
+  }
+  if (sort === "type") {
+    return [dir(constituents.type), asc(campaignConstituents.id)];
+  }
+  return [dir(campaignConstituents.addedAt), asc(campaignConstituents.id)];
 }
 
 /** List the constituents linked to a campaign with their per-campaign donation total. */
@@ -47,6 +76,8 @@ export async function listCampaignMembers(
   query: ListMembersQuery,
 ): Promise<{ data: CampaignMember[]; pagination: Pagination } | null> {
   const { page, perPage } = query;
+  const sort = query.sort ?? "addedAt";
+  const order = query.order ?? "desc";
   const offset = (page - 1) * perPage;
 
   return withTenantContext(orgId, async (tx) => {
@@ -95,7 +126,7 @@ export async function listCampaignMembers(
             isNull(constituents.deletedAt),
           ),
         )
-        .orderBy(sql`${campaignConstituents.addedAt} DESC`)
+        .orderBy(...memberOrderBy(sort, order))
         .limit(perPage)
         .offset(offset),
       tx
@@ -232,6 +263,55 @@ export async function addCampaignMembers(
     }
 
     return { added, skipped };
+  });
+}
+
+/**
+ * Remove EVERY constituent from a campaign's mailing list — the "start
+ * over" action. The constituents themselves are untouched (only the
+ * `campaign_constituents` link rows are deleted, same hard-delete semantics
+ * as `removeCampaignMember`). Returns the number of links removed, or null
+ * when the campaign doesn't belong to the org. Idempotent: clearing an
+ * already-empty list returns `{ removed: 0 }`.
+ */
+export async function clearCampaignMembers(
+  orgId: string,
+  userId: string,
+  campaignId: string,
+): Promise<{ removed: number } | null> {
+  return withTenantContext(orgId, async (tx) => {
+    const [campaign] = await tx
+      .select({ id: campaigns.id })
+      .from(campaigns)
+      .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
+
+    if (!campaign) return null;
+
+    const deleted = await tx
+      .delete(campaignConstituents)
+      .where(
+        and(eq(campaignConstituents.orgId, orgId), eq(campaignConstituents.campaignId, campaignId)),
+      )
+      .returning({ id: campaignConstituents.id });
+
+    const removed = deleted.length;
+
+    if (removed > 0) {
+      // One audit/outbox event for the whole clear (not per-row) — the
+      // forensic value is "operator wiped the list", the per-constituent
+      // detail would just explode the table.
+      await tx.insert(outboxEvents).values({
+        tenantId: orgId,
+        type: "campaign.constituents_cleared",
+        payload: {
+          campaignId,
+          removed,
+          clearedBy: userId,
+        },
+      });
+    }
+
+    return { removed };
   });
 }
 

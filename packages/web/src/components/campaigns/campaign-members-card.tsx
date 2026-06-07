@@ -1,9 +1,10 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { Filter, Plus, Trash2, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { ConstituentTypeBadge } from "@/components/constituents/constituent-type-badge";
 import {
   FilterBuilder,
   FilterChip,
@@ -11,9 +12,20 @@ import {
   type FilterPattern,
   type FilterQuery,
   filterFields,
-  filterPresets,
 } from "@/components/constituents/filters";
-import { isFilterCondition } from "@/components/constituents/filters/filter-types";
+import {
+  type FilterCondition,
+  isFilterCondition,
+} from "@/components/constituents/filters/filter-types";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,7 +44,12 @@ import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { type Constituent, type ConstituentListRow, fullName } from "@/models/constituent";
 import { ConstituentService } from "@/services/ConstituentService";
-import { type CampaignMember, PostalCampaignService } from "@/services/PostalCampaignService";
+import {
+  type CampaignMember,
+  type CampaignMemberSortField,
+  type CampaignMemberSortOrder,
+  PostalCampaignService,
+} from "@/services/PostalCampaignService";
 
 /**
  * next-intl statically validates message keys at compile-time; the
@@ -97,21 +114,14 @@ interface CampaignMembersCardProps {
 const MEMBERS_PER_PAGE = 25;
 
 /**
- * localStorage keys for the last `FilterQuery` and (optional) source preset
- * applied on a given campaign. Scoped per-campaign so each campaign keeps its
- * own segmentation context; cleared by the "remove last chip" UX path once
- * the chip list empties. The preset id lives in a sibling key so an older
- * persisted query (pre-Epic #421 bugfix) deserialises without surprise.
+ * localStorage key for the accumulated `FilterQuery` applied on a given
+ * campaign. Scoped per-campaign so each campaign keeps its own segmentation
+ * context; cleared by the "Clear list" action.
  */
 const FILTER_STORAGE_PREFIX = "givernance:campaign-filter:";
-const PRESET_STORAGE_PREFIX = "givernance:campaign-filter-preset:";
 
 function filterStorageKey(campaignId: string): string {
   return `${FILTER_STORAGE_PREFIX}${campaignId}`;
-}
-
-function presetStorageKey(campaignId: string): string {
-  return `${PRESET_STORAGE_PREFIX}${campaignId}`;
 }
 
 /**
@@ -187,6 +197,35 @@ function chipsFromQuery(
   return [...patternChips, ...conditionChips];
 }
 
+/** Stable content key for a condition (or nested group) so the union below dedupes re-applied filters. */
+function conditionKey(c: FilterCondition | FilterQuery): string {
+  return isFilterCondition(c)
+    ? `c:${c.field}|${c.operator}|${JSON.stringify(c.value)}`
+    : `g:${JSON.stringify(c)}`;
+}
+
+/**
+ * Accumulate filters across successive applications. Each "apply" ADDS the
+ * matching constituents to the campaign (membership is cumulative and can't
+ * be undone by a filter), so the summary must show EVERY filter used to build
+ * the list — not just the last one. Patterns are unioned by value; top-level
+ * conditions are deduped by content so re-applying the same filter doesn't
+ * stack duplicate chips. `base` is null on the first apply.
+ */
+export function unionQueries(base: FilterQuery | null, incoming: FilterQuery): FilterQuery {
+  const patterns = Array.from(new Set([...(base?.patterns ?? []), ...(incoming.patterns ?? [])]));
+  const seen = new Set((base?.conditions ?? []).map(conditionKey));
+  const conditions: Array<FilterCondition | FilterQuery> = [...(base?.conditions ?? [])];
+  for (const c of incoming.conditions) {
+    const key = conditionKey(c);
+    if (!seen.has(key)) {
+      seen.add(key);
+      conditions.push(c);
+    }
+  }
+  return { ...incoming, conditions, patterns };
+}
+
 /**
  * Linked-constituents widget for the campaign detail page (Epic #274).
  *
@@ -217,22 +256,24 @@ export function CampaignMembersCard({
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  // "Start over" — detach every constituent from the campaign.
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterChipData[]>([]);
+  // The accumulated FilterQuery — the union of every filter applied to build
+  // this list. Drives the chip strip + the FilterBuilder's `initialQuery`.
   const [lastAppliedQuery, setLastAppliedQuery] = useState<FilterQuery | null>(null);
-  // The id of the preset (if any) that produced the last applied query —
-  // surfaced as a "Filter preset: <name>" affordance above the chip strip so
-  // the operator sees "Recurring donors" reflected back. Cleared by the
-  // FilterBuilder the moment the user hand-edits a condition.
-  const [lastAppliedPresetId, setLastAppliedPresetId] = useState<string | null>(null);
+  // Server-side sort (the list is paginated, so client-only sorting would
+  // only reorder the visible page). Defaults to "newest added first".
+  const [sortField, setSortField] = useState<CampaignMemberSortField>("addedAt");
+  const [sortOrder, setSortOrder] = useState<CampaignMemberSortOrder>("desc");
   const [isFetchingPage, startPageTransition] = useTransition();
 
-  // Restore the last applied FilterQuery (and the preset id that produced it)
-  // for this campaign from localStorage on mount (client-side only — SSR has
-  // no localStorage). We hydrate the chip strip, the FilterBuilder's
-  // `initialQuery`, and the "Filter preset: …" affordance so reopening the
-  // page continues from where the operator left off. Per-campaign scoping
-  // (the storage key includes `campaignId`) keeps two campaigns from
-  // cross-leaking each other's segmentation context.
+  // Restore the accumulated FilterQuery for this campaign from localStorage on
+  // mount (client-side only — SSR has no localStorage). We hydrate the chip
+  // strip + the FilterBuilder's `initialQuery` so reopening the page shows the
+  // full set of filters used so far. Per-campaign scoping (the storage key
+  // includes `campaignId`) keeps two campaigns from cross-leaking context.
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -244,8 +285,6 @@ export function CampaignMembersCard({
       if (!parsed || !Array.isArray(parsed.conditions)) return;
       setLastAppliedQuery(parsed);
       setActiveFilters(chipsFromQuery(parsed, patternLabelFor));
-      const presetId = window.localStorage.getItem(presetStorageKey(campaignId));
-      if (presetId) setLastAppliedPresetId(presetId);
     } catch {
       // localStorage may throw under privacy-locked profiles; ignore.
     }
@@ -270,18 +309,48 @@ export function CampaignMembersCard({
    * so the UI always reflects what the server just persisted.
    */
   const fetchMembersPage = useCallback(
-    async (targetPage: number) => {
+    async (
+      targetPage: number,
+      sortOverride?: { sort: CampaignMemberSortField; order: CampaignMemberSortOrder },
+    ) => {
       const client = createClientApiClient();
       const fresh = await PostalCampaignService.listMembers(client, campaignId, {
         page: targetPage,
         perPage: MEMBERS_PER_PAGE,
+        sort: sortOverride?.sort ?? sortField,
+        order: sortOverride?.order ?? sortOrder,
       });
       setMembers(fresh.data);
       setPage(fresh.pagination.page);
       updateTotal(fresh.pagination.total);
       return fresh;
     },
-    [campaignId, updateTotal],
+    [campaignId, sortField, sortOrder, updateTotal],
+  );
+
+  // Tanstack's resolved SortingState ↔ our (sort, order) pair. Changing the
+  // sort refetches page 1 server-side so it reorders the WHOLE list, not just
+  // the 25 rows currently on screen.
+  const sorting = useMemo<SortingState>(
+    () => [{ id: sortField, desc: sortOrder === "desc" }],
+    [sortField, sortOrder],
+  );
+  const handleSortingChange = useCallback(
+    (nextSorting: SortingState) => {
+      const next = nextSorting[0];
+      const sort = (next?.id as CampaignMemberSortField | undefined) ?? "addedAt";
+      const order: CampaignMemberSortOrder = next ? (next.desc ? "desc" : "asc") : "desc";
+      setSortField(sort);
+      setSortOrder(order);
+      startPageTransition(async () => {
+        try {
+          await fetchMembersPage(1, { sort, order });
+        } catch {
+          // Transient — keep the current view; the user can re-click to retry.
+        }
+      });
+    },
+    [fetchMembersPage],
   );
 
   const handlePageChange = useCallback(
@@ -337,7 +406,7 @@ export function CampaignMembersCard({
   );
 
   const handleApplyFilters = useCallback(
-    async (query: FilterQuery, presetId?: string) => {
+    async (query: FilterQuery) => {
       const client = createClientApiClient();
       try {
         // Single round-trip: the backend resolves the filter AND links every
@@ -349,20 +418,16 @@ export function CampaignMembersCard({
         // `added_at DESC`).
         await fetchMembersPage(1);
 
-        // Active-filter chips (conditions + patterns) + persist the full
-        // query and source preset id so reopening the dialog later starts
-        // from this segmentation and the "Filter preset: …" affordance
-        // survives a page refresh.
-        setActiveFilters(chipsFromQuery(query, patternLabelFor));
-        setLastAppliedQuery(query);
-        setLastAppliedPresetId(presetId ?? null);
+        // Accumulate this filter into the running record (membership is
+        // cumulative — every applied filter contributed constituents), so the
+        // summary shows ALL filters used, not just the last. Persist the
+        // accumulated query so the chip strip + the FilterBuilder's
+        // `initialQuery` survive a page refresh.
+        const accumulated = unionQueries(lastAppliedQuery, query);
+        setActiveFilters(chipsFromQuery(accumulated, patternLabelFor));
+        setLastAppliedQuery(accumulated);
         try {
-          window.localStorage.setItem(filterStorageKey(campaignId), JSON.stringify(query));
-          if (presetId) {
-            window.localStorage.setItem(presetStorageKey(campaignId), presetId);
-          } else {
-            window.localStorage.removeItem(presetStorageKey(campaignId));
-          }
+          window.localStorage.setItem(filterStorageKey(campaignId), JSON.stringify(accumulated));
         } catch {
           // Quota or privacy-locked storage — non-blocking; the in-memory
           // `lastAppliedQuery` still feeds `initialQuery` for the current session.
@@ -382,90 +447,46 @@ export function CampaignMembersCard({
         }
       }
     },
-    [campaignId, fetchMembersPage, patternLabelFor, t],
+    [campaignId, fetchMembersPage, lastAppliedQuery, patternLabelFor, t],
   );
 
   /**
-   * Clear every chip + the persisted query + the preset affordance. Wired to
-   * the "Clear all" button in the Active selection card so the operator has a
-   * single-click escape from a misclicked preset (without having to remove
-   * each chip individually).
+   * "Start over" — detach EVERY constituent from the campaign and reset the
+   * filter breadcrumb. The constituents themselves are untouched (only the
+   * membership links are removed). Replaces the old per-chip / clear-filter
+   * affordances, which only edited the visible filter record and confused
+   * operators into thinking they were narrowing the mailing.
    */
-  const clearAllFilters = useCallback(() => {
-    setActiveFilters([]);
-    setLastAppliedQuery(null);
-    setLastAppliedPresetId(null);
+  const handleClearMembers = useCallback(async () => {
+    if (isClearing) return;
+    setIsClearing(true);
     try {
-      window.localStorage.removeItem(filterStorageKey(campaignId));
-      window.localStorage.removeItem(presetStorageKey(campaignId));
-    } catch {
-      // Privacy-locked storage — ignore.
+      const client = createClientApiClient();
+      const { removed } = await PostalCampaignService.clearMembers(client, campaignId);
+      setMembers([]);
+      setTotal(0);
+      onTotalChanged?.(0);
+      setPage(1);
+      // Repartir de zéro: drop the filter summary + persisted query too.
+      setActiveFilters([]);
+      setLastAppliedQuery(null);
+      try {
+        window.localStorage.removeItem(filterStorageKey(campaignId));
+      } catch {
+        // Privacy-locked storage — ignore.
+      }
+      toast.success(t("toast.cleared", { count: removed }));
+    } catch (err) {
+      const message =
+        err instanceof ApiProblem
+          ? (err.detail ?? err.title ?? t("toast.clearFailed"))
+          : t("toast.clearFailed");
+      toast.error(message);
+    } finally {
+      setIsClearing(false);
+      setClearConfirmOpen(false);
     }
-    toast.success(t("filterRemoved"));
-  }, [campaignId, t]);
-
-  /**
-   * Remove a single chip — either a condition (drop from `conditions`) or a
-   * pattern (splice out of `patterns`). The chip id carries a `pattern:`
-   * prefix when it's a pattern chip; condition chips keep their original
-   * numeric id from the FilterBuilder. Persists the diff so a page refresh
-   * doesn't resurrect the dropped predicate. Any user-driven removal also
-   * clears `lastAppliedPresetId` because a hand-trimmed preset is no longer
-   * "the preset" — it's a custom variant.
-   */
-  const handleChipRemove = useCallback(
-    (chipId: string) => {
-      setActiveFilters((prev) => prev.filter((f) => f.id !== chipId));
-      setLastAppliedQuery((prev) => {
-        if (!prev) return prev;
-        let nextConditions = prev.conditions;
-        let nextPatterns = prev.patterns;
-
-        if (chipId.startsWith("pattern:")) {
-          const removed = chipId.slice("pattern:".length) as FilterPattern;
-          nextPatterns = (prev.patterns ?? []).filter((p) => p !== removed);
-        } else {
-          nextConditions = prev.conditions.filter(
-            (c) => !(isFilterCondition(c) && c.id === chipId),
-          );
-        }
-
-        const isEmpty = nextConditions.length === 0 && (nextPatterns?.length ?? 0) === 0;
-        const next: FilterQuery = {
-          ...prev,
-          conditions: nextConditions,
-          patterns: nextPatterns,
-        };
-        try {
-          if (isEmpty) {
-            window.localStorage.removeItem(filterStorageKey(campaignId));
-            window.localStorage.removeItem(presetStorageKey(campaignId));
-          } else {
-            window.localStorage.setItem(filterStorageKey(campaignId), JSON.stringify(next));
-            // A hand-trimmed preset is no longer the preset.
-            window.localStorage.removeItem(presetStorageKey(campaignId));
-          }
-        } catch {
-          // localStorage may throw under privacy-locked profiles; ignore.
-        }
-        return isEmpty ? null : next;
-      });
-      setLastAppliedPresetId(null);
-      toast.success(t("filterRemoved"));
-    },
-    [campaignId, t],
-  );
-
-  // Resolve the human-readable preset name once per render so the affordance
-  // doesn't have to re-walk `filterPresets` on every chip render. `preset.name`
-  // is an i18n key (e.g. `presets.items.lybunt.name`) — resolve it through
-  // the constituents-filters translator so the active locale wins.
-  const activePresetName = useMemo(() => {
-    if (!lastAppliedPresetId) return null;
-    const preset = filterPresets.find((p) => p.id === lastAppliedPresetId);
-    if (!preset) return null;
-    return trDynamic(tFilters, preset.name);
-  }, [lastAppliedPresetId, tFilters]);
+  }, [campaignId, isClearing, onTotalChanged, t]);
 
   const columns = useMemo<ColumnDef<CampaignMember>[]>(
     () => [
@@ -489,11 +510,7 @@ export function CampaignMembersCard({
       {
         accessorKey: "type",
         header: () => t("columns.type"),
-        cell: ({ row }) => (
-          <span className="text-xs uppercase tracking-wide text-on-surface-variant">
-            {row.original.type}
-          </span>
-        ),
+        cell: ({ row }) => <ConstituentTypeBadge type={row.original.type} />,
         meta: { className: "hidden md:table-cell" },
       },
       {
@@ -514,6 +531,7 @@ export function CampaignMembersCard({
       },
       {
         id: "actions",
+        enableSorting: false,
         header: () => <span className="sr-only">{t("actions.remove")}</span>,
         cell: ({ row }) => (
           <Button
@@ -567,7 +585,19 @@ export function CampaignMembersCard({
             </CardTitle>
             <CardDescription>{t("description")}</CardDescription>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {total > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-error hover:text-error"
+                onClick={() => setClearConfirmOpen(true)}
+              >
+                <Trash2 size={16} aria-hidden="true" />
+                {t("actions.clearList")}
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
@@ -585,37 +615,18 @@ export function CampaignMembersCard({
         </CardHeader>
         <CardContent className="space-y-4">
           {activeFilters.length > 0 && (
-            // Card-style container so the active selection is visually
-            // isolated from the table below. Border + soft surface tells the
-            // operator "this is the current selection lens applied to the
-            // list". Header carries a count badge so a long custom query
-            // doesn't look identical to a one-pattern preset.
+            // Read-only record of HOW this list was built — the advanced
+            // filter(s) last applied to bulk-add constituents. NOT a live
+            // selection lens: applying a filter immediately links every match
+            // to the campaign, and the letter goes to EVERY member in the
+            // table below. The chips are deliberately non-removable (removing
+            // one would only edit this record, not the list) — to start over,
+            // the operator uses "Clear list" in the header.
             <div className="rounded-lg border border-outline-variant bg-surface-container/40 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-on-surface">
-                    {t("activeSelectionTitle")}
-                  </p>
-                  <Badge variant="neutral">{activeFilters.length}</Badge>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearAllFilters}
-                  aria-label={t("clearAll")}
-                >
-                  {t("clearAll")}
-                </Button>
-              </div>
-              {activePresetName && (
-                <p className="text-xs text-on-surface-variant">
-                  {t("presetLabel", { name: activePresetName })}
-                </p>
-              )}
+              <p className="text-xs text-on-surface-variant">{t("activeSelectionHint")}</p>
               <div className="flex flex-wrap gap-2">
                 {activeFilters.map((filter) => (
-                  <FilterChip key={filter.id} filter={filter} onRemove={handleChipRemove} />
+                  <FilterChip key={filter.id} filter={filter} />
                 ))}
               </div>
             </div>
@@ -623,6 +634,8 @@ export function CampaignMembersCard({
           <DataTable
             columns={columns}
             data={members}
+            sorting={sorting}
+            onSortingChange={handleSortingChange}
             pagination={tablePagination}
             onPageChange={handlePageChange}
             isPending={isFetchingPage}
@@ -648,6 +661,28 @@ export function CampaignMembersCard({
         onApply={handleApplyFilters}
         initialQuery={lastAppliedQuery ?? undefined}
       />
+
+      <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("clearDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("clearDialog.body", { count: total })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isClearing}>{t("clearDialog.cancel")}</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleClearMembers()}
+              disabled={isClearing}
+            >
+              {isClearing ? t("clearDialog.clearing") : t("clearDialog.confirm")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
