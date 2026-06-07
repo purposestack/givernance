@@ -7,8 +7,36 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /** Key for globalThis singleton — survives Next.js Fast Refresh in dev. */
 const GLOBAL_KEY = Symbol.for("givernance.browserApiClient");
 
+/** Where to land an operator whose impersonation session has expired. */
+const IMPERSONATION_RECOVERY_PATH = "/admin/impersonation";
+
+/**
+ * Whether the current browser session is an impersonation session.
+ * Set by the impersonation banner (the only client component that knows
+ * the SSR-resolved impersonation state) via `setImpersonationActive`.
+ */
+let impersonationActive = false;
+/** Guard against duplicate `assign` calls when concurrent requests 401. */
+let recoveryRedirecting = false;
+
+/**
+ * Mark the browser session as (not) an impersonation session.
+ *
+ * Wired from `ImpersonationBanner` so the browser fetch wrapper can tell,
+ * on a 401, whether to trigger impersonation-expiry recovery. When the
+ * impersonation token reaches its TTL mid-session on a client-side page,
+ * the API returns 401 and there is no full-page navigation to trigger the
+ * proxy's session-refresh path — leaving the operator dead-ended. The
+ * interceptor below forces a full navigation to `/admin/impersonation`,
+ * which the proxy uses to restore the operator's platform-admin session
+ * from their still-valid Keycloak refresh token.
+ */
+export function setImpersonationActive(active: boolean): void {
+  impersonationActive = active;
+}
+
 export function createBrowserFetch(fetchImpl: typeof fetch = fetch): typeof fetch {
-  return (input, init) => {
+  return async (input, init) => {
     const headers = new Headers(init?.headers);
     const method = (init?.method ?? "GET").toUpperCase();
 
@@ -30,11 +58,29 @@ export function createBrowserFetch(fetchImpl: typeof fetch = fetch): typeof fetc
       headers.delete("Content-Type");
     }
 
-    return fetchImpl(input, {
+    const response = await fetchImpl(input, {
       ...init,
       headers,
       credentials: "include",
     });
+
+    // Impersonation-expiry recovery: a 401 on a client-side fetch while the
+    // operator is impersonating means the short-lived impersonation token
+    // has expired. A full-page navigation hits the Next.js proxy, which
+    // restores the operator's platform-admin session from their still-valid
+    // Keycloak refresh token and lands them back on the session list. We
+    // still return the response so the caller's normal error handling runs.
+    if (
+      response.status === 401 &&
+      impersonationActive &&
+      !recoveryRedirecting &&
+      typeof window !== "undefined"
+    ) {
+      recoveryRedirecting = true;
+      window.location.assign(IMPERSONATION_RECOVERY_PATH);
+    }
+
+    return response;
   };
 }
 

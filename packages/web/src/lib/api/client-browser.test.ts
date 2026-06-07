@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { createBrowserFetch } from "./client-browser";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createBrowserFetch, setImpersonationActive } from "./client-browser";
 
 describe("createBrowserFetch", () => {
   afterEach(() => {
@@ -39,5 +39,64 @@ describe("createBrowserFetch", () => {
 
     const [, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
     expect(new Headers(init.headers).has("X-CSRF-Token")).toBe(false);
+  });
+});
+
+describe("createBrowserFetch — impersonation-expiry recovery", () => {
+  const originalLocation = window.location;
+  let assignMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    // jsdom forbids spying on `window.location.assign` directly — replace the
+    // whole location object instead (see feedback_jsdom_location_assign_stub).
+    assignMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { ...originalLocation, assign: assignMock },
+    });
+    setImpersonationActive(false);
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
+    setImpersonationActive(false);
+  });
+
+  function fetchReturning(status: number) {
+    return vi.fn().mockResolvedValue(new Response(null, { status }));
+  }
+
+  it("navigates to /admin/impersonation on a 401 when impersonation is active", async () => {
+    setImpersonationActive(true);
+    const browserFetch = createBrowserFetch(fetchReturning(401) as typeof fetch);
+
+    const response = await browserFetch("https://example.test/v1/example");
+
+    expect(assignMock).toHaveBeenCalledWith("/admin/impersonation");
+    // The response is still returned so the caller's error handling runs.
+    expect(response.status).toBe(401);
+  });
+
+  it("does NOT navigate on a 401 when impersonation is inactive", async () => {
+    setImpersonationActive(false);
+    const browserFetch = createBrowserFetch(fetchReturning(401) as typeof fetch);
+
+    await browserFetch("https://example.test/v1/example");
+
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT navigate on a non-401 response even when impersonating", async () => {
+    setImpersonationActive(true);
+    const browserFetch = createBrowserFetch(fetchReturning(200) as typeof fetch);
+
+    await browserFetch("https://example.test/v1/example");
+
+    expect(assignMock).not.toHaveBeenCalled();
   });
 });
