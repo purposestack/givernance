@@ -123,6 +123,35 @@ export async function uploadCampaignZip(
   return streamArchiveToS3(env.S3_CAMPAIGNS_BUCKET, key, doc);
 }
 
+/**
+ * Upload a postal-export merged PDF to the campaigns bucket (project item
+ * #194221573). The deterministic `.pdf` key mirrors the `.zip` idempotency
+ * contract — a BullMQ retry overwrites the previous (incomplete) object.
+ * The whole document is a single Buffer (pdf-lib has no streaming save),
+ * uploaded in one PutObject via `lib-storage`'s `Upload`.
+ */
+export async function uploadCampaignMergedPdf(
+  tenantId: string,
+  campaignId: string,
+  exportId: string,
+  pdf: Buffer,
+): Promise<string> {
+  const key = `${tenantId}/campaigns/${campaignId}/exports/${exportId}.pdf`;
+  const upload = new Upload({
+    client: s3,
+    params: {
+      Bucket: env.S3_CAMPAIGNS_BUCKET,
+      Key: key,
+      Body: pdf,
+      ContentType: "application/pdf",
+      ServerSideEncryption: "AES256",
+      ACL: "private",
+    },
+  });
+  await upload.done();
+  return key;
+}
+
 // ─── Branding bucket helpers (Epic #286) ───────────────────────────────────
 //
 // The branding-asset implementations live in the shared package

@@ -19,6 +19,7 @@ import {
   bankAccounts,
   CAMPAIGN_TYPE_VALUES,
   campaignPublicPages,
+  POSTAL_EXPORT_FORMAT_VALUES,
   POSTAL_EXPORT_MODE_VALUES,
   POSTAL_EXPORT_STATUS_VALUES,
   tenants,
@@ -62,6 +63,9 @@ import { getCampaign } from "./service.js";
 import { renderSwissQrBillPreviewToBuffer } from "./swiss-qr-bill-preview.js";
 
 const PostalExportModeSchema = Type.Union(POSTAL_EXPORT_MODE_VALUES.map((v) => Type.Literal(v)));
+const PostalExportFormatSchema = Type.Union(
+  POSTAL_EXPORT_FORMAT_VALUES.map((v) => Type.Literal(v)),
+);
 const PostalExportStatusSchema = Type.Union(
   POSTAL_EXPORT_STATUS_VALUES.map((v) => Type.Literal(v)),
 );
@@ -104,12 +108,19 @@ const RemoveMemberResult = Type.Object({
 
 const StartExportBody = Type.Object({
   mode: PostalExportModeSchema,
+  /**
+   * Output format (project item #194221573). Optional — defaults to `zip`
+   * (the original Epic #274 behaviour). `merged_pdf` is gated by the
+   * `campaign.postal_merged_pdf` flag + a recipient cap in the service.
+   */
+  format: Type.Optional(PostalExportFormatSchema),
 });
 
 const PostalExportRow = Type.Object({
   id: UuidSchema,
   campaignId: UuidSchema,
   mode: PostalExportModeSchema,
+  format: PostalExportFormatSchema,
   status: PostalExportStatusSchema,
   totalCount: Type.Integer(),
   progressCount: Type.Integer(),
@@ -267,9 +278,12 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
       const { id } = request.params as { id: string };
-      const { mode } = request.body as { mode: "door_drop" | "personalized" };
+      const { mode, format } = request.body as {
+        mode: "door_drop" | "personalized";
+        format?: "zip" | "merged_pdf";
+      };
       try {
-        const result = await startPostalExport(orgId, userId, id, mode);
+        const result = await startPostalExport(orgId, userId, id, mode, format ?? "zip");
         if (!result) {
           return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
         }
@@ -349,7 +363,11 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
   );
 
   /**
-   * Download the bundled ZIP for a completed postal export.
+   * Download the completed postal-export artefact.
+   *
+   * The artefact is a ZIP of per-recipient PDFs (`format=zip`) or a single
+   * merged multi-page PDF (`format=merged_pdf`, project item #194221573) —
+   * the content-type + filename extension branch on `row.format`.
    *
    * Streams the object through the API instead of redirecting to a presigned
    * URL — same rationale as the receipts download (issue #214). Rate-limited
@@ -384,11 +402,16 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
       }
 
       const { body, contentLength } = await fetchCampaignObject(row.zipS3Path);
+      // Branch on the stored format: a merged export is a single PDF, a
+      // standard export is a ZIP of per-recipient PDFs.
+      const isMergedPdf = row.format === "merged_pdf";
+      const contentType = isMergedPdf ? "application/pdf" : "application/zip";
+      const extension = isMergedPdf ? "pdf" : "zip";
       reply
-        .header("content-type", "application/zip")
+        .header("content-type", contentType)
         .header(
           "content-disposition",
-          `attachment; filename="campaign-${id}-export-${exportId}.zip"`,
+          `attachment; filename="campaign-${id}-export-${exportId}.${extension}"`,
         );
       if (contentLength !== undefined) {
         reply.header("content-length", String(contentLength));

@@ -10,6 +10,8 @@ import type { FilterQuery as FilterBuilderQuery } from "@/components/constituent
 import type { ApiClient } from "@/lib/api";
 
 export type PostalExportMode = "door_drop" | "personalized";
+/** Output format (project item #194221573): a ZIP of per-recipient PDFs, or one merged multi-page PDF. */
+export type PostalExportFormat = "zip" | "merged_pdf";
 export type PostalExportStatus = "pending" | "processing" | "completed" | "failed";
 
 export interface CampaignMember {
@@ -34,6 +36,7 @@ export interface PostalExport {
   id: string;
   campaignId: string;
   mode: PostalExportMode;
+  format: PostalExportFormat;
   status: PostalExportStatus;
   totalCount: number;
   progressCount: number;
@@ -115,10 +118,11 @@ export const PostalCampaignService = {
     client: ApiClient,
     campaignId: string,
     mode: PostalExportMode,
+    format: PostalExportFormat = "zip",
   ): Promise<PostalExport> {
     const response = await client.post<{ data: PostalExport }>(
       `/v1/campaigns/${encodeURIComponent(campaignId)}/postal-exports`,
-      { mode },
+      { mode, format },
     );
     return response.data;
   },
@@ -130,7 +134,12 @@ export const PostalCampaignService = {
     return response.data;
   },
 
-  /** Build the ZIP download URL — relative so it goes through the BFF / API proxy. */
+  /**
+   * Build the export download URL — relative so it goes through the BFF /
+   * API proxy. The endpoint serves either a `.zip` or a `.pdf` (project
+   * item #194221573) depending on the export's stored `format`; the API
+   * sets the content-type + filename, so the browser saves the right file.
+   */
   exportDownloadUrl(campaignId: string, exportId: string): string {
     return `/api/v1/campaigns/${encodeURIComponent(campaignId)}/postal-exports/${encodeURIComponent(exportId)}/download`;
   },

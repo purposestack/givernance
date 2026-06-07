@@ -28,8 +28,10 @@ import {
   campaignQrCodes,
   campaigns,
   constituents,
+  tenantFlagOverrides,
 } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
+import { PDFDocument } from "pdf-lib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../lib/db.js";
 
@@ -51,8 +53,18 @@ const uploadCampaignZipMock = vi.fn(
     return `${orgId}/campaigns/${campaignId}/exports/${exportId}.zip`;
   },
 );
+// Merged-PDF upload (project item #194221573). Captures the Buffer the
+// processor produced so the test can re-parse it and assert the page count.
+let lastMergedPdf: Buffer | null = null;
+const uploadCampaignMergedPdfMock = vi.fn(
+  async (orgId: string, campaignId: string, exportId: string, pdf: Buffer) => {
+    lastMergedPdf = pdf;
+    return `${orgId}/campaigns/${campaignId}/exports/${exportId}.pdf`;
+  },
+);
 vi.mock("../../lib/s3.js", () => ({
   uploadCampaignZip: uploadCampaignZipMock,
+  uploadCampaignMergedPdf: uploadCampaignMergedPdfMock,
 }));
 
 const { processGeneratePostalExport } = await import("../../processors/postal-export.js");
@@ -74,13 +86,18 @@ function makeMockJob(data: Record<string, unknown>, attemptsMade = 0) {
   } as never;
 }
 
-async function createPostalExport(mode: "personalized" | "door_drop", totalCount: number) {
+async function createPostalExport(
+  mode: "personalized" | "door_drop",
+  totalCount: number,
+  format: "zip" | "merged_pdf" = "zip",
+) {
   const [row] = await db
     .insert(campaignPostalExports)
     .values({
       orgId: ORG_ID,
       campaignId,
       mode,
+      format,
       status: "pending",
       totalCount,
     })
@@ -163,6 +180,8 @@ afterAll(async () => {
 
 beforeEach(() => {
   uploadCampaignZipMock.mockClear();
+  uploadCampaignMergedPdfMock.mockClear();
+  lastMergedPdf = null;
 });
 
 describe("processGeneratePostalExport — happy path", () => {
@@ -189,6 +208,211 @@ describe("processGeneratePostalExport — happy path", () => {
     expect(row?.progressCount).toBe(2);
     expect(row?.zipS3Path).toBe(`${ORG_ID}/campaigns/${campaignId}/exports/${exportId}.zip`);
     expect(uploadCampaignZipMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("processGeneratePostalExport — merged PDF format (project item #194221573)", () => {
+  // Enable the merged-PDF feature for THIS tenant via a per-tenant override
+  // rather than the global flag, so a concurrent test file toggling the
+  // global `campaign.postal_merged_pdf` can't race this one.
+  beforeAll(async () => {
+    await db
+      .insert(tenantFlagOverrides)
+      .values({ tenantId: ORG_ID, flagKey: "campaign.postal_merged_pdf", value: true })
+      .onConflictDoNothing();
+  });
+  afterAll(async () => {
+    await db
+      .delete(tenantFlagOverrides)
+      .where(
+        and(
+          eq(tenantFlagOverrides.tenantId, ORG_ID),
+          eq(tenantFlagOverrides.flagKey, "campaign.postal_merged_pdf"),
+        ),
+      );
+  });
+
+  it("uploads a single merged PDF (one page per recipient) and completes", async () => {
+    const exportId = await createPostalExport("personalized", 2, "merged_pdf");
+
+    await processGeneratePostalExport(
+      makeMockJob({
+        exportId,
+        campaignId,
+        orgId: ORG_ID,
+        mode: "personalized",
+        format: "merged_pdf",
+      }),
+    );
+
+    const [row] = await db
+      .select()
+      .from(campaignPostalExports)
+      .where(eq(campaignPostalExports.id, exportId));
+    expect(row?.status).toBe("completed");
+    expect(row?.progressCount).toBe(2);
+    // Output key is the `.pdf` artefact, NOT a `.zip`.
+    expect(row?.zipS3Path).toBe(`${ORG_ID}/campaigns/${campaignId}/exports/${exportId}.pdf`);
+    expect(uploadCampaignMergedPdfMock).toHaveBeenCalledTimes(1);
+    expect(uploadCampaignZipMock).not.toHaveBeenCalled();
+
+    // The captured buffer is a valid PDF with one page per recipient
+    // (standard rail — no bank account linked).
+    expect(lastMergedPdf).not.toBeNull();
+    const parsed = await PDFDocument.load(lastMergedPdf as Buffer);
+    expect(parsed.getPageCount()).toBe(2);
+  });
+
+  it("overwrites the same .pdf key idempotently on retry", async () => {
+    const exportId = await createPostalExport("personalized", 2, "merged_pdf");
+
+    await processGeneratePostalExport(
+      makeMockJob({
+        exportId,
+        campaignId,
+        orgId: ORG_ID,
+        mode: "personalized",
+        format: "merged_pdf",
+      }),
+    );
+    // Re-run from `pending` (simulate a crash before the BullMQ ack).
+    await db
+      .update(campaignPostalExports)
+      .set({ status: "pending" })
+      .where(eq(campaignPostalExports.id, exportId));
+    await processGeneratePostalExport(
+      makeMockJob(
+        { exportId, campaignId, orgId: ORG_ID, mode: "personalized", format: "merged_pdf" },
+        1,
+      ),
+    );
+
+    // Still exactly two QR rows for this export — no duplicates across attempts.
+    const qrRows = await db
+      .select()
+      .from(campaignQrCodes)
+      .where(and(eq(campaignQrCodes.orgId, ORG_ID), eq(campaignQrCodes.exportId, exportId)));
+    expect(qrRows).toHaveLength(2);
+  });
+
+  it("fails the job when live recipients exceed the merged-PDF cap (defence-in-depth)", async () => {
+    // A constituent linked between enqueue and pickup could push a merged
+    // export past the in-memory cap the API enforced at request time. The
+    // worker re-guards on the LIVE work-item count before rendering a page.
+    const capCampaignId = (
+      await db
+        .insert(campaigns)
+        .values({
+          orgId: ORG_ID,
+          name: "Cap campaign",
+          type: "nominative_postal",
+          status: "active",
+          description: "cap test",
+        })
+        .returning()
+    )[0]!.id;
+    await db.insert(campaignPublicPages).values({
+      orgId: ORG_ID,
+      campaignId: capCampaignId,
+      title: "Cap campaign",
+      status: "published",
+    });
+    // 2001 linked constituents in one statement — the guard fires before
+    // any PDF is rendered, so this stays cheap.
+    await db.execute(sql`
+      WITH ins AS (
+        INSERT INTO constituents (org_id, first_name, last_name, type)
+        SELECT ${ORG_ID}::uuid, 'Cap', 'R' || g, 'donor'
+        FROM generate_series(1, 2001) AS g
+        RETURNING id
+      )
+      INSERT INTO campaign_constituents (org_id, campaign_id, constituent_id)
+      SELECT ${ORG_ID}::uuid, ${capCampaignId}::uuid, id FROM ins
+    `);
+
+    const [row] = await db
+      .insert(campaignPostalExports)
+      .values({
+        orgId: ORG_ID,
+        campaignId: capCampaignId,
+        mode: "personalized",
+        format: "merged_pdf",
+        status: "pending",
+        totalCount: 2001,
+      })
+      .returning();
+    const exportId = row!.id;
+
+    await expect(
+      processGeneratePostalExport(
+        makeMockJob({
+          exportId,
+          campaignId: capCampaignId,
+          orgId: ORG_ID,
+          mode: "personalized",
+          format: "merged_pdf",
+        }),
+      ),
+    ).rejects.toThrow(/merged_pdf_too_many_recipients/);
+
+    const [after] = await db
+      .select()
+      .from(campaignPostalExports)
+      .where(eq(campaignPostalExports.id, exportId));
+    expect(after?.status).toBe("failed");
+    expect(uploadCampaignMergedPdfMock).not.toHaveBeenCalled();
+
+    // Cleanup this test's bespoke fixtures (afterAll deletes by org_id too).
+    await db.execute(sql`DELETE FROM campaign_constituents WHERE campaign_id = ${capCampaignId}`);
+    await db.execute(sql`DELETE FROM campaign_postal_exports WHERE campaign_id = ${capCampaignId}`);
+    await db.execute(sql`DELETE FROM campaign_public_pages WHERE campaign_id = ${capCampaignId}`);
+    await db.execute(sql`DELETE FROM campaigns WHERE id = ${capCampaignId}`);
+  });
+
+  it("fails the job when the merged-PDF feature is disabled for the tenant", async () => {
+    // Temporarily flip the override off to simulate a flag flipped between
+    // enqueue and pickup. The processor must fail rather than produce the
+    // gated artefact.
+    await db
+      .update(tenantFlagOverrides)
+      .set({ value: false })
+      .where(
+        and(
+          eq(tenantFlagOverrides.tenantId, ORG_ID),
+          eq(tenantFlagOverrides.flagKey, "campaign.postal_merged_pdf"),
+        ),
+      );
+    const exportId = await createPostalExport("door_drop", 1, "merged_pdf");
+
+    await expect(
+      processGeneratePostalExport(
+        makeMockJob({
+          exportId,
+          campaignId,
+          orgId: ORG_ID,
+          mode: "door_drop",
+          format: "merged_pdf",
+        }),
+      ),
+    ).rejects.toThrow(/merged_pdf_disabled/);
+
+    const [row] = await db
+      .select()
+      .from(campaignPostalExports)
+      .where(eq(campaignPostalExports.id, exportId));
+    expect(row?.status).toBe("failed");
+    expect(uploadCampaignMergedPdfMock).not.toHaveBeenCalled();
+
+    // Restore the override for any later tests in this describe.
+    await db
+      .update(tenantFlagOverrides)
+      .set({ value: true })
+      .where(
+        and(
+          eq(tenantFlagOverrides.tenantId, ORG_ID),
+          eq(tenantFlagOverrides.flagKey, "campaign.postal_merged_pdf"),
+        ),
+      );
   });
 });
 

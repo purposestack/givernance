@@ -24,8 +24,8 @@
 
 import { PostalCampaignSection } from "@/components/campaigns/postal-campaign-section";
 import { ApiProblem } from "@/lib/api";
-import { PostalCampaignService } from "@/services/PostalCampaignService";
-import { mockToast, render, screen, userEvent, waitFor } from "@/tests/test-utils";
+import { PostalCampaignService, type PostalExport } from "@/services/PostalCampaignService";
+import { mockToast, render, screen, userEvent, waitFor, within } from "@/tests/test-utils";
 
 const CAMPAIGN_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -40,6 +40,7 @@ function renderSection(overrides: Partial<Parameters<typeof PostalCampaignSectio
       initialMembers={[]}
       initialMemberTotal={0}
       initialExports={[]}
+      mergedPdfEnabled={false}
       {...overrides}
     />,
   );
@@ -106,6 +107,7 @@ describe("PostalCampaignSection", () => {
       id: "22222222-2222-4222-8222-222222222222",
       campaignId: CAMPAIGN_ID,
       mode: "personalized",
+      format: "zip",
       status: "pending",
       totalCount: 3,
       progressCount: 0,
@@ -131,6 +133,8 @@ describe("PostalCampaignSection", () => {
         expect.anything(),
         CAMPAIGN_ID,
         "personalized",
+        // Default ZIP format — the selector is hidden when the flag is off.
+        "zip",
       ),
     );
     expect(mockToast.success).toHaveBeenCalledWith(
@@ -161,6 +165,57 @@ describe("PostalCampaignSection", () => {
     );
   });
 
+  describe("Merged PDF format selector (project item #194221573)", () => {
+    it("hides the format selector entirely when the flag is off", () => {
+      renderSection({ initialMemberTotal: 3, mergedPdfEnabled: false });
+
+      // No "Output format" heading, no merged-PDF option, no PDF-named CTA.
+      expect(screen.queryByText(/Output format/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Single merged PDF/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Generate merged PDF/i }),
+      ).not.toBeInTheDocument();
+      // The CTA is still the ZIP one.
+      expect(screen.getByRole("button", { name: /Generate.*ZIP/i })).toBeInTheDocument();
+    });
+
+    it("shows the selector when the flag is on and starts a merged_pdf export", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(PostalCampaignService, "startExport").mockResolvedValue({
+        id: "33333333-3333-4333-8333-333333333333",
+        campaignId: CAMPAIGN_ID,
+        mode: "personalized",
+        format: "merged_pdf",
+        status: "pending",
+        totalCount: 3,
+        progressCount: 0,
+        zipS3Path: null,
+        error: null,
+        requestedBy: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: null,
+      });
+
+      renderSection({ initialMemberTotal: 3, mergedPdfEnabled: true });
+
+      // Pick the merged-PDF format, then Generate.
+      await user.click(screen.getByRole("button", { name: /Single merged PDF/i }));
+      // The CTA relabels to the merged-PDF action.
+      const generateBtn = screen.getByRole("button", { name: /Generate merged PDF/i });
+      await user.click(generateBtn);
+
+      await waitFor(() =>
+        expect(PostalCampaignService.startExport).toHaveBeenCalledWith(
+          expect.anything(),
+          CAMPAIGN_ID,
+          "personalized",
+          "merged_pdf",
+        ),
+      );
+    });
+  });
+
   it("forces door-drop mode and hides personalized affordance for door-drop campaigns", () => {
     renderSection({ campaignType: "door_drop", initialMemberTotal: 0 });
 
@@ -172,6 +227,58 @@ describe("PostalCampaignSection", () => {
     expect(
       screen.getByText(/Personalized letters are not available for door-drop campaigns/i),
     ).toBeInTheDocument();
+  });
+
+  describe("Export history row (project item #194221573)", () => {
+    function exportFixture(over: Partial<PostalExport> = {}): PostalExport {
+      return {
+        id: "44444444-4444-4444-8444-444444444444",
+        campaignId: CAMPAIGN_ID,
+        mode: "personalized" as const,
+        format: "zip" as const,
+        status: "completed" as const,
+        totalCount: 5,
+        progressCount: 5,
+        zipS3Path: "key",
+        error: null,
+        requestedBy: null,
+        createdAt: new Date("2026-06-07T16:20:00Z").toISOString(),
+        updatedAt: new Date("2026-06-07T16:20:00Z").toISOString(),
+        completedAt: new Date("2026-06-07T16:20:00Z").toISOString(),
+        ...over,
+      };
+    }
+
+    it("shows a merged-PDF chip + download for a personalized merged export", () => {
+      renderSection({
+        mergedPdfEnabled: true,
+        initialExports: [
+          exportFixture({ format: "merged_pdf", mode: "personalized", totalCount: 5 }),
+        ],
+      });
+      // Generation type is distinguished at a glance by the chip.
+      expect(screen.getByText("Merged PDF")).toBeInTheDocument();
+      // Completed exports expose a download affordance.
+      expect(screen.getByRole("link", { name: /Download/i })).toBeInTheDocument();
+      // NB: the "N recipients" count uses an ICU plural which the test's
+      // next-intl mock (plain `{key}` interpolation only) can't resolve —
+      // production renders it correctly. We assert the mock-renderable
+      // parts here; the door-drop case below covers the "Generic letter"
+      // scope label (a plain string).
+    });
+
+    it("shows a ZIP chip and no bare progress for a completed door-drop ZIP export", () => {
+      renderSection({
+        initialExports: [exportFixture({ format: "zip", mode: "door_drop", totalCount: 1 })],
+      });
+      // The format chip distinguishes the generation type.
+      const row = screen.getByRole("link", { name: /Download/i }).closest("li");
+      expect(row).not.toBeNull();
+      expect(within(row as HTMLElement).getByText("ZIP")).toBeInTheDocument();
+      // Door-drop shows the "Generic letter" scope, not a meaningless "1/1".
+      expect(within(row as HTMLElement).getByText(/Generic letter/i)).toBeInTheDocument();
+      expect(screen.queryByText("1/1 generated")).not.toBeInTheDocument();
+    });
   });
 
   describe("Swiss QR-bill modes (Epic #318 PR #4 / PR #5)", () => {

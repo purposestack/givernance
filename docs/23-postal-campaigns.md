@@ -13,7 +13,7 @@ European NPOs raise a sizeable share of their revenue through **printed direct-m
 Givernance ships this whole pipeline as a first-class feature so an operator can:
 
 1. **Curate a recipient list** for a campaign (independent of donations — no more "donations à 0 €" workaround).
-2. **Generate a printable archive** (`zip` of A4 PDFs, one per recipient) ready to hand to the print shop.
+2. **Generate a printable artefact** — either a `zip` of A4 PDFs (one per recipient, the default) or a **single merged multi-page PDF** (one page per constituent), ready to hand to the print shop. See § 3.ter for the format choice.
 3. **Reconcile** donations made by QR-scan back to the campaign and the original recipient — every euro raised becomes a measurable scan-to-donate funnel.
 
 The MVP supports two **mailing modes**:
@@ -269,10 +269,11 @@ erDiagram
         uuid org_id FK
         uuid campaign_id FK
         enum mode "personalized | door_drop"
+        text format "zip | merged_pdf (mig 0081)"
         enum status "pending | processing | completed | failed"
         int total_count
         int progress_count
-        string zip_s3_path
+        string zip_s3_path "output key (.zip or .pdf)"
         text error
         uuid requested_by FK "users.id (nullable)"
         timestamp completed_at
@@ -444,6 +445,23 @@ A postal export ZIP is not a green-field generation: a printed letter that hits 
 
 The contract is exercised by `packages/worker/src/tests/integration/postal-export.test.ts` — see the `idempotency under retry` describe block.
 
+## 3.ter Output format — ZIP vs single merged PDF (project item #194221573)
+
+The export produces one of two artefacts, chosen by the operator at Generate time via a `format` field on the request (default `zip`):
+
+| `format` | Artefact | When to use |
+|---|---|---|
+| `zip` (default) | A streamed ZIP of one PDF per recipient — the original Epic #274 behaviour. | Very large mailings, or when the print shop wants individual files. |
+| `merged_pdf` | A single multi-page PDF concatenating every recipient's PDF(s) — **one page per constituent** in `standard`/`door_drop` mode, two in `qr_bill_only`, three in `hybrid`. | One-click printing of the whole batch. |
+
+**Mode-agnostic by construction.** The worker already renders every recipient artefact to a `Buffer` (`renderPdfBuffer` for the appeal letter, `renderSwissQrBillPdf` for the BVR PDF). The two formats differ only in the *sink*: `zip` streams each buffer into `archiver`; `merged_pdf` accumulates the buffers and concatenates them with **pdf-lib** (`mergePdfBuffers` in [`packages/worker/src/services/pdf-merge.ts`](../packages/worker/src/services/pdf-merge.ts)). The per-recipient loop (QR mint → render → progress tick) — the load-bearing idempotency path — stays single-sourced in `renderAllWorkItems`; `produceZipArtefact` and `produceMergedPdfArtefact` are the only branch points. So merged PDF works across **all four run modes** (`standard`, `door_drop`, `qr_bill_only`, `hybrid`) with no per-mode special-casing.
+
+**Memory tradeoff + recipient cap.** The streamed ZIP (§3 decision #2) keeps RAM bounded for a 10k-recipient campaign because `archiver` + the `PassThrough` never hold more than one entry at a time. A merged PDF *cannot* be streamed page-by-page — pdf-lib builds the whole document in memory before `save()`. So `merged_pdf` is bounded by `MERGED_PDF_MAX_RECIPIENTS` (2000, in [`postal-export-service.ts`](../packages/api/src/modules/campaigns/postal-export-service.ts)): the API rejects a larger merged request with `merged_pdf_too_many_recipients` and points the operator back at the ZIP, which scales to any size.
+
+**Storage + download.** Both artefacts land in the `campaigns` bucket under the same deterministic, retry-overwriting key prefix — `…/exports/{exportId}.zip` or `…/exports/{exportId}.pdf`. The `campaign_postal_exports.zip_s3_path` column holds whichever key was produced (kept un-renamed for applied-migration immutability); the download route branches on `format` for the `application/pdf` vs `application/zip` content-type + filename extension.
+
+**Feature flag.** The whole option ships behind `campaign.postal_merged_pdf` (default-off, seeded by migration 0081). Because the postal-export route pre-dates the flag system, the gate lives *inside* the existing route rather than as a `requireFlag` 404 preHandler: with the flag off the `format=merged_pdf` request body is rejected (`merged_pdf_disabled`) and the web panel hides the format selector entirely — every export is a ZIP, exactly as before. The worker re-checks the flag (tenant-aware, mirroring the API evaluator) at pickup as defence-in-depth, failing a merged job whose flag was flipped off between enqueue and pickup. See [`docs/18-feature-flags.md`](18-feature-flags.md).
+
 ## 5. QR reconciliation flow
 
 Every printed letter carries a unique opaque token (`base64url(15 random bytes)` = 20 characters, ~120 bits of entropy). The token reveals nothing about the recipient or the tenant — it's a server-side lookup key only.
@@ -598,9 +616,9 @@ See [`docs/18-feature-flags.md § 0`](18-feature-flags.md) for the registry shap
 | `GET /v1/campaigns/:id/constituents` | `requireOrgAdmin` | Same gate as the rest of the postal feature |
 | `POST /v1/campaigns/:id/constituents` | `requireOrgAdmin` | |
 | `DELETE /v1/campaigns/:id/constituents/:cId` | `requireOrgAdmin` | |
-| `POST /v1/campaigns/:id/postal-exports` | `requireOrgAdmin` | High-cost (worker time + S3 storage), audit-worthy |
+| `POST /v1/campaigns/:id/postal-exports` | `requireOrgAdmin` | High-cost (worker time + S3 storage), audit-worthy. `format=merged_pdf` (project item #194221573) is additionally gated in-handler by `campaign.postal_merged_pdf` + the `MERGED_PDF_MAX_RECIPIENTS` cap |
 | `GET /v1/campaigns/:id/postal-exports[/:id]` | `requireOrgAdmin` | |
-| `GET /v1/campaigns/:id/postal-exports/:id/download` | `requireOrgAdmin` | ZIP streamed through API (no presigned URL) |
+| `GET /v1/campaigns/:id/postal-exports/:id/download` | `requireOrgAdmin` | Artefact streamed through API (no presigned URL); content-type branches on `format` (`application/zip` or `application/pdf`) |
 | `POST /v1/campaigns/:id/postal-preview` | `requireOrgAdmin` | Rate-limited 20/min (synchronous PDFKit render) |
 | `GET /v1/campaigns/:id/qr-stats` | `requireOrgAdmin` | Aggregate KPIs surfaced on the admin dashboard — kept on the same gate as the rest of the postal feature for a coherent permission model |
 | `GET /v1/public/qr/:code` | **Unauthenticated** | Rate-limited 60/min. The opaque token is the security boundary |
@@ -628,7 +646,8 @@ These were considered and **deliberately deferred** — they would have either t
 - **More locales beyond FR/EN** — the renderer is locale-aware (driven by `tenants.default_locale`, see § 1.bis), and FR + EN ship in MVP. DE/IT/ES are deferred until a customer requests them; adding one is a copy-table extension, not a structural change.
 - **Per-campaign locale override** — today the letter locale follows the tenant's default; a future epic could let the operator pick a locale per campaign (e.g., a Geneva-based French-speaking org doing one English-language ask for diaspora donors).
 - **Per-recipient editorial overrides** — every nominative letter today shares the same body ("Dear supporter…"). A future epic could let the operator override the body per segment (donor tier, last gift date, etc.).
-- **Direct print-shop integration** — current MVP hands the operator a ZIP to upload manually to their printer's portal. A managed print partnership (with API hand-off) is on the long-term roadmap.
+- **Direct print-shop integration** — current MVP hands the operator a ZIP (or a merged PDF) to upload manually to their printer's portal. A managed print partnership (with API hand-off) is on the long-term roadmap.
+- **Merged-PDF preview** — the synchronous preview endpoint (`POST /postal-preview`) still renders a single sample letter inline, which *is* effectively the 1-page-per-constituent preview for the merged format. A dedicated multi-recipient merged-PDF preview was deliberately deferred (project item #194221573): the merge only changes how single-recipient pages are bundled, not their content, so the existing per-letter preview already validates what each page will look like.
 
 ## 10. References
 
@@ -645,5 +664,6 @@ These were considered and **deliberately deferred** — they would have either t
 - Migration `0045_bulk_email_jobs.sql` — `bulk_email_jobs` table for partial-send tracking + resume path (issue #326)
 - Migration `0046_bulk_email_jobs_review_followups.sql` — composite covering index + partial unique on active resumes (PR #352 review fixes)
 - Migration `0047_feature_flags.sql` — global feature-flag registry + bulk-email gate seeded `enabled = false` (PR #352 @magino follow-up)
+- Migration `0081_postal_export_merged_pdf.sql` — `campaign_postal_exports.format` (`zip | merged_pdf`) + the `campaign.postal_merged_pdf` flag seeded `enabled = false` (project item #194221573)
 - Runbook [`docs/runbooks/bulk-email-stalled-job.md`](runbooks/bulk-email-stalled-job.md) — SRE triage flow for Stalled / Partial bulk-email recovery
 - Mockups: `docs/design/index.html` → "Postal mailing" section

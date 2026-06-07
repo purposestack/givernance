@@ -69,10 +69,17 @@ export interface GenerateCampaignDocumentsJob {
 }
 
 /**
- * Generate the bundled ZIP archive for a postal export (Epic #274).
- * Streams per-recipient PDFs through `archiver` into S3, ticking the
+ * Generate the output artefact for a postal export (Epic #274).
+ *
+ * `format='zip'` streams per-recipient PDFs through `archiver` into S3;
+ * `format='merged_pdf'` concatenates them into a single multi-page PDF
+ * (project item #194221573). Either way the worker ticks the
  * `campaign_postal_exports.progress_count` row so the frontend's polling
  * UI can render a real-time progress bar.
+ *
+ * `format` is carried for logging convenience; the worker treats the
+ * `campaign_postal_exports` row as the source of truth (so an operator
+ * who somehow enqueued before a config change can't desync the artefact).
  */
 export interface GeneratePostalExportJob {
   name: "generate-postal-export";
@@ -81,6 +88,7 @@ export interface GeneratePostalExportJob {
     campaignId: string;
     orgId: string;
     mode: "door_drop" | "personalized";
+    format: "zip" | "merged_pdf";
   };
 }
 
