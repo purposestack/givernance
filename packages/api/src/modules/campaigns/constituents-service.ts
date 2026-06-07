@@ -53,13 +53,18 @@ export interface ListMembersQuery {
  * match the cell's display order (`First Last`) — same rule as the
  * Constituents page. A stable secondary key (`campaign_constituents.id`)
  * keeps pagination deterministic when the primary key ties.
+ *
+ * `COLLATE "und-x-icu"` (ICU root locale) is what makes accents collate
+ * intuitively: the database's default collation orders "Élise" AFTER the
+ * whole ASCII alphabet (so after "Victor"); ICU collates "É" next to "E".
+ * Applied to every name sort across the app (constituents, donations).
  */
 function memberOrderBy(sort: CampaignMemberSortField, order: CampaignMemberSortOrder) {
   const dir = order === "asc" ? asc : desc;
   if (sort === "name") {
     return [
-      dir(sql`lower(${constituents.firstName})`),
-      dir(sql`lower(${constituents.lastName})`),
+      dir(sql`lower(${constituents.firstName}) COLLATE "und-x-icu"`),
+      dir(sql`lower(${constituents.lastName}) COLLATE "und-x-icu"`),
       asc(campaignConstituents.id),
     ];
   }

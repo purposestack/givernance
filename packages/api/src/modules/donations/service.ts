@@ -167,10 +167,12 @@ function buildDonationOrderBy(sort: DonationSortField, order: DonationSortOrder)
     // Sort on the joined constituent row. Tuple is (firstName, lastName)
     // to match the cell display ("First Last") — same rationale as
     // `buildConstituentOrderBy` in constituents/service.ts.
+    // `COLLATE "und-x-icu"` (ICU root locale) so accents collate next to
+    // their base letter — the DB default sorts "Élise" after "Victor".
     const direction = order === "asc" ? sql`ASC` : sql`DESC`;
     return [
-      sql`lower(${constituents.firstName}) ${direction} NULLS LAST`,
-      sql`lower(${constituents.lastName}) ${direction} NULLS LAST`,
+      sql`lower(${constituents.firstName}) COLLATE "und-x-icu" ${direction} NULLS LAST`,
+      sql`lower(${constituents.lastName}) COLLATE "und-x-icu" ${direction} NULLS LAST`,
       asc(donations.id),
     ];
   }

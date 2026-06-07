@@ -19,7 +19,7 @@ import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { isPostalMergedPdfEnabled } from "@/lib/feature-flags/server";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
 import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campaign";
-import type { DonationListResponse } from "@/models/donation";
+import type { DonationListResponse, DonationSortField, DonationSortOrder } from "@/models/donation";
 import { BankAccountService } from "@/services/BankAccountService";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 import { CampaignService } from "@/services/CampaignService";
@@ -60,10 +60,32 @@ async function fetchCampaignOrNotFound(id: string): Promise<Campaign> {
   }
 }
 
+/**
+ * Sortable columns of the Donation breakdown table (a subset of the API's
+ * `DONATION_SORT_FIELDS` — the columns actually rendered + server-sortable).
+ * Reference has no API sort field, so it's not in here. Sorting is resolved
+ * in the DB across the whole list, never client-side over the visible page.
+ */
+const DONATION_SORT_FIELDS = new Set<DonationSortField>(["donatedAt", "donor", "amountCents"]);
+
+function parseDonationSort(value: string | string[] | undefined): DonationSortField {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && DONATION_SORT_FIELDS.has(raw as DonationSortField)
+    ? (raw as DonationSortField)
+    : "donatedAt";
+}
+
+function parseDonationOrder(value: string | string[] | undefined): DonationSortOrder {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === "asc" ? "asc" : "desc";
+}
+
 async function fetchDonationsOrEmpty(
   id: string,
   page: number,
   perPage: number,
+  sort: DonationSortField,
+  order: DonationSortOrder,
 ): Promise<DonationListResponse> {
   const client = await createServerApiClient();
   try {
@@ -71,6 +93,8 @@ async function fetchDonationsOrEmpty(
       campaignId: id,
       page,
       perPage,
+      sort,
+      order,
     });
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
@@ -199,6 +223,8 @@ export default async function CampaignDetailPage({
     DEFAULT_DONATIONS_PER_PAGE,
     MAX_DONATIONS_PER_PAGE,
   );
+  const donationsSort = parseDonationSort(sp.sort);
+  const donationsOrder = parseDonationOrder(sp.order);
 
   const client = await createServerApiClient();
   const campaign = await fetchCampaignOrNotFound(id);
@@ -222,7 +248,7 @@ export default async function CampaignDetailPage({
   ] = await Promise.all([
     CampaignService.getCampaignStats(client, id),
     CampaignService.getCampaignRoi(client, id),
-    fetchDonationsOrEmpty(id, donationsPage, donationsPerPage),
+    fetchDonationsOrEmpty(id, donationsPage, donationsPerPage, donationsSort, donationsOrder),
     fetchPostalMembersOrEmpty(client, id, isAdmin),
     fetchPostalExportsOrEmpty(client, id, isAdmin),
     fetchQrStatsOrEmpty(client, id, isAdmin),
@@ -346,6 +372,8 @@ export default async function CampaignDetailPage({
             campaign={campaign}
             donationsResult={donationsResult}
             donationsLabel={tDonations("title")}
+            sort={donationsSort}
+            order={donationsOrder}
           />
         </div>
       </div>
@@ -623,10 +651,14 @@ async function DonationBreakdownCard({
   campaign,
   donationsResult,
   donationsLabel,
+  sort,
+  order,
 }: {
   campaign: Campaign;
   donationsResult: DonationListResponse;
   donationsLabel: string;
+  sort: DonationSortField;
+  order: DonationSortOrder;
 }) {
   const t = await getTranslations("campaigns.detail");
   const { data: donations, pagination } = donationsResult;
@@ -655,7 +687,7 @@ async function DonationBreakdownCard({
           className="px-0 py-8"
         />
       ) : (
-        <DonationsTable donations={donations} pagination={pagination} />
+        <DonationsTable donations={donations} pagination={pagination} sort={sort} order={order} />
       )}
     </Card>
   );

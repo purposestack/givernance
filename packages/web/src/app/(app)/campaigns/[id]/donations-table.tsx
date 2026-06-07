@@ -1,6 +1,6 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { Gift } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -11,14 +11,28 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { type DonationListRow, donationDonorName } from "@/models/donation";
+import {
+  type DonationListRow,
+  type DonationSortField,
+  type DonationSortOrder,
+  donationDonorName,
+} from "@/models/donation";
 
 interface DonationsTableProps {
   donations: DonationListRow[];
   pagination: DataTablePagination;
+  /**
+   * Server-resolved sort field + order from the URL (`?sort=&order=`).
+   * Sorting is done in the DATABASE across the whole list — never client-side
+   * over the visible page, which would only reorder the current 25 rows of
+   * 155 and (for names) sort accents by code point. Accent collation is
+   * handled server-side via `COLLATE "und-x-icu"`.
+   */
+  sort: DonationSortField;
+  order: DonationSortOrder;
 }
 
-export function DonationsTable({ donations, pagination }: DonationsTableProps) {
+export function DonationsTable({ donations, pagination, sort, order }: DonationsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -36,7 +50,42 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
       }
       const query = params.toString();
       startTransition(() => {
-        router.push(query ? `${pathname}?${query}` : pathname);
+        // `scroll: false` — the table sits at the bottom of a long campaign
+        // page; the App Router's default scroll-to-top would yank the user
+        // away from the rows they're paging through.
+        router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      });
+    },
+    [pathname, router, searchParams],
+  );
+
+  // Drive the sort indicator from the server-resolved URL params (not local
+  // TanStack state) so the arrow can't lag the RSC round-trip by a paint.
+  const sorting = useMemo<SortingState>(
+    () => [{ id: sort, desc: order === "desc" }],
+    [order, sort],
+  );
+
+  // Header click → replace the URL with the new `?sort=&order=` and reset to
+  // page 1 (paginating into a slice that just shifted is meaningless). The
+  // column ids ARE the API sort fields, so `next.id` maps directly.
+  const onSortingChange = useCallback(
+    (nextSorting: SortingState) => {
+      const [next] = nextSorting;
+      const params = new URLSearchParams(searchParams.toString());
+      if (!next) {
+        params.delete("sort");
+        params.delete("order");
+      } else {
+        params.set("sort", next.id);
+        params.set("order", next.desc ? "desc" : "asc");
+      }
+      params.delete("page");
+      const query = params.toString();
+      startTransition(() => {
+        // `scroll: false` — keep the viewport on the table (it's near the
+        // bottom of the page) instead of jumping to the top on every sort.
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
       });
     },
     [pathname, router, searchParams],
@@ -55,7 +104,12 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
         ),
       },
       {
+        // `id` matches the API sort field `donor`. The `accessorFn` is what
+        // makes TanStack treat this as a sortable column (a pure display
+        // column shows no sort toggle); the value itself is unused because
+        // `manualSorting` delegates the actual ordering to the DB.
         id: "donor",
+        accessorFn: (row) => donationDonorName(row) ?? "",
         header: () => t("columns.donor"),
         cell: ({ row }) => {
           const donorName = donationDonorName(row.original) ?? t("anonymousDonor");
@@ -73,6 +127,9 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
       {
         id: "reference",
         accessorKey: "paymentRef",
+        // The API has no sort field for the payment reference — keep it
+        // non-sortable rather than show a toggle that 400s.
+        enableSorting: false,
         header: () => t("columns.reference"),
         cell: ({ row }) => (
           <span className="text-on-surface-variant">
@@ -81,7 +138,8 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
         ),
       },
       {
-        id: "amount",
+        // `id` matches the API sort field `amountCents`.
+        id: "amountCents",
         accessorKey: "amountCents",
         header: () => <span className="block text-right">{t("columns.amount")}</span>,
         cell: ({ row }) => (
@@ -102,6 +160,8 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
       <DataTable
         columns={columns}
         data={donations}
+        sorting={sorting}
+        onSortingChange={onSortingChange}
         pagination={pagination}
         onPageChange={navigateToPage}
         onRowClick={(row) => router.push(`/donations/${row.original.id}`)}
