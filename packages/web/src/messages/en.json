@@ -2774,6 +2774,17 @@
           "description": "One generic letter you can mass-print and distribute by neighborhood."
         }
       },
+      "formats": {
+        "label": "Output format",
+        "zip": {
+          "title": "ZIP of separate PDFs",
+          "description": "One PDF file per recipient, bundled in a ZIP archive. Best for very large mailings."
+        },
+        "mergedPdf": {
+          "title": "Single merged PDF",
+          "description": "Every recipient on its own page in one combined PDF — print the whole batch in a single job."
+        }
+      },
       "actions": {
         "generateZip": {
           "standard": "Generate appeal-letter ZIP",
@@ -2781,6 +2792,7 @@
           "hybrid": "Generate full mailing ZIP (letter + QR-bill)",
           "blocked": "Generate ZIP"
         },
+        "generateMergedPdf": "Generate merged PDF",
         "starting": "Queueing…",
         "preview": "Preview",
         "previewing": "Loading preview…"
@@ -2852,7 +2864,13 @@
       "history": {
         "title": "Recent exports",
         "download": "Download",
-        "counts": "{progress}/{total}",
+        "counts": "{progress}/{total} generated",
+        "recipients": "{count, plural, one {# recipient} other {# recipients}}",
+        "genericLetter": "Generic letter",
+        "format": {
+          "zip": "ZIP",
+          "merged_pdf": "Merged PDF"
+        },
         "mode": {
           "personalized": "Personalized",
           "door_drop": "Door drop"

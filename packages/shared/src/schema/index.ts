@@ -66,6 +66,19 @@ export type PostalExportMode = (typeof POSTAL_EXPORT_MODE_VALUES)[number];
 
 export const postalExportModeEnum = pgEnum("postal_export_mode", [...POSTAL_EXPORT_MODE_VALUES]);
 
+/**
+ * Postal export output format (project item #194221573 — "Export PDF unique
+ * multi-pages"). `zip` (default) ships one PDF per recipient in a streamed
+ * ZIP archive — the original Epic #274 behaviour, RAM-bounded for any fan-out.
+ * `merged_pdf` concatenates every recipient's PDF(s) into a single multi-page
+ * document (1 page/constituent in `standard` mode; 2/3 in the Swiss QR-bill
+ * modes) for one-click printing. The merged document is built fully in memory
+ * (pdf-lib cannot stream page-by-page), so the API caps the recipient count —
+ * very large campaigns must use `zip`.
+ */
+export const POSTAL_EXPORT_FORMAT_VALUES = ["zip", "merged_pdf"] as const;
+export type PostalExportFormat = (typeof POSTAL_EXPORT_FORMAT_VALUES)[number];
+
 /** Postal export job lifecycle. `pending` → `processing` → `completed | failed`. */
 export const POSTAL_EXPORT_STATUS_VALUES = [
   "pending",
@@ -1292,6 +1305,14 @@ export const campaignPostalExports = pgTable(
       .notNull()
       .references(() => campaigns.id, { onDelete: "cascade" }),
     mode: postalExportModeEnum("mode").notNull(),
+    /**
+     * Output format (project item #194221573). `zip` = one PDF per recipient
+     * in a streamed archive (default, original Epic #274 behaviour);
+     * `merged_pdf` = a single concatenated multi-page document. Typed text +
+     * DB CHECK (migration 0081) rather than a pg enum to avoid a `CREATE TYPE`
+     * round-trip — same pattern as a constrained lookup column.
+     */
+    format: text("format", { enum: POSTAL_EXPORT_FORMAT_VALUES }).notNull().default("zip"),
     status: postalExportStatusEnum("status").notNull().default("pending"),
     /**
      * Resolved run mode (Epic #318 PR #4 MAJOR-1 follow-up) — `standard` /
@@ -1311,6 +1332,13 @@ export const campaignPostalExports = pgTable(
      */
     totalCount: integer("total_count").notNull().default(0),
     progressCount: integer("progress_count").notNull().default(0),
+    /**
+     * S3 object key of the generated artefact. Despite the historical
+     * `zip_s3_path` name it holds whichever output `format` produced — a
+     * `…/exports/{id}.zip` for `zip` or a `…/exports/{id}.pdf` for
+     * `merged_pdf`. Kept un-renamed (applied-migration immutability + churn);
+     * the download route branches on `format` for the content-type.
+     */
     zipS3Path: varchar("zip_s3_path", { length: 500 }),
     error: text("error"),
     requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),

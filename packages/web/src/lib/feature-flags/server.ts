@@ -22,6 +22,7 @@ const PHASE2_KEY = "admin.feature_flags_phase2";
 const PUBLIC_PAGE_STYLES_KEY = "donation.public_page_styles";
 const IMPERSONATION_REPLICATE_KEY = "admin.impersonation_replicate";
 const FINANCE_DASHBOARD_KEY = "admin.finance_dashboard";
+const POSTAL_MERGED_PDF_KEY = "campaign.postal_merged_pdf";
 
 /**
  * Returns `true` iff `admin.feature_flags_phase2` is on for the
@@ -87,6 +88,23 @@ export async function isFinanceDashboardEnabled(): Promise<boolean> {
     const api = await createServerApiClient();
     const flags = await FeatureFlagsService.listPublic(api);
     return isFlagEnabled(flags, FINANCE_DASHBOARD_KEY);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns `true` iff `campaign.postal_merged_pdf` is on for the caller's
+ * tenant (project item #194221573). Drives whether the postal-export
+ * panel renders the ZIP/merged-PDF format selector. Fail-closed on
+ * projection errors — better to hide the selector (export stays a ZIP)
+ * than render an option the backend will reject.
+ */
+export async function isPostalMergedPdfEnabled(): Promise<boolean> {
+  try {
+    const api = await createServerApiClient();
+    const flags = await FeatureFlagsService.listPublic(api);
+    return isFlagEnabled(flags, POSTAL_MERGED_PDF_KEY);
   } catch {
     return false;
   }

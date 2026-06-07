@@ -11,12 +11,13 @@ import {
   Download,
   Eye,
   FileArchive,
+  FileText,
   Loader2,
   MailPlus,
   RefreshCcw,
 } from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,7 @@ import type { Campaign, CampaignType } from "@/models/campaign";
 import {
   PostalCampaignService,
   type PostalExport,
+  type PostalExportFormat,
   type PostalExportMode,
 } from "@/services/PostalCampaignService";
 
@@ -66,6 +68,13 @@ interface PostalExportPanelProps {
   initialExports: PostalExport[];
   /** Number of constituents currently linked — used to disable "personalized" when 0. */
   linkedConstituentCount: number;
+  /**
+   * Whether the `campaign.postal_merged_pdf` flag is enabled for this
+   * tenant (project item #194221573). SSR-resolved in the page server
+   * component. When false the format selector is rendered NOWHERE — the
+   * export is always a ZIP, exactly as before the option existed.
+   */
+  mergedPdfEnabled: boolean;
 }
 
 /**
@@ -89,11 +98,16 @@ export function PostalExportPanel({
   bankAccount,
   initialExports,
   linkedConstituentCount,
+  mergedPdfEnabled,
 }: PostalExportPanelProps) {
   const t = useTranslations("campaigns.postal");
   const [mode, setMode] = useState<PostalExportMode>(
     campaignType === "door_drop" ? "door_drop" : "personalized",
   );
+  // Output format (project item #194221573). Always `zip` unless the
+  // operator opts into the merged PDF — which is only offered when the
+  // flag is on (the selector is hidden otherwise).
+  const [format, setFormat] = useState<PostalExportFormat>("zip");
 
   // Epic #318 PR #4 — resolve the run mode the same way the API and worker
   // resolve it. Single source of truth in `@givernance/shared/postal-export-mode`,
@@ -139,7 +153,16 @@ export function PostalExportPanel({
     setIsStarting(true);
     try {
       const client = createClientApiClient();
-      const newExport = await PostalCampaignService.startExport(client, campaignId, mode);
+      // Only send `merged_pdf` when the flag-gated selector is visible —
+      // belt-and-suspenders so a stale `format` state can never request a
+      // disabled artefact (the API would reject it anyway).
+      const requestedFormat: PostalExportFormat = mergedPdfEnabled ? format : "zip";
+      const newExport = await PostalCampaignService.startExport(
+        client,
+        campaignId,
+        mode,
+        requestedFormat,
+      );
       setExports((prev) => [newExport, ...prev]);
       toast.success(t("toast.exportQueued"));
     } catch (err) {
@@ -151,7 +174,7 @@ export function PostalExportPanel({
     } finally {
       setIsStarting(false);
     }
-  }, [campaignId, isStarting, mode, t]);
+  }, [campaignId, isStarting, mode, format, mergedPdfEnabled, t]);
 
   const handlePreview = useCallback(async () => {
     if (isPreviewing) return;
@@ -185,6 +208,16 @@ export function PostalExportPanel({
     (runMode === "standard" || runMode === "hybrid") && publicPageStatus !== "published";
   const exportNotConfigured = runMode === "blocked";
   const generateBlocked = campaignNotActive || publicPageNotReady || exportNotConfigured;
+
+  // Project item #194221573 — the Generate CTA names the artefact it will
+  // produce: the merged-PDF label when that format is selected, else the
+  // existing mode-keyed "Generate ZIP" label.
+  const showFormatSelector = mergedPdfEnabled;
+  const effectiveFormat: PostalExportFormat = showFormatSelector ? format : "zip";
+  const generateLabel =
+    effectiveFormat === "merged_pdf"
+      ? t("actions.generateMergedPdf")
+      : t(`actions.generateZip.${runMode}`);
 
   return (
     <Card>
@@ -255,6 +288,33 @@ export function PostalExportPanel({
           />
         </div>
 
+        {/* Output format selector (project item #194221573) — rendered only
+            when the `campaign.postal_merged_pdf` flag is on. With the flag
+            off this block is absent entirely and every export is a ZIP. */}
+        {showFormatSelector ? (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-on-surface">{t("formats.label")}</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ModeOption
+                active={format === "zip"}
+                disabled={false}
+                onSelect={() => setFormat("zip")}
+                icon={<FileArchive size={18} aria-hidden="true" />}
+                title={t("formats.zip.title")}
+                description={t("formats.zip.description")}
+              />
+              <ModeOption
+                active={format === "merged_pdf"}
+                disabled={false}
+                onSelect={() => setFormat("merged_pdf")}
+                icon={<FileText size={18} aria-hidden="true" />}
+                title={t("formats.mergedPdf.title")}
+                description={t("formats.mergedPdf.description")}
+              />
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-3">
           {/*
             m1 — a11y for the disabled CTA. `title` is famously inaccessible
@@ -272,9 +332,7 @@ export function PostalExportPanel({
                   ? t("readiness.notConfiguredTooltip")
                   : t("readiness.publishPublicPageFirst");
             const buttonAriaLabel =
-              generateBlocked && blockerReason
-                ? `${t(`actions.generateZip.${runMode}`)} — ${blockerReason}`
-                : undefined;
+              generateBlocked && blockerReason ? `${generateLabel} — ${blockerReason}` : undefined;
             return (
               <Button
                 type="button"
@@ -297,7 +355,7 @@ export function PostalExportPanel({
                 ) : (
                   <>
                     <FileArchive size={16} aria-hidden="true" />
-                    {t(`actions.generateZip.${runMode}`)}
+                    {generateLabel}
                   </>
                 )}
               </Button>
@@ -407,22 +465,66 @@ function ActiveJobProgress({ job }: { job: PostalExport }) {
   );
 }
 
+/**
+ * Compact chip telling the operator which artefact this export produced —
+ * a ZIP of separate PDFs or one merged PDF (project item #194221573). The
+ * two get distinct tones + icons so the generation type is legible at a
+ * glance in the history list.
+ */
+function FormatChip({ format }: { format: PostalExport["format"] }) {
+  const t = useTranslations("campaigns.postal.history.format");
+  const isMerged = format === "merged_pdf";
+  return (
+    <Badge variant={isMerged ? "info" : "neutral"} className="gap-1">
+      {isMerged ? (
+        <FileText size={12} aria-hidden="true" />
+      ) : (
+        <FileArchive size={12} aria-hidden="true" />
+      )}
+      {t(format)}
+    </Badge>
+  );
+}
+
 function ExportRow({ job, campaignId }: { job: PostalExport; campaignId: string }) {
   const t = useTranslations("campaigns.postal.history");
-  const created = new Date(job.createdAt);
+  const locale = useLocale();
+  const createdAt = new Date(job.createdAt).toLocaleString(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const inFlight = job.status === "pending" || job.status === "processing";
+
+  // Recipient/scope descriptor — a real count for personalised mailings,
+  // a "generic letter" label for door-drops (where total_count is always 1
+  // and "1/1" reads as noise to the operator).
+  const scope =
+    job.mode === "personalized" ? t("recipients", { count: job.totalCount }) : t("genericLetter");
+
   return (
     <li className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-      <div className="flex flex-1 items-center gap-3">
-        <StatusBadge status={job.status} />
-        <span className="text-on-surface-variant">
-          {created.toLocaleString()} · {t(`mode.${job.mode}`)} ·{" "}
-          {t("counts", { progress: job.progressCount, total: job.totalCount })}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={job.status} />
+          <span className="font-medium text-on-surface">{t(`mode.${job.mode}`)}</span>
+          <FormatChip format={job.format} />
+        </div>
+        <span className="text-xs text-on-surface-variant">
+          {createdAt} · {scope}
+          {/* While the job is still generating, surface live progress so the
+              row mirrors the active-job progress bar above. */}
+          {inFlight ? (
+            <> · {t("counts", { progress: job.progressCount, total: job.totalCount })}</>
+          ) : null}
+          {job.status === "failed" && job.error ? (
+            <span className="text-error"> · {job.error}</span>
+          ) : null}
         </span>
       </div>
       {job.status === "completed" ? (
         <a
           href={PostalCampaignService.exportDownloadUrl(campaignId, job.id)}
-          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+          className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:underline"
         >
           <Download size={14} aria-hidden="true" />
           {t("download")}

@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
+import { isPostalMergedPdfEnabled } from "@/lib/feature-flags/server";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
 import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campaign";
 import type { DonationListResponse } from "@/models/donation";
@@ -213,6 +214,7 @@ export default async function CampaignDetailPage({
     qrStats,
     publicPageStatus,
     linkedBankAccount,
+    mergedPdfEnabled,
     t,
     tCampaigns,
     tDonations,
@@ -226,6 +228,9 @@ export default async function CampaignDetailPage({
     fetchQrStatsOrEmpty(client, id, isAdmin),
     fetchPublicPageStatus(client, id, isAdmin),
     fetchLinkedBankAccountOrNull(client, campaign.bankAccountId, isAdmin),
+    // Project item #194221573 — only the postal panel (admin-only) needs
+    // this; resolve false for non-admins without a wasted projection fetch.
+    isAdmin ? isPostalMergedPdfEnabled() : Promise.resolve(false),
     getTranslations("campaigns.detail"),
     getTranslations("campaigns"),
     getTranslations("donations"),
@@ -334,6 +339,7 @@ export default async function CampaignDetailPage({
               initialMembers={membersResult.data}
               initialMemberTotal={membersResult.total}
               initialExports={postalExports}
+              mergedPdfEnabled={mergedPdfEnabled}
             />
           ) : null}
           <DonationBreakdownCard

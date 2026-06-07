@@ -355,6 +355,45 @@ export const FEATURE_FLAG_KEYS = {
    * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
    */
   ADMIN_FINANCE_DASHBOARD: "admin.finance_dashboard",
+
+  /**
+   * Gates the merged single multi-page PDF option for postal exports
+   * (project item #194221573 — "Export PDF unique multi-pages").
+   *
+   * The postal export (Epic #274) always shipped a ZIP of one PDF per
+   * recipient. This adds a second output format — a single concatenated
+   * PDF (1 page/constituent in standard mode, 2/3 in the Swiss QR-bill
+   * modes) so an operator can hand the whole batch to a printer without
+   * unzipping. The export endpoint itself is un-flagged (pre-dates the
+   * flag system), so this gate lives INSIDE the existing route rather
+   * than as a `requireFlag` 404 preHandler: with the flag off the
+   * `format=merged_pdf` request body is rejected (`merged_pdf_disabled`)
+   * and the web panel hides the format selector entirely — the export
+   * is always a ZIP, exactly as before the option existed.
+   *
+   * Engineering rationale (NOT operator-facing): a merged PDF is built
+   * fully in memory (pdf-lib has no page-by-page streaming), unlike the
+   * RAM-bounded streamed ZIP. The API therefore caps the recipient count
+   * for `merged_pdf` (`MERGED_PDF_MAX_RECIPIENTS`) and falls back to the
+   * ZIP suggestion above it. Default-off so the cap + memory profile can
+   * be validated on staging before a platform-wide enable.
+   *
+   * `scope='tenant'`, `tenant_override_allowed=false`: super-admin keeps
+   * the gate per tenant during the initial rollout.
+   *
+   * `public=true`: the campaign page SSR-fetches `/v1/feature-flags` to
+   * decide whether to render the format selector in the postal panel.
+   *
+   * Surfaces gated by this key:
+   *   - API: `format=merged_pdf` on POST /v1/campaigns/:id/postal-exports
+   *     (in-handler gate; off ⇒ `merged_pdf_disabled`).
+   *   - Worker: `postal-export` processor re-checks at pickup (defence in
+   *     depth) and fails the job if a merged_pdf row slipped through.
+   *   - Web: the ZIP/merged-PDF format selector in the postal export panel.
+   *
+   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
+   */
+  CAMPAIGN_POSTAL_MERGED_PDF: "campaign.postal_merged_pdf",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -489,6 +528,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     description:
       "Cross-tenant super-admin dashboard aggregating donation volume, revenue, Stripe fees, and tenant health signals (Mobilisation Score + PMF/NPS/CSAT). Off by default until live tenant numbers are validated against ground truth.",
     scope: "platform",
+    tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.CAMPAIGN_POSTAL_MERGED_PDF,
+    defaultEnabled: false,
+    label: "Single merged PDF for postal mailings",
+    description:
+      "Adds an option to download a postal mailing as one combined PDF (one page per recipient) instead of a ZIP of separate files — handy for sending the whole batch straight to a printer. Off by default: exports stay as a ZIP until Givernance staff turn this on for your organisation. Very large mailings always use the ZIP.",
+    scope: "tenant",
     tenantOverrideAllowed: false,
     public: true,
   },

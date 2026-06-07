@@ -2774,6 +2774,17 @@
           "description": "Une lettre générique à imprimer en masse pour une distribution par quartier."
         }
       },
+      "formats": {
+        "label": "Format de sortie",
+        "zip": {
+          "title": "ZIP de PDF séparés",
+          "description": "Un fichier PDF par destinataire, regroupés dans une archive ZIP. Idéal pour les très gros envois."
+        },
+        "mergedPdf": {
+          "title": "PDF unique fusionné",
+          "description": "Chaque destinataire sur sa propre page dans un seul PDF — imprimez tout le lot en une seule fois."
+        }
+      },
       "actions": {
         "generateZip": {
           "standard": "Générer le ZIP de lettres",
@@ -2781,6 +2792,7 @@
           "hybrid": "Générer le ZIP complet (lettre + BVR)",
           "blocked": "Générer le ZIP"
         },
+        "generateMergedPdf": "Générer le PDF fusionné",
         "starting": "Mise en file…",
         "preview": "Aperçu",
         "previewing": "Chargement de l'aperçu…"
@@ -2852,7 +2864,13 @@
       "history": {
         "title": "Exports récents",
         "download": "Télécharger",
-        "counts": "{progress}/{total}",
+        "counts": "{progress}/{total} générés",
+        "recipients": "{count, plural, one {# destinataire} other {# destinataires}}",
+        "genericLetter": "Lettre générique",
+        "format": {
+          "zip": "ZIP",
+          "merged_pdf": "PDF fusionné"
+        },
         "mode": {
           "personalized": "Personnalisé",
           "door_drop": "Boîte aux lettres"

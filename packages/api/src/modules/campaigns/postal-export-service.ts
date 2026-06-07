@@ -17,7 +17,9 @@
  *      and avoids signed-URL hostname issues on the staging MinIO).
  */
 
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import {
+  MERGED_PDF_MAX_RECIPIENTS,
   type PostalExportRunMode,
   resolvePostalExportMode,
 } from "@givernance/shared/postal-export-mode";
@@ -30,11 +32,13 @@ import {
   campaigns,
   constituents,
   outboxEvents,
+  type PostalExportFormat,
   type PostalExportMode,
 } from "@givernance/shared/schema";
 import { classifyIban } from "@givernance/shared/validators";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
+import { flagService } from "../../lib/flags/flag-service.js";
 import { resolveInternalUserId } from "../../lib/resolve-user.js";
 
 /**
@@ -63,6 +67,14 @@ export type PostalExportErrorCode =
   // `public_page_missing` code fired here even when the operator's intent
   // was Swiss QR-bill only; this new code disambiguates.
   | "postal_export_not_configured"
+  // Project item #194221573 — merged-PDF format gates.
+  // `merged_pdf_disabled`: `format=merged_pdf` requested while the
+  // `campaign.postal_merged_pdf` flag is off for this tenant.
+  // `merged_pdf_too_many_recipients`: more recipients than
+  // `MERGED_PDF_MAX_RECIPIENTS` — the in-memory merge would risk the
+  // worker heap; the operator should use the ZIP format instead.
+  | "merged_pdf_disabled"
+  | "merged_pdf_too_many_recipients"
   | "insert_failed";
 
 export class PostalExportError extends Error {
@@ -79,6 +91,7 @@ export interface PostalExportRow {
   id: string;
   campaignId: string;
   mode: PostalExportMode;
+  format: PostalExportFormat;
   status: "pending" | "processing" | "completed" | "failed";
   totalCount: number;
   progressCount: number;
@@ -99,6 +112,7 @@ function mapRow(row: {
   id: string;
   campaignId: string;
   mode: PostalExportMode;
+  format: PostalExportFormat;
   status: "pending" | "processing" | "completed" | "failed";
   totalCount: number;
   progressCount: number;
@@ -113,6 +127,7 @@ function mapRow(row: {
     id: row.id,
     campaignId: row.campaignId,
     mode: row.mode,
+    format: row.format,
     status: row.status,
     totalCount: row.totalCount,
     progressCount: row.progressCount,
@@ -300,6 +315,7 @@ export async function startPostalExport(
   userId: string,
   campaignId: string,
   mode: PostalExportMode,
+  format: PostalExportFormat = "zip",
 ): Promise<PostalExportRow | null> {
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
@@ -365,6 +381,29 @@ export async function startPostalExport(
       totalCount = 1;
     }
 
+    // Merged-PDF format gates (project item #194221573). Only relevant
+    // when the operator picked `merged_pdf`; `zip` stays unconditional
+    // (it's the original, un-flagged behaviour). Checked here — after
+    // `totalCount` is known — so the recipient cap can fire.
+    if (format === "merged_pdf") {
+      const mergedPdfEnabled = await flagService.isEnabled(
+        FEATURE_FLAG_KEYS.CAMPAIGN_POSTAL_MERGED_PDF,
+        { orgId },
+      );
+      if (!mergedPdfEnabled) {
+        throw new PostalExportError(
+          "The single merged PDF format is not enabled for your organisation. Export as a ZIP, or ask Givernance to enable merged PDFs.",
+          "merged_pdf_disabled",
+        );
+      }
+      if (totalCount > MERGED_PDF_MAX_RECIPIENTS) {
+        throw new PostalExportError(
+          `A single merged PDF is limited to ${MERGED_PDF_MAX_RECIPIENTS} recipients (this campaign has ${totalCount}). Export as a ZIP instead — it has no size limit.`,
+          "merged_pdf_too_many_recipients",
+        );
+      }
+    }
+
     // `userId` is the JWT subject (= keycloak id). `requested_by` is a
     // FK to `users.id` (internal UUID), so we MUST translate. Falls back
     // to NULL when the JWT subject doesn't match an active member of
@@ -379,6 +418,8 @@ export async function startPostalExport(
         orgId,
         campaignId,
         mode,
+        // Project item #194221573 — output format (`zip` default).
+        format,
         // Epic #318 PR #4 MAJOR-1 follow-up — stamp the resolved run mode
         // so the worker can assert at pickup that the live inputs haven't
         // drifted (operator unlinking the bank account or archiving the
@@ -403,6 +444,9 @@ export async function startPostalExport(
         exportId: inserted.id,
         campaignId,
         mode,
+        // Carried for the worker's logging; the worker re-reads the row
+        // as the source of truth before branching on format.
+        format,
         totalCount,
         // `requestedBy` here carries the resolved `users.id` row UUID —
         // the notification fanout (Epic #363) targets the single

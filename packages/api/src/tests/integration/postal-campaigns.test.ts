@@ -8,10 +8,11 @@
  * inserts a `pending` row and emits the outbox event.
  */
 
-import { featureFlags } from "@givernance/shared/schema";
+import { Readable } from "node:stream";
+import { campaignPostalExports, featureFlags } from "@givernance/shared/schema";
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
@@ -24,6 +25,23 @@ import {
   signToken,
 } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
+
+// Partial-mock the S3 helper so the download route can stream a fake object
+// without MinIO (project item #194221573 — exercise the format-aware
+// content-type branch). `vi.mock` is hoisted above the imports by vitest, so
+// placement here is cosmetic. Only `fetchCampaignObject` is overridden;
+// every other s3 export stays real, and no other route exercised in this
+// file reads from `fetchCampaignObject`.
+vi.mock("../../lib/s3.js", async (importActual) => {
+  const actual = await importActual<typeof import("../../lib/s3.js")>();
+  return {
+    ...actual,
+    fetchCampaignObject: vi.fn(async () => ({
+      body: Readable.from(Buffer.from("%PDF-1.4 fake")),
+      contentLength: 12,
+    })),
+  };
+});
 
 let app: FastifyInstance;
 let campaignId: string;
@@ -372,6 +390,213 @@ describe("Postal exports", () => {
       headers: authHeader(token),
     });
     expect(downloadRes.statusCode).toBe(409);
+  });
+});
+
+describe("Postal exports — merged PDF format (project item #194221573, flag off)", () => {
+  // Seeded `enabled = false` by migration 0081. Default state — assert
+  // defensively (other suites toggle flags) and exercise the off-path.
+  beforeAll(async () => {
+    await db
+      .update(featureFlags)
+      .set({ enabled: false })
+      .where(eq(featureFlags.key, "campaign.postal_merged_pdf"));
+    await flagService.invalidate();
+  });
+
+  it("rejects format=merged_pdf with 400 merged_pdf_disabled when the flag is off", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${campaignId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "door_drop", format: "merged_pdf" },
+    });
+    expect(res.statusCode).toBe(400);
+    // RFC 9457 problem-detail body: structured `title` = the error code.
+    const body = res.json<{ type: string; title: string; status: number; detail: string }>();
+    expect(body.title).toBe("merged_pdf_disabled");
+    expect(body.status).toBe(400);
+    expect(typeof body.detail).toBe("string");
+  });
+
+  it("still accepts a ZIP export while the merged-PDF flag is off", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${campaignId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "door_drop", format: "zip" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json<{ data: { format: string } }>().data.format).toBe("zip");
+  });
+
+  it("defaults to ZIP when no format is supplied (back-compat)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${campaignId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "door_drop" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json<{ data: { format: string } }>().data.format).toBe("zip");
+  });
+});
+
+describe("Postal exports — merged PDF format (project item #194221573, flag on)", () => {
+  beforeAll(async () => {
+    await db
+      .update(featureFlags)
+      .set({ enabled: true })
+      .where(eq(featureFlags.key, "campaign.postal_merged_pdf"));
+    await flagService.invalidate();
+  });
+  afterAll(async () => {
+    await db
+      .update(featureFlags)
+      .set({ enabled: false })
+      .where(eq(featureFlags.key, "campaign.postal_merged_pdf"));
+    await flagService.invalidate();
+  });
+
+  it("accepts format=merged_pdf and persists it on the row + outbox payload", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${campaignId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "door_drop", format: "merged_pdf" },
+    });
+    expect(res.statusCode).toBe(202);
+    const body = res.json<{ data: { id: string; format: string } }>();
+    expect(body.data.format).toBe("merged_pdf");
+
+    const outbox = await db.execute(sql`
+      SELECT payload->>'format' AS format
+      FROM outbox_events
+      WHERE tenant_id = ${ORG_A}::uuid
+        AND type = 'campaign.postal_export_requested'
+        AND payload->>'exportId' = ${body.data.id}
+    `);
+    expect(outbox.rows[0]?.format).toBe("merged_pdf");
+  });
+
+  it("works for personalized mode too (format is mode-agnostic)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${campaignId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "personalized", format: "merged_pdf" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json<{ data: { format: string } }>().data.format).toBe("merged_pdf");
+  });
+
+  it("rejects merged_pdf above MERGED_PDF_MAX_RECIPIENTS with 400 merged_pdf_too_many_recipients", async () => {
+    const token = signToken(app);
+    const capCampaignId = await createCampaign("Mass merged campaign", "nominative_postal");
+    // Bulk-seed 2001 linked constituents in one statement (> the 2000 cap).
+    // Uses the owner-role test pool, so RLS is bypassed for the fixture
+    // setup — the route under test still runs under its own RLS context.
+    await db.execute(sql`
+      WITH ins AS (
+        INSERT INTO constituents (org_id, first_name, last_name, type)
+        SELECT ${ORG_A}::uuid, 'Mass', 'Recipient' || g, 'donor'
+        FROM generate_series(1, 2001) AS g
+        RETURNING id
+      )
+      INSERT INTO campaign_constituents (org_id, campaign_id, constituent_id)
+      SELECT ${ORG_A}::uuid, ${capCampaignId}::uuid, id FROM ins
+    `);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${capCampaignId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "personalized", format: "merged_pdf" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ title: string }>().title).toBe("merged_pdf_too_many_recipients");
+
+    // ZIP has no cap — the same oversized campaign exports fine as a ZIP.
+    const zipRes = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${capCampaignId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "personalized", format: "zip" },
+    });
+    expect(zipRes.statusCode).toBe(202);
+  });
+
+  it("rejects an unknown format value at schema validation (400)", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${campaignId}/postal-exports`,
+      headers: authHeader(token),
+      payload: { mode: "door_drop", format: "tarball" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("download serves application/pdf with a .pdf filename for a completed merged_pdf export", async () => {
+    const token = signToken(app);
+    // Seed a completed merged_pdf export row directly (the worker normally
+    // produces this); the S3 fetch is mocked at the top of the file.
+    const [row] = await db
+      .insert(campaignPostalExports)
+      .values({
+        orgId: ORG_A,
+        campaignId,
+        mode: "door_drop",
+        format: "merged_pdf",
+        status: "completed",
+        totalCount: 1,
+        progressCount: 1,
+        zipS3Path: `${ORG_A}/campaigns/${campaignId}/exports/merged.pdf`,
+        completedAt: new Date(),
+      })
+      .returning();
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaignId}/postal-exports/${row!.id}/download`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("application/pdf");
+    expect(res.headers["content-disposition"]).toContain(".pdf");
+    expect(res.headers["content-disposition"]).not.toContain(".zip");
+  });
+
+  it("download serves application/zip with a .zip filename for a completed zip export", async () => {
+    const token = signToken(app);
+    const [row] = await db
+      .insert(campaignPostalExports)
+      .values({
+        orgId: ORG_A,
+        campaignId,
+        mode: "door_drop",
+        format: "zip",
+        status: "completed",
+        totalCount: 1,
+        progressCount: 1,
+        zipS3Path: `${ORG_A}/campaigns/${campaignId}/exports/bundle.zip`,
+        completedAt: new Date(),
+      })
+      .returning();
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${campaignId}/postal-exports/${row!.id}/download`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("application/zip");
+    expect(res.headers["content-disposition"]).toContain(".zip");
   });
 });
 

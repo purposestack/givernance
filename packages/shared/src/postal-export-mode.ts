@@ -88,3 +88,14 @@ export function modePdfCount(mode: PostalExportRunMode): 0 | 1 | 2 {
   if (mode === "hybrid") return 2;
   return 1;
 }
+
+/**
+ * Upper bound on recipients for the `merged_pdf` output format (project
+ * item #194221573). Unlike the streamed ZIP — which never materialises more
+ * than one letter at a time — a merged PDF is built fully in memory by
+ * pdf-lib before upload, so an unbounded fan-out would blow the worker's
+ * heap. Lives in `@givernance/shared` so the API readiness gate (rejects
+ * the request) AND the worker's defence-in-depth guard (fails the job if a
+ * constituent was linked between enqueue and pickup) enforce ONE number.
+ */
+export const MERGED_PDF_MAX_RECIPIENTS = 2000;

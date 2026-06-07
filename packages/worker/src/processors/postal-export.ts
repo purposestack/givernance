@@ -38,9 +38,11 @@
 
 import { randomBytes } from "node:crypto";
 import { PassThrough } from "node:stream";
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import type { Locale } from "@givernance/shared/i18n";
 import type { GeneratePostalExportJob } from "@givernance/shared/jobs";
 import {
+  MERGED_PDF_MAX_RECIPIENTS,
   type PostalExportRunMode,
   resolvePostalExportMode,
 } from "@givernance/shared/postal-export-mode";
@@ -52,6 +54,7 @@ import {
   campaignQrCodes,
   campaigns,
   constituents,
+  type PostalExportFormat,
   tenants,
 } from "@givernance/shared/schema";
 import archiver from "archiver";
@@ -59,14 +62,16 @@ import type { Job } from "bullmq";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { env } from "../env.js";
 import { withWorkerContext } from "../lib/db.js";
+import { isFlagEnabledForTenant } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
-import { uploadCampaignZip } from "../lib/s3.js";
+import { uploadCampaignMergedPdf, uploadCampaignZip } from "../lib/s3.js";
 import { extractTraceId } from "../lib/trace-context.js";
 import { getActivePdfLetterhead } from "../services/branding-logo-cache.js";
 import {
   type CampaignLetterRecipient,
   createCampaignLetterPdfStream,
 } from "../services/campaign-pdf.js";
+import { mergePdfBuffers } from "../services/pdf-merge.js";
 import {
   ensureSwissQrReference,
   loadBankAccountForRender,
@@ -132,7 +137,23 @@ async function renderPdfBuffer(args: {
   });
 }
 
-/** Sanitize a name so it's safe to use as a path component inside the ZIP. */
+/**
+ * One recipient's unit of work: the QR token (freshly minted or reused
+ * from a prior crashed attempt), the artefact filename, and the recipient
+ * data the renderer needs. Declared at module scope so the artefact-
+ * production helpers (`renderAllWorkItems`, `produce*Artefact`) can type
+ * `ExportRenderContext.workItems`.
+ */
+interface WorkItem {
+  qrToken: string;
+  /** True when the token was loaded from a prior attempt and must NOT be re-inserted. */
+  qrAlreadyPersisted: boolean;
+  constituentId: string | null;
+  fileName: string;
+  recipient: CampaignLetterRecipient | null;
+}
+
+/** Sanitize a name so it's safe to use as a path component inside the archive. */
 function sanitiseFilename(input: string): string {
   return input.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80) || "letter";
 }
@@ -168,6 +189,9 @@ export async function processGeneratePostalExport(
         // drifted since the operator enqueued. NULL = legacy row
         // (pre-migration 0045); we skip the drift assertion in that case.
         runMode: campaignPostalExports.runMode,
+        // Output format (project item #194221573). The row is the source
+        // of truth — `job.data.format` is only carried for logging.
+        format: campaignPostalExports.format,
       })
       .from(campaignPostalExports)
       .where(and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, orgId))),
@@ -178,6 +202,28 @@ export async function processGeneratePostalExport(
   }
   // Stamped at API enqueue time; NULL means a pre-0045 legacy row.
   const stampedRunMode = existing?.runMode ?? null;
+  const format: PostalExportFormat = existing?.format ?? "zip";
+
+  // ── 0b. Defence-in-depth flag gate for merged PDF. ───────────────
+  // The API gated `format=merged_pdf` behind `campaign.postal_merged_pdf`
+  // at enqueue time; re-check here (tenant-aware, mirrors the API's
+  // evaluator) so a flag flipped off between enqueue and pickup — or a
+  // job that bypassed the API — fails loud rather than producing an
+  // artefact the feature is supposed to gate. The ZIP path is un-gated
+  // (original Epic #274 behaviour), so this only fires for merged PDFs.
+  if (format === "merged_pdf") {
+    const mergedPdfEnabled = await isFlagEnabledForTenant(
+      FEATURE_FLAG_KEYS.CAMPAIGN_POSTAL_MERGED_PDF,
+      orgId,
+    );
+    if (!mergedPdfEnabled) {
+      const message =
+        "merged_pdf_disabled: campaign.postal_merged_pdf flag is off for this tenant at worker pickup";
+      log.error({ exportId }, message);
+      await markFailed(orgId, exportId, message);
+      throw new Error(message);
+    }
+  }
 
   // ── 1. Flip status to `processing`. ──────────────────────────────
   await withWorkerContext(orgId, async (tx) => {
@@ -346,28 +392,12 @@ export async function processGeneratePostalExport(
     );
   }
 
-  // Pre-compute the work list so the ZIP order matches the DB order; the
-  // QR tokens are minted now and inserted with their PDFs in step 3. On
-  // retry, prefer the previously-minted token over a freshly generated
-  // one so the ZIP we ship matches the DB rows already on disk.
-  type WorkItem = {
-    qrToken: string;
-    /** True when the token was loaded from a prior attempt and must NOT be re-inserted. */
-    qrAlreadyPersisted: boolean;
-    constituentId: string | null;
-    fileName: string;
-    recipient: {
-      firstName: string;
-      lastName: string;
-      email: string | null;
-      addressLine1: string | null;
-      addressLine2: string | null;
-      postalCode: string | null;
-      city: string | null;
-      countryCode: string | null;
-    } | null;
-  };
-
+  // Pre-compute the work list so the artefact order matches the DB order;
+  // the QR tokens are minted now and inserted with their PDFs in step 3. On
+  // retry, prefer the previously-minted token over a freshly generated one
+  // so the artefact we ship matches the DB rows already on disk. (`WorkItem`
+  // is declared at module scope so the artefact-production helpers can type
+  // their `ExportRenderContext.workItems`.)
   function tokenFor(recipientKey: string): { token: string; alreadyPersisted: boolean } {
     const reuse = existingTokenByRecipient.get(recipientKey);
     if (reuse) return { token: reuse, alreadyPersisted: true };
@@ -452,102 +482,51 @@ export async function processGeneratePostalExport(
       .where(and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, orgId)));
   });
 
-  // ── 3. Stream archive to S3 and append PDFs concurrently with upload. ──
-  // We use a PassThrough so `archiver`'s output starts uploading to S3
-  // immediately; `archiver.finalize()` triggers the multipart completion.
-  const passthrough = new PassThrough();
-  const archive = archiver("zip", { zlib: { level: 6 } });
-  archive.on("warning", (err) => log.warn({ err: err.message }, "archiver warning"));
-  // `archiver` emits 'error' on internal failures (invalid entry, zlib
-  // stream errors, etc.). Without an 'error' listener Node's
-  // EventEmitter would re-throw, crashing the worker process. The
-  // surrounding try/catch only catches Promise rejections — EventEmitter
-  // errors are not awaitable. Forward the error to the upload stream so
-  // the multipart upload aborts cleanly and the catch block below runs.
-  archive.on("error", (err) => {
-    log.error({ err: err.message }, "archiver error");
-    passthrough.destroy(err);
-  });
-  archive.pipe(passthrough);
+  // ── 3. Render every recipient's PDF(s) and produce the output artefact. ──
+  // The per-recipient loop (QR mint → render → progress tick) is shared
+  // across both output formats via `renderAllWorkItems`; only the sink and
+  // the finalisation differ:
+  //   - `zip`        → stream each PDF into `archiver` → S3 multipart (the
+  //                    original Epic #274 path, RAM-bounded for any fan-out).
+  //   - `merged_pdf` → accumulate the buffers, concatenate with pdf-lib,
+  //                    upload one PDF (project item #194221573). Bounded in
+  //                    memory; the API caps the recipient count.
+  const renderCtx: ExportRenderContext = {
+    workItems,
+    runMode,
+    publicPageUrl,
+    tenant,
+    campaign,
+    logoBuffer,
+    swissQrCtx,
+    orgId,
+    campaignId,
+    exportId,
+    log,
+  };
 
-  const uploadPromise = uploadCampaignZip(orgId, campaignId, exportId, passthrough);
-
-  // Run the per-recipient loop sequentially. PDFKit's renderer is synchronous-
-  // ish; concurrency would complicate progress accounting and the volume per
-  // export (≤ a few thousand) is well within sequential reach.
   let uploaded = 0;
+  let outputS3Path: string;
   try {
-    for (const item of workItems) {
-      // Mint the QR row first so a crash mid-loop leaves a stable audit
-      // (the printed PDF and the DB token agree). Skip the insert on
-      // retry when the row was already persisted by a prior attempt —
-      // the partial unique index would also reject the duplicate, but
-      // the explicit branch is cheaper and keeps the log-line clean.
-      if (!item.qrAlreadyPersisted) {
-        await withWorkerContext(orgId, async (tx) => {
-          await tx.insert(campaignQrCodes).values({
-            orgId,
-            campaignId,
-            constituentId: item.constituentId,
-            code: item.qrToken,
-            exportId,
-          });
-        });
-      }
-
-      // Epic #318 PR #4 — mode-aware PDF emission per work item.
-      //   standard     → 1 PDF: appeal letter with scan-QR (today's default)
-      //   qr_bill_only → 1 PDF: rich appeal + BVR strip page 2 (the SOLE artefact)
-      //   hybrid       → 2 PDFs: appeal letter sibling + rich QR-bill sibling
-      // The dispatcher is extracted to keep this loop under the cognitive-
-      // complexity ceiling.
-      await emitWorkItemPdfs({
-        archive,
-        runMode,
-        item,
-        publicPageUrl,
-        tenant,
-        campaign,
-        logoBuffer,
-        swissQrCtx,
-        orgId,
-        campaignId,
-        exportId,
-      });
-
-      uploaded += 1;
-
-      // Tick progress after each PDF lands in the archive — the polling
-      // UI sees real-time movement. Use `GREATEST(progress_count, $1)`
-      // so a retry that re-mints fewer rows than a previous attempt
-      // doesn't make the UI bar jump backwards (e.g. previous run got
-      // to 5/10, retry starts at 1 — without GREATEST the bar regresses).
-      await withWorkerContext(orgId, async (tx) => {
-        await tx
-          .update(campaignPostalExports)
-          .set({
-            progressCount: sql`GREATEST(${campaignPostalExports.progressCount}, ${uploaded})`,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, orgId)),
-          );
-      });
-    }
-
-    await archive.finalize();
-    const zipS3Path = await uploadPromise;
+    const produced =
+      format === "merged_pdf"
+        ? await produceMergedPdfArtefact(renderCtx)
+        : await produceZipArtefact(renderCtx);
+    uploaded = produced.uploaded;
+    outputS3Path = produced.s3Path;
 
     // Idempotent terminal flip: only set `completed_at` when we're
     // actually moving to `completed`. If a concurrent retry already
     // finished (rare — partial-failure race), keep the original
-    // `completed_at` so audit trails stay stable.
+    // `completed_at` so audit trails stay stable. `zip_s3_path` holds the
+    // output object key whatever the format (`.zip` or `.pdf`) — see the
+    // schema comment on `campaignPostalExports.zipS3Path`.
     await withWorkerContext(orgId, async (tx) => {
       await tx
         .update(campaignPostalExports)
         .set({
           status: "completed",
-          zipS3Path,
+          zipS3Path: outputS3Path,
           progressCount: uploaded,
           completedAt: new Date(),
           updatedAt: new Date(),
@@ -561,8 +540,144 @@ export async function processGeneratePostalExport(
         );
     });
 
-    log.info({ exportId, uploaded, zipS3Path }, "Postal export completed");
+    log.info({ exportId, uploaded, outputS3Path, format }, "Postal export completed");
     return { uploaded };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await markFailed(orgId, exportId, message);
+    log.error({ exportId, err: message }, "Postal export failed");
+    throw err;
+  }
+}
+
+/**
+ * Shared context for the artefact-production helpers below. Carries
+ * everything the per-recipient loop + finalisation need so the main
+ * processor can branch on `format` with a single call.
+ */
+interface ExportRenderContext {
+  workItems: WorkItem[];
+  runMode: PostalExportRunMode;
+  publicPageUrl: string;
+  tenant: { name: string; mission: string | null; defaultLocale: Locale };
+  campaign: { name: string; description: string | null; bankAccountId: string | null };
+  logoBuffer: Buffer | null;
+  swissQrCtx: SwissQrBillRenderContext | null;
+  orgId: string;
+  campaignId: string;
+  exportId: string;
+  log: ReturnType<typeof jobLogger>;
+}
+
+/**
+ * Run the per-recipient loop sequentially, handing each recipient's
+ * rendered PDFs to `sink`. Sequential because PDFKit's renderer is
+ * synchronous-ish and concurrency would complicate progress accounting;
+ * the per-export volume (≤ a few thousand) is well within sequential
+ * reach. Returns the number of recipients processed (= `progress_count`).
+ *
+ * Format-agnostic: the `sink` is what differs between ZIP streaming and
+ * merged-PDF accumulation, so the QR-mint + progress-tick logic — the
+ * load-bearing idempotency path — stays single-sourced.
+ */
+async function renderAllWorkItems(
+  ctx: ExportRenderContext,
+  sink: (entries: Array<{ name: string; buffer: Buffer }>) => void,
+): Promise<number> {
+  const { workItems, orgId, campaignId, exportId } = ctx;
+  let uploaded = 0;
+  for (const item of workItems) {
+    // Mint the QR row first so a crash mid-loop leaves a stable audit
+    // (the printed PDF and the DB token agree). Skip the insert on retry
+    // when the row was already persisted by a prior attempt — the partial
+    // unique index would also reject the duplicate, but the explicit
+    // branch is cheaper and keeps the log-line clean.
+    if (!item.qrAlreadyPersisted) {
+      await withWorkerContext(orgId, async (tx) => {
+        await tx.insert(campaignQrCodes).values({
+          orgId,
+          campaignId,
+          constituentId: item.constituentId,
+          code: item.qrToken,
+          exportId,
+        });
+      });
+    }
+
+    // Epic #318 PR #4 — mode-aware PDF emission per work item.
+    //   standard     → 1 PDF: appeal letter with scan-QR (today's default)
+    //   qr_bill_only → 1 PDF: rich appeal + BVR strip page 2 (the SOLE artefact)
+    //   hybrid       → 2 PDFs: appeal letter sibling + rich QR-bill sibling
+    const entries = await emitWorkItemPdfs({
+      runMode: ctx.runMode,
+      item,
+      publicPageUrl: ctx.publicPageUrl,
+      tenant: ctx.tenant,
+      campaign: ctx.campaign,
+      logoBuffer: ctx.logoBuffer,
+      swissQrCtx: ctx.swissQrCtx,
+      orgId,
+      campaignId,
+      exportId,
+    });
+    sink(entries);
+
+    uploaded += 1;
+
+    // Tick progress after each recipient's PDFs are emitted — the polling
+    // UI sees real-time movement. Use `GREATEST(progress_count, $1)` so a
+    // retry that re-mints fewer rows than a previous attempt doesn't make
+    // the UI bar jump backwards (e.g. previous run got to 5/10, retry
+    // starts at 1 — without GREATEST the bar regresses).
+    await withWorkerContext(orgId, async (tx) => {
+      await tx
+        .update(campaignPostalExports)
+        .set({
+          progressCount: sql`GREATEST(${campaignPostalExports.progressCount}, ${uploaded})`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, orgId)));
+    });
+  }
+  return uploaded;
+}
+
+/**
+ * `format='zip'` — stream each recipient's PDF(s) through `archiver` into
+ * an S3 multipart upload. The original Epic #274 path; RAM stays bounded
+ * regardless of fan-out because `archiver` + the `PassThrough` pipe never
+ * materialise more than one entry at a time.
+ */
+async function produceZipArtefact(
+  ctx: ExportRenderContext,
+): Promise<{ uploaded: number; s3Path: string }> {
+  const { orgId, campaignId, exportId, log } = ctx;
+  // We use a PassThrough so `archiver`'s output starts uploading to S3
+  // immediately; `archiver.finalize()` triggers the multipart completion.
+  const passthrough = new PassThrough();
+  const archive = archiver("zip", { zlib: { level: 6 } });
+  archive.on("warning", (err) => log.warn({ err: err.message }, "archiver warning"));
+  // `archiver` emits 'error' on internal failures (invalid entry, zlib
+  // stream errors, etc.). Without an 'error' listener Node's EventEmitter
+  // would re-throw, crashing the worker process. The surrounding try/catch
+  // only catches Promise rejections — EventEmitter errors are not
+  // awaitable. Forward the error to the upload stream so the multipart
+  // upload aborts cleanly and the catch block below runs.
+  archive.on("error", (err) => {
+    log.error({ err: err.message }, "archiver error");
+    passthrough.destroy(err);
+  });
+  archive.pipe(passthrough);
+
+  const uploadPromise = uploadCampaignZip(orgId, campaignId, exportId, passthrough);
+
+  try {
+    const uploaded = await renderAllWorkItems(ctx, (entries) => {
+      for (const entry of entries) archive.append(entry.buffer, { name: entry.name });
+    });
+    await archive.finalize();
+    const s3Path = await uploadPromise;
+    return { uploaded, s3Path };
   } catch (err) {
     archive.abort();
     passthrough.destroy(err instanceof Error ? err : new Error(String(err)));
@@ -570,11 +685,46 @@ export async function processGeneratePostalExport(
     // `Upload` resolves rejected on body destroy, so awaiting it surfaces
     // the original error rather than masking with the abort.
     await uploadPromise.catch(() => {});
-    const message = err instanceof Error ? err.message : String(err);
-    await markFailed(orgId, exportId, message);
-    log.error({ exportId, err: message }, "Postal export failed");
     throw err;
   }
+}
+
+/**
+ * `format='merged_pdf'` — accumulate every recipient's PDF buffer(s), then
+ * concatenate them into one multi-page document with pdf-lib and upload it
+ * as a single object (project item #194221573). Unlike the streamed ZIP the
+ * whole document lives in memory before upload, so the API caps the
+ * recipient count (`MERGED_PDF_MAX_RECIPIENTS`) before this ever runs.
+ */
+async function produceMergedPdfArtefact(
+  ctx: ExportRenderContext,
+): Promise<{ uploaded: number; s3Path: string }> {
+  const { orgId, campaignId, exportId, log } = ctx;
+
+  // Defence-in-depth recipient cap (mirrors the API gate). The API rejected
+  // any merged request above the cap at enqueue time, but `total_count` is
+  // a request-time snapshot — a constituent linked between enqueue and
+  // pickup would otherwise let the in-memory merge (which holds every page
+  // at once) grow unbounded and risk the worker heap. The live work-item
+  // count is authoritative for the actual run, so guard on it here before
+  // rendering a single page.
+  if (ctx.workItems.length > MERGED_PDF_MAX_RECIPIENTS) {
+    throw new Error(
+      `merged_pdf_too_many_recipients: ${ctx.workItems.length} recipients exceeds the ${MERGED_PDF_MAX_RECIPIENTS} cap for a single merged PDF (a constituent was likely linked after enqueue) — re-run as a ZIP`,
+    );
+  }
+
+  const buffers: Buffer[] = [];
+  const uploaded = await renderAllWorkItems(ctx, (entries) => {
+    for (const entry of entries) buffers.push(entry.buffer);
+  });
+  const merged = await mergePdfBuffers(buffers);
+  const s3Path = await uploadCampaignMergedPdf(orgId, campaignId, exportId, merged);
+  log.info(
+    { exportId, recipients: uploaded, pdfBytes: merged.byteLength },
+    "Merged postal PDF built and uploaded",
+  );
+  return { uploaded, s3Path };
 }
 
 /**
@@ -669,9 +819,14 @@ async function loadSwissQrCtxIfActive(args: {
  *
  * Extracted from the main loop to keep `processGeneratePostalExport`
  * under the biome cognitive-complexity ceiling.
+ *
+ * Returns the rendered PDFs as `{ name, buffer }` entries (in emit order)
+ * rather than appending them to a sink directly, so the caller can either
+ * stream them into `archiver` (`format='zip'`) or accumulate them for a
+ * merged document (`format='merged_pdf'`, project item #194221573) without
+ * this dispatcher knowing which.
  */
 async function emitWorkItemPdfs(args: {
-  archive: archiver.Archiver;
   runMode: PostalExportRunMode;
   item: {
     qrToken: string;
@@ -687,14 +842,15 @@ async function emitWorkItemPdfs(args: {
   orgId: string;
   campaignId: string;
   exportId: string;
-}): Promise<void> {
-  const { archive, runMode, item, publicPageUrl, tenant, campaign, logoBuffer, swissQrCtx } = args;
+}): Promise<Array<{ name: string; buffer: Buffer }>> {
+  const { runMode, item, publicPageUrl, tenant, campaign, logoBuffer, swissQrCtx } = args;
+  const entries: Array<{ name: string; buffer: Buffer }> = [];
 
   // Self-defending dispatcher (minor #11 from PR #355 review): the caller's
   // mode resolver guards `blocked` upstream, but a refactor that reorders
   // the early-exit could silently fall through here with `blocked` and
   // emit zero PDFs for the recipient — the export would then mark
-  // `completed` with an empty ZIP. Make the contract explicit at the
+  // `completed` with an empty artefact. Make the contract explicit at the
   // module boundary so a future regression fails loud.
   if (runMode === "blocked") {
     throw new Error(
@@ -715,7 +871,7 @@ async function emitWorkItemPdfs(args: {
       qrReference: item.qrToken,
       recipient: item.recipient,
     });
-    archive.append(letterBuffer, { name: item.fileName });
+    entries.push({ name: item.fileName, buffer: letterBuffer });
   }
 
   // Swiss QR-bill rail — emit in `qr_bill_only` + `hybrid`.
@@ -748,8 +904,10 @@ async function emitWorkItemPdfs(args: {
     // Hybrid: SIBLING PDF → suffix `-qr-bill`.
     const qrBillFileName =
       runMode === "qr_bill_only" ? item.fileName : qrBillFilenameFor(item.fileName);
-    archive.append(qrBillBuffer, { name: qrBillFileName });
+    entries.push({ name: qrBillFileName, buffer: qrBillBuffer });
   }
+
+  return entries;
 }
 
 async function markFailed(orgId: string, exportId: string, error: string) {

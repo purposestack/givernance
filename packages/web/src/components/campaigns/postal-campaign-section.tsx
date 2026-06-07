@@ -44,6 +44,13 @@ interface PostalCampaignSectionProps {
   initialMembers: CampaignMember[];
   initialMemberTotal: number;
   initialExports: PostalExport[];
+  /**
+   * Whether `campaign.postal_merged_pdf` is enabled for this tenant
+   * (project item #194221573). SSR-resolved in the campaign page server
+   * component and passed straight through to the export panel, which hides
+   * the ZIP/merged-PDF format selector when false.
+   */
+  mergedPdfEnabled: boolean;
 }
 
 export function PostalCampaignSection({
@@ -55,6 +62,7 @@ export function PostalCampaignSection({
   initialMembers,
   initialMemberTotal,
   initialExports,
+  mergedPdfEnabled,
 }: PostalCampaignSectionProps) {
   const [memberCount, setMemberCount] = useState(initialMemberTotal);
 
@@ -75,6 +83,7 @@ export function PostalCampaignSection({
         bankAccount={bankAccount}
         initialExports={initialExports}
         linkedConstituentCount={memberCount}
+        mergedPdfEnabled={mergedPdfEnabled}
       />
     </>
   );
