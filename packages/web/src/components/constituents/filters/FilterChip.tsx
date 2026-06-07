@@ -19,22 +19,37 @@ interface FilterChipProps {
  * `chipsFromQuery`) that can't be narrowed to the strict
  * `NamespacedMessageKeys` union. Cast once at the call site.
  *
- * Resilience: if `label` is a literal string that isn't a registered
- * translation key (e.g. legacy test fixtures, hand-built chips), next-intl
- * returns the key path unchanged — we detect that case by checking whether
- * the resolved value still starts with `constituents.filters.` and fall
- * back to the original literal so the chip stays readable.
+ * Resilience: a chip `label` can be EITHER a registered i18n key (e.g.
+ * `fields.donations.recurring` for a hand-built condition) OR an
+ * already-resolved literal — `campaign-members-card` resolves pattern
+ * labels (`patterns.recurring` → "Donateurs récurrents") before building
+ * the chip, so the literal arrives here a second time. We therefore probe
+ * `t.has(key)` first and only translate registered keys; anything else is
+ * rendered verbatim.
+ *
+ * Why not just translate and inspect the result: next-intl 4.x reports a
+ * missing message via `onError` (which surfaces a `MISSING_MESSAGE` console
+ * error / dev overlay) rather than silently returning the `<namespace>.<key>`
+ * path the way older versions did. The previous "translate then detect the
+ * key-path" approach therefore spammed the console with one error per
+ * pattern chip. `t.has` is the supported existence check; the surrounding
+ * try/catch is belt-and-suspenders for any other resolution throw.
  */
 type StrictTranslator = ReturnType<typeof useTranslations>;
 function trDynamicWithFallback(t: StrictTranslator, key: string): string {
-  const resolved = (t as unknown as (k: string) => string)(key);
-  // next-intl returns `<namespace>.<key>` when the key is unknown; detect
-  // and unwrap to the original literal so e.g. `label: "City"` keeps
-  // rendering as "City" rather than "constituents.filters.City".
-  if (resolved === `constituents.filters.${key}` || resolved === key) {
+  try {
+    const has = (t as unknown as { has?: (k: string) => boolean }).has;
+    // Unknown key (or a pre-resolved literal label) → render it verbatim.
+    if (typeof has === "function" && !has(key)) return key;
+    const resolved = (t as unknown as (k: string) => string)(key);
+    // Defensive: if a version still returns the namespaced path, unwrap it.
+    if (resolved === `constituents.filters.${key}` || resolved === key) return key;
+    return resolved;
+  } catch {
+    // A missing/​unresolvable message in next-intl 4.x throws here — fall
+    // back to the literal so the chip stays readable instead of crashing.
     return key;
   }
-  return resolved;
 }
 
 /**
