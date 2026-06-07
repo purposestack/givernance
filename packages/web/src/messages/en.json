@@ -2896,12 +2896,15 @@
           "add": "Add constituents",
           "remove": "Remove",
           "filter": "Advanced Filters",
-          "addFiltered": "Advanced Filters"
+          "addFiltered": "Advanced Filters",
+          "clearList": "Clear list"
         },
         "toast": {
           "added": "{count, plural, =0 {Nothing added} one {# constituent added} other {# constituents added}}",
           "removed": "Constituent removed.",
           "removeFailed": "Could not remove this constituent.",
+          "cleared": "{count, plural, =0 {List was already empty} one {# constituent removed from the campaign} other {# constituents removed from the campaign}}",
+          "clearFailed": "Could not clear the list.",
           "filtered": "{count, plural, =0 {No constituents matched} one {# constituent added from filter} other {# constituents added from filter}}",
           "filterSkipped": "{count, plural, =0 {No constituents skipped} one {# constituent skipped (already linked)} other {# constituents skipped (already linked)}}",
           "filterFailed": "Could not apply filters",
@@ -2924,9 +2927,17 @@
         },
         "activeFilters": "Active filters",
         "activeSelectionTitle": "Active selection",
+        "activeSelectionHint": "This list was built with the advanced filter(s) below, plus any manual additions. Filters only add constituents — the letter goes to every member in the list. To start over, use \"Clear list\".",
         "clearAll": "Clear all",
         "presetLabel": "Filter preset: {name}",
         "filterRemoved": "Filter removed",
+        "clearDialog": {
+          "title": "Clear the constituent list?",
+          "body": "{count, plural, one {This removes # constituent from this campaign} other {This removes # constituents from this campaign}}. The constituents themselves are not deleted — only their link to this campaign. This cannot be undone.",
+          "cancel": "Cancel",
+          "confirm": "Clear list",
+          "clearing": "Clearing…"
+        },
         "filterDialog": {
           "title": "Add Members with Filters",
           "description": "Use advanced filters to select constituents",

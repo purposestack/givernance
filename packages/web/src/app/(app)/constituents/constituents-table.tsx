@@ -17,7 +17,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-
+import { ConstituentTypeBadge } from "@/components/constituents/constituent-type-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   AlertDialog,
@@ -68,26 +68,6 @@ import {
 import { type BulkEmailJobView, ConstituentService } from "@/services/ConstituentService";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
-
-const TYPE_VARIANTS: Record<string, BadgeVariant> = {
-  donor: "success",
-  volunteer: "info",
-  member: "warning",
-  beneficiary: "warning",
-  partner: "neutral",
-};
-
-const KNOWN_TYPES = new Set(["donor", "volunteer", "member", "beneficiary", "partner"]);
-
-function translateType(
-  tType: (key: "donor" | "volunteer" | "member" | "beneficiary" | "partner") => string,
-  type: string,
-): string {
-  if (KNOWN_TYPES.has(type)) {
-    return tType(type as "donor" | "volunteer" | "member" | "beneficiary" | "partner");
-  }
-  return type;
-}
 
 interface ConstituentsTableProps {
   constituents: ConstituentListRow[];
@@ -351,12 +331,7 @@ export function ConstituentsTable({
         accessorKey: "type",
         header: () => t("columns.type"),
         enableSorting: true,
-        cell: ({ row }) => {
-          const type = String(row.original.type);
-          const variant = TYPE_VARIANTS[type] ?? "neutral";
-          const label = translateType(tType, type);
-          return <Badge variant={variant}>{label}</Badge>;
-        },
+        cell: ({ row }) => <ConstituentTypeBadge type={String(row.original.type)} />,
       },
       {
         id: "email",
@@ -443,7 +418,6 @@ export function ConstituentsTable({
       selectedIds,
       t,
       togglePageSelection,
-      tType,
     ],
   );
 

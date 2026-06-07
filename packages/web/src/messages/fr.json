@@ -2896,12 +2896,15 @@
           "add": "Ajouter des constituants",
           "remove": "Retirer",
           "filter": "Filtres avancés",
-          "addFiltered": "Filtres avancés"
+          "addFiltered": "Filtres avancés",
+          "clearList": "Vider la liste"
         },
         "toast": {
           "added": "{count, plural, =0 {Aucun ajout} one {# constituant ajouté} other {# constituants ajoutés}}",
           "removed": "Constituant retiré.",
           "removeFailed": "Impossible de retirer ce constituant.",
+          "cleared": "{count, plural, =0 {La liste était déjà vide} one {# constituant retiré de la campagne} other {# constituants retirés de la campagne}}",
+          "clearFailed": "Impossible de vider la liste.",
           "filtered": "{count, plural, =0 {Aucun constituant correspondant} one {# constituant ajouté depuis le filtre} other {# constituants ajoutés depuis le filtre}}",
           "filterSkipped": "{count, plural, =0 {Aucun constituant ignoré} one {# constituant ignoré (déjà lié)} other {# constituants ignorés (déjà liés)}}",
           "filterFailed": "Impossible d'appliquer les filtres",
@@ -2924,9 +2927,17 @@
         },
         "activeFilters": "Filtres actifs",
         "activeSelectionTitle": "Sélection active",
+        "activeSelectionHint": "Cette liste a été constituée à l'aide du/des filtre(s) avancé(s) ci-dessous, complétés par d'éventuels ajouts manuels. Les filtres servent uniquement à ajouter des constituants — la lettre part à tous les membres de la liste. Pour repartir de zéro, utilisez « Vider la liste ».",
         "clearAll": "Tout effacer",
         "presetLabel": "Modèle de filtre : {name}",
         "filterRemoved": "Filtre supprimé",
+        "clearDialog": {
+          "title": "Vider la liste des constituants ?",
+          "body": "{count, plural, one {Cela retire # constituant de cette campagne} other {Cela retire # constituants de cette campagne}}. Les constituants ne sont pas supprimés — seul leur lien avec cette campagne l'est. Cette action est irréversible.",
+          "cancel": "Annuler",
+          "confirm": "Vider la liste",
+          "clearing": "Suppression…"
+        },
         "filterDialog": {
           "title": "Ajouter des membres avec des filtres",
           "description": "Utilisez des filtres avancés pour sélectionner les bénéficiaires",

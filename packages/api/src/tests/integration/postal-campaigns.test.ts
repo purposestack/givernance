@@ -221,6 +221,86 @@ describe("Campaign ↔ constituent membership", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it("DELETE /constituents clears the whole list and returns the count removed", async () => {
+    const token = signToken(app);
+    // Dedicated campaign so wiping its list doesn't disturb other tests.
+    const clearCampaignId = await createCampaign("Clear-list campaign", "nominative_postal");
+    await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${clearCampaignId}/constituents`,
+      headers: authHeader(token),
+      payload: { constituentIds: [constituentAId, constituentBId] },
+    });
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/campaigns/${clearCampaignId}/constituents`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { removed: number } }>().data.removed).toBe(2);
+
+    // The list is now empty.
+    const after = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${clearCampaignId}/constituents`,
+      headers: authHeader(token),
+    });
+    expect(after.json<{ pagination: { total: number } }>().pagination.total).toBe(0);
+
+    // Idempotent — clearing an already-empty list returns 0.
+    const again = await app.inject({
+      method: "DELETE",
+      url: `/v1/campaigns/${clearCampaignId}/constituents`,
+      headers: authHeader(token),
+    });
+    expect(again.statusCode).toBe(200);
+    expect(again.json<{ data: { removed: number } }>().data.removed).toBe(0);
+  });
+
+  it("GET /constituents sorts by name across the whole list (server-side)", async () => {
+    const token = signToken(app);
+    const sortCampaignId = await createCampaign("Sort campaign", "nominative_postal");
+    await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${sortCampaignId}/constituents`,
+      headers: authHeader(token),
+      payload: { constituentIds: [constituentAId, constituentBId, constituentNoEmailId] },
+    });
+
+    const asc = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${sortCampaignId}/constituents?sort=name&order=asc`,
+      headers: authHeader(token),
+    });
+    expect(asc.statusCode).toBe(200);
+    const ascFirst = asc
+      .json<{ data: Array<{ firstName: string }> }>()
+      .data.map((m) => m.firstName);
+    // Alice < Bob < Carol on (firstName, lastName).
+    expect(ascFirst[0]).toBe("Alice");
+
+    const desc = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${sortCampaignId}/constituents?sort=name&order=desc`,
+      headers: authHeader(token),
+    });
+    const descFirst = desc
+      .json<{ data: Array<{ firstName: string }> }>()
+      .data.map((m) => m.firstName);
+    expect(descFirst[0]).toBe("Carol");
+  });
+
+  it("DELETE /constituents returns 404 for a campaign in another tenant", async () => {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/campaigns/00000000-0000-0000-0000-000000000999/constituents`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(404);
+  });
 });
 
 describe("Postal exports", () => {
