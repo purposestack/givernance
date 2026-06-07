@@ -67,4 +67,26 @@ describe("FilterChip", () => {
 
     expect(screen.queryByRole("button", { name: /remove/i })).not.toBeInTheDocument();
   });
+
+  it("renders an already-resolved pattern label verbatim without translating it", () => {
+    // Regression: campaign-members-card resolves pattern labels
+    // (`patterns.recurring` → "Donateurs récurrents") before building the
+    // chip, so FilterChip receives the literal a SECOND time. It must NOT
+    // try to translate the literal as a key — next-intl 4.x reports the
+    // miss via onError (a MISSING_MESSAGE console error / dev overlay),
+    // which fired once per pattern chip. The label must render unchanged.
+    const patternFilter: FilterChipData = {
+      id: "pattern-1",
+      kind: "pattern",
+      label: "Donateurs récurrents",
+      field: "",
+      operator: "eq",
+      value: true,
+      pattern: "RECURRING",
+    };
+
+    render(<FilterChip filter={patternFilter} />);
+
+    expect(screen.getByText("Donateurs récurrents")).toBeInTheDocument();
+  });
 });
