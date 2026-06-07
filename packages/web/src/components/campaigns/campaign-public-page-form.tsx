@@ -146,11 +146,15 @@ export function CampaignPublicPageForm({
       toast.success(values.status === "published" ? t("success.published") : t("success.saved"));
       // Re-baseline the form so `isDirty` flips back to false — without
       // this, the "View public page" tooltip-guard stays disabled after
-      // a successful save (react-hook-form keeps `isDirty` true until
-      // the defaults match the current values). Use `submitValues` so
-      // the freshly-saved `publicPageStyle` becomes part of the new
-      // baseline — otherwise the picker would remain "dirty" after save.
-      form.reset(submitValues, { keepValues: true });
+      // a successful save (the user would have to hard-refresh to get a
+      // working link). We reset to `form.getValues()` — the COMPLETE live
+      // form state — rather than `submitValues`: the resolver output drops
+      // null/empty fields (`goalAmountCents`, `description`), so a baseline
+      // built from it would never match the live values and `isDirty` would
+      // stay true. `getValues()` carries every field (incl. the freshly
+      // saved `publicPageStyle`) at its real value, so defaults == values
+      // and `isDirty` reliably clears.
+      form.reset(form.getValues());
       router.refresh();
     } catch (err) {
       if (err instanceof ApiProblem) {
