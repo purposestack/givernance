@@ -292,6 +292,29 @@ describe("Campaign ↔ constituent membership", () => {
     expect(descFirst[0]).toBe("Carol");
   });
 
+  it("GET /constituents name sort collates accents next to their base letter (ICU)", async () => {
+    const token = signToken(app);
+    const accentCampaignId = await createCampaign("Accent sort campaign", "nominative_postal");
+    const elise = await createConstituent("Élise", "Zola", null);
+    const victor = await createConstituent("Victor", "Adam", null);
+    await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${accentCampaignId}/constituents`,
+      headers: authHeader(token),
+      payload: { constituentIds: [elise, victor] },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${accentCampaignId}/constituents?sort=name&order=asc`,
+      headers: authHeader(token),
+    });
+    const names = res.json<{ data: Array<{ firstName: string }> }>().data.map((m) => m.firstName);
+    // "Élise" must sort BEFORE "Victor" (É collates near E) — not after the
+    // whole ASCII alphabet as the DB's default collation would put it.
+    expect(names).toEqual(["Élise", "Victor"]);
+  });
+
   it("DELETE /constituents returns 404 for a campaign in another tenant", async () => {
     const token = signToken(app);
     const res = await app.inject({

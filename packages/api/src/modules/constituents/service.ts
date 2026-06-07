@@ -102,9 +102,12 @@ function buildConstituentOrderBy(
 ) {
   const dir = order === "asc" ? asc : desc;
   if (sort === "name") {
+    // `COLLATE "und-x-icu"` (ICU root locale) so accents collate next to their
+    // base letter — the DB's default collation sorts "Élise" after the whole
+    // ASCII alphabet (after "Victor"), which reads as broken.
     return [
-      dir(sql`lower(${constituents.firstName})`),
-      dir(sql`lower(${constituents.lastName})`),
+      dir(sql`lower(${constituents.firstName}) COLLATE "und-x-icu"`),
+      dir(sql`lower(${constituents.lastName}) COLLATE "und-x-icu"`),
       asc(constituents.id),
     ];
   }
