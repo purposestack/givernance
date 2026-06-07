@@ -100,9 +100,12 @@ describe("CampaignPublicPageForm", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
 
+    // The server returns the CANONICAL persisted record — here with a
+    // trimmed title — to prove the re-baseline reads from the response, not
+    // from the un-normalised text the user typed locally.
     const upsertCampaignPublicPage = vi
       .spyOn(CampaignPublicPageService, "upsertCampaignPublicPage")
-      .mockResolvedValue(publishedPage);
+      .mockResolvedValue({ ...publishedPage, title: "Spring Appeal 2026" });
 
     render(
       <CampaignPublicPageForm
@@ -116,14 +119,15 @@ describe("CampaignPublicPageForm", () => {
     expect(screen.getByRole("link", { name: "View public page" })).toBeInTheDocument();
 
     // Make a change → form is dirty → link becomes the disabled tooltip button.
-    await user.type(screen.getByLabelText(/Public page title/), " 2026");
+    // Type with trailing whitespace the server is expected to trim.
+    await user.type(screen.getByLabelText(/Public page title/), " 2026  ");
     await waitFor(() =>
       expect(screen.queryByRole("link", { name: "View public page" })).not.toBeInTheDocument(),
     );
     expect(screen.getByRole("button", { name: "View public page" })).toBeDisabled();
 
-    // Save → on success the form re-baselines, isDirty clears, and the
-    // working link returns WITHOUT a page reload.
+    // Save → on success the form re-baselines from the server record,
+    // isDirty clears, and the working link returns WITHOUT a page reload.
     await user.click(screen.getByRole("button", { name: "Save public page" }));
 
     await waitFor(() => expect(upsertCampaignPublicPage).toHaveBeenCalledTimes(1));
@@ -131,6 +135,8 @@ describe("CampaignPublicPageForm", () => {
       expect(screen.getByRole("link", { name: "View public page" })).toBeInTheDocument(),
     );
     expect(screen.queryByRole("button", { name: "View public page" })).not.toBeInTheDocument();
+    // The editor reflects the server's normalised title, not the raw input.
+    expect(screen.getByLabelText(/Public page title/)).toHaveValue("Spring Appeal 2026");
     expect(mockRouter.refresh).toHaveBeenCalled();
   });
 });

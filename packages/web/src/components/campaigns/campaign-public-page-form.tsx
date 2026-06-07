@@ -138,23 +138,35 @@ export function CampaignPublicPageForm({
     };
 
     try {
-      await CampaignPublicPageService.upsertCampaignPublicPage(
+      const saved = await CampaignPublicPageService.upsertCampaignPublicPage(
         createClientApiClient(),
         campaign.id,
         toApiPayload(submitValues, publicPageStylesEnabled),
       );
       toast.success(values.status === "published" ? t("success.published") : t("success.saved"));
-      // Re-baseline the form so `isDirty` flips back to false — without
-      // this, the "View public page" tooltip-guard stays disabled after
-      // a successful save (the user would have to hard-refresh to get a
-      // working link). We reset to `form.getValues()` — the COMPLETE live
-      // form state — rather than `submitValues`: the resolver output drops
-      // null/empty fields (`goalAmountCents`, `description`), so a baseline
-      // built from it would never match the live values and `isDirty` would
-      // stay true. `getValues()` carries every field (incl. the freshly
-      // saved `publicPageStyle`) at its real value, so defaults == values
-      // and `isDirty` reliably clears.
-      form.reset(form.getValues());
+      // Re-baseline the form from the SERVER's persisted record (not the
+      // local values). Two things this buys us:
+      //   1. `isDirty` reliably flips to false, re-enabling the "View public
+      //      page" link without a hard refresh. (The previous
+      //      `reset(submitValues, { keepValues: true })` couldn't: the
+      //      resolver output drops null `goalAmountCents` / empty
+      //      `description`, so that baseline never matched the live values.)
+      //   2. The editor now reflects exactly what was stored — e.g. a
+      //      server-trimmed title — instead of the un-normalised text the
+      //      user typed, which would otherwise read as "saved" while quietly
+      //      diverging from the DB. `router.refresh()` does NOT do this:
+      //      react-hook-form ignores `defaultValues` changes after mount, so
+      //      the SSR refresh only updates `initialStatus` (to surface the
+      //      buttons on first publish), never the field values.
+      // Mirrors the initial `defaultValues` mapping above.
+      form.reset({
+        title: saved.title,
+        description: saved.description ?? "",
+        colorPrimary: normalizeThemeColor(saved.colorPrimary),
+        goalAmountCents: saved.goalAmountCents,
+        status: saved.status,
+        publicPageStyle: saved.publicPageStyle,
+      });
       router.refresh();
     } catch (err) {
       if (err instanceof ApiProblem) {
