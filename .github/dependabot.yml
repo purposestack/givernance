@@ -32,6 +32,28 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 7
     open-pull-requests-limit: 10
+    # TEMPORARY — remove this whole ignore entry when bullmq relaxes its
+    # ioredis pin (see below), as part of the coordinated ioredis bump.
+    #
+    # ioredis is held at 5.10.1 by a root pnpm `overrides` pin (root
+    # package.json) because bullmq (^5.78.x) hard-pins ioredis to *exactly*
+    # 5.10.1; floating the direct dep above it splits the tree into two
+    # type-incompatible copies and breaks `packages/relay` typecheck (TS2322
+    # on `Queue({ connection })`). The pin was added in PR #458 (1c927c7e).
+    # Dependabot doesn't touch the manual `overrides` block, so every weekly
+    # run re-opened a broken 5.10.1 → 5.11.x bump whose lockfile override no
+    # longer matched the package.json override (ERR_PNPM_LOCKFILE_CONFIG_MISMATCH,
+    # PR #485 — closed).
+    #
+    # Scoped to `> 5.10.1` ON PURPOSE rather than the whole dependency: this
+    # only silences the bumps that today's bullmq pin makes un-mergeable, and
+    # still lets a 5.10.x patch / security fix through. Once bullmq ships a
+    # release that allows a newer ioredis, delete this entry and land the bump
+    # as ONE coordinated PR (root override + the three workspace specs +
+    # lockfile together).
+    ignore:
+      - dependency-name: ioredis
+        versions: [">5.10.1"]
     groups:
       minor-and-patch:
         applies-to: version-updates
