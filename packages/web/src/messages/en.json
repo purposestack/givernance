@@ -2920,6 +2920,7 @@
           "searchPlaceholder": "Search constituents…",
           "loading": "Loading constituents…",
           "empty": "No matching constituents.",
+          "allAdded": "Every constituent is already linked to this campaign — there's no one left to add.",
           "cancel": "Cancel",
           "submitting": "Adding…",
           "confirm": "{count, plural, =0 {Add} one {Add # constituent} other {Add # constituents}}",

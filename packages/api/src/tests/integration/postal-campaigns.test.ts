@@ -315,6 +315,29 @@ describe("Campaign ↔ constituent membership", () => {
     expect(names).toEqual(["Élise", "Victor"]);
   });
 
+  it("GET /v1/constituents?excludeCampaignId omits constituents already on that campaign", async () => {
+    const token = signToken(app);
+    const excludeCampaignId = await createCampaign("Exclude-picker campaign", "nominative_postal");
+    // Link Alice to this campaign; Bob stays unlinked.
+    await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${excludeCampaignId}/constituents`,
+      headers: authHeader(token),
+      payload: { constituentIds: [constituentAId] },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/constituents?excludeCampaignId=${excludeCampaignId}&perPage=100`,
+      headers: authHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json<{ data: Array<{ id: string }> }>().data.map((c) => c.id);
+    // Alice is on the campaign → excluded; Bob is not → still offered.
+    expect(ids).not.toContain(constituentAId);
+    expect(ids).toContain(constituentBId);
+  });
+
   it("DELETE /constituents returns 404 for a campaign in another tenant", async () => {
     const token = signToken(app);
     const res = await app.inject({

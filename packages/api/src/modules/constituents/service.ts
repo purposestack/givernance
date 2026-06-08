@@ -20,6 +20,7 @@ import {
   ilike,
   isNull,
   lte,
+  notExists,
   or,
   type SQL,
   sql,
@@ -57,6 +58,12 @@ export interface ListConstituentsQuery {
   // ── Epic #274 filters ───────────────────────────────────────────────
   /** Restrict to constituents linked to this campaign (campaign_constituents). */
   campaignId?: string;
+  /**
+   * EXCLUDE constituents already linked to this campaign — used by the
+   * "Add constituents" dialog so the picker only offers people not yet on
+   * the mailing list. Opposite of `campaignId`.
+   */
+  excludeCampaignId?: string;
   /** Inclusive lower bound on `MAX(donations.donatedAt)`. ISO-8601 date string. */
   lastDonationFrom?: string;
   /** Inclusive upper bound on `MAX(donations.donatedAt)`. ISO-8601 date string. */
@@ -170,6 +177,7 @@ function buildListConstituentsWhere(
     type,
     includeDeleted,
     campaignId,
+    excludeCampaignId,
     lastDonationFrom,
     lastDonationTo,
     minLifetimeAmountCents,
@@ -228,6 +236,26 @@ function buildListConstituentsWhere(
             and(
               eq(campaignConstituents.constituentId, constituents.id),
               eq(campaignConstituents.campaignId, campaignId),
+              eq(campaignConstituents.orgId, orgId),
+            ),
+          ),
+      ),
+    );
+  }
+
+  // Inverse of the above — exclude constituents already on a campaign's
+  // mailing list (the "Add constituents" picker). NOT EXISTS so a person in
+  // several campaigns is still offered for the ones they're not yet in.
+  if (excludeCampaignId) {
+    conditions.push(
+      notExists(
+        tx
+          .select({ one: sql`1` })
+          .from(campaignConstituents)
+          .where(
+            and(
+              eq(campaignConstituents.constituentId, constituents.id),
+              eq(campaignConstituents.campaignId, excludeCampaignId),
               eq(campaignConstituents.orgId, orgId),
             ),
           ),

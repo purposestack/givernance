@@ -2920,6 +2920,7 @@
           "searchPlaceholder": "Rechercher un constituant…",
           "loading": "Chargement des constituants…",
           "empty": "Aucun constituant correspondant.",
+          "allAdded": "Tous vos constituants sont déjà liés à cette campagne — il n'y en a plus à ajouter.",
           "cancel": "Annuler",
           "submitting": "Ajout…",
           "confirm": "{count, plural, =0 {Ajouter} one {Ajouter # constituant} other {Ajouter # constituants}}",
