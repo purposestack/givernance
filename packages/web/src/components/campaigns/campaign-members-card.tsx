@@ -651,7 +651,6 @@ export function CampaignMembersCard({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         campaignId={campaignId}
-        existingIds={new Set(members.map((m) => m.constituentId))}
         onAdded={handleAdded}
       />
 
@@ -691,38 +690,53 @@ interface AddMembersDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   campaignId: string;
-  existingIds: Set<string>;
   onAdded: (addedIds: string[]) => void;
 }
 
-function AddMembersDialog({
-  open,
-  onOpenChange,
-  campaignId,
-  existingIds,
-  onAdded,
-}: AddMembersDialogProps) {
+function AddMembersDialog({ open, onOpenChange, campaignId, onAdded }: AddMembersDialogProps) {
   const t = useTranslations("campaigns.postal.members.dialog");
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<Constituent[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
   const [submitting, setSubmitting] = useState(false);
+  // Tracks whether at least one search round-trip has completed, so the
+  // "nothing to add" copy never flashes before the first fetch resolves.
+  const [hasSearched, setHasSearched] = useState(false);
 
-  const runSearch = useCallback((term: string) => {
-    startTransition(async () => {
-      const client = createClientApiClient();
-      try {
-        const fresh = await ConstituentService.listConstituents(client, {
-          search: term || undefined,
-          perPage: 25,
-        });
-        setResults(fresh.data as ConstituentListRow[]);
-      } catch {
-        setResults([]);
-      }
-    });
-  }, []);
+  const runSearch = useCallback(
+    (term: string) => {
+      startTransition(async () => {
+        const client = createClientApiClient();
+        try {
+          const fresh = await ConstituentService.listConstituents(client, {
+            search: term || undefined,
+            perPage: 25,
+            // Exclude constituents already on this campaign in the SOURCE
+            // QUERY (NOT EXISTS) — paginated, so we never load the full
+            // membership into memory to filter it client-side.
+            excludeCampaignId: campaignId,
+          });
+          setResults(fresh.data as ConstituentListRow[]);
+        } catch {
+          setResults([]);
+        } finally {
+          setHasSearched(true);
+        }
+      });
+    },
+    [campaignId],
+  );
+
+  // Load the (already-excluded) candidates as soon as the dialog opens, so an
+  // operator who opens it sees the list — and the "all already added" state —
+  // without having to click into the search box first.
+  useEffect(() => {
+    if (open) {
+      setHasSearched(false);
+      runSearch("");
+    }
+  }, [open, runSearch]);
 
   const handleConfirm = useCallback(async () => {
     if (selected.size === 0) return;
@@ -745,11 +759,6 @@ function AddMembersDialog({
     }
   }, [campaignId, onAdded, onOpenChange, selected, t]);
 
-  const filteredResults = useMemo(
-    () => results.filter((r) => !existingIds.has(r.id)),
-    [existingIds, results],
-  );
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -766,18 +775,19 @@ function AddMembersDialog({
               setSearch(e.target.value);
               runSearch(e.target.value);
             }}
-            onFocus={() => {
-              if (results.length === 0) runSearch("");
-            }}
           />
           <div className="max-h-72 overflow-y-auto rounded-lg border border-outline-variant">
             {isPending && results.length === 0 ? (
               <p className="p-3 text-sm text-on-surface-variant">{t("loading")}</p>
-            ) : filteredResults.length === 0 ? (
-              <p className="p-3 text-sm text-on-surface-variant">{t("empty")}</p>
+            ) : results.length === 0 ? (
+              // No search term + nothing left to add ⇒ every constituent is
+              // already on this campaign. A search term + nothing ⇒ no match.
+              <p className="p-3 text-sm text-on-surface-variant">
+                {hasSearched && !search.trim() ? t("allAdded") : t("empty")}
+              </p>
             ) : (
               <ul className="divide-y divide-outline-variant">
-                {filteredResults.map((r) => {
+                {results.map((r) => {
                   const checked = selected.has(r.id);
                   return (
                     <li key={r.id}>

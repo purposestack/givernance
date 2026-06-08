@@ -129,6 +129,12 @@ const ListQuery = Type.Intersect([
      * via `campaign_constituents`.
      */
     campaignId: Type.Optional(UuidSchema),
+    /**
+     * Inverse of `campaignId` — exclude constituents already linked to this
+     * campaign. Powers the "Add constituents" picker so it only offers people
+     * not yet on the mailing list.
+     */
+    excludeCampaignId: Type.Optional(UuidSchema),
     /** ISO-8601 date — `MAX(donations.donatedAt) >= lastDonationFrom`. */
     lastDonationFrom: Type.Optional(Type.String({ format: "date-time" })),
     /** ISO-8601 date — `MAX(donations.donatedAt) <= lastDonationTo`. */
@@ -273,6 +279,7 @@ export async function constituentRoutes(app: FastifyInstance) {
         sort?: (typeof CONSTITUENT_SORT_FIELDS)[number];
         order?: "asc" | "desc";
         campaignId?: string;
+        excludeCampaignId?: string;
         lastDonationFrom?: string;
         lastDonationTo?: string;
         minLifetimeAmountCents?: number;
@@ -291,6 +298,7 @@ export async function constituentRoutes(app: FastifyInstance) {
         sort: query.sort,
         order: query.order,
         campaignId: query.campaignId,
+        excludeCampaignId: query.excludeCampaignId,
         lastDonationFrom: query.lastDonationFrom,
         lastDonationTo: query.lastDonationTo,
         minLifetimeAmountCents: query.minLifetimeAmountCents,

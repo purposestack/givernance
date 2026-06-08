@@ -75,6 +75,7 @@ export const ConstituentService = {
       order: query.order,
       // Epic #274 — campaign + lastDonation + lifetime amount filters.
       campaignId: query.campaignId,
+      excludeCampaignId: query.excludeCampaignId,
       lastDonationFrom: query.lastDonationFrom,
       lastDonationTo: query.lastDonationTo,
       minLifetimeAmountCents: query.minLifetimeAmountCents,

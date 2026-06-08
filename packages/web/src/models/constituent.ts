@@ -73,6 +73,8 @@ export interface ConstituentListQuery {
   order?: ConstituentSortOrder;
   /** Epic #274 — restrict to constituents linked to a specific campaign. */
   campaignId?: string;
+  /** Exclude constituents already linked to this campaign (the add-members picker). */
+  excludeCampaignId?: string;
   /** ISO date — `MAX(donations.donatedAt) >= lastDonationFrom`. */
   lastDonationFrom?: string;
   /** ISO date — `MAX(donations.donatedAt) <= lastDonationTo`. */
