@@ -108,7 +108,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.0.3
 
       - name: Validate target against compliance manifest
         env:
@@ -136,7 +136,7 @@ jobs:
           cache: "pnpm"
 
       - name: Set up Ruby (for Kamal)
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@v1.310.0
         with:
           ruby-version: '3.3'
           bundler-cache: true
@@ -313,7 +313,7 @@ jobs:
 
     steps:
       - name: Checkout main (fresh)
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           # Need the full default-branch ref so `gh pr create` can compute
           # the diff base; default fetch-depth is 1.
