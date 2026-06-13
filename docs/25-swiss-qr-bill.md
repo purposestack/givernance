@@ -269,6 +269,8 @@ Per-letter — never per-campaign — **a fresh reference is minted** keyed `(co
 
 > **EUR + QRR is illegal** under IG QR-bill v2.4 (euroSIC discontinuation): currency-vs-reference consistency is enforced server-side. CHF is the default for Swiss NPOs.
 
+> **The synchronous preview obeys this same matrix** (`POST /v1/campaigns/:id/postal-preview`). It resolves the reference type from the linked account's `iban_kind` + the campaign's `qr_reference_mode` exactly as the worker does, then mints a *never-registered* fixture of that type (QRR for a QR-IBAN, SCOR for a regular IBAN). Hardcoding a QRR fixture made the preview 500 for every regular-IBAN campaign — `swissqrbill` v4 rejects a QRR reference on a non-QR-IBAN with `QR-Reference requires the use of a QR-IBAN` (issue #495). The preview must stay in lockstep with the export here: the whole point of the preview is to show what Generate will print.
+
 The full rationale for these matrix decisions, including rejected alternatives (NON, per-campaign references, EUR+QRR), is in [ADR-027](./adrs/adr-027-swiss-qr-bill.md).
 
 ## 2. Domain model
