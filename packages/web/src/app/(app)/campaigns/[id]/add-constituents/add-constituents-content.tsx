@@ -123,8 +123,11 @@ export function AddConstituentsContent({ campaignId, mode }: AddConstituentsCont
   const handleFilterChange = useCallback(async (newFilter: FilterQuery) => {
     setFilterQuery(newFilter);
 
-    // No conditions → no preview to fetch.
-    if (!newFilter || newFilter.conditions.length === 0) {
+    // No conditions AND no pattern flags → nothing to preview. Pattern-only
+    // presets (LYBUNT, RECURRING, …) ship `conditions: []` + `patterns: [...]`,
+    // so they must still fetch a preview.
+    const hasPatterns = (newFilter?.patterns?.length ?? 0) > 0;
+    if (!newFilter || (newFilter.conditions.length === 0 && !hasPatterns)) {
       setPreviewCount(null);
       return;
     }
