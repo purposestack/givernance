@@ -24,13 +24,40 @@ interface FilterModeProps {
 }
 
 /**
+ * i18n key (under `constituents.filters.patterns.*`) for a BE pattern flag.
+ * `FilterChip` carries its own `constituents.filters` translator and resolves
+ * the key to the active locale, so we hand it the key path verbatim.
+ */
+const PATTERN_LABEL_KEY: Record<string, string> = {
+  LYBUNT: "patterns.lybunt",
+  SYBUNT: "patterns.sybunt",
+  RECURRING: "patterns.recurring",
+  LAPSED: "patterns.lapsed",
+  MAJOR_DONOR: "patterns.majorDonor",
+};
+
+/**
  * Build the chip list for the active-selection strip from a filter query.
- * Mirrors `FilterBuilder.getActiveFilters` so the summary shown here matches
- * the one inside the dialog.
+ * Two sources, mirroring `campaign-members-card.chipsFromQuery`:
+ *  - top-level conditions → condition chips,
+ *  - each `patterns[i]` flag → a `kind: "pattern"` chip (sparkle + localised
+ *    label) so a pattern-only preset (LYBUNT, RECURRING, …) doesn't render an
+ *    empty strip.
  */
 function getActiveFilters(query: FilterQuery | null) {
   if (!query) return [];
-  return query.conditions
+
+  const patternChips = (query.patterns ?? []).map((pattern) => ({
+    id: `pattern:${pattern}`,
+    kind: "pattern" as const,
+    label: PATTERN_LABEL_KEY[pattern] ?? pattern,
+    field: pattern,
+    operator: "eq",
+    value: pattern,
+    pattern,
+  }));
+
+  const conditionChips = query.conditions
     .filter(isFilterCondition)
     .filter(
       (c) =>
@@ -43,12 +70,15 @@ function getActiveFilters(query: FilterQuery | null) {
       const known = filterFields.find((f) => f.name === c.field);
       return {
         id: c.id,
+        kind: "condition" as const,
         label: known?.label ?? c.field,
         field: c.field,
         operator: c.operator,
         value: c.value,
       };
     });
+
+  return [...patternChips, ...conditionChips];
 }
 
 export function FilterMode({
@@ -65,7 +95,7 @@ export function FilterMode({
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const activeFilters = getActiveFilters(filterQuery);
-  const hasFilters = activeFilters.length > 0 || (filterQuery?.patterns?.length ?? 0) > 0;
+  const hasFilters = activeFilters.length > 0;
 
   const handleApply = async (query: FilterQuery) => {
     await onFilterChange(query);
