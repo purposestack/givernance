@@ -751,6 +751,82 @@ describe("Postal preview", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  // Issue #495 — the QR-bill preview hardcoded a QRR fixture reference for
+  // every Swiss-linked campaign. `swissqrbill` v4 throws "QR-Reference
+  // requires the use of a QR-IBAN" when a QRR reference is paired with a
+  // *regular* IBAN, so the preview 500'd for every campaign whose linked
+  // account is a regular IBAN (the common case) even though the real
+  // export rendered fine (the worker resolves QRR-vs-SCOR from the IBAN
+  // kind). These two tests lock both branches: regular IBAN → SCOR
+  // fixture → renders; QR-IBAN → QRR fixture → renders.
+  const REGULAR_CH_IBAN = "CH9300762011623852957";
+  const QR_CH_IBAN = "CH4431999123000889012";
+  const QR_BILL_HOLDER = {
+    holderName: "Association Givernance Test (#495)",
+    holderStreet: "Rue de la Paix",
+    holderBuildingNumber: "12",
+    holderPostalCode: "1003",
+    holderTown: "Lausanne",
+    holderCountryCode: "CH",
+  };
+
+  async function createBankLinkedCampaign(iban: string): Promise<string> {
+    const token = signToken(app);
+    // Fresh slate — the partial unique (org_id, iban) WHERE deleted_at IS
+    // NULL would otherwise collide across re-runs on the persistent DB.
+    await db.execute(sql`DELETE FROM bank_accounts WHERE org_id = ${ORG_A} AND iban = ${iban}`);
+    const bank = await app.inject({
+      method: "POST",
+      url: "/v1/bank-accounts",
+      headers: authHeader(token),
+      payload: { ...QR_BILL_HOLDER, iban, bankName: "PostFinance", currency: "CHF" },
+    });
+    expect(bank.statusCode).toBe(201);
+    const bankAccountId = bank.json<{ data: { id: string } }>().data.id;
+
+    // No public page → qr_bill_only mode → single inline PDF (not a ZIP),
+    // so the assertion stays a clean `%PDF-` magic-header check.
+    const campaign = await createCampaign("QR-bill preview campaign", "nominative_postal", {
+      publishPage: false,
+    });
+    const linked = await app.inject({
+      method: "PATCH",
+      url: `/v1/campaigns/${campaign}`,
+      headers: authHeader(token),
+      payload: { bankAccountId },
+    });
+    expect(linked.statusCode).toBe(200);
+    return campaign;
+  }
+
+  it("preview renders a QR-bill PDF for a campaign linked to a REGULAR IBAN (SCOR, issue #495)", async () => {
+    const token = signToken(app);
+    const id = await createBankLinkedCampaign(REGULAR_CH_IBAN);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${id}/postal-preview`,
+      headers: authHeader(token),
+      payload: { mode: "personalized" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/pdf");
+    expect(res.rawPayload.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+  });
+
+  it("preview renders a QR-bill PDF for a campaign linked to a QR-IBAN (QRR)", async () => {
+    const token = signToken(app);
+    const id = await createBankLinkedCampaign(QR_CH_IBAN);
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${id}/postal-preview`,
+      headers: authHeader(token),
+      payload: { mode: "personalized" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/pdf");
+    expect(res.rawPayload.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+  });
 });
 
 describe("QR tracking metrics", () => {

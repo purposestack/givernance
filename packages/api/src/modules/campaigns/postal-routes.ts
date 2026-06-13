@@ -24,7 +24,7 @@ import {
   POSTAL_EXPORT_STATUS_VALUES,
   tenants,
 } from "@givernance/shared/schema";
-import { computeQrr } from "@givernance/shared/validators";
+import { computeQrr, computeScor } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import archiver from "archiver";
 import { and, eq, isNull } from "drizzle-orm";
@@ -165,6 +165,36 @@ const MembersListQuery = Type.Intersect([
     order: Type.Optional(Type.Union([Type.Literal("asc"), Type.Literal("desc")])),
   }),
 ]);
+
+/**
+ * Resolve the QR-bill preview's fixture reference the same way the worker
+ * resolves the real reference TYPE for the export (`resolveReferenceType`
+ * in `worker/services/swiss-qr-bill.ts`, mirroring ADR-027's matrix):
+ * `auto` → QRR for a QR-IBAN, SCOR for a regular IBAN; an explicit campaign
+ * override wins. The preview MUST pick the same type the export will —
+ * `swissqrbill` v4 throws "QR-Reference requires the use of a QR-IBAN" when a
+ * QRR reference is paired with a regular IBAN, so hardcoding a QRR fixture
+ * 500'd every regular-IBAN campaign's preview while its export rendered fine
+ * (issue #495).
+ *
+ * Both branches go through the canonical Swiss check-digit helpers (rather
+ * than hand-rolled checksums) so a future tweak to either helper cannot
+ * silently desync the fixture from the validator. The fixture is never
+ * registered in `swiss_qr_references`, so a real bank scanning the preview
+ * rejects it (safe).
+ *   QRR  → 26-digit body + mod-10-recursive check digit.
+ *   SCOR → ISO 11649 `RF<check><payload>` creditor reference.
+ */
+function resolvePreviewReference(
+  qrReferenceMode: "auto" | "qrr" | "scor",
+  ibanKind: "iban" | "qr_iban",
+): string {
+  const effectiveType =
+    qrReferenceMode === "auto" ? (ibanKind === "qr_iban" ? "qrr" : "scor") : qrReferenceMode;
+  return effectiveType === "qrr"
+    ? computeQrr("21000000000000000000000000")
+    : computeScor("PREVIEWSAMPLE");
+}
 
 export async function postalCampaignRoutes(app: FastifyInstance) {
   // ─── Campaign ↔ constituent membership ──────────────────────────────
@@ -608,6 +638,7 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
       const [bankAccount] = await systemDb
         .select({
           iban: bankAccounts.iban,
+          ibanKind: bankAccounts.ibanKind,
           holderName: bankAccounts.holderName,
           holderStreet: bankAccounts.holderStreet,
           holderBuildingNumber: bankAccounts.holderBuildingNumber,
@@ -638,15 +669,15 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
           );
       }
 
-      // 27-digit fixture QRR with a valid mod-10 check digit — never
-      // registered in `swiss_qr_references` so a real bank scanning the
-      // preview will reject it (safe). Computed via the canonical Swiss
-      // "Modulo 10 recursive" helper rather than hand-rolling the check
-      // digit: a future tweak to the helper (or to the 26-char body
-      // sentinel below) cannot silently desync from the validator and
-      // produce an invalid fixture that the swissqrbill library would
-      // reject at render time.
-      const previewReference = computeQrr("21000000000000000000000000");
+      // Fixture reference matched to the resolved reference TYPE (QRR for a
+      // QR-IBAN, SCOR for a regular IBAN — see `resolvePreviewReference`).
+      // `swissqrbill` v4 throws on a QRR reference paired with a regular
+      // IBAN, so the preview MUST pick the same type the export will
+      // (issue #495).
+      const previewReference = resolvePreviewReference(
+        campaign.qrReferenceMode ?? "auto",
+        bankAccount.ibanKind,
+      );
 
       // ─── QR-bill only mode → single inline 2-page PDF. ─────────────
       if (runMode === "qr_bill_only") {
