@@ -2764,6 +2764,7 @@
         "blocked": "Postal export is not configured yet — link a Swiss bank account or publish a public donation page to start."
       },
       "refresh": "Refresh",
+      "refreshing": "Refreshing…",
       "modes": {
         "personalized": {
           "title": "Personalized",
@@ -2853,6 +2854,7 @@
         "exportReady": "Postal export ready for download.",
         "exportFailed": "Postal export failed.",
         "startFailed": "Could not start the export. Please try again.",
+        "refreshed": "Export list up to date.",
         "refreshFailed": "Could not refresh the export list.",
         "previewFailed": "Could not load the preview."
       },
