@@ -668,51 +668,51 @@
       "breakpoints": true
     },
     {
-      "idx": 82,
-      "version": "7",
-      "when": 1958180000000,
-      "tag": "0057_currency_metadata",
-      "breakpoints": true
-    },
-    {
-      "idx": 83,
-      "version": "7",
-      "when": 1968180000000,
-      "tag": "0058_funds_bank_account_id",
-      "breakpoints": true
-    },
-    {
-      "idx": 84,
-      "version": "7",
-      "when": 1978180000000,
-      "tag": "0059_campaign_funds_routing",
-      "breakpoints": true
-    },
-    {
-      "idx": 85,
-      "version": "7",
-      "when": 1988180000000,
-      "tag": "0060_donations_fx_columns",
-      "breakpoints": true
-    },
-    {
-      "idx": 86,
-      "version": "7",
-      "when": 1998180000000,
-      "tag": "0061_org_currency_balances",
-      "breakpoints": true
-    },
-    {
       "idx": 87,
       "version": "7",
       "when": 2008180000000,
-      "tag": "0062_users_display_currency",
+      "tag": "0057_currency_metadata",
       "breakpoints": true
     },
     {
       "idx": 88,
       "version": "7",
       "when": 2018180000000,
+      "tag": "0058_funds_bank_account_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 2028180000000,
+      "tag": "0059_campaign_funds_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 2038180000000,
+      "tag": "0060_donations_fx_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 2048180000000,
+      "tag": "0061_org_currency_balances",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 2058180000000,
+      "tag": "0062_users_display_currency",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 2068180000000,
       "tag": "0063_multi_currency_flags",
       "breakpoints": true
     }

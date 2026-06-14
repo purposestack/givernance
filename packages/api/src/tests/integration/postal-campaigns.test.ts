@@ -773,14 +773,25 @@ describe("Postal preview", () => {
 
   async function createBankLinkedCampaign(iban: string): Promise<string> {
     const token = signToken(app);
+    // Bank-account mutations require a fresh step-up ACR (bankMutationAcr guard).
+    const bankToken = signToken(app, {
+      acr: "urn:givernance:acr:bank-mutation",
+      auth_time: Math.floor(Date.now() / 1000) - 60,
+    });
     // Fresh slate — the partial unique (org_id, iban) WHERE deleted_at IS
     // NULL would otherwise collide across re-runs on the persistent DB.
     await db.execute(sql`DELETE FROM bank_accounts WHERE org_id = ${ORG_A} AND iban = ${iban}`);
     const bank = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
-      payload: { ...QR_BILL_HOLDER, iban, bankName: "PostFinance", currency: "CHF" },
+      headers: authHeader(bankToken),
+      payload: {
+        ...QR_BILL_HOLDER,
+        iban,
+        bankName: "PostFinance",
+        currency: "CHF",
+        label: "PostFinance CHF",
+      },
     });
     expect(bank.statusCode).toBe(201);
     const bankAccountId = bank.json<{ data: { id: string } }>().data.id;

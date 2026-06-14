@@ -1,6 +1,7 @@
 /** Job processor — handle Stripe webhook events asynchronously */
 
 import { ExchangeRateService } from "@givernance/shared";
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import type { ProcessStripeWebhookJob } from "@givernance/shared/jobs";
 import {
   auditLogs,
@@ -20,6 +21,7 @@ import { and, eq, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
+import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 /**
