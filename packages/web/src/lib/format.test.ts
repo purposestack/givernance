@@ -26,6 +26,9 @@ describe("formatMonthYear", () => {
     expect(formatMonthYear("2026-00", "fr")).toBe("2026-00");
     expect(formatMonthYear("not-a-month", "fr")).toBe("not-a-month");
     expect(formatMonthYear("", "fr")).toBe("");
+    // The regex is anchored, so surrounding whitespace falls through to the
+    // safe passthrough rather than being silently trimmed-and-parsed.
+    expect(formatMonthYear(" 2026-05", "fr")).toBe(" 2026-05");
   });
 });
 

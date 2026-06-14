@@ -37,6 +37,7 @@ import type {
   SurveyCadence,
 } from "@/models/superadmin-finance";
 import { SuperAdminFinanceService } from "@/services/SuperAdminFinanceService";
+import { groupReportsByYear } from "./report-archive-grouping";
 
 import "./finance-mockup.css";
 
@@ -229,24 +230,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const [reportToRegenerate, setReportToRegenerate] = useState<MonthlyReport | null>(null);
 
   // Group the archive rows by calendar year for a scannable, sectioned list.
-  // The API returns rows already ordered `month DESC` (newest first), so a
-  // single linear pass yields year buckets in descending order with months
-  // descending inside each — no re-sort, the existing chronological order is
-  // preserved exactly. Grouping by the `YYYY` prefix avoids any timezone /
-  // Date parsing.
-  const reportsByYear = useMemo(() => {
-    const groups: Array<{ year: string; items: MonthlyReport[] }> = [];
-    for (const report of reports) {
-      const year = report.month.slice(0, 4);
-      const last = groups.at(-1);
-      if (last && last.year === year) {
-        last.items.push(report);
-      } else {
-        groups.push({ year, items: [report] });
-      }
-    }
-    return groups;
-  }, [reports]);
+  const reportsByYear = useMemo(() => groupReportsByYear(reports), [reports]);
 
   const refreshReports = useCallback(async () => {
     try {
@@ -814,16 +798,12 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>
               {reportsByYear.map(({ year, items }, groupIndex) => (
-                <section
-                  key={year}
-                  aria-label={t("reports.archive.yearGroupLabel", {
-                    year,
-                    count: items.length,
-                  })}
-                  style={{ marginTop: groupIndex === 0 ? 0 : 14 }}
-                >
-                  {/* Year band — section divider with the year on the left, a
-                      connecting rule, and a report-count pill on the right. */}
+                <div key={year} style={{ marginTop: groupIndex === 0 ? 0 : 14 }}>
+                  {/* Year band — a real <h3> (reachable by screen-reader
+                      heading navigation) on the left, a decorative connecting
+                      rule, and a report-count pill on the right. The h3 carries
+                      a descriptive accessible name ("Année 2026 · N rapports")
+                      while showing just the year visually. */}
                   <div
                     style={{
                       display: "flex",
@@ -832,8 +812,13 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                       padding: "2px 0 6px",
                     }}
                   >
-                    <span
+                    <h3
+                      aria-label={t("reports.archive.yearGroupLabel", {
+                        year,
+                        count: items.length,
+                      })}
                       style={{
+                        margin: 0,
                         fontSize: 13,
                         fontWeight: 700,
                         letterSpacing: "0.04em",
@@ -842,7 +827,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                       }}
                     >
                       {year}
-                    </span>
+                    </h3>
                     <span
                       aria-hidden
                       style={{
@@ -878,7 +863,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                       />
                     ))}
                   </ul>
-                </section>
+                </div>
               ))}
             </div>
           )}
@@ -1711,7 +1696,7 @@ function ReportArchiveRow({ report: r, isLast, reportBusy, onRegenerate }: Repor
       >
         {r.readyAt
           ? t("reports.archive.generatedAt", {
-              date: new Date(r.readyAt).toLocaleString("fr-FR", {
+              date: new Date(r.readyAt).toLocaleString(locale, {
                 day: "numeric",
                 month: "short",
                 hour: "2-digit",
