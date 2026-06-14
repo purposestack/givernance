@@ -50,6 +50,37 @@ export function formatDate(
   return new Intl.DateTimeFormat(locale, options).format(d);
 }
 
+/**
+ * Format a `YYYY-MM` period string to a localized, capitalized month + year
+ * label — `2026-05` → `Mai 2026` (fr) / `May 2026` (en).
+ *
+ * Used for operator-facing period labels (e.g. the finance report archive)
+ * where the raw `YYYY-MM` reads as machine-oriented. The underlying value is
+ * kept for sorting; only the display text is humanized here.
+ *
+ * Constructs the date at midday UTC of the 1st so the rendered month never
+ * drifts across a timezone boundary. Returns the input unchanged if it is not
+ * a well-formed `YYYY-MM` string.
+ */
+export function formatMonthYear(month: string, locale: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!match) return month;
+
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  if (monthIndex < 0 || monthIndex > 11) return month;
+
+  const formatted = new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, monthIndex, 1, 12)));
+
+  // Intl lowercases the month name in some locales (fr: "mai 2026"); the
+  // archive list wants a capitalized leading letter ("Mai 2026").
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
 /** Format a number with locale-appropriate thousands separators. */
 export function formatNumber(value: number, locale: string): string {
   return new Intl.NumberFormat(locale).format(value);

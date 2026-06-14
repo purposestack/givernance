@@ -9,7 +9,7 @@
  * will follow in a separate PR once visual fidelity is validated.
  */
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { formatMonthYear } from "@/lib/format";
 import type {
   FinancePeriod,
   FinanceSummary,
@@ -131,6 +132,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const [error, setError] = useState<boolean>(initialError);
   const [flushing, setFlushing] = useState(false);
   const t = useTranslations("admin.finance");
+  const locale = useLocale();
 
   const periodOptions: Array<{ value: FinancePeriod; label: string }> = PERIOD_VALUES.map(
     ({ value, key }) => ({ value, label: t(key) }),
@@ -805,7 +807,9 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                     fontSize: 13,
                   }}
                 >
-                  <strong style={{ color: "var(--color-on-surface)" }}>{r.month}</strong>
+                  <strong style={{ color: "var(--color-on-surface)" }}>
+                    {formatMonthYear(r.month, locale)}
+                  </strong>
                   <span
                     style={{
                       fontSize: 11,
